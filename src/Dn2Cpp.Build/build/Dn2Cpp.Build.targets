@@ -1,0 +1,38 @@
+<Project>
+
+  <!-- After `dotnet publish`, transpile the published assembly to C++ with the
+       installed dn2cpp tool and native-build it against the runtime the tool
+       package carries; the native binary lands next to the managed publish
+       output. Console apps only (the Godot lanes have their own export paths).
+       Requires the dn2cpp dotnet tool plus clang++/cmake/ninja on the machine. -->
+  <Target Name="Dn2CppNativePublish" AfterTargets="Publish"
+          Condition="'$(Dn2CppEnabled)' == 'true'">
+
+    <!-- Resolve the tool and the packaged C++ runtime in one probe. -->
+    <Exec Command="$(Dn2CppTool) --print-runtime-dir"
+          ConsoleToMSBuild="true" IgnoreExitCode="true"
+          StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" ItemName="_Dn2CppRuntimeDirLine" />
+      <Output TaskParameter="ExitCode" PropertyName="_Dn2CppProbeExit" />
+    </Exec>
+    <Error Condition="'$(_Dn2CppProbeExit)' != '0'"
+           Text="dn2cpp tool not found or it carries no runtime (probe: $(Dn2CppTool) --print-runtime-dir). Install it first: dotnet tool install -g dn2cpp" />
+
+    <PropertyGroup>
+      <_Dn2CppRuntimeDir>@(_Dn2CppRuntimeDirLine)</_Dn2CppRuntimeDir>
+      <_Dn2CppGenDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'dn2cpp'))</_Dn2CppGenDir>
+      <_Dn2CppBuildDir>$([MSBuild]::NormalizeDirectory('$(_Dn2CppGenDir)', 'build'))</_Dn2CppBuildDir>
+    </PropertyGroup>
+
+    <Exec Command="$(Dn2CppTool) &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDir)&quot; $(Dn2CppExtraArgs)" />
+
+    <Exec Command="$(Dn2CppCMake) -S &quot;$(_Dn2CppRuntimeDir)&quot; -B &quot;$(_Dn2CppBuildDir)&quot; -G &quot;$(Dn2CppGenerator)&quot; -DDN2CPP_APP_DIR=&quot;$(_Dn2CppGenDir.TrimEnd('/'))&quot; -DDN2CPP_APP_NAME=&quot;$(AssemblyName)&quot; $(Dn2CppCMakeArgs)" />
+    <Exec Command="$(Dn2CppCMake) --build &quot;$(_Dn2CppBuildDir)&quot;" />
+
+    <Copy SourceFiles="$(_Dn2CppBuildDir)$(AssemblyName)"
+          DestinationFolder="$(PublishDir)" />
+    <Message Importance="high"
+             Text="dn2cpp: native binary -> $(PublishDir)$(AssemblyName)" />
+  </Target>
+
+</Project>

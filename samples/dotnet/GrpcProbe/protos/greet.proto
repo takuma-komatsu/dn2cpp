@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package greet;
+
+option csharp_namespace = "Greet";
+
+// Reach probe: a small unary-RPC surface, wide enough to pull in the
+// Grpc.Net.Client stack (HTTP/2 framing, deadlines, trailers) and
+// Google.Protobuf's generated-message machinery (scalar/repeated/bytes/enum
+// fields) without needing a running server. See ../Program.cs. Also the shared
+// client+server stub for samples/dotnet/GrpcUnary and
+// samples/dotnet/GrpcUnaryServer, whose streaming sections drive the three
+// streaming shapes below (gates/build-and-run-grpc-unary.sh).
+service Greeter {
+  rpc SayHello (HelloRequest) returns (HelloReply);
+  rpc Fail (HelloRequest) returns (HelloReply);
+  rpc Sleep (SleepRequest) returns (HelloReply);
+  rpc Countdown (StreamRequest) returns (stream HelloReply);
+  rpc Accumulate (stream HelloRequest) returns (HelloReply);
+  rpc EchoChat (stream HelloRequest) returns (stream HelloReply);
+}
+
+message HelloRequest {
+  string name = 1;
+  int32 count = 2;
+  repeated int32 values = 3;
+  bytes payload = 4;
+  enum Mood {
+    MOOD_UNSPECIFIED = 0;
+    HAPPY = 1;
+  }
+  Mood mood = 5;
+}
+
+message HelloReply {
+  string message = 1;
+  int32 doubled = 2;
+  repeated int32 values = 3;
+  bytes payload = 4;
+}
+
+message SleepRequest {
+  int32 millis = 1;
+}
+
+message StreamRequest {
+  int32 count = 1;
+  int32 delay_millis = 2;   // server waits this long before every tick after the first
+  bool fail_after_two = 3;  // server raises Unavailable after two ticks
+}

@@ -1,0 +1,89 @@
+== CultureInfo object model ==
+NativeName=Invariant Language (Invariant Country)
+DisplayName=Invariant Language (Invariant Country)
+LCID=127
+IsNeutralCulture=False
+Name=''
+CurrentCulture.LCID=127
+CurrentUICulture.LCID=127
+GetCultures(All).Length=1
+  [0] LCID=127 Name='' Native=Invariant Language (Invariant Country)
+-- LCID --
+  'en-US' LCID=1033 neutral=False
+  'ja-JP' LCID=1041 neutral=False
+  'en-GB' LCID=2057 neutral=False
+  'pt-BR' LCID=1046 neutral=False
+  'en' LCID=9 neutral=True
+  'xx-YY' LCID=4096 neutral=False
+  GetCultureInfo(127)=''
+  GetCultureInfo(1041)='ja-JP'
+  GetCultureInfo(2057)='en-GB'
+  GetCultureInfo(4096): ArgumentException
+  GetCultureInfo(12345): ArgumentException
+-- table breadth --
+  'en-GB' -> 'en-GB' n=-1,234.50 c=£1,234.50 nan=NaN
+  'pt-BR' -> 'pt-BR' n=-1.234,50 c=R$ 1.234,50 nan=NaN
+  'es-ES' -> 'es-ES' n=-1.234,50 c=1.234,50 € nan=NaN
+  'ru-RU' -> 'ru-RU' n=-1 234,50 c=1 234,50 ₽ nan=не число
+  'sv-SE' -> 'sv-SE' n=−1 234,50 c=1 234,50 kr nan=NaN
+  'de-CH' -> 'de-CH' n=-1'234.50 c=CHF 1'234.50 nan=NaN
+  'pt-br' -> 'pt-BR' n=-1.234,50 c=R$ 1.234,50 nan=NaN
+  'ur-PK' N=[3,2] C=[3,2] P=[3,2] digits=0
+  'ur-PK' n=‎-1,23,45,678.90 c=‎-Rs12,34,568
+  unmodeled name='xx-YY' LCID=4096
+GetFormat(DTFI) null? False
+Calendar: PlatformNotSupportedException
+-- CurrentUICulture --
+  ui='ja-JP' cur='de-DE'
+  provider-less N2=1.234,50
+  after second set ui='en-GB' LCID=2057
+  InstalledUICulture unmoved by either setter: True
+  restored cur='' ui=''
+== CultureInfo-as-object escapes ==
+wl(o):''
+interp:''
+interpT:''
+arr[0]=''
+arr[1]='en-US'
+arr[2]='System.Globalization.NumberFormatInfo'
+fmt:''|'en-US'
+t0:System.Globalization.CultureInfo
+t2:System.Globalization.NumberFormatInfo
+typeofEq:True
+isCI:True
+isNFI:False
+back:'en-US'
+as:null
+d:3.5
+refEq:True
+mixEq:True
+mixNe:False
+nullCk:False
+prov:CultureInfo:'en-US'
+provN:NumberFormatInfo
+invInfo:NumberFormatInfo
+ti:TextInfo
+nfiToStr:System.Globalization.NumberFormatInfo
+sfld:'en-US'
+list:'en-US'
+cl:True:1:'en-US'
+aIndexOf:1
+each:<><en-US>
+cov:'en-US'|CultureInfo
+== headerless-escape residue ==
+a-read:CultureInfo:''
+a-write:CultureInfo:'en-US'
+b-mg:CultureInfo:''
+b-cov:CultureInfo:''
+b-par:T:en-US
+b-ctr:O:CultureInfo:'en-US'
+c-gvm:D:CultureInfo:en-US
+c-gvmb:G:CultureInfo:en-US
+d-itf:H:en-US
+d-dir:H:en-US
+e-take:T:en-US
+e-give:CultureInfo:''
+e-prov:P:CultureInfo
+f-asm:ok
+f-mod:ok
+g-sv:PlatformNotSupportedException

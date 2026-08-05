@@ -1,0 +1,22 @@
+<Project>
+
+  <!-- Defaults for the dn2cpp native-publish hook (Dn2Cpp.Build.targets).
+       Override any of these in the consuming project. -->
+  <PropertyGroup>
+    <!-- Master switch: set false to publish managed-only without removing the
+         PackageReference. -->
+    <Dn2CppEnabled Condition="'$(Dn2CppEnabled)' == ''">true</Dn2CppEnabled>
+    <!-- How to invoke the dn2cpp tool (a global tool on PATH by default; point
+         this at a tool-path install or "dotnet tool run dn2cpp" for a local
+         tool manifest). -->
+    <Dn2CppTool Condition="'$(Dn2CppTool)' == ''">dn2cpp</Dn2CppTool>
+    <Dn2CppCMake Condition="'$(Dn2CppCMake)' == ''">cmake</Dn2CppCMake>
+    <Dn2CppGenerator Condition="'$(Dn2CppGenerator)' == ''">Ninja</Dn2CppGenerator>
+    <!-- Extra transpiler arguments. The auto-ref default pulls the BCL closure
+         from the live shared framework, so a plain app needs no references at all. -->
+    <Dn2CppExtraArgs Condition="'$(Dn2CppExtraArgs)' == ''">--auto-ref</Dn2CppExtraArgs>
+    <!-- Extra cmake configure arguments (e.g. -DDN2CPP_USE_GC=OFF). -->
+    <Dn2CppCMakeArgs Condition="'$(Dn2CppCMakeArgs)' == ''"></Dn2CppCMakeArgs>
+  </PropertyGroup>
+
+</Project>

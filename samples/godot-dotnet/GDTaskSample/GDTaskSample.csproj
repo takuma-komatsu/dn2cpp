@@ -1,0 +1,20 @@
+<Project Sdk="Godot.NET.Sdk/4.7.1">
+  <!-- A real Godot C# project against the REAL GDTask 3.1.0, acquired the way a
+       game would: a PackageReference restored from nuget.org. No DLL is vendored
+       here — the gate transpiles the library's own shipped IL. The Sdk resolves
+       instead from the local feed; both sources are written into the untracked
+       nuget.config the gate generates next to this file.
+
+       GDTask is MIT (package id "GDTask", root namespace GodotTask). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- GDTask 3.1.0 declares Forget/SuppressCancellationThrow with C# 14
+         extension blocks; `latest` is what lets Roslyn bind them. -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="GDTask" Version="3.1.0" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <!-- The generated Strings.Designer.cs would route through ResourceManager,
+         which dn2cpp does not transpile (and which this gate does not need: the
+         .resources blob is read raw, to prove a resource SET travels intact). -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+
+  <!-- Explicit LogicalNames: the gate asserts the exact manifest names, so they
+       must not depend on RootNamespace/link-path inference. `scoped.txt` is named
+       for the ManifestResourceScoped namespace so the (Type, string) overload's
+       namespace scoping has something to resolve. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\hello.txt" LogicalName="ManifestResources.hello.txt" />
+    <EmbeddedResource Include="Resources\bytes.bin" LogicalName="ManifestResources.bytes.bin" />
+    <EmbeddedResource Include="Resources\scoped.txt" LogicalName="ManifestResourceScoped.scoped.txt" />
+    <EmbeddedResource Include="Resources\Strings.resx" LogicalName="ManifestResources.Strings.resources" />
+    <!-- A PRE-COMPILED .resources (checked in, passed through verbatim — the SDK runs
+         no resgen on it) carrying one entry per ResourceTypeCode the reader decodes:
+         a String, every primitive (Boolean/Char/the eight integers/Single/Double/
+         Decimal/the three DateTime Kinds/TimeSpan), a byte[] and an empty byte[], a
+         Null entry, and a Stream — the one code GetObject still refuses. It exists
+         because NON-String entries cannot be expressed in the .resx above: MSB3822
+         refuses one unless the project references System.Resources.Extensions, which
+         would pull a serializer into this sample's closure to assert a reader that must
+         REFUSE serialized payloads. Written by System.Resources.ResourceWriter, whose
+         built-in ResourceTypeCode path handles all of the above with no such reference
+         — which is also why no entry at or past StartOfUserTypes is here: that writer
+         cannot produce one, and the reader's refusal of them is a message, not a
+         decode. Keys: `Label`/`Answer` (the String/Int32 pair the carve-out sections
+         name) and `p-*` for the rest. -->
+
+    <EmbeddedResource Include="Resources\Mixed.resources" LogicalName="ManifestResources.Mixed.resources" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Dn2Cpp</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The target backends and the CLI composition root drive the core's
+         internal model directly. -->
+    <InternalsVisibleTo Include="Dn2Cpp.Godot" />
+    <InternalsVisibleTo Include="Dn2Cpp.DotnetModule" />
+    <InternalsVisibleTo Include="dn2cpp" />
+  </ItemGroup>
+
+</Project>

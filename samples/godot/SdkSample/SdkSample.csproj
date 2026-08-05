@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Compile against the dn2cpp GodotSharp shim (the "fake GodotSharp" of
+       Approach 1), not the real Godot.NET.Sdk package, so the transpiler resolves
+       engine types to its own controlled, version-locked API surface. -->
+  <ItemGroup>
+    <ProjectReference Include="../../../src/GodotSharpShim/GodotSharp.csproj" />
+  </ItemGroup>
+
+</Project>

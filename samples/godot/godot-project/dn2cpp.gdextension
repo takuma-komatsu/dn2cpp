@@ -1,0 +1,17 @@
+[configuration]
+
+entry_symbol = "dn2cpp_gdext_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+
+macos.debug = "res://bin/libgodotsample.dylib"
+macos.release = "res://bin/libgodotsample.dylib"
+linux.debug = "res://bin/libgodotsample.so"
+linux.release = "res://bin/libgodotsample.so"
+ios.debug = "res://bin/libgodotsample.ios.xcframework"
+ios.release = "res://bin/libgodotsample.ios.xcframework"
+android.debug.arm64 = "res://bin/libgodotsample.android.arm64.so"
+android.release.arm64 = "res://bin/libgodotsample.android.arm64.so"
+windows.debug.x86_64 = "res://bin/godotsample.dll"
+windows.release.x86_64 = "res://bin/godotsample.dll"

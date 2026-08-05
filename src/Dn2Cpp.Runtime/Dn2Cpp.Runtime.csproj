@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    dn2cpp's always-available managed support shim. Unlike the LINQ shim, this
+    is NOT a "fake BCL" the user compiles against — user code never references it. The
+    CLI auto-references the built Dn2Cpp.Runtime.dll (it sits next to the CLI), and the
+    transpiler instantiates types from it on demand (e.g. SZArrayEnumerable<T> at a
+    T[] -> collection-interface boundary). Tree-shaking drops everything a given
+    program doesn't reach, so the cost when unused is nil.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Dn2Cpp.Runtime</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,19 @@
+; dn2cpp sample Godot project
+config_version=5
+
+[application]
+
+config/name="dn2cpp-sample"
+run/main_scene="res://main.tscn"
+; The iOS exporter renders every required app-icon size from this (an export
+; with no icon at all fails).
+config/icon="res://icon.svg"
+
+[rendering]
+
+; The iOS simulator supports only the Compatibility renderer; the headless
+; macOS gates never initialize a renderer, so this only affects exported runs.
+renderer/rendering_method.mobile="gl_compatibility"
+; Mobile exports require the ETC2/ASTC texture format — without it the iOS
+; export validation fails silently (valid=false with no message).
+textures/vram_compression/import_etc2_astc=true

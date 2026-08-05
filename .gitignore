@@ -1,0 +1,54 @@
+# Build outputs
+artifacts/
+bin/
+obj/
+
+# Local coding-agent state (settings, worktrees, caches — not part of the repo)
+.claude/
+
+# Godot caches and built extension binaries
+samples/godot/godot-project/.godot/
+samples/godot/godot-project/bin/
+samples/godot/godot-project-hotupdate/.godot/
+samples/godot/godot-project-hotupdate/bin/
+
+# OS noise
+.DS_Store
+.idea/
+
+# Godot API dump
+extension_api.json
+# Generated bindings
+*.g.cs
+samples/godot/godot-project-sdk/bin/
+samples/godot/godot-project-sdk/.godot/
+
+# godot-dotnet samples (DotnetSample, GDTaskSample): generated nuget.config
+# (machine-specific local-feed path, written by godot_dotnet_nuget_config in
+# gates/_godot_dotnet.sh) and editor/build caches
+samples/godot-dotnet/DotnetSample/nuget.config
+samples/godot-dotnet/DotnetSample/.godot/
+samples/godot-dotnet/DotnetSample/build/
+samples/godot-dotnet/GDTaskSample/nuget.config
+samples/godot-dotnet/GDTaskSample/.godot/
+samples/godot-dotnet/GDTaskSample/build/
+# GameExtensionProbe carries a .gdextension whose binary is BUILT by the gate
+# (build-and-run-godot-dotnet-sample.sh 7/7) into a work copy of the project, so
+# the committed tree holds only the source. These entries cover the case where
+# somebody opens the project in an editor directly: a stray .godot/ or a stray
+# lib/ artifact would silently become part of the gate's cache key.
+samples/godot-dotnet/GameExtensionProbe/.godot/
+samples/godot-dotnet/GameExtensionProbe/lib/*.dylib
+samples/godot-dotnet/GameExtensionProbe/lib/*.so
+samples/godot-dotnet/GameExtensionProbe/lib/*.dll
+
+# Per-gate output dirs under gates/ (transpile output, work copies of sample
+# projects, native build trees, exported apps, measurement gap dumps): one glob
+# instead of the old enumerated list, which had to be extended per new gate and
+# let freshly added out-* dirs sit unignored until someone noticed.
+gates/out-*/
+
+# LLVM profile runtime droppings: an instrumented tool somewhere in the gate
+# toolchain (Xcode/simulator window of the suite) touches this in the CWD on
+# exit; zero bytes, not ours, recurs per suite run.
+default.profraw

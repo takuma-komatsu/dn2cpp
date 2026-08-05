@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Force the AOT-safe source-gen path inside GodotApi.Load: a runtime
+         reflection fallback would throw, so a clean run proves the generated
+         JsonSerializerContext converters carry the deserialize. -->
+    <JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roots the REAL Dn2Cpp.Godot.BindingGenerator + GodotApi (not a copied DTO
+         graph like JsonGodotProbe). Tree-shaking from BindingGenerator.Run prunes
+         GodotBackend / GodotCallIntrinsics (the transpile-side call map), so only
+         the binding-generation + STJ-source-gen-deserialize closure is reached. -->
+    <ProjectReference Include="../../../src/Dn2Cpp.Godot/Dn2Cpp.Godot.csproj" />
+  </ItemGroup>
+
+</Project>

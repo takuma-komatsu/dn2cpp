@@ -1,0 +1,1390 @@
+== names ==
+ReflectTypeSubset.Dog
+ReflectTypeSubset
+Dog
+System.Int32
+System
+== enum/interface/abstract ==
+True
+False
+True
+False
+True
+False
+True
+== array ==
+True
+True
+False
+== baseType ==
+Animal
+Object
+null
+null
+Enum
+== assignable ==
+True
+False
+True
+True
+True
+== instanceOf ==
+True
+True
+False
+True
+== getType ==
+Dog
+Animal
+False
+lens 2111111
+System.Int32[] IsArray=True Name=Int32[] FullName=System.Int32[] Ns=System Rank=1 Elem=Int32 ElemEqInt32=True
+System.String[] IsArray=True Name=String[] FullName=System.String[] Ns=System Rank=1 Elem=String ElemEqInt32=False
+System.Double[] IsArray=True Name=Double[] FullName=System.Double[] Ns=System Rank=1 Elem=Double ElemEqInt32=False
+System.Object[] IsArray=True Name=Object[] FullName=System.Object[] Ns=System Rank=1 Elem=Object ElemEqInt32=False
+ReflectArrayTypeSubset.Foo[] IsArray=True Name=Foo[] FullName=ReflectArrayTypeSubset.Foo[] Ns=ReflectArrayTypeSubset Rank=1 Elem=Foo ElemEqInt32=False
+ReflectArrayTypeSubset.Bar[] IsArray=True Name=Bar[] FullName=ReflectArrayTypeSubset.Bar[] Ns=ReflectArrayTypeSubset Rank=1 Elem=Bar ElemEqInt32=False
+System.Int32[][] IsArray=True Name=Int32[][] FullName=System.Int32[][] Ns=System Rank=1 Elem=Int32[] ElemEqInt32=False
+jag.Elem=Int32[] innerRank=1 inner.Elem=Int32
+rank walk: ranked=2 notArray=2
+typed catch: ArgumentException
+IEnumerable <- string[] = True
+ICollection <- string[] = True
+IList <- string[] = True
+ICloneable <- string[] = True
+Array <- string[] = True
+Array <- int[] = True
+IDictionary <- string[] = False
+IList<string> <- string[] = True
+IReadOnlyList<string> <- string[] = True
+IEnumerable<object> <- string[] = True
+IEnumerable<string> <- object[] = False
+IEnumerable<object> <- int[] = False
+IList<int> <- int[] = True
+IEnumerable<uint> <- int[] = True
+object[] <- string[] = True
+string[] <- object[] = False
+int[] <- uint[] = True
+string[] subclassof Array = True
+string[] subclassof object = True
+string[] subclassof object[] = False
+string[].BaseType = Array
+Array.BaseType = Object
+string[].GetInterfaces = 11
+inst = System.String[] elem=String ==typeof True
+IEnumerable <- inst = True
+IList<string> <- inst = True
+ft = System.String[] IsArray=True rank=1 elem=String itfs=11 ==typeof True
+IEnumerable <- ft = True
+IDictionary <- ft = False
+Array <- ft = True
+IList<string> <- ft = True
+ft.BaseType = Array
+nums ft = System.Int32[] IsArray=True
+contract(ft) = array
+contract(typeof(string[])) = array
+seed = 1
+names = alpha,beta len=2
+stored = System.String[]
+pt = ArrayAssignabilitySubset.MusicContext[] IsArray=True elem=MusicContext ==typeof True
+contract(pt) = array
+dt = System.String[] ==typeof True contract=array
+eseed = 1
+ex = MicrobeStage,MulticellularStage len=2 ok=True
+exstored = ArrayAssignabilitySubset.MusicContext[]
+bt = ArrayAssignabilitySubset.Biome[] contract=array
+tempctors = True default=True
+sb = Tidepool,Vents len=2
+sbstored = ArrayAssignabilitySubset.Biome[]
+IConvertible <- long = True
+IConvertible <- int = True
+IConvertible <- byte = True
+IConvertible <- double = True
+IConvertible <- bool = True
+IConvertible <- char = True
+IConvertible <- string = True
+IConvertible <- decimal = True
+IConvertible <- DateTime = True
+IConvertible <- Stage = True
+IConvertible <- WideStage = True
+IConvertible <- Enum = True
+IConvertible <- nint = False
+IConvertible <- TimeSpan = False
+IConvertible <- PlainStruct = False
+IConvertible <- PlainClass = False
+IConvertible <- object = False
+IComparable <- long = True
+IComparable <- bool = True
+IComparable <- string = True
+IComparable <- Stage = True
+IComparable <- nint = True
+IComparable <- TimeSpan = True
+IComparable <- PlainStruct = False
+IFormattable <- long = True
+IFormattable <- bool = False
+IFormattable <- string = False
+IFormattable <- Stage = True
+ISpanFormattable <- long = True
+ISpanFormattable <- bool = False
+ISpanFormattable <- Stage = True
+(object)1L is IConvertible = True
+(object)1 is IConvertible = True
+(object)Stage.Aware is IConvertible = True
+(object)true is IConvertible = True
+(object)"x" is IConvertible = True
+(object)true is IFormattable = False
+(object)1L is IFormattable = True
+(object)Stage.Aware is IComparable = True
+(object)default(PlainStruct) is IConvertible = False
+(object)1L is Stage = False
+Stage.IsInstanceOfType(0L) = False
+long->Stage: enum-toobject:Aware
+long->WideStage: enum-toobject:B
+string->Stage: enum-parse:Multicellular
+long->int: changetype:7
+struct->Stage: no-conversion
+seed 12
+interfaces=2 [IAlpha,IBeta]
+Color underlying=Byte / Byte
+Mode underlying=Int32
+Color names=[Red,Green,Blue]
+Color names2=[Red,Green,Blue]
+GetName(Green)=Green
+GetName(3)=<null>
+IsDefined(Blue)=True
+IsDefined(8)=False
+Parse(Green)=2
+Parse(green,ic)=2
+Parse(Red,Blue)=5
+Parse(Nope): ArgumentException
+seed 1x11
+boxInt Name=Box`1 IsGeneric=True IsDef=False Constructed=True Contains=False
+listInt Name=List`1 IsGeneric=True IsDef=False Constructed=True Contains=False
+dict Name=Dictionary`2 IsGeneric=True IsDef=False Constructed=True Contains=False
+plain Name=Plain IsGeneric=False IsDef=False Constructed=False Contains=False
+def Name=Box`1 FullName=ReflectGenericSubset.Box`1 IsDef=True Contains=True IsGeneric=True Constructed=False
+def shared = True
+listArgs len=1 [0]=Int32
+dictArgs len=2 [0]=String [1]=Int32
+plainArgs len=0
+made Name=Box`1 ==boxStr=True
+Box<double> not generated: NotSupportedException
+plain def: InvalidOperationException
+openBox FullName=ReflectGenericSubset.Box`1 IsDef=True IsGeneric=True Contains=True Constructed=False
+openBox == boxInt.GTD: True
+openDict FullName=System.Collections.Generic.Dictionary`2 == dict.GTD: True
+openIDict FullName=System.Collections.Generic.IDictionary`2 IsDef=True distinct=True
+Impl(dict, IDictionary<,>)=True
+Impl(list, IList<>)=True
+Impl(list, IDictionary<,>)=False
+Impl(list, IEnumerable<>)=True
+holder held=7
+openHolderItf(nat,app-itf) Full=ReflectGenericSubset.IHolder`1 IsItf=True IsAbs=True IsClass=False IsSealed=False IsValue=False
+openBoxCls(nat,app-cls) Full=ReflectGenericSubset.Box`1 IsItf=False IsAbs=False IsClass=True IsSealed=False IsValue=False
+openIDict(nat,x-asm-itf) Full=System.Collections.Generic.IDictionary`2 IsItf=True IsAbs=True IsClass=False IsSealed=False IsValue=False
+openDictCls(nat,x-asm-cls) Full=System.Collections.Generic.Dictionary`2 IsItf=False IsAbs=False IsClass=True IsSealed=False IsValue=False
+openPairKind(syn,app-itf) Full=ReflectGenericSubset.IPairKind`2 IsItf=True IsAbs=True IsClass=False IsSealed=False IsValue=False
+front(IDictionary<,>)=True
+front(IHolder<>)=True
+front(Box<>)=throw
+IEnumerable <- IReadOnlyList<int> = True
+IEnumerable <- IList<int> = True
+IEnumerable <- IEnumerable<int> = True
+IEnumerable <- IDictionary<string,int> = True
+IEnumerable<int> <- IReadOnlyList<int> = True
+IReadOnlyCollection<int> <- IReadOnlyList<int> = True
+IReadOnlyList<int> <- IReadOnlyList<int> = True
+ICollection<int> <- IList<int> = True
+IEnumerable<int> <- IReadOnlyCollection<int> = True
+IList <- IReadOnlyList<int> = False
+IReadOnlyList<int> <- IEnumerable<int> = False
+IItfA <- IItfB = True
+IItfB <- IItfA = False
+ConcreteRo count=5
+IReadOnlyList<int> <- AbstractRo = True
+IEnumerable <- AbstractRo = True
+IReadOnlyList<int> <- ConcreteRo = True
+AbstractRo <- ConcreteRo = True
+IReadOnlyList<int>.GetInterfaces() count=3
+  [0] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [1] System.Collections.Generic.IReadOnlyCollection`1<System.Int32>
+  [2] System.Collections.IEnumerable
+IList<int>.GetInterfaces() count=3
+  [0] System.Collections.Generic.ICollection`1<System.Int32>
+  [1] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [2] System.Collections.IEnumerable
+IItfB.GetInterfaces() count=1
+  [0] ReflectGenericSubset.IItfA
+AbstractRo.GetInterfaces() count=4
+  [0] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [1] System.Collections.Generic.IReadOnlyCollection`1<System.Int32>
+  [2] System.Collections.Generic.IReadOnlyList`1<System.Int32>
+  [3] System.Collections.IEnumerable
+Impl(IReadOnlyList<int>, IEnumerable<>)=True
+Impl(IReadOnlyList<int>, IDictionary<,>)=False
+Impl(AbstractRo, IReadOnlyCollection<>)=True
+typeof(IItfA).IsInstanceOfType(ItfC) = True
+typeof(IReadOnlyList<int>).IsInstanceOfType(ConcreteRo) = True
+nb.Val=42
+IStructItf <- NeverBoxedStruct = True
+NeverBoxedStruct.GetInterfaces() count=1
+  [0] ReflectGenericSubset.IStructItf
+IItfA <- IOpaqueItf = True
+IOpaqueItf.GetInterfaces() count=1
+  [0] ReflectGenericSubset.IItfA
+ISet<int>.GetInterfaces() count=3
+  [0] System.Collections.Generic.ICollection`1<System.Int32>
+  [1] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [2] System.Collections.IEnumerable
+IAsyncEnumerator<int>.GetInterfaces() count=1
+  [0] System.IAsyncDisposable
+IEnumerable <- ISet<int> = True
+IAsyncDisposable <- IAsyncEnumerator<int> = True
+List<int>.GetInterfaces() count=8
+  [0] System.Collections.Generic.ICollection`1<System.Int32>
+  [1] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [2] System.Collections.Generic.IList`1<System.Int32>
+  [3] System.Collections.Generic.IReadOnlyCollection`1<System.Int32>
+  [4] System.Collections.Generic.IReadOnlyList`1<System.Int32>
+  [5] System.Collections.ICollection
+  [6] System.Collections.IEnumerable
+  [7] System.Collections.IList
+Dictionary<string,int>.GetInterfaces() count=10
+  [0] System.Collections.Generic.ICollection`1<System.Collections.Generic.KeyValuePair`2<System.String,System.Int32>>
+  [1] System.Collections.Generic.IDictionary`2<System.String,System.Int32>
+  [2] System.Collections.Generic.IEnumerable`1<System.Collections.Generic.KeyValuePair`2<System.String,System.Int32>>
+  [3] System.Collections.Generic.IReadOnlyCollection`1<System.Collections.Generic.KeyValuePair`2<System.String,System.Int32>>
+  [4] System.Collections.Generic.IReadOnlyDictionary`2<System.String,System.Int32>
+  [5] System.Collections.ICollection
+  [6] System.Collections.IDictionary
+  [7] System.Collections.IEnumerable
+  [8] System.Runtime.Serialization.IDeserializationCallback
+  [9] System.Runtime.Serialization.ISerializable
+ConcreteRo.GetInterfaces() count=4
+  [0] System.Collections.Generic.IEnumerable`1<System.Int32>
+  [1] System.Collections.Generic.IReadOnlyCollection`1<System.Int32>
+  [2] System.Collections.Generic.IReadOnlyList`1<System.Int32>
+  [3] System.Collections.IEnumerable
+List<int>.FindInterfaces count=8
+canonical rows reported by GetInterfaces() over 7 types = 0
+use=11
+kind=Kind
+nested=4 [Inner,Kind,Mid,Point]
+Inner=Inner
+Point=Point
+Secret=<null>
+Missing=<null>
+Inner.Name=Inner
+Inner.FullName=ReflectNestedSubset.Outer+Inner
+Inner.Namespace=ReflectNestedSubset
+Kind.FullName=ReflectNestedSubset.Outer+Kind
+Leaf.FullName=ReflectNestedSubset.Outer+Mid+Leaf
+Leaf.Name=Leaf
+GetNestedType.FullName=ReflectNestedSubset.Outer+Inner
+GetType(+)=ReflectNestedSubset.Outer+Inner same=True
+GetType(bare)=<null>
+InnerArr.FullName=ReflectNestedSubset.Outer+Inner[]
+Int32
+Double
+Boolean
+null
+null
+True
+Int64
+effective=Int32
+== default ==
+PubInst System.Int32 static=False public=True decl=Gadget
+PubStat System.Double static=True public=True decl=Gadget
+== all declared ==
+PubInst System.Int32 static=False public=True decl=Gadget
+PubStat System.Double static=True public=True decl=Gadget
+privInst System.String static=False public=False decl=Gadget
+privStat System.Boolean static=True public=False decl=Gadget
+== inherited default ==
+Extra ReflectFieldSubset.Gadget static=False public=True decl=SuperGadget
+PubInst System.Int32 static=False public=True decl=Gadget
+== getfield ==
+PubInst System.Int32 static=False public=True decl=Gadget
+PubStat System.Double static=True public=True decl=Gadget
+privInst System.String static=False public=False decl=Gadget
+null
+Extra ReflectFieldSubset.Gadget static=False public=True decl=SuperGadget
+== model public ==
+Id type=Int32 read=True write=True decl=Model
+Name type=String read=True write=True decl=Model
+ReadOnly type=Int32 read=True write=False decl=Model
+== model all ==
+Id type=Int32 read=True write=True decl=Model
+Name type=String read=True write=True decl=Model
+ReadOnly type=Int32 read=True write=False decl=Model
+Scale type=Double read=True write=True decl=Model
+Secret type=Int32 read=True write=True decl=Model
+== derived inherited ==
+Flag type=Boolean read=True write=True decl=Derived
+Id type=Int32 read=True write=True decl=Model
+Name type=String read=True write=True decl=Model
+ReadOnly type=Int32 read=True write=False decl=Model
+Id get => 123
+Name get => hello
+ReadOnly => 7
+missing = null
+== widget public ==
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 only@0]
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 a@0,Int32 b@1]
+Describe ret=Int32 static=False public=True decl=Widget params=[]
+Greet ret=Void static=False public=True decl=Widget params=[String who@0]
+Scale ret=Double static=True public=True decl=Widget params=[Double v@0,Double factor@1]
+TouchSecret ret=String static=False public=True decl=Widget params=[]
+== widget all ==
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 only@0]
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 a@0,Int32 b@1]
+Describe ret=Int32 static=False public=True decl=Widget params=[]
+Greet ret=Void static=False public=True decl=Widget params=[String who@0]
+Scale ret=Double static=True public=True decl=Widget params=[Double v@0,Double factor@1]
+Secret ret=String static=False public=False decl=Widget params=[]
+TouchSecret ret=String static=False public=True decl=Widget params=[]
+== super inherited ==
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 only@0]
+Add ret=Int32 static=False public=True decl=Widget params=[Int32 a@0,Int32 b@1]
+Describe ret=Int32 static=False public=True decl=SuperWidget params=[]
+Greet ret=Void static=False public=True decl=SuperWidget params=[String who@0]
+Greet ret=Void static=False public=True decl=Widget params=[String who@0]
+Ready ret=Boolean static=False public=True decl=SuperWidget params=[Int32 times@0]
+TouchSecret ret=String static=False public=True decl=Widget params=[]
+== getmethod ==
+Scale ret=Double static=True public=True decl=Widget params=[Double v@0,Double factor@1]
+Greet ret=Void static=False public=True decl=Widget params=[String who@0]
+Secret ret=String static=False public=False decl=Widget params=[]
+null
+Ready ret=Boolean static=False public=True decl=SuperWidget params=[Int32 times@0]
+Describe ret=Int32 static=False public=True decl=SuperWidget params=[]
+ctor count = 3
+ctor() public=True
+ctor(Int32) public=True
+ctor(Int32,String) public=True
+two-arg => A=7 S=hi
+one-arg => A=42 S=one-arg
+zero-arg => A=-1 S=default
+activator class => A=-1 S=default
+no bool ctor = null
+pt ctor => (3,4)
+activator struct => (0,0)
+== type all ==
+  Info Name=ClassA Order=5 Note= Flag=False
+  Info Name=ClassB Order=0 Note= Flag=False
+  Kind Kind=Rest Target=Subject
+  Tag
+== type Info ==
+  Info Name=ClassA Order=5 Note= Flag=False
+  Info Name=ClassB Order=0 Note= Flag=False
+type IsDefined(Tag)=True
+type IsDefined(Info)=True
+type IsDefined(Kind)=True
+== field F ==
+  Info Name=fieldF Order=0 Note=fn Flag=False
+== prop P ==
+  Info Name=propP Order=2 Note= Flag=True
+== method M ==
+  Info Name=methodM Order=0 Note= Flag=False
+  Tag
+== param x ==
+  Info Name=paramX Order=0 Note= Flag=False
+== ctor ==
+  Info Name=ctorC Order=0 Note= Flag=False
+  Metric host FCtor=2000 DCtor=3000 FNamed=-1500 DNamed=2500
+  Metric field FCtor=+0 DCtor=-0 FNamed=-0 DNamed=4000
+  Metric prop FCtor=NaN DCtor=+Inf FNamed=-Inf DNamed=NaN
+admin:3
+user:1
+guest:0
+count=3
+label=ID
+isDefined Box<int>=True
+isDefined Box<string>=True
+isDefined Box<long>=False
+isDefined Box<char>=False
+isDefined Plain=True
+count Box<int>=1
+type Box<int> N=42 Note=int-box Arg=Int32
+count Box<string>=1
+type Box<string> N=7 Note=string-box Arg=String
+count Box<char>=0
+getCustomAttribute<Box<int>> null=False
+generic-form N=42 Note=int-box Arg=Int32
+field isDefined Box<long>=True
+field isDefined Box<int>=False
+field N=1 Note=field Arg=Int64
+prop isDefined Box<byte>=True
+prop N=2 Note=prop Arg=Byte
+method isDefined Box<int>=True
+method N=3 Note=method Arg=Int32
+== attribute base surface ==
+hash stable=True
+isDefault=False
+typeId==typeof=True
+typeId==GetType=True
+matchSelf=True
+matchOther=False
+== named args on attribute base class + primitive arrays ==
+CheatGlucose IsDefined=True
+  RunOnKeyAttribute(g_cheat_ammonia,Priority=5,OnlyUnhandled=True)
+  RunOnKeyAttribute(g_cheat_glucose,Priority=0,OnlyUnhandled=True)
+OnMovement IsDefined=True
+  RunOnAxisAttribute(-,Priority=0,OnlyUnhandled=True)
+  names=g_move_forward,g_move_backward
+  values=-1,1
+  codes=10,-20
+  kinds=1,0
+  weights=0.5,2
+  ctorLinq nameCount=2 positiveCount=1
+OpenBuildMenu IsDefined=True
+  RunOnKeyDownAttribute(g_build_structure,Priority=0,OnlyUnhandled=True)
+Tagged IsDefined=False
+ToggleResearchScreen IsDefined=True
+  RunOnKeyDownAttribute(g_science,Priority=2,OnlyUnhandled=False)
+total=5
+tag Level=4
+== framework attrs (typeof-named keep) ==
+  Ignored -> FOG_OF_WAR_DISABLED
+  Solid -> FOG_OF_WAR_SOLID
+  Intense -> FOG_OF_WAR_INTENSE
+  direct Description=host field
+  IsDefined(Description)=True
+  untyped count=1
+  untyped DescriptionAttribute
+== GetValues ==
+0
+1
+2
+1
+5
+10
+== GetNames ==
+Red
+Green
+Blue
+Active
+Paused
+Stopped
+== GetName ==
+Green
+Stopped
+null
+== Parse ==
+2
+5
+== TryParse ==
+0
+False
+0
+== IsDefined ==
+True
+False
+True
+False
+== Parse(ignoreCase) ==
+2
+1
+5
+True
+== TryParse(ignoreCase) ==
+True
+0
+False
+0
+True
+10
+== Parse(numeric/flags) ==
+2
+99
+-1
+3
+5
+3
+5
+== TryParse(numeric/flags) ==
+True
+6
+True
+3
+False
+0
+False
+0
+False
+0
+Inactive=0
+Active=1
+Banned=2
+P:Low
+P:Medium
+P:High
+count=3
+boxed=Active
+== assembly attrs ==
+  AsmMeta Name=x Order=3
+  AsmTypes Main=Alpha Types=Alpha,Beta Label=tagged
+typed-count 1
+entry-identity True
+asm-name ReflectTypes
+== assembly identity ==
+ReflectAssemblySubset.Widget, ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+roundtrip-user True
+roundtrip-bcl True
+exec-is-entry True
+ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+get-hit Widget
+get-miss True
+get-wrong-asm True
+get-icase Widget
+get-throw TypeLoadException
+name ReflectTypes
+version 1.0.0.0
+fullname ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+built Synthetic / 2.3 / Synthetic, Version=2.3
+parsed Parsed / 9.8.7.6
+module-name ReflectTypes.dll
+module-tostring ReflectTypes.dll
+module-is-manifest True
+module-assembly True
+modules 1
+dynamic False
+ReflectTypes.dll
+== assembly load ==
+load-hit True
+load-icase True
+load-display True
+load-pad True
+load-miss FileNotFoundException
+load-empty ArgumentException
+load-an True
+lwpn-hit True
+lwpn-miss True
+binder ReflectAssemblySubset.Widget
+load-file PNSE
+== reflect longtail ==
+use=14
+t-eq=True
+t-eq-obj=False
+t-eq-null=False
+underlying=True
+attrs-gadget=1048576
+attrs-sealed=1048832
+attrs-abs=1048704
+attrs-itf=1048736
+ispub-gadget=False
+isnotpub-gadget=True
+isvis-gadget=False
+ispub-int=True
+isnotpub-int=False
+isvis-int=True
+iscom=False
+isfnptr=False
+haselem-arr=True
+haselem-int=False
+haselem-rt=True
+makearr-int=True
+makearr-ref=True
+makearr-missing=NotSupportedException
+makearr-rank=NotSupportedException
+assignto-itf=True
+assignto-rev=False
+assignto-null=False
+genparam=False
+nestedpub-pub=True
+nestedpub-int=False
+nestedpub-top=False
+mt-method=8
+mt-ctor=1
+mt-field=4
+mt-prop=16
+mt-type=32
+tok-nonzero=True
+tok-stable=True
+tok-distinct=True
+mod-eq=True
+mod-ne-corelib=False
+mod-member=True
+m-attrs=454
+m-impl=0
+m-virt=True
+m-virt-opt=False
+m-final=True
+m-notfinal=False
+m-abs=True
+m-notabs=False
+m-isctor=True
+m-notctor=False
+m-generic=True
+m-notgeneric=False
+c-attrs=6278
+f-attrs=6
+f-special=False
+f-priv-pub=False
+f-priv-priv=True
+f-priv-attrs=1
+p-opt0=False
+p-opt1=True
+p-attrs0=0
+p-attrs1=4112
+p-member=Opt
+p-ctor-member=1
+p-isout=True|False
+p-hasdefault=True|False
+p-default=PlatformNotSupportedException
+genparam-constraints=PlatformNotSupportedException
+finditf=2:IAlpha,IBeta
+force-short=1
+enum-short=3:1,2,300
+enum-int=3:0,100000,-7
+cad-type=1:MarkAttribute
+cad-method=1:MarkAttribute
+cad-field=1:MarkAttribute
+cad-prop=1:MarkAttribute
+cad-any=True
+cad-asm=True
+cad-args=PlatformNotSupportedException
+alloc=True
+== lookup ==
+gm-name => Dup/1p decl=Derived static=False
+gm-ambiguous => ambiguous
+gm-missing => null
+gm-flags => Hidden/1p decl=Base static=False
+gm-flags-types => Named/1p decl=Base static=False
+gm-types => Named/1p decl=Base static=False
+gm-types-mods => Named/1p decl=Base static=False
+gm-binder => Named/1p decl=Base static=False
+gm-defaultbinder => Dup/1p decl=Derived static=False
+gm-callconv => Named/1p decl=Base static=False
+gm-gen1 => Pick/2p decl=Derived static=False
+gm-gen1-mods => Pick/2p decl=Derived static=False
+gm-gen0 => Echo/1p decl=Derived static=False
+gm-gen1-flags => Pick/2p decl=Derived static=False
+gm-gen1-binder => Pick/2p decl=Derived static=False
+gm-gen1-cc => Pick/2p decl=Derived static=False
+gm-gen2-miss => null
+gm-gen1-closed => Echo/1p decl=Derived static=False
+gm-null-name => argnull
+gc-empty => .ctor/0p decl=Base static=False
+gc-types => .ctor/2p decl=Base static=False
+gc-miss => null
+gc-flags => .ctor/1p decl=Base static=False
+gc-binder => .ctor/0p decl=Base static=False
+gc-cc => .ctor/2p decl=Base static=False
+gp-name => Prop:String decl=Derived
+gp-miss => null
+gp-flags => Prop:String decl=Derived
+gp-ret => RO:Int32 decl=Base
+gp-ret-miss => null
+gp-indexer-ambiguous => ambiguous
+gp-types => Item:String decl=Derived
+gp-ret-types => Item:String decl=Derived
+gp-ret-types-mods => Item:String decl=Derived
+gp-binder => Item:String decl=Derived
+member-du* (2)
+  8 Dup decl=Base
+  8 Dup decl=Derived
+member-item (2)
+  16 Item decl=Derived
+  16 Item decl=Derived
+member-field (1)
+  4 Field0 decl=Base
+member-nested (1)
+  128 Inner
+member-named-methods (2)
+  8 Named decl=Base
+  8 Named decl=Base
+member-named-props (0)
+member-ctor (2)
+  1 .ctor decl=Base
+  1 .ctor decl=Base
+default-members (2)
+  16 Item decl=Derived
+  16 Item decl=Derived
+default-members-none (0)
+members-base (14)
+  1 .ctor decl=Base
+  1 .ctor decl=Base
+  16 Prop decl=Base
+  16 RO decl=Base
+  4 Field0 decl=Base
+  8 Dup decl=Base
+  8 Named decl=Base
+  8 Named decl=Base
+  8 Stat decl=Base
+  8 TouchHidden decl=Base
+  8 Virt decl=Base
+  8 get_Prop decl=Base
+  8 get_RO decl=Base
+  8 set_Prop decl=Base
+samemeta => 8 Val ret=String
+samemeta-miss => argerr
+gm-direct => Int32
+gm-lookup-isdef => False
+gm-lookup-args => Int32
+gm-defview-isdef => True
+gm-defview-args => Int32
+gm-defview-open => False
+gm-remake-eq-lookup => True
+gm-unreached => PlatformNotSupportedException
+member=IReadOnlyList`1 item=Int32
+temp=List`1 count=2
+created=ReadOnlyCollection`1 constructed=True
+roc ctors=1 params=1
+ro count=2 [0]=3 [1]=14
+sd first=3
+roster=List`1 count=1 [0]=creature
+rod=ReadOnlyDictionary`2 count=2 a=1 b=2
+tags=HashSet`1 count=1
+roc<double>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation System.Collections.ObjectModel.ReadOnlyCollection`1[System.Double]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+seen=ICollection`1 item=String
+wrap=CollectionWrapper`1 ctor(ICollection`1)
+wrapped count=2 seen count=2 contains-a=True
+notes=List`1 item=NoteLine wrapped=3 bound count=3
+dictwrap=DictionaryWrapper`2 ctor(IDictionary`2) count=2 a=1 contains-b=True
+wrap<Unlisted>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation Newtonsoft.Json.Utilities.CollectionWrapper`1[ReflectSerializerWrapperSeedSubset.Unlisted]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+== indexer error edges ==
+indexed get, no index: ArgumentException
+indexed get, null index: ArgumentException
+indexed get, extra index: ArgumentException
+plain get, stray index: ArgumentException
+set-only get: InvalidOperationException
+get-only set: InvalidOperationException
+Lambda
+1
+Parameter
+PlatformNotSupportedException
+System.Linq.Expressions.Expression.Compile requires dynamic code generation
+caught as NotSupportedException
+PlatformNotSupportedException
+True
+True
+True
+System.Void
+True
+Lambda
+Void
+String
+st.FrameCount=0
+st.GetFrames().Length=0
+st.GetFrame(0) is null: True
+st.GetFrame(-1) is null: True
+st.ToString()=   at <stack trace unavailable in AOT>
+as object:    at <stack trace unavailable in AOT>
+st.GetType().FullName=System.Diagnostics.StackTrace
+st is StackTrace: True
+capturing ctors: 0 0 0 0 0 0 0
+frame.GetMethod() is null: True
+frame.GetFileName() is null: True
+frame.GetFileLineNumber()=0
+frame.GetFileColumnNumber()=0
+frame.GetILOffset()=-1
+frame.ToString()=<stack frame unavailable in AOT>
+frame ctors: 0 0 0
+synthetic: file=Widget.cs line=42 col=7
+StackTrace(frame).FrameCount=1
+StackTrace(frame).GetFrame(0) is the frame: True
+StackTrace(frame).ToString()=   at <unknown method> in Widget.cs:line 42
+foreach over captured frames: 0
+Environment.StackTrace=   at <stack trace unavailable in AOT>
+
+unthrown ex.StackTrace is null: True
+thrown StackTrace is null: False
+trace contains TraceLeaf: True
+trace contains TraceMid: True
+trace contains declaring type: True
+innermost rendered frame is TraceLeaf: True
+rethrow preserves trace: True
+original trace contains RecaptureSite: False
+recaptured trace contains RecaptureSite: True
+thrown ToString contains at: True
+unthrown ToString contains at: False
+await-propagated trace contains AsyncThrowLeaf: True
+StackTrace(thrownEx) FrameCount > 0: True
+StackTrace(thrownEx) ToString contains TraceLeaf: True
+StackTrace(thrownEx) GetFrame(0) is null: False
+StackTrace(thrownEx) GetFrame(0).GetMethod() is null: True
+StackTrace(unthrown) FrameCount is 0: True
+Log is not null: True
+Log is EventSource: True
+IsEnabled(): False
+IsEnabled(lvl,kw): False
+Ticks: 50
+attr name: Dn2Cpp-Gate-MyLog
+type name: PlainLog
+guid-only name: GuidOnlyLog
+ctor name: Dn2Cpp-Gate-CtorNamed
+attr guid: 81247aaf-92f4-5d96-d037-d22821d21c4e
+type guid: c350281e-7990-59ed-d02e-d81ef354d324
+explicit guid: 12345678-1234-1234-1234-123456789012
+ctor guid: 16522fa6-c8e7-5f21-f7e0-cfc6845f678f
+guid is empty: False
+default settings: 4
+selfdesc settings: 8
+GetName(attr): Dn2Cpp-Gate-MyLog
+GetName(ctor-named): CtorNamedLog
+GetGuid(attr): 81247aaf-92f4-5d96-d037-d22821d21c4e
+GetGuid(explicit): 12345678-1234-1234-1234-123456789012
+activity initial: 00000000-0000-0000-0000-000000000000
+activity prev: 00000000-0000-0000-0000-000000000000
+activity set: aabbccdd-1122-3344-5566-778899aabbcc
+activity cleared: 00000000-0000-0000-0000-000000000000
+writes returned
+== variant assignability ==
+itf->itf co  : True
+itf->itf co2 : True
+itf->itf ctr : True
+itf->itf neg : False
+cls->itf co  : True
+cls->itf co2 : True
+isinst cls   : True
+isinst cls2  : True
+assignTo     : True
+dlg isinst   : True
+dlg assign   : True
+dlg contra   : True
+itf->itf same: True
+Dog
+Dog
+True
+False
+Int32
+String
+Animal
+Dog
+True
+True
+True
+False
+True
+False
+True
+True
+True
+True
+True
+== typeof ==
+True False True
+True False True
+True False True
+True False True
+True False False
+True False False
+True False False
+False True False
+False True False
+False False False
+== getType ==
+True False True
+True False True
+True False True
+True False True
+True False False
+True False False
+False True False
+False True False
+False True False
+== sealed ==
+True
+True
+True
+True
+True
+True
+False
+False
+False
+False
+True
+True
+True
+False
+True
+== assembly ==
+True
+True
+True
+False
+True
+True
+True
+== refkind ==
+False
+False
+False
+True
+False
+False
+False
+== typecode ==
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+18
+1
+1
+1
+9
+6
+11
+1
+1
+1
+9
+9
+6
+16
+18
+1
+1
+== typeof(void).IsPrimitive: folded, and not ==
+False False
+== primitives ==
+Int32
+True
+String
+True
+Object
+Boolean
+== user types ==
+Widget
+True
+IShape
+Mood
+True
+== round-trip ==
+True
+True
+== missing / qualified ==
+null
+Int32
+== throwOnError ==
+Double
+TypeLoadException
+pos:5
+nonpos
+str:hi
+dbl:1.5
+null
+other
+isint:42
+False
+False
+False
+len:4
+team:2
+arr is Array=True
+arr is object=True
+arr is int[]=True
+arr is string[]=False
+strarr is Array=True
+strarr is object[]=True
+md is Array=True
+md is int[,]=True
+box is Array=False
+ICE
+sbSpan:2
+ciSpan:1
+whSpan:1
+fpSpan:1
+v128box:True
+asynclocal:null
+emptylen:0
+asyncenum:null
+33
+300
+57
+== a shell whose extent the model cannot compute ==
+Nullable<GCHandle>:
+  Unsafe.SizeOf -> PlatformNotSupportedException
+  Marshal.SizeOf -> ArgumentException
+  Array.CreateInstance -> PlatformNotSupportedException
+Nullable<CancellationToken>:
+  Unsafe.SizeOf -> PlatformNotSupportedException
+  Marshal.SizeOf -> ArgumentException
+  Array.CreateInstance -> PlatformNotSupportedException
+Nullable<Vector128<byte>>:
+  Unsafe.SizeOf -> PlatformNotSupportedException
+  Marshal.SizeOf -> ArgumentException
+  Array.CreateInstance -> PlatformNotSupportedException
+ValueTuple<GCHandle,int>:
+  Unsafe.SizeOf -> PlatformNotSupportedException
+  Marshal.SizeOf -> ArgumentException
+  Array.CreateInstance -> PlatformNotSupportedException
+HandleHolder:
+  Unsafe.SizeOf -> 8
+  Marshal.SizeOf -> 8
+  Array.CreateInstance -> 3
+== controls: the flag is not a test on the number ==
+Blank -> 1
+TwoDoubles -> 16
+int? -> 8
+long? -> 16
+== the refusal is catchable, and names the type ==
+caught PlatformNotSupportedException, names the type: True
+== refused where .NET measures (declared divergence) ==
+  BStrField (.NET 8) -> PlatformNotSupportedException
+  TBStrField (.NET 8) -> PlatformNotSupportedException
+  WithObject (.NET 8 on Windows, refused on POSIX) -> PlatformNotSupportedException
+== the same verdict from the generic spelling ==
+  SizeOf<BStrField> -> PlatformNotSupportedException
+  SizeOf<TBStrField> -> PlatformNotSupportedException
+  SizeOf<WithObject> -> PlatformNotSupportedException
+== the refusal is catchable and names the type ==
+  names the type: True
+== controls: the measured shapes must keep answering ==
+  OneBool -> 4
+  OneChar -> 1
+  OneWideChar -> 2
+  OneString -> 8
+  OneDateTime -> 8
+  SeqClass -> 8
+  Blittable -> 16
+  NestedBlittable -> 24
+  WithEnumField -> 8
+  SizeOf<OneBool> -> 4
+  SizeOf<SeqClass> -> 8
+  SizeOf<NestedBlittable> -> 24
+  OffsetOf<NestedBlittable>(L) -> 16
+  OffsetOf<SeqClass>(B) -> 4
+== the verdict SPLIT: a size is not a byte image ==
+  SizeOf<OneBool> -> 4
+  PtrToStructure(OneBool) -> PlatformNotSupportedException
+  PtrToStructure(Blittable) -> 1234
+-- ReflectShallowCloneRefusalSubset --
+SemaphoreSlim -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.SemaphoreSlim' is not supported
+ManualResetEventSlim -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.ManualResetEventSlim' is not supported
+CountdownEvent -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.CountdownEvent' is not supported
+Barrier -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Barrier' is not supported
+ReaderWriterLockSlim -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.ReaderWriterLockSlim' is not supported
+Timer -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Timer' is not supported
+Thread -> PlatformNotSupportedException: MemberwiseClone of 'System.Threading.Thread' is not supported
+CancellationTokenSource -> clone same=False
+ThreadLocal<int> -> clone type=System.Threading.ThreadLocal`1 same=False
+Type -> clone type=System.Type named=System.Int32 same=False
+== one CLR type, one type-info ==
+typeof(Root).BaseType == typeof(object) -> True
+typeof(ValueType).BaseType == typeof(object) -> True
+typeof(Array).BaseType == typeof(object) -> True
+typeof(Delegate).BaseType == typeof(object) -> True
+typeof(Exception).BaseType == typeof(object) -> True
+typeof(string).BaseType == typeof(object) -> True
+typeof(Root).BaseType == new object().GetType() -> True
+typeof(Shade).BaseType == typeof(Enum) -> True
+typeof(Enum).BaseType == typeof(ValueType) -> True
+typeof(Enum).IsAssignableFrom(typeof(Shade)) -> True
+b.GetField("TypeField").FieldType == typeof(Type) -> True
+b.GetField("BuilderField").FieldType == typeof(StringBuilder) -> True
+b.GetField("MemberField").FieldType == typeof(MemberInfo) -> True
+b.GetField("MethodField").FieldType == typeof(MethodInfo) -> True
+b.GetField("TextField").FieldType == typeof(string) -> True
+b.GetField("EnumField").FieldType == typeof(Enum) -> True
+b.GetField("ErrorField").FieldType == typeof(Exception) -> True
+b.GetField("ArrayField").FieldType == typeof(Array) -> True
+b.GetField("BoxField").FieldType == typeof(ValueType) -> True
+b.GetField("CallField").FieldType == typeof(Delegate) -> True
+ps[0].ParameterType == typeof(Type) -> True
+ps[1].ParameterType == typeof(StringBuilder) -> True
+ps[2].ParameterType == typeof(MethodInfo) -> True
+ReferenceEquals(typeof(Root).BaseType, typeof(object)) -> True
+typeof(Root).BaseType.Equals(typeof(object)) -> True
+typeof(Root).BaseType.GetHashCode() == typeof(object).GetHashCode() -> True
+Type.GetType("System.Object") == typeof(Root).BaseType -> True
+typeof(int).IsPrimitive -> True
+typeof(string).IsSealed -> True
+typeof(Enum).IsAbstract -> True
+typeof(Shade).IsEnum -> True
+viaObject.DeclaringType == typeof(object) -> True
+viaDerived.DeclaringType == typeof(object) -> True
+== assembly/module identity ==
+tostr-a:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'
+tostr-m:'ReflectTypes.dll'
+is-a:True:False
+is-m:True:False
+gettype-a:RuntimeAssembly:System.Reflection.RuntimeAssembly
+gettype-m:RuntimeModule
+gt-eq-typeofasm:False
+cast-back:ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+cast-back-m:ReflectTypes.dll
+refeq:True
+refeq2:True
+eq:True:False
+arr:True:'ReflectTypes.dll'
+aarr:True:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'
+dict:APP
+xcast:InvalidCastException
+xis:False
+inv-take:T:ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+inv-give:True:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null':True
+inv-mod:M:ReflectTypes.dll
+fld-set:True
+fld-get:True:True
+cd-take:T:ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+cd-give:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null':True
+cd-var:True:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'
+mg-var:True:'ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null'
+mg-par:T:ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+hash:True
+mod-asm:True
+corelib:'System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e'
+== bound handles (a): the primitives' reflection field tables ==
+prim bool fields=2 [FalseString,TrueString]
+  bool.FalseString type=System.String decl=System.Boolean static=True lit=False ro=True pub=True attrs=0x36 val='False'
+  bool.TrueString type=System.String decl=System.Boolean static=True lit=False ro=True pub=True attrs=0x36 val='True'
+prim char fields=2 [MaxValue,MinValue]
+  char.MaxValue type=System.Char decl=System.Char static=True lit=True ro=False pub=True attrs=0x8056 val=U+FFFF
+  char.MinValue type=System.Char decl=System.Char static=True lit=True ro=False pub=True attrs=0x8056 val=U+0000
+prim sbyte fields=2 [MaxValue,MinValue]
+  sbyte.MaxValue type=System.SByte decl=System.SByte static=True lit=True ro=False pub=True attrs=0x8056 val=127
+  sbyte.MinValue type=System.SByte decl=System.SByte static=True lit=True ro=False pub=True attrs=0x8056 val=-128
+prim byte fields=2 [MaxValue,MinValue]
+  byte.MaxValue type=System.Byte decl=System.Byte static=True lit=True ro=False pub=True attrs=0x8056 val=255
+  byte.MinValue type=System.Byte decl=System.Byte static=True lit=True ro=False pub=True attrs=0x8056 val=0
+prim short fields=2 [MaxValue,MinValue]
+  short.MaxValue type=System.Int16 decl=System.Int16 static=True lit=True ro=False pub=True attrs=0x8056 val=32767
+  short.MinValue type=System.Int16 decl=System.Int16 static=True lit=True ro=False pub=True attrs=0x8056 val=-32768
+prim ushort fields=2 [MaxValue,MinValue]
+  ushort.MaxValue type=System.UInt16 decl=System.UInt16 static=True lit=True ro=False pub=True attrs=0x8056 val=65535
+  ushort.MinValue type=System.UInt16 decl=System.UInt16 static=True lit=True ro=False pub=True attrs=0x8056 val=0
+prim int fields=2 [MaxValue,MinValue]
+  int.MaxValue type=System.Int32 decl=System.Int32 static=True lit=True ro=False pub=True attrs=0x8056 val=2147483647
+  int.MinValue type=System.Int32 decl=System.Int32 static=True lit=True ro=False pub=True attrs=0x8056 val=-2147483648
+prim uint fields=2 [MaxValue,MinValue]
+  uint.MaxValue type=System.UInt32 decl=System.UInt32 static=True lit=True ro=False pub=True attrs=0x8056 val=4294967295
+  uint.MinValue type=System.UInt32 decl=System.UInt32 static=True lit=True ro=False pub=True attrs=0x8056 val=0
+prim long fields=2 [MaxValue,MinValue]
+  long.MaxValue type=System.Int64 decl=System.Int64 static=True lit=True ro=False pub=True attrs=0x8056 val=9223372036854775807
+  long.MinValue type=System.Int64 decl=System.Int64 static=True lit=True ro=False pub=True attrs=0x8056 val=-9223372036854775808
+prim ulong fields=2 [MaxValue,MinValue]
+  ulong.MaxValue type=System.UInt64 decl=System.UInt64 static=True lit=True ro=False pub=True attrs=0x8056 val=18446744073709551615
+  ulong.MinValue type=System.UInt64 decl=System.UInt64 static=True lit=True ro=False pub=True attrs=0x8056 val=0
+prim nint fields=1 [Zero]
+  nint.Zero type=System.IntPtr decl=System.IntPtr static=True lit=False ro=True pub=True attrs=0x36 val=0
+prim nuint fields=1 [Zero]
+  nuint.Zero type=System.UIntPtr decl=System.UIntPtr static=True lit=False ro=True pub=True attrs=0x36 val=0
+prim float fields=10 [E,Epsilon,MaxValue,MinValue,NaN,NegativeInfinity,NegativeZero,Pi,PositiveInfinity,Tau]
+  float.E type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=2.7182817
+  float.Epsilon type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=1E-45
+  float.MaxValue type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=3.4028235E+38
+  float.MinValue type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=-3.4028235E+38
+  float.NaN type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=NaN
+  float.NegativeInfinity type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=-Infinity
+  float.NegativeZero type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=-0
+  float.Pi type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=3.1415927
+  float.PositiveInfinity type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=Infinity
+  float.Tau type=System.Single decl=System.Single static=True lit=True ro=False pub=True attrs=0x8056 val=6.2831855
+prim double fields=10 [E,Epsilon,MaxValue,MinValue,NaN,NegativeInfinity,NegativeZero,Pi,PositiveInfinity,Tau]
+  double.E type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=2.718281828459045
+  double.Epsilon type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=5E-324
+  double.MaxValue type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=1.7976931348623157E+308
+  double.MinValue type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=-1.7976931348623157E+308
+  double.NaN type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=NaN
+  double.NegativeInfinity type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=-Infinity
+  double.NegativeZero type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=-0
+  double.Pi type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=3.141592653589793
+  double.PositiveInfinity type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=Infinity
+  double.Tau type=System.Double decl=System.Double static=True lit=True ro=False pub=True attrs=0x8056 val=6.283185307179586
+a-shape short.MaxValue.FieldType = System.Int16
+a-miss bool.MaxValue = null
+a-miss nint.MaxValue = null
+a-member int.MaxValue via GetMember = 1
+a-bindflags int public|static = 2 instance = 0
+a-owned int.IsPrimitive=True short.IsPrimitive=True decimal.IsPrimitive=False
+== bound handles (b): array interface enumeration ==
+itf string[] = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]
+itf int[] = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]
+itf Hue[] = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]
+itf int[,] = 6 [ICloneable,ICollection,IEnumerable,IList,IStructuralComparable,IStructuralEquatable]
+itf string[,] = 6 [ICloneable,ICollection,IEnumerable,IList,IStructuralComparable,IStructuralEquatable]
+itf int[,,] = 6 [ICloneable,ICollection,IEnumerable,IList,IStructuralComparable,IStructuralEquatable]
+itf Array = 6 [ICloneable,ICollection,IEnumerable,IList,IStructuralComparable,IStructuralEquatable]
+b-noleak object = 0 Hue = 0 int[] = 6 int[,] = 6
+b-one int[,].GetInterface(ICloneable) = ICloneable
+b-one string[].GetInterface(IStructuralEquatable) = IStructuralEquatable
+b-one string[].GetInterface(IEnumerable) = IEnumerable
+b-one object.GetInterface(ICloneable) = null
+b-find string[] = 11 int[,] = 6
+b-md name=Int32[,] full=System.Int32[,] isArray=True rank=2 elem=Int32 base=Array
+b-md identity self=True rank3=False sz=False elem=True
+b-test IList<-int[,] = True ICloneable<-int[,] = True IList<int><-int[,] = False
+b-dispatch md as IList Count = 6 IsFixedSize = True
+== bound handles (c): a runtime-allocated array's handle ==
+c-ok newarr = True
+c-ok CreateInstance = True
+c-ok Split = True
+c-ok GetMethods = True
+c-ok enum newarr = True
+c-fix GetValues<Hue>() = True name=Hue[]
+c-fix GetNames<Hue>() = True
+c-fix GetNames(typeof(Hue)) = True name=String[]
+c-fix GetValues(typeof(Hue)) == typeof(Hue[]) = True name=Hue[]
+c-fix GetValues walk = 12
+c-DIVERGES GetValues(runtime Type) name=Object[]
+c-DIVERGES-but-works GetValues(runtime Type) walk = 12
+== bound handles (d): the erased generics, and the Task precedent ==
+d-right ThreadLocal<string> = True
+d-right Task<string> = True
+d-right GetType()==typeof(ThreadLocal<string>) = True
+d-DIVERGES ThreadLocal<int> = True
+d-DIVERGES Task<int> = True
+d-data ThreadLocal value = held
+d-other ThreadLocal<string> from object = False
+== runtime array identity ==
+frombase64 System.Byte[] True itf=5
+frombase64chararray System.Byte[] True itf=5
+fromhexstring System.Byte[] True itf=5
+getbits System.Int32[] True itf=4
+numbergroupsizes System.Int32[] True itf=1
+currencygroupsizes System.Int32[] True itf=1
+percentgroupsizes System.Int32[] True itf=1
+whenall-ref System.String[] True itf=2
+whenall-i4 System.Int32[] True itf=2
+whenall-i8 System.Int64[] True itf=2
+values 48656C6C6F 12345,0,0,131072 3 a,b
+agg-inner 2 InvalidOperationException
+seed 711k5
+box Name=Box`1 Namespace=GenericTypeNameSubset
+box ToString=GenericTypeNameSubset.Box`1[System.Int32]
+box FullName=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+box AQN=GenericTypeNameSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
+box roundtrip full=True aqn=True tostring=True
+list Name=List`1 Namespace=System.Collections.Generic
+list ToString=System.Collections.Generic.List`1[System.Int32]
+list FullName=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+list AQN=System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+list roundtrip full=True aqn=True tostring=True
+nullable Name=Nullable`1 Namespace=System
+nullable ToString=System.Nullable`1[System.Int32]
+nullable FullName=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+nullable AQN=System.Nullable`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+nullable roundtrip full=True aqn=True tostring=True
+kvp Name=KeyValuePair`2 Namespace=System.Collections.Generic
+kvp ToString=System.Collections.Generic.KeyValuePair`2[System.String,System.Int32]
+kvp FullName=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+kvp AQN=System.Collections.Generic.KeyValuePair`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+kvp roundtrip full=True aqn=True tostring=True
+nested Name=Dictionary`2 Namespace=System.Collections.Generic
+nested ToString=System.Collections.Generic.Dictionary`2[System.String,System.Collections.Generic.List`1[System.Int32]]
+nested FullName=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+nested AQN=System.Collections.Generic.Dictionary`2[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e],[System.Collections.Generic.List`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]], System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+nested roundtrip full=True aqn=True tostring=True
+plain Name=String Namespace=System
+plain ToString=System.String
+plain FullName=System.String
+plain AQN=System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e
+plain roundtrip full=True aqn=True tostring=True
+def Name=List`1 FullName=System.Collections.Generic.List`1 ToString=System.Collections.Generic.List`1[T]
+boxinstance=GenericTypeNameSubset.Box`1[System.Int32]
+boxedinstance=GenericTypeNameSubset.Box`1[System.String]
+byclrname=True
+bymissingclose=True
+== bound handle residue: the remaining owned handles' field tables ==
+own string fields=1 [Empty]
+  string.Empty type=System.String decl=System.String static=True lit=False ro=True pub=True attrs=0x36 val=''
+own decimal fields=5 [MaxValue,MinValue,MinusOne,One,Zero]
+  decimal.MaxValue type=System.Decimal decl=System.Decimal static=True lit=False ro=True pub=True attrs=0x36 val=79228162514264337593543950335
+  decimal.MinValue type=System.Decimal decl=System.Decimal static=True lit=False ro=True pub=True attrs=0x36 val=-79228162514264337593543950335
+  decimal.MinusOne type=System.Decimal decl=System.Decimal static=True lit=False ro=True pub=True attrs=0x36 val=-1
+  decimal.One type=System.Decimal decl=System.Decimal static=True lit=False ro=True pub=True attrs=0x36 val=1
+  decimal.Zero type=System.Decimal decl=System.Decimal static=True lit=False ro=True pub=True attrs=0x36 val=0
+own TimeSpan fields=25 [HoursPerDay,MaxValue,MicrosecondsPerDay,MicrosecondsPerHour,MicrosecondsPerMillisecond,MicrosecondsPerMinute,MicrosecondsPerSecond,MillisecondsPerDay,MillisecondsPerHour,MillisecondsPerMinute,MillisecondsPerSecond,MinValue,MinutesPerDay,MinutesPerHour,NanosecondsPerTick,SecondsPerDay,SecondsPerHour,SecondsPerMinute,TicksPerDay,TicksPerHour,TicksPerMicrosecond,TicksPerMillisecond,TicksPerMinute,TicksPerSecond,Zero]
+  TimeSpan.HoursPerDay type=System.Int32 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=24
+  TimeSpan.MaxValue type=System.TimeSpan decl=System.TimeSpan static=True lit=False ro=True pub=True attrs=0x36 val=9223372036854775807
+  TimeSpan.MicrosecondsPerDay type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=86400000000
+  TimeSpan.MicrosecondsPerHour type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=3600000000
+  TimeSpan.MicrosecondsPerMillisecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=1000
+  TimeSpan.MicrosecondsPerMinute type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=60000000
+  TimeSpan.MicrosecondsPerSecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=1000000
+  TimeSpan.MillisecondsPerDay type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=86400000
+  TimeSpan.MillisecondsPerHour type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=3600000
+  TimeSpan.MillisecondsPerMinute type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=60000
+  TimeSpan.MillisecondsPerSecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=1000
+  TimeSpan.MinValue type=System.TimeSpan decl=System.TimeSpan static=True lit=False ro=True pub=True attrs=0x36 val=-9223372036854775808
+  TimeSpan.MinutesPerDay type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=1440
+  TimeSpan.MinutesPerHour type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=60
+  TimeSpan.NanosecondsPerTick type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=100
+  TimeSpan.SecondsPerDay type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=86400
+  TimeSpan.SecondsPerHour type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=3600
+  TimeSpan.SecondsPerMinute type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=60
+  TimeSpan.TicksPerDay type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=864000000000
+  TimeSpan.TicksPerHour type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=36000000000
+  TimeSpan.TicksPerMicrosecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=10
+  TimeSpan.TicksPerMillisecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=10000
+  TimeSpan.TicksPerMinute type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=600000000
+  TimeSpan.TicksPerSecond type=System.Int64 decl=System.TimeSpan static=True lit=True ro=False pub=True attrs=0x8056 val=10000000
+  TimeSpan.Zero type=System.TimeSpan decl=System.TimeSpan static=True lit=False ro=True pub=True attrs=0x36 val=0
+own DateTime fields=3 [MaxValue,MinValue,UnixEpoch]
+  DateTime.MaxValue type=System.DateTime decl=System.DateTime static=True lit=False ro=True pub=True attrs=0x36 val=3155378975999999999/Unspecified
+  DateTime.MinValue type=System.DateTime decl=System.DateTime static=True lit=False ro=True pub=True attrs=0x36 val=0/Unspecified
+  DateTime.UnixEpoch type=System.DateTime decl=System.DateTime static=True lit=False ro=True pub=True attrs=0x36 val=621355968000000000/Utc
+own DateTimeOffset fields=3 [MaxValue,MinValue,UnixEpoch]
+  DateTimeOffset.MaxValue type=System.DateTimeOffset decl=System.DateTimeOffset static=True lit=False ro=True pub=True attrs=0x36 val=3155378975999999999/0
+  DateTimeOffset.MinValue type=System.DateTimeOffset decl=System.DateTimeOffset static=True lit=False ro=True pub=True attrs=0x36 val=0/0
+  DateTimeOffset.UnixEpoch type=System.DateTimeOffset decl=System.DateTimeOffset static=True lit=False ro=True pub=True attrs=0x36 val=621355968000000000/0
+own ConstructorInfo fields=2 [ConstructorName,TypeConstructorName]
+  ConstructorInfo.ConstructorName type=System.String decl=System.Reflection.ConstructorInfo static=True lit=False ro=True pub=True attrs=0x36 val='.ctor'
+  ConstructorInfo.TypeConstructorName type=System.String decl=System.Reflection.ConstructorInfo static=True lit=False ro=True pub=True attrs=0x36 val='.cctor'
+own StackTrace fields=1 [METHODS_TO_SKIP]
+  StackTrace.METHODS_TO_SKIP type=System.Int32 decl=System.Diagnostics.StackTrace static=True lit=True ro=False pub=True attrs=0x8056 val=0
+own StackFrame fields=1 [OFFSET_UNKNOWN]
+  StackFrame.OFFSET_UNKNOWN type=System.Int32 decl=System.Diagnostics.StackFrame static=True lit=True ro=False pub=True attrs=0x8056 val=-1
+own ResourceManager fields=2 [HeaderVersionNumber,MagicNumber]
+  ResourceManager.HeaderVersionNumber type=System.Int32 decl=System.Resources.ResourceManager static=True lit=False ro=True pub=True attrs=0x36 val=1
+  ResourceManager.MagicNumber type=System.Int32 decl=System.Resources.ResourceManager static=True lit=False ro=True pub=True attrs=0x36 val=-1091581234
+own WaitHandle fields=1 [WaitTimeout]
+  WaitHandle.WaitTimeout type=System.Int32 decl=System.Threading.WaitHandle static=True lit=True ro=False pub=True attrs=0x8056 val=258
+r-none DateOnly=0 TimeOnly=0 StringBuilder=0 MethodInfo=0
+r-shape decimal.MaxValue.FieldType = System.Decimal
+r-shape TimeSpan.TicksPerSecond.FieldType = System.Int64
+r-miss string.Length-as-field = null
+r-member string.Empty via GetMember = 1
+r-bindflags TimeSpan public|static = 25 instance = 0
+== bound handle residue: the declined tables, stated ==
+r-DIVERGES Type.GetFields = 0 Module.GetFields = 0
+r-DIVERGES methods int=0 decimal=0 string=0 StringBuilder=0
+r-DIVERGES props string=0 decimal=0 TimeSpan=0 DateTime=0
+r-DIVERGES itfs int=0 decimal=0 DateTime=0 StringBuilder=0
+r-ok assignable IConvertible<-int = True IComparable<-decimal = True IFormattable<-DateTime = True
+r-DIVERGES GetInterface IConvertible on int = null
+r-ok Marker[] itfs = 11 IList`1 = IList`1
+r-ok assignable IList<Marker><-Marker[] = True IEnumerable<-Marker[] = True
+r-closed TimeSpan[] itfs = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]
+r-closed NoEqOverlay[] itfs = 11 IList`1 = IList`1
+r-closed identity IList<TimeSpan> row = True assignable = True
+r-late LateNoted[] itfs = 11 IList`1 = IList`1 arg = LateNoted
+seed 10
+vec Name=Vector128`1 Namespace=System.Runtime.Intrinsics
+vec ToString=System.Runtime.Intrinsics.Vector128`1[System.Int32]
+vec FullName=System.Runtime.Intrinsics.Vector128`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]
+vec byclrname=True
+vec byfullname=True byaqn=True bytostring=True
+vec bymangled=True
+vecdef byname=True isdef=True ToString=System.Runtime.Intrinsics.Vector128`1[T]
+vec mkgen=True getgendef=True
+ifp byname=True isitf=True FullName=System.IFormatProvider
+regseed 7
+regdef Vector128`1 IsValueType=True IsAbstract=False IsInterface=False IsSealed=True IsClass=False ToString=System.Runtime.Intrinsics.Vector128`1[T]
+regdef List`1 IsValueType=False IsAbstract=False IsInterface=False IsSealed=False IsClass=True ToString=System.Collections.Generic.List`1[T]
+regdef IComparable`1 IsValueType=False IsAbstract=True IsInterface=True IsSealed=False IsClass=False ToString=System.IComparable`1[T]
+regname System.Int32 found=True same=True
+regname System.Enum found=True same=True
+regname System.IntPtr found=True same=True
+regname System.Text.StringBuilder found=True same=True
+regname System.Diagnostics.StackTrace found=True same=True
+regname System.Threading.WaitHandle found=True same=True
+regname System.Threading.ManualResetEventSlim found=True same=True
+regname System.AggregateException found=True same=True

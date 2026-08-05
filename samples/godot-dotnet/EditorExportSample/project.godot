@@ -1,0 +1,23 @@
+; A standard Godot C# project exported end to end by the forked editor's dn2cpp
+; backend. Unlike DotnetSample it carries a .sln, because the C# export plugin
+; only runs — and only adds the "dotnet" export feature the template's
+; GDMono::should_initialize() gates on — for a project that has one.
+config_version=5
+
+[application]
+
+config/name="EditorExportSample"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "C#")
+; The iOS exporter generates every required app icon from the project icon
+; and fails the export when none is set.
+config/icon="res://icon.svg"
+
+[dotnet]
+
+project/assembly_name="EditorExportSample"
+
+[rendering]
+
+; The macOS exporter refuses an arm64 or universal preset without it.
+textures/vram_compression/import_etc2_astc=true

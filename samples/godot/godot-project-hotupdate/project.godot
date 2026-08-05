@@ -1,0 +1,7 @@
+; dn2cpp hot-update sample Godot project
+config_version=5
+
+[application]
+
+config/name="dn2cpp-hotupdate-sample"
+run/main_scene="res://main.tscn"

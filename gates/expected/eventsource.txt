@@ -1,0 +1,2 @@
+GetHostName non-empty: True
+GetHostName is string: True

@@ -1,0 +1,13 @@
+; A standard Godot C# project exercising the real GDTask 3.1.0. Nothing
+; dn2cpp-specific lives here: the gate transpiles what a real game would build.
+config_version=5
+
+[application]
+
+config/name="GDTaskSample"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7", "C#")
+
+[dotnet]
+
+project/assembly_name="GDTaskSample"

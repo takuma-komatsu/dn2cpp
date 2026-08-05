@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Dn2Cpp.Cli.Console</RootNamespace>
+    <AssemblyName>dn2cpp-console</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pure-.NET console transpiler only — deliberately NO Dn2Cpp.Godot reference
+         (the Godot lane = out of console-self-host scope). The console
+         transpile pipeline is the shared backend-agnostic Dn2Cpp.TranspileDriver. -->
+    <ProjectReference Include="../Dn2Cpp.Transpiler/Dn2Cpp.Transpiler.csproj" />
+    <!-- The managed support shim: not a compile dependency, just copied next
+         to the CLI so it can auto-reference Dn2Cpp.Runtime.dll as a transpiler input. -->
+    <ProjectReference Include="../Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest" />
+    <!-- The conditionally-referenced managed backends, copied here for the same reason
+         as in Dn2Cpp.Cli.csproj: the injection reads them from AppContext.BaseDirectory,
+         and this CLI's base directory is its OWN output dir, not the full CLI's. Leave
+         them out and the console lane alone behaves differently from every other caller
+         — which is exactly the lane gates/selfhost-emit-console.sh drives when the
+         transpiler transpiles itself. No Pack attribute: this project is never packed,
+         and the Dn2Cpp.Runtime row above carries none either. -->
+    <ProjectReference Include="../../internal/DnZlib/src/DnZlib/DnZlib.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../../internal/DnBrotli/src/DnBrotli/DnBrotli.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest" />
+    <ProjectReference Include="../../internal/DnHttp/src/DnHttp/DnHttp.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

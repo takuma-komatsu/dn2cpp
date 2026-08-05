@@ -1,0 +1,189 @@
+# The named-culture table's CANDIDATE SET — the input to gen-culture-table.cs.
+#
+# WHY THIS FILE EXISTS AT ALL. The rule that earns a culture a row is a property
+# of the HOST, not of the culture: a culture is a candidate iff it can be a host
+# locale on a platform dn2cpp targets — the UTF-8 entries of macOS `locale -a`
+# mapped through the same POSIX-id rewrite dn2cpp_pal_locale_from_posix_id
+# applies, unioned with the common glibc locale set, plus every neutral parent
+# (a bare `LANG=de` produces one). That rule reads the GENERATING MACHINE, so a
+# generator that re-derived it would emit a different table on every developer's
+# box — and the table would then be a fact about whoever last ran it. The
+# resolved set is therefore frozen here and the generator reads it, so
+# regenerating changes VALUES (the oracle's ICU) and never MEMBERSHIP.
+#
+# TO EXTEND IT, run the rule by hand and diff:
+#
+#   locale -a | grep -i 'utf-8$' | sed 's/\..*//' | tr '_' '-' | sort -u
+#
+# then add the missing names and their neutral parents below, keeping the file
+# sorted ordinal-ascending (the generator emits rows in this file's order, and
+# the table's own comment says a linear scan is deliberate — order is
+# readability, not a lookup invariant). A name real .NET cannot materialize, or
+# one whose NumberFormatInfo the modeled row shape cannot represent, is REFUSED
+# by the generator with a printed reason and simply gets no row: it keeps the
+# honest name-preserving fallback (invariant symbols under the requested name)
+# rather than a row that would be wrong.
+#
+# 160 names, including the Indian numbering family — representable only since the
+# modeled NumberFormatInfo carries .NET's NumberGroupSizes array rather than a
+# single uniform digit-group size.
+af
+af-ZA
+am
+am-ET
+ar
+ar-AE
+ar-EG
+ar-JO
+ar-MA
+ar-QA
+ar-SA
+az
+az-Latn-AZ
+be
+be-BY
+bg
+bg-BG
+bn
+bn-IN
+ca
+ca-AD
+ca-ES
+ca-FR
+ca-IT
+cs
+cs-CZ
+da
+da-DK
+de
+de-AT
+de-CH
+de-DE
+el
+el-GR
+en
+en-AU
+en-CA
+en-GB
+en-HK
+en-IE
+en-IN
+en-NZ
+en-PH
+en-SG
+en-US
+en-ZA
+es
+es-AR
+es-CL
+es-CO
+es-CR
+es-ES
+es-MX
+et
+et-EE
+eu
+eu-ES
+fa
+fa-AF
+fa-IR
+fi
+fi-FI
+fil
+fil-PH
+fr
+fr-BE
+fr-CA
+fr-CH
+fr-FR
+ga
+ga-IE
+gl
+gl-ES
+he
+he-IL
+hi
+hi-IN
+hr
+hr-HR
+hu
+hu-HU
+hy
+hy-AM
+id
+id-ID
+is
+is-IS
+it
+it-CH
+it-IT
+ja
+ja-JP
+ka
+ka-GE
+kk
+kk-KZ
+ko
+ko-KR
+lt
+lt-LT
+lv
+lv-LV
+mn
+mn-MN
+mr
+mr-IN
+ms
+ms-MY
+nb
+nb-NO
+nl
+nl-BE
+nl-NL
+nn
+nn-NO
+no
+no-NO
+pl
+pl-PL
+pt
+pt-BR
+pt-PT
+ro
+ro-RO
+ru
+ru-RU
+se
+se-FI
+se-NO
+sk
+sk-SK
+sl
+sl-SI
+sr
+sr-RS
+sr-YU
+sv
+sv-FI
+sv-SE
+sw
+sw-KE
+ta
+ta-IN
+te
+te-IN
+th
+th-TH
+tr
+tr-TR
+uk
+uk-UA
+ur
+ur-PK
+vi
+vi-VN
+zh
+zh-CN
+zh-HK
+zh-SG
+zh-TW

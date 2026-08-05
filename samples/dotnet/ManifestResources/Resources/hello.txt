@@ -1,0 +1,2 @@
+dn2cpp embedded resource
+second line

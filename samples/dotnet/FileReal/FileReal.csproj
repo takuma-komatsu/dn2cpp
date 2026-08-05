@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- PalIdentitySubset's passwd half is Interop.Sys, which exists only on Unix.
+       On Windows the same Environment.UserName property is Interop.Secur32's
+       GetUserNameExW, and secur32.dll is not in
+       Compilation.IsRuntimeProvidedPInvokeModule — so the call has no IL body and
+       no lowering, and the TRANSPILE fails rather than the link. A runtime
+       OperatingSystem.IsWindows() test would not help: reachability is static and
+       dn2cpp does not fold that predicate, so the unreachable branch is still
+       decoded. Hence a compile-time constant, keyed on the build host, which is
+       also the run host for every gate. -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <DefineConstants>$(DefineConstants);DN2CPP_HOST_WINDOWS</DefineConstants>
+  </PropertyGroup>
+
+</Project>

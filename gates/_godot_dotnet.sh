@@ -1,0 +1,250 @@
+#!/usr/bin/env bash
+# Shared helpers for the godot-dotnet (mono-module) gates. Sourced after
+# _common.sh by gates/build-and-run-godot-dotnet-{lib,handshake,sample}.sh,
+# gates/build-and-run-gdtask.sh and gates/dotnet-measure.sh — all need the same
+# pipeline: real-Godot.NET.Sdk sample build -> --dotnet-module transpile
+# against the real GodotSharp -> mono-module shared library. Requires the
+# artifacts of gates/setup-godot-dotnet.sh; DN2CPP_GODOT_DOTNET_ROOT overrides
+# where to look, defaulting to the setup script's own default root — artifacts
+# built there are found with no env var set. (The engine-launch watchdog is
+# run_with_watchdog in gates/_common.sh.)
+
+GODOT_DOTNET_SAMPLE_DIR=samples/godot-dotnet/DotnetSample
+GODOT_DOTNET_ROOT="${DN2CPP_GODOT_DOTNET_ROOT:-$HOME/.cache/dn2cpp-godot-dotnet}"
+GODOT_DOTNET_GODOTSHARP="$GODOT_DOTNET_ROOT/GodotSharp/Api/Release/GodotSharp.dll"
+
+# The two engine binaries setup-godot-dotnet.sh links into the artifact root.
+# Both are *executed* (the editor directly, the template after a cp), so they
+# carry EXE_EXT — an extension-less PE image is not launchable on Windows, while
+# `test -x` says yes to one under MSYS, which is how a guard that spells the name
+# by hand fails to skip and dies at exec instead.
+#
+# Both are symlinks here (this root still links; the fork root records paths
+# instead — see gates/_godot_fork.sh), and the four gates that key on them —
+# godot-dotnet-{sample,handshake,trim} and gdtask — must sign them with
+# file_sig_deref, never with `readlink`. A readlink term is the TARGET PATH, and
+# the path does not move when the engine is rebuilt at it: measured on a live
+# root, the term is byte-identical across a rebuild, so those four gates would
+# hit a warm key and replay a green over an engine they never ran.
+GODOT_DOTNET_EDITOR="$GODOT_DOTNET_ROOT/editor_bin$EXE_EXT"
+GODOT_DOTNET_TEMPLATE="$GODOT_DOTNET_ROOT/template_bin$EXE_EXT"
+
+# This file's CONTENT is in every gate's cache key (_gate_helpers_hash in
+# _common.sh hashes the whole gates/_*.sh set), and that is load-bearing here
+# rather than incidental: godot_dotnet_link_lib below links the shared library
+# the engine is run against, and the link sits BELOW gate_cache_check, so a warm
+# hit does not build it at all — nothing downstream can notice that the green it
+# replays was recorded against a library this file no longer produces. Every
+# other input to that library was already keyed (the generated C++, runtime/ +
+# third_party/, the compiler, every build-axis env var, compile_dotnet_module's
+# own definition), leaving the compile INVOCATION and GODOT_DOTNET_PLATFORM —
+# which picks the data_<Assembly>_<platform>_<arch> directory the engine gates
+# stage that library into. Both live here.
+#
+# Keying the whole helper SET is what leaves no gate anything to remember:
+# per-gate wiring is one forgotten argument away from leaving a consumer of this
+# file unkeyed, and nothing says so.
+
+# GODOT_DOTNET_PLATFORM — the engine's own name for this platform, as it appears
+# in the data_<Assembly>_<platform>_<arch> directory try_load_native_aot_library
+# reads (modules/mono/godotsharp_dirs.cpp: exe_dir/data_<appname>_<platform>_<arch>).
+#
+# This is NOT $DN2CPP_OS and must not be derived from it: the engine's
+# platform_name_map (godotsharp_dirs.cpp, "the equivalent of
+# GodotTools.Utils.OS.PlatformNameMap") maps Linux to "linuxbsd", not "linux".
+# Substituting $DN2CPP_OS would work on macOS and Windows and put the library
+# somewhere the engine never looks on Linux — where the failure is a missing
+# dlopen deep inside the engine, not a missing file the gate could name.
+case "$DN2CPP_OS" in
+    macos)   GODOT_DOTNET_PLATFORM=macos ;;
+    windows) GODOT_DOTNET_PLATFORM=windows ;;
+    linux)   GODOT_DOTNET_PLATFORM=linuxbsd ;;
+    *)       GODOT_DOTNET_PLATFORM=unknown ;;
+esac
+
+# godot_dotnet_root_ok — true when the setup artifacts a *build-only* gate needs
+# (the GodotSharp API assembly + the local Godot.NET.Sdk feed) are present.
+godot_dotnet_root_ok() {
+    [ -n "$GODOT_DOTNET_ROOT" ] && [ -f "$GODOT_DOTNET_GODOTSHARP" ] \
+        && compgen -G "$GODOT_DOTNET_ROOT/nuget/Godot.NET.Sdk.*.nupkg" >/dev/null
+}
+
+# godot_dotnet_nuget_config DIR — write DIR/nuget.config (gitignored).
+#
+# It is generated rather than checked in because nuget.config cannot expand
+# environment variables, and the MSBuild NuGet SDK resolver — which resolves
+# Sdk="Godot.NET.Sdk/4.7.1" before any restore flag can apply — discovers config
+# by walking up from the project directory. So the machine-specific feed path has
+# to be *in the file*, and the file has to be *next to the project*.
+#
+# Two sources, and both are load-bearing:
+#   - the local feed built by gates/setup-godot-dotnet.sh, which carries the
+#     engine's own packages (Godot.NET.Sdk / GodotSharp / Godot.SourceGenerators)
+#     packed from the pinned clone — these MUST come from there, not from
+#     nuget.org, or the sample would build against a different engine than the
+#     one the gate then runs it in;
+#   - nuget.org, for anything else a sample PackageReferences. That is how
+#     GDTaskSample acquires the real GDTask 3.1.0: a plain PackageReference, no
+#     vendored DLL. (The <clear/> above them means these two are the only
+#     sources, whatever the user's machine-wide NuGet config says.)
+godot_dotnet_nuget_config() {
+    local dir="$1"
+    # NuGet is a native Windows program: it reads this file, not bash. An MSYS
+    # path ("/c/Users/...") would be taken as drive-relative and resolve to
+    # C:\c\Users\... — the feed then simply has no packages in it, and what
+    # surfaces is a restore error about Godot.NET.Sdk, naming nothing about the
+    # path. cygpath -m gives the C:/... form: a real Windows path, but with
+    # forward slashes, so it needs no XML/backslash escaping.
+    local feed="$GODOT_DOTNET_ROOT/nuget"
+    [ "$DN2CPP_OS" = windows ] && feed="$(cygpath -m "$feed")"
+    cat > "$dir/nuget.config" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<!-- GENERATED by gates/_godot_dotnet.sh — do not edit, do not commit. Points the
+     Godot.NET.Sdk resolver + restore at the local feed built by
+     gates/setup-godot-dotnet.sh; nuget.org supplies everything else a sample
+     PackageReferences (GDTaskSample: the real GDTask). -->
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="dn2cpp-godot-dotnet-local" value="$feed" />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+</configuration>
+EOF
+}
+
+# The pipeline is TWO halves, and the split is the cache boundary.
+#
+# godot_dotnet_transpile OUT — the key-producing half: generate the sample's
+# nuget.config, build the sample with the real Godot.NET.Sdk, and transpile it
+# with --dotnet-module against the real GodotSharp + the net10 CoreLib into OUT.
+# The caller must have verified godot_dotnet_root_ok first, and must call
+# gate_cache_check next: this half produces the whole of the key's material
+# (the app assembly and the generated surface), so it cannot move behind the
+# check — there would be nothing left to key on.
+godot_dotnet_transpile() {
+    local out="$1"
+
+    echo "-- Generating the sample's nuget.config (local feed + nuget.org)"
+    godot_dotnet_nuget_config "$GODOT_DOTNET_SAMPLE_DIR"
+
+    echo "-- Building the sample game assembly (real Godot.NET.Sdk)"
+    # ExportRelease is Godot.NET.Sdk's release configuration; the Sdk routes
+    # output to .godot/mono/temp/bin/<config>/. Built here even under
+    # DN2CPP_SKIP_BUILD: the orchestrator's prebuild phase uses -c Release, not
+    # this Sdk-specific configuration, and of the gates only the two
+    # godot-dotnet ones touch this project — the lib gate in the parallel phase,
+    # the handshake gate in the later serial Godot phase (never concurrently).
+    dotnet build "$GODOT_DOTNET_SAMPLE_DIR/DotnetSample.csproj" -c ExportRelease --nologo -v q
+    local app="$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
+    [ -f "$app" ] || { echo "error: not built: $app" >&2; return 1; }
+
+    echo "-- Transpiling (--dotnet-module, real GodotSharp + net10 CoreLib)"
+    build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
+    # Pin net10.0 (the JSON/measure gates' rule): the highest installed runtime
+    # can be an 11.0 preview whose CoreLib shape skews the transpile spuriously.
+    local corelib; corelib=$(resolve_net10_corelib)
+    rm -rf "$out"
+    invoke_cli "$app" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" --auto-ref -o "$out"
+}
+
+# godot_dotnet_link_lib OUT — the other half: link the mono-module shared library
+# godot_dotnet_link_lib OUT — the other half: link the mono-module shared library
+# OUT/$(lib_name DotnetSample). Call it AFTER gate_cache_check, never before.
+#
+# It contributes nothing to the key, measured rather than assumed: everything it
+# writes into OUT is either dot-prefixed (the .cmake/.cmake-android build trees)
+# or named lib<Assembly>.<ext>, and _gate_surface_lines lists OUT with a bare
+# `ls -1` keeping only ^(generated|pinvoke-libs.txt|base-abi.json) — so it sees
+# neither. And no consumer needs it on a hit: all four of its callers
+# (godot-dotnet-{handshake,lib,sample,trim}) exit at gate_cache_hit_msg, before
+# their first mention of $DYLIB. That is a DIFFERENT four from the set at the top
+# of this file, which signs the editor/template paths — say which you mean, since
+# "all four" read alone points at neither.
+godot_dotnet_link_lib() {
+    local out="$1"
+    echo "-- Building the mono-module shared library"
+    compile_dotnet_module "$out" "$out/$(lib_name DotnetSample)"
+}
+
+# godot_dotnet_pin_abi_check PINNED_COMMIT ABI_EXPECTED — the shared pin +
+# interop-ABI tripwire of the engine E2E gates. The artifacts, the clone, and
+# the gate's expectations must all describe one commit: a drifted clone
+# silently changes the engine side of the handshake ABI. Fingerprints the two
+# ABI surfaces the emitted entry hard-codes assumptions about: the engine's
+# interop function table (order/count of unmanaged_callbacks —
+# NativeFuncs.Initialize indexes into it) and the ManagedCallbacks struct
+# (order/count of the 37 slots; the FrameCallback wrap addresses slot 7).
+# Requires $GODOT_DOTNET_ROOT/pin.txt + editor_bin; exports CLONE.
+godot_dotnet_pin_abi_check() {
+    local pinned="$1" abi_expected="$2"
+    local root_pin
+    root_pin="$(cat "$GODOT_DOTNET_ROOT/pin.txt")"
+    if [ "$root_pin" != "$pinned" ]; then
+        echo "FAIL: $GODOT_DOTNET_ROOT/pin.txt ($root_pin) != expected pin $pinned" >&2
+        echo "      Rebuild the artifacts (gates/setup-godot-dotnet.sh) or update the pin deliberately." >&2
+        return 1
+    fi
+    # Resolve the clone to fingerprint. In order: an explicit override; what
+    # setup-godot-dotnet.sh recorded; then the two legacy inferences, kept for a
+    # root assembled before clone.txt existed — editor_bin pointing into
+    # <clone>/bin/ (true only when the editor was built from the clone, never for
+    # a prebuilt official install), else the sibling-directory default.
+    CLONE="${DN2CPP_GODOT_CLONE:-}"
+    if [ -z "$CLONE" ] && [ -f "$GODOT_DOTNET_ROOT/clone.txt" ]; then
+        CLONE="$(cat "$GODOT_DOTNET_ROOT/clone.txt")"
+    fi
+    if [ -z "$CLONE" ]; then
+        local editor_target
+        editor_target="$(readlink "$GODOT_DOTNET_EDITOR" || true)"
+        case "$editor_target" in
+            /*) CLONE="$(dirname "$(dirname "$editor_target")")" ;;
+            *)  CLONE="$(dirname "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)")/godot" ;;
+        esac
+    fi
+    if [ ! -e "$CLONE/modules/mono/mono_gd/gd_mono.cpp" ]; then
+        echo "FAIL: godot clone not found at $CLONE (set DN2CPP_GODOT_CLONE) — the pin/ABI tripwire cannot run" >&2
+        return 1
+    fi
+    local clone_head
+    clone_head="$(git -C "$CLONE" rev-parse HEAD)"
+    if [ "$clone_head" != "$pinned" ]; then
+        echo "FAIL: godot clone at $CLONE has DRIFTED from the pinned commit" >&2
+        echo "      expected: $pinned" >&2
+        echo "      actual:   $clone_head" >&2
+        return 1
+    fi
+    local abi_actual
+    abi_actual="$(
+        awk '/^static const void \*unmanaged_callbacks\[\]\{/{f=1} f{print} f&&/^\};/{exit}' \
+            "$CLONE/modules/mono/glue/runtime_interop.cpp" \
+            | shasum -a 256 | awk '{print $1"  unmanaged_callbacks"}'
+        shasum -a 256 "$CLONE/modules/mono/glue/GodotSharp/GodotSharp/Core/Bridge/ManagedCallbacks.cs" \
+            | awk '{print $1"  ManagedCallbacks.cs"}'
+    )"
+    # A MISSING baseline is a failure, not an invitation to record one. The
+    # self-freezing arm this replaces turned the whole ABI assertion into
+    # A MISSING baseline is a failure, not an invitation to record one. A
+    # self-freezing arm turns the whole ABI assertion into "certify whatever this
+    # clone says" for three gates (handshake, sample, gdtask) whenever the
+    # committed file is absent — and deleting the file is the obvious thing to
+    # reach for when the tripwire goes red, which converts a caught ABI drift
+    # into silence. The baseline IS committed, so this can only fire on a
+    # deletion; the fork twin (_godot_fork.sh) asks it the same way.
+    if [ ! -f "$abi_expected" ]; then
+        echo "FAIL: $abi_expected is missing — the interop-ABI baseline is committed, so this is a deletion, not a first run." >&2
+        echo "      Restore it from git rather than re-freezing: a regenerated baseline certifies whatever this clone happens to say." >&2
+        echo "      The current clone's fingerprints, for reference:" >&2
+        printf '%s\n' "$abi_actual" >&2
+        return 1
+    fi
+    if [ "$abi_actual" != "$(cat "$abi_expected")" ]; then
+        echo "FAIL: interop ABI fingerprints differ from $abi_expected" >&2
+        echo "expected:" >&2; cat "$abi_expected" >&2
+        echo "actual:" >&2; printf '%s\n' "$abi_actual" >&2
+        echo "      The mono-module handshake ABI changed — re-audit the emitted entry" >&2
+        echo "      (slot order/count) before re-freezing the fingerprints." >&2
+        return 1
+    fi
+    echo "pin OK: $pinned (clone: $CLONE); ABI fingerprints OK"
+}

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Reach probe: builds the Grpc.Net.Client + Google.Protobuf unary-call surface
+    so dn2cpp's measure mode can enumerate what it does not yet support.
+
+    Requires a NETWORK RESTORE (these packages are not vendored). The versions
+    below are exact pins — do not float them to a range; bump deliberately.
+
+    The generated protobuf/gRPC-client code (Generated/Greet.cs,
+    Generated/GreetGrpc.cs) is checked in rather than produced by a <Protobuf>
+    MSBuild item, so this csproj carries no Grpc.Tools reference at all. See
+    Generated/Greet.cs's header for the regen recipe.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client" Version="2.80.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.35.1" />
+  </ItemGroup>
+
+</Project>

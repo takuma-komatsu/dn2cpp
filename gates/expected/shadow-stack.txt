@@ -1,0 +1,74 @@
+== DeepChainSubset ==
+caught: thrown in Depth5
+trace is null: False
+deep-chain trace:
+   at DeepChainSubset.Program.Depth5()
+   at DeepChainSubset.Program.Depth4()
+   at DeepChainSubset.Program.Depth3()
+   at DeepChainSubset.Program.Depth2()
+   at DeepChainSubset.Program.Depth1()
+   at DeepChainSubset.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+== SharedGenericFrame ==
+Box<string> trace:
+   at SharedGenericFrame.Box_String.Poke() [shared generic]
+   at SharedGenericFrame.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+Box<List<int>> trace:
+   at SharedGenericFrame.Box_String.Poke() [shared generic]
+   at SharedGenericFrame.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+leaf frame carries shared-generic mark: True
+same canonical frame line for both: True
+== RethrowSemantics ==
+rethrow-preserved trace:
+   at RethrowSemantics.Program.RethrowLeaf()
+   at RethrowSemantics.Program.RethrowMid()
+   at RethrowSemantics.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+rethrow preserves trace: True
+original trace contains RecaptureSite: False
+recaptured trace:
+   at RethrowSemantics.Program.RecaptureSite()
+   at RethrowSemantics.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+recaptured trace contains RecaptureSite: True
+== CurrentStackSubset ==
+Environment.StackTrace ends with newline: True
+Environment.StackTrace:
+   at System.Environment.get_StackTrace()
+   at CurrentStackSubset.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+current FrameCount: 2
+current GetFrames().Length equals FrameCount: True
+current GetFrame(0) is null: False
+current frame0 ToString ends with newline: True
+current frame0: CurrentStackSubset.Program.__GateEntry()
+current GetFrame(0).GetMethod() is null: True
+current ToString:
+   at CurrentStackSubset.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+skip0 FrameCount: 4
+skip2 FrameCount: 2
+skip counts differ by 2: True
+skip0 frame0: CurrentStackSubset.Program.SkipProbe()
+skip0 frame2: CurrentStackSubset.Program.__GateEntry()
+skip2 frame0: CurrentStackSubset.Program.__GateEntry()
+skip2 frame0 equals skip0 frame2: True
+negative skip count equals skip0 count: True
+reuse FrameCount > 0: True
+reuse ToString equals ex.StackTrace + newline: True
+reuse ToString equals ex.StackTrace exactly: False
+reuse trace:
+   at CurrentStackSubset.Program.ReuseLeaf()
+   at CurrentStackSubset.Program.__GateEntry()
+   at ShadowStack.Program.Main()
+unthrown reuse FrameCount is 0: True
+unthrown reuse says unavailable: True
+== CapacityNote ==
+trace contains capacity marker: True
+capacity trace first line:    at <9 innermost frames past shadow-stack capacity>
+capacity trace line count: 1025
+capacity trace last line:    at ShadowStack.Program.Main()
+overflow capture FrameCount: 1024
+overflow capture first line:    at <9 innermost frames past shadow-stack capacity>

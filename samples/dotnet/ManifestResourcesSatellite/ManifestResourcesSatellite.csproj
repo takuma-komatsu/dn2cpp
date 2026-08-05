@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <!-- Same reason as the sibling ManifestResources project: the generated
+         Strings.Designer.cs would route through a strongly-typed accessor this gate
+         does not need. -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+
+  <!-- One compiled .resx, embedded under the name the program's ResourceManager base
+       name resolves to. The set is deliberately PRESENT and complete: the point of this
+       program is that a resource which is embedded right here must still not be served,
+       because the assembly declares its ultimate fallback to live in a satellite. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\Strings.resx"
+                      LogicalName="ManifestResourcesSatellite.Strings.resources" />
+  </ItemGroup>
+
+</Project>

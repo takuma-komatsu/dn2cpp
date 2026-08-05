@@ -1,0 +1,14 @@
+# The Emscripten SDK the Web lane builds and ships with. gates/setup-emsdk.sh
+# reads this file and refuses an archive whose sha256 does not match.
+# Rows: `archive <host> <path under base_url, %h = release_hash> <sha256>`.
+version       6.0.5
+release_hash  dbd755b5da399329c2576f6e3dfa7f419f5d8409
+base_url      https://storage.googleapis.com/webassembly/emscripten-releases-builds
+
+archive macos-arm64 mac/%h/wasm-binaries-arm64.tar.xz 82231ed58d0134a9c8796b4133207563b94704088cd5a355464a061ad0d31c15
+archive linux-x64   linux/%h/wasm-binaries.tar.xz     2c5ba39623f3f3a68373a513530530775b6de31cb44be3e672d060137374d460
+archive windows-x64 win/%h/wasm-binaries.zip          3367b1b502e5b388b0c32837cdf9f96a7e3a97e09e71c3fca50f098ab4928648
+
+# Windows has no system python emcc can rely on, so the official emsdk pins a
+# portable CPython beside the toolchain (emsdk_manifest.json).
+python  windows-x64 deps/python-3.13.3-0-win-amd64.zip 6fe7a540c6b8b185780467cf7495e884ee62316ec4abb19e1c735b8a77c62465

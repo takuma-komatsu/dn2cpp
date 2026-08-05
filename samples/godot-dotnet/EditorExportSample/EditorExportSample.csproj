@@ -1,0 +1,11 @@
+<Project Sdk="Godot.NET.Sdk/4.7.1">
+  <!-- The Sdk version mirrors what the fork produces, resolved from the local
+       feed via a nuget.config the gate generates next to this file (untracked:
+       it holds a machine-specific path). Publishing this project is the export
+       backend's *input*: dn2cpp removes the .NET runtime from the shipped game,
+       not the SDK from the machine that exports it. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://injector.gd" id="1_inj"]
+
+[node name="Root" type="Node"]
+
+[node name="Fault" type="MyFaultNode" parent="."]
+
+[node name="My" type="MyNode" parent="."]
+
+[node name="My3D" type="MyNode3D" parent="."]
+
+[node name="Injector" type="Node" parent="."]
+script = ExtResource("1_inj")

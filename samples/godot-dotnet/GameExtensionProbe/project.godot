@@ -1,0 +1,13 @@
+; A Godot project that ships its OWN native GDExtension
+; (lib/probe_extension.gdextension). The drop-in run layout assembles a template
+; engine binary plus a .pck by hand, so nothing stages the game's extension binary
+; the way an .app/.apk export would. Deliberately scriptless: the surface under
+; test is the engine's GDExtension path resolution against the run directory,
+; which a C# assembly neither helps nor hinders.
+config_version=5
+
+[application]
+
+config/name="GameExtensionProbe"
+run/main_scene="res://main.tscn"
+config/features=PackedStringArray("4.7")

@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" language="C#" path="res://GDTaskProbe.cs" id="1_probe"]
+
+[node name="Main" type="Node"]
+
+[node name="Probe" type="Node" parent="."]
+script = ExtResource("1_probe")

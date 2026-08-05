@@ -1,0 +1,8 @@
+# Hot-update generic roots (HybridCLR's AOTGenericReferences): closed generic
+# instantiations the patch binds but the base program itself never uses, so the
+# --hotupdate-base build must force-emit them (CLR type names). A generic-type
+# root is OpenDef[arg,...]; a generic-method root is DeclType::Method[arg,...]
+# (each closed instantiation the patch calls). See docs/BPI-FORMAT.md.
+HotUpdateBase.Holder[System.String]
+HotUpdateBase.Counter::Echo[System.Int32]
+HotUpdateBase.Counter::Echo[System.String]

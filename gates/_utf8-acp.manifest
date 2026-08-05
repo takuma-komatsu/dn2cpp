@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Win32 application manifest that gives a process a UTF-8 ANSI code page.
+
+  Consumed by build-and-run-pinvoke-wasm.sh, which builds the real-.NET oracle a
+  second time with -p:Win32Manifest=<this file> so that GetACP() answers 65001
+  inside the oracle process and .NET marshals `Ansi` strings as UTF-8 — the
+  encoding its wasm subject uses, Emscripten having no CP_ACP at all. Without it
+  the two sides of that gate's stdout diff are two platforms' encodings.
+
+  It is the only lever available: there is no SetACP, no environment variable and
+  no runtimeconfig knob, and the setting is read from the manifest of the PROCESS
+  IMAGE — so the oracle must run as its apphost .exe, never as `dotnet <dll>`
+  (whose image is dotnet.exe, whose manifest we do not own). Requires Windows 10
+  1903 or later; inert on every other host.
+
+  Deliberately not applied to the sample project itself: build-and-run-pinvoke-
+  native.sh asserts dn2cpp's CP_ACP fidelity against a stock oracle on the same
+  host, which needs the host's real ANSI code page.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity version="1.0.0.0" name="Dn2Cpp.Gates.OracleUtf8Acp"/>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

@@ -1,0 +1,8 @@
+# Normalize all text files to LF, in the repository and in the working tree,
+# regardless of the platform's core.autocrlf setting; binaries are
+# auto-detected and left untouched. Windows-only scripts are the exception:
+# cmd.exe requires CRLF.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf

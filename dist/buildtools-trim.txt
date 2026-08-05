@@ -1,0 +1,55 @@
+# What the bundled cmake + ninja ship — a KEEP list, read by
+# dist/package-toolchain.sh.
+#
+# Grammar is dist/emsdk-trim.txt's: paths are relative to the staged buildtools/
+# root and may glob, a directory keeps its whole subtree, a `windows: ` /
+# `posix: ` prefix scopes a line to that OS's tree, comments take a whole line,
+# and AN ENTRY MATCHING NOTHING IS FATAL — an upstream rename must fail here
+# rather than ship a tool quietly short a data file.
+#
+# The oracle for an over-trim is the packaging's own per-axis configure, which
+# runs the staged cmake: a module or data file this list drops dies there, not
+# in a user's export log.
+#
+# The licence of a package that survives is kept whatever this file says, and
+# copied into LICENSES/ at the root — but only where a kept file remains in the
+# licence's OWN directory, which is why the ones under doc/ are named below.
+
+# ── The executables ──────────────────────────────────────────────────────────
+# One cmake. ccmake/cpack/ctest are front-ends no export runs, and cmake-gui is
+# a symlink into the macOS .app's Qt payload — 46 MiB of Frameworks/ and
+# PlugIns/ behind it.
+posix: cmake/bin/cmake
+windows: cmake/bin/cmake.exe
+# The Ninja generator's RC dependency scanner. cmake locates it in C++ beside
+# cmake.exe and never through a module, so a grep over Modules/ finds nothing
+# and a grep-driven trim drops it — invisible until an MSVC configure.
+windows: cmake/bin/cmcldeps.exe
+posix: ninja/ninja
+windows: ninja/ninja.exe
+
+# ── cmake's own module tree ──────────────────────────────────────────────────
+# WHOLE, and that is a decision rather than laziness: runtime/CMakeLists.txt's
+# FindThreads and CheckCXXSourceCompiles, curl's FindMbedTLS / FindNGHTTP2 and
+# its platform checks, Emscripten's platform module and the NDK's toolchain file
+# all reach in through find_package / include(), and every try_compile reads the
+# ABI and compiler-id sources under it. A list of the modules today's configure
+# happens to name is a second, drifting expression of somebody else's
+# CMakeLists — and this is ~5 MiB.
+cmake/share/cmake-*/Modules
+
+# Templates/ is dropped: only Modules/CPack.cmake and Modules/CTestTargets.cmake
+# read it, curl's `include(CPack)` sits inside `if(NOT CURL_DISABLE_INSTALL)`
+# and runtime/CMakeLists.txt forces that ON, and nothing here includes CTest.
+# The per-axis configure is the oracle if either flips.
+
+# ── Licences ─────────────────────────────────────────────────────────────────
+# Named explicitly: everything else under doc/ is dropped, so the rule that
+# keeps a licence beside its surviving package cannot reach these, and the
+# bundle would ship binaries with no licence text at all. Each doc/cmake/cm*/
+# holds one vendored library's licence and nothing else, so the directory is
+# globbed whole — the file NAME is not one set (COPYING, LICENSE, NOTICE, and
+# cmsys's Copyright.txt), and which libraries a host's archive bundles varies.
+cmake/doc/cmake/LICENSE.rst
+cmake/doc/cmake/cm*/*
+cmake/share/cmake-*/Licenses

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Dn2Cpp.DotnetModule</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Dn2Cpp.Transpiler/Dn2Cpp.Transpiler.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The CLI composition root (assembly "dn2cpp") selects this backend. -->
+    <InternalsVisibleTo Include="dn2cpp" />
+  </ItemGroup>
+
+</Project>

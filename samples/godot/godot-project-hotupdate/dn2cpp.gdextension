@@ -1,0 +1,13 @@
+[configuration]
+
+entry_symbol = "dn2cpp_gdext_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+
+macos.debug = "res://bin/libhotupdategodot.dylib"
+macos.release = "res://bin/libhotupdategodot.dylib"
+linux.debug = "res://bin/libhotupdategodot.so"
+linux.release = "res://bin/libhotupdategodot.so"
+windows.debug.x86_64 = "res://bin/hotupdategodot.dll"
+windows.release.x86_64 = "res://bin/hotupdategodot.dll"

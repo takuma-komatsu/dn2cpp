@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The shim dll is a transpile input the gate result cache keys on;
+         without this, SourceLink's git-HEAD stamp in
+         AssemblyInformationalVersion changed its bytes on every commit and
+         invalidated every Godot gate's cache entry (same rationale as
+         samples/Directory.Build.props). -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <GodotApiJson>$(MSBuildThisFileDirectory)../../extension_api.json</GodotApiJson>
+    <GodotShims>$(MSBuildThisFileDirectory)GodotShims.g.cs</GodotShims>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="GodotShims.g.cs" />
+    <Compile Include="GodotShims.g.cs" />
+  </ItemGroup>
+
+  <Target Name="GenerateGodotBindings" BeforeTargets="BeforeCompile"
+          Inputs="$(GodotApiJson)" Outputs="$(GodotShims)">
+    <Exec Command="dotnet run --project $(MSBuildThisFileDirectory)../Dn2Cpp.Cli -- --generate-bindings &quot;$(GodotApiJson)&quot; &quot;$(GodotShims)&quot;" />
+  </Target>
+
+</Project>

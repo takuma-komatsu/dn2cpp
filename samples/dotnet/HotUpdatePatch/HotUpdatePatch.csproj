@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Keep IL simple/predictable for the converter fence -->
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-time surface for the AOT base image's types (Counter & co.);
+         the emit-patch converter resolves them name-based into BPI imports
+         bound against the running base at load time. -->
+    <ProjectReference Include="../HotUpdateBase/HotUpdateBase.csproj" />
+  </ItemGroup>
+
+</Project>

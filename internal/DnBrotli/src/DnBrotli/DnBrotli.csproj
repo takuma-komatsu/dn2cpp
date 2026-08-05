@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>DnBrotli</AssemblyName>
+    <RootNamespace>DnBrotli</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- SYSLIB1054 suggests [LibraryImport] over [DllImport]. The Dn2CppInterop layer
+         deliberately uses classic [DllImport]: the dn2cpp transpiler consumes the raw
+         bodyless P/Invoke shape, and no marshalling source-gen is wanted or needed
+         (every signature is fully blittable). -->
+    <NoWarn>$(NoWarn);SYSLIB1054</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DnBrotli.Tests" />
+    <InternalsVisibleTo Include="DnBrotli.Benchmarks" />
+  </ItemGroup>
+
+</Project>

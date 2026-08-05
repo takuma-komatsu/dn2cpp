@@ -1,0 +1,106 @@
+5
+21
+21
+7
+5
+21
+3.5
+1
+11
+10
+A1
+B1
+A2
+B2
+1
+2
+3
+== async streams ==
+  open block
+  await foreach: 1
+  await foreach: 4
+  await foreach: 9
+  await foreach: 16
+  close block
+  sync stream: ann
+  sync stream: bob
+  sync stream: cid
+  sum: 55
+  counting: 0
+  counting: 1
+  counting: 2
+  iterator finally
+  manual: ann
+  manual: bob
+  manual: cid
+  open declaration
+  tail
+  close declaration
+  vt suspended: 42
+  vt sync: 42
+  vt result: 3
+  vt configured: 7
+== async streams done ==
+5,11,20,3,True,20,True
+7,90,3hi,4,5,1,2,3,66
+True,True,False,False,False,True,True,True,False,True,7,True
+cold-unstarted=Created(0) async-pending=WaitingForActivation(1) tcs-pending=WaitingForActivation(1) fromresult=RanToCompletion(5) fromexception=Faulted(7) fromcanceled=Canceled(6) async-done=RanToCompletion(5) tcs-setresult=RanToCompletion(5) tcs-setcanceled=Canceled(6) tcs-setexception=Faulted(7) cold-done=RanToCompletion(5) 
+cold: False
+started: True,1
+result: 42
+state: payload
+sync: True,3
+faulted: True
+restart: InvalidOperationException
+promise: InvalidOperationException
+await: 123
+tuple: 3,9
+struct: 5,4096
+awaittuple: 11,22
+wait: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+result: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+getresult: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+coldnever: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+waitall: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+waitany: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+afterexit: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+afterff: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+aftertimer: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+timeridle: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+timerspent: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+timerdisarm: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+ontimer: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+onthread: async: deadlock — task never completes (no runnable continuations on this thread, no pool work in flight, no other live user thread, no armed timer)
+alive: 42
+pending: False
+result: 5,True
+again: False
+settled: InvalidOperationException
+void: True
+trydouble: True,2.5
+caught tcs boom
+cancel: True,True
+canceled: AggregateException(TaskCanceledException)
+bridge: done
+ran after: True
+cont: True
+doubled: 42
+chained: got 5!
+observed: faulted=True
+caught: cont boom
+boomFaulted: True
+state: carried,True
+afterCold: 7
+spin total=864
+spin turns=192
+spin sink=True
+delay total=2100
+delay sink=True
+thread joined
+tail ran = 0
+survived cross-thread completion
+wait(ts): True
+dispose: ok
+faulted: hasExc=True inner=boom innerStable=True
+nonfaulted: fromresult=True canceled=True
+id: aPos=True bPos=True distinct=True stable=True

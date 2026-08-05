@@ -1,0 +1,5 @@
+# The repo-root .gitignore excludes *.g.cs for build-time-generated Godot
+# bindings. DnBrotli's *.g.cs are the opposite: generated ONCE from the
+# vendored brotli C tables and CHECKED IN (see PORTING.md "Data tables") —
+# re-include them here.
+!*.g.cs

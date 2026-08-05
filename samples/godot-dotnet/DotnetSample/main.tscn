@@ -1,0 +1,31 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" language="C#" path="res://Player.cs" id="1_player"]
+[ext_resource type="Script" language="C#" path="res://Probe.cs" id="2_probe"]
+[ext_resource type="Script" language="C#" path="res://LifetimeProbe.cs" id="3_lifetime"]
+[ext_resource type="Script" language="C#" path="res://ParityNode.cs" id="4_parity"]
+[ext_resource type="Script" language="C#" path="res://GenericConcrete.cs" id="5_generic"]
+[ext_resource type="Script" language="C#" path="res://FaultProbe.cs" id="6_fault"]
+
+[node name="Main" type="Node"]
+
+[node name="Player" type="Node" parent="."]
+script = ExtResource("1_player")
+Speed = 100
+
+[node name="Probe" type="Node" parent="."]
+script = ExtResource("2_probe")
+
+[node name="Lifetime" type="Node" parent="."]
+script = ExtResource("3_lifetime")
+
+[node name="Parity" type="Node2D" parent="."]
+script = ExtResource("4_parity")
+
+[node name="TrimProbe" type="Sprite2D" parent="."]
+
+[node name="Generic" type="Node" parent="."]
+script = ExtResource("5_generic")
+
+[node name="Fault" type="Node" parent="."]
+script = ExtResource("6_fault")

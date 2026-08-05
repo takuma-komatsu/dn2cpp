@@ -1,0 +1,30 @@
+# The cmake and ninja a toolchain bundle carries, so a user's machine needs
+# neither. gates/setup-buildtools.sh reads this file and refuses an archive
+# whose sha256 does not match.
+# Rows: `archive <tool> <host> <url> <sha256> <strip>`.
+#
+# Full URLs rather than emsdk-pin.txt's base_url + path: cmake ships from
+# Kitware's GitHub releases and ninja from ninja-build's, so one base would be a
+# fiction. `strip` is the row's own archive root depth, which varies per row and
+# cannot be inferred — cmake's macOS build roots two levels deeper than its
+# others, and ninja's zips have no top-level directory at all.
+#
+# A cmake inside a forbidden_cmake band — half-open [first, past_last) — makes
+# Emscripten's own CMake platform module build a SHARED library as a static
+# archive, so the Web drop-in is never produced. The bands mirror
+# CMakeVersionsWithoutWasmSharedLibs (the fork's Dn2CppExporter.cs), which
+# refuses such a cmake: pinning into one would ship a cmake the bundle's own
+# exporter rejects, on a user's machine.
+forbidden_cmake  4.2.0 4.2.6
+forbidden_cmake  4.3.0 4.3.3
+
+cmake_version  4.4.2
+ninja_version  1.13.2
+
+archive cmake macos-arm64 https://github.com/Kitware/CMake/releases/download/v4.4.2/cmake-4.4.2-macos-universal.tar.gz 800fc86838e913fff969b499886c80baeb4ccfd00f0e39906b34aa334f39ab6c 3
+archive cmake linux-x64   https://github.com/Kitware/CMake/releases/download/v4.4.2/cmake-4.4.2-linux-x86_64.tar.gz     3ada9a3f5d8a85413579bdd0ea6aa8e8da86efdd6d15c91a1afa517f2021956c 1
+archive cmake windows-x64 https://github.com/Kitware/CMake/releases/download/v4.4.2/cmake-4.4.2-windows-x86_64.zip      e8139d85b3813bc38833142ae1940472e9a587e9b5d2718ac1804c60f4e57a64 1
+
+archive ninja macos-arm64 https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip   c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b 0
+archive ninja linux-x64   https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip 5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6 0
+archive ninja windows-x64 https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip   07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65 0

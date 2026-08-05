@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    GATE INFRASTRUCTURE — the real .NET oracle server for
+    samples/dotnet/GrpcUnary/'s transpiled gRPC client. This project is never
+    transpiled; it exists only to give the gate something real to dial.
+
+    Requires a NETWORK RESTORE (Grpc.AspNetCore is not vendored). The version
+    below is an exact pin and must match GrpcUnary's Grpc.Net.Client /
+    Google.Protobuf pins — do not float it to a range; bump all three together.
+
+    The generated protobuf/gRPC code (message types + GreeterBase server
+    stub) is shared with GrpcProbe and GrpcUnary by LINKING its
+    Generated/*.cs rather than copying it or adding a ProjectReference (the
+    gate suite's Phase-3 prebuild pre-flight rejects ProjectReferences inside
+    samples/), so there is exactly one checked-in copy. See
+    ../GrpcProbe/Generated/Greet.cs and ../GrpcProbe/Generated/GreetGrpc.cs
+    for the regeneration recipe.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" Version="2.80.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../GrpcProbe/Generated/*.cs" LinkBase="Generated" />
+  </ItemGroup>
+
+</Project>

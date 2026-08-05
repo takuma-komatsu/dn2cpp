@@ -1,0 +1,58 @@
+== app module ==
+  fields=1
+  getmethod(Add)=True
+  getproperty(Name)=True
+  ctors=2
+  activator=Widget
+  invoke(Add,20,22)=42
+== base chain (app class over a library base) ==
+  base=LibBase
+  inherited method(Ping)=True
+  inherited field(Inherited)=True
+  own field(Own)=True
+  invoke(Ping)=1
+  interface=ILibThing
+  interface method(Twice)=True
+== stripped type: everything that is NOT member metadata ==
+  name=LibWidget
+  fullname=TrimReflectLib.LibWidget
+  namespace=TrimReflectLib
+  base=Object
+  assembly=TrimReflectLib
+  isclass=True isvaluetype=False isenum=False
+  tostring=LibWidget(7,lib)
+  gettype-identity=True
+  isinstanceoftype=True
+  isassignablefrom(object)=True
+  interfaces[0]=ILibThing
+  cast+dispatch((ILibThing)o).Twice(21)=42
+  boxed enum tostring=Green
+  boxed enum type=LibColor isenum=True
+  boxed enum underlying=Int32
+  boxed enum getnames=Red,Green
+== stripped type: member metadata must FAIL LOUDLY ==
+  GetMethods -> any=True
+  GetFields -> any=True
+  GetProperties -> any=True
+  GetMembers -> any=True
+  GetMethod(Twice) -> found=True
+  GetField(Amount) -> found=True
+  GetProperty(Tag) -> found=True
+  GetMember(Twice) -> any=True
+== stripped type: constructors are NOT stripped ==
+  GetConstructors -> count=2
+  GetConstructor(int) -> found=True
+  Activator.CreateInstance -> made=LibWidget(0,lib)
+  Activator.CreateInstance(42) -> made=LibWidget(42,lib)
+== library type named by a type token: kept ==
+  getmethod(Echo)=True
+  getfield(Keeper)=True
+== never rooted (LibGadget) ==
+  tostring=LibGadget(9)
+  GetMethods -> PNSE: Reflection over the members of 'TrimReflectLib.LibGadget' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibGadget', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
+  GetField(Size) -> PNSE: Reflection over the members of 'TrimReflectLib.LibGadget' is not available: this image was transpiled with --trim-reflection, which removes the field, method and property metadata of every type the program was not seen to reflect over. Keep this one with '--reflection-root TrimReflectLib.LibGadget', or transpile without --trim-reflection. (GetConstructor and Activator.CreateInstance still work on this type.)
+  GetConstructors -> count=2
+== rooted by generic definition name (LibBox) ==
+  tostring=LibBox(5)
+  GetMethods -> any=True
+  GetField(Value) -> found=True

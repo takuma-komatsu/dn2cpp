@@ -1,0 +1,120 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Dn2Cpp.Cli</RootNamespace>
+    <AssemblyName>dn2cpp</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <!-- NuGet dotnet-tool packaging (dotnet tool install dn2cpp). AssemblyName
+       stays dn2cpp (the InternalsVisibleTo identity); only pack metadata is added.
+       None of this affects a plain build: the payload items below copy on
+       publish/pack only. -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dn2cpp</ToolCommandName>
+    <PackageId>dn2cpp</PackageId>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>NUGET-README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/takuma-komatsu/dn2cpp</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/takuma-komatsu/dn2cpp.git</RepositoryUrl>
+    <Description>.NET IL -> C++ transpiler + native runtime (a Unity-IL2CPP-equivalent for .NET). Transpile a net10.0 assembly to C++ and build it against the bundled CMake runtime.</Description>
+    <PackageTags>transpiler;cpp;aot;il2cpp;native;godot</PackageTags>
+  </PropertyGroup>
+
+  <!-- The native-build payload the installed tool carries: the C++ runtime plus the
+       vendored third-party sources it references, laid out as siblings exactly as
+       runtime/CMakeLists.txt expects (DN2CPP_ROOT = the CMakeLists dir's parent).
+       Users locate it with the print-runtime-dir flag. The third_party set mirrors
+       dist/package-toolchain.sh: every vendored tree runtime/CMakeLists.txt names
+       under ${DN2CPP_ROOT}/third_party — bdwgc, brotli, cacert, curl, highway,
+       mbedtls, nghttp2, zlib — plus gdextension_interface.h. Enumerated one by one and
+       never globbed as third_party/** wholesale, so a tree that lands in the
+       repository for some other purpose does not silently join the package. The
+       cacert and curl/mbedtls trees are what DN2CPP_USE_CURL builds from, so they
+       ship whether or not that option is on by default: the packed runtime is a
+       source tree the consumer configures, and which options they turn on is
+       their choice, not ours. dist/nuget-smoke-test.sh asserts each one arrives. -->
+  <ItemGroup>
+    <None Include="../../runtime/**" Exclude="../../runtime/**/.DS_Store"
+          Link="runtime/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/bdwgc/**" Exclude="../../third_party/bdwgc/**/.DS_Store"
+          Link="third_party/bdwgc/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/brotli/**" Exclude="../../third_party/brotli/**/.DS_Store"
+          Link="third_party/brotli/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/cacert/**" Exclude="../../third_party/cacert/**/.DS_Store"
+          Link="third_party/cacert/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/curl/**" Exclude="../../third_party/curl/**/.DS_Store"
+          Link="third_party/curl/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/highway/**" Exclude="../../third_party/highway/**/.DS_Store"
+          Link="third_party/highway/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/mbedtls/**" Exclude="../../third_party/mbedtls/**/.DS_Store"
+          Link="third_party/mbedtls/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/nghttp2/**" Exclude="../../third_party/nghttp2/**/.DS_Store"
+          Link="third_party/nghttp2/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/zlib/**" Exclude="../../third_party/zlib/**/.DS_Store"
+          Link="third_party/zlib/%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../third_party/gdextension_interface.h"
+          Link="third_party/gdextension_interface.h"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../dist/NUGET-README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Dn2Cpp.Transpiler/Dn2Cpp.Transpiler.csproj" />
+    <ProjectReference Include="../Dn2Cpp.Godot/Dn2Cpp.Godot.csproj" />
+    <ProjectReference Include="../Dn2Cpp.DotnetModule/Dn2Cpp.DotnetModule.csproj" />
+    <!-- The managed support shim: not a compile dependency, just copied next
+         to the CLI so it can auto-reference Dn2Cpp.Runtime.dll as a transpiler input. -->
+    <ProjectReference Include="../Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest"
+                      Pack="false" />
+    <!-- The managed backends the transpiler references CONDITIONALLY (a program that
+         reaches none of them pays nothing). Like the shim above these are not compile
+         dependencies of the CLI — the contract is that the DLLs sit AS FILES beside
+         dn2cpp.dll, because that is where AppContext.BaseDirectory points and where the
+         injection looks. Nothing here references their code, so dropping a row does not
+         fail the build; it fails a transpile, later, somewhere else.
+
+         Pack="false" means "do not grow a NuGet DEPENDENCY node for this project", NOT
+         "do not ship the DLL". The file still travels: OutputItemType="Content" +
+         CopyToOutputDirectory puts it in the publish output, and PackAsTool packs that
+         output into tools/net10.0/any/. Measured, not assumed —
+         artifacts/nuget-smoke/feed/dn2cpp.0.1.0.nupkg carries Dn2Cpp.Runtime.dll under
+         tools/net10.0/any/ with exactly these attributes. Do not "fix" the apparent
+         contradiction by removing Pack="false": that adds a dependency node for a
+         project that has no package, and the DLL was never travelling through it. -->
+    <ProjectReference Include="../../internal/DnZlib/src/DnZlib/DnZlib.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest"
+                      Pack="false" />
+    <ProjectReference Include="../../internal/DnBrotli/src/DnBrotli/DnBrotli.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest"
+                      Pack="false" />
+    <ProjectReference Include="../../internal/DnHttp/src/DnHttp/DnHttp.csproj"
+                      ReferenceOutputAssembly="false"
+                      OutputItemType="Content"
+                      CopyToOutputDirectory="PreserveNewest"
+                      Pack="false" />
+  </ItemGroup>
+
+</Project>

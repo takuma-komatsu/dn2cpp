@@ -1,0 +1,6 @@
+# Extra patch-bindable roots for the hot-update base build (--hotupdate-refs).
+# The patch calls Node.IsInGroup but the base program never does; rooting it
+# here reaches the method so its synthesized engine-call wrapper (and the
+# bindable fnPtr/invoker pair) is emitted — the plain-method analogue of the
+# generic-instantiation roots.
+Godot.Node::IsInGroup

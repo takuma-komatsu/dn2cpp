@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Keep IL simple/predictable for the converter fence -->
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same compile-time surface as the good patch: the Godot base image's
+         types plus (transitively) the engine shim the bad import targets. -->
+    <ProjectReference Include="../../godot/HotUpdateGodotSample/HotUpdateGodotSample.csproj" />
+  </ItemGroup>
+
+</Project>

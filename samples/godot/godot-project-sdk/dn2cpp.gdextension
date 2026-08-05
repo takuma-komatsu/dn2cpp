@@ -1,0 +1,13 @@
+[configuration]
+
+entry_symbol = "dn2cpp_gdext_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+
+macos.debug = "res://bin/libsdksample.dylib"
+macos.release = "res://bin/libsdksample.dylib"
+linux.debug = "res://bin/libsdksample.so"
+linux.release = "res://bin/libsdksample.so"
+windows.debug.x86_64 = "res://bin/sdksample.dll"
+windows.release.x86_64 = "res://bin/sdksample.dll"

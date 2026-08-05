@@ -1,0 +1,42 @@
+; Declared the way a real game declares its own extension — under res://lib, with
+; a debug variant beside the release one. Both halves are load bearing:
+;
+;   - res://lib is what makes the drop-in run layout fail without staging. In a
+;     PCK-backed run ProjectSettings::resource_path is empty, so this globalizes
+;     to a bare relative path the engine looks for under the CWD and then, by
+;     BASENAME, beside the executable.
+;   - the .debug. keys must NOT be selected by the staging script, whose feature
+;     set is a release run's — reproducing the loader's own most-tags-wins rule
+;     rather than approximating it.
+;
+; Linux is spelled twice on purpose: an export's feature set carries "linux",
+; which is what real .gdextension files are written against, while at LOAD time
+; OS::has_feature only answers to "linuxbsd". Both keys name the same file, so
+; the staging script's collision check is satisfied whichever it selects.
+
+[configuration]
+
+entry_symbol = "gameextprobe_init"
+compatibility_minimum = "4.4"
+reloadable = false
+
+[libraries]
+
+macos.debug.arm64 = "res://lib/debug/libgameextprobe.dylib"
+macos.arm64 = "res://lib/libgameextprobe.dylib"
+macos.debug.x86_64 = "res://lib/debug/libgameextprobe.dylib"
+macos.x86_64 = "res://lib/libgameextprobe.dylib"
+
+linux.debug.x86_64 = "res://lib/debug/libgameextprobe.so"
+linux.release.x86_64 = "res://lib/libgameextprobe.so"
+linux.debug.arm64 = "res://lib/debug/libgameextprobe.so"
+linux.release.arm64 = "res://lib/libgameextprobe.so"
+linuxbsd.debug.x86_64 = "res://lib/debug/libgameextprobe.so"
+linuxbsd.release.x86_64 = "res://lib/libgameextprobe.so"
+linuxbsd.debug.arm64 = "res://lib/debug/libgameextprobe.so"
+linuxbsd.release.arm64 = "res://lib/libgameextprobe.so"
+
+windows.debug.x86_64 = "res://lib/debug/gameextprobe.dll"
+windows.release.x86_64 = "res://lib/gameextprobe.dll"
+windows.debug.arm64 = "res://lib/debug/gameextprobe.dll"
+windows.release.arm64 = "res://lib/gameextprobe.dll"

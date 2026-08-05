@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- The Godot API surface (engine classes, GD/Mathf, Variant, value types) comes
+       from the shared "fake GodotSharp" shim, exactly like SdkSample — no inline
+       hand-written shims. The shim is passed to the transpiler via -r. -->
+  <ItemGroup>
+    <ProjectReference Include="../../../src/GodotSharpShim/GodotSharp.csproj" />
+  </ItemGroup>
+
+</Project>

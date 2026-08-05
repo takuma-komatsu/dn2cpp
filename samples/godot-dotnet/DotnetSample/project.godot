@@ -1,0 +1,16 @@
+; A standard Godot C# project — real Godot.NET.Sdk, real GodotSharp.
+config_version=5
+
+[application]
+
+config/name="DotnetSample"
+run/main_scene="res://main.tscn"
+; Feature-tagged override for the handshake gate. A release export template
+; rejects every path/scene CLI override, so the packed main scene itself must be
+; the scriptless handshake scene; its preset carries the "handshake" feature.
+run/main_scene.handshake="res://handshake.tscn"
+config/features=PackedStringArray("4.7", "C#")
+
+[dotnet]
+
+project/assembly_name="DotnetSample"

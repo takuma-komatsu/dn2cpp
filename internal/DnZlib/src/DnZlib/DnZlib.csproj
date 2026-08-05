@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>DnZlib</AssemblyName>
+    <RootNamespace>DnZlib</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DnZlib.Tests" />
+    <InternalsVisibleTo Include="DnZlib.Benchmarks" />
+  </ItemGroup>
+
+</Project>

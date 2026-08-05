@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- SourceLink stamps the current git HEAD into AssemblyInformationalVersion,
+       which would make every commit invalidate the gate result cache (it keys on
+       the app dll). These samples are gate fixtures, not shipped artifacts —
+       keep their bytes a function of their sources only. -->
+  <PropertyGroup>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+</Project>

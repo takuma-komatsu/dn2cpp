@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Linked, not copied: a second copy of the save/restore is how the leak
+       CultureScope removes comes back. It lives outside the project directory, so
+       the SDK's default **/*.cs glob does not see it and the include is explicit. -->
+  <ItemGroup>
+    <Compile Include="../_support/CultureScope.cs" Link="CultureScope.cs" />
+  </ItemGroup>
+
+</Project>

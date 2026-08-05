@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Browser-flavor CriWare.CriAtomLE.dll out of the CRI ADX LE NuGet
+       package, resolved the same way gates/_common.sh's cri_* helpers do
+       (env overrides first, then the default nuget cache; keep the two in
+       sync). The reference is conditional on purpose: the package is a
+       proprietary SDK the repository cannot carry, so on a machine without
+       it this project still builds — as a stub printing a single marker
+       line — and the suite's Phase-3 pre-build never fails for want of it.
+       The gate skips before running the stub, so the stub output is never
+       asserted. -->
+  <PropertyGroup>
+    <CriUserHome>$(HOME)</CriUserHome>
+    <CriUserHome Condition="'$(CriUserHome)' == ''">$(USERPROFILE)</CriUserHome>
+    <CriAtomVersion>$(DN2CPP_CRI_VERSION)</CriAtomVersion>
+    <CriAtomVersion Condition="'$(CriAtomVersion)' == ''">2.30.196</CriAtomVersion>
+    <CriNugetRoot>$(DN2CPP_CRI_NUGET_ROOT)</CriNugetRoot>
+    <CriNugetRoot Condition="'$(CriNugetRoot)' == ''">$(CriUserHome)/.nuget/packages/criware.criatomle/$(CriAtomVersion)</CriNugetRoot>
+    <CriBrowserDll>$(CriNugetRoot)/runtimes/browser/lib/net7.0/CriWare.CriAtomLE.dll</CriBrowserDll>
+    <DefineConstants Condition="Exists('$(CriBrowserDll)')">$(DefineConstants);CRI_PRESENT</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('$(CriBrowserDll)')">
+    <Reference Include="CriWare.CriAtomLE">
+      <HintPath>$(CriBrowserDll)</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

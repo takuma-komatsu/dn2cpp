@@ -1,0 +1,6 @@
+; dn2cpp SDK-compat sample Godot project (standard Godot C# via the GodotSharp shim)
+config_version=5
+
+[application]
+
+config/name="dn2cpp-sdk-sample"

@@ -1,0 +1,9 @@
+== resource manager limits ==
+neutral -> hello from a resource set
+culture-fr -> PlatformNotSupportedException: ResourceManager.GetString: a culture-specific lookup ('fr-FR') needs a satellite assembly, and AOT-compiled code links none — a satellite is a separate file the transpile never loaded, so 'not built' and 'unreachable' cannot be told apart here and answering the neutral string would be a silent wrong answer. Read the neutral resources (pass CultureInfo.InvariantCulture or use the no-culture overload), or localize through your engine's own translation system. Assembly 'ManifestResources' declares 'en-US' as its neutral culture, and that exact name is served from here too.
+missing-set -> MissingManifestResourceException: ResourceManager.GetString: no resource set 'ManifestResources.NoSuchSet.resources' is embedded in assembly 'ManifestResources'.
+get-stream -> PlatformNotSupportedException: ResourceManager.GetStream returns an UnmanagedMemoryStream, whose body is not transpilable in AOT-compiled code. Read the resource through Assembly.GetManifestResourceStream(<BaseName>.resources), which hands back a read-only MemoryStream over the same bytes.
+mixed-string -> mixed set label
+non-string -> InvalidOperationException: ResourceManager.GetString: resource entry is of type 'Int32' instead of String — call GetObject instead.
+stream-obj -> NotSupportedException: ResourceManager.GetObject: resource entry is a Stream, which real .NET hands back as an UnmanagedMemoryStream over the mapped image — a body dn2cpp cannot transpile. Read the resource through Assembly.GetManifestResourceStream(<BaseName>.resources), which hands back a read-only MemoryStream over the same bytes.
+stream-string -> InvalidOperationException: ResourceManager.GetString: resource entry is of type 'Stream' instead of String — call GetObject instead.

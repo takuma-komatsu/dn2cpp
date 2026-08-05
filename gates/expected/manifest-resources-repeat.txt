@@ -1,0 +1,102 @@
+== resource streams ==
+hello-null False
+hello-len 37
+hello-pos 0
+hello-read True
+hello-write False
+hello-seek True
+hello-n 37
+hello-eof -1
+hello-text [dn2cpp embedded resource\nsecond line\n]
+bin-len 256
+bin-count 256
+bin-sum 32640
+bin-first 0
+bin-last 255
+bin-seek 253
+set-n 4
+set-magic beefcace
+set-big True
+scoped-null False
+scoped-text scoped payload
+== resource catalog ==
+names-count 5
+name ManifestResourceScoped.scoped.txt
+name ManifestResources.Mixed.resources
+name ManifestResources.Strings.resources
+name ManifestResources.bytes.bin
+name ManifestResources.hello.txt
+miss-stream True
+miss-info True
+miss-scoped True
+info-null False
+info-loc 5
+info-file null
+info-refasm True
+null-name ArgumentNullException
+empty-name ArgumentException
+corelib-any PNSE Assembly.GetManifestResourceNames: the embedded manifest resources of assembly 'System.Private.CoreLib' were dropped at transpile time (--no-manifest-resources System.Private.CoreLib). Transpile without that flag, or keep the resource this read wants with '--manifest-resource-root <manifest name>'.
+corelib-strings PNSE Assembly.GetManifestResourceNames: the embedded manifest resources of assembly 'System.Private.CoreLib' were dropped at transpile time (--no-manifest-resources System.Private.CoreLib). Transpile without that flag, or keep the resource this read wants with '--manifest-resource-root <manifest name>'.
+corelib-set-big True
+corelib-info True
+corelib-illink True
+corelib-miss PNSE Assembly.GetManifestResourceStream: the embedded manifest resources of assembly 'System.Private.CoreLib' were dropped at transpile time (--no-manifest-resources System.Private.CoreLib). Transpile without that flag, or keep the resource this read wants with '--manifest-resource-root <manifest name>'.
+== resource manager ==
+rm-base ManifestResources.Strings
+rm-hit hello from a resource set
+rm-hit2 goodbye
+rm-miss <null>
+rm-inv hello from a resource set
+rm-obj hello from a resource set
+rm-obj-miss True
+rm-after-release hello from a resource set
+rm-type-base ManifestResources.Strings
+rm-type-hit hello from a resource set
+rm-null-key ArgumentNullException
+rm-neutral-lang hello from a resource set
+rm-neutral-lang-case goodbye
+prim-null True
+prim-bool True
+prim-char Z
+prim-byte 200
+prim-sbyte -42
+prim-int16 -1234
+prim-uint16 65000
+prim-int32 42
+prim-uint32 4000000000
+prim-int64 -1234567890123
+prim-uint64 18000000000000000000
+prim-single 1.5
+prim-double -0.0025
+prim-decimal -1234.5678
+prim-type System.Decimal System.Byte[]
+prim-dt-utc 639209020280000000 Utc
+prim-dt-unspec 639209020280000000 Unspecified
+prim-dt-local 639170892000000000 Local
+prim-timespan 937840050000
+prim-bytes 6 0 255
+prim-bytes-empty 0
+rm-missing-set MissingManifestResourceException
+box-str bool=True char=Z byte=200
+box-str sbyte=-42 int16=-1234 uint16=65000
+box-cat -42 -1234
+== bcl fault message reads ==
+fault int-parse System.FormatException msg[The input string 'x' was not in a correct format.]
+fault convert-toint32 System.FormatException msg[The input string 'zz' was not in a correct format.]
+fault substring-negative System.ArgumentOutOfRangeException msg[startIndex ('-1') must be a non-negative value. (Parameter 'startIndex')\nActual value was -1.]
+fault substring-past-end System.ArgumentOutOfRangeException msg[startIndex cannot be larger than length of string. (Parameter 'startIndex')]
+fault array-index System.IndexOutOfRangeException msg[Index was outside the bounds of the array.]
+fault invalid-cast System.InvalidCastException msg[Unable to cast object of type 'System.Int32' to type 'System.String'.]
+fault null-deref System.NullReferenceException msg[Object reference not set to an instance of an object.]
+fault dict-duplicate-key System.ArgumentException msg[An item with the same key has already been added. Key: k]
+fault dict-missing-key System.Collections.Generic.KeyNotFoundException msg[The given key 'zz' was not present in the dictionary.]
+fault list-ctor-negative System.ArgumentOutOfRangeException msg[Non-negative number required. (Parameter 'capacity')]
+fault list-index System.ArgumentOutOfRangeException msg[Index was out of range. Must be non-negative and less than the size of the collection. (Parameter 'index')]
+fault datetime-parse System.FormatException msg-read ok non-empty True
+fault timespan-parse System.FormatException msg[String 'nope' was not recognized as a valid TimeSpan.]
+fault divide-by-zero System.DivideByZeroException msg[Attempted to divide by zero.]
+fault enum-parse System.ArgumentException msg[Requested value 'nope' was not found.]
+fault guid-parse System.FormatException msg[Unrecognized Guid format.]
+fault checked-overflow System.OverflowException msg[Arithmetic operation resulted in an overflow.]
+fault default-ctor-message System.InvalidOperationException msg[Operation is not valid due to the current state of the object.]
+fault encoding-932 System.NotSupportedException msg[No data is available for encoding 932. For information on defining a custom encoding, see the documentation for the Encoding.RegisterProvider method.]

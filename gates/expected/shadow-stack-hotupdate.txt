@@ -1,0 +1,9 @@
+caught: shadow probe boom
+interleaved trace:
+   at HotUpdatePatch.ShadowNote.Describe()
+   at HotUpdateBase.Counter.RenderVia()
+   at HotUpdatePatch.ShadowProbe.Describe()
+   at HotUpdateBase.Counter.Render()
+   at HotUpdateBase.Program.ShadowTraceScenario()
+   at HotUpdateBase.Program.Main()
+shadow-trace: caught in AOT base

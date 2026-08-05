@@ -1,0 +1,5 @@
+-xc++
+-std=c++17
+-Iruntime/core
+-Iruntime/godot
+-Ithird_party
