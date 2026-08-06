@@ -583,6 +583,31 @@ CMAKE=${CMAKE:-cmake}
 bundled_cmake() { printf '%s/buildtools/cmake/bin/cmake%s\n' "$1" "$EXE_EXT"; }
 bundled_ninja() { printf '%s/buildtools/ninja/ninja%s\n'     "$1" "$EXE_EXT"; }
 
+# emsdk_node SDKROOT / bundled_node BUNDLE — the node the SDK carries, which
+# every emcc link runs. The split is the upstream archives' own shape, not the
+# suffix: nodejs.org roots the POSIX binary under bin/ and the Windows one at the
+# tree top. It is absorbed here rather than normalized while unpacking because
+# setup-*.sh stages upstream verbatim (gates/setup-buildtools.sh).
+emsdk_node() {
+    if [ "$DN2CPP_OS" = windows ]; then
+        printf '%s/node/node.exe\n' "$1"
+    else
+        printf '%s/node/bin/node\n' "$1"
+    fi
+}
+bundled_node() { emsdk_node "$1/emsdk"; }
+
+# emsdk_node_cfg — the same path as a .emscripten NODE_JS value. Relative to
+# $CFGDIR (the config's own directory, `<sdk>/emscripten/`) so the SDK tree stays
+# movable; single-quoted so this shell does not expand what emcc must.
+emsdk_node_cfg() {
+    if [ "$DN2CPP_OS" = windows ]; then
+        printf "'\$CFGDIR/../node/node.exe'\n"
+    else
+        printf "'\$CFGDIR/../node/bin/node'\n"
+    fi
+}
+
 # ── MSVC (cl.exe) toolchain import ────────────────────────────────────────────
 # Opt in with CMAKE_CXX_COMPILER=cl (or an absolute cl.exe path); imports
 # vcvarsall x64 so a plain Git Bash gets cl.exe non-interactively.
@@ -753,6 +778,9 @@ BUILDTOOLS_PIN=gates/expected/buildtools-pin.txt
 
 # ── The Emscripten SDK ────────────────────────────────────────────────────────
 EMSDK_PIN=gates/expected/emsdk-pin.txt
+
+# ── The Node.js the SDK carries, because every emcc link runs one ─────────────
+NODE_PIN=gates/expected/node-pin.txt
 
 # _emsdk_set_ctx ORIGIN ROOT STAMP — record WHICH SDK was resolved, as the cache
 # key term gate_cache_check reads. Deliberately NOT exported: a gate keys the SDK
