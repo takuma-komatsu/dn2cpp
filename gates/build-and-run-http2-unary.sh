@@ -209,10 +209,10 @@ grep -qF '[contentread] body-lagged-headers=False' "$out/native.out" || {
 # PooledConnectionIdleTimeout — the failure mode being an intercept that drops the
 # handler instance — reuses the connection in BOTH lines.
 grep -qF '[pool] default-reuse=True' "$out/native.out" || {
-    echo "FAIL: a default-configured handler did not reuse a 2 s-idle connection" >&2
+    echo "FAIL: a default-configured handler did not reuse a 5 s-idle connection" >&2
     cat "$out/native.out" >&2; exit 1; }
 grep -qF '[pool] expiring-reuse=False' "$out/native.out" || {
-    echo "FAIL: PooledConnectionIdleTimeout=1s did not stop the reuse of a 2 s-idle connection" >&2
+    echo "FAIL: PooledConnectionIdleTimeout=1s did not stop the reuse of a 5 s-idle connection" >&2
     cat "$out/native.out" >&2; exit 1; }
 # Both halves observed at the SERVER. Four concurrent h2 requests rode ONE
 # connection — multiplexing, impossible while every call has its own multi — and
