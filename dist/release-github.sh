@@ -88,8 +88,8 @@ LANES_KNOWN="editor-macos editor-windows web macos"
 # placeholders; only the suffix that keeps their notes rows apart differs.
 editor_row() {
     printf 'editor|%s|%s\n' \
-        "release_version asset asset_sha256 fork_commit base_pin engine_provenance editor_version_string dn2cpp_commit toolchain_content_hash corelib_framework prebuilt_axes cmake_version ninja_version" \
-        "ASSET_EDITOR$1:asset ASSET_EDITOR$1_SHA256:asset_sha256 EDITOR_VERSION_STRING$1:editor_version_string DN2CPP_COMMIT$1:dn2cpp_commit TOOLCHAIN_CONTENT_HASH$1:toolchain_content_hash PREBUILT_AXES$1:prebuilt_axes CMAKE_VERSION$1:cmake_version NINJA_VERSION$1:ninja_version"
+        "release_version asset asset_sha256 fork_commit base_pin engine_provenance editor_version_string dn2cpp_commit toolchain_content_hash corelib_framework prebuilt_axes cmake_version ninja_version node_version" \
+        "ASSET_EDITOR$1:asset ASSET_EDITOR$1_SHA256:asset_sha256 EDITOR_VERSION_STRING$1:editor_version_string DN2CPP_COMMIT$1:dn2cpp_commit TOOLCHAIN_CONTENT_HASH$1:toolchain_content_hash PREBUILT_AXES$1:prebuilt_axes CMAKE_VERSION$1:cmake_version NINJA_VERSION$1:ninja_version NODE_VERSION$1:node_version"
 }
 
 lane_row() {

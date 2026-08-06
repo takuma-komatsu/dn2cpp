@@ -137,15 +137,19 @@ runs; on a fresh clone generate it with `godot --headless --dump-extension-api`.
 
 No hand-installed Emscripten: `gates/setup-emsdk.sh` unpacks the SDK
 `gates/expected/emsdk-pin.txt` pins, and every wasm gate resolves one through
-`dn2cpp_emsdk_resolve`. `node` is the half neither the repository nor the
-toolchain bundle carries, and `emcc` runs one to link.
+`dn2cpp_emsdk_resolve`. That SDK carries the node `gates/expected/node-pin.txt`
+pins, inside itself: `emcc` runs one on every link, and the SDK's own config is
+what names it.
 
 `gates/expected/buildtools-pin.txt` pins a cmake and a ninja too, but that pin
 governs only what the **toolchain bundle ships**: the repository's own gates
 build through the host's pair, which is why the row above still asks for one.
 Run `gates/setup-buildtools.sh` all the same, before `gates/setup-godot-fork.sh`
 packages a bundle — packaging without it merely warns, and the two editor-export
-gates then fail (not skip) asserting the export used the bundle's own cmake.
+gates then fail (not skip) asserting the export used the bundle's own cmake. The
+node pin reaches further than that: `dn2cpp_emsdk_resolve` puts the resolved
+SDK's node ahead of any host one, so the gates link through the pinned node the
+bundle ships rather than through whatever the machine happens to have.
 
 Two subsystems are vendored and on by default: the Boehm GC (`third_party/bdwgc`;
 `DN2CPP_NO_GC=1` opts out) and the HTTP/HTTPS transport (`DN2CPP_USE_CURL`:

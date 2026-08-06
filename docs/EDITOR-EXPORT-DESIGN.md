@@ -224,9 +224,12 @@ empty because the editor loads GodotTools from a stream.
   shipped sysroot included, on finding one that names another path. A Web export
   compiles through it, so a host with no SDK can make one; it is also what lets
   the web prebuilt's key name a toolchain file *inside* the bundle. Absent when
-  the packaging host had no SDK, which refuses only a Web export. `node` is
-  deliberately **not** bundled: `emcc` runs one to link, and it is the one tool
-  of the Web toolchain the export still takes off the host.
+  the packaging host had no SDK, which refuses only a Web export. Its `node/`
+  sits **inside** the SDK, the placement the Windows SDK's `python/` has and for
+  the same reason: it is a second runtime `emcc` starts on every link, and the
+  SDK's own `$CFGDIR`-relative config is what names it. Trimmed to the one
+  executable plus `node/LICENSE`, whose text carries the bundled V8, ICU,
+  OpenSSL and zlib terms as well.
 
   Re-staging is keyed on a stamp of the upstream archive's sha256, the keep list
   and the bake recipe below, so a re-package re-copies the SDK exactly when one
@@ -368,13 +371,14 @@ every C++ compiler stripped from PATH and those three variables emptied — the
 state Explorer launches an editor in — and reads back both the import and the
 `cl.exe` cmake then chose. Web and Android
 are exempt — each brings its own compiler — so off a bundle carrying the build
-tools those two export from a plain Explorer launch, with only the .NET SDK and
-(for Web) node installed. A Web export off a POSIX host wants one more the
-bundle does not carry: `emcc` is a Python program, an interpreter travels with
-the SDK on Windows alone, and Apple's `/usr/bin/python3` is below the 3.10 emcc
-requires — unlike node, nothing preflights it. What survives on macOS is the
-compiler alone: an editor launched from Finder inherits a minimal PATH, so a
-`clang++` outside `/usr/bin` is invisible to it.
+tools those two export from a plain Explorer launch, with only the .NET SDK
+installed. A Web export off a POSIX host wants one more the bundle does not
+carry: `emcc` is a Python program, an interpreter travels with the SDK on
+Windows alone, and Apple's `/usr/bin/python3` is below the 3.10 emcc requires.
+It is the last host tool a Web export needs, and nothing preflights it — node
+left that list by moving into the SDK, python was never on it. What survives on
+macOS is the compiler alone: an editor launched from Finder inherits a minimal
+PATH, so a `clang++` outside `/usr/bin` is invisible to it.
 
 ## 5. Repo / project structure for parallel development
 
@@ -448,13 +452,13 @@ Gates, all in the dn2cpp repo:
   `gates/setup-godot-fork-web.sh`).
 - `gates/build-and-run-godot-editor-export-web-hermetic.sh` — the Web export on a
   machine synthesized without any of what the bundle carries: no Emscripten SDK,
-  no cmake and no ninja on `PATH`, no `EM_*` in the environment, and the bundle's
-  own copies read-only across the export. Only node and dotnet are left, which is
-  the whole claim — the two the bundle deliberately ships none of. Every other
-  Web assertion is blind to which SDK and which cmake compiled the artifacts, so
-  this is the only one a bundle shipping neither, or a baked cache short a
-  variant the export resolves, can fail. It is also the only oracle for the
-  agreement between `dist/buildtools-trim.txt` and the fork's
+  no cmake, no ninja and no node on `PATH`, no `EM_*` in the environment, and the
+  bundle's own copies read-only across the export. Only dotnet is left, which is
+  the whole claim — everything the export links through comes out of the bundle.
+  Every other Web assertion is blind to which SDK and which cmake compiled the
+  artifacts, so this is the only one a bundle shipping neither, or a baked cache
+  short a variant the export resolves, can fail. It is also the only oracle for
+  the agreement between `dist/buildtools-trim.txt` and the fork's
   `Dn2CppToolchain.IsBuildToolsLayout`: an over-trim leaves a staged tree the
   editor refuses, and nothing that reads one tree alone can see it.
 

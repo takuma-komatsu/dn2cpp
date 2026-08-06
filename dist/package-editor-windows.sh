@@ -152,13 +152,17 @@ cmp -s "artifacts/toolchain/$SIZE_BUNDLE/manifest.json" "$MANIFEST" \
 BUNDLE_BYTES="$(size_report_row layout)"
 EMSDK_BYTES="$(size_report_row emsdk)"
 BUILDTOOLS_BYTES="$(size_report_row buildtools)"
+NODE_BYTES="$(size_report_row emsdk/node)"
 [ -n "$BUNDLE_BYTES" ] || die "$SIZE_REPORT carries no 'layout' row — the installed size is unknown"
 [ -n "$EMSDK_BYTES" ] || die "$SIZE_REPORT carries no 'emsdk' row — the bundle staged no Emscripten SDK"
-# Packaging a bundle without them only warns, because a developer has cmake; a
-# PUBLISHED editor must not send its users to a package manager to export.
+# Packaging a bundle without either only warns, because a developer's machine
+# already has cmake and node; a PUBLISHED editor must not send its users to a
+# package manager to export.
 [ -n "$BUILDTOOLS_BYTES" ] \
     || die "$SIZE_REPORT carries no 'buildtools' row — the bundle staged no cmake/ninja (gates/setup-buildtools.sh unpacks the pinned pair)"
-echo "size:          $BUNDLE_BYTES bytes installed, of which emsdk $EMSDK_BYTES, buildtools $BUILDTOOLS_BYTES"
+[ -n "$NODE_BYTES" ] \
+    || die "$SIZE_REPORT carries no 'emsdk/node' row — the SDK staged no node, which every emcc link runs (gates/setup-emsdk.sh unpacks the pinned one)"
+echo "size:          $BUNDLE_BYTES bytes installed, of which emsdk $EMSDK_BYTES (node $NODE_BYTES), buildtools $BUILDTOOLS_BYTES"
 
 # The staged tree's own provenance, never a second reading of the pin: what
 # shipped is what that file describes.
@@ -171,6 +175,15 @@ buildtools_get() {   # buildtools_get KEY
 BUNDLE_CMAKE="$(buildtools_get cmake_version)"
 BUNDLE_NINJA="$(buildtools_get ninja_version)"
 echo "buildtools:    cmake $BUNDLE_CMAKE + ninja $BUNDLE_NINJA"
+
+EMSDK_JSON="$FORK_GODOTSHARP/Dn2Cpp/emsdk/emsdk.json"
+[ -f "$EMSDK_JSON" ] || die "no staged emsdk provenance at $EMSDK_JSON"
+emsdk_get() {   # emsdk_get KEY
+    # shellcheck disable=SC2086
+    $PY -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$EMSDK_JSON" "$1"
+}
+BUNDLE_NODE="$(emsdk_get node_version)"
+echo "node:          $BUNDLE_NODE, inside the SDK"
 
 # ── 4. Export axes ───────────────────────────────────────────────────────────
 # A missing axis costs the first export to it a from-source runtime build — same
@@ -486,8 +499,10 @@ prebuilt_axes=$AXES
 bundle_installed_bytes=$BUNDLE_BYTES
 emsdk_installed_bytes=$EMSDK_BYTES
 buildtools_installed_bytes=$BUILDTOOLS_BYTES
+node_installed_bytes=$NODE_BYTES
 cmake_version=$BUNDLE_CMAKE
 ninja_version=$BUNDLE_NINJA
+node_version=$BUNDLE_NODE
 codesign=unsigned
 EOF
 
