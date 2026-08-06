@@ -332,19 +332,6 @@ if(DN2CPP_HIDDEN_VISIBILITY AND NOT MSVC)
     add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
 endif()
 
-# ── .NET-module trace gate: compile-time default ──────────────────────────────
-# dn2cpp_dm_trace_enabled() reads DN2CPP_DM_TRACE from the environment, and a wasm
-# module has no environment to read — so on Emscripten the init trace could never
-# be turned on, by anyone, including the gate whose job is to assert the markers it
-# prints. Raise the compile-time floor there. An explicitly-set variable still wins
-# on every target that has one, so no other axis changes.
-# TARGET is the dn2cpp_dotnetmodule library, whose single TU defines the gate.
-function(_dn2cpp_dotnetmodule_trace_default target)
-    if(EMSCRIPTEN)
-        target_compile_definitions(${target} PRIVATE DN2CPP_DM_TRACE_DEFAULT=1)
-    endif()
-endfunction()
-
 # ── Shared per-target compile options ─────────────────────────────────────────
 # Every target here compiles -O2. Our own code warns (/W3 on MSVC, -Wall
 # elsewhere); vendored third-party code is warning-suppressed (/w, -w — its
@@ -407,7 +394,6 @@ function(_dn2cpp_add_dotnetmodule_target runtime_target)
         "${DN2CPP_ROOT}/runtime/core"
         "${DN2CPP_ROOT}/runtime/dotnetmodule")
     target_link_libraries(dn2cpp_dotnetmodule PUBLIC ${runtime_target})
-    _dn2cpp_dotnetmodule_trace_default(dn2cpp_dotnetmodule)
     add_library(dn2cpp::dn2cpp_dotnetmodule ALIAS dn2cpp_dotnetmodule)
 endfunction()
 
