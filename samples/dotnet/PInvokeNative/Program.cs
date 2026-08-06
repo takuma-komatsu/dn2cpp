@@ -44,6 +44,7 @@ namespace PInvokeNative
             PInvokeUcoReverseSubset.Program.__GateEntry();
             PInvokeVtblStructSubset.Program.__GateEntry();
             PInvokeExplicitUnionSubset.Program.__GateEntry();
+            SequentialSizeSubset.Program.__GateEntry();
             PInvokeVariantByRefSubset.Program.__GateEntry();
             PInvokeSingleFieldStructSubset.Program.__GateEntry();
             PInvokeStackallocUtf8Subset.Program.__GateEntry();
