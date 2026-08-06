@@ -368,8 +368,17 @@ endfunction()
 # they always have — they are not ours to fix.
 function(_dn2cpp_stack_frame_limit target)
     if(DN2CPP_MAX_STACK_FRAME AND NOT MSVC)
+        # GCC's option name keeps its trailing '=', clang takes the group name
+        # without one. Spelling it clang's way on GCC does not merely lose the
+        # ceiling: cc1plus rejects the -Werror= itself and every TU fails. A clang
+        # host never sees it, so the whole Linux lane is what breaks.
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            set(_werror_frame "-Werror=frame-larger-than=")
+        else()
+            set(_werror_frame "-Werror=frame-larger-than")
+        endif()
         target_compile_options(${target} PRIVATE
-            "-Wframe-larger-than=${DN2CPP_MAX_STACK_FRAME}" -Werror=frame-larger-than)
+            "-Wframe-larger-than=${DN2CPP_MAX_STACK_FRAME}" "${_werror_frame}")
     endif()
 endfunction()
 
