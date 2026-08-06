@@ -431,6 +431,31 @@ grep -qF "$ninja_ver" dist/licenses/README.md \
     && ok "dist/licenses/README.md records the pinned ninja version ($ninja_ver)" \
     || bad "dist/licenses/README.md does not name ninja $ninja_ver — re-fetch COPYING at the pinned tag and record its sha256"
 
+# The SDK archive holds no licence file for LLVM or Binaryen — its only texts sit
+# under emscripten/ — so no keep list can reach one and these two files are the
+# bundle's whole copy of those terms.
+for lic in llvm-LICENSE.txt binaryen-LICENSE.txt; do
+    [ -f "dist/licenses/$lic" ] \
+        && ok "dist/licenses/$lic exists" \
+        || bad "dist/licenses/$lic is missing — the Emscripten SDK archive carries no licence text for it"
+done
+# Neither revision is a field of any pin, so the release_hash is the only thread
+# tying these texts to the SDK build they were read off: it moving is what tells
+# a reader to re-measure clang --version and wasm-opt --version and re-fetch.
+emsdk_rel=$(pin_field "$EMSDK_PIN" release_hash)
+grep -qF "$emsdk_rel" dist/licenses/README.md \
+    && ok "dist/licenses/README.md records the pinned SDK release hash ($emsdk_rel)" \
+    || bad "dist/licenses/README.md does not name the pinned SDK release hash $emsdk_rel — re-measure the LLVM and Binaryen revisions off the newly unpacked SDK and re-fetch both texts"
+
+# A recorded hash nothing recomputes decays into decoration. Over the directory
+# rather than a list, so a text vendored later is checked by having been added.
+for lic in dist/licenses/*.txt; do
+    lic_sha=$(shasum -a 256 "$lic" | awk '{print $1}')
+    grep -qF "$lic_sha" dist/licenses/README.md \
+        && ok "dist/licenses/README.md records $(basename "$lic")'s own sha256" \
+        || bad "dist/licenses/README.md does not record $(basename "$lic")'s sha256 ($lic_sha) — a vendored text whose hash is unrecorded cannot be checked against upstream on a refresh"
+done
+
 # A keep list is the only statement of what the bundle carries of its archive, so
 # it has to read as one: a repeated entry and an entry a directory above it
 # already keeps both read as a deliberate narrowing that is not there. An OS tag
