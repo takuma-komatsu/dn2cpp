@@ -494,9 +494,12 @@ bundle_trim() {
 
     LC_ALL=C sort -u "$keep" -o "$keep"
     # A licence rides with its package: kept when the directory holding it still
-    # holds a kept file at any depth, dropped with the tree it documented.
+    # holds a kept file at any depth, dropped with the tree it documented. The
+    # names are the ones upstreams actually use — musl's text is a COPYRIGHT and
+    # nothing else would reach it.
     ( cd "$root" && find . ! -type d \
-        \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) ) \
+        \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \
+           -o -iname 'COPYRIGHT*' \) ) \
         | LC_ALL=C sed 's|^\./||' | LC_ALL=C sort -u > "$tmp/lic"
     awk -v licfile="$tmp/lic" '
         { d = $0; while (sub(/\/[^\/]*$/, "", d)) kept[d] = 1 }

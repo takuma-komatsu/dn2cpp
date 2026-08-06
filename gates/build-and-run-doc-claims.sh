@@ -465,7 +465,7 @@ for TRIM in "$EMSDK_TRIM" "$BUILDTOOLS_TRIM"; do
 done
 
 echo "== 10/10 dangling path references in every doc =="
-for f in docs/*.md README.md CLAUDE.md AGENTS.md; do
+for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"
 done
 
