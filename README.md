@@ -78,18 +78,20 @@ that diffs native output against real .NET.
 | Delivery target | CLI flag | Load path | Verification gate | Windows | macOS | Linux | iOS | Android | WASM |
 |----|----|----|----|:-:|:-:|:-:|:-:|:-:|:-:|
 | Console | *(default)* | Native executable | `gates/build-and-run-sample.sh` | ✅ | ✅ | ✅ | ✅ sim | ✅ NDK build | ✅ (full GC) |
-| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | 🚧 | ✅ | 🚧 | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
+| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | ✅ | ✅ | 🚧 | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
 | GDExtension | `--gdextension` | Godot loads `.dylib`/`.so`/`.dll` | `gates/build-and-run-godot-sample.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | — |
-| Hot update (BPI) | `--hotupdate-base` + `--emit-patch` | `HotUpdate.LoadDirectory("*.bpi")` | `gates/build-and-run-hotupdate-subset.sh`, `gates/build-and-run-hotupdate-godot.sh` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Hot update (BPI) | `--hotupdate-base` + `--emit-patch` | `HotUpdate.LoadDirectory("<dir>")` | `gates/build-and-run-hotupdate-subset.sh`, `gates/build-and-run-hotupdate-godot.sh` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bindings generation | `--generate-bindings extension_api.json` | Build step | (runs inside every Godot-lane gate) | ✅ | ✅ | ✅ | — | — | — |
 
 Legend: ✅ verified in a gate · 🚧 not yet verified (see notes) · — not applicable.
 
-**Note (Godot .NET drop-in).** Its E2E gates need a scons-built
-mono-enabled Godot editor + export template
-(`gates/setup-godot-dotnet.sh`, `gates/setup-godot-fork.sh`), which is
-macOS-only tooling today — on any other host they opt out via `gate_skip`
-rather than genuinely running, which is what the two 🚧 cells reflect.
+**Note (Godot .NET drop-in).** Its E2E gates need a mono-enabled Godot
+editor + export template. `gates/setup-godot-dotnet.sh` takes them from
+an official install on any host and builds them with scons on macOS;
+`gates/setup-godot-fork.sh` builds the forked editor for macOS and
+Windows and has no Linux arm, so there the editor-export half opts out
+via `gate_skip` rather than genuinely running, which is what the 🚧 cell
+reflects.
 The Android cell is the NDK cross-build of the same drop-in, and the
 forked editor's Android export runs an unmodified C# demo on a physical
 device against the *official* mono export template. The WASM cell is a
@@ -101,8 +103,8 @@ failing.
 
 **Note (Linux).** The full suite runs green on Linux, the Godot desktop
 GDExtension lane included against a real engine; every skip is
-cross-toolchain (Xcode, Android NDK, Emscripten) or the macOS-only fork
-tooling above, not a Linux support gap.
+cross-toolchain (Xcode, Android NDK, Emscripten) or the fork tooling
+above for want of a Linux arm, not a Linux support gap.
 
 ## Quick start
 
@@ -168,7 +170,7 @@ through a `Dn2Cpp.Build` consumer).
 ### 60-second smoke test
 
 ```bash
-git clone https://github.com/<owner>/dn2cpp.git
+git clone https://github.com/takuma-komatsu/dn2cpp.git
 cd dn2cpp
 godot --headless --dump-extension-api     # only on a fresh clone
 ./gates/build-and-run-sample.sh           # console: C# → IL → C++ → native → run
@@ -248,9 +250,10 @@ no changes to the engine or its export template.**
 - **ABI pin — read this before shipping.** `godotengine/godot a13da4feb8`
   (4.7.1-stable). The emitted library indexes the interop table **by
   hard-coded position, with no runtime handshake**, so a mismatched engine
-  build mis-dispatches silently rather than failing loudly. The gates
-  carry a SHA-256 tripwire over the clone HEAD + the interop array block +
-  `ManagedCallbacks.cs`, frozen in
+  build mis-dispatches silently rather than failing loudly. Two things hold
+  it: the clone commit, in `gates/expected/godot-fork-pin.txt` and in each
+  gate's own `PINNED_COMMIT`, and a SHA-256 tripwire over the interop array
+  block and `ManagedCallbacks.cs`, frozen in
   `gates/expected/godot-dotnet-abi.sha256`; re-pin = re-run
   `gates/setup-godot-dotnet.sh` and re-freeze the fingerprint.
 - **Gate.** `gates/build-and-run-godot-dotnet-sample.sh` — verified E2E in
@@ -258,11 +261,12 @@ no changes to the engine or its export template.**
   `ToSignal`, `RefCounted` lifetime stress, and **async interop** (`Task`
   continuations marshal back to the main thread via a non-blocking
   run-queue pump driven by the host frame callback).
-  `gates/build-and-run-godot-editor-export.sh` and its `-ios` / `-web`
-  siblings drive the whole fork pipeline from one headless export — to a
-  playable macOS `.app`, to an xcframework booted on an iPhone simulator,
-  and to a wasm side module running in a real browser. Godot's upstream
-  mono `squash_the_creeps` demo goes through this lane unmodified.
+  `gates/build-and-run-godot-editor-export.sh` and its `-ios` / `-android` /
+  `-web` siblings drive the whole fork pipeline from one headless export — to
+  a playable macOS `.app`, to an xcframework booted on an iPhone simulator,
+  to an APK the stock Android mono template loads, and to a wasm side module
+  running in a real browser. Godot's upstream mono `squash_the_creeps` demo
+  goes through this lane unmodified.
 - **Carve-outs.** Editor F5 (export-run only; TOOLS builds use the
   hostfxr 6-argument path), editor hot-reload state (`Callable` /
   delegate serialization reports "unserializable", which the engine
@@ -313,9 +317,10 @@ GDExtension classes rather than as C# scripts.
 
 - **What.** A HybridCLR-style AOT + interpreter hybrid. `--emit-patch`
   bakes a patch assembly at build time into a **BPI** — a compact
-  register-based bytecode (v2, default) or the v1 stack machine
-  (`--patch-stackcode`) — that a base image built with `--hotupdate-base`
-  loads at runtime and executes via `runtime/core/dn2cpp_interp.cpp`.
+  register-based bytecode by default, or the stack encoding
+  `--patch-stackcode` selects — that a base image built with
+  `--hotupdate-base` loads at runtime and executes via
+  `runtime/core/dn2cpp_interp.cpp`.
   Patches inherit from and override AOT types (dynamic vtable patch, N2M
   trampolines, patch-derived `Node` instances) **without any runtime code
   generation** — so it works on iOS and consoles.
@@ -344,11 +349,12 @@ GDExtension classes rather than as C# scripts.
 
 The core is platform-agnostic. Divergence is absorbed by a **Platform
 Abstraction Layer** (`runtime/core/platform/`, `dn2cpp_pal_*` seams:
-file-system metadata and mutation, the environment block, the
-ANSI/system-code-page transforms, the executable path, the process-wide
-memory barrier, local time, malloc-usable-size, and the native backtrace)
-with per-platform implementations (`posix/`, `wasm/`, `windows/`, plus a
-complete portable-C++17 `reference/` implementation of the whole seam).
+file-system metadata and mutation, console output and its flush, the
+environment block, the ANSI/system-code-page transforms, the executable
+path, the process-wide memory barrier, local time, malloc-usable-size, and
+the native backtrace) with per-platform implementations (`posix/`, `wasm/`,
+`windows/`, plus a complete portable-C++17 `reference/` implementation of
+the whole seam).
 **CMake** (`runtime/CMakeLists.txt`, Ninja) is the sole build backend; the
 gate scripts are thin wrappers. **`docs/PORTING.md` is the guide for
 bringing dn2cpp up on a new target** — the seam inventory, the CMake
@@ -412,10 +418,11 @@ flowchart TB
 ### Contract seams
 
 - `IEmitBackend` (`src/Dn2Cpp.Transpiler/IEmitBackend.cs`) —
-  `RuntimeHeader`, `EmitEpilogue(...)`, `ShouldSkipMethodBodies(ClassInfo)`,
-  `WantsSyntheticBody`, `HasPlaceholderBody`.
+  `RuntimeHeader`, `CallIntrinsics`, `EmitEpilogue(...)`,
+  `ShouldSkipMethodBody(ClassInfo, MethodInfo)`, `WantsSyntheticBody`,
+  `HasPlaceholderBody`.
 - `ICallIntrinsics` (`src/Dn2Cpp.Transpiler/ICallIntrinsics.cs`) —
-  `TryEmitCall(mc, callee, isCallvirt)`.
+  `TryEmitCall(mc, callee, isCallvirt)`, `TryEmitNewobj(mc, ctor)`.
 
 `docs/ARCHITECTURE.md` covers the internals and the "how to add X"
 recipes (a new IL opcode, a BCL intrinsic, an engine call, a new target
@@ -605,7 +612,7 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 | `runtime/godot/`, `runtime/dotnetmodule/` | Table-driven GDExtension bridge; `modules/mono` drop-in glue |
 | `runtime/CMakeLists.txt` | Sole native build backend (Ninja); gates thin-wrap it |
 | `internal/DnZlib/`, `internal/DnBrotli/`, `internal/DnHttp/` | Managed-swap libraries shipped as conditional default references |
-| `third_party/` | Vendored: `bdwgc/`, `zlib/`, `brotli/`, `highway/`, `gdextension_interface.h` (see License) |
+| `third_party/` | Vendored: `bdwgc/`, `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
@@ -737,24 +744,22 @@ it does not come back as a ticket.
   kernel store into a write-protected page returns `EFAULT` rather than
   faulting into the GC's handler. Ask `dn2cpp_gc_kernel_write_unsafe(p)`
   and stage through your own buffer, as the PAL's own syscalls do.
-- **Seven hand-written runtime types refuse `MemberwiseClone`**
-  (`Thread`, `SemaphoreSlim`, `EventWaitHandle`, `CountdownEvent`,
-  `Barrier`, `ReaderWriterLockSlim`, `Timer`): their C++ representation
-  solely owns native state, so a bitwise copy would make two owners of one
-  resource. The refusal is a catchable `PlatformNotSupportedException`
-  naming the type.
+- **Hand-written runtime types refuse `MemberwiseClone`** (`Thread`,
+  `SemaphoreSlim`, `CountdownEvent`, `Barrier`, `ReaderWriterLockSlim`,
+  `Timer`, `ManualResetEventSlim`, and `WaitHandle` with the event handles
+  derived from it — `EventWaitHandle`, `ManualResetEvent`,
+  `AutoResetEvent`): their C++ representation solely owns native state,
+  so a bitwise copy would make two owners of one resource. The refusal
+  is a catchable `PlatformNotSupportedException` naming the type.
 
 ### Transient limitations
 
 These are open work, not boundaries — **`docs/STATUS.md` is the
 authoritative list**. Representative examples as of now: the forked
-editor's distributable `.app` is ad-hoc signed and not notarized;
-`GC.SuppressFinalize` on an object already moved onto the finalization
-queue cannot un-queue it, so `Finalize` runs one extra time in a narrow
-resurrection window; and the Linux CI workflow has not yet had its first
-run on a hosted runner. iOS *device* execution is likewise unverified
-(provisioning required) — the simulator lane is E2E-verified and the
-device build path is exercised headlessly.
+editor's distributable `.app` is ad-hoc signed and not notarized. iOS
+*device* execution is likewise unverified (provisioning required) — the
+simulator lane is E2E-verified and the device build path is exercised
+headlessly.
 
 ### Runtime quirks
 
@@ -768,10 +773,9 @@ device build path is exercised headlessly.
 - **Notarize the distributable editor** — the packaged `.app` is ad-hoc
   signed today; notarizing it means auditing the hardened-runtime
   entitlements an editor needs to spawn a host `clang++` from outside the
-  bundle and its own cmake, ninja and Emscripten clang from inside it.
+  bundle and its own cmake, ninja, node and Emscripten clang from inside
+  it.
 - **Re-pin the fork** to the next upstream Godot stable.
-- **Linux CI** — get the smoke workflow through its first hosted run and
-  keep it green.
 - **Optimization** — devirtualization and inlining hints, unused-method
   elimination (ILLink integration), incremental transpilation (per-method
   differential C++ generation), and `#line` debug info mapping generated
@@ -830,6 +834,19 @@ Vendored third-party components keep their own licenses:
 - `third_party/highway/` — Google Highway 1.4.0, **Apache License 2.0 /
   BSD 3-Clause**
   ([`third_party/highway/LICENSE`](third_party/highway/LICENSE))
+- `third_party/curl/` — curl 8.21.0, the permissive **curl** license (an
+  MIT/X derivative)
+  ([`third_party/curl/COPYING`](third_party/curl/COPYING))
+- `third_party/mbedtls/` — Mbed TLS 3.6.7, dual **Apache-2.0 OR
+  GPL-2.0-or-later**; dn2cpp elects **Apache-2.0**, because a GPL election
+  would change the license of everything a dn2cpp-built binary links
+  ([`third_party/mbedtls/LICENSE`](third_party/mbedtls/LICENSE) carries both
+  texts)
+- `third_party/nghttp2/` — nghttp2 1.70.0, **MIT**
+  ([`third_party/nghttp2/COPYING`](third_party/nghttp2/COPYING))
+- `third_party/cacert/` — the Mozilla CA bundle as curl distributes it,
+  **MPL-2.0** — the one non-permissive license here. `cacert.pem` carries
+  provenance but no license text, so this line is the record
 - `third_party/gdextension_interface.h` — Godot GDExtension header,
   **MIT** (license text embedded in the file header)
 
