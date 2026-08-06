@@ -78,18 +78,20 @@ that diffs native output against real .NET.
 | Delivery target | CLI flag | Load path | Verification gate | Windows | macOS | Linux | iOS | Android | WASM |
 |----|----|----|----|:-:|:-:|:-:|:-:|:-:|:-:|
 | Console | *(default)* | Native executable | `gates/build-and-run-sample.sh` | ✅ | ✅ | ✅ | ✅ sim | ✅ NDK build | ✅ (full GC) |
-| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | 🚧 | ✅ | 🚧 | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
+| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | ✅ | ✅ | 🚧 | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
 | GDExtension | `--gdextension` | Godot loads `.dylib`/`.so`/`.dll` | `gates/build-and-run-godot-sample.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | — |
 | Hot update (BPI) | `--hotupdate-base` + `--emit-patch` | `HotUpdate.LoadDirectory("*.bpi")` | `gates/build-and-run-hotupdate-subset.sh`, `gates/build-and-run-hotupdate-godot.sh` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bindings generation | `--generate-bindings extension_api.json` | Build step | (runs inside every Godot-lane gate) | ✅ | ✅ | ✅ | — | — | — |
 
 Legend: ✅ verified in a gate · 🚧 not yet verified (see notes) · — not applicable.
 
-**Note (Godot .NET drop-in).** Its E2E gates need a scons-built
-mono-enabled Godot editor + export template
-(`gates/setup-godot-dotnet.sh`, `gates/setup-godot-fork.sh`), which is
-macOS-only tooling today — on any other host they opt out via `gate_skip`
-rather than genuinely running, which is what the two 🚧 cells reflect.
+**Note (Godot .NET drop-in).** Its E2E gates need a mono-enabled Godot
+editor + export template. `gates/setup-godot-dotnet.sh` takes them from
+an official install on any host and builds them with scons on macOS;
+`gates/setup-godot-fork.sh` builds the forked editor for macOS and
+Windows and has no Linux arm, so there the editor-export half opts out
+via `gate_skip` rather than genuinely running, which is what the 🚧 cell
+reflects.
 The Android cell is the NDK cross-build of the same drop-in, and the
 forked editor's Android export runs an unmodified C# demo on a physical
 device against the *official* mono export template. The WASM cell is a
@@ -101,8 +103,8 @@ failing.
 
 **Note (Linux).** The full suite runs green on Linux, the Godot desktop
 GDExtension lane included against a real engine; every skip is
-cross-toolchain (Xcode, Android NDK, Emscripten) or the macOS-only fork
-tooling above, not a Linux support gap.
+cross-toolchain (Xcode, Android NDK, Emscripten) or the fork tooling
+above for want of a Linux arm, not a Linux support gap.
 
 ## Quick start
 
@@ -748,13 +750,10 @@ it does not come back as a ticket.
 
 These are open work, not boundaries — **`docs/STATUS.md` is the
 authoritative list**. Representative examples as of now: the forked
-editor's distributable `.app` is ad-hoc signed and not notarized;
-`GC.SuppressFinalize` on an object already moved onto the finalization
-queue cannot un-queue it, so `Finalize` runs one extra time in a narrow
-resurrection window; and the Linux CI workflow has not yet had its first
-run on a hosted runner. iOS *device* execution is likewise unverified
-(provisioning required) — the simulator lane is E2E-verified and the
-device build path is exercised headlessly.
+editor's distributable `.app` is ad-hoc signed and not notarized. iOS
+*device* execution is likewise unverified (provisioning required) — the
+simulator lane is E2E-verified and the device build path is exercised
+headlessly.
 
 ### Runtime quirks
 
@@ -768,10 +767,9 @@ device build path is exercised headlessly.
 - **Notarize the distributable editor** — the packaged `.app` is ad-hoc
   signed today; notarizing it means auditing the hardened-runtime
   entitlements an editor needs to spawn a host `clang++` from outside the
-  bundle and its own cmake, ninja and Emscripten clang from inside it.
+  bundle and its own cmake, ninja, node and Emscripten clang from inside
+  it.
 - **Re-pin the fork** to the next upstream Godot stable.
-- **Linux CI** — get the smoke workflow through its first hosted run and
-  keep it green.
 - **Optimization** — devirtualization and inlining hints, unused-method
   elimination (ILLink integration), incremental transpilation (per-method
   differential C++ generation), and `#line` debug info mapping generated
