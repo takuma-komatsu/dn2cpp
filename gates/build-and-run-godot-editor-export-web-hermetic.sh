@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Godot editor-export gate, Web lane: the export runs on a machine carrying
-# everything the export needs but node and dotnet. The Emscripten SDK, the cmake
-# and the ninja that ship INSIDE the toolchain bundle are the only ones
-# reachable, and they are read-only while the export compiles.
+# everything the export needs but dotnet. The Emscripten SDK, the node it runs
+# every link on, the cmake and the ninja that ship INSIDE the toolchain bundle
+# are the only ones reachable, and they are read-only while the export compiles.
 #
 # The subject is what the bundle carries, not the Web export: what a Web export
 # produces is byte-identical whether it compiled through the bundle's tools or
@@ -11,13 +11,15 @@
 # resolves — on every machine that develops this lane, i.e. every machine that
 # has them installed. The only way to see that is to take the host's away:
 #
-#   * PATH loses every Emscripten front-end plus cmake and ninja
+#   * PATH loses every Emscripten front-end plus node, cmake and ninja
 #     (path_without_tools), and every variable an activated emsdk exports is
 #     unset, so nothing the editor inherits can name a second SDK. It also loses
 #     every host C++ compiler: a Web export must need none, Emscripten bringing
 #     its own, and this is the only gate holding that claim — the desktop lane
-#     asserts the opposite refusal. node, python3 and dotnet stay, because emcc
-#     runs the first two and the publish runs the third.
+#     asserts the opposite refusal. node goes with them because the SDK now
+#     carries one, and a machine that has none of its own is the only place that
+#     proves it. python3 and dotnet stay: emcc runs the first, the publish the
+#     second.
 #   * The staged bundle's emsdk and buildtools are `chmod -R a-w` for the
 #     export's duration. An editor installs the bundle where the user cannot
 #     write, so a cache write is a failure on the user's machine and must be one
@@ -25,9 +27,9 @@
 #     it holds for a real export rather than for the three probe links packaging
 #     does.
 #
-# An absent SDK, cmake or ninja is therefore NOT a skip reason — it is the
-# premise. The skips are for the fork editor, the Web template, node, and the
-# python emcc runs.
+# An absent SDK, node, cmake or ninja is therefore NOT a skip reason — it is the
+# premise. The skips are for the fork editor, the Web template, and the python
+# emcc runs.
 #
 # No browser: the plain Web gate runs the exported game, and everything downstream
 # of the link is identical here. This one ends at the artifacts.
@@ -49,9 +51,9 @@ godot_fork_preflight
 if [ ! -f "$FORK_ROOT/web_template.zip" ]; then
     gate_skip "no Web template at $FORK_ROOT/web_template.zip — run gates/setup-godot-fork-web.sh"
 fi
-# emcc, cmake and ninja are NOT probed here, deliberately. node is: emcc runs it
-# (the SDK carries none of its own), and so does every wasm assertion below.
-command -v node >/dev/null 2>&1 || gate_skip "node not on PATH (emcc needs it to link)"
+# emcc, node, cmake and ninja are NOT probed here, deliberately: the bundle ships
+# all four, and a host holding none is this gate's premise rather than a reason
+# not to run. The assertions below use the bundle's node too.
 
 echo "== 1/6 The machine, minus everything the bundle carries =="
 # path_without_tools reads THIS PATH, so it runs before anything edits it; the
@@ -63,7 +65,7 @@ echo "== 1/6 The machine, minus everything the bundle carries =="
 # directory minus the names rather than dropping it, which is what lets /usr/bin
 # lose clang++ and keep the other nine hundred tools.
 # shellcheck disable=SC2086 — the front-end list is a word list, deliberately split.
-HERMETIC_PATH="$(path_without_tools $EMSDK_FRONTENDS cmake ninja clang clang++ cc c++ gcc g++)"
+HERMETIC_PATH="$(path_without_tools $EMSDK_FRONTENDS node cmake ninja clang clang++ cc c++ gcc g++)"
 HERMETIC_ENV=(env)
 for v in EMSDK EMSDK_NODE EMSDK_PYTHON EMSCRIPTEN; do
     HERMETIC_ENV+=(-u "$v")
@@ -81,19 +83,19 @@ HERMETIC_ENV+=("PATH=$HERMETIC_PATH" TERM=dumb)
 # The synthesis is the gate's premise, so it is asserted rather than assumed: a
 # mirror directory that silently kept its emcc — or its cmake — would leave every
 # assertion below passing about the host's copy.
-for tool in emcc em++ emcmake emar cmake ninja clang clang++ cc c++ gcc g++; do
+for tool in emcc em++ emcmake emar node cmake ninja clang clang++ cc c++ gcc g++; do
     if PATH="$HERMETIC_PATH" command -v "$tool" >/dev/null 2>&1; then
         echo "FAIL: $tool is still reachable on the synthesized PATH — this gate would prove nothing" >&2
         echo "      $HERMETIC_PATH" >&2
         exit 1
     fi
 done
-# The two the bundle deliberately carries none of.
-for tool in node dotnet; do
+# The one the bundle deliberately carries none of.
+for tool in dotnet; do
     PATH="$HERMETIC_PATH" command -v "$tool" >/dev/null 2>&1 \
         || gate_skip "$tool is not on PATH, and the bundle ships none (the export needs the machine's)"
 done
-# The third, and the one presence cannot answer: emcc is a launcher over python,
+# The other, and the one presence cannot answer: emcc is a launcher over python,
 # the SDK carries an interpreter on Windows alone, and macOS answers `python3`
 # with an Xcode stub stuck at 3.9.6 that the export's preflight refuses. So
 # mirror VerifyEmscriptenPython — its two names in its order, off the PATH the
@@ -152,6 +154,13 @@ stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
     echo "FAIL: the staged toolchain carries no Emscripten SDK at $STAGED_EMSDK" >&2
     echo "      That SDK is this gate's whole subject, and a host with none cannot export to" >&2
     echo "      the Web at all. Unpack the pinned one (gates/setup-emsdk.sh) and re-package." >&2
+    exit 1; }
+STAGED_NODE="$(bundled_node "$STAGED_DN2CPP")"
+[ -x "$STAGED_NODE" ] || {
+    echo "FAIL: the staged toolchain carries no node at $STAGED_NODE" >&2
+    echo "      The SDK's own node is this gate's subject alongside the SDK: every emcc link" >&2
+    echo "      runs one, and the export below runs on a PATH carrying none. Unpack the" >&2
+    echo "      pinned SDK (gates/setup-emsdk.sh) and re-package." >&2
     exit 1; }
 # Same shape, same reason: PATH has no cmake and no ninja by now, so a bundle
 # short either cannot export at all — and a bundle that quietly stopped staging
@@ -221,7 +230,7 @@ godot_export_step 2400 "$OUT/export.log" "$WEBDIR/index.html" \
 ro_written="$(find "$STAGED_EMSDK" "$STAGED_BUILDTOOLS" -newer "$OUT/ro-reference" -print -quit)"
 chmod -R u+w "$STAGED_EMSDK" "$STAGED_BUILDTOOLS"
 if [ "$export_rc" -ne 0 ]; then
-    echo "FAIL: --export-release failed with nothing on PATH but node and dotnet (see below)" >&2
+    echo "FAIL: --export-release failed with nothing on PATH but dotnet (see below)" >&2
     cat "$OUT/export.log" >&2
     exit 1
 fi
@@ -245,8 +254,9 @@ if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
 fi
 # The python line is the whole trace of the preflight that runs the interpreter
 # emcc's launchers would start; a prefix, because the exe, its version and which
-# of the three arms resolved it all vary by host.
-for marker in "dn2cpp: python " "dn2cpp: transpiling" \
+# of the three arms resolved it all vary by host. The node line is the same
+# preflight's, and which one it named is pinned below.
+for marker in "dn2cpp: python " "dn2cpp: node " "dn2cpp: transpiling" \
               "dn2cpp: compiling the drop-in library" "dn2cpp: staged"; do
     grep -qF "$marker" "$OUT/export.log" \
         || { echo "FAIL: export log lacks the dn2cpp marker: $marker" >&2; cat "$OUT/export.log" >&2; exit 1; }
@@ -274,6 +284,26 @@ case "$EMSDK_LINE_NATIVE" in
 esac
 echo "$EMSDK_LINE"
 
+# And which node every link of that SDK ran, from the same preflight's line. The
+# path is matched WHOLE against the staged SDK's own: the other two origins the
+# backend can report — an inherited EM_NODE_JS, or a PATH search — would each
+# mean the machine still had a node of its own, which is what this gate takes
+# away.
+NODE_LINE="$(first_line "$(grep -F 'dn2cpp: node ' "$OUT/export.log" || true)")"
+[ -n "$NODE_LINE" ] || {
+    echo "FAIL: the export log carries no 'dn2cpp: node' line — the backend named no node" >&2
+    exit 1; }
+STAGED_NODE_NATIVE="$(godot_fork_native_path "$STAGED_NODE" | tr '\\' /)"
+NODE_LINE_NATIVE="${NODE_LINE//\\//}"
+case "$NODE_LINE_NATIVE" in
+    *"dn2cpp: node $STAGED_NODE_NATIVE ("*) ;;
+    *) echo "FAIL: the export did not link through the staged bundle's own node" >&2
+       echo "      line:   $NODE_LINE" >&2
+       echo "      staged: $STAGED_NODE_NATIVE" >&2
+       exit 1 ;;
+esac
+echo "$NODE_LINE"
+
 # The exporter's own log, which the engine's never sees: the Web slot must have
 # imported the bundle's prebuilt runtime rather than rebuilding it. A drift is
 # fail-safe and therefore silent — the slot builds the runtime from source,
@@ -296,7 +326,7 @@ DROPIN="$WEBDIR/$PROJECT_NAME.so"
     echo "FAIL: no drop-in beside index.html at $DROPIN" >&2; ls -la "$WEBDIR" >&2; exit 1; }
 # A release side module has no name section, so grepping the file for a symbol
 # would also match an import: parse the export section.
-node gates/_wasm_symbols.js exports "$DROPIN" > "$OUT/dropin-exports.txt"
+"$STAGED_NODE" gates/_wasm_symbols.js exports "$DROPIN" > "$OUT/dropin-exports.txt"
 grep -qx "func godotsharp_game_main_init" "$OUT/dropin-exports.txt" || {
     echo "FAIL: $DROPIN does not export godotsharp_game_main_init" >&2
     head -20 "$OUT/dropin-exports.txt" >&2; exit 1; }
@@ -306,7 +336,7 @@ grep -qx "func godotsharp_game_main_init" "$OUT/dropin-exports.txt" || {
 # predating --trim-reflection accepts the flag, exits 0 and emits untrimmed
 # output; every other assertion here stays green and the module is simply one no
 # browser can instantiate.
-read -r maxfn maxfn_name < <(node gates/_wasm_symbols.js maxfunc "$DROPIN")
+read -r maxfn maxfn_name < <("$STAGED_NODE" gates/_wasm_symbols.js maxfunc "$DROPIN")
 if [ "$maxfn" -ge "$V8_MAX_FUNCTION_SIZE" ]; then
     echo "FAIL: the drop-in's largest function is $maxfn bytes ($maxfn_name), at or over V8's" >&2
     echo "      hard per-function ceiling of $V8_MAX_FUNCTION_SIZE — no browser will instantiate it." >&2

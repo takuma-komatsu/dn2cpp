@@ -85,27 +85,29 @@ Godot-dn2cpp.console.exe
 <!--lane:editor-macos-->
 **macOS（Apple Silicon）ホスト**
 
-| エクスポート先 | .NET SDK @@CORELIB_FRAMEWORK@@ | Xcode Command Line Tools | Xcode（full） | Python 3.10 以降 | Node.js 18 以降 | Android NDK・JDK | エクスポートテンプレート |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|---|
-<!--lane:macos-->| macOS | ● | ● | — | — | — | — | 本リリース同梱 |
-| iOS | ● | ● | ● | — | — | — | Godot 公式 |
-<!--lane:web-->| Web | ● | — | — | ●※ | ● | — | 本リリース同梱 |
-| Android | ● | — | — | — | — | ● | Godot 公式 |
+| エクスポート先 | .NET SDK @@CORELIB_FRAMEWORK@@ | Xcode Command Line Tools | Xcode（full） | Python 3.10 以降 | Android NDK・JDK | エクスポートテンプレート |
+|---|:-:|:-:|:-:|:-:|:-:|---|
+<!--lane:macos-->| macOS | ● | ● | — | — | — | 本リリース同梱 |
+| iOS | ● | ● | ● | — | — | Godot 公式 |
+<!--lane:web-->| Web | ● | — | — | ●※ | — | 本リリース同梱 |
+| Android | ● | — | — | — | ● | Godot 公式 |
 
 <!--lane:web-->※ リンク時に起動する `emcc` は Python で動きます。同梱の Emscripten SDK が Python を併せ持つのは Windows 版だけで、macOS 版は持っていません。Xcode / Command Line Tools の `/usr/bin/python3` はバージョンが古く `emcc` に拒否されるため、`brew install python` などで別途用意してください。
+<!--lane:web-->Node.js の列が無いのは、`emcc` がリンクのたびに起動する **Node.js @@NODE_VERSION_MACOS@@** を同梱の Emscripten SDK が内側に持っているためです。
 このホストから Windows および Linux へはエクスポートできません。
 
 <!--/lane-->
 <!--lane:editor-windows-->
 **Windows（x86_64）ホスト**
 
-| エクスポート先 | .NET SDK @@CORELIB_FRAMEWORK@@ | Visual Studio の C++ ワークロード | Node.js 18 以降 | Android NDK・JDK | エクスポートテンプレート |
-|---|:-:|:-:|:-:|:-:|---|
-| Windows | ● | ●※ | — | — | Godot 公式 |
-<!--lane:web-->| Web | ● | — | ● | — | 本リリース同梱 |
-| Android | ● | — | — | ● | Godot 公式 |
+| エクスポート先 | .NET SDK @@CORELIB_FRAMEWORK@@ | Visual Studio の C++ ワークロード | Android NDK・JDK | エクスポートテンプレート |
+|---|:-:|:-:|:-:|---|
+| Windows | ● | ●※ | — | Godot 公式 |
+<!--lane:web-->| Web | ● | — | — | 本リリース同梱 |
+| Android | ● | — | ● | Godot 公式 |
 
 ※ ビルドは MSVC で行いますが、必要なのはインストールされていることだけです。ビルド環境はエディタが自分で探して取り込むため、特別なシェルから起動する必要はありません。下の注記を参照してください。
+<!--lane:web-->Node.js の列が無いのは、`emcc` がリンクのたびに起動する **Node.js @@NODE_VERSION_WINDOWS@@** を同梱の Emscripten SDK が内側に持っているためです。
 このホストから macOS・iOS・Linux へはエクスポートできません。
 
 <!--/lane-->
@@ -132,7 +134,7 @@ Godot-dn2cpp.console.exe
 > **Visual Studio が必要なのは、Windows ゲームをエクスポートするときだけです。** Ninja を使うと cmake は `cl.exe` を選びますが、`cl.exe` はマシンの `PATH` には無く、`INCLUDE` / `LIB` / `LIBPATH` も `vcvarsall` を実行済みのシェルの中にしか存在しません。そこでエディタは、起動時ではなくエクスポート時に `vswhere` で Visual Studio を探して `vcvarsall` を実行し、その環境をビルドの子プロセスにだけ渡します。Explorer から起動した `Godot-dn2cpp.exe` でそのままエクスポートできます。すでにビルド環境が入っているシェルから起動した場合は、そのまま何もせずそれを使います。
 >
 > **Web と Android へのエクスポートは Visual Studio 自体を必要としません。** どちらも MSVC ではなく、Emscripten と Android NDK でビルドするからです。ビルドを駆動する cmake と ninja もエディタが同梱しているため、Android へのエクスポートに別途用意するものは .NET SDK と NDK・JDK だけです。
-<!--lane:web-->> Web も同様に、.NET SDK と `node` だけで済みます。
+<!--lane:web-->> Web も同様に、必要なのは .NET SDK だけです。
 
 <!--/lane-->
 ## dn2cpp バックエンドの使い方
@@ -186,7 +188,7 @@ Web のプリセットで:
 - **`variant/extensions_support` = `true`** — ゲームは GDExtension ライブラリと同じ経路で side module としてロードされます。
 - **`variant/thread_support` = `false`** — ゲームのライブラリは `-pthread` なしでビルドされ、Emscripten はそれをスレッド有効のメインモジュールへロードすることを拒否します。
 
-ゲームをコンパイルするのは、エディタが同梱する **Emscripten @@EMSDK_VERSION@@** の SDK です。これは `@@ASSET_WEB@@` 自体をビルドしたのと同じものです。同じ SDK を使うのは単に手間を省くためではなく、ゲームはそのテンプレートの side module であり、両者は例外方式と動的リンクの ABI を一致させる必要があるためです。自分で SDK をインストールする必要はなく、必要なのは `node` だけです（*動作要件*を参照）。
+ゲームをコンパイルするのは、エディタが同梱する **Emscripten @@EMSDK_VERSION@@** の SDK です。これは `@@ASSET_WEB@@` 自体をビルドしたのと同じものです。同じ SDK を使うのは単に手間を省くためではなく、ゲームはそのテンプレートの side module であり、両者は例外方式と動的リンクの ABI を一致させる必要があるためです。SDK も、それが起動する Node.js も同梱されているため、別途インストールするものはありません。
 
 このプラットフォームには、他のターゲットには無い固有の制約があります:
 

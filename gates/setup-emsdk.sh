@@ -7,7 +7,8 @@
 # directory, which is stripped; what lands is a full SDK (bin/ = clang + wasm-ld
 # + binaryen, emscripten/ = emcc and its libraries). On Windows the archive is a
 # zip, and the pinned portable CPython emcc.exe needs is staged beside it as
-# python/.
+# python/. The pinned Node.js is staged the same way as node/, from a pin of its
+# own: emcc runs one on every link, and an SDK without one takes the host's.
 #
 # The pin file is the single source of version, release hash and sha256. The
 # hash is verified before the download is renamed into the cache, so a truncated
@@ -36,6 +37,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -f "$PIN" ] || { echo "error: pin file not found: $PIN" >&2; exit 1; }
+[ -f "$NODE_PIN" ] || { echo "error: pin file not found: $NODE_PIN" >&2; exit 1; }
 
 VERSION="$(pin_field "$PIN" version)"
 RELEASE_HASH="$(pin_field "$PIN" release_hash)"
@@ -64,6 +66,21 @@ case "$HOST:$ARCHIVE_PATH" in
     *) echo "error: $HOST archive is not a .tar.xz: $ARCHIVE_PATH" >&2; exit 1 ;;
 esac
 
+# node has its own pin and therefore its own row grammar — full URL, plus the
+# strip depth, which is read rather than assumed for the reason unzip_strip
+# refuses to infer one.
+NODE_VERSION="$(pin_field "$NODE_PIN" version)"
+read -r NODE_URL NODE_SHA NODE_STRIP <<<"$(awk -v h="$HOST" \
+    '$1 == "archive" && $2 == h { u = $3; s = $4; n = $5 } END { print u, s, n }' "$NODE_PIN")"
+[ -n "$NODE_VERSION" ] && [ -n "$NODE_URL" ] && [ -n "$NODE_SHA" ] && [ -n "$NODE_STRIP" ] \
+    || { echo "error: $NODE_PIN lacks version or a complete archive row for $HOST" >&2; exit 1; }
+case "$HOST:$NODE_URL" in
+    windows-x64:*.zip) ;;
+    windows-x64:*) echo "error: $HOST node archive is not a .zip: $NODE_URL" >&2; exit 1 ;;
+    *:*.tar.gz) ;;
+    *) echo "error: $HOST node archive is not a .tar.gz: $NODE_URL" >&2; exit 1 ;;
+esac
+
 PYTHON_PATH= PYTHON_SHA=
 if [ "$HOST" = windows-x64 ]; then
     read -r PYTHON_PATH PYTHON_SHA <<<"$(awk -v h="$HOST" \
@@ -78,9 +95,11 @@ CACHED="$DL/$HOST-$(basename "$ARCHIVE_PATH")"
 # Beside the tree, never inside it: an interrupted unpack leaves an unstamped
 # directory, which is stale rather than current.
 STAMP="$OUT.pin"
-# The stamp names every pinned input the tree was built from, so on Windows the
-# python sha is a third token — swapping either archive invalidates the tree.
-STAMP_TEXT="$VERSION $ARCHIVE_SHA"
+# The stamp names every pinned input the tree was built from — node's, and on
+# Windows python's — so swapping any archive invalidates the tree. The version
+# stays the first token: dist/package-toolchain.sh reads the rest as one sha term
+# and carries it into the bundle stamp.
+STAMP_TEXT="$VERSION $ARCHIVE_SHA node-$NODE_VERSION-$NODE_SHA"
 [ "$HOST" = windows-x64 ] && STAMP_TEXT="$STAMP_TEXT $PYTHON_SHA"
 
 echo "emsdk:   $VERSION ($RELEASE_HASH)"
@@ -92,8 +111,10 @@ if [ "$FORCE" != 1 ] && [ "$(file_text "$STAMP")" = "$STAMP_TEXT" ]; then
     exit 0
 fi
 
-echo "== 1/3 the pinned archive =="
+echo "== 1/3 the pinned archives =="
 fetch_pinned "$BASE_URL/$ARCHIVE_PATH" "$ARCHIVE_SHA" "$CACHED"
+NODE_CACHED="$DL/$HOST-$(basename "$NODE_URL")"
+fetch_pinned "$NODE_URL" "$NODE_SHA" "$NODE_CACHED"
 PYTHON_CACHED=
 if [ "$HOST" = windows-x64 ]; then
     PYTHON_CACHED="$DL/$HOST-$(basename "$PYTHON_PATH")"
@@ -114,6 +135,14 @@ if [ "$HOST" = windows-x64 ]; then
 else
     tar -xJf "$CACHED" -C "$OUT.part" --strip-components=1
 fi
+# node lands under node/, the layout emsdk_node names. No chmod on POSIX: tar
+# keeps the archive's mode, and on Windows the lost bit is decoration.
+mkdir -p "$OUT.part/node"
+if [ "$HOST" = windows-x64 ]; then
+    unzip_strip "$NODE_CACHED" "$OUT.part/node" "$NODE_STRIP"
+else
+    tar -xzf "$NODE_CACHED" -C "$OUT.part/node" --strip-components="$NODE_STRIP"
+fi
 
 echo "== 3/3 asserting the unpacked SDK =="
 ver_file="$OUT.part/emscripten/emscripten-version.txt"
@@ -132,6 +161,11 @@ if [ "$HOST" = windows-x64 ]; then
     "$OUT.part/python/python.exe" -E -c 'print(1)' >/dev/null \
         || { echo "error: the staged python/python.exe does not run" >&2; exit 1; }
 fi
+node_exe="$(emsdk_node "$OUT.part")"
+[ -x "$node_exe" ] || { echo "error: no executable $node_exe (wrong strip depth?)" >&2; exit 1; }
+got_node="$("$node_exe" --version)"
+[ "$got_node" = "v$NODE_VERSION" ] || {
+    echo "error: staged node is $got_node, pinned v$NODE_VERSION" >&2; exit 1; }
 
 # The archive carries no config, and without one emcc finds clang and wasm-opt
 # only off PATH — which would mean putting a bin/ full of host-tool names
@@ -144,12 +178,16 @@ LLVM_ROOT     = '$CFGDIR/../bin'
 BINARYEN_ROOT = '$CFGDIR/..'
 CACHE         = '$CFGDIR/cache'
 EOF
+# Appended rather than written above, where nothing expands: the value is host
+# shaped. Without NODE_JS emcc runs whatever node PATH offers, which is the one
+# version this repository promises nobody.
+printf 'NODE_JS       = %s\n' "$(emsdk_node_cfg)" >> "$OUT.part/emscripten/.emscripten"
 
 rm -rf "$OUT"
 mv "$OUT.part" "$OUT"
 printf '%s\n' "$STAMP_TEXT" > "$STAMP"
 
 echo
-echo "OK: $OUT ($(du -sh "$OUT" | awk '{print $1}'))"
+echo "OK: $OUT ($(du -sh "$OUT" | awk '{print $1}'), node $NODE_VERSION)"
 echo "    the gates find it here on their own (dn2cpp_emsdk_resolve, gates/_common.sh);"
 echo "    DN2CPP_EMSDK=<dir> points them at a different SDK"

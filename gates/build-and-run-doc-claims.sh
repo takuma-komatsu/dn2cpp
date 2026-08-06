@@ -382,16 +382,16 @@ echo "== 9/10 the pinned toolchains a bundle ships, and their keep lists =="
 EMSDK_TRIM=dist/emsdk-trim.txt
 BUILDTOOLS_TRIM=dist/buildtools-trim.txt
 
-# Two hand-written copies of one set. A host dn2cpp_host_tag can name and a pin
-# has no archive row for is a machine that resolves a directory nothing fills; a
+# Hand-written copies of one set. A host dn2cpp_host_tag can name and a pin has
+# no archive row for is a machine that resolves a directory nothing fills; a
 # pinned archive no tag names is one nothing will ever fetch.
 #
-# The host column is per pin and cannot be inferred: emsdk-pin.txt carries one
-# archive per host, buildtools-pin.txt one per (tool, host). Each pin's header
-# spells its own row grammar; these are the two.
+# The host column is per pin and cannot be inferred: emsdk-pin.txt and
+# node-pin.txt carry one archive per host, buildtools-pin.txt one per (tool,
+# host). Each pin's header spells its own row grammar.
 tag_hosts=$(awk '/^dn2cpp_host_tag\(\) \{/,/^\}/' gates/_common.sh \
             | grep -oE "printf '[a-z0-9-]+" | sed "s/^printf '//" | sort -u)
-for spec in "$EMSDK_PIN:2" "$BUILDTOOLS_PIN:3"; do
+for spec in "$EMSDK_PIN:2" "$NODE_PIN:2" "$BUILDTOOLS_PIN:3"; do
     pin="${spec%:*}"
     pin_hosts=$(awk -v c="${spec##*:}" '$1 == "archive" { print $c }' "$pin" | sort -u)
     set_eq "$pin archive rows vs dn2cpp_host_tag" "the pin" "$pin_hosts" "gates/_common.sh" "$tag_hosts"
@@ -407,6 +407,7 @@ done
 # the tag it was fetched at, and that provenance is the one place the version
 # must be spelled.
 for spec in "$EMSDK_PIN:version:Emscripten:EMSDK_VERSION" \
+            "$NODE_PIN:version:Node.js:NODE_VERSION_*" \
             "$BUILDTOOLS_PIN:cmake_version:cmake:CMAKE_VERSION_*" \
             "$BUILDTOOLS_PIN:ninja_version:ninja:NINJA_VERSION_*"; do
     pin="${spec%%:*}"; rest="${spec#*:}"

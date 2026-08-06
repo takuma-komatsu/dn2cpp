@@ -122,10 +122,13 @@ macOS (Apple silicon or x86_64) is the Tier-1 host; Windows (real MSVC
 These are the prerequisites of **this repository** and of the dotnet tool below,
 both of which build through the host's own tools. They are not the prerequisites
 of the distributable editor, which carries a pinned cmake and ninja of its own
-(`gates/expected/buildtools-pin.txt`) and asks its user for neither. The fork
-editor-export gates are the one exception — they assert the export ran through
-that pinned pair, so unpack it (`gates/setup-buildtools.sh`) before
-`gates/setup-godot-fork.sh` packages a bundle.
+(`gates/expected/buildtools-pin.txt`) and asks its user for neither. The node
+that every `emcc` link runs sits in the same position — pinned by
+`gates/expected/node-pin.txt`, carried inside the editor's Emscripten SDK, and
+so absent from the list above. The fork editor-export gates are the one
+exception — they assert the export ran through that pinned pair, so unpack it
+(`gates/setup-buildtools.sh`) before `gates/setup-godot-fork.sh` packages a
+bundle.
 
 ### Install as a dotnet tool (no clone)
 

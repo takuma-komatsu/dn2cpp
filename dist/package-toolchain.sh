@@ -68,7 +68,11 @@
 #                     the web prebuilt portable: the key records a path under the
 #                     root relative to it. Its cache is baked and FROZEN, so an
 #                     export never writes into the bundle. Absent when the
-#                     packaging host had none.
+#                     packaging host had none. Carries the pinned node
+#                     (gates/expected/node-pin.txt) INSIDE it, for the reason the
+#                     Windows portable CPython sits there: it is a runtime emcc
+#                     itself launches, named by the SDK's own $CFGDIR-relative
+#                     config.
 #   buildtools/       the pinned cmake + ninja (gates/expected/buildtools-pin.txt),
 #                     so an export configures and compiles on a host carrying
 #                     neither — and through a cmake whose version this repository
@@ -573,11 +577,12 @@ if [ -z "$emsdk_src" ]; then
 else
     EMSDK_VERSION="$(LC_ALL=C tr -d '" \r\n' < "$emsdk_src/emscripten/emscripten-version.txt")"
     EMSDK_VERSION="${EMSDK_VERSION%-git}"
-    # Keyed on the sha256 of the archive it was unpacked from — the bytes, which
-    # is what a re-copy would be reproducing — read from the stamp
-    # gates/setup-emsdk.sh writes beside the tree. An SDK from anywhere else has
-    # no such stamp and is re-staged every run: the alternative is a stamp
-    # claiming an identity nothing recorded.
+    # Keyed on the sha256 of EVERY archive it was unpacked from — the SDK's,
+    # node's, and on Windows python's — by taking the whole tail of the stamp
+    # gates/setup-emsdk.sh writes beside the tree, so a pin gaining an archive
+    # re-stages without a change here. An SDK from anywhere else has no such
+    # stamp and is re-staged every run: the alternative is a stamp claiming an
+    # identity nothing recorded.
     emsdk_pin_stamp="$(file_text "$emsdk_src.pin")"
     emsdk_sha=unpinned
     case "$emsdk_pin_stamp" in "$EMSDK_VERSION "*) emsdk_sha="${emsdk_pin_stamp#* }" ;; esac
@@ -611,6 +616,11 @@ LLVM_ROOT     = '$CFGDIR/../bin'
 BINARYEN_ROOT = '$CFGDIR/..'
 CACHE         = '$CFGDIR/cache'
 EOF
+        # Appended rather than written above, where nothing expands: the value is
+        # host shaped. It is what makes the bundle's node the one every link runs
+        # — a bundle whose export machine has no node at all still links.
+        printf 'NODE_JS       = %s\n' "$(emsdk_node_cfg)" \
+            >> "$LAYOUT/.emsdk.part/emscripten/.emscripten"
         # A MOVED SDK must not carry the sanity file of where it came from.
         # emcc's is `version|<absolute LLVM_ROOT>`, so the first emcc at a new
         # path finds it stale and ERASES the whole cache — including the sysroot
@@ -723,12 +733,23 @@ EOF
         [ -n "$emsdk_py_path" ] && emsdk_python_json="$(printf '\n  "python_archive_url": "%s",\n  "python_archive_sha256": "%s",' \
             "$(pin_field "$EMSDK_PIN" base_url)/$emsdk_py_path" "$emsdk_py_sha")"
     fi
+    # node is a third upstream with a pin of its own, so its rows carry whole
+    # URLs. The editor packaging reads node_version from here rather than the
+    # pin: what shipped is what the bundle holds, not what the tree now pins.
+    emsdk_node_json=""
+    if [ -x "$(emsdk_node "$emsdk_dest")" ] && [ -n "$emsdk_host" ]; then
+        read -r emsdk_node_url emsdk_node_sha <<<"$(awk -v h="$emsdk_host" \
+            '$1 == "archive" && $2 == h { u = $3; s = $4 } END { print u, s }' \
+            "$NODE_PIN")"
+        [ -n "$emsdk_node_url" ] && emsdk_node_json="$(printf '\n  "node_version": "%s",\n  "node_archive_url": "%s",\n  "node_archive_sha256": "%s",' \
+            "$(pin_field "$NODE_PIN" version)" "$emsdk_node_url" "$emsdk_node_sha")"
+    fi
     cat > "$emsdk_dest/emsdk.json" <<EOF
 {
   "version": "$EMSDK_VERSION",
   "release_hash": "$EMSDK_RELEASE_HASH",
   "archive_url": "$emsdk_url",
-  "archive_sha256": "$emsdk_archive_sha",$emsdk_python_json
+  "archive_sha256": "$emsdk_archive_sha",$emsdk_python_json$emsdk_node_json
   "emcc_version": "$EMCC_VERSION"
 }
 EOF
@@ -1374,6 +1395,7 @@ SIZE_REPORT="$OUT_PARENT/size-report.txt"
     size_row emsdk/emscripten             "$LAYOUT/emsdk/emscripten"
     size_row emsdk/emscripten/cache       "$LAYOUT/emsdk/emscripten/cache"
     size_row emsdk/emscripten/node_modules "$LAYOUT/emsdk/emscripten/node_modules"
+    size_row emsdk/node                   "$LAYOUT/emsdk/node"
     size_row buildtools        "$LAYOUT/buildtools"
     size_row buildtools/cmake  "$LAYOUT/buildtools/cmake"
     size_row buildtools/ninja  "$LAYOUT/buildtools/ninja"

@@ -583,6 +583,31 @@ CMAKE=${CMAKE:-cmake}
 bundled_cmake() { printf '%s/buildtools/cmake/bin/cmake%s\n' "$1" "$EXE_EXT"; }
 bundled_ninja() { printf '%s/buildtools/ninja/ninja%s\n'     "$1" "$EXE_EXT"; }
 
+# emsdk_node SDKROOT / bundled_node BUNDLE — the node the SDK carries, which
+# every emcc link runs. The split is the upstream archives' own shape, not the
+# suffix: nodejs.org roots the POSIX binary under bin/ and the Windows one at the
+# tree top. It is absorbed here rather than normalized while unpacking because
+# setup-*.sh stages upstream verbatim (gates/setup-buildtools.sh).
+emsdk_node() {
+    if [ "$DN2CPP_OS" = windows ]; then
+        printf '%s/node/node.exe\n' "$1"
+    else
+        printf '%s/node/bin/node\n' "$1"
+    fi
+}
+bundled_node() { emsdk_node "$1/emsdk"; }
+
+# emsdk_node_cfg — the same path as a .emscripten NODE_JS value. Relative to
+# $CFGDIR (the config's own directory, `<sdk>/emscripten/`) so the SDK tree stays
+# movable; single-quoted so this shell does not expand what emcc must.
+emsdk_node_cfg() {
+    if [ "$DN2CPP_OS" = windows ]; then
+        printf "'\$CFGDIR/../node/node.exe'\n"
+    else
+        printf "'\$CFGDIR/../node/bin/node'\n"
+    fi
+}
+
 # ── MSVC (cl.exe) toolchain import ────────────────────────────────────────────
 # Opt in with CMAKE_CXX_COMPILER=cl (or an absolute cl.exe path); imports
 # vcvarsall x64 so a plain Git Bash gets cl.exe non-interactively.
@@ -654,8 +679,10 @@ ensure_msvc_env
 # ensure_node_on_path — additive last resort: put EMSDK_NODE's dir on PATH
 # (emsdk does not, on Windows) so wasm gates stop gate_skipping "node not found"
 # on a complete toolchain. Probed by RUNNING it. DN2CPP_NODE names the BINARY.
-# It is a last resort and stays one: the SDK dn2cpp_emsdk_resolve picks carries
-# no node of its own, so node is always the host's.
+# It is a last resort and stays one: it answers only for a gate that resolves no
+# SDK at all. An SDK dn2cpp_emsdk_resolve picks carries its own node and puts it
+# ahead of this one, which is the order that must hold — the node a gate finds
+# has to be the node the link runs.
 ensure_node_on_path() {
     local cand nodedir
     cand="${DN2CPP_NODE:-}"
@@ -754,6 +781,9 @@ BUILDTOOLS_PIN=gates/expected/buildtools-pin.txt
 # ── The Emscripten SDK ────────────────────────────────────────────────────────
 EMSDK_PIN=gates/expected/emsdk-pin.txt
 
+# ── The Node.js the SDK carries, because every emcc link runs one ─────────────
+NODE_PIN=gates/expected/node-pin.txt
+
 # _emsdk_set_ctx ORIGIN ROOT STAMP — record WHICH SDK was resolved, as the cache
 # key term gate_cache_check reads. Deliberately NOT exported: a gate keys the SDK
 # it resolved for itself, and one that resolves none must key the same whether or
@@ -818,11 +848,29 @@ dn2cpp_emsdk_resolve() {
 
     # An inherited emsdk's variables all outrank the config file, so a second SDK
     # in the environment would keep steering the one chosen here.
-    unset EM_CACHE EM_LLVM_ROOT EM_BINARYEN_ROOT EM_FROZEN_CACHE EMSDK EMSDK_NODE EMSDK_PYTHON EMSCRIPTEN
+    unset EM_CACHE EM_LLVM_ROOT EM_BINARYEN_ROOT EM_FROZEN_CACHE EMSDK EMSDK_NODE EMSDK_PYTHON EMSCRIPTEN EM_NODE_JS
     # A staged python is resolved through the environment, never the config file:
     # emcc.exe reads EMSDK_PYTHON ahead of any PATH search.
     [ -x "$root/python/python.exe" ] \
         && export EMSDK_PYTHON="$(native_path "$root/python/python.exe")"
+    # DN2CPP_NODE names a binary, so it answers through the config's own key.
+    # Otherwise the SDK's node leads PATH, because the config alone does not
+    # settle it: the wasm gates ask `command -v node` for their skip decision,
+    # and what they find must be what the link runs. Side effect in a dev tree,
+    # which is untrimmed: node/bin holds npm/npx/corepack beside the binary, so
+    # this hides the host's. A bundle stages node alone.
+    if [ -n "${DN2CPP_NODE:-}" ]; then
+        export EM_NODE_JS="$(native_path "$DN2CPP_NODE")"
+    else
+        cand="$(emsdk_node "$root")"
+        if [ -x "$cand" ]; then
+            cand="$(dirname "$cand")"
+            case ":$PATH:" in
+                *":$cand:"*) ;;
+                *) export PATH="$cand:$PATH" ;;
+            esac
+        fi
+    fi
     case ":$PATH:" in
         *":$root/emscripten:"*) ;;
         *) export PATH="$root/emscripten:$PATH" ;;
