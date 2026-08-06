@@ -460,6 +460,11 @@ else
     # The C# side must have come up through the AOT drop-in, and nothing may have
     # trapped on the way. A wasm trap escaping into the page is not cosmetic: the
     # exported shell reports it to the player as a failure notice.
+    #
+    # "ERROR" is the engine's own error-log prefix, in this log only because the
+    # harness routes cfg.onPrintError into it. Rejected for the reason the native
+    # .NET-module gates reject it, which binds harder in a browser: the engine
+    # reports and keeps running, so no exit code ever carries the failure.
     for bad in \
         "GodotPlugins initialization failed" \
         "Failed to load hostfxr" \
@@ -467,6 +472,7 @@ else
         "HARNESS_FAILED" \
         "null function or function signature mismatch" \
         "__PAGE_EXCEPTION" \
+        "ERROR" \
         "SCRIPT ERROR"; do
         if grep -q "$bad" "$LOG"; then
             echo "FAIL: the browser run reported \"$bad\"" >&2

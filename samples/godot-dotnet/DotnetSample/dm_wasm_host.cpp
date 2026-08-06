@@ -60,6 +60,11 @@ int main(int argc, char** argv)
     }
     const char* mode = argv[2];
 
+    // The drop-in's stage markers are env-gated and this gate asserts them; a wasm
+    // module has no environment but the one its host builds. Before the dlopen,
+    // because the gate latches on its first read.
+    setenv("DN2CPP_DM_TRACE", "1", 0);
+
     g_lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (g_lib == nullptr)
     {

@@ -8,31 +8,20 @@
 #include <cstdlib>
 #include <cstring>
 
-// Value of the trace gate when the environment says nothing. Off everywhere the
-// environment is a thing you can set — which is every desktop and mobile target,
-// where DN2CPP_DM_TRACE=1 is how you ask for the markers.
-//
-// A browser is not such a target: a wasm module has no environment block to read,
-// so a getenv-only gate is permanently off there and the init trace can never be
-// seen — including by the very gate whose job is to assert the markers. Hence a
-// compile-time floor the Emscripten build raises (runtime/CMakeLists.txt). An
-// explicitly-set variable still wins in both directions, so this changes nothing
-// on a target that has an environment at all.
-#ifndef DN2CPP_DM_TRACE_DEFAULT
-#define DN2CPP_DM_TRACE_DEFAULT 0
-#endif
-
 int dn2cpp_dm_trace_enabled()
 {
+    // Off unless DN2CPP_DM_TRACE says so, on every target. A browser has no
+    // environment block, and a compile-time default for it is worse than no trace:
+    // emscripten sends stderr to Module.printErr, which the Godot web shell shows
+    // the player as console.error. The wasm gate's host sets the variable itself.
+    //
     // Read once; the first call happens on the engine's init thread before any
     // other thread can reach the runtime, so the plain static is race-free.
     static int s_enabled = -1;
     if (s_enabled < 0)
     {
         const char* v = std::getenv("DN2CPP_DM_TRACE");
-        s_enabled = v != nullptr
-            ? ((*v != '\0' && std::strcmp(v, "0") != 0) ? 1 : 0)
-            : DN2CPP_DM_TRACE_DEFAULT;
+        s_enabled = (v != nullptr && *v != '\0' && std::strcmp(v, "0") != 0) ? 1 : 0;
     }
     return s_enabled;
 }
