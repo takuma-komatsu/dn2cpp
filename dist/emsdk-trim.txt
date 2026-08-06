@@ -19,7 +19,9 @@
 # error naming the file it wanted.
 #
 # The licence of a package that survives is kept whatever this file says, and
-# copied into LICENSES/ at the SDK root.
+# copied into LICENSES/ at the SDK root — but only when it shares a directory
+# with something kept. A text that sits apart from the binary it covers, as a
+# baked archive's does from its sources, has to be named here like any other file.
 
 # ── The toolchain binaries ───────────────────────────────────────────────────
 # Every executable emcc, the Emscripten cmake toolchain or a Binaryen pass
@@ -80,10 +82,10 @@ emscripten/AUTHORS
 emscripten/cmake
 # src/lib is a -L on every link, not documentation.
 emscripten/src
-# emscripten/system is absent by the same token: it is the SOURCE of the system
-# libraries and of the sysroot headers, and a frozen cache neither builds one nor
-# re-installs the other — every include path a compile names is under
-# cache/sysroot or clang's resource dir.
+# emscripten/system is absent but for the licence block at the end: it is the
+# SOURCE of the system libraries and of the sysroot headers, and a frozen cache
+# neither builds one nor re-installs the other — every include path a compile
+# names is under cache/sysroot or clang's resource dir.
 emscripten/third_party
 emscripten/tools
 
@@ -130,3 +132,15 @@ emscripten/cache/sysroot/lib/wasm32-emscripten/libnoexit.a
 emscripten/cache/sysroot/lib/wasm32-emscripten/libsockets.a
 emscripten/cache/sysroot/lib/wasm32-emscripten/libstubs.a
 emscripten/cache/sysroot/lib/wasm32-emscripten/libunwind-legacyexcept.a
+
+# ── The licence text of what those archives were compiled from ───────────────
+# Object code ships from here, its text stays in emscripten/system/ with the
+# sources — so the file is named, which makes its directory a kept one and puts
+# the text in LICENSES/. One line per package the two link shapes RESOLVE:
+# llvm-libc, mimalloc and openmp build archives neither reaches, and a text for
+# a binary the bundle does not carry claims more than it ships.
+emscripten/system/lib/libcxx/LICENSE.TXT
+emscripten/system/lib/libcxxabi/LICENSE.TXT
+emscripten/system/lib/libunwind/LICENSE.TXT
+emscripten/system/lib/compiler-rt/LICENSE.TXT
+emscripten/system/lib/libc/musl/COPYRIGHT
