@@ -785,10 +785,22 @@ Open tickets: `docs/STATUS.md`.
 
 ## Contributing
 
-External contributions are welcome. Please read `AGENTS.md` first (build,
-gates, module boundaries, code style), and make sure
-**`./gates/run-all-gates.sh` exits green** before opening a PR — a failing
-gate is listed in `$LOGDIR/_failures.txt` with its log.
+External contributions are welcome — `CONTRIBUTING.md` is the guide. Read
+`AGENTS.md` first (build, gates, module boundaries, code style) and the
+*Permanent non-goals* above.
+
+The full suite needs toolchains no contributor can be expected to have, so
+the merge gate (`./gates/pre-merge.sh`) runs on a maintainer's machine and
+not in CI. Before opening a PR, run the part that needs none of them:
+
+```bash
+./gates/build-and-run-sample.sh          # console: C# → IL → C++ → native
+./gates/build-and-run-multiassembly.sh   # multi-assembly (-r)
+SKIP_GODOT=1 ./gates/run-all-gates.sh    # the non-Godot suite
+```
+
+A failing gate is listed in `$LOGDIR/_failures.txt` with its log, a skipped
+one in `$LOGDIR/_skips.txt` with its reason — **a skip is not a pass.**
 
 ### Pull request size
 

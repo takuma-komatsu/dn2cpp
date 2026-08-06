@@ -30,6 +30,11 @@ The contract between lanes is `IEmitBackend` + `ICallIntrinsics`
 open tickets. When a ticket is done and merged, **delete its row**. Git history
 is the authoritative record of how a change was made.
 
+GitHub issues are the intake, not a second backlog, and the reference is
+one-directional: a row may cite an issue number, which is permanent and
+resolvable, while nothing cites a row — the row is deleted when the ticket
+lands. An issue taken as work becomes one row, and is closed saying so.
+
 ## A ticket id lives in `docs/STATUS.md` and nowhere else
 
 A ticket id is a temporary handle on a conversation. The moment the ticket

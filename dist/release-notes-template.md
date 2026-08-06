@@ -66,7 +66,7 @@ Godot-dn2cpp.console.exe
 
 > `Godot-dn2cpp.exe` は隣にあるもの（`GodotSharp\`、`.console.exe`、D3D12 の DLL）を必要とします。**`.exe` だけを取り出すと動作しなくなります。** 別の場所へ移動する場合はフォルダごと移動してください。
 
-展開先の `RELEASE.txt` に、このビルドの識別情報（`release`、`fork_commit`、`engine_provenance`、`toolchain_content_hash`、`editor_version_string`）が記載されています。バグ報告にはこのファイルの内容をそのまま貼り付けてください。
+展開先の `RELEASE.txt` に、このビルドの識別情報（`release`、`fork_commit`、`engine_provenance`、`toolchain_content_hash`、`editor_version_string`）が記載されています。バグ報告は <https://github.com/takuma-komatsu/dn2cpp/issues> へ、このファイルの内容をそのまま貼り付けてください。
 
 <!--/lane-->
 ## 動作要件
@@ -223,7 +223,7 @@ Godot 公式の Android エクスポートテンプレートに加えて、次�
 <!--lane:web-->| Web テンプレートのビルドに使用 | emcc `@@EMCC@@`（Emscripten `@@EMSDK_VERSION@@`） |
 <!--lane:macos-->| macOS テンプレートの抽出元 | upstream `macos.zip`、sha256 `@@UPSTREAM_MACOS_SHA256@@` |
 
-> エディタの `--version` 文字列が示すのは、そのバイナリが**リンクされた**ときのコミットです。エンジンのソースに変更が無いツリーは再リンクされないため、このコミットはタグのコミットより古いことがあります。どちらも同じバイナリを指しています。バグ報告にはこの文字列をそのまま貼り付けてください。エディタはそれぞれ別のホストでパッケージされるので、エンジンの行より下はエディタごとに分かれています。`dn2cpp コミット` がエディタ間で食い違うのも同じ理由で、パッケージした時刻が違うだけです。エンジンのソースは上の `fork のコミット` 1 つが示すとおり共通です。
+> エディタの `--version` 文字列が示すのは、そのバイナリが**リンクされた**ときのコミットです。エンジンのソースに変更が無いツリーは再リンクされないため、このコミットはタグのコミットより古いことがあります。どちらも同じバイナリを指しています。バグ報告は <https://github.com/takuma-komatsu/dn2cpp/issues> へ、この文字列をそのまま貼り付けてください — エンジン（フォーク）側の問題もそちらで受け付けます。フォークのリポジトリは issue を無効にしてあります。エディタはそれぞれ別のホストでパッケージされるので、エンジンの行より下はエディタごとに分かれています。`dn2cpp コミット` がエディタ間で食い違うのも同じ理由で、パッケージした時刻が違うだけです。エンジンのソースは上の `fork のコミット` 1 つが示すとおり共通です。
 
 ## ライセンス
 
