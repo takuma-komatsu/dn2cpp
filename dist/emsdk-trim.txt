@@ -67,6 +67,15 @@ windows: bin/wasm-split.exe
 # emcc.exe is a launcher for emcc.py, run by the pinned portable CPython staged
 # beside the toolchain (EMSDK_PYTHON).
 windows: python
+# node/ is the second runtime emcc launches, once per link, and the executable
+# is the whole of what a link reaches: the upstream archive's npm, corepack and
+# addon headers are named by nothing on this lane.
+posix: node/bin/node
+windows: node/node.exe
+# Complete on its own — node's MIT text plus the V8, ICU, OpenSSL and zlib it
+# embeds — so none of that is vendored. Named because it sits a directory away
+# from the binary it covers.
+node/LICENSE
 # clang's own resource directory: the headers every compile names through
 # -internal-isystem. The host libc++ archives beside it link host tools.
 lib/clang

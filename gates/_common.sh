@@ -679,8 +679,10 @@ ensure_msvc_env
 # ensure_node_on_path — additive last resort: put EMSDK_NODE's dir on PATH
 # (emsdk does not, on Windows) so wasm gates stop gate_skipping "node not found"
 # on a complete toolchain. Probed by RUNNING it. DN2CPP_NODE names the BINARY.
-# It is a last resort and stays one: the SDK dn2cpp_emsdk_resolve picks carries
-# no node of its own, so node is always the host's.
+# It is a last resort and stays one: it answers only for a gate that resolves no
+# SDK at all. An SDK dn2cpp_emsdk_resolve picks carries its own node and puts it
+# ahead of this one, which is the order that must hold — the node a gate finds
+# has to be the node the link runs.
 ensure_node_on_path() {
     local cand nodedir
     cand="${DN2CPP_NODE:-}"
@@ -846,11 +848,29 @@ dn2cpp_emsdk_resolve() {
 
     # An inherited emsdk's variables all outrank the config file, so a second SDK
     # in the environment would keep steering the one chosen here.
-    unset EM_CACHE EM_LLVM_ROOT EM_BINARYEN_ROOT EM_FROZEN_CACHE EMSDK EMSDK_NODE EMSDK_PYTHON EMSCRIPTEN
+    unset EM_CACHE EM_LLVM_ROOT EM_BINARYEN_ROOT EM_FROZEN_CACHE EMSDK EMSDK_NODE EMSDK_PYTHON EMSCRIPTEN EM_NODE_JS
     # A staged python is resolved through the environment, never the config file:
     # emcc.exe reads EMSDK_PYTHON ahead of any PATH search.
     [ -x "$root/python/python.exe" ] \
         && export EMSDK_PYTHON="$(native_path "$root/python/python.exe")"
+    # DN2CPP_NODE names a binary, so it answers through the config's own key.
+    # Otherwise the SDK's node leads PATH, because the config alone does not
+    # settle it: the wasm gates ask `command -v node` for their skip decision,
+    # and what they find must be what the link runs. Side effect in a dev tree,
+    # which is untrimmed: node/bin holds npm/npx/corepack beside the binary, so
+    # this hides the host's. A bundle stages node alone.
+    if [ -n "${DN2CPP_NODE:-}" ]; then
+        export EM_NODE_JS="$(native_path "$DN2CPP_NODE")"
+    else
+        cand="$(emsdk_node "$root")"
+        if [ -x "$cand" ]; then
+            cand="$(dirname "$cand")"
+            case ":$PATH:" in
+                *":$cand:"*) ;;
+                *) export PATH="$cand:$PATH" ;;
+            esac
+        fi
+    fi
     case ":$PATH:" in
         *":$root/emscripten:"*) ;;
         *) export PATH="$root/emscripten:$PATH" ;;
