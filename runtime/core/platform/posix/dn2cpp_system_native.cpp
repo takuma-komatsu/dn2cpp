@@ -17,6 +17,7 @@
 //   - Error: PAL codes 0x1XXXX (E2BIG=0x10001, …); unknown → ENONSTANDARD
 //   - Passwd: sequential {ptr,ptr,u32,u32,ptr,ptr,ptr} (48 bytes on LP64)
 //   - Signals: PAL-stable values (SIGKILL=9, SIGSTOP=19) converted to host here
+//   - SysConfName: PAL values (_SC_CLK_TCK=1, _SC_PAGESIZE=2) likewise converted
 //   - AccessMode: PAL values (F_OK=0, X_OK=1, W_OK=2, R_OK=4) equal the host's
 //     on every platform built here — asserted at the site, passed through raw
 // Only the members a reachable closure needs are implemented; a new gap shows
@@ -42,6 +43,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <sys/utsname.h>
 #include <unistd.h>
 
 #if defined(__APPLE__)
@@ -51,6 +53,7 @@
 #include <sys/attr.h>
 #include <sys/mount.h>
 #include <sys/param.h>
+#include <sys/sysctl.h> // KERN_BOOTTIME — Darwin has no CLOCK_BOOTTIME
 
 // The autorelease-pool ABI clang emits for @autoreleasepool. Stable exported
 // libobjc surface since 10.7, but not declared in the public objc/ headers, so
@@ -1528,6 +1531,92 @@ int32_t SystemNative_GetPwUidR(uint32_t uid, Dn2CppPalPasswd* pwd, char* buf, in
     {
     }
     return dn2cpp_pal_convert_passwd(error, &nativePwd, result, pwd);
+}
+
+// ================ sysconf / boot time / OS release =========================
+// pal_io.c SystemNative_SysConf, pal_time.c SystemNative_GetBootTimeTicks and
+// pal_runtimeinformation.c SystemNative_GetUnixRelease (tag v10.0.9), same style
+// as the sections above.
+//
+// All three are reached only by a transpile of the LINUX flavor of the BCL:
+// Process.TicksToTimeSpan and Process.BootTime are Process.Linux.cs, and
+// Environment.OSVersion reads GetUnixRelease in Environment.OSVersion.Unix.cs
+// where the OSX flavor answers from libproc instead. So the reach path that
+// names them is the one macOS never takes, and their regression mode on this
+// host is a link error on a Linux CI run — this file's standard loud outcome.
+
+// Managed Interop.Sys.SysConfName (Interop.SysConf.cs, mirrored by pal_io.h) —
+// PAL-stable values that are NOT the host's _SC_* numbers: those are 2 and 30 on
+// glibc, 3 and 29 on Darwin. Passing the managed value through would read some
+// other limit and answer plausibly, not fail.
+#define DN2CPP_PAL_SC_CLK_TCK 1
+#define DN2CPP_PAL_SC_PAGESIZE 2
+
+// pal_io.h SystemNative_SysConf: the limit on success, -1 with errno otherwise.
+// An unmodeled name is EINVAL rather than a pass-through, mirroring the PAL's
+// `default:` arm. Reach path: Process.TicksToTimeSpan converting /proc jiffies,
+// which throws Win32Exception on a non-positive answer.
+int64_t SystemNative_SysConf(int32_t name)
+{
+    switch (name)
+    {
+        case DN2CPP_PAL_SC_CLK_TCK: return (int64_t)::sysconf(_SC_CLK_TCK);
+        case DN2CPP_PAL_SC_PAGESIZE: return (int64_t)::sysconf(_SC_PAGESIZE);
+        default:
+            errno = EINVAL;
+            return -1;
+    }
+}
+
+// pal_time.h SystemNative_GetBootTimeTicks: the boot INSTANT as .NET ticks
+// (100 ns units since 0001-01-01 UTC) — not a duration and not a Unix timestamp,
+// because Process.BootTime feeds it straight to `new DateTime(ticks)`. The
+// declaration is SetLastError=false, so a failure has no channel but the value;
+// -1 (what the real PAL returns on a platform without the clock) surfaces there
+// as an ArgumentOutOfRangeException instead of a wrong StartTime.
+int64_t SystemNative_GetBootTimeTicks(void)
+{
+    const int64_t unixEpochTicks = 621355968000000000LL;
+#if defined(__APPLE__)
+    // KERN_BOOTTIME is already the boot instant in wall-clock terms, so unlike
+    // the Linux arm there is nothing to subtract.
+    int mib[2] = { CTL_KERN, KERN_BOOTTIME };
+    struct timeval boot;
+    size_t len = sizeof(boot);
+    if (::sysctl(mib, 2, &boot, &len, nullptr, 0) != 0 || len != sizeof(boot))
+        return -1;
+    return unixEpochTicks + (int64_t)boot.tv_sec * 10000000 + (int64_t)boot.tv_usec * 10;
+#else
+    // now-since-boot subtracted from now-since-epoch. CLOCK_BOOTTIME rather than
+    // CLOCK_MONOTONIC because the elapsed side must include time spent suspended,
+    // or a laptop's boot time drifts later every resume.
+    struct timespec ts;
+    if (::clock_gettime(CLOCK_BOOTTIME, &ts) != 0)
+        return -1;
+    int64_t sinceBootTicks = (int64_t)ts.tv_sec * 10000000 + (int64_t)(ts.tv_nsec / 100);
+    if (::clock_gettime(CLOCK_REALTIME_COARSE, &ts) != 0)
+        return -1;
+    int64_t sinceEpochTicks = (int64_t)ts.tv_sec * 10000000 + (int64_t)(ts.tv_nsec / 100);
+    return unixEpochTicks + sinceEpochTicks - sinceBootTicks;
+#endif
+}
+
+// pal_runtimeinformation.h SystemNative_GetUnixRelease: uname(2)'s `release`
+// field, or null on failure. Ownership passes to the caller — the managed
+// declaration marshals it with Utf8StringMarshaller, whose Free reaches
+// NativeMemory.Free, the same convention SystemNative_SearchPath above
+// documents. So the allocation must be malloc-compatible: handing back
+// utsname's own storage would have the caller free a stack address.
+//
+// The PAL's TARGET_ANDROID arm (which answers the Android API level instead) is
+// deliberately absent: dn2cpp transpiles a DESKTOP-flavor CoreLib on that target
+// too, and GetOperatingSystem parses what it is given as a kernel release.
+char* SystemNative_GetUnixRelease(void)
+{
+    struct utsname name;
+    if (::uname(&name) == -1)
+        return nullptr;
+    return ::strdup(name.release);
 }
 
 // ===================== low-level monitor ===================================
