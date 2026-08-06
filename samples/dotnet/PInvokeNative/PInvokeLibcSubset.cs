@@ -4,8 +4,8 @@ using System.Runtime.InteropServices;
 
 namespace PInvokeLibcSubset;
 
-// Blittable primitives and pointers into the always-linked libc, so no link flag is
-// emitted — unlike every other section in this bucket.
+// Blittable primitives, pointers and an ASCII string into the always-linked libc, so no
+// link flag is emitted — unlike every other section in this bucket.
 internal static unsafe class Program
 {
     // Implicit entry point: the method name is the symbol.
@@ -16,17 +16,17 @@ internal static unsafe class Program
     [DllImport("libc", EntryPoint = "llabs")]
     private static extern long LongAbs(long n);
 
+    // The double return rides libc's own converters, NOT sqrt/pow/floor/ceil: glibc keeps the
+    // math symbols in libm, so a "libc" import of one is an EntryPointNotFoundException on
+    // Linux — macOS's libSystem and the UCRT fold math in and hide that. The double ARGUMENT
+    // crossing is PInvokeCustomLibSubset's (dn2cpptest_scale).
     [DllImport("libc")]
-    private static extern double sqrt(double x);
+    private static extern double atof(string s);
 
-    [DllImport("libc")]
-    private static extern double pow(double b, double e);
-
-    [DllImport("libc")]
-    private static extern double floor(double x);
-
-    [DllImport("libc")]
-    private static extern double ceil(double x);
+    // Explicit EntryPoint over the same double return, plus the end pointer strtod writes
+    // back through a byref out-param.
+    [DllImport("libc", EntryPoint = "strtod")]
+    private static extern double StrToD(byte* s, out IntPtr end);
 
     // A native-pointer-sized return.
     [DllImport("libc", EntryPoint = "strlen")]
@@ -52,10 +52,16 @@ internal static unsafe class Program
 
         Console.WriteLine(abs(-7));               // 7
         Console.WriteLine(LongAbs(-1234567890123L)); // 1234567890123
-        Console.WriteLine(sqrt(2.0));             // 1.4142135623730951
-        Console.WriteLine(pow(2.0, 10.0));        // 1024
-        Console.WriteLine(floor(3.7));            // 3
-        Console.WriteLine(ceil(3.2));             // 4
+        Console.WriteLine(atof("14142135623730951e-16")); // 1.4142135623730951
+
+        // "5e-1x": strtod stops at the 'x' and reports where through its end pointer. Both
+        // parsed spellings carry an exponent and no decimal point on purpose — the radix
+        // character is LC_NUMERIC's, and the diff spans two processes.
+        byte* num = stackalloc byte[6];
+        num[0] = 53; num[1] = 101; num[2] = 45; num[3] = 49; num[4] = 120; num[5] = 0;
+        IntPtr end;
+        Console.WriteLine(StrToD(num, out end));  // 0.5
+        Console.WriteLine((int)((byte*)end - num)); // 4
 
         // "Hello\0" in a stack buffer.
         byte* s = stackalloc byte[6];

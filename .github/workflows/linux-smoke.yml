@@ -5,29 +5,28 @@
 # a fully provisioned machine, and it CANNOT be run here. Not "has not been
 # wired up yet" — cannot, and the reasons are structural:
 #
-#   - The desktop/iOS/Android/Web editor-export lane (six gates) runs a
-#     scons-built dn2cpp FORK of the Godot editor. gates/setup-godot-fork.sh has
-#     one arm per OS whose engine it can build — macOS and Windows — and no
-#     Linux arm; gates/_godot_fork.sh says so in the skip's own text: "running
-#     that script will NOT close this skip".
-#   - The three CRI ADX LE gates need the proprietary CriWare.CriAtomLE NuGet
-#     package and the adjacent private cri_adx_le_for_csharp sample repository.
-#     No script in this repository fetches them, and none can: the licence is
-#     the obstacle, not the automation.
-#   - The four godot-dotnet gates need a MONO editor + glue at a pinned commit,
+#   - The desktop/iOS/Android/Web editor-export lane runs a scons-built dn2cpp
+#     FORK of the Godot editor. gates/setup-godot-fork.sh has one arm per OS
+#     whose engine it can build — macOS and Windows — and no Linux arm;
+#     gates/_godot_fork.sh says so in the skip's own text: "running that script
+#     will NOT close this skip".
+#   - The CRI ADX LE gates need the proprietary CriWare.CriAtomLE NuGet package
+#     and the adjacent private cri_adx_le_for_csharp sample repository. No
+#     script in this repository fetches them, and none can: the licence is the
+#     obstacle, not the automation.
+#   - The godot-dotnet gates need a MONO editor + glue at a pinned commit,
 #     produced either by a macOS scons build or by a hand-supplied prebuilt.
 #   - The iOS gates need Xcode, a simulator, and an export template repaired by
 #     a local scons build (godot#118161).
 #
 # DN2CPP_REQUIRE_ALL=1 turns every one of those skips into a failure — which is
 # the whole point of the mode — so a hosted runner can never be green under it.
-# The last Linux measurement (2026-07-15) was 133/145 gates with twelve skips,
-# every one of them cross-toolchain. Running REQUIRE_ALL here
-# would produce a permanently red check that says nothing about the code, and
-# NOT running it while calling this file "CI" would be worse: it would let a
-# green badge stand in for a gate nobody ran. So this workflow does neither. It
-# runs the part of the suite a hosted runner can honestly run, and says in its
-# name, here, and in AGENTS.md that passing it is not permission to merge.
+# Running REQUIRE_ALL here would produce a permanently red check that says
+# nothing about the code, and NOT running it while calling this file "CI" would
+# be worse: it would let a green badge stand in for a gate nobody ran. So this
+# workflow does neither. It runs the part of the suite a hosted runner can
+# honestly run, and says in its name, here, and in AGENTS.md that passing it is
+# not permission to merge.
 #
 # What it does buy, which nothing else in the repository does: it is the only
 # automatic check that the tree still builds and transpiles on LINUX. Every
@@ -49,6 +48,11 @@ env:
   DOTNET_NOLOGO: "1"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  # cmake resolves /usr/bin/c++ — g++ — unless told otherwise, so the clang the
+  # steps below install goes unused and this lane measures a compiler nothing
+  # else here builds with. Tier-1 is clang; keep the axis this buys to the OS.
+  CC: clang
+  CXX: clang++
   # The engine is a manual prerequisite everywhere else (nothing in gates/
   # downloads it). Here it is pinned to the same version gates/_common.sh
   # verifies, and fetched from the public godot-builds release.
@@ -123,7 +127,7 @@ jobs:
       - name: Dump extension_api.json
         run: godot --headless --dump-extension-api
 
-      # Normal mode on purpose. DN2CPP_REQUIRE_ALL=1 would fail on the twelve
+      # Normal mode on purpose. DN2CPP_REQUIRE_ALL=1 would fail on the
       # cross-toolchain gates this runner cannot satisfy — see the header.
       - name: Run the non-Godot suite
         run: SKIP_GODOT=1 ./gates/run-all-gates.sh

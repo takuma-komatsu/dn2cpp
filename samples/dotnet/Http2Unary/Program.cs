@@ -242,10 +242,18 @@ namespace Http2Unary
             return bodyMs - headersMs > 750;
         }
 
+        private const int PoolIdleTimeoutSeconds = 1;
+
+        // The idle gap both arms wait out. Real .NET evicts an over-idle connection only on
+        // the pool manager's scavenge tick (period max(idle timeout / 4, 1 s)), so the gap
+        // must clear the timeout PLUS one tick — 2 s here — by a margin of further ticks: at
+        // 2 s exactly the oracle's verdict is that timer's phase, i.e. a coin flip.
+        private const int PoolIdleGapMs = 5000;
+
         // (h) CONNECTION-POOL SETTINGS. The observable that a lifetime knob really reached
         // the transport is the SERVER's own connection id: a handler that will not reuse a
-        // connection idle for more than a second must open a new one across a two-second
-        // gap, and a default-configured one (a minute) must not. Two separate HttpClients
+        // connection idle for more than a second must open a new one across the gap above,
+        // and a default-configured one (a minute) must not. Two separate HttpClients
         // rather than one reconfigured handler, because a SocketsHttpHandler refuses these
         // setters after its first request. The structural knobs (MaxConnectionsPerServer,
         // EnableMultipleHttp2Connections) have their own sections, (j) and (k).
@@ -256,7 +264,7 @@ namespace Http2Unary
 
             var expiring = new SocketsHttpHandler
             {
-                PooledConnectionIdleTimeout = TimeSpan.FromSeconds(1),
+                PooledConnectionIdleTimeout = TimeSpan.FromSeconds(PoolIdleTimeoutSeconds),
             };
             using (var client = new HttpClient(expiring))
                 Console.WriteLine("[pool] expiring-reuse=" + SameConnAcrossIdle(client, h2cBase));
@@ -265,7 +273,7 @@ namespace Http2Unary
         private static bool SameConnAcrossIdle(HttpClient client, string h2cBase)
         {
             string first = GetText(client, h2cBase + "/connid");
-            Thread.Sleep(2000);
+            Thread.Sleep(PoolIdleGapMs);
             string second = GetText(client, h2cBase + "/connid");
             return first.Length > 0 && first == second;
         }
