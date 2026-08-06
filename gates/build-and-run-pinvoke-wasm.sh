@@ -20,6 +20,11 @@
 # return must flatten identically in the generated C++ extern declaration and
 # the archive's C definition.
 #
+# PInvokeExplicitUnionSubset's size checks ride this axis for a reason that has nothing
+# to do with P/Invoke: an explicit layout's emitted union FIXES its own total, so a total
+# decided by a pointer field can only be wrong on a 32-bit target — and this is the only
+# gate that builds such a struct for one.
+#
 # The flagless-refusal negative arm stays in build-and-run-pinvoke-native.sh
 # alone: the refusal is target-independent (it fires at transpile time), so
 # re-proving it per axis would re-run the transpile for no new information.
