@@ -65,9 +65,10 @@
 # export-web gate documents out of the picture.
 #
 # Requires the CriWare.CriAtomLE NuGet package + sample repository (cri_*
-# helpers in _common.sh), the fork editor cache and the CRI Web template; each
-# absence is a gate_skip. A missing Chrome degrades the browser section to a
-# PARTIAL after every build artifact was asserted.
+# helpers in _common.sh), the fork editor cache, the CRI Web template and a
+# python new enough for emcc to launch; each absence is a gate_skip. A missing
+# Chrome degrades the browser section to a PARTIAL after every build artifact
+# was asserted.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_fork.sh"
 
@@ -86,10 +87,16 @@ dn2cpp_emsdk_resolve
 for tool in emcc em++ emcmake node; do
     command -v "$tool" >/dev/null 2>&1 || gate_skip "$tool not on PATH (needed to build and run a Web export)"
 done
-# Python is NOT in that loop, because presence under a name is not the test:
-# resolve_python (_common.sh) probes candidates by RUNNING one, which is the only
-# thing that tells a real interpreter from the app-execution-alias stub a stock
-# Windows install answers `python3` with. Resolved once and reused below.
+# Python is two questions, and the loop above answers neither. The first is which
+# interpreter EMCC starts, since every Emscripten front-end is a launcher over one
+# and the export refuses a stale one — $EMSDK_PYTHON stands in for the export's,
+# because the SDK dn2cpp_emsdk_resolve just chose is the one stage_editor_toolchain
+# installs into the fork editor below.
+godot_fork_emcc_python_check "$PATH" "${EMSDK_PYTHON:-}"
+# The second is the interpreter THIS SCRIPT runs, to serve the export over HTTP —
+# a different interpreter, and no floor. resolve_python probes by RUNNING one, the
+# only thing that tells a real interpreter from the app-execution-alias stub a
+# stock Windows install answers `python3` with.
 py="$(resolve_python)" || gate_skip "no working Python 3 interpreter (needed to serve the export over HTTP)"
 CRI_MANAGED_BROWSER="$(cri_managed_dll browser)" \
     || gate_skip "CriWare.CriAtomLE package (browser flavor) not present — see cri_nuget_root in gates/_common.sh"
