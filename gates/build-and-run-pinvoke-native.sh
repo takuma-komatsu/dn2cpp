@@ -18,14 +18,17 @@
 # fast path where real .NET raises TypeLoadException (measured).
 #
 # Also the system-libc section (PInvokeLibcSubset, folded in from its own gate):
-# [DllImport] into always-linked libc/libSystem with blittable primitives /
-# pointers only. Each pinvokeimpl method lowers to a direct native call into an
-# extern "C" entry point declared once by the emitter (aliased via an asm label so
-# it never collides with the libc prototype the runtime header already includes).
-# Covers int/long integer returns (abs/llabs), double ABI (sqrt/pow/floor/ceil),
-# implicit vs explicit EntryPoint, a pointer argument with a pointer-sized return
-# (strlen), and a void* (pointer) return aliasing its destination (memset) plus a
-# pointer == pointer compare. That section used to assert a hard-coded expected
+# [DllImport] into always-linked libc/libSystem with blittable primitives,
+# pointers and an ASCII string. Each pinvokeimpl method lowers to a direct native
+# call into an extern "C" entry point declared once by the emitter (aliased via an
+# asm label so it never collides with the libc prototype the runtime header already
+# includes).
+# Covers int/long integer returns (abs/llabs), a double return (atof/strtod — NOT
+# sqrt/pow/floor/ceil, which glibc keeps in libm, not libc.so.6; the double ARGUMENT
+# crossing is PInvokeCustomLibSubset's), implicit vs explicit EntryPoint, a
+# pointer argument with a pointer-sized return (strlen), a byref out-param pointer
+# (strtod's end), and a void* (pointer) return aliasing its destination (memset) plus
+# a pointer == pointer compare. That section used to assert a hard-coded expected
 # string; folded here it is exact-diffed against real .NET instead. Its own
 # DllImportResolver redirects `libc` onto ucrtbase.dll on Windows, where the
 # platform C library carries those symbols under a name no default probe reaches —
