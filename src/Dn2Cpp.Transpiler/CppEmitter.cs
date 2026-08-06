@@ -5247,8 +5247,11 @@ internal sealed partial class CppEmitter
         {
             if (TryStructExtent(cls, PtrBytes64) is { } osz)
             {
+                // The shell IS its size, so the same rule as the explicit-layout pad
+                // holds: a total that leans on the pointer width is written in
+                // sizeof(void*), never baked at 64 bits.
                 if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{osz.Size}];");
+                    sb.AppendLine($"    uint8_t __opaque_pad[{ModelSize(osz.Size, TryStructExtent(cls, PtrBytes32)?.Size).Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
