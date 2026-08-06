@@ -163,17 +163,23 @@ fi
 # 7. The same round trip cross-compiled to wasm by the SDK inside the bundle —
 # the one axis whose toolchain is shipped rather than assumed present.
 #
-# Two legitimate reasons not to run it, and each prints the reason: a bundle
+# One legitimate reason not to run it, and it prints that reason: a bundle
 # packaged on a host with no Emscripten SDK carries none (its users do not export
-# to the Web), and emcc needs node to link. Which of the three happened has to be
-# readable from the output — a section that quietly did nothing reads exactly like
-# one that passed, and on Linux that section is the whole acceptance gate.
+# to the Web). Which of the two happened has to be readable from the output — a
+# section that quietly did nothing reads exactly like one that passed, and on
+# Linux that section is the whole acceptance gate.
 WEB_EMCMAKE="$BUNDLE/emsdk/emscripten/emcmake"
+SMOKE_NODE="$(bundled_node "$BUNDLE")"
 if [ ! -x "$WEB_EMCMAKE" ]; then
     echo "SKIPPED (web axis): the bundle carries no emsdk/ — packaged on a host with none"
-elif ! command -v node >/dev/null 2>&1; then
-    echo "SKIPPED (web axis): node is not on PATH — emcc runs it to link, and the export check reads the module through it"
 else
+    # An error, not a skip: every emcc link runs a node and the SDK stages the
+    # pinned one, so an SDK standing here without it is a broken bundle, not a
+    # host without a Web toolchain.
+    [ -x "$SMOKE_NODE" ] || {
+        echo "error: bundle carries an emsdk/ but no executable $SMOKE_NODE (gates/setup-emsdk.sh" >&2
+        echo "       unpacks the pinned node dist/package-toolchain.sh stages inside the SDK)" >&2
+        exit 1; }
     echo "== web axis: cross-compiling the same sample with the bundle's own Emscripten SDK =="
     web_t0=$SECONDS
     # The CoreLib flavour the exporter picks for a cross target
@@ -199,11 +205,14 @@ else
     # SDK exports cleared: those outrank the config file, so an inherited one would
     # steer this link to the host's SDK and cache — proving nothing about the
     # bundle, and on a machine with no SDK failing for a reason this never saw.
+    # EM_NODE_JS is in that set for the reason EMSDK_PYTHON is: it outranks the
+    # config's NODE_JS, so an inherited one substitutes the host's node for the
+    # bundle's and the section stops being about the bundle at all.
     # EM_CONFIG (and the staged python below) go through native_path: emcc reads
     # both as a native program, which never resolves an MSYS spelling.
     WEBBUILD="$WORK/build-web"
     WEB_ENV=(-u EMSDK -u EMSDK_NODE -u EMSCRIPTEN -u EM_CACHE -u EM_FROZEN_CACHE \
-        -u EM_LLVM_ROOT -u EM_BINARYEN_ROOT -u EMSDK_PYTHON \
+        -u EM_LLVM_ROOT -u EM_BINARYEN_ROOT -u EMSDK_PYTHON -u EM_NODE_JS \
         "EM_CONFIG=$(native_path "$(cd "$BUNDLE/emsdk/emscripten" && pwd)/.emscripten")")
     # A bundle that stages its own python must be proven THROUGH it: emcc.exe picks
     # the EMSDK_PYTHON interpreter ahead of any PATH search, so leaving the variable
@@ -232,7 +241,7 @@ else
     [ -f "$WEBSO" ] || { echo "error: the wasm side module was not produced: $WEBSO" >&2; exit 1; }
     # A release side module has no name section, so grepping the file for a symbol
     # would also match an import: parse the export section.
-    node gates/_wasm_symbols.js exports "$WEBSO" > "$WORK/web-exports.txt"
+    "$SMOKE_NODE" gates/_wasm_symbols.js exports "$WEBSO" > "$WORK/web-exports.txt"
     grep -qx "func godotsharp_game_main_init" "$WORK/web-exports.txt" || {
         echo "FAIL: $WEBSO does not export godotsharp_game_main_init" >&2
         cat "$WORK/web-exports.txt" >&2
