@@ -369,7 +369,7 @@ endfunction()
 function(_dn2cpp_stack_frame_limit target)
     if(DN2CPP_MAX_STACK_FRAME AND NOT MSVC)
         target_compile_options(${target} PRIVATE
-            "-Wframe-larger-than=${DN2CPP_MAX_STACK_FRAME}" -Werror=frame-larger-than)
+            "-Wframe-larger-than=${DN2CPP_MAX_STACK_FRAME}" -Werror=frame-larger-than=${DN2CPP_MAX_STACK_FRAME})
     endif()
 endfunction()
 
