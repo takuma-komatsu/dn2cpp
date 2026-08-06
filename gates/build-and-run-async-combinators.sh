@@ -17,6 +17,11 @@
 # NOT WhenAny's on either count (empty array, null-element exception type), and the
 # null scan precedes both the index answer and the wait, so neither a settled nor a
 # pending task ahead of a null one hides the rejection.
+# SettledCombinatorsSubset.cs asserts that Task.WhenAll/WhenAny over ALREADY-SETTLED
+# inputs complete before the combinator returns — every row is read without waiting,
+# since a wait ahead of the read passes whether the join finished inline or was posted
+# to the scheduler; the mixed rows hold the other side, that one pending input still
+# leaves the join pending.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

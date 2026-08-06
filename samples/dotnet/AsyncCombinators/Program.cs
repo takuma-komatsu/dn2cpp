@@ -28,6 +28,7 @@ namespace AsyncCombinators
             // previous output stays an unchanged prefix of the new one.
             WaitAsyncContinueWithSubset.Program.__GateEntry();
             BlockingWaitArgsSubset.Program.__GateEntry();
+            SettledCombinatorsSubset.Program.__GateEntry();
         }
     }
 }
