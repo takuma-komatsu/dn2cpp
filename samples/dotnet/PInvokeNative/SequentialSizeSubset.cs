@@ -51,6 +51,27 @@ internal static class Program
         public IntPtr Y;
     }
 
+    // The declared size dominates at both widths AND is expressible at both, so the total
+    // is one literal — the representable neighbour of the refusal LayoutSizeBadNarrow
+    // asserts, where the same fields under Size=12 have no C++ form at 64 bits.
+    [StructLayout(LayoutKind.Sequential, Size = 16)]
+    private struct PtrIntExact
+    {
+        public IntPtr P;
+        public int I;
+    }
+
+    // Pack 1 takes the alignment away, so the field end dominates at 64 bits and the
+    // declared size floors at 32 — a total that is a pointer count apart at neither width,
+    // which both the representation and the marshalled model must render as a selection
+    // rather than a sum. Legal at both widths precisely because alignment 1 divides
+    // everything.
+    [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 6)]
+    private struct PackedPtrSized6
+    {
+        public IntPtr P;
+    }
+
     // The control: no pointer anywhere, so nothing here may move with the width.
     [StructLayout(LayoutKind.Sequential, Size = 12)]
     private struct IntPadded
@@ -83,5 +104,15 @@ internal static class Program
         var e = default(IntPadded);
         e.I = 7;
         Console.WriteLine($"{Unsafe.SizeOf<IntPadded>()} {e.I}");                               // 12 7
+
+        var f = default(PtrIntExact);
+        f.P = new IntPtr(77);
+        f.I = -9;
+        Console.WriteLine($"{Unsafe.SizeOf<PtrIntExact>()} {f.P.ToInt64()} {f.I}");             // 16 77 -9
+
+        var g = default(PackedPtrSized6);
+        g.P = new IntPtr(88);
+        int packedFloor = Math.Max(6, IntPtr.Size);
+        Console.WriteLine($"{Unsafe.SizeOf<PackedPtrSized6>() == packedFloor} {Marshal.SizeOf<PackedPtrSized6>() == packedFloor} {g.P.ToInt64()}");  // True True 88
     }
 }
