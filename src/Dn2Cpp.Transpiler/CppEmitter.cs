@@ -5245,13 +5245,13 @@ internal sealed partial class CppEmitter
         // the size readers throw instead of answering that 1 (see _layoutUnknown).
         if (IsOpaque(cls) && cls.IsValueType)
         {
-            if (TryStructExtent(cls, PtrBytes64) is { } osz)
+            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz)
             {
                 // The shell IS its size, so the same rule as the explicit-layout pad
                 // holds: a total that leans on the pointer width is written in
                 // sizeof(void*), never baked at 64 bits.
                 if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{ModelSize(osz.Size, TryStructExtent(cls, PtrBytes32)?.Size).Text}];");
+                    sb.AppendLine($"    uint8_t __opaque_pad[{PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size).Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
@@ -5337,48 +5337,10 @@ internal sealed partial class CppEmitter
         // 32-bit target (wasm32) a pointer-bearing struct legitimately comes out
         // smaller — guard those asserts on sizeof(void*) == 8 instead of pinning
         // a 64-bit-only number; pointer-free structs stay pinned everywhere.
-        else if (!IsOpaque(cls) && cls.IsValueType && TryStructExtent(cls, PtrBytes64) is { } ext)
+        else if (!IsOpaque(cls) && cls.IsValueType && TryStructExtent(cls, PointerWidth.Bytes64) is { } ext)
             sb.AppendLine(ext.PtrFree
                 ? $"static_assert(sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");"
                 : $"static_assert(sizeof(void*) != 8 || sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");");
-    }
-
-    // The pointer widths the layout model reads a type at. Every target dn2cpp emits for
-    // is one of the two, so a size known at both is known everywhere (see ModelSize).
-    // PtrBytes64 is the model's own width: it alone decides what the transpile refuses.
-    private const int PtrBytes64 = 8;
-    private const int PtrBytes32 = 4;
-
-    /// <summary>A modeled byte size rendered as a C++ constant expression.
-    /// <see cref="Guarded"/> marks the fallback the model could only pin at 64-bit
-    /// pointer width — the emitter must then STATE that premise
-    /// (<c>sizeof(void*) != 8 ||</c>) rather than pin the number, the same convention the
-    /// sequential-layout and marshalled-layout asserts follow.</summary>
-    private readonly record struct ModeledSize(string Text, bool Guarded);
-
-    /// <summary>Renders a size the model read at both pointer widths. The model is affine
-    /// in that width, so the line through the two readings is exact at both — and those
-    /// are the only widths that exist — which lets the size be written in
-    /// <c>sizeof(void*)</c> and stay target-independent text. Falls back to the 64-bit
-    /// constant, guarded, when the 32-bit reading is missing or the two do not lie on such
-    /// a line: a wrong expression would be worse than a stated premise.</summary>
-    private static ModeledSize ModelSize(int size64, int? size32)
-    {
-        if (size32 is not { } s32 || (size64 - s32) % (PtrBytes64 - PtrBytes32) != 0)
-            return new ModeledSize($"{size64}", true);
-        int ptrs = (size64 - s32) / (PtrBytes64 - PtrBytes32);
-        int rest = size64 - ptrs * PtrBytes64;
-        if (ptrs == 0)
-            return new ModeledSize($"{rest}", false);
-        string term = ptrs is 1 or -1 ? "sizeof(void*)" : $"{Math.Abs(ptrs)} * sizeof(void*)";
-        // The constant part is written on whichever side keeps every operand positive:
-        // sizeof is size_t, so a negative literal would only come out right by unsigned
-        // wraparound.
-        if (ptrs > 0)
-            return new ModeledSize(rest == 0 ? term : rest > 0 ? $"{rest} + {term}" : $"{term} - {-rest}", false);
-        if (rest > 0)
-            return new ModeledSize($"{rest} - {term}", false);
-        return new ModeledSize($"{size64}", true);
     }
 
     /// <summary>Emits the body of a <c>[StructLayout(LayoutKind.Explicit)]</c> value
@@ -5402,8 +5364,8 @@ internal sealed partial class CppEmitter
         // what the union measures. So a size that leans on the pointer width must be
         // written in sizeof(void*), or the struct is a 64-bit size on a 32-bit target and
         // a copy of it walks off the end of the ABI's storage.
-        var size = ModelSize(ExplicitLayoutExtent(cls, fields, PtrBytes64).Size,
-                             TryExplicitLayoutSize(cls, fields, PtrBytes32));
+        var size = PointerWidth.Model(ExplicitLayoutExtent(cls, fields, PointerWidth.Bytes64).Size,
+                                      TryExplicitLayoutSize(cls, fields, PointerWidth.Bytes32));
         if (fields.Count == 0)
         {
             sb.AppendLine($"    uint8_t __explicit_pad[{size.Text}];");
@@ -5515,8 +5477,8 @@ internal sealed partial class CppEmitter
             return false;
         // Unguarded at the model's own width: a declared size the emitted layout cannot
         // represent must fail the transpile, and that verdict is the 64-bit reading's.
-        return SequentialSizePadding(cls, fields, PtrBytes64) > 0
-               || TrySequentialSizePadding(cls, fields, PtrBytes32) > 0;
+        return SequentialSizePadding(cls, fields, PointerWidth.Bytes64) > 0
+               || TrySequentialSizePadding(cls, fields, PointerWidth.Bytes32) > 0;
     }
 
     /// <summary>The declared-size padding at a pointer width other than the model's own — a
@@ -5636,7 +5598,7 @@ internal sealed partial class CppEmitter
     /// reference, a pointer, IntPtr, or a nested struct containing one) — those
     /// sizes hold only on a target of that width, so the layout static_assert either
     /// writes the size in <c>sizeof(void*)</c> or weakens to a guard (see
-    /// <see cref="ModelSize"/>).</summary>
+    /// <see cref="PointerWidth.Model"/>).</summary>
     private (int Size, int Align, bool PtrFree)? TryFieldExtent(TypeDesc t, int ptr)
     {
         string ct;
