@@ -5427,7 +5427,9 @@ internal sealed partial class CppEmitter
     /// <c>[StructLayout(Size = N)]</c> and rounded up to the max (pack-capped) field
     /// alignment — exactly what the emitted union produces in C++ and what the CLR
     /// computes. Throws (naming the type and field) for every shape the union
-    /// emission cannot represent; see <see cref="EmitExplicitLayoutBody"/>.</summary>
+    /// emission cannot represent; see <see cref="EmitExplicitLayoutBody"/>. A declared
+    /// size makes max(Size, field end) the byte count that must be representable, so
+    /// the refusal names that total rather than the Size that may not be the offender.</summary>
     private (int Size, int Align) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         int pack = cls.LayoutPack;
@@ -5470,16 +5472,14 @@ internal sealed partial class CppEmitter
         int content = Math.Max(end, cls.LayoutSize);
         if (content == 0) content = 1;
         int total = RoundUp(content, align);
-        // A declared Size that alignment rounding would overshoot (Size not a
-        // multiple of the struct's alignment) cannot be reproduced by a C++ struct.
-        // Real .NET DOES measure the shape: an Explicit Size=6 over an int reads 6 from
-        // sizeof, Unsafe.SizeOf, Marshal.SizeOf and the array stride alike — size 6 with
-        // alignment 4 intact, which C++ structurally cannot express (sizeof is always a
-        // multiple of alignof). So the refusal is an honest loud divergence, not a missing
-        // rule; asserted by build-and-run-marshal-pinning.sh's negative arm.
-        if (cls.LayoutSize >= end && cls.LayoutSize > 0 && total != cls.LayoutSize)
+        // What real .NET measures is max(Size, end) with the alignment intact — sizeof,
+        // Unsafe.SizeOf, Marshal.SizeOf and the array stride alike, so Explicit Size=6 over
+        // an int is 6 and Size=4 over {IntPtr@0, byte@8} is 9. C++ cannot express a size
+        // that is not a multiple of alignof, so the offender is that total and not always
+        // the declared Size. Asserted by build-and-run-marshal-pinning.sh's negative arms.
+        if (cls.LayoutSize > 0 && content % align != 0)
             throw new NotSupportedException(
-                $"{cls.FullName}: explicit Size={cls.LayoutSize} is not a multiple of the struct's {align}-byte alignment, which the emitted C++ layout cannot represent");
+                $"{cls.FullName}: explicit Size={cls.LayoutSize} over fields ending at byte {end} gives a {content}-byte struct, not a multiple of its {align}-byte alignment, which the emitted C++ layout cannot represent");
         return (total, align);
     }
 
