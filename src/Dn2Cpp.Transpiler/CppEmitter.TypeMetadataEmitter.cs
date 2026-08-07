@@ -1958,7 +1958,11 @@ internal sealed partial class CppEmitter
                 esName = $"\"{es.Name}\"";
                 esGuid = es.Guid is null ? null : $"\"{es.Guid}\"";
             }
-            string? marshalSize = _c.MarshalStampSize(cls)?.Int32Expr;
+            // A guarded size is a 64-bit number the model could not restate at 32 bits — the
+            // narrow walk refused the type, which a [MarshalAs] contradicting a pointer-wide
+            // field does. Leave it unstamped: the runtime then answers from instanceSize,
+            // which is at least the same width the target actually builds at.
+            string? marshalSize = _c.MarshalStampSize(cls) is { Guarded: false } msz ? msz.Int32Expr : null;
             string tail = TypeInfoTail(
                 ("0", null),                                 // varianceMask
                 ("0", marshalSize),                          // marshalSize
