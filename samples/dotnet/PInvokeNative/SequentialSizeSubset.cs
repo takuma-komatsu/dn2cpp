@@ -51,6 +51,16 @@ internal static class Program
         public IntPtr Y;
     }
 
+    // The declared size dominates at both widths AND is expressible at both, so the total
+    // is one literal — the representable neighbour of the refusal LayoutSizeBadNarrow
+    // asserts, where the same fields under Size=12 have no C++ form at 64 bits.
+    [StructLayout(LayoutKind.Sequential, Size = 16)]
+    private struct PtrIntExact
+    {
+        public IntPtr P;
+        public int I;
+    }
+
     // The control: no pointer anywhere, so nothing here may move with the width.
     [StructLayout(LayoutKind.Sequential, Size = 12)]
     private struct IntPadded
@@ -83,5 +93,10 @@ internal static class Program
         var e = default(IntPadded);
         e.I = 7;
         Console.WriteLine($"{Unsafe.SizeOf<IntPadded>()} {e.I}");                               // 12 7
+
+        var f = default(PtrIntExact);
+        f.P = new IntPtr(77);
+        f.I = -9;
+        Console.WriteLine($"{Unsafe.SizeOf<PtrIntExact>()} {f.P.ToInt64()} {f.I}");             // 16 77 -9
     }
 }

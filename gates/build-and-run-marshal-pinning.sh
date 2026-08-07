@@ -8,8 +8,8 @@
 # generic and non-generic Type-based forms, mutate-through-buffer = real memcpy);
 # SizeOf/OffsetOf exactly matching real .NET (including the
 # [StructLayout(Size=N)] floor rows — Size is never rounded up to the alignment,
-# standalone or as a member, with the unrepresentable non-multiple shape asserted
-# as a loud transpile refusal by this gate's negative arm below); Marshal.Copy
+# standalone or as a member, with the two unrepresentable shapes asserted
+# as loud transpile refusals by this gate's negative arms below); Marshal.Copy
 # both directions; a
 # conservative-GC coherence section (pin -> native write -> heap churn -> free ->
 # managed read); the native-memory primitives (Read*/Write* typed accessors,
@@ -79,5 +79,28 @@ fi
 grep -q "error: .*Sized6Int: Size=6 over fields ending at byte 4 gives a 6-byte struct, not a multiple of its 4-byte alignment" <<<"$_neg_err" \
     || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_neg_err" | tail -3 >&2; exit 1; }
 echo "non-multiple-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
+
+echo "== Asserting a declared Size over fields ending off the alignment refuses =="
+# SUBJECT: the same refusal reached from the other side — the declared Size IS a
+# multiple of the alignment and the FIELD END is not, so max(Size, end) still has
+# no C++ form. Real .NET reads 12 here (size 12, alignment 8 intact); dn2cpp
+# answered the rounded 16 silently before. Its own project because the CLI stops
+# at the first error, so a second type inside LayoutSizeBad would never reach the
+# grep. No wasm arm: NeedsDeclaredSizeArm asks at the model's own 64-bit width,
+# so the verdict is target-independent.
+build_proj samples/dotnet/LayoutSizeBadNarrow/LayoutSizeBadNarrow.csproj
+_narrow_app="samples/dotnet/LayoutSizeBadNarrow/bin/$CONFIG/$TFM/LayoutSizeBadNarrow.dll"
+_narrow_out="artifacts/marshalpinning-layoutsize-narrow"
+rm -rf "$_narrow_out"
+_narrow_rc=0
+_narrow_err=$(invoke_cli "$_narrow_app" -r "$_neg_corelib" -o "$_narrow_out" 2>&1) || _narrow_rc=$?
+if [ "$_narrow_rc" -ne 2 ]; then
+    echo "FAIL: the Size=12-over-{IntPtr,int} transpile exited $_narrow_rc (want 2: the unrepresentable-total refusal)" >&2
+    printf '%s\n' "$_narrow_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*PtrIntUnder: Size=12 over fields ending at byte 12 gives a 12-byte struct, not a multiple of its 8-byte alignment" <<<"$_narrow_err" \
+    || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_narrow_err" | tail -3 >&2; exit 1; }
+echo "unrepresentable-total refusal OK: exit 2, named type, Size, field end, total and alignment"
 
 corelib_diff_gate MarshalPinning
