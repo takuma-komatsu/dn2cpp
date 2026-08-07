@@ -46,6 +46,8 @@ source "$(dirname "$0")/../gates/_godot_fork.sh"
 # The fork's release branch. A commit reachable from nothing on the remote would
 # be tagged into a release whose source nobody can fetch.
 FORK_BRANCH=dn2cpp/main
+# The dn2cpp branch the notes' dn2cpp_commit values must be on, for that reason.
+DN2CPP_BRANCH=main
 
 VERSION=
 REPO=takuma-komatsu/godot-dn2cpp
@@ -308,7 +310,7 @@ git -C "$FORK" merge-base --is-ancestor "$BASE_PIN" "$COMMIT" \
     || die "$COMMIT does not descend from the pinned upstream base $BASE_PIN"
 echo "-- base pin: $BASE_PIN (an ancestor of the tagged commit)"
 
-# ── 5. The tag on origin names THIS commit, and the commit is pushed ──────────
+# ── 5. The tag on origin names THIS commit, and the commits are pushed ────────
 # A tag already on origin at the tagged commit is this script's own earlier run:
 # the draft → --publish flow re-enters here, as does every retry, and so does a
 # second host adding its lane. Only a tag naming a *different* commit is the
@@ -344,6 +346,30 @@ if [ "$TAG_ON_ORIGIN" -eq 1 ]; then
 else
     echo "-- origin/$FORK_BRANCH: contains the tagged commit; no tag $TAG on origin"
 fi
+
+# The same question one repository over: the notes print each editor's
+# dn2cpp_commit beside a link to the dn2cpp repository, so a sha that repository
+# cannot reach is a dead reference, and the release was cut from a tree nobody
+# pushed. The remote is `origin`, the repository the notes link — `archive`
+# carries commits it does not, and would answer for a repository nobody can fetch.
+dn2cpp_tip="$(git ls-remote origin "refs/heads/$DN2CPP_BRANCH" | awk '{print $1}')"
+[ -n "$dn2cpp_tip" ] || die "the dn2cpp origin has no branch $DN2CPP_BRANCH"
+# Ancestry needs the remote tip as a local object; a fetch is the caller's, since
+# fetching here would quietly change what the answer is about.
+git rev-parse --verify --quiet "$dn2cpp_tip^{commit}" >/dev/null \
+    || die "the dn2cpp origin/$DN2CPP_BRANCH is at $dn2cpp_tip, which this clone does not have — run: git fetch origin"
+for lane in $ACTIVE_LANES; do
+    lane_has dn2cpp_commit "$lane" || continue
+    dc="$(lane_val "$lane" dn2cpp_commit)"
+    dc_full="$(git rev-parse --verify --quiet "$dc^{commit}")" \
+        || die "$(lane_meta "$lane")'s dn2cpp_commit ($dc) is not a commit in this repository"
+    git merge-base --is-ancestor "$dc_full" "$dn2cpp_tip" || die \
+        "$dc_full is not reachable from the dn2cpp origin/$DN2CPP_BRANCH ($dn2cpp_tip)
+       $(lane_meta "$lane"): dn2cpp_commit=$dc
+       The notes print it beside a link to the repository. Push dn2cpp first:
+         git push origin $DN2CPP_BRANCH"
+done
+echo "-- dn2cpp origin/$DN2CPP_BRANCH: contains every editor lane's dn2cpp_commit"
 
 # ── 6. The checksums ──────────────────────────────────────────────────────────
 # The rows and the active lanes' assets are the SAME set, both ways: a row for an

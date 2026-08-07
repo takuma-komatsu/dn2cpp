@@ -765,7 +765,8 @@ a `*.metadata` file beside it:
 `dist/release-github.sh` turns a finished asset directory into an annotated tag
 and a draft GitHub release, rendering `dist/release-notes-template.md` from that
 metadata. Everything it publishes is checked against the tree first — the fork
-commit the editor was built from, its ancestry on the remote branch, the hashes,
+commit the editor was built from, its ancestry on the remote branch, the same
+ancestry for the `dn2cpp_commit` the notes link a repository beside, the hashes,
 and that the assets name one engine.
 
 An editor can only be packaged on the platform it runs on, so the lane set is an
