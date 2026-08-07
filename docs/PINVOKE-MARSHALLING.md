@@ -71,3 +71,10 @@ the native gate's step 5 asserts the flagless transpile still refuses them),
 C# for an import at transpile time, so the library is never referenced or linked),
 and `PInvokeStackallocUtf8Subset` (a `stackalloc` UTF-8 buffer passed as a raw
 `byte*` — no marshaller runs at all; it rides the envelope row's pointer case).
+
+A further section is in this bucket for the TARGET the bucket is built for rather
+than for P/Invoke at all: `SequentialSizeSubset` measures the size of a
+`[StructLayout(Size = N)]` value type whose fields end on a pointer. The emitted
+body fixes that size, so it can only be wrong on a 32-bit target, and
+`gates/build-and-run-pinvoke-wasm.sh` is the only gate that builds this program for
+one — the same reason the size checks in `PInvokeExplicitUnionSubset` are here.

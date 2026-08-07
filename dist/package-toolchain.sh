@@ -421,6 +421,29 @@ emsdk_bake_recipe() {
         | shasum -a 256 | awk '{print substr($1, 1, 12)}'
 }
 
+# stage_vendored_licences DEST FILE... — install the texts a tree's own archive
+# carries none of (dist/licenses/README.md) into its LICENSES/, beside the ones
+# the trim harvested.
+stage_vendored_licences() {
+    local dest="$1" f
+    shift
+    mkdir -p "$dest/LICENSES"
+    for f in "$@"; do
+        install -m 0644 "$f" "$dest/LICENSES/"
+    done
+}
+
+# vendored_lic_digest FILE... — a stamp term over those texts. Without it the
+# stamp sees only the upstream archive and the keep list, so a staged tree
+# survives an edit here and ships the licence set it was built with.
+vendored_lic_digest() {
+    local f
+    for f in "$@"; do
+        [ -f "$f" ] || { echo "error: the vendored licence $f is absent" >&2; return 1; }
+    done
+    shasum -a 256 "$@" | shasum -a 256 | awk '{print substr($1, 1, 12)}'
+}
+
 # bundle_trim ROOT SPEC LABEL — reduce a staged tree to the set SPEC keeps,
 # reporting under LABEL. For the SDK it runs between the bake and the freeze, so
 # the read-only re-link that follows is the oracle for what it removed (see
@@ -595,8 +618,12 @@ else
     EMSDK_TRIM_SPEC=dist/emsdk-trim.txt
     [ -f "$EMSDK_TRIM_SPEC" ] || {
         echo "error: the SDK keep list $EMSDK_TRIM_SPEC is absent" >&2; exit 1; }
+    # LLVM and Binaryen ship no licence text in the archive, so these two are the
+    # bundle's only copy of their terms.
+    EMSDK_VENDORED_LICENCES=(dist/licenses/llvm-LICENSE.txt dist/licenses/binaryen-LICENSE.txt)
+    emsdk_lic_digest="$(vendored_lic_digest "${EMSDK_VENDORED_LICENCES[@]}")" || exit 1
     emsdk_stamp="$EMSDK_VERSION $emsdk_sha trim-v1-$(shasum -a 256 "$EMSDK_TRIM_SPEC" \
-        | awk '{print substr($1, 1, 12)}') bake-$(emsdk_bake_recipe)"
+        | awk '{print substr($1, 1, 12)}') bake-$(emsdk_bake_recipe) lic-$emsdk_lic_digest"
     emsdk_dest="$LAYOUT/emsdk"
 
     if [ "$emsdk_sha" != unpinned ] \
@@ -678,6 +705,9 @@ EOF
         # read-only re-link below is asserting, and a trim that ran after it
         # would be a change nothing proved.
         bundle_trim "$emsdk_dest" "$EMSDK_TRIM_SPEC" emsdk
+        # Before the freeze below: anything written after it is reported as the
+        # frozen SDK writing to itself.
+        stage_vendored_licences "$emsdk_dest" "${EMSDK_VENDORED_LICENCES[@]}"
         printf 'FROZEN_CACHE  = True\n' >> "$emsdk_dest/emscripten/.emscripten"
 
         touch "$emsdk_bake/frozen-at"
@@ -831,11 +861,15 @@ else
         bt_cmake_sha="$bt_p2"
         bt_ninja_sha="$bt_p4"
     fi
-    # Four terms, the SDK's shape: the versions and the archive shas identify the
-    # upstream bytes and cannot see a change to the keep list, so editing that
-    # must re-stage by itself. No bake term — nothing here is baked.
+    # ninja's release zip holds the executable and nothing else, so this is the
+    # bundle's only copy of its terms.
+    BT_VENDORED_LICENCES=(dist/licenses/ninja-COPYING.txt)
+    bt_lic_digest="$(vendored_lic_digest "${BT_VENDORED_LICENCES[@]}")" || exit 1
+    # The SDK's shape: the versions and the archive shas identify the upstream
+    # bytes and cannot see a change to the keep list or to the vendored texts, so
+    # editing either must re-stage by itself. No bake term — nothing here is baked.
     bt_stamp="$BT_CMAKE_VERSION $bt_cmake_sha $BT_NINJA_VERSION $bt_ninja_sha trim-v1-$(shasum -a 256 \
-        "$BUILDTOOLS_TRIM_SPEC" | awk '{print substr($1, 1, 12)}')"
+        "$BUILDTOOLS_TRIM_SPEC" | awk '{print substr($1, 1, 12)}') lic-$bt_lic_digest"
     bt_dest="$LAYOUT/buildtools"
 
     if [ "$bt_cmake_sha" != unpinned ] \
@@ -903,11 +937,8 @@ else
   "thinned": $bt_thinned
 }
 EOF
-        # ninja's release zip holds the executable and nothing else, so the only
-        # copy of its licence is the vendored one (dist/licenses/README.md).
         # cmake's half is already in LICENSES/, from the keep list's own entries.
-        mkdir -p "$bt_dest/LICENSES"
-        install -m 0644 dist/licenses/ninja-COPYING.txt "$bt_dest/LICENSES/"
+        stage_vendored_licences "$bt_dest" "${BT_VENDORED_LICENCES[@]}"
         # Written LAST, so a run interrupted anywhere above leaves a tree that
         # re-stages rather than one that passes for complete.
         printf '%s\n' "$bt_stamp" > "$bt_dest/.buildtools-stamp"

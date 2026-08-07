@@ -540,6 +540,61 @@ godot_fork_resolve() {
     fi
 }
 
+# godot_fork_emcc_python_check SEARCH_PATH [EMSDK_PYTHON] — skip when the python
+# emcc would start is older than the floor the fork's exporter refuses below, so
+# a host that cannot export says so here instead of dying inside the link.
+# Presence is not the question: macOS answers `python3` with an Xcode stub stuck
+# at 3.9.6 that resolves, runs, and is refused.
+#
+# Both arguments describe the EXPORT's answer, not the gate's, and they are the
+# whole difference between callers — the PATH the editor is launched with, and
+# the EMSDK_PYTHON it will see (empty where it is launched under `env -u`). The
+# gate's own interpreter is a separate question that resolve_python answers, for
+# reading wasm exports and serving over http.server; one fit for those is not
+# thereby fit for emcc, which is why neither call may stand in for the other.
+godot_fork_emcc_python_check() {
+    local search_path="$1" exe="${2-}" origin=EMSDK_PYTHON src floor ver
+    godot_fork_resolve || exit 1
+    src="$FORK/modules/mono/editor/GodotTools/GodotTools/Export/Dn2CppExporter.cs"
+    # Read off the fork rather than restated: a floor that drifts from the one
+    # the editor enforces skips runs the export would take, or admits ones it
+    # refuses.
+    floor="$(LC_ALL=C awk '
+        /const int RequiredPythonMajor/ && match($0, /[0-9]+/) { maj = substr($0, RSTART, RLENGTH) }
+        /const int RequiredPythonMinor/ && match($0, /[0-9]+/) { min = substr($0, RSTART, RLENGTH) }
+        END { if (maj != "" && min != "") print maj "." min }' "$src")"
+    if [ -z "$floor" ]; then
+        echo "FAIL: no RequiredPythonMajor/Minor constants in $src," >&2
+        echo "      which is this probe's only source for the version the export demands." >&2
+        exit 1
+    fi
+    if [ -n "$exe" ]; then
+        # Native form, because Windows is the only host whose SDK stages one.
+        if [ "${DN2CPP_OS:-}" = windows ]; then
+            exe="$(cygpath -u "$exe" 2>/dev/null || printf '%s' "$exe")"
+        fi
+    else
+        origin=PATH
+        # The launchers' own names in their own order — the sh script tries
+        # python3 then python, pylauncher.exe python alone. Probing a name emcc
+        # does not look for is a check that passes while the link fails.
+        if [ "${DN2CPP_OS:-}" = windows ]; then
+            exe="$(PATH="$search_path" command -v python 2>/dev/null || true)"
+        else
+            exe="$(PATH="$search_path" command -v python3 2>/dev/null \
+                || PATH="$search_path" command -v python 2>/dev/null || true)"
+        fi
+        [ -n "$exe" ] || gate_skip "no python on PATH for emcc, a launcher over python $floor or newer; the Emscripten SDK stages an interpreter on Windows alone, and no repository can ship the host one"
+    fi
+    ver="$("$exe" -E -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
+    case "$ver" in [0-9]*.[0-9]*) ;; *) ver="" ;; esac
+    if [ -z "$ver" ] \
+        || [ "$(printf '%s\n%s\n' "$floor" "$ver" | LC_ALL=C sort -V | tail -1)" != "$ver" ]; then
+        gate_skip "the python emcc would run, $exe ($origin), is ${ver:-of no readable version} and the export needs $floor or newer; the Emscripten SDK stages an interpreter on Windows alone, and no repository can ship the host one"
+    fi
+    echo "emcc python: $exe ($ver, $origin) against the fork's floor of $floor"
+}
+
 # godot_fork_pin_abi_check — the shared pin + interop-ABI tripwire of the four
 # editor-export gates. The artifact root, the fork worktree and the gate's
 # checked-in expectations must all describe one base commit, and the fork must

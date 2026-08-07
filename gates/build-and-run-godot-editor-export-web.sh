@@ -28,8 +28,9 @@
 # entry symbol.
 #
 # Requires the artifacts of gates/setup-godot-fork.sh AND gates/setup-godot-fork-web.sh
-# (the Web template: upstream ships no C#-capable one), plus emcc, node and a
-# headless Chrome. Skips (exit 77) when any is absent.
+# (the Web template: upstream ships no C#-capable one), plus emcc, node, a python
+# new enough for emcc to launch, and a headless Chrome. Skips (exit 77) when any
+# is absent.
 #
 # Registered in run-all-gates.sh's SERIAL Godot phase, in the chain that writes
 # $FORK_GODOTSHARP/Dn2Cpp: it launches the engine, and every launch runs
@@ -53,10 +54,16 @@ dn2cpp_emsdk_resolve
 for tool in emcc em++ emcmake node; do
     command -v "$tool" >/dev/null 2>&1 || gate_skip "$tool not on PATH (needed to build and run a Web export)"
 done
-# Python is NOT in that loop, because presence under a name is not the test:
-# resolve_python (_common.sh) probes candidates by RUNNING one, which is the only
-# thing that tells a real interpreter from the app-execution-alias stub a stock
-# Windows install answers `python3` with. Resolved once and reused below.
+# Python is two questions, and the loop above answers neither. The first is which
+# interpreter EMCC starts, since every Emscripten front-end is a launcher over one
+# and the export refuses a stale one — $EMSDK_PYTHON stands in for the export's,
+# because the SDK dn2cpp_emsdk_resolve just chose is the one stage_editor_toolchain
+# installs below and the export section asserts was compiled through.
+godot_fork_emcc_python_check "$PATH" "${EMSDK_PYTHON:-}"
+# The second is the interpreter THIS SCRIPT runs, for the wasm export reader and
+# the http.server below — a different interpreter, and no floor. resolve_python
+# probes by RUNNING one, the only thing that tells a real interpreter from the
+# app-execution-alias stub a stock Windows install answers `python3` with.
 py="$(resolve_python)" || gate_skip "no working Python 3 interpreter (needed to read wasm exports and serve the export)"
 
 # Read a wasm module's export names. A release side module has no name section,

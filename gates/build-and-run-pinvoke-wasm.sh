@@ -23,7 +23,10 @@
 # PInvokeExplicitUnionSubset's size checks ride this axis for a reason that has nothing
 # to do with P/Invoke: an explicit layout's emitted union FIXES its own total, so a total
 # decided by a pointer field can only be wrong on a 32-bit target — and this is the only
-# gate that builds such a struct for one.
+# gate that builds such a struct for one. SequentialSizeSubset is here for the same
+# reason and is the same subject: a [StructLayout(Size = N)] sequential value type reaches
+# N through an emitted trailing pad, which likewise fixes the total, and whose width the
+# 64-bit reading alone cannot state when the pad is 0 there and positive at 32.
 #
 # The flagless-refusal negative arm stays in build-and-run-pinvoke-native.sh
 # alone: the refusal is target-independent (it fires at transpile time), so

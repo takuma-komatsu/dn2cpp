@@ -60,12 +60,10 @@ namespace BlockingWaitArgsSubset
 
             // Still alive and still combining after every rejection above — the property an
             // abort cannot demonstrate, and the reason these are throws at all. The join is
-            // WAITED rather than read: a WhenAll over already-settled inputs posts its
-            // completion to the scheduler here instead of finishing inline, so its
-            // IsCompleted is only stable once something has turned the loop.
+            // READ, never waited on: over already-settled inputs WhenAll completes before it
+            // returns, and a wait ahead of the read would pass either way.
             Task.WaitAll(new Task[] { done, done2 });
             Task all = Task.WhenAll(new Task[] { done, done2 });
-            all.Wait();
             Console.WriteLine("alive: " + Task.WaitAny(new Task[] { done2, done })
                 + "," + all.IsCompleted);
         }

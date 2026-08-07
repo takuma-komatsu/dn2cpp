@@ -443,25 +443,48 @@ void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception)
     dn2cpp_task_complete(t, DN2CPP_TASK_FAULTED, t->result, exception);
 }
 
-void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state)
+// Queue `fn` on a PENDING task, or answer false when `t` is already settled and the
+// caller must dispose of the continuation itself. Never runs `fn`, and never runs
+// anything under g_task_mtx.
+static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* state)
 {
     // Allocate the node before locking (keeps the critical section tiny). If the task
-    // is already complete the node is dropped (GC-collected) and we resume on the next
-    // turn of OUR own scheduler — matching the old already-complete fast path.
+    // is already complete the node is dropped (GC-collected).
     auto* c = static_cast<Dn2CppCont*>(dn2cpp_alloc(sizeof(Dn2CppCont)));
     c->fn = fn;
     c->state = state;
     c->owner = dn2cpp_sched_self();
-    {
-        std::lock_guard<std::mutex> lk(g_task_mtx);
-        if (t->status == DN2CPP_TASK_PENDING)
-        {
-            c->next = t->continuations;
-            t->continuations = c;
-            return;
-        }
-    }
-    dn2cpp_sched_post(fn, state); // already complete
+    std::lock_guard<std::mutex> lk(g_task_mtx);
+    if (t->status != DN2CPP_TASK_PENDING)
+        return false;
+    c->next = t->continuations;
+    t->continuations = c;
+    return true;
+}
+
+void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state)
+{
+    if (!dn2cpp_task_try_queue_cont(t, fn, state))
+        dn2cpp_sched_post(fn, state); // already complete: resume on our own next turn
+}
+
+// Registration with .NET's TaskContinuationOptions.ExecuteSynchronously: an
+// already-settled `t` runs `fn` INLINE, on this thread, before returning. That is what
+// makes Task.WhenAll/WhenAny over settled inputs complete before the call returns, as
+// real .NET does; posting instead leaves the join PENDING until something turns the
+// scheduler loop.
+//
+// Two invariants make inlining safe here, and both must survive any new caller:
+//   * The call is outside g_task_mtx, so a callback that settles a task cannot deadlock.
+//   * A task settling LATER fires through dn2cpp_fire_conts, which only ever enqueues,
+//     so an inline callback cannot re-enter this on a task it just settled — the depth
+//     is one callback, not the chain length of the combinators built over it.
+// It is not the default: ContinueWith over a settled task must still be PENDING on
+// return, and Task.Delay/await ordering is defined by the scheduler queue.
+static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void* state)
+{
+    if (!dn2cpp_task_try_queue_cont(t, fn, state))
+        fn(state);
 }
 
 // Invoke a no-arg System.Action delegate and its multicast chain. The continuation
@@ -629,11 +652,17 @@ struct Dn2CppWhenAllState
     const Dn2CppTypeInfo* arrTi;
 };
 
+static void dn2cpp_task_set_canceled(Dn2CppTask* t);
+
 // Build the TResult[] from each input task's result slot and complete the WhenAll
-// task — or propagate the first input fault.
+// task — or propagate the outcome of an input that did not succeed.
 static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
 {
+    // A fault ANYWHERE outranks a cancellation anywhere: .NET's WhenAll is Faulted if
+    // any input faulted, Canceled if none did and one was canceled. Without the second
+    // arm a canceled input reads as RanToCompletion and its awaiter gets a result.
     int32_t n = s->tasks->length;
+    bool canceled = false;
     for (int32_t i = 0; i < n; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i]);
@@ -642,6 +671,12 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
             dn2cpp_task_set_exception(s->result, t->exception);
             return;
         }
+        canceled = canceled || t->status == DN2CPP_TASK_CANCELED;
+    }
+    if (canceled)
+    {
+        dn2cpp_task_set_canceled(s->result);
+        return;
     }
     if (s->kind == DN2CPP_WHENALL_VOID) // non-generic WhenAll: no result array
     {
@@ -720,8 +755,12 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
         dn2cpp_when_all_finish(s); // no inputs: already done (empty array)
         return s->result;
     }
+    // Synchronous registration: an input that is already settled decrements `remaining`
+    // here, so an all-settled batch finishes before this returns and never touches the
+    // scheduler. remaining can only reach 0 on the last input, so the loop is complete
+    // when dn2cpp_when_all_finish runs.
     for (int32_t i = 0; i < tasks->length; i++)
-        dn2cpp_task_on_completed(reinterpret_cast<Dn2CppTask*>(tasks->data[i]), &dn2cpp_when_all_one, s);
+        dn2cpp_task_on_completed_sync(reinterpret_cast<Dn2CppTask*>(tasks->data[i]), &dn2cpp_when_all_one, s);
     return s->result;
 }
 
@@ -796,7 +835,13 @@ Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks)
         auto* e = static_cast<Dn2CppWhenAnyEntry*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyEntry)));
         e->shared = s;
         e->task = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
-        dn2cpp_task_on_completed(e->task, &dn2cpp_when_any_one, e);
+        // Synchronous registration, so a settled input wins the join before this
+        // returns; the winner is then the FIRST settled input in array order, as on
+        // real .NET. Stop once one has won: a continuation on a still-pending input
+        // could only no-op, and would pin the finished join until that input settles.
+        dn2cpp_task_on_completed_sync(e->task, &dn2cpp_when_any_one, e);
+        if (s->done)
+            break;
     }
     return s->result;
 }

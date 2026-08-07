@@ -5277,6 +5277,29 @@ internal sealed partial class CppEmitter
                 // relative to that region's start, exactly as the CLR places fields
                 // after the method-table pointer.
                 explicitSize = EmitExplicitLayoutBody(sb, cls, instanceFields);
+            else if (NeedsDeclaredSizeArm(cls, instanceFields))
+            {
+                // A declared [StructLayout(Size = N)] reaching past the fields is stated as
+                // N, in the same union arm the explicit layout uses, and never as a trailing
+                // pad: for a struct whose fields end on a pointer that pad is 0 at 64-bit
+                // width and positive at 32, which no array length written after the fields
+                // can express. N is metadata and so target-independent; the union's own max
+                // supplies the field end at whichever width the C++ compiler is building for.
+                if (instanceFields.Count == 0)
+                    sb.AppendLine($"    uint8_t __struct_size_pad[{cls.LayoutSize}];");
+                else
+                {
+                    sb.AppendLine("    union");
+                    sb.AppendLine("    {");
+                    sb.AppendLine($"        uint8_t __struct_size_pad[{cls.LayoutSize}];");
+                    sb.AppendLine("        struct");
+                    sb.AppendLine("        {");
+                    foreach (var f in instanceFields)
+                        sb.AppendLine($"            {CppTypes.FieldOf(f)} {f.CppName};");
+                    sb.AppendLine("        };");
+                    sb.AppendLine("    };");
+                }
+            }
             else
             {
                 foreach (var f in instanceFields)
@@ -5290,8 +5313,6 @@ internal sealed partial class CppEmitter
                 int pad = FixedBufferPadding(cls, instanceFields);
                 if (pad > 0)
                     sb.AppendLine($"    uint8_t __fixedbuffer_pad[{pad}];");
-                else if (SequentialSizePadding(cls, instanceFields, PtrBytes64) is > 0 and var spad)
-                    sb.AppendLine($"    uint8_t __struct_size_pad[{spad}];");
             }
         }
         sb.AppendLine("};");
@@ -5482,10 +5503,44 @@ internal sealed partial class CppEmitter
         return (total, align, ptrFree);
     }
 
+    /// <summary>Whether an emitted sequential value-type body must FIX its total with a
+    /// declared-size arm because a <c>[StructLayout(Size = N)]</c> reaches past its fields;
+    /// false for the fixed-buffer shape, which the caller pads scalar-first for its own
+    /// reason. Asked at BOTH pointer widths because the padding is what moves: a struct
+    /// whose fields end on a pointer needs none at 64 bits and 8 bytes at 32, and the arm
+    /// is the only shape that can state either.</summary>
+    private bool NeedsDeclaredSizeArm(ClassInfo cls, List<FieldInfo> fields)
+    {
+        if (FixedBufferPadding(cls, fields) > 0)
+            return false;
+        // Unguarded at the model's own width: a declared size the emitted layout cannot
+        // represent must fail the transpile, and that verdict is the 64-bit reading's.
+        return SequentialSizePadding(cls, fields, PtrBytes64) > 0
+               || TrySequentialSizePadding(cls, fields, PtrBytes32) > 0;
+    }
+
+    /// <summary>The declared-size padding at a pointer width other than the model's own — a
+    /// second reading, never a diagnosis, exactly as
+    /// <see cref="TryExplicitLayoutSize"/> is: a shape the layout model refuses is refused
+    /// loudly by the 64-bit reading alone.</summary>
+    private int TrySequentialSizePadding(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    {
+        try
+        {
+            return SequentialSizePadding(cls, fields, ptr);
+        }
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            return 0;
+        }
+    }
+
     /// <summary>The trailing padding a sequential value type with a declared
     /// <c>[StructLayout(Size = N)]</c> needs so its C++ <c>sizeof</c> reaches N —
     /// the general form of the fixed-buffer special case (which the caller checks
-    /// first). 0 when there is no declared size, the natural size already covers it
+    /// first). The extent model adds it to the field end; the emitted body states the
+    /// resulting total instead (see <see cref="SizedLayoutTotal"/>).
+    /// 0 when there is no declared size, the natural size already covers it
     /// (e.g. every empty struct declares Size=1, and C++ gives it 1 anyway), or the
     /// field extents cannot be computed (previous behavior: no pad). Throws when the
     /// declared size is not a multiple of the struct's alignment (C++ would round

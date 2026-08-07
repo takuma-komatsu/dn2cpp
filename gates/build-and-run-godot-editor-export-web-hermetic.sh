@@ -95,32 +95,12 @@ for tool in dotnet; do
     PATH="$HERMETIC_PATH" command -v "$tool" >/dev/null 2>&1 \
         || gate_skip "$tool is not on PATH, and the bundle ships none (the export needs the machine's)"
 done
-# The other, and the one presence cannot answer: emcc is a launcher over python,
-# the SDK carries an interpreter on Windows alone, and macOS answers `python3`
-# with an Xcode stub stuck at 3.9.6 that the export's preflight refuses. So
-# mirror VerifyEmscriptenPython — its two names in its order, off the PATH the
-# editor gets, RUN. Its EMSDK_PYTHON arm cannot fire: unset above.
-godot_fork_resolve || exit 1   # for $FORK, below; the pin/ABI tripwire re-resolves
-PY_PREFLIGHT_SRC="$FORK/modules/mono/editor/GodotTools/GodotTools/Export/Dn2CppExporter.cs"
-# Read off the fork rather than restated: a floor that drifts from the one the
-# editor enforces skips runs the export would take, or admits ones it refuses.
-py_floor="$(LC_ALL=C awk '
-    /const int RequiredPythonMajor/ && match($0, /[0-9]+/) { maj = substr($0, RSTART, RLENGTH) }
-    /const int RequiredPythonMinor/ && match($0, /[0-9]+/) { min = substr($0, RSTART, RLENGTH) }
-    END { if (maj != "" && min != "") print maj "." min }' "$PY_PREFLIGHT_SRC")"
-[ -n "$py_floor" ] || {
-    echo "FAIL: no RequiredPythonMajor/Minor constants in $PY_PREFLIGHT_SRC," >&2
-    echo "      which is this probe's only source for the version the export demands." >&2
-    exit 1; }
-py_exe="$(PATH="$HERMETIC_PATH" command -v python3 2>/dev/null \
-    || PATH="$HERMETIC_PATH" command -v python 2>/dev/null || true)"
-[ -n "$py_exe" ] || gate_skip "neither python3 nor python is on PATH, and the bundle carries an interpreter on Windows only (emcc is a launcher over python $py_floor or newer)"
-py_ver="$("$py_exe" -E -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])' 2>/dev/null || true)"
-case "$py_ver" in [0-9]*.[0-9]*) ;; *) py_ver="" ;; esac
-if [ -z "$py_ver" ] \
-    || [ "$(printf '%s\n%s\n' "$py_floor" "$py_ver" | LC_ALL=C sort -V | tail -1)" != "$py_ver" ]; then
-    gate_skip "$py_exe is python ${py_ver:-of no readable version} and the export needs $py_floor or newer; the bundle carries an interpreter on Windows only, and no repository can ship the host one"
-fi
+# The other, and the one presence cannot answer: emcc is a launcher over python
+# and macOS answers `python3` with an Xcode stub stuck at 3.9.6 the export
+# refuses. The empty second argument is $HERMETIC_ENV's `env -u EMSDK_PYTHON`
+# stated where the probe can see it — the editor is launched without one, so it
+# falls to the PATH arm, which is the whole difference from the plain Web gate.
+godot_fork_emcc_python_check "$HERMETIC_PATH" ""
 echo "PATH without the bundled tools: $(printf '%s' "$HERMETIC_PATH" | tr ':' '\n' | wc -l | tr -d ' ') entries"
 
 # The pin/ABI tripwire also resolves $FORK and $BASE_COMMIT, which the template

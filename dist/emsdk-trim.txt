@@ -29,6 +29,10 @@
 # clang-24, wasm-ld -> lld). Gone with the rest: the front-ends no export path
 # runs — clangd, clang-scan-deps, the llvm inspection tools behind
 # emnm/emsize/emprofile/emsymbolizer, the Binaryen fuzzers and wasm2js.
+#
+# No licence entry follows for LLVM or Binaryen, and none can: the archive holds
+# no text for either, so dist/licenses/ vendors both and the packager installs
+# them into LICENSES/ (dist/licenses/README.md). The same is true of lib/clang.
 posix: bin/clang-24
 posix: bin/clang
 posix: bin/clang++
