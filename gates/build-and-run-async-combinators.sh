@@ -22,6 +22,11 @@
 # since a wait ahead of the read passes whether the join finished inline or was posted
 # to the scheduler; the mixed rows hold the other side, that one pending input still
 # leaves the join pending.
+# WhenAllFaultSetSubset.cs asserts that Task.WhenAll's fault set is EVERY faulted
+# input rather than the first — a nested join flattens into its own inner set and a
+# cancellation alongside a fault contributes nothing — and that the three mouths that
+# mint an AggregateException over a task (Task.Exception, the blocking wait, and
+# Task.WaitAll) agree on that set while the awaiter raises its first element unwrapped.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"
