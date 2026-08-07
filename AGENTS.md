@@ -135,6 +135,12 @@ throwaway CA at run time, because no TLS key may be checked in. A gitignored
 `extension_api.json` at the repository root is required even for `SKIP_GODOT=1`
 runs; on a fresh clone generate it with `godot --headless --dump-extension-api`.
 
+A python too, and the Web export gates hold it to a floor rather than to
+working: emcc is a launcher over python, so the fork's exporter refuses a stale
+one mid-link. macOS answers `python3` with an Xcode stub that clears every
+liveness test and is refused — install a real one. The floor itself is nowhere
+in this repository; `godot_fork_emcc_python_check` reads it off the fork.
+
 No hand-installed Emscripten: `gates/setup-emsdk.sh` unpacks the SDK
 `gates/expected/emsdk-pin.txt` pins, and every wasm gate resolves one through
 `dn2cpp_emsdk_resolve`. That SDK carries the node `gates/expected/node-pin.txt`
