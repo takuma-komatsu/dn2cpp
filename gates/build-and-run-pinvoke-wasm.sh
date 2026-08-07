@@ -41,6 +41,11 @@
 # non-blittable structs — checked against the layout the C compiler gave the SAME structs
 # in libdn2cpptest, which reports its own sizeof/offsetof through dn2cpptest_layout_query.
 # That third opinion is the point: two models can agree and both be wrong about the ABI.
+# On this axis the ABI is the 32-bit one, and the LINK is what checks it: the tn_<Name>
+# static_asserts CppEmitter stamps carry the model's size and offsets as sizeof(void*)
+# expressions, which em++ evaluates at 4 — per struct, before the program runs. The oracle
+# here is still 64-bit, so the section's pointer-bearing rows cross as relations against
+# IntPtr.Size and as agreement verdicts rather than as numbers.
 # Do not prune it as a duplicate of PInvokeMarshalStructSubset, which asserts the values
 # that cross the boundary rather than the layout they cross in.
 source "$(dirname "$0")/_common.sh"

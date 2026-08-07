@@ -2,23 +2,21 @@ using System;
 using System.Runtime.InteropServices;
 
 // SUBJECT: the marshalled-LAYOUT model, checked against the layout the C compiler actually
-// chose. Each row makes three answers agree — dn2cpp's Marshal.SizeOf/OffsetOf, real .NET's
-// (the gate diffs against `dotnet run`), and the native library's own sizeof/offsetof via
-// dn2cpptest_layout_query. The third is what no other section adds: a model checked only
-// against a second model can agree and both be wrong.
+// chose — at BOTH pointer widths, since the wasm gate drives this bucket too. Each row makes
+// three answers agree: dn2cpp's Marshal.SizeOf/OffsetOf, real .NET's (the gate diffs against
+// `dotnet run`), and the native library's own sizeof/offsetof via dn2cpptest_layout_query.
+// The third is what no other section adds: a model checked only against a second model can
+// agree and both be wrong.
 //
 // Do NOT prune this as a duplicate of PInvokeMarshalStructSubset. That section asserts the
 // VALUES that cross the boundary; this one the layout they cross in, and the two fail
 // independently — a struct can marshal every field correctly and still report a size that
 // mis-sizes an AllocHGlobal buffer.
 //
-// The pointer-bearing structs (Person, WidePerson) assert their MANAGED numbers only. This
-// bucket is also driven by the wasm gate, which diffs a wasm32 subject against a 64-bit
-// host oracle: the marshalled-layout model sizes every pointer at 8 on both sides, while
-// the native sizeof is 8 in the wasm archive and 16 in the host library. Comparing those
-// would make the row target-dependent on one side alone. The rows this model exists for —
-// the bool, the nested struct, the ByValArray — are pointer-free and do carry the
-// native-ABI comparison.
+// The wasm gate diffs a wasm32 subject against a 64-bit host oracle, so a pointer-dependent
+// row crosses as a relation against IntPtr.Size or as the bare agreement verdict, never as a
+// number. On that axis the emitted tn_<Name> static_asserts check the model per struct at
+// 32-bit width before this program runs at all.
 namespace PInvokeMarshalLayoutSubset
 {
     internal static class Program
@@ -59,17 +57,39 @@ namespace PInvokeMarshalLayoutSubset
             Console.WriteLine($"{label}: managed={managed} native={nat} agree={(managed == nat)}");
         }
 
+        // Both numbers move with the pointer width, their agreement does not — the only form
+        // in which a pointer-bearing row can carry the native-ABI comparison across the wasm
+        // gate's 64-bit oracle.
+        private static void Agree(string label, long managed, int nativeWhich)
+        {
+            Console.WriteLine($"{label}: agree={(managed == dn2cpptest_layout_query(nativeWhich))}");
+        }
+
         internal static void __GateEntry()
         {
             Console.WriteLine("-- marshalled layout vs the native ABI --");
 
-            // A string field is an 8-byte pointer under the model's premise. Managed-only:
-            // see the header.
-            Console.WriteLine($"Person.size={Marshal.SizeOf<Person>()} "
-                + $"Id@{Marshal.OffsetOf<Person>("Id")} Name@{Marshal.OffsetOf<Person>("Name")}");
+            // A string field is a pointer, so the int ahead of it is padded to one: the total
+            // is two pointers, not 4 + a pointer.
+            Console.WriteLine($"Person.size==2ptr {Marshal.SizeOf<Person>() == 2 * IntPtr.Size} "
+                + $"Id@0 {Marshal.OffsetOf<Person>("Id").ToInt64() == 0} "
+                + $"Name@ptr {Marshal.OffsetOf<Person>("Name").ToInt64() == IntPtr.Size}");
             // CharSet.Unicode moves the ENCODING, not the width — still a pointer.
-            Console.WriteLine($"WidePerson.size={Marshal.SizeOf<WidePerson>()} "
-                + $"Name@{Marshal.OffsetOf<WidePerson>("Name")}");
+            Console.WriteLine($"WidePerson.size==2ptr {Marshal.SizeOf<WidePerson>() == 2 * IntPtr.Size} "
+                + $"Name@ptr {Marshal.OffsetOf<WidePerson>("Name").ToInt64() == IntPtr.Size}");
+            Agree("Person.size", Marshal.SizeOf<Person>(), 0);
+            Agree("Person.Id", Marshal.OffsetOf<Person>("Id").ToInt64(), 1);
+            Agree("Person.Name", Marshal.OffsetOf<Person>("Name").ToInt64(), 2);
+            Agree("WidePerson.size", Marshal.SizeOf<WidePerson>(), 3);
+            Agree("WidePerson.Name", Marshal.OffsetOf<WidePerson>("Name").ToInt64(), 4);
+
+            // IntPtr's own marshalled size: the generic form folds at transpile time, the
+            // Type form reads the runtime's primitive table. Pinning both to IntPtr.Size
+            // reds either one on its own — agreeing with each other is not the claim.
+            Console.WriteLine($"IntPtr {Marshal.SizeOf<IntPtr>() == IntPtr.Size} "
+                + $"{Marshal.SizeOf(typeof(IntPtr)) == IntPtr.Size} "
+                + $"{Marshal.SizeOf<UIntPtr>() == IntPtr.Size} "
+                + $"{Marshal.SizeOf(typeof(UIntPtr)) == IntPtr.Size}");
 
             // On occupies 4 bytes unmanaged, so Pt starts at 4 — which alignment would also
             // produce from a 1-byte bool. Tag at 12 is what distinguishes the two readings.
