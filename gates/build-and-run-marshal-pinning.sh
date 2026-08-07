@@ -8,7 +8,7 @@
 # generic and non-generic Type-based forms, mutate-through-buffer = real memcpy);
 # SizeOf/OffsetOf exactly matching real .NET (including the
 # [StructLayout(Size=N)] floor rows — Size is never rounded up to the alignment,
-# standalone or as a member, with the two unrepresentable shapes asserted
+# standalone or as a member, with the three unrepresentable shapes asserted
 # as loud transpile refusals by this gate's negative arms below); Marshal.Copy
 # both directions; a
 # conservative-GC coherence section (pin -> native write -> heap churn -> free ->
@@ -102,5 +102,29 @@ fi
 grep -q "error: .*PtrIntUnder: Size=12 over fields ending at byte 12 gives a 12-byte struct, not a multiple of its 8-byte alignment" <<<"$_narrow_err" \
     || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_narrow_err" | tail -3 >&2; exit 1; }
 echo "unrepresentable-total refusal OK: exit 2, named type, Size, field end, total and alignment"
+
+echo "== Asserting an explicit total only the 64-bit reading can express refuses =="
+# SUBJECT: the explicit union's pad arm FIXES the type's size, so a total the
+# layout model can write at one pointer width only has no honest emission — the
+# alternative is a struct whose size is 8 bytes on a 32-bit target. Unlike the two
+# arms above, the trigger is on the NARROW side: a declared Size between the two
+# natural field ends (4 at 32 bits, 8 at 64) is ignored at 64 and rounds past
+# itself at 32. The verdict is still target-independent — a 64-bit host transpile
+# refuses — but the reason lives in the 32-bit reading, which is why this shape
+# was building silently on x64.
+build_proj samples/dotnet/LayoutSizeBadNarrowExplicit/LayoutSizeBadNarrowExplicit.csproj
+_xnarrow_app="samples/dotnet/LayoutSizeBadNarrowExplicit/bin/$CONFIG/$TFM/LayoutSizeBadNarrowExplicit.dll"
+_xnarrow_out="artifacts/marshalpinning-layoutsize-narrow-explicit"
+rm -rf "$_xnarrow_out"
+_xnarrow_rc=0
+_xnarrow_err=$(invoke_cli "$_xnarrow_app" -r "$_neg_corelib" -o "$_xnarrow_out" 2>&1) || _xnarrow_rc=$?
+if [ "$_xnarrow_rc" -ne 2 ]; then
+    echo "FAIL: the Explicit Size=5-over-IntPtr transpile exited $_xnarrow_rc (want 2: the width-dependent-total refusal)" >&2
+    printf '%s\n' "$_xnarrow_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*PtrUnderExplicit: the LayoutKind.Explicit total cannot be written in sizeof(void\*)" <<<"$_xnarrow_err" \
+    || { echo "FAIL: the refusal did not name the type and the width-dependent total" >&2; printf '%s\n' "$_xnarrow_err" | tail -3 >&2; exit 1; }
+echo "width-dependent-total refusal OK: exit 2, named type and the unwritable total"
 
 corelib_diff_gate MarshalPinning
