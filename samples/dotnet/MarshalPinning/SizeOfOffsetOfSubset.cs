@@ -242,10 +242,8 @@ unsafe class Program
         Console.WriteLine("m sized6shorttail=" + Marshal.SizeOf(typeof(Sized6ShortTail))
             + "/" + (long)Marshal.OffsetOf<Sized6ShortTail>("T")
             + " u=" + System.Runtime.CompilerServices.Unsafe.SizeOf<Sized6ShortTail>());
-        // A width-naming descriptor's verdict does not depend on the pointer width: a fixed
-        // width on a pointer-wide field is refused where it happens to coincide, and SysInt
-        // on a long likewise. Both spellings, because a verdict the folded constant and the
-        // runtime stamp disagree on is the failure this pair exists to catch.
+        // Both spellings on every row: a verdict the folded constant and the runtime stamp
+        // disagree on is the failure this block exists to catch.
         Console.WriteLine("m ptr-u8=" + Verdict(() => Marshal.SizeOf(typeof(PtrU8))) + "/" + Verdict(() => Marshal.SizeOf<PtrU8>()));
         Console.WriteLine("m long-sysint=" + Verdict(() => Marshal.SizeOf(typeof(LongSysInt))) + "/" + Verdict(() => Marshal.SizeOf<LongSysInt>()));
         Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());

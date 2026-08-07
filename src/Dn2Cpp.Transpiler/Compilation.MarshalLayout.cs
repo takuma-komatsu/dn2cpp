@@ -122,12 +122,10 @@ internal sealed partial class Compilation
         cls.IsAutoLayout ? MarshalExtent.Refused : MarshalLayoutWalk(cls, PointerWidth.Bytes64).Extent;
 
     /// <summary>The top-level size as C++ text, null when the verdict is not
-    /// <see cref="MarshalSizeVerdict.Known"/> — or when the model cannot restate the size at
-    /// 32 bits. A GUARDED size is right only at 64, and the two readers of this text (the
-    /// folded <c>SizeOf&lt;T&gt;</c> constant and the stamped <c>marshalSize</c>) can only
-    /// agree if neither takes one: a fold would be wrong on wasm32, and the stamp declines
-    /// it, so one spelling of <c>Marshal.SizeOf</c> would answer where the other throws.
-    /// Refusing here is what makes that agreement structural.</summary>
+    /// <see cref="MarshalSizeVerdict.Known"/> — or when the size is GUARDED, i.e. right only
+    /// at 64 bits. Both readers of this text must agree, and the stamp already declines a
+    /// guarded size, so folding one into <c>SizeOf&lt;T&gt;</c> would answer where the
+    /// non-generic spelling throws. Declining it here is what makes them agree.</summary>
     internal ModeledSize? TopLevelMarshalSizeText(ClassInfo cls)
     {
         var e = TopLevelMarshalExtent(cls);
@@ -566,6 +564,9 @@ internal sealed partial class Compilation
         // exactly what it refuses at 32 — and the verdict is the 64-bit walk's alone.
         int other = ptr == PointerWidth.Bytes64 ? PointerWidth.Bytes32 : PointerWidth.Bytes64;
         var alt = MarshalNaturalExtent(t, unicode, other);
+        // No natural extent's VERDICT depends on the width, only its number, so a known
+        // reading at one width is known at both and this arm does not fire. It stands so
+        // that a future width-dependent verdict declines rather than reads alt.Size as 0.
         if (!alt.IsKnown)
             return MarshalExtent.Unknown;
         return named == natural.Size && NamedUnmanagedWidth(u, other) == alt.Size
