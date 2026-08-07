@@ -76,8 +76,8 @@ if [ "$_neg_rc" -ne 2 ]; then
     printf '%s\n' "$_neg_err" | tail -3 >&2
     exit 1
 fi
-grep -q "error: .*Sized6Int.*Size=6 is not a multiple of the struct's 4-byte alignment" <<<"$_neg_err" \
-    || { echo "FAIL: the refusal did not name the type, Size and alignment" >&2; printf '%s\n' "$_neg_err" | tail -3 >&2; exit 1; }
-echo "non-multiple-Size refusal OK: exit 2, named type, Size and alignment"
+grep -q "error: .*Sized6Int: Size=6 over fields ending at byte 4 gives a 6-byte struct, not a multiple of its 4-byte alignment" <<<"$_neg_err" \
+    || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_neg_err" | tail -3 >&2; exit 1; }
+echo "non-multiple-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
 
 corelib_diff_gate MarshalPinning

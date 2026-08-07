@@ -5511,26 +5511,31 @@ internal sealed partial class CppEmitter
     /// resulting total instead (see <see cref="NeedsDeclaredSizeArm"/>).
     /// 0 when there is no declared size, the natural size already covers it
     /// (e.g. every empty struct declares Size=1, and C++ gives it 1 anyway), or the
-    /// field extents cannot be computed (previous behavior: no pad). Throws when the
-    /// declared size is not a multiple of the struct's alignment (C++ would round
-    /// past it — fail loudly rather than silently diverge). Real .NET measures that
-    /// shape: Size=6 over an int is 6 from sizeof, Unsafe.SizeOf, Marshal.SizeOf and
-    /// the array stride alike — size 6 with alignment 4 intact, which no C++ type can
-    /// express — so the refusal is a deliberate, loud divergence, asserted by
-    /// build-and-run-marshal-pinning.sh's negative arm. Where Size IS a multiple of a
-    /// sub-word alignment the pad below reproduces .NET exactly.</summary>
+    /// field extents cannot be computed (previous behavior: no pad).
+    ///
+    /// <para>A declared size is a FLOOR that suppresses the rounding: real .NET measures
+    /// <c>max(Size, field end)</c> with the alignment intact — sizeof, Unsafe.SizeOf,
+    /// Marshal.SizeOf and the array stride alike — so Size=6 over an int is 6, and
+    /// Size=4 over {IntPtr,byte} is 9. C++ cannot express a size that is not a multiple
+    /// of alignof, so that total is refused loudly, ahead of the early return: the shape
+    /// is unrepresentable whether or not it needs a pad. Past the refusal the natural
+    /// size already equals that total, which is why the pad below stays
+    /// <c>Size - end</c> — recomputing it would move types whose declared size merely
+    /// equals their natural one onto the declared-size union arm for nothing. Asserted
+    /// by build-and-run-marshal-pinning.sh's negative arms.</para></summary>
     private int SequentialSizePadding(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         if (!cls.IsValueType || cls.LayoutSize <= 0)
             return 0;
         if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
             return 0;
+        int total = Math.Max(cls.LayoutSize, e.End);
+        if (total % e.Align != 0)
+            throw new NotSupportedException(
+                $"{cls.FullName}: Size={cls.LayoutSize} over fields ending at byte {e.End} gives a {total}-byte struct, not a multiple of its {e.Align}-byte alignment, which the emitted C++ layout cannot represent");
         int natural = Math.Max(RoundUp(e.End, e.Align), 1);
         if (cls.LayoutSize <= natural)
             return 0;
-        if (cls.LayoutSize % e.Align != 0)
-            throw new NotSupportedException(
-                $"{cls.FullName}: explicit Size={cls.LayoutSize} is not a multiple of the struct's {e.Align}-byte alignment, which the emitted C++ layout cannot represent");
         return cls.LayoutSize - e.End;
     }
 
