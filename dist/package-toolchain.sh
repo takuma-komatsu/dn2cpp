@@ -382,7 +382,7 @@ fi
 # settings, not by the sources, so one bare TU under the real flags reaches the same
 # set in seconds. Log: $WORK_DIR/probe-SHAPE.log.
 #
-# THIS FUNCTION IS THE BAKE RECIPE, and emsdk_bake_recipe below hashes its own
+# THIS FUNCTION IS HALF THE BAKE RECIPE, and emsdk_bake_recipe below hashes its
 # code into the staging stamp: a shape or a link flag changed here must re-stage
 # and re-bake, or a tree filled by the old recipe keeps passing its stamp.
 emsdk_probe_link() {
@@ -411,12 +411,23 @@ emsdk_probe_link() {
         > "$work/probe-$shape.log" 2>&1
 }
 
-# emsdk_bake_recipe — a short hash of emsdk_probe_link's own code, comments and
-# blank lines removed, for the staging stamp. Derived rather than hand-bumped
-# because a recipe name is one a human has to remember, and stripped of comments
-# so re-wording one does not re-copy 1.4 GB.
+# emsdk_bake_encodings ROOT — byte-compile the staged python's own encodings.
+# WHICH of them the interpreter imports at startup follows the HOST's code page,
+# so the probe link's bake reaches only the ones its own run needed. No staged
+# python is no work: only the Windows SDK carries one.
+emsdk_bake_encodings() {
+    local py="$1/python/python.exe" enc="$1/python/Lib/encodings"
+    [ -x "$py" ] || return 0
+    # -B so compileall's own imports do not write the bytecode it is here to place.
+    "$py" -B -E -X utf8 -m compileall -q "$(native_path "$(cd "$enc" && pwd)")"
+}
+
+# emsdk_bake_recipe — a short hash of the bake's own code, comments and blank
+# lines removed, for the staging stamp. Derived rather than hand-bumped because a
+# recipe name is one a human has to remember, and stripped of comments so
+# re-wording one does not re-copy 1.4 GB.
 emsdk_bake_recipe() {
-    declare -f emsdk_probe_link \
+    declare -f emsdk_probe_link emsdk_bake_encodings \
         | LC_ALL=C sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' \
         | shasum -a 256 | awk '{print substr($1, 1, 12)}'
 }
@@ -670,6 +681,13 @@ EOF
 import sys
 sys.dont_write_bytecode = True
 EOF
+        # site — and so sitecustomize — runs only after the startup encodings are
+        # imported, so the one the consumer's code page names must be baked here.
+        emsdk_bake_encodings "$LAYOUT/.emsdk.part" || {
+            echo "error: the staged python could not byte-compile Lib/encodings; a bundle" >&2
+            echo "       short one writes into the shipped SDK on any host whose code page" >&2
+            echo "       needs it" >&2
+            exit 1; }
         mv "$LAYOUT/.emsdk.part" "$emsdk_dest"
 
         # Bake, freeze, prove. The shipped SDK must never write to its own cache:
