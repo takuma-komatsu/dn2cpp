@@ -336,9 +336,9 @@ internal sealed partial class Compilation
         // loudly at emission (CppEmitter.SequentialSizePadding and ExplicitLayoutExtent,
         // both on max(Size, field end)), so this floor's non-multiple arm is only ever
         // consulted for a type the transpile is about to reject; the member arithmetic
-        // below stays live where the
-        // member IS representable (N a multiple of a smaller alignment — after a Size=3
-        // byte struct a byte field sits at offset 3 and the container measures 4).
+        // below stays live where the member IS representable (N a multiple of a smaller
+        // alignment — after a Size=3 byte struct a byte field sits at offset 3 and the
+        // container measures 4).
         if (cls.LayoutSize > size)
             size = cls.LayoutSize;
         return new MarshalLayoutInfo
