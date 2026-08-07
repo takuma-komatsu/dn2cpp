@@ -5417,11 +5417,10 @@ internal sealed partial class CppEmitter
     /// alignment — exactly what the emitted union produces in C++ and what the CLR
     /// computes. Throws (naming the type and field) for every shape the union
     /// emission cannot represent; see <see cref="EmitExplicitLayoutBody"/>.</summary>
-    private (int Size, int Align, bool PtrFree) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int Size, int Align) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         int pack = cls.LayoutPack;
         int align = 1, end = 0;
-        bool ptrFree = true;
         var placed = new List<(FieldInfo F, int Off, int Size, bool Gc)>();
         foreach (var f in fields)
         {
@@ -5431,7 +5430,6 @@ internal sealed partial class CppEmitter
             if (TryFieldExtent(f.Type, ptr) is not { } e)
                 throw new NotSupportedException(
                     $"{cls.FullName}.{f.Name}: cannot compute the size of field type {f.Type} inside a LayoutKind.Explicit struct");
-            ptrFree &= e.PtrFree;
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
             if (f.ExplicitOffset % a != 0)
                 throw new NotSupportedException(
@@ -5471,7 +5469,7 @@ internal sealed partial class CppEmitter
         if (cls.LayoutSize >= end && cls.LayoutSize > 0 && total != cls.LayoutSize)
             throw new NotSupportedException(
                 $"{cls.FullName}: explicit Size={cls.LayoutSize} is not a multiple of the struct's {align}-byte alignment, which the emitted C++ layout cannot represent");
-        return (total, align, ptrFree);
+        return (total, align);
     }
 
     /// <summary>Whether an emitted sequential value-type body must FIX its total with a
@@ -5547,22 +5545,20 @@ internal sealed partial class CppEmitter
     /// <see cref="CppTypes.FieldOf"/> width, aligned to its (pack-capped) natural
     /// alignment. Includes the fixed-buffer trailing pad. Null when a member's
     /// extent is unknown (an intrinsic/opaque/external field type).</summary>
-    private (int End, int Align, bool PtrFree)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int End, int Align)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         int pack = cls.LayoutPack;
         int cursor = 0, align = 1;
-        bool ptrFree = true;
         foreach (var f in fields)
         {
             if (TryFieldExtent(f.Type, ptr) is not { } e)
                 return null;
-            ptrFree &= e.PtrFree;
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
             if (a > align) align = a;
             cursor = RoundUp(cursor, a) + e.Size;
         }
         cursor += FixedBufferPadding(cls, fields);
-        return (cursor, align, ptrFree);
+        return (cursor, align);
     }
 
     /// <summary>The byte size and alignment of the intrinsic-modeled value-type C++
@@ -5590,14 +5586,14 @@ internal sealed partial class CppEmitter
     /// <para>Asserted by <c>ReflectIntrinsicSizeOfSubset</c>: the per-type
     /// "static == reflected == stride" agreement, and the sizes themselves live-diffed
     /// against real .NET.</para></summary>
-    private static readonly Dictionary<string, (int Size, int Align, bool PtrFree)> s_intrinsicStructExtents = new()
+    private static readonly Dictionary<string, (int Size, int Align)> s_intrinsicStructExtents = new()
     {
-        ["Dn2CppTimeSpan"] = (8, 8, true),          // int64 ticks
-        ["Dn2CppDateTime"] = (8, 8, true),          // int64 _dateData (ticks:62 | kind:2)
-        ["Dn2CppDateTimeOffset"] = (16, 8, true),   // int64 ticks + int32 offsetMinutes
-        ["Dn2CppDateOnly"] = (4, 4, true),          // int32 dayNumber
-        ["Dn2CppTimeOnly"] = (8, 8, true),          // int64 ticks
-        ["Dn2CppDecimal"] = (16, 8, true),          // uint64 lo + uint32 hi + 2*uint8
+        ["Dn2CppTimeSpan"] = (8, 8),          // int64 ticks
+        ["Dn2CppDateTime"] = (8, 8),          // int64 _dateData (ticks:62 | kind:2)
+        ["Dn2CppDateTimeOffset"] = (16, 8),   // int64 ticks + int32 offsetMinutes
+        ["Dn2CppDateOnly"] = (4, 4),          // int32 dayNumber
+        ["Dn2CppTimeOnly"] = (8, 8),          // int64 ticks
+        ["Dn2CppDecimal"] = (16, 8),          // uint64 lo + uint32 hi + 2*uint8
     };
 
     /// <summary>The byte size and alignment a field of type <paramref name="t"/>
@@ -5607,13 +5603,11 @@ internal sealed partial class CppEmitter
     /// width, an intrinsic-modeled value type its fixed runtime-struct extent
     /// (<see cref="s_intrinsicStructExtents"/>), a transpiled by-value struct its
     /// computed extent. Null when unknown (an unlisted intrinsic or opaque struct, an
-    /// unmapped external type). PtrFree is
-    /// false when the extent leans on the pointer width anywhere (a
-    /// reference, a pointer, IntPtr, or a nested struct containing one) — those
-    /// sizes hold only on a target of that width, so the layout static_assert either
-    /// writes the size in <c>sizeof(void*)</c> or weakens to a guard (see
-    /// <see cref="PointerWidth.Model"/>).</summary>
-    private (int Size, int Align, bool PtrFree)? TryFieldExtent(TypeDesc t, int ptr)
+    /// unmapped external type). An extent leaning on the pointer width is not flagged:
+    /// the caller reads it at both widths and hands the pair to
+    /// <see cref="PointerWidth.Model"/>, which is what makes the emitted text
+    /// target-independent.</summary>
+    private (int Size, int Align)? TryFieldExtent(TypeDesc t, int ptr)
     {
         string ct;
         try
@@ -5625,14 +5619,14 @@ internal sealed partial class CppEmitter
             return null;
         }
         if (ct.EndsWith('*'))
-            return (ptr, ptr, false);
+            return (ptr, ptr);
         switch (ct)
         {
-            case "int8_t" or "uint8_t": return (1, 1, true);
-            case "int16_t" or "uint16_t" or "char16_t": return (2, 2, true);
-            case "int32_t" or "uint32_t" or "float": return (4, 4, true);
-            case "int64_t" or "uint64_t" or "double": return (8, 8, true);
-            case "intptr_t" or "uintptr_t": return (ptr, ptr, false);
+            case "int8_t" or "uint8_t": return (1, 1);
+            case "int16_t" or "uint16_t" or "char16_t": return (2, 2);
+            case "int32_t" or "uint32_t" or "float": return (4, 4);
+            case "int64_t" or "uint64_t" or "double": return (8, 8);
+            case "intptr_t" or "uintptr_t": return (ptr, ptr);
         }
         // An intrinsic value type (DateTime, Decimal, …) lowers to a hand-written runtime
         // struct rather than a transpiled body, so its extent is that C++ struct's, not a
@@ -5656,19 +5650,19 @@ internal sealed partial class CppEmitter
     // Memoized per-struct extents, keyed on the pointer width the reading assumed (a
     // value type cannot contain itself by value, so the null pre-seed below only guards
     // a malformed cycle, not a real layout).
-    private readonly Dictionary<(ClassInfo Cls, int Ptr), (int Size, int Align, bool PtrFree)?> _structExtents = new();
+    private readonly Dictionary<(ClassInfo Cls, int Ptr), (int Size, int Align)?> _structExtents = new();
 
     /// <summary>The C++ <c>sizeof</c>/<c>alignof</c> of an emitted value-type struct,
     /// mirroring <see cref="EmitOneStruct"/>'s body exactly (inline-array repetition,
     /// explicit-layout union, fixed-buffer and declared-size trailing pads, pack
     /// capping), with pointers <paramref name="ptr"/> bytes wide. Null when a member's
     /// extent is unknown.</summary>
-    private (int Size, int Align, bool PtrFree)? TryStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? TryStructExtent(ClassInfo cls, int ptr)
     {
         if (_structExtents.TryGetValue((cls, ptr), out var cached))
             return cached;
         _structExtents[(cls, ptr)] = null;
-        (int Size, int Align, bool PtrFree)? r;
+        (int Size, int Align)? r;
         try
         {
             r = ComputeStructExtent(cls, ptr);
@@ -5690,7 +5684,7 @@ internal sealed partial class CppEmitter
         return r;
     }
 
-    private (int Size, int Align, bool PtrFree)? ComputeStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr)
     {
         var fields = cls.Fields.Where(f => !f.IsStatic).ToList();
         if (cls.InlineArrayLength > 0 && fields.Count == 1)
@@ -5699,19 +5693,19 @@ internal sealed partial class CppEmitter
             // body emission), so the extent must use the same stride.
             if (TryFieldExtent(fields[0].Type, ptr) is not { } el)
                 return null;
-            return (el.Size * cls.InlineArrayLength, el.Align, el.PtrFree);
+            return (el.Size * cls.InlineArrayLength, el.Align);
         }
         if (cls.IsExplicitLayout)
         {
-            var (size, align, ptrFree) = ExplicitLayoutExtent(cls, fields, ptr);
+            var (size, align) = ExplicitLayoutExtent(cls, fields, ptr);
             // The pack cap applies to the arms, already folded into the extent; the
             // union's own alignment is the max arm alignment.
-            return (size, align, ptrFree);
+            return (size, align);
         }
         if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
             return null;
         int end = e.End + SequentialSizePadding(cls, fields, ptr);
-        return (Math.Max(RoundUp(end, e.Align), 1), e.Align, e.PtrFree);
+        return (Math.Max(RoundUp(end, e.Align), 1), e.Align);
     }
 
     private static int RoundUp(int value, int align) => (value + align - 1) / align * align;
