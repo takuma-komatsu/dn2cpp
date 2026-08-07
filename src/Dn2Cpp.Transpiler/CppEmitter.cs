@@ -4896,14 +4896,15 @@ internal sealed partial class CppEmitter
             // a refusal. Asserted only where the model HAS an answer: a shape it declines is
             // a declared divergence, visible as the absence of the assert.
             //
-            // The model sizes every pointer at 8, as this file's own extent model does, so
-            // on a 32-bit target (wasm32) a pointer-bearing marshalled struct legitimately
-            // comes out smaller — those asserts state that premise (`sizeof(void*) != 8 ||`)
+            // A pointer-bearing marshalled struct is legitimately smaller on a 32-bit target
+            // (wasm32), so an assert over one states that premise (`sizeof(void*) != 8 ||`)
             // rather than pinning a 64-bit-only number. Same convention as the
             // sequential-layout assert in EmitStructs.
-            if (_c.MarshalMemberLayout(cls) is { Extent.IsKnown: true } ml)
+            if (_c.MarshalMemberLayout(cls, PointerWidth.Bytes64) is { Extent.IsKnown: true } ml
+                && _c.MarshalMemberLayoutText(cls) is { } mt)
             {
-                string guard = ml.Extent.PtrFree ? "" : "sizeof(void*) != 8 || ";
+                string guard = mt.Size is { Guarded: false, UsesPointerWidth: false }
+                    ? "" : "sizeof(void*) != 8 || ";
                 o.Header.AppendLine($"static_assert({guard}sizeof({tn}) == {ml.Extent.Size}, "
                     + $"\"marshalled size of {cls.FullName} disagrees with Compilation.MarshalLayout\");");
                 foreach (var f in fields)
