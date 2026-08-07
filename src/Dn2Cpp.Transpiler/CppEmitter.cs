@@ -5508,7 +5508,7 @@ internal sealed partial class CppEmitter
     /// <c>[StructLayout(Size = N)]</c> needs so its C++ <c>sizeof</c> reaches N —
     /// the general form of the fixed-buffer special case (which the caller checks
     /// first). The extent model adds it to the field end; the emitted body states the
-    /// resulting total instead (see <see cref="SizedLayoutTotal"/>).
+    /// resulting total instead (see <see cref="NeedsDeclaredSizeArm"/>).
     /// 0 when there is no declared size, the natural size already covers it
     /// (e.g. every empty struct declares Size=1, and C++ gives it 1 anyway), or the
     /// field extents cannot be computed (previous behavior: no pad). Throws when the
