@@ -231,7 +231,7 @@ Godot 公式の Android エクスポートテンプレートに加えて、次�
 
 Godot は MIT で、dn2cpp バックエンドも MIT です。エディタが同梱するツールチェーンには、エクスポートしたゲームがリンクする vendored な C ライブラリが加わり、それぞれ `third_party/` 以下に自身の条項があります。
 
-<!--lane:web-->さらに Emscripten SDK も同梱しています。upstream の Emscripten（MIT / University of Illinois NCSA）、その下の LLVM および Binaryen（LLVM 例外付き Apache-2.0）、エクスポートした Web ゲームがリンクする wasm ランタイムライブラリ（libc++、libc++abi、libunwind、compiler-rt、および musl 由来の libc）、それにリンク時に `emcc` が読み込む npm パッケージ群です。同梱したバイナリに対応するライセンス文書は `emsdk/LICENSES/` 以下にまとめてあります。ただし LLVM と Binaryen の実行ファイルについては、upstream のアーカイブ自体がライセンス文書をどこにも含んでいないため `emsdk/LICENSES/` にもありません。条項は <https://llvm.org/LICENSE.txt> を参照してください。
+<!--lane:web-->さらに Emscripten SDK も同梱しています。upstream の Emscripten（MIT / University of Illinois NCSA）、その下の LLVM（LLVM 例外付き Apache-2.0）および Binaryen（Apache-2.0）、エクスポートした Web ゲームがリンクする wasm ランタイムライブラリ（libc++、libc++abi、libunwind、compiler-rt、および musl 由来の libc）、それにリンク時に `emcc` が読み込む npm パッケージ群です。同梱したバイナリに対応するライセンス文書は、LLVM と Binaryen のものも含めてすべて `emsdk/LICENSES/` 以下にまとめてあります — 両者は upstream のアーカイブ自体がライセンス文書を含んでいないため、ビルド元のリビジョンから取得した原文を dn2cpp 側で同梱しています。
 
 ## トラブルシューティング
 
