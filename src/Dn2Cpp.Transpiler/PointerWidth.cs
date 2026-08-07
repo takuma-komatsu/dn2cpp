@@ -7,10 +7,10 @@
 namespace Dn2Cpp;
 
 /// <summary>A modeled byte size rendered as a C++ constant expression.
-/// <see cref="Guarded"/> marks the fallback the model could only pin at 64-bit
-/// pointer width — the emitter must then STATE that premise
-/// (<c>sizeof(void*) != 8 ||</c>) rather than pin the number, the same convention the
-/// sequential-layout and marshalled-layout asserts follow.</summary>
+/// <see cref="Guarded"/> marks the one case left with no expression at all: the model has
+/// no 32-bit reading (the narrow walk refused the type), so the emitter must STATE that
+/// premise (<c>sizeof(void*) != 8 ||</c>) rather than pin a 64-bit-only number, the same
+/// convention the sequential-layout and marshalled-layout asserts follow.</summary>
 internal readonly record struct ModeledSize(string Text, bool Guarded, bool UsesPointerWidth)
 {
     /// <summary>The size where the slot it fills is <c>int32_t</c>: <c>sizeof</c> is
@@ -26,16 +26,19 @@ internal static class PointerWidth
     internal const int Bytes64 = 8;
     internal const int Bytes32 = 4;
 
-    /// <summary>Renders a size the model read at both pointer widths. The model is affine
-    /// in that width, so the line through the two readings is exact at both — and those
-    /// are the only widths that exist — which lets the size be written in
-    /// <c>sizeof(void*)</c> and stay target-independent text. Falls back to the 64-bit
-    /// constant, guarded, when the 32-bit reading is missing or the two do not lie on such
-    /// a line: a wrong expression would be worse than a stated premise.</summary>
+    /// <summary>Renders a size the model read at both pointer widths. The affine form is
+    /// preferred where it exists — the line through the two readings is exact at both, and
+    /// the text then says WHY the size is right. Where it does not, the two readings are
+    /// selected between: a parenthesised ternary on <c>sizeof(void*)</c> is exact at both
+    /// widths, and those are the only two, so it is as target-independent as the affine
+    /// form and just as legal a constant expression. Only a MISSING 32-bit reading is left
+    /// to guard.</summary>
     internal static ModeledSize Model(int size64, int? size32)
     {
-        if (size32 is not { } s32 || (size64 - s32) % (Bytes64 - Bytes32) != 0)
+        if (size32 is not { } s32)
             return new ModeledSize($"{size64}", true, false);
+        if ((size64 - s32) % (Bytes64 - Bytes32) != 0)
+            return PerWidth(size64, s32);
         int ptrs = (size64 - s32) / (Bytes64 - Bytes32);
         int rest = size64 - ptrs * Bytes64;
         if (ptrs == 0)
@@ -48,6 +51,9 @@ internal static class PointerWidth
             return new ModeledSize(rest == 0 ? term : rest > 0 ? $"{rest} + {term}" : $"{term} - {-rest}", false, true);
         if (rest > 0)
             return new ModeledSize($"{rest} - {term}", false, true);
-        return new ModeledSize($"{size64}", true, false);
+        return PerWidth(size64, s32);
     }
+
+    private static ModeledSize PerWidth(int size64, int size32) =>
+        new ModeledSize($"(sizeof(void*) == 8 ? {size64} : {size32})", false, true);
 }
