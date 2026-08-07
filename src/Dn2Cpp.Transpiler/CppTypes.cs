@@ -577,7 +577,16 @@ internal static class CppTypes
                 or System.Runtime.InteropServices.UnmanagedType.SysUInt => 8,
             _ => -1,
         };
-        return named > 0 && NativeAbiWidth(t) == named;
+        // A pointer-wide field takes a pointer-wide descriptor and nothing else, and vice
+        // versa: the widths coincide at 64 bits, where NativeAbiWidth reads them, so
+        // comparing numbers alone would accept [MarshalAs(U8)] IntPtr — which real .NET
+        // raises TypeLoadException for, exactly as it does for the mismatched widths above.
+        bool ptrWide = t.Kind == TypeKind.Pointer
+            || (t.Kind == TypeKind.Primitive
+                && t.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr);
+        bool namesPtr = u is System.Runtime.InteropServices.UnmanagedType.SysInt
+            or System.Runtime.InteropServices.UnmanagedType.SysUInt;
+        return named > 0 && NativeAbiWidth(t) == named && ptrWide == namesPtr;
     }
 
     /// <summary>The byte width of a blittable field type on the native ABI — the numeric
