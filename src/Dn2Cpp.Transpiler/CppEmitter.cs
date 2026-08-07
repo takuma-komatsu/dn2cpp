@@ -5335,11 +5335,10 @@ internal sealed partial class CppEmitter
         // Only for a value type: a reference type's sizeof also carries the
         // Dn2CppObject header, so the union total is not its whole sizeof — the
         // field offsets are pinned by the emitted union arms regardless.
-        // Same convention as the sequential and marshalled asserts below/in
-        // EmitStructs: a size that leans on the pointer width is never a bare 64-bit
-        // number — it is written in sizeof(void*), or it states the premise.
+        // Unguarded at every width: the body emission refuses a total it cannot write in
+        // sizeof(void*), so a guarded size never reaches here.
         if (explicitSize is { } esz && cls.IsValueType)
-            sb.AppendLine($"static_assert({(esz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {esz.Text}, \"explicit layout size mismatch: {cls.FullName}\");");
+            sb.AppendLine($"static_assert(sizeof({cls.CppStructName}) == {esz.Text}, \"explicit layout size mismatch: {cls.FullName}\");");
         // Safety net: every value type lays out at real storage width, and the
         // extent model (TryStructExtent) mirrors the emitted body — pin the C++
         // compiler to the modeled size so a divergence (an alignment rule the
@@ -5369,8 +5368,8 @@ internal sealed partial class CppEmitter
     /// bytes exactly like the CLR layout.
     /// Returns the rendered total size (the value-type caller pins sizeof to it).
     /// Unrepresentable shapes (a GC reference field overlapping another field, an
-    /// unsized field type, an offset misaligned for the field's C++ alignment) throw
-    /// with the type/field named.</summary>
+    /// unsized field type, an offset misaligned for the field's C++ alignment, a total
+    /// only one pointer width can express) throw with the type named.</summary>
     private ModeledSize EmitExplicitLayoutBody(StringBuilder sb, ClassInfo cls, List<FieldInfo> fields)
     {
         // Unlike every other emitted body, this one FIXES the total size — the pad arm is
@@ -5379,6 +5378,14 @@ internal sealed partial class CppEmitter
         // a copy of it walks off the end of the ABI's storage.
         var size = PointerWidth.Model(ExplicitLayoutExtent(cls, fields, PointerWidth.Bytes64).Size,
                                       TryExplicitLayoutSize(cls, fields, PointerWidth.Bytes32));
+        // The narrow reading refused the shape, so there is no second number to select
+        // between and nothing here to degrade to — a field-bearing type must get a body.
+        // Refusing is also what every other unrepresentable explicit shape does.
+        if (size.Guarded)
+            throw new NotSupportedException(
+                $"{cls.FullName}: the LayoutKind.Explicit total cannot be written in sizeof(void*) — "
+                + "the 32-bit reading of this layout is refused, and the emitted union FIXES the "
+                + "total, so the 64-bit size would become the type's size on a 32-bit target");
         if (fields.Count == 0)
         {
             sb.AppendLine($"    uint8_t __explicit_pad[{size.Text}];");
