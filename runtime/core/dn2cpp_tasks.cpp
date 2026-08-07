@@ -654,6 +654,32 @@ struct Dn2CppWhenAllState
 
 static void dn2cpp_task_set_canceled(Dn2CppTask* t);
 
+// What a settled-but-failed task contributes to an aggregate built over it: its
+// Task.Exception's inner set if it has one, else the single stored exception. .NET's
+// WhenAll continuation AddRanges each input's Exception.InnerExceptions, so an input
+// that is itself a WhenAll join FLATTENS — WhenAll(WhenAll(f1,f2), f3) has three
+// inners, not two. A canceled task never mints the wrapper, so it contributes one.
+static int32_t dn2cpp_task_fault_inner_count(Dn2CppTask* t)
+{
+    if (t->exceptionAggregate == nullptr)
+        return 1;
+    return dn2cpp_aggregate_inner_exceptions(t->exceptionAggregate, nullptr)->length;
+}
+
+// Append that set at `k`, answering the next free index.
+static int32_t dn2cpp_task_fault_inners_copy(Dn2CppTask* t, Dn2CppArrayRef* out, int32_t k)
+{
+    if (t->exceptionAggregate == nullptr)
+    {
+        out->data[k++] = t->exception;
+        return k;
+    }
+    Dn2CppArrayRef* a = dn2cpp_aggregate_inner_exceptions(t->exceptionAggregate, nullptr);
+    for (int32_t i = 0; i < a->length; i++)
+        out->data[k++] = a->data[i];
+    return k;
+}
+
 // Build the TResult[] from each input task's result slot and complete the WhenAll
 // task — or propagate the outcome of an input that did not succeed.
 static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
@@ -661,17 +687,35 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
     // A fault ANYWHERE outranks a cancellation anywhere: .NET's WhenAll is Faulted if
     // any input faulted, Canceled if none did and one was canceled. Without the second
     // arm a canceled input reads as RanToCompletion and its awaiter gets a result.
+    // EVERY faulted input contributes, so the aggregate is sized in one pass and filled
+    // in a second — a cancellation contributes nothing to it.
     int32_t n = s->tasks->length;
     bool canceled = false;
+    int32_t total = 0;
     for (int32_t i = 0; i < n; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i]);
         if (t->status == DN2CPP_TASK_FAULTED)
+            total += dn2cpp_task_fault_inner_count(t);
+        else
+            canceled = canceled || t->status == DN2CPP_TASK_CANCELED;
+    }
+    if (total > 0)
+    {
+        Dn2CppArrayRef* inner = dn2cpp_newarr_ref(total);
+        int32_t k = 0;
+        for (int32_t i = 0; i < n; i++)
         {
-            dn2cpp_task_set_exception(s->result, t->exception);
-            return;
+            auto* t = reinterpret_cast<Dn2CppTask*>(s->tasks->data[i]);
+            if (t->status == DN2CPP_TASK_FAULTED)
+                k = dn2cpp_task_fault_inners_copy(t, inner, k);
         }
-        canceled = canceled || t->status == DN2CPP_TASK_CANCELED;
+        // Fill the Task.Exception slot while the join is still PENDING: the moment
+        // set_exception publishes FAULTED, a get_Exception read would mint a
+        // one-element wrapper if-absent, and the race closes without a lock.
+        s->result->exceptionAggregate = dn2cpp_aggregate_exception_new(inner);
+        dn2cpp_task_set_exception(s->result, inner->data[0]); // await raises InnerExceptions[0]
+        return;
     }
     if (canceled)
     {
@@ -1800,8 +1844,8 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
         dn2cpp_task_throw_deadlock();
     if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
     {
-        Dn2CppArrayRef* inner = dn2cpp_newarr_ref(1);
-        inner->data[0] = t->exception;
+        Dn2CppArrayRef* inner = dn2cpp_newarr_ref(dn2cpp_task_fault_inner_count(t));
+        dn2cpp_task_fault_inners_copy(t, inner, 0);
         dn2cpp_throw(dn2cpp_aggregate_exception_new(inner));
     }
     return t;
@@ -1831,22 +1875,22 @@ void dn2cpp_task_wait_all(Dn2CppArrayRef* tasks)
         if (!dn2cpp_task_drain_settle(reinterpret_cast<Dn2CppTask*>(tasks->data[i])))
             dn2cpp_task_throw_deadlock();
     }
-    int32_t failed = 0;
+    int32_t total = 0;
     for (int32_t i = 0; i < tasks->length; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
         if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
-            failed++;
+            total += dn2cpp_task_fault_inner_count(t);
     }
-    if (failed == 0)
+    if (total == 0)
         return;
-    Dn2CppArrayRef* inner = dn2cpp_newarr_ref(failed);
+    Dn2CppArrayRef* inner = dn2cpp_newarr_ref(total);
     int32_t k = 0;
     for (int32_t i = 0; i < tasks->length; i++)
     {
         auto* t = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
         if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
-            inner->data[k++] = t->exception;
+            k = dn2cpp_task_fault_inners_copy(t, inner, k);
     }
     dn2cpp_throw(dn2cpp_aggregate_exception_new(inner));
 }
