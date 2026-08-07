@@ -333,9 +333,10 @@ internal sealed partial class Compilation
         // same 6 is what sizeof, Unsafe.SizeOf and the ARRAY STRIDE read, i.e. .NET keeps
         // size 6 with alignment 4, which no C++ type can express (sizeof is always a
         // multiple of alignof). The representation side therefore refuses those shapes
-        // loudly at emission (CppEmitter.SequentialSizePadding and its explicit-layout
-        // twin), so this floor's non-multiple arm is only ever consulted for a type the
-        // transpile is about to reject; the member arithmetic below stays live where the
+        // loudly at emission (CppEmitter.SequentialSizePadding and ExplicitLayoutExtent,
+        // both on max(Size, field end)), so this floor's non-multiple arm is only ever
+        // consulted for a type the transpile is about to reject; the member arithmetic
+        // below stays live where the
         // member IS representable (N a multiple of a smaller alignment — after a Size=3
         // byte struct a byte field sits at offset 3 and the container measures 4).
         if (cls.LayoutSize > size)
