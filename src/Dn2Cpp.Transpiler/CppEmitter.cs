@@ -4896,21 +4896,21 @@ internal sealed partial class CppEmitter
             // a refusal. Asserted only where the model HAS an answer: a shape it declines is
             // a declared divergence, visible as the absence of the assert.
             //
-            // A pointer-bearing marshalled struct is legitimately smaller on a 32-bit target
-            // (wasm32), so an assert over one states that premise (`sizeof(void*) != 8 ||`)
-            // rather than pinning a 64-bit-only number. Same convention as the
-            // sequential-layout assert in EmitStructs.
-            if (_c.MarshalMemberLayout(cls, PointerWidth.Bytes64) is { Extent.IsKnown: true } ml
-                && _c.MarshalMemberLayoutText(cls) is { } mt)
+            // A pointer-bearing marshalled struct is legitimately smaller on a 32-bit target,
+            // so each number is written in sizeof(void*) and the assert is UNGUARDED: it IS
+            // the check at 32-bit width, re-evaluated by the C++ compiler against the real
+            // pointer size, which is what makes every wasm32 link a proof of the model over
+            // the whole corpus. Only an assert the model could pin at 64 bits alone states
+            // that premise (`sizeof(void*) != 8 ||`) — per assert, never shared.
+            if (_c.MarshalMemberLayoutText(cls) is { } mt)
             {
-                string guard = mt.Size is { Guarded: false, UsesPointerWidth: false }
-                    ? "" : "sizeof(void*) != 8 || ";
-                o.Header.AppendLine($"static_assert({guard}sizeof({tn}) == {ml.Extent.Size}, "
-                    + $"\"marshalled size of {cls.FullName} disagrees with Compilation.MarshalLayout\");");
+                o.Header.AppendLine(MarshalLayoutAssert(
+                    mt.Size, $"sizeof({tn})", $"marshalled size of {cls.FullName}"));
                 foreach (var f in fields)
-                    if (ml.Offsets.TryGetValue(f, out int mo))
-                        o.Header.AppendLine($"static_assert({guard}offsetof({tn}, {f.CppName}) == {mo}, "
-                            + $"\"marshalled offset of {cls.FullName}.{f.Name} disagrees with Compilation.MarshalLayout\");");
+                    if (mt.Offsets.TryGetValue(f, out var mo))
+                        o.Header.AppendLine(MarshalLayoutAssert(
+                            mo, $"offsetof({tn}, {f.CppName})",
+                            $"marshalled offset of {cls.FullName}.{f.Name}"));
             }
             o.Header.AppendLine($"void dn2cpp_marshalin_{cls.CppName}({tm}* src, {tn}* dst);");
             o.Header.AppendLine($"void dn2cpp_marshalout_{cls.CppName}({tn}* src, {tm}* dst, {tn}* insnap);");
@@ -4932,6 +4932,12 @@ internal sealed partial class CppEmitter
         o.Header.AppendLine();
         o.Data.AppendLine();
     }
+
+    /// <summary>One cross-check of the marshalled-layout model against the C++ compiler's own
+    /// layout of <c>tn_&lt;Name&gt;</c>.</summary>
+    private static string MarshalLayoutAssert(ModeledSize m, string measured, string what) =>
+        $"static_assert({(m.Guarded ? "sizeof(void*) != 8 || " : "")}{measured} == {m.Text}, "
+        + $"\"{what} disagrees with Compilation.MarshalLayout\");";
 
     /// <summary>The marshal-in statement for one struct field (managed src -> native dst).</summary>
     private static string MarshalInField(FieldInfo f, bool unicode)

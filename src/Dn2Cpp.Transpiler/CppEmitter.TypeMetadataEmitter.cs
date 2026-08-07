@@ -1958,11 +1958,7 @@ internal sealed partial class CppEmitter
                 esName = $"\"{es.Name}\"";
                 esGuid = es.Guid is null ? null : $"\"{es.Guid}\"";
             }
-            // The stamp still pins the model's 64-bit reading; adopting the rendered
-            // sizeof(void*) form is the runtime reader's side of the change.
-            string? marshalSize = _c.MarshalStampSize(cls) is null
-                ? null
-                : _c.TopLevelMarshalExtent(cls).Size.ToString();
+            string? marshalSize = _c.MarshalStampSize(cls)?.Int32Expr;
             string tail = TypeInfoTail(
                 ("0", null),                                 // varianceMask
                 ("0", marshalSize),                          // marshalSize

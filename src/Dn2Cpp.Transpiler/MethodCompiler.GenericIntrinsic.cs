@@ -257,7 +257,7 @@ internal sealed partial class MethodCompiler
                     // folds to — the two agree by asking one model rather than by two
                     // lowerings happening to match.
                     var field = Pop();
-                    Push(StackKind.I8, "intptr_t", $"(intptr_t){MarshalFieldOffset(t, field)}");
+                    Push(StackKind.I8, "intptr_t", $"(intptr_t)({MarshalFieldOffset(t, field)})");
                     return;
                 }
                 case "GetFunctionPointerForDelegate":
