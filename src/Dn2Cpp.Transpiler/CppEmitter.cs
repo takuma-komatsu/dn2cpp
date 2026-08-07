@@ -5340,14 +5340,16 @@ internal sealed partial class CppEmitter
         // extent model (TryStructExtent) mirrors the emitted body — pin the C++
         // compiler to the modeled size so a divergence (an alignment rule the
         // model missed) is a loud compile error, not a silently wrong sizeof.
-        // The model sizes pointers (references, IntPtr) at 8 bytes, so on a
-        // 32-bit target (wasm32) a pointer-bearing struct legitimately comes out
-        // smaller — guard those asserts on sizeof(void*) == 8 instead of pinning
-        // a 64-bit-only number; pointer-free structs stay pinned everywhere.
+        // A pointer-bearing struct is read at both widths and the pair rendered
+        // as target-independent text, so the 32-bit build checks it too; only a
+        // type the narrow reading refuses falls back to stating the premise.
+        // Unlike the explicit and marshalled models, no narrow-reading wrapper is
+        // needed here: TryStructExtent already swallows a NotSupportedException.
         else if (!IsOpaque(cls) && cls.IsValueType && TryStructExtent(cls, PointerWidth.Bytes64) is { } ext)
-            sb.AppendLine(ext.PtrFree
-                ? $"static_assert(sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");"
-                : $"static_assert(sizeof(void*) != 8 || sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");");
+        {
+            var sz = PointerWidth.Model(ext.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size);
+            sb.AppendLine($"static_assert({(sz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {sz.Text}, \"sequential layout size mismatch: {cls.FullName}\");");
+        }
     }
 
     /// <summary>Emits the body of a <c>[StructLayout(LayoutKind.Explicit)]</c> value
