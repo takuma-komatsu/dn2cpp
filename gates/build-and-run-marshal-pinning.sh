@@ -20,6 +20,9 @@
 # NativeMemory.Alloc product that does not fit is decided before the allocator is
 # asked anything and throws OutOfMemoryException, where the allocator refusing
 # stays an abort — the section proves it by running on past the catch.
+# A width-naming [MarshalAs] is also asserted to reach the SAME verdict at both
+# pointer widths, from both spellings of SizeOf, so a descriptor that contradicts
+# its field only at 32 bits cannot be measured at 64.
 # Sub-word-field structs
 # are carved out (their
 # C++ field width is int32-widened, so the marshalled sizeof diverges from .NET).

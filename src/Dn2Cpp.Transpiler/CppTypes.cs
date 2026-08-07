@@ -577,7 +577,17 @@ internal static class CppTypes
                 or System.Runtime.InteropServices.UnmanagedType.SysUInt => 8,
             _ => -1,
         };
-        return named > 0 && NativeAbiWidth(t) == named;
+        // A pointer-WIDE field takes a pointer-width descriptor and not a fixed-width one:
+        // the two coincide at 64 bits, where NativeAbiWidth reads them, so comparing numbers
+        // alone would accept [MarshalAs(U8)] IntPtr, which real .NET raises TypeLoadException
+        // for. Still laxer than .NET on an unmanaged POINTER field, which takes no descriptor
+        // at all — SysInt included — and is a standing over-acceptance, not a rule.
+        bool ptrWide = t.Kind == TypeKind.Pointer
+            || (t.Kind == TypeKind.Primitive
+                && t.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr);
+        bool namesPtr = u is System.Runtime.InteropServices.UnmanagedType.SysInt
+            or System.Runtime.InteropServices.UnmanagedType.SysUInt;
+        return named > 0 && NativeAbiWidth(t) == named && ptrWide == namesPtr;
     }
 
     /// <summary>The byte width of a blittable field type on the native ABI — the numeric
