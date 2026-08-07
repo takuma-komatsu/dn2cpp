@@ -1700,8 +1700,10 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Marshal.OffsetOf<{cls.FullName}>: "
                 + "the type cannot be marshaled as an unmanaged structure, so no meaningful "
-                + "offset can be computed (an auto-layout type, or one holding a field with no "
-                + $"unmanaged form: {MarshalUnmodeledReason(cls)})");
+                + "offset can be computed ("
+                // Auto layout refuses the type whatever its fields hold, so naming a field
+                // here would point past the only cause there is.
+                + (cls.IsAutoLayout ? "an auto-layout type" : MarshalUnmodeledReason(cls)) + ")");
         if (_c.TopLevelMarshalOffsetText(cls, fi) is not { } off)
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Marshal.OffsetOf<{cls.FullName}>.{fname}: "
