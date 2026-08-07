@@ -22,13 +22,12 @@ internal enum MarshalSizeVerdict
 /// struct, and the alignment its offset is rounded up to. Both are properties of the
 /// MARSHALLED form and have nothing to do with the emitted C++ struct — <c>bool</c> is
 /// (4, 4) here and 1 byte there.</summary>
-internal readonly record struct MarshalExtent(
-    MarshalSizeVerdict Verdict, int Size, int Align, bool PtrFree = true)
+internal readonly record struct MarshalExtent(MarshalSizeVerdict Verdict, int Size, int Align)
 {
     internal static readonly MarshalExtent Refused = new(MarshalSizeVerdict.Refused, 0, 0);
     internal static readonly MarshalExtent Unknown = new(MarshalSizeVerdict.Unknown, 0, 0);
-    internal static MarshalExtent Ok(int size, int align, bool ptrFree = true) =>
-        new(MarshalSizeVerdict.Known, size, align, ptrFree);
+    internal static MarshalExtent Ok(int size, int align) =>
+        new(MarshalSizeVerdict.Known, size, align);
     internal bool IsKnown => Verdict == MarshalSizeVerdict.Known;
 }
 
@@ -39,6 +38,15 @@ internal sealed class MarshalLayoutInfo
 {
     internal required MarshalExtent Extent;
     internal required Dictionary<FieldInfo, int> Offsets;
+}
+
+/// <summary>A marshalled layout rendered as C++ text: the pair of readings the walk gave at
+/// the two pointer widths, folded by <see cref="PointerWidth.Model"/>. Every number a
+/// <c>static_assert</c> pins comes from here rather than from a single reading.</summary>
+internal sealed class MarshalLayoutText
+{
+    internal required ModeledSize Size;
+    internal required Dictionary<FieldInfo, ModeledSize> Offsets;
 }
 
 internal sealed partial class Compilation
@@ -66,24 +74,25 @@ internal sealed partial class Compilation
     // offsetof(tn_, f) against the numbers computed here, so every gate that links one has
     // the C++ compiler check this arithmetic (CppEmitter.EmitPInvokeMarshalStructs).
     //
-    // POINTER WIDTH IS A FIXED 64-BIT PREMISE, NOT A HOST READ. Every pointer-shaped extent
-    // below — IntPtr, an unmanaged pointer, a string/delegate field, GCHandle — is the
-    // literal 8, and DefaultMarshalPack is 8, so the model is a constant function of the
-    // metadata: the same numbers on every host, which the self-host fixpoint requires. That
-    // makes a pointer-bearing answer wrong on the one 32-bit target dn2cpp emits for
-    // (wasm32), and the model cannot ask what the target is, because the transpiler is
-    // target-blind by design. The premise is stated rather than hidden: PtrFree rides every
-    // extent so the emitted tn_ static_asserts guard themselves with `sizeof(void*) != 8 ||`
-    // instead of pinning a 64-bit number on wasm32, and PInvokeMarshalLayoutSubset keeps its
-    // pointer-bearing rows managed-only for the same reason. Do not "fix" a pointer row to
-    // read the host's width (IntPtr.Size / sizeof) — that trades a deterministic premise for
-    // a host-dependent output, which is the one thing an emitted constant may never be.
+    // POINTER WIDTH IS A PARAMETER READ AT TWO FIXED VALUES, NEVER AT THE HOST'S. Callers
+    // read this walk at 8 and at 4 and hand the pair to PointerWidth.Model, which writes the
+    // size in sizeof(void*) — so Marshal.SizeOf is truthful on wasm32 without the transpiler
+    // ever asking what the target is. Both widths are constants, which is what keeps the
+    // output a pure function of the metadata; reading IntPtr.Size or sizeof here would trade
+    // that for a host-dependent constant, and that is the one thing this file may never do.
+    //
+    // THE 64-BIT READING ALONE DECIDES THE VERDICT. Refused/Unknown is what the ptr=8 walk
+    // says; the ptr=4 walk is consulted for numbers and never for a diagnosis — the same
+    // contract, for the same reason, as CppEmitter.TryExplicitLayoutSize.
 
-    private readonly Dictionary<ClassInfo, MarshalLayoutInfo> _marshalLayouts = new();
+    // Keyed on the pointer width the reading assumed, mirroring CppEmitter._structExtents.
+    private readonly Dictionary<(ClassInfo Cls, int Ptr), MarshalLayoutInfo> _marshalLayouts = new();
 
     /// <summary>The default structure packing when <c>[StructLayout(Pack)]</c> is
-    /// unspecified: 8 on the 64-bit targets dn2cpp emits for. A field's alignment is capped
-    /// at this, which is why it can never widen one.</summary>
+    /// unspecified. 8 at BOTH pointer widths, and inert at both: pack only CAPS an
+    /// alignment, no extent in this model aligns above 8, and on wasm32
+    /// <c>alignof(double) == alignof(long long) == 8</c> (measured with the pinned
+    /// emsdk).</summary>
     private const int DefaultMarshalPack = 8;
 
     /// <summary>The marshalled layout of <paramref name="cls"/> asked as the TOP-LEVEL
@@ -103,14 +112,61 @@ internal sealed partial class Compilation
     {
         if (cls.IsAutoLayout)
             return null;
-        var l = MarshalLayoutWalk(cls);
+        var l = MarshalLayoutWalk(cls, PointerWidth.Bytes64);
         return l.Extent.Verdict == MarshalSizeVerdict.Refused ? null : l;
     }
 
     /// <summary>The top-level verdict, kept separate from the layout because a refusal and
     /// an unknown carry different exceptions (see <see cref="MarshalSizeVerdict"/>).</summary>
     internal MarshalExtent TopLevelMarshalExtent(ClassInfo cls) =>
-        cls.IsAutoLayout ? MarshalExtent.Refused : MarshalLayoutWalk(cls).Extent;
+        cls.IsAutoLayout ? MarshalExtent.Refused : MarshalLayoutWalk(cls, PointerWidth.Bytes64).Extent;
+
+    /// <summary>The top-level size as C++ text, null when the verdict is not
+    /// <see cref="MarshalSizeVerdict.Known"/>. The narrow reading only supplies a number: a
+    /// 32-bit walk that answers nothing degrades to the guarded 64-bit constant.</summary>
+    internal ModeledSize? TopLevelMarshalSizeText(ClassInfo cls)
+    {
+        var e = TopLevelMarshalExtent(cls);
+        return e.IsKnown ? PointerWidth.Model(e.Size, NarrowTopLevel(cls)?.Extent.Size) : null;
+    }
+
+    /// <summary>One field's top-level <c>Marshal.OffsetOf</c> as C++ text; null when the type
+    /// or the field is outside the model.</summary>
+    internal ModeledSize? TopLevelMarshalOffsetText(ClassInfo cls, FieldInfo f)
+    {
+        if (TopLevelMarshalLayout(cls) is not { Extent.IsKnown: true } l
+            || !l.Offsets.TryGetValue(f, out int off))
+            return null;
+        return PointerWidth.Model(off, NarrowOffset(NarrowTopLevel(cls), f));
+    }
+
+    /// <summary>The member-position layout rendered as C++ text — what the emitted
+    /// <c>tn_&lt;Name&gt;</c> asserts pin.</summary>
+    internal MarshalLayoutText? MarshalMemberLayoutText(ClassInfo cls)
+    {
+        if (MarshalMemberLayout(cls, PointerWidth.Bytes64) is not { } wide)
+            return null;
+        var narrow = NarrowMember(cls);
+        var offsets = new Dictionary<FieldInfo, ModeledSize>();
+        foreach (var (f, off) in wide.Offsets)
+            offsets[f] = PointerWidth.Model(off, NarrowOffset(narrow, f));
+        return new MarshalLayoutText
+        {
+            Size = PointerWidth.Model(wide.Extent.Size, narrow?.Extent.Size),
+            Offsets = offsets,
+        };
+    }
+
+    private MarshalLayoutInfo? NarrowTopLevel(ClassInfo cls) =>
+        cls.IsAutoLayout ? null : IfKnown(MarshalLayoutWalk(cls, PointerWidth.Bytes32));
+
+    private MarshalLayoutInfo? NarrowMember(ClassInfo cls) =>
+        MarshalMemberLayout(cls, PointerWidth.Bytes32);
+
+    private static MarshalLayoutInfo? IfKnown(MarshalLayoutInfo l) => l.Extent.IsKnown ? l : null;
+
+    private static int? NarrowOffset(MarshalLayoutInfo? narrow, FieldInfo f) =>
+        narrow is not null && narrow.Offsets.TryGetValue(f, out int o) ? o : null;
 
     /// <summary>The extent <paramref name="cls"/> contributes as a FIELD of something else.
     ///
@@ -122,7 +178,7 @@ internal sealed partial class Compilation
     /// writing one would produce numbers .NET answers an exception for. (<c>TimeSpan</c>,
     /// <c>Guid</c> and <c>decimal</c> look like counter-examples and are not: all three are
     /// Sequential in metadata.)</para></summary>
-    internal MarshalExtent MarshalMemberExtent(ClassInfo cls)
+    internal MarshalExtent MarshalMemberExtent(ClassInfo cls, int ptr)
     {
         if (cls.FullName == "System.DateTime")
             return MarshalExtent.Ok(8, 8);
@@ -131,36 +187,35 @@ internal sealed partial class Compilation
         // with an enum field is refused where .NET measures it at the underlying width
         // (a byte-backed enum field is 1, a long-backed one 8).
         if (cls.IsEnum)
-            return MarshalPrimitiveExtent(cls.EnumUnderlying, unicode: false);
+            return MarshalPrimitiveExtent(cls.EnumUnderlying, unicode: false, ptr);
         if (cls.IsAutoLayout)
             return MarshalExtent.Refused;
-        return MarshalLayoutWalk(cls).Extent;
+        return MarshalLayoutWalk(cls, ptr).Extent;
     }
 
     /// <summary>The member-position layout — <see cref="MarshalMemberExtent"/>'s offsets,
     /// for the callers that need to place a nested type's fields.</summary>
-    internal MarshalLayoutInfo? MarshalMemberLayout(ClassInfo cls)
+    internal MarshalLayoutInfo? MarshalMemberLayout(ClassInfo cls, int ptr)
     {
         if (cls.IsAutoLayout && cls.FullName != "System.DateTime")
             return null;
-        var l = MarshalLayoutWalk(cls);
-        return l.Extent.IsKnown ? l : null;
+        return IfKnown(MarshalLayoutWalk(cls, ptr));
     }
 
     /// <summary>The walk itself, memoized per class. Pre-seeded with Unknown before the
     /// compute, so a malformed by-value cycle degrades to a refusal rather than recursing —
     /// the same guard shape (and the same reason) as <c>CppEmitter._structExtents</c> and
     /// <c>Compilation._marshalVerdicts</c>.</summary>
-    private MarshalLayoutInfo MarshalLayoutWalk(ClassInfo cls)
+    private MarshalLayoutInfo MarshalLayoutWalk(ClassInfo cls, int ptr)
     {
-        if (_marshalLayouts.TryGetValue(cls, out var cached))
+        if (_marshalLayouts.TryGetValue((cls, ptr), out var cached))
             return cached;
         var seed = new MarshalLayoutInfo { Extent = MarshalExtent.Unknown, Offsets = new() };
-        _marshalLayouts[cls] = seed;
+        _marshalLayouts[(cls, ptr)] = seed;
         MarshalLayoutInfo v;
         try
         {
-            v = ComputeMarshalLayout(cls);
+            v = ComputeMarshalLayout(cls, ptr);
         }
         catch (NotSupportedException e) when (!IsMustEscape(e))
         {
@@ -170,11 +225,11 @@ internal sealed partial class Compilation
             // a type this walk sees runs the throwing calls itself during its own emission.
             v = seed;
         }
-        _marshalLayouts[cls] = v;
+        _marshalLayouts[(cls, ptr)] = v;
         return v;
     }
 
-    private MarshalLayoutInfo ComputeMarshalLayout(ClassInfo cls)
+    private MarshalLayoutInfo ComputeMarshalLayout(ClassInfo cls, int ptr)
     {
         var offsets = new Dictionary<FieldInfo, int>();
         MarshalLayoutInfo Bare(MarshalExtent e) => new() { Extent = e, Offsets = offsets };
@@ -185,7 +240,7 @@ internal sealed partial class Compilation
         // answer from the table below; every other intrinsic (Vector128<T>, the
         // memory-mapping handles) refuses.
         if (cls.IntrinsicCppName is not null)
-            return Bare(IntrinsicMarshalExtent(cls.FullName));
+            return Bare(IntrinsicMarshalExtent(cls.FullName, ptr));
         // MembersReady-guarded for the ModelCensus reason: reading the field rows of an
         // uncompleted specialization just to answer this would defeat the deferral (and
         // throw under DN2CPP_STRICT_COMPLETION).
@@ -195,7 +250,7 @@ internal sealed partial class Compilation
         // the TOP-LEVEL argument — that is its AutoLayout, gated above — and marshals one as
         // a field at the underlying width.)
         if (cls.IsEnum)
-            return Bare(MarshalPrimitiveExtent(cls.EnumUnderlying, unicode: false));
+            return Bare(MarshalPrimitiveExtent(cls.EnumUnderlying, unicode: false, ptr));
         // An [InlineArray(N)] struct is N copies of its single field: an InlineArray(4) of
         // int is 16, aligned 4.
         if (cls.InlineArrayLength > 0)
@@ -203,11 +258,11 @@ internal sealed partial class Compilation
             var one = cls.Fields.FirstOrDefault(f => !f.IsStatic && !f.IsLiteral);
             if (one is null)
                 return Bare(MarshalExtent.Unknown);
-            var e = MarshalFieldExtent(one, cls.LayoutCharSetUnicode);
+            var e = MarshalFieldExtent(one, cls.LayoutCharSetUnicode, ptr);
             if (!e.IsKnown)
                 return Bare(e);
             offsets[one] = 0;
-            return Bare(MarshalExtent.Ok(e.Size * cls.InlineArrayLength, e.Align, e.PtrFree));
+            return Bare(MarshalExtent.Ok(e.Size * cls.InlineArrayLength, e.Align));
         }
 
         // The field list. For a REFERENCE type the base chain's fields come FIRST: a
@@ -242,16 +297,11 @@ internal sealed partial class Compilation
         int pack = cls.LayoutPack > 0 ? cls.LayoutPack : DefaultMarshalPack;
         bool unicode = cls.LayoutCharSetUnicode;
         int cursor = 0, end = 0, maxAlign = 1;
-        // Pointer-freedom rides along so the emitted static_assert can state the model's
-        // 8-byte-pointer premise instead of pinning a 64-bit-only number on wasm32 — the
-        // same convention, for the same reason, as CppEmitter's sequential-layout assert.
-        bool ptrFree = true;
         foreach (var f in fields)
         {
-            var e = MarshalFieldExtent(f, unicode);
+            var e = MarshalFieldExtent(f, unicode, ptr);
             if (!e.IsKnown)
                 return Bare(e);
-            ptrFree &= e.PtrFree;
             // Pack caps each field's alignment; it can never widen one — Pack=1 puts a long
             // at offset 1, Pack=16 leaves a double at 8.
             int a = Math.Min(e.Align, pack);
@@ -292,7 +342,7 @@ internal sealed partial class Compilation
             size = cls.LayoutSize;
         return new MarshalLayoutInfo
         {
-            Extent = MarshalExtent.Ok(size, maxAlign, ptrFree),
+            Extent = MarshalExtent.Ok(size, maxAlign),
             Offsets = offsets,
         };
     }
@@ -307,19 +357,18 @@ internal sealed partial class Compilation
     /// this member — a stamp there would be inert at best and, if the order ever moved, a
     /// number where .NET raises. Same for a type the runtime answers from its own fixed
     /// primitive table.</para></summary>
-    internal int? MarshalStampSize(ClassInfo cls)
+    internal ModeledSize? MarshalStampSize(ClassInfo cls)
     {
         if (cls.GenericArity > 0 || cls.Context.TypeArgs.Length > 0)
             return null;
-        var e = TopLevelMarshalExtent(cls);
-        return e.IsKnown ? e.Size : null;
+        return TopLevelMarshalSizeText(cls);
     }
 
     /// <summary>Whether one field's unmanaged form is in the model — for the diagnostics
     /// that have to name the shape that took a type out of it. It asks the same builder the
     /// walk asks, so a field it calls modelled is one the walk will place.</summary>
     internal bool MarshalFieldIsModelled(FieldInfo f) =>
-        MarshalFieldExtent(f, f.DeclaringClass.LayoutCharSetUnicode).IsKnown;
+        MarshalFieldExtent(f, f.DeclaringClass.LayoutCharSetUnicode, PointerWidth.Bytes64).IsKnown;
 
     /// <summary>The unmanaged extents of the intrinsic value types — the ones whose C++ body
     /// is a hand-written runtime struct, so there are no field rows to walk. Every row is
@@ -329,21 +378,21 @@ internal sealed partial class Compilation
     /// reaches it before the auto-layout gate, and <see cref="TopLevelMarshalExtent"/> never
     /// does. <c>DateTimeOffset</c> is deliberately absent: .NET refuses it in both
     /// positions.</para></summary>
-    private static MarshalExtent IntrinsicMarshalExtent(string fullName) => fullName switch
+    private static MarshalExtent IntrinsicMarshalExtent(string fullName, int ptr) => fullName switch
     {
         "System.DateTime" => MarshalExtent.Ok(8, 8),
         "System.TimeSpan" => MarshalExtent.Ok(8, 8),
         "System.DateOnly" => MarshalExtent.Ok(4, 4),
         "System.TimeOnly" => MarshalExtent.Ok(8, 8),
         "System.Decimal" => MarshalExtent.Ok(16, 8),
-        "System.Runtime.InteropServices.GCHandle" => MarshalExtent.Ok(8, 8, ptrFree: false),
-        "System.Runtime.DependentHandle" => MarshalExtent.Ok(8, 8, ptrFree: false),
+        "System.Runtime.InteropServices.GCHandle" => MarshalExtent.Ok(ptr, ptr),
+        "System.Runtime.DependentHandle" => MarshalExtent.Ok(ptr, ptr),
         _ => MarshalExtent.Unknown,
     };
 
     /// <summary>One field's contribution: the extent it occupies and the alignment its
     /// offset takes, after its <c>[MarshalAs]</c> descriptor has had its say.</summary>
-    private MarshalExtent MarshalFieldExtent(FieldInfo f, bool unicode)
+    private MarshalExtent MarshalFieldExtent(FieldInfo f, bool unicode, int ptr)
     {
         var t = f.Type;
         switch (f.MarshalAs)
@@ -357,8 +406,8 @@ internal sealed partial class Compilation
                 int n = f.MarshalSizeConst < 0 ? 1 : f.MarshalSizeConst;
                 if (t.Element is not { } el)
                     return MarshalExtent.Unknown;
-                var e = MarshalElementExtent(el, f.MarshalArraySubType, unicode);
-                return e.IsKnown ? MarshalExtent.Ok(e.Size * n, e.Align, e.PtrFree) : e;
+                var e = MarshalElementExtent(el, f.MarshalArraySubType, unicode, ptr);
+                return e.IsKnown ? MarshalExtent.Ok(e.Size * n, e.Align) : e;
             }
             // ByValTStr inlines a SizeConst-character buffer at the DECLARING type's CharSet
             // width, aligned at the character width; SizeConst=0 is refused.
@@ -371,25 +420,25 @@ internal sealed partial class Compilation
             }
         }
 
-        var natural = MarshalNaturalExtent(t, unicode);
+        var natural = MarshalNaturalExtent(t, unicode, ptr);
         if (f.MarshalAs == default)
             return natural;
-        return MarshalDescribedExtent(t, f.MarshalAs, natural, unicode);
+        return MarshalDescribedExtent(t, f.MarshalAs, natural, unicode, ptr);
     }
 
     /// <summary>A field's extent from its TYPE alone, with no <c>[MarshalAs]</c> in play.
     /// The CharSet argument is the DECLARING type's and does not reach into a nested struct:
     /// each type's own CharSet governs its own fields, which is why it is passed down one
     /// level and never further.</summary>
-    private MarshalExtent MarshalNaturalExtent(TypeDesc t, bool unicode)
+    private MarshalExtent MarshalNaturalExtent(TypeDesc t, bool unicode, int ptr)
     {
         switch (t.Kind)
         {
             case TypeKind.Primitive:
-                return MarshalPrimitiveExtent(t.Primitive, unicode);
-            // An unmanaged pointer and a function pointer are 8 bytes on both sides.
+                return MarshalPrimitiveExtent(t.Primitive, unicode, ptr);
+            // An unmanaged pointer and a function pointer are pointer-wide on both sides.
             case TypeKind.Pointer:
-                return MarshalExtent.Ok(8, 8, ptrFree: false);
+                return MarshalExtent.Ok(ptr, ptr);
             // A GC reference with no descriptor to inline it: .NET refuses a struct with a
             // bare `int[]` field, and refuses a byref one.
             case TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef:
@@ -400,12 +449,12 @@ internal sealed partial class Compilation
                 // A delegate marshals as a native function pointer, with or without an
                 // explicit [MarshalAs(FunctionPtr)].
                 if (fc.IsDelegate)
-                    return MarshalExtent.Ok(8, 8, ptrFree: false);
+                    return MarshalExtent.Ok(ptr, ptr);
                 // A [StructLayout(Sequential/Explicit)] CLASS field is INLINED BY VALUE at
                 // its own marshalled layout — it is not a pointer. An auto-layout class (the
                 // C# default, and so every ordinary class, StringBuilder included) is refused
                 // by MarshalMemberExtent's gate, which is where that falls out.
-                return MarshalMemberExtent(fc);
+                return MarshalMemberExtent(fc, ptr);
             // A type from an assembly nothing loaded, an open generic placeholder, a
             // template: no layout to speak for.
             default:
@@ -413,7 +462,7 @@ internal sealed partial class Compilation
         }
     }
 
-    private static MarshalExtent MarshalPrimitiveExtent(PrimitiveTypeCode p, bool unicode) => p switch
+    private static MarshalExtent MarshalPrimitiveExtent(PrimitiveTypeCode p, bool unicode, int ptr) => p switch
     {
         PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte => MarshalExtent.Ok(1, 1),
         PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 => MarshalExtent.Ok(2, 2),
@@ -421,8 +470,7 @@ internal sealed partial class Compilation
             => MarshalExtent.Ok(4, 4),
         PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double
             => MarshalExtent.Ok(8, 8),
-        PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr
-            => MarshalExtent.Ok(8, 8, ptrFree: false),
+        PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => MarshalExtent.Ok(ptr, ptr),
         // A bool marshals as the 4-byte Win32 BOOL, ALIGNED 4, on every platform: a
         // { byte, bool } struct puts the bool at offset 4 and is 8 bytes. This is the row no
         // sizeof could produce; the representation is 1 byte.
@@ -432,7 +480,7 @@ internal sealed partial class Compilation
         // representation, which is 2 bytes always.
         PrimitiveTypeCode.Char => unicode ? MarshalExtent.Ok(2, 2) : MarshalExtent.Ok(1, 1),
         // A string field with no descriptor marshals as a pointer to a buffer.
-        PrimitiveTypeCode.String => MarshalExtent.Ok(8, 8, ptrFree: false),
+        PrimitiveTypeCode.String => MarshalExtent.Ok(ptr, ptr),
         // An object field marshals as a COM interface pointer on Windows (8) and is refused
         // on POSIX. This verdict is decided at TRANSPILE time and must not split by host, and
         // a runtime with no COM cannot honour the Windows answer — so the model declines it.
@@ -456,7 +504,7 @@ internal sealed partial class Compilation
     /// <c>int</c> is <c>ArgumentException</c>). Anything this does not model answers Unknown,
     /// never a number — the permanent COM carve-outs (<c>BStr</c>, <c>SafeArray</c>,
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
-    private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode)
+    private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
     {
         if (t.Kind == TypeKind.Primitive)
         {
@@ -479,12 +527,12 @@ internal sealed partial class Compilation
                         _ => MarshalExtent.Unknown,
                     };
                 case PrimitiveTypeCode.String:
-                    // Every pointer-shaped string encoding is 8 bytes. BStr and the other COM
-                    // forms are deliberately absent: they are the standing carve-out, and a
-                    // size for a form nothing else in the tree marshals would be the one
+                    // Every pointer-shaped string encoding is one pointer. BStr and the other
+                    // COM forms are deliberately absent: they are the standing carve-out, and
+                    // a size for a form nothing else in the tree marshals would be the one
                     // number in this file with no second reader.
                     return u is UT.LPStr or UT.LPWStr or UT.LPUTF8Str or UT.LPTStr
-                        ? MarshalExtent.Ok(8, 8, ptrFree: false)
+                        ? MarshalExtent.Ok(ptr, ptr)
                         : MarshalExtent.Unknown;
             }
         }
@@ -493,7 +541,7 @@ internal sealed partial class Compilation
         // model does not carry (LPStruct on a class, Interface, SafeArray, LPArray on a
         // field). Those last are refusals in .NET too, but answering "unknown" here keeps
         // this file's claims about .NET to the shapes it actually models.
-        int named = NamedUnmanagedWidth(u);
+        int named = NamedUnmanagedWidth(u, ptr);
         if (named < 0)
             return u switch
             {
@@ -501,7 +549,7 @@ internal sealed partial class Compilation
                 UT.Struct when natural.IsKnown && t.Kind == TypeKind.Class
                     && t.Class is { IsValueType: true } => natural,
                 UT.FunctionPtr when t.Kind == TypeKind.Class && t.Class is { IsDelegate: true }
-                    => MarshalExtent.Ok(8, 8, ptrFree: false),
+                    => MarshalExtent.Ok(ptr, ptr),
                 _ => MarshalExtent.Unknown,
             };
         if (!natural.IsKnown)
@@ -511,13 +559,13 @@ internal sealed partial class Compilation
 
     /// <summary>The fixed byte width an <c>UnmanagedType</c> names, or -1 when it names no
     /// single width (a pointer form, a COM form, an inline form).</summary>
-    private static int NamedUnmanagedWidth(UT u) => u switch
+    private static int NamedUnmanagedWidth(UT u, int ptr) => u switch
     {
         UT.I1 or UT.U1 => 1,
         UT.I2 or UT.U2 => 2,
         UT.I4 or UT.U4 or UT.R4 => 4,
         UT.I8 or UT.U8 or UT.R8 => 8,
-        UT.SysInt or UT.SysUInt => 8,
+        UT.SysInt or UT.SysUInt => ptr,
         _ => -1,
     };
 
@@ -530,7 +578,7 @@ internal sealed partial class Compilation
     /// <c>int[3]</c> is 12 whatever the subtype says. The asymmetry with the scalar rule
     /// above is real: a mismatched subtype on an array element is ignored where the same
     /// descriptor on a scalar field is an <c>ArgumentException</c>.</para></summary>
-    private MarshalExtent MarshalElementExtent(TypeDesc el, UT sub, bool unicode)
+    private MarshalExtent MarshalElementExtent(TypeDesc el, UT sub, bool unicode, int ptr)
     {
         if (el.Kind == TypeKind.Primitive)
         {
@@ -550,6 +598,6 @@ internal sealed partial class Compilation
         // where a bare field of that class is inlined — so it is refused here.
         if (el.Kind == TypeKind.Class && el.Class is { IsValueType: false, IsDelegate: false })
             return MarshalExtent.Refused;
-        return MarshalNaturalExtent(el, unicode);
+        return MarshalNaturalExtent(el, unicode, ptr);
     }
 }

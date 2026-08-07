@@ -230,20 +230,24 @@ internal sealed partial class Compilation
     /// marshalled size. Two of the rows are not widths at all — <c>bool</c> is 4 (the Win32
     /// BOOL default) and <c>char</c> is 1 (the default Ansi CharSet) — so the static
     /// lowering could never have derived them.</summary>
-    internal static int? MarshalKnownSize(TypeDesc t)
+    internal static ModeledSize? MarshalKnownSize(TypeDesc t)
     {
         if (t.Kind != TypeKind.Primitive)
             return null;
+        // Every row but the pointer one is the same number at both pointer widths, so it
+        // renders as the bare literal it is.
+        static ModeledSize Fixed(int n) => PointerWidth.Model(n, n);
         return t.Primitive switch
         {
-            PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte => 1,
-            PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 => 2,
-            PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32 or PrimitiveTypeCode.Single => 4,
-            PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double => 8,
-            PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr => 8,
-            PrimitiveTypeCode.Boolean => 4,
-            PrimitiveTypeCode.Char => 1,
-            PrimitiveTypeCode.Void => 1,
+            PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte => Fixed(1),
+            PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16 => Fixed(2),
+            PrimitiveTypeCode.Int32 or PrimitiveTypeCode.UInt32 or PrimitiveTypeCode.Single => Fixed(4),
+            PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 or PrimitiveTypeCode.Double => Fixed(8),
+            PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr
+                => PointerWidth.Model(PointerWidth.Bytes64, PointerWidth.Bytes32),
+            PrimitiveTypeCode.Boolean => Fixed(4),
+            PrimitiveTypeCode.Char => Fixed(1),
+            PrimitiveTypeCode.Void => Fixed(1),
             // String and Object are marshalable-as-arguments but refused as a SizeOf
             // argument; leave them to the runtime verdict, which raises .NET's exception.
             _ => null,

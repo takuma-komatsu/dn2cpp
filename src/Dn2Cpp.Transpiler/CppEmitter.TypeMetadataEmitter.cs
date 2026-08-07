@@ -1958,9 +1958,10 @@ internal sealed partial class CppEmitter
                 esName = $"\"{es.Name}\"";
                 esGuid = es.Guid is null ? null : $"\"{es.Guid}\"";
             }
+            string? marshalSize = _c.MarshalStampSize(cls)?.Int32Expr;
             string tail = TypeInfoTail(
                 ("0", null),                                 // varianceMask
-                ("0", _c.MarshalStampSize(cls)?.ToString()), // marshalSize
+                ("0", marshalSize),                          // marshalSize
                 ("nullptr", esName),                         // eventSourceName
                 ("nullptr", esGuid));                        // eventSourceGuid
             _sb.AppendLine($"const Dn2CppTypeInfo {cls.CppTypeInfoDefName} = {{ \"{Compilation.ReflectionTypeName(cls)}\", {baseExpr}, (int32_t)sizeof({cls.CppStructName}), {vt}, {itfs}, {toStr}, {getHash}, {equals}, {flags}, {fieldsExpr}, {fieldCount}, {methodsExpr}, {methodCount}, {ctorsExpr}, {ctorCount}, {propsExpr}, {propCount}, {typeAttrs.Expr}, {typeAttrs.Count}, {genDefExpr}, {genArgsExpr}, {genArgCount}, nullptr, nullptr, 0, {nestedExpr}, {nested.Count}, nullptr, 0, {AsmLit(cls)}, {finalize}, {rgctxExpr}, &ty_{cls.CppName}, nullptr, 0x{tIlAttrs:X}u, {tToken}, {dmName}{tail} }};");

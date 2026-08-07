@@ -1152,7 +1152,7 @@ internal sealed partial class MethodCompiler
                     throw new NotSupportedException(
                         $"{Method.DeclaringClass.FullName}.{Method.Name}: Marshal.OffsetOf(Type, …) "
                         + "requires a typeof(T) literal (a runtime Type value is carved out)");
-                Push(StackKind.I8, "intptr_t", $"(intptr_t){MarshalFieldOffset(tt, field)}");
+                Push(StackKind.I8, "intptr_t", $"(intptr_t)({MarshalFieldOffset(tt, field)})");
                 return true;
             }
             // SizeOf(Type) -> int. The runtime helper runs the marshalling verdict
@@ -1622,8 +1622,8 @@ internal sealed partial class MethodCompiler
     /// <summary>Lowers the generic <c>Marshal.SizeOf&lt;T&gt;()</c>. The two spellings of this
     /// question — <c>SizeOf&lt;T&gt;()</c> here and <c>SizeOf(typeof(T))</c> through
     /// <c>dn2cpp_marshal_sizeof</c> — must give the SAME answer, so both consult
-    /// <see cref="Compilation.TopLevelMarshalExtent"/>: this one folds its number, and the
-    /// runtime reads the same number from the <c>marshalSize</c> the emitter stamped from it.
+    /// <see cref="Compilation.TopLevelMarshalSizeText"/>: this one folds its expression, and
+    /// the runtime reads the same one from the <c>marshalSize</c> the emitter stamped.
     ///
     /// <para>Three arms, in order:</para>
     /// <list type="number">
@@ -1645,15 +1645,15 @@ internal sealed partial class MethodCompiler
     {
         if (Compilation.MarshalKnownSize(t) is { } known)
         {
-            Push(StackKind.I4, "int32_t", known.ToString());
+            Push(StackKind.I4, "int32_t", known.Int32Expr);
             return;
         }
         // A generic is refused by .NET whatever its layout, so it must not be folded here —
         // it falls through to the runtime verdict, which raises .NET's own distinct message.
         if (t is { Kind: TypeKind.Class, Class: { GenericArity: 0 } mc }
-            && _c.TopLevelMarshalExtent(mc) is { IsKnown: true } ext)
+            && _c.TopLevelMarshalSizeText(mc) is { } size)
         {
-            Push(StackKind.I4, "int32_t", ext.Size.ToString());
+            Push(StackKind.I4, "int32_t", size.Int32Expr);
             return;
         }
         // The type-info has to EXIST for the routed call, and a value type named only here
@@ -1670,16 +1670,17 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>Lowers <c>Marshal.OffsetOf</c> — both spellings — to the field's MARSHALLED
-    /// offset, as a compile-time constant from the marshalled-layout model
+    /// offset, as a C++ constant expression from the marshalled-layout model
     /// (<c>Compilation.MarshalLayout.cs</c>). A non-literal runtime field name is carved
-    /// out, which is what lets the answer be a constant at all.
+    /// out, which is what lets the answer be a constant at all. The text may be a
+    /// <c>sizeof(void*)</c> sum, so every caller parenthesises it.
     ///
     /// <para>Never <c>offsetof</c> of the emitted C++ struct: that is the right number only
     /// for a blittable struct, and for a REFERENCE type is not a number at all
     /// (<c>StorageOf</c> a reference type is <c>t_X*</c>). The model computes the unmanaged
     /// layout from the metadata rows instead, so a <c>[StructLayout(Sequential)]</c> class
     /// answers, base chain's fields first.</para></summary>
-    private long MarshalFieldOffset(TypeDesc t, StackEntry field)
+    private string MarshalFieldOffset(TypeDesc t, StackEntry field)
     {
         if (field.StrLiteral is not { } fname)
             throw new NotSupportedException(
@@ -1695,18 +1696,18 @@ internal sealed partial class MethodCompiler
         var fi = cls.Fields.FirstOrDefault(f => f.Name == fname && !f.IsStatic)
             ?? throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: field '{fname}' not found on {cls.FullName}");
-        var layout = _c.TopLevelMarshalLayout(cls)
-            ?? throw new NotSupportedException(
+        if (_c.TopLevelMarshalLayout(cls) is null)
+            throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Marshal.OffsetOf<{cls.FullName}>: "
                 + "the type cannot be marshaled as an unmanaged structure, so no meaningful "
                 + "offset can be computed (an auto-layout type, or one holding a field with no "
                 + "unmanaged form)");
-        if (!layout.Extent.IsKnown || !layout.Offsets.TryGetValue(fi, out int off))
+        if (_c.TopLevelMarshalOffsetText(cls, fi) is not { } off)
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Marshal.OffsetOf<{cls.FullName}>.{fname}: "
                 + "real .NET reports an offset here and dn2cpp does not model this type's "
                 + $"marshalled layout ({MarshalUnmodeledReason(cls)})");
-        return off;
+        return off.Text;
     }
 
     /// <summary>The shape that took a type out of the marshalled-layout model, named so the

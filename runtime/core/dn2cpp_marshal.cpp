@@ -84,7 +84,9 @@ static int32_t marshal_known_size(const char* name)
         { "System.Int32", 4 }, { "System.UInt32", 4 },
         { "System.Int64", 8 }, { "System.UInt64", 8 },
         { "System.Single", 4 }, { "System.Double", 8 },
-        { "System.IntPtr", 8 }, { "System.UIntPtr", 8 },
+        // The one pointer-width row: 4 on wasm32, and the emitter's mirror of this table
+        // writes the same sizeof(void*) so both spellings of Marshal.SizeOf agree there.
+        { "System.IntPtr", (int32_t)sizeof(void*) }, { "System.UIntPtr", (int32_t)sizeof(void*) },
         { "System.Boolean", 4 }, { "System.Char", 1 },
         { "System.Void", 1 },
     };
