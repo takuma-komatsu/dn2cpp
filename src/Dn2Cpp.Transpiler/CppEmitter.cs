@@ -5250,15 +5250,19 @@ internal sealed partial class CppEmitter
         // modeled CLR layout extent so sizeof tells the truth. When the extent is unknown
         // the shell stays empty and the type-info is stamped DN2CPP_TF_LAYOUT_UNKNOWN, so
         // the size readers throw instead of answering that 1 (see _layoutUnknown).
+        // The shell IS its size, so a total the model cannot write width-independently —
+        // the narrow reading refused the type — takes the same unknown channel a missing
+        // extent takes, rather than baking a 64-bit width a wasm32 build would then carry.
+        // An opaque type is by definition one this program never lays out itself, so a
+        // reader throwing when asked is the proportionate answer; no corpus type reaches
+        // it today. A one-byte extent cannot: it holds no pointer, so both readings exist.
         if (IsOpaque(cls) && cls.IsValueType)
         {
-            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz)
+            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz
+                && PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size) is { Guarded: false } m)
             {
-                // The shell IS its size, so the same rule as the explicit-layout pad
-                // holds: a total that leans on the pointer width is written in
-                // sizeof(void*), never baked at 64 bits.
                 if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size).Text}];");
+                    sb.AppendLine($"    uint8_t __opaque_pad[{m.Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
