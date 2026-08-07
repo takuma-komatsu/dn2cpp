@@ -29,6 +29,7 @@ namespace AsyncCombinators
             WaitAsyncContinueWithSubset.Program.__GateEntry();
             BlockingWaitArgsSubset.Program.__GateEntry();
             SettledCombinatorsSubset.Program.__GateEntry();
+            WhenAllFaultSetSubset.Program.__GateEntry();
         }
     }
 }

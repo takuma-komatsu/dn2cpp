@@ -5250,15 +5250,19 @@ internal sealed partial class CppEmitter
         // modeled CLR layout extent so sizeof tells the truth. When the extent is unknown
         // the shell stays empty and the type-info is stamped DN2CPP_TF_LAYOUT_UNKNOWN, so
         // the size readers throw instead of answering that 1 (see _layoutUnknown).
+        // The shell IS its size, so a total the model cannot write width-independently —
+        // the narrow reading refused the type — takes the same unknown channel a missing
+        // extent takes, rather than baking a 64-bit width a wasm32 build would then carry.
+        // An opaque type is by definition one this program never lays out itself, so a
+        // reader throwing when asked is the proportionate answer; no corpus type reaches
+        // it today. A one-byte extent cannot: it holds no pointer, so both readings exist.
         if (IsOpaque(cls) && cls.IsValueType)
         {
-            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz)
+            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz
+                && PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size) is { Guarded: false } m)
             {
-                // The shell IS its size, so the same rule as the explicit-layout pad
-                // holds: a total that leans on the pointer width is written in
-                // sizeof(void*), never baked at 64 bits.
                 if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size).Text}];");
+                    sb.AppendLine($"    uint8_t __opaque_pad[{m.Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
@@ -5331,23 +5335,24 @@ internal sealed partial class CppEmitter
         // Only for a value type: a reference type's sizeof also carries the
         // Dn2CppObject header, so the union total is not its whole sizeof — the
         // field offsets are pinned by the emitted union arms regardless.
-        // Same convention as the sequential and marshalled asserts below/in
-        // EmitStructs: a size that leans on the pointer width is never a bare 64-bit
-        // number — it is written in sizeof(void*), or it states the premise.
+        // Unguarded at every width: the body emission refuses a total it cannot write in
+        // sizeof(void*), so a guarded size never reaches here.
         if (explicitSize is { } esz && cls.IsValueType)
-            sb.AppendLine($"static_assert({(esz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {esz.Text}, \"explicit layout size mismatch: {cls.FullName}\");");
+            sb.AppendLine($"static_assert(sizeof({cls.CppStructName}) == {esz.Text}, \"explicit layout size mismatch: {cls.FullName}\");");
         // Safety net: every value type lays out at real storage width, and the
         // extent model (TryStructExtent) mirrors the emitted body — pin the C++
         // compiler to the modeled size so a divergence (an alignment rule the
         // model missed) is a loud compile error, not a silently wrong sizeof.
-        // The model sizes pointers (references, IntPtr) at 8 bytes, so on a
-        // 32-bit target (wasm32) a pointer-bearing struct legitimately comes out
-        // smaller — guard those asserts on sizeof(void*) == 8 instead of pinning
-        // a 64-bit-only number; pointer-free structs stay pinned everywhere.
+        // A pointer-bearing struct is read at both widths and the pair rendered
+        // as target-independent text, so the 32-bit build checks it too; only a
+        // type the narrow reading refuses falls back to stating the premise.
+        // Unlike the explicit and marshalled models, no narrow-reading wrapper is
+        // needed here: TryStructExtent already swallows a NotSupportedException.
         else if (!IsOpaque(cls) && cls.IsValueType && TryStructExtent(cls, PointerWidth.Bytes64) is { } ext)
-            sb.AppendLine(ext.PtrFree
-                ? $"static_assert(sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");"
-                : $"static_assert(sizeof(void*) != 8 || sizeof({cls.CppStructName}) == {ext.Size}, \"sequential layout size mismatch: {cls.FullName}\");");
+        {
+            var sz = PointerWidth.Model(ext.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size);
+            sb.AppendLine($"static_assert({(sz.Guarded ? "sizeof(void*) != 8 || " : "")}sizeof({cls.CppStructName}) == {sz.Text}, \"sequential layout size mismatch: {cls.FullName}\");");
+        }
     }
 
     /// <summary>Emits the body of a <c>[StructLayout(LayoutKind.Explicit)]</c> value
@@ -5363,8 +5368,8 @@ internal sealed partial class CppEmitter
     /// bytes exactly like the CLR layout.
     /// Returns the rendered total size (the value-type caller pins sizeof to it).
     /// Unrepresentable shapes (a GC reference field overlapping another field, an
-    /// unsized field type, an offset misaligned for the field's C++ alignment) throw
-    /// with the type/field named.</summary>
+    /// unsized field type, an offset misaligned for the field's C++ alignment, a total
+    /// only one pointer width can express) throw with the type named.</summary>
     private ModeledSize EmitExplicitLayoutBody(StringBuilder sb, ClassInfo cls, List<FieldInfo> fields)
     {
         // Unlike every other emitted body, this one FIXES the total size — the pad arm is
@@ -5373,6 +5378,14 @@ internal sealed partial class CppEmitter
         // a copy of it walks off the end of the ABI's storage.
         var size = PointerWidth.Model(ExplicitLayoutExtent(cls, fields, PointerWidth.Bytes64).Size,
                                       TryExplicitLayoutSize(cls, fields, PointerWidth.Bytes32));
+        // The narrow reading refused the shape, so there is no second number to select
+        // between and nothing here to degrade to — a field-bearing type must get a body.
+        // Refusing is also what every other unrepresentable explicit shape does.
+        if (size.Guarded)
+            throw new NotSupportedException(
+                $"{cls.FullName}: the LayoutKind.Explicit total cannot be written in sizeof(void*) — "
+                + "the 32-bit reading of this layout is refused, and the emitted union FIXES the "
+                + "total, so the 64-bit size would become the type's size on a 32-bit target");
         if (fields.Count == 0)
         {
             sb.AppendLine($"    uint8_t __explicit_pad[{size.Text}];");
@@ -5415,11 +5428,10 @@ internal sealed partial class CppEmitter
     /// alignment — exactly what the emitted union produces in C++ and what the CLR
     /// computes. Throws (naming the type and field) for every shape the union
     /// emission cannot represent; see <see cref="EmitExplicitLayoutBody"/>.</summary>
-    private (int Size, int Align, bool PtrFree) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int Size, int Align) ExplicitLayoutExtent(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         int pack = cls.LayoutPack;
         int align = 1, end = 0;
-        bool ptrFree = true;
         var placed = new List<(FieldInfo F, int Off, int Size, bool Gc)>();
         foreach (var f in fields)
         {
@@ -5429,7 +5441,6 @@ internal sealed partial class CppEmitter
             if (TryFieldExtent(f.Type, ptr) is not { } e)
                 throw new NotSupportedException(
                     $"{cls.FullName}.{f.Name}: cannot compute the size of field type {f.Type} inside a LayoutKind.Explicit struct");
-            ptrFree &= e.PtrFree;
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
             if (f.ExplicitOffset % a != 0)
                 throw new NotSupportedException(
@@ -5469,7 +5480,7 @@ internal sealed partial class CppEmitter
         if (cls.LayoutSize >= end && cls.LayoutSize > 0 && total != cls.LayoutSize)
             throw new NotSupportedException(
                 $"{cls.FullName}: explicit Size={cls.LayoutSize} is not a multiple of the struct's {align}-byte alignment, which the emitted C++ layout cannot represent");
-        return (total, align, ptrFree);
+        return (total, align);
     }
 
     /// <summary>Whether an emitted sequential value-type body must FIX its total with a
@@ -5511,26 +5522,31 @@ internal sealed partial class CppEmitter
     /// resulting total instead (see <see cref="NeedsDeclaredSizeArm"/>).
     /// 0 when there is no declared size, the natural size already covers it
     /// (e.g. every empty struct declares Size=1, and C++ gives it 1 anyway), or the
-    /// field extents cannot be computed (previous behavior: no pad). Throws when the
-    /// declared size is not a multiple of the struct's alignment (C++ would round
-    /// past it — fail loudly rather than silently diverge). Real .NET measures that
-    /// shape: Size=6 over an int is 6 from sizeof, Unsafe.SizeOf, Marshal.SizeOf and
-    /// the array stride alike — size 6 with alignment 4 intact, which no C++ type can
-    /// express — so the refusal is a deliberate, loud divergence, asserted by
-    /// build-and-run-marshal-pinning.sh's negative arm. Where Size IS a multiple of a
-    /// sub-word alignment the pad below reproduces .NET exactly.</summary>
+    /// field extents cannot be computed (previous behavior: no pad).
+    ///
+    /// <para>A declared size is a FLOOR that suppresses the rounding: real .NET measures
+    /// <c>max(Size, field end)</c> with the alignment intact — sizeof, Unsafe.SizeOf,
+    /// Marshal.SizeOf and the array stride alike — so Size=6 over an int is 6, and
+    /// Size=4 over {IntPtr,byte} is 9. C++ cannot express a size that is not a multiple
+    /// of alignof, so that total is refused loudly, ahead of the early return: the shape
+    /// is unrepresentable whether or not it needs a pad. Past the refusal the natural
+    /// size already equals that total, which is why the pad below stays
+    /// <c>Size - end</c> — recomputing it would move types whose declared size merely
+    /// equals their natural one onto the declared-size union arm for nothing. Asserted
+    /// by build-and-run-marshal-pinning.sh's negative arms.</para></summary>
     private int SequentialSizePadding(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         if (!cls.IsValueType || cls.LayoutSize <= 0)
             return 0;
         if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
             return 0;
+        int total = Math.Max(cls.LayoutSize, e.End);
+        if (total % e.Align != 0)
+            throw new NotSupportedException(
+                $"{cls.FullName}: Size={cls.LayoutSize} over fields ending at byte {e.End} gives a {total}-byte struct, not a multiple of its {e.Align}-byte alignment, which the emitted C++ layout cannot represent");
         int natural = Math.Max(RoundUp(e.End, e.Align), 1);
         if (cls.LayoutSize <= natural)
             return 0;
-        if (cls.LayoutSize % e.Align != 0)
-            throw new NotSupportedException(
-                $"{cls.FullName}: explicit Size={cls.LayoutSize} is not a multiple of the struct's {e.Align}-byte alignment, which the emitted C++ layout cannot represent");
         return cls.LayoutSize - e.End;
     }
 
@@ -5540,22 +5556,20 @@ internal sealed partial class CppEmitter
     /// <see cref="CppTypes.FieldOf"/> width, aligned to its (pack-capped) natural
     /// alignment. Includes the fixed-buffer trailing pad. Null when a member's
     /// extent is unknown (an intrinsic/opaque/external field type).</summary>
-    private (int End, int Align, bool PtrFree)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr)
+    private (int End, int Align)? TrySequentialFieldsEnd(ClassInfo cls, List<FieldInfo> fields, int ptr)
     {
         int pack = cls.LayoutPack;
         int cursor = 0, align = 1;
-        bool ptrFree = true;
         foreach (var f in fields)
         {
             if (TryFieldExtent(f.Type, ptr) is not { } e)
                 return null;
-            ptrFree &= e.PtrFree;
             int a = pack > 0 && e.Align > pack ? pack : e.Align;
             if (a > align) align = a;
             cursor = RoundUp(cursor, a) + e.Size;
         }
         cursor += FixedBufferPadding(cls, fields);
-        return (cursor, align, ptrFree);
+        return (cursor, align);
     }
 
     /// <summary>The byte size and alignment of the intrinsic-modeled value-type C++
@@ -5583,14 +5597,14 @@ internal sealed partial class CppEmitter
     /// <para>Asserted by <c>ReflectIntrinsicSizeOfSubset</c>: the per-type
     /// "static == reflected == stride" agreement, and the sizes themselves live-diffed
     /// against real .NET.</para></summary>
-    private static readonly Dictionary<string, (int Size, int Align, bool PtrFree)> s_intrinsicStructExtents = new()
+    private static readonly Dictionary<string, (int Size, int Align)> s_intrinsicStructExtents = new()
     {
-        ["Dn2CppTimeSpan"] = (8, 8, true),          // int64 ticks
-        ["Dn2CppDateTime"] = (8, 8, true),          // int64 _dateData (ticks:62 | kind:2)
-        ["Dn2CppDateTimeOffset"] = (16, 8, true),   // int64 ticks + int32 offsetMinutes
-        ["Dn2CppDateOnly"] = (4, 4, true),          // int32 dayNumber
-        ["Dn2CppTimeOnly"] = (8, 8, true),          // int64 ticks
-        ["Dn2CppDecimal"] = (16, 8, true),          // uint64 lo + uint32 hi + 2*uint8
+        ["Dn2CppTimeSpan"] = (8, 8),          // int64 ticks
+        ["Dn2CppDateTime"] = (8, 8),          // int64 _dateData (ticks:62 | kind:2)
+        ["Dn2CppDateTimeOffset"] = (16, 8),   // int64 ticks + int32 offsetMinutes
+        ["Dn2CppDateOnly"] = (4, 4),          // int32 dayNumber
+        ["Dn2CppTimeOnly"] = (8, 8),          // int64 ticks
+        ["Dn2CppDecimal"] = (16, 8),          // uint64 lo + uint32 hi + 2*uint8
     };
 
     /// <summary>The byte size and alignment a field of type <paramref name="t"/>
@@ -5600,13 +5614,11 @@ internal sealed partial class CppEmitter
     /// width, an intrinsic-modeled value type its fixed runtime-struct extent
     /// (<see cref="s_intrinsicStructExtents"/>), a transpiled by-value struct its
     /// computed extent. Null when unknown (an unlisted intrinsic or opaque struct, an
-    /// unmapped external type). PtrFree is
-    /// false when the extent leans on the pointer width anywhere (a
-    /// reference, a pointer, IntPtr, or a nested struct containing one) — those
-    /// sizes hold only on a target of that width, so the layout static_assert either
-    /// writes the size in <c>sizeof(void*)</c> or weakens to a guard (see
-    /// <see cref="PointerWidth.Model"/>).</summary>
-    private (int Size, int Align, bool PtrFree)? TryFieldExtent(TypeDesc t, int ptr)
+    /// unmapped external type). An extent leaning on the pointer width is not flagged:
+    /// the caller reads it at both widths and hands the pair to
+    /// <see cref="PointerWidth.Model"/>, which is what makes the emitted text
+    /// target-independent.</summary>
+    private (int Size, int Align)? TryFieldExtent(TypeDesc t, int ptr)
     {
         string ct;
         try
@@ -5618,14 +5630,14 @@ internal sealed partial class CppEmitter
             return null;
         }
         if (ct.EndsWith('*'))
-            return (ptr, ptr, false);
+            return (ptr, ptr);
         switch (ct)
         {
-            case "int8_t" or "uint8_t": return (1, 1, true);
-            case "int16_t" or "uint16_t" or "char16_t": return (2, 2, true);
-            case "int32_t" or "uint32_t" or "float": return (4, 4, true);
-            case "int64_t" or "uint64_t" or "double": return (8, 8, true);
-            case "intptr_t" or "uintptr_t": return (ptr, ptr, false);
+            case "int8_t" or "uint8_t": return (1, 1);
+            case "int16_t" or "uint16_t" or "char16_t": return (2, 2);
+            case "int32_t" or "uint32_t" or "float": return (4, 4);
+            case "int64_t" or "uint64_t" or "double": return (8, 8);
+            case "intptr_t" or "uintptr_t": return (ptr, ptr);
         }
         // An intrinsic value type (DateTime, Decimal, …) lowers to a hand-written runtime
         // struct rather than a transpiled body, so its extent is that C++ struct's, not a
@@ -5649,19 +5661,19 @@ internal sealed partial class CppEmitter
     // Memoized per-struct extents, keyed on the pointer width the reading assumed (a
     // value type cannot contain itself by value, so the null pre-seed below only guards
     // a malformed cycle, not a real layout).
-    private readonly Dictionary<(ClassInfo Cls, int Ptr), (int Size, int Align, bool PtrFree)?> _structExtents = new();
+    private readonly Dictionary<(ClassInfo Cls, int Ptr), (int Size, int Align)?> _structExtents = new();
 
     /// <summary>The C++ <c>sizeof</c>/<c>alignof</c> of an emitted value-type struct,
     /// mirroring <see cref="EmitOneStruct"/>'s body exactly (inline-array repetition,
     /// explicit-layout union, fixed-buffer and declared-size trailing pads, pack
     /// capping), with pointers <paramref name="ptr"/> bytes wide. Null when a member's
     /// extent is unknown.</summary>
-    private (int Size, int Align, bool PtrFree)? TryStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? TryStructExtent(ClassInfo cls, int ptr)
     {
         if (_structExtents.TryGetValue((cls, ptr), out var cached))
             return cached;
         _structExtents[(cls, ptr)] = null;
-        (int Size, int Align, bool PtrFree)? r;
+        (int Size, int Align)? r;
         try
         {
             r = ComputeStructExtent(cls, ptr);
@@ -5683,7 +5695,7 @@ internal sealed partial class CppEmitter
         return r;
     }
 
-    private (int Size, int Align, bool PtrFree)? ComputeStructExtent(ClassInfo cls, int ptr)
+    private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr)
     {
         var fields = cls.Fields.Where(f => !f.IsStatic).ToList();
         if (cls.InlineArrayLength > 0 && fields.Count == 1)
@@ -5692,19 +5704,19 @@ internal sealed partial class CppEmitter
             // body emission), so the extent must use the same stride.
             if (TryFieldExtent(fields[0].Type, ptr) is not { } el)
                 return null;
-            return (el.Size * cls.InlineArrayLength, el.Align, el.PtrFree);
+            return (el.Size * cls.InlineArrayLength, el.Align);
         }
         if (cls.IsExplicitLayout)
         {
-            var (size, align, ptrFree) = ExplicitLayoutExtent(cls, fields, ptr);
+            var (size, align) = ExplicitLayoutExtent(cls, fields, ptr);
             // The pack cap applies to the arms, already folded into the extent; the
             // union's own alignment is the max arm alignment.
-            return (size, align, ptrFree);
+            return (size, align);
         }
         if (TrySequentialFieldsEnd(cls, fields, ptr) is not { } e)
             return null;
         int end = e.End + SequentialSizePadding(cls, fields, ptr);
-        return (Math.Max(RoundUp(end, e.Align), 1), e.Align, e.PtrFree);
+        return (Math.Max(RoundUp(end, e.Align), 1), e.Align);
     }
 
     private static int RoundUp(int value, int align) => (value + align - 1) / align * align;
