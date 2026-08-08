@@ -616,7 +616,7 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
-| `docs/` | `ARCHITECTURE.md` (internals), `STATUS.md` (open backlog), `BPI-FORMAT.md` (hot-update binary spec), `EDITOR-EXPORT-DESIGN.md`, `RELEASE.md` (cutting an editor release), `PORTING.md`, `PINVOKE-MARSHALLING.md` |
+| `docs/` | `ARCHITECTURE.md` (internals), `STATUS.md` (open backlog), `BPI-FORMAT.md` (hot-update binary spec), `EDITOR-EXPORT-DESIGN.md`, `RELEASE.md` (cutting an editor release; `RELEASE.ja.md` translates it), `PORTING.md`, `PINVOKE-MARSHALLING.md` |
 
 ## Design principles
 
