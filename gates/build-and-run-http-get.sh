@@ -671,11 +671,15 @@ disown "$echopid" 2>/dev/null || true
 # losing it (section 9's file server is still running; both die here).
 trap 'kill "$httppid" "$echopid" 2>/dev/null; rm -rf "$webroot" "$echodir" || true' EXIT
 echoport=
-for _ in $(seq 1 100); do
+for _ in $(seq 1 300); do
     [ -s "$echodir/port.txt" ] && { echoport="$(cat "$echodir/port.txt")"; break; }
     sleep 0.1
 done
-[ -n "$echoport" ] || { echo "FAIL: the echo server never reported a port:" >&2; cat "$echodir/server.err" >&2; exit 1; }
+if [ -z "$echoport" ]; then
+    echo "FAIL: the echo server never reported a port:" >&2
+    [ -f "$echodir/server.err" ] && cat "$echodir/server.err" >&2
+    exit 1
+fi
 # Belt-and-braces readiness: one real round-trip (same discipline as section 9).
 echoready=
 for _ in $(seq 1 100); do
@@ -907,12 +911,15 @@ $py -u "$tlsdir/tls_server.py" > "$tlsdir/port.txt" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
 tlsport=
-for _ in $(seq 1 100); do
+for _ in $(seq 1 300); do
     [ -s "$tlsdir/port.txt" ] && { tlsport="$(cat "$tlsdir/port.txt")"; break; }
     sleep 0.1
 done
-[ -n "$tlsport" ] || {
-    echo "FAIL: the TLS server never reported a port" >&2; cat "$tlsdir/server.err" >&2; exit 1; }
+if [ -z "$tlsport" ]; then
+    echo "FAIL: the TLS server never reported a port:" >&2
+    [ -f "$tlsdir/server.err" ] && cat "$tlsdir/server.err" >&2
+    exit 1
+fi
 # Readiness by one real TLS round-trip, verifying against the same CA — so a certificate the
 # server cannot load, or a python without TLS, fails here with its own message rather than
 # masquerading as a dn2cpp verification failure in section 15.
