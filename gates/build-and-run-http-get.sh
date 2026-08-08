@@ -664,7 +664,7 @@ srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PYEOF
-$py "$echodir/echo_server.py" > "$echodir/port.txt" 2>/dev/null &
+$py -u "$echodir/echo_server.py" > "$echodir/port.txt" 2>"$echodir/server.err" &
 echopid=$!
 disown "$echopid" 2>/dev/null || true
 # A second `trap ... EXIT` REPLACES section 9's — fold that cleanup in rather than
@@ -675,7 +675,7 @@ for _ in $(seq 1 100); do
     [ -s "$echodir/port.txt" ] && { echoport="$(cat "$echodir/port.txt")"; break; }
     sleep 0.1
 done
-[ -n "$echoport" ] || { echo "FAIL: the echo server never reported a port" >&2; exit 1; }
+[ -n "$echoport" ] || { echo "FAIL: the echo server never reported a port:" >&2; cat "$echodir/server.err" >&2; exit 1; }
 # Belt-and-braces readiness: one real round-trip (same discipline as section 9).
 echoready=
 for _ in $(seq 1 100); do
@@ -903,7 +903,7 @@ srv.socket = ctx.wrap_socket(srv.socket, server_side=True)
 print(srv.server_address[1], flush=True)
 srv.serve_forever()
 PYEOF
-$py "$tlsdir/tls_server.py" > "$tlsdir/port.txt" 2>"$tlsdir/server.err" &
+$py -u "$tlsdir/tls_server.py" > "$tlsdir/port.txt" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
 tlsport=
