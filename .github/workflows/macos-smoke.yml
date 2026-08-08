@@ -1,0 +1,143 @@
+# macos-smoke.yml — THIS IS NOT THE MERGE GATE.
+#
+# The merge gate is `./gates/pre-merge.sh` (two full suites, Release and Debug,
+# each under DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0). It is run by a human on
+# a fully provisioned machine, and it CANNOT be run here. Not "has not been
+# wired up yet" — cannot, and the reasons are structural:
+#
+#   - The desktop/iOS/Android/Web editor-export lane runs a scons-built dn2cpp
+#     FORK of the Godot editor. gates/setup-godot-fork.sh has a macOS arm, so
+#     provisioning that lane here is possible in principle — but the scons build
+#     it drives takes on the order of an hour, which is its own reason to keep
+#     it off a per-push smoke check. That is a scope choice, not a structural wall;
+#     the wall below is.
+#   - The CRI ADX LE gates need the proprietary CriWare.CriAtomLE NuGet package
+#     and the adjacent private cri_adx_le_for_csharp sample repository. No
+#     script in this repository fetches them, and none can: the licence is the
+#     obstacle, not the automation. This one is structural on every OS.
+#   - The godot-dotnet gates need a MONO editor + glue at a pinned commit,
+#     produced either by a macOS scons build or by a hand-supplied prebuilt.
+#   - The iOS gates need Xcode, a simulator, and an export template repaired by
+#     a local scons build (godot#118161) — macOS-only, structural on non-macOS hosts.
+#
+# DN2CPP_REQUIRE_ALL=1 turns every one of those skips into a failure — which is
+# the whole point of the mode — so a hosted runner can never be green under it.
+# Running REQUIRE_ALL here would produce a permanently red check that says
+# nothing about the code, and NOT running it while calling this file "CI" would
+# be worse: it would let a green badge stand in for a gate nobody ran. So this
+# workflow does neither. It runs the part of the suite a hosted runner can
+# honestly run, and says in its name, here, and in AGENTS.md that passing it is
+# not permission to merge.
+#
+# What it does buy, which nothing else in the repository does: it is the only
+# automatic check that the tree still builds and transpiles on macOS (Apple Silicon
+# / Clang).
+
+name: macos-smoke (NOT the merge gate)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: macos-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  # The engine is a manual prerequisite everywhere else (nothing in gates/
+  # downloads it). Here it is pinned to the same version gates/_common.sh
+  # verifies, and fetched from the public godot-builds release.
+  GODOT_VERSION: 4.7.1-stable
+
+jobs:
+  # ── The cheap, high-confidence half: does the transpiler still take C# to a
+  # running native binary on macOS? Needs no Godot and no extension_api.json.
+  console:
+    name: console lane (no Godot)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install native toolchain
+        run: brew install ninja ccache
+
+      - name: Build the CLI
+        run: dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c Release -v q
+
+      # The two console-lane representative end-to-end checks AGENTS.md names.
+      # Run directly, not through run-all-gates.sh: the runner's Phase 2 builds
+      # the GodotSharpShim, which needs extension_api.json, which needs Godot.
+      - name: Console end-to-end (C# -> IL -> C++ -> native -> run)
+        run: ./gates/build-and-run-sample.sh
+
+      - name: Multi-assembly end-to-end
+        run: ./gates/build-and-run-multiassembly.sh
+
+  # ── The wider half: the whole non-Godot suite. Skips are EXPECTED here and
+  # are allowed — the cross-toolchain gates (Emscripten, NDK, Xcode, CRI,
+  # godot-dotnet) opt out by design, and the runner names every one of them in
+  # its summary. That tolerance is exactly what makes this not a merge gate.
+  suite-smoke:
+    name: SKIP_GODOT suite (skips allowed — not the merge gate)
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install native toolchain
+        run: brew install ninja ccache
+
+      # extension_api.json is gitignored and required even for a SKIP_GODOT=1
+      # run: the runner's Phase 2 builds src/GodotSharpShim, whose
+      # GodotShims.g.cs is generated from it by an MSBuild target. The engine is
+      # downloaded for that one dump and nothing else — Phase 5 never runs here.
+      - name: Provision Godot ${{ env.GODOT_VERSION }}
+        run: |
+          set -euo pipefail
+          asset="Godot_v${GODOT_VERSION}_macos.universal"
+          url="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${asset}.zip"
+          curl -fL --retry 3 -o /tmp/godot.zip "$url"
+          unzip -q -o /tmp/godot.zip -d /tmp/godot
+          sudo mkdir -p /Applications
+          sudo cp -R /tmp/godot/Godot.app /Applications/
+          sudo ln -sf /Applications/Godot.app/Contents/MacOS/Godot /usr/local/bin/godot
+          godot --headless --version
+
+      - name: Dump extension_api.json
+        run: godot --headless --dump-extension-api
+
+      # Normal mode on purpose. DN2CPP_REQUIRE_ALL=1 would fail on the
+      # cross-toolchain gates this runner cannot satisfy — see the header.
+      - name: Run the non-Godot suite
+        run: SKIP_GODOT=1 ./gates/run-all-gates.sh
+
+      - name: Upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-logs-macos
+          path: /tmp/dn2cpp-gates
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Restate what a green run here does and does not mean
+        if: success()
+        run: |
+          echo "The non-Godot suite passed on macOS, with the runner's declared skips."
+          echo "This is NOT the merge gate. Before merging to main, run:"
+          echo "    ./gates/pre-merge.sh"
+          echo "on a fully provisioned machine (Release + Debug, DN2CPP_REQUIRE_ALL=1)."
