@@ -381,7 +381,7 @@ var: it changes the C++ a successful transpile emits.
   programmer* above.
 - Prefer small, frequent commits. Commit messages: 50-char summary, blank line,
   72-col body. Changes made by a coding agent end with a `Co-Authored-By:`
-  trailer naming the agent.
+  trailer naming the agent — no email address.
 
 ## The Godot lane
 
