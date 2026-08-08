@@ -46,9 +46,10 @@
 #
 #   - DN2CPP_GODOT_PREBUILT=<editor binary> — take the editor, the glue, the
 #     GodotSharp assemblies and the nupkgs from an official install. Honoured on
-#     EVERY OS. The engine's own rule ("GodotSharp/ sits beside the executable",
-#     modules/mono/godotsharp_dirs.cpp) is what makes naming the *binary* — not
-#     a root directory — the right handle: everything else hangs off its dirname.
+#     EVERY OS. The engine's own rule (modules/mono/godotsharp_dirs.cpp) is what
+#     makes naming the *binary* — not a root directory — the right handle:
+#     GodotSharp/ hangs off its dirname, and off Contents/Resources instead when
+#     that dirname is a .app's Contents/MacOS.
 #   - unset, on Windows: auto-detect from $GODOT (else `godot` on PATH). scons
 #     is not an option here — platform/windows/detect.py forces d3d12=yes and
 #     exit 255s without the Mesa build deps — so a failed detect is a hard error
@@ -307,7 +308,17 @@ if [ -n "$PREBUILT" ]; then
     # the pinned tree (verified above), its GodotSharp was generated from that
     # tree's glue, and it ships the very nupkgs build_assemblies.py packs.
     prebuilt_dir="$(cd "$(dirname "$PREBUILT")" && pwd)"
+    # macOS ships the official mono editor as a .app, and there GodotSharp/ sits
+    # in Contents/Resources rather than beside the executable — the engine's own
+    # MACOS_ENABLED branch in godotsharp_dirs.cpp. Without this the prebuilt arm
+    # cannot be taken on macOS at all.
     prebuilt_sharp="$prebuilt_dir/GodotSharp"
+    case "$prebuilt_dir" in
+        */Contents/MacOS)
+            [ -d "$prebuilt_sharp" ] \
+                || prebuilt_sharp="${prebuilt_dir%/MacOS}/Resources/GodotSharp"
+            ;;
+    esac
 
     echo "== 1/6 Mono-enabled editor build =="
     echo "skip: official pinned build supplies it: $PREBUILT"
@@ -318,7 +329,7 @@ if [ -n "$PREBUILT" ]; then
 
     echo "== 3/6 Building managed assemblies + local nuget feed =="
     [ -f "$prebuilt_sharp/Api/Release/GodotSharp.dll" ] || {
-        echo "error: no GodotSharp/Api/Release/GodotSharp.dll beside $PREBUILT" >&2
+        echo "error: no Api/Release/GodotSharp.dll under $prebuilt_sharp" >&2
         echo "       That directory is where the engine itself looks for it, so this is" >&2
         echo "       not a mono install — use the *_mono_* download, not the plain one." >&2
         exit 1
