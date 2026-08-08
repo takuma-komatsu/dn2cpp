@@ -1,219 +1,228 @@
-# RELEASE — godot-dn2cpp エディタのリリース手順
+# RELEASE — cutting a godot-dn2cpp editor release
 
-上から順に実行すれば、macOS と Windows の 2 ホストで 1 本のリリースが完成する。
+A Japanese translation of this file is `docs/RELEASE.ja.md`; this file is the original.
 
-**この文書は手順書であり、設計の説明ではない。**なぜこの形なのかは
-`docs/EDITOR-EXPORT-DESIGN.md` §11 にある。ここでは繰り返さない。
+Run it top to bottom and two hosts — macOS and Windows — produce one release.
+
+**This is a procedure, not a design document.** Why the pieces are shaped this
+way is `docs/EDITOR-EXPORT-DESIGN.md` §11 and is not repeated here.
 
 ---
 
-## 0. 最初に読むチェックリスト
+## 0. Read this checklist first
 
-### 必要なホスト
+### Hosts you need
 
-| ホスト | 焼くレーン | 必須 |
+| host | lanes it bakes | required |
 |---|---|---|
-| macOS（Apple Silicon） | `editor-macos` / `web` / `macos` | Xcode Command Line Tools、Xcode（iOS 軸）、Android NDK、real な python3、`gh`（認証済み） |
-| Windows（x86_64） | `editor-windows` | Visual Studio の C++ ワークロード、Android NDK、ホストの Python 3、`gh`（認証済み） |
+| macOS (Apple Silicon) | `editor-macos` / `web` / `macos` | Xcode Command Line Tools, Xcode (iOS axes), Android NDK, a real python3, `gh` (authenticated) |
+| Windows (x86_64) | `editor-windows` | Visual Studio's C++ workload, Android NDK, a host Python 3, `gh` (authenticated) |
 
-- **順序は固定**（macOS → Windows）。理由は §B の冒頭。
-- レーン名は 4 つで固定（`editor-macos` `editor-windows` `web` `macos`）。
-  `dist/release-github.sh` のレーン表がその唯一の定義。
-- **シェルは普段のもので構わない**（macOS は zsh のままで通る）。Windows だけは
-  Git Bash / MSYS が前提。macOS で python3 の版が問われるのは Web エクスポート
-  ゲート（`gates/build-and-run-godot-editor-export-web.sh` ほか）の中だけで、
-  Homebrew などの実 python3 が PATH の先頭にあれば発火しない。
+- **The order is fixed** (macOS → Windows). The reason opens §B.
+- There are exactly four lane names (`editor-macos` `editor-windows` `web`
+  `macos`); the lane table in `dist/release-github.sh` is their only definition.
+- **Use your normal shell** — plain zsh works on macOS. Only Windows assumes
+  Git Bash / MSYS. The python3 version matters on macOS only inside the Web
+  export gates (`gates/build-and-run-godot-editor-export-web.sh` and friends),
+  so a real python3 (Homebrew's, say) first on `PATH` keeps that check quiet.
 
-### 事前に決めること
+### Decide before you start
 
-**バージョン番号。** 形式は `<godot のバージョン>-dn2cpp.<n>` 以外を受け付けない
-（`dist/release-github.sh`、両エディタパッケージャの 3 か所が独立に die する）。
-エディタパッケージャはさらに、`<godot のバージョン>` がフォークの `version.py`
-と一致することを要求する。
+**The version number.** No form but `<godot version>-dn2cpp.<n>` is accepted —
+`dist/release-github.sh` and both editor packagers die on it independently. The
+editor packagers additionally require `<godot version>` to match the fork's
+`version.py`.
 
-以降のコマンドは、両ホストでこの変数を置いてから実行する:
+Every command below assumes these two variables, set on both hosts:
 
 ```bash
-V=<godot のバージョン>-dn2cpp.<n>      # 例: 4.7.1-dn2cpp.1 の形
-REPO=takuma-komatsu/godot-dn2cpp      # --repo の既定値。変えるなら両ホストで揃える
+V=<godot version>-dn2cpp.<n>          # e.g. 4.7.1-dn2cpp.1
+REPO=takuma-komatsu/godot-dn2cpp      # the --repo default; if you change it, change it on both hosts
 ```
 
-### 所要時間の目安
+### How long it takes
 
-macOS（Apple Silicon）で、**セットアップ済み・温かいツリー**を実測した値。冷たい
-ツリーは未実測で、桁が変わる。特に **エンジン C++ に差分があって
-`gates/setup-godot-fork.sh` が scons ビルドに入ると、そこだけで別途 1〜2 時間**。
+Measured on macOS (Apple Silicon) against a **set-up, warm tree**. A cold tree
+is unmeasured and is an order of magnitude off. In particular, **if the engine
+C++ differs and `gates/setup-godot-fork.sh` drops into a scons build, that step
+alone is 1–2 hours**.
 
-| 段階 | 温かいツリー |
+| step | warm tree |
 |---|---|
-| `gates/setup-buildtools.sh` / `gates/setup-emsdk.sh` | 各 1 秒未満（どちらもスキップ） |
-| `gates/selfhost-emit.sh` | 約 13 分（スタンプ一致なら即） |
-| `gates/setup-godot-fork.sh` | 約 2.5 分（engine hash 一致でエディタとテンプレートはスキップ、ツールチェーンバンドルと managed assemblies のみ再実行） |
-| `dist/package-web-template.sh` | 1 秒未満 |
-| `dist/package-macos-template.sh` | 約 10 秒 |
-| `dist/package-editor-macos.sh`（smoke 込み） | 約 6.5 分 |
-| `dist/smoke-test.sh` | 約 1 分 |
-| `dist/release-github.sh --dry-run` | 約 10 秒 |
+| `gates/setup-buildtools.sh` / `gates/setup-emsdk.sh` | under 1s each (both skip) |
+| `gates/selfhost-emit.sh` | ~13 min (instant when the stamp matches) |
+| `gates/setup-godot-fork.sh` | ~2.5 min (matching engine hash skips editor and templates; only the toolchain bundle and the managed assemblies re-run) |
+| `dist/package-web-template.sh` | under 1s |
+| `dist/package-macos-template.sh` | ~10s |
+| `dist/package-editor-macos.sh` (smoke included) | ~6.5 min |
+| `dist/smoke-test.sh` | ~1 min |
+| `dist/release-github.sh --dry-run` | ~10s |
 
-**2 ホストを同じ日に走らせる必要はないが、その間に両リポジトリの `main` /
-`dn2cpp/main` を進めてはいけない**（§0-C）。
+**The two hosts need not run on the same day, but neither repository's `main` /
+`dn2cpp/main` may move in between** (§0-C).
 
 ---
 
-## フェーズ 0: 事前確認（両ホスト共通）
+## Phase 0: preconditions (both hosts)
 
-### 0-A. 両リポジトリの状態
+### 0-A. State of both repositories
 
-`dist/release-github.sh` は、リモートに無いコミットを名指すリリースを拒否する。
-**push はこの手順の前提であって、スクリプトはやってくれない。**
+`dist/release-github.sh` refuses a release that names a commit the remote does
+not have. **Pushing is a precondition of this procedure; no script does it for
+you.**
 
 ```bash
-# フォーク（godot-dn2cpp）
+# the fork (godot-dn2cpp)
 git -C <FORK> fetch --tags --prune --prune-tags --force origin
 git -C <FORK> checkout dn2cpp/main
-git -C <FORK> status --porcelain --untracked-files=no    # → 空であること
-git -C <FORK> rev-parse HEAD                             # ← 控える（両ホストで一致必須）
+git -C <FORK> status --porcelain --untracked-files=no    # → must be empty
+git -C <FORK> rev-parse HEAD                             # ← note it; both hosts must match
 git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 
-# dn2cpp — 1 番目のホストは main、2 番目は 1 番目が使ったコミット（下記）
+# dn2cpp — main on the first host; on the second, the commit the first one used (below)
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
-git -C <DEV> rev-parse HEAD                              # ← 控える
+git -C <DEV> rev-parse HEAD                              # ← note it
 git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 ```
 
-- フォークの追跡ファイルに未コミット変更があると die する（`bin/` などの
-  untracked は対象外）。
-- `dn2cpp` 側で確認するリモートは **`origin`（公開リポジトリ）**。`archive`
-  にしか無いコミットは、ノートがリンクする先から辿れないので die する。
-- タグが古いコミットを指したまま残っていると die する。消してから fetch し直す:
+- Uncommitted changes to the fork's *tracked* files die (untracked things like
+  `bin/` do not count).
+- On the dn2cpp side the remote checked is **`origin`, the public repository**.
+  A commit that exists only on `archive` is unreachable from what the notes
+  link to, and dies.
+- A tag left pointing at an older commit dies. Delete it and re-fetch:
   `git -C <FORK> tag -d $V && git -C <FORK> fetch --tags origin`
 
-### 0-B. ゲートが green か
+### 0-B. Are the gates green
 
-リリースはゲートを走らせない。`dist/package-editor-*.sh` の `--smoke` が
-エディタエクスポートの 2 ゲートを流すだけで、それ以外は一切検証しない。
-**`gates/pre-merge.sh` が green な `main` からリリースを切ること。**
+A release runs no gates. `--smoke` in `dist/package-editor-*.sh` runs the two
+editor-export gates and nothing else is verified. **Cut a release from a `main`
+on which `gates/pre-merge.sh` is green.**
 
-### 0-C. 両ホストが同じコミットにいること
+### 0-C. Both hosts on the same commit
 
-- **フォークのコミット**は `dist/release-github.sh` が強制する。両エディタの
-  `fork_commit` が一致し、かつタグを張るコミットと一致していなければ die。
-- **`engine_provenance` / `base_pin` / `corelib_framework`** も全レーン一致を
-  強制される（`.NET SDK` のバージョン違いは `corelib_framework` で落ちる）。
-- **dn2cpp のコミットは強制されない。** レーンごとに別の値でも通り、ノートは
-  エディタごとに行を分けて両方を印字する。これは既知の未解決点で、
-  `docs/STATUS.md` に行がある。だから **2 番目のホストは `main` の先端では
-  なく、1 番目のホストが使ったコミットをチェックアウトする**:
+- **The fork commit** is enforced by `dist/release-github.sh`: both editors'
+  `fork_commit` must agree with each other and with the commit the tag lands on,
+  or it dies.
+- **`engine_provenance`, `base_pin` and `corelib_framework`** are likewise
+  forced to agree across every lane (a .NET SDK version difference surfaces as
+  `corelib_framework`).
+- **The dn2cpp commit is not enforced.** Lanes may carry different values and
+  still pass; the notes then print one line per editor with both. That is a
+  known open point with a row in `docs/STATUS.md`. So **the second host checks
+  out the commit the first host used, not the tip of `main`**:
 
   ```bash
   git -C <DEV> checkout "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)"
   ```
 
-  引き渡された metadata がその値の唯一の出所。**`main` を追うと 2 つの経路で
-  壊れる** —— 1 番目のホストがリリースを切ったあとに `main` が進んでいれば
-  ノートが 2 つの dn2cpp コミットを印字し、その進んだ分がまだ push されて
-  いなければ「`origin/main` に含まれない」で die する。
-- **リリースノートは、最後に走ったホストの `dist/release-notes-template.md`
-  で全文が再レンダリングされる。**テンプレートが両ホストで違えば、後から
-  走ったホストの版が公開本文になる。これがホスト間でコミットを揃える実務上の
-  最大の理由。
+  The handed-over metadata is that value's only source. **Following `main`
+  breaks in two ways**: if `main` moved after the first host cut its lanes, the
+  notes print two dn2cpp commits; and if the move is not pushed yet, it dies as
+  not contained in `origin/main`.
+- **The release notes are re-rendered in full from the `dist/release-notes-template.md`
+  of whichever host ran last.** If the template differs between hosts, the later
+  host's version is what gets published. This is the strongest practical reason
+  to keep the two hosts on one commit.
 
-### 0-D. 前回リリースの資産を退避する（**新バージョンの第一手**）
+### 0-D. Move the previous release's artifacts aside (**first move of a new version**)
 
-`dist/release-github.sh` は `SHA256SUMS.txt` の**行集合とアクティブレーンの
-アセット集合が両方向で一致する**ことを要求する。一方、各パッケージャは
-`SHA256SUMS.txt` の**自分の行しか**差し替えない。前回の資産を残したまま新
-バージョンを焼くと、旧 3 行 + 新 3 行の 6 行になって
-`rows for no active lane` で die する。
+`dist/release-github.sh` requires the row set of `SHA256SUMS.txt` and the asset
+set of the active lanes to match **in both directions**. Each packager, however,
+rewrites **only its own row**. Bake a new version on top of the previous
+artifacts and you get 3 old rows plus 3 new ones — six — and it dies with
+`rows for no active lane`.
 
 ```bash
-mv artifacts/release artifacts/release-<旧バージョン>
+mv artifacts/release artifacts/release-<old version>
 ```
 
-現行のレーン表に無い旧世代の metadata（例: 昔の `editor.metadata`）も、これで
-同時に消える。**`--out` の中身を選んで消すのではなく、ディレクトリごと退けること。**
+That also clears metadata from a previous generation of the lane table (an old
+`editor.metadata`, say). **Move the whole directory aside rather than picking
+files out of `--out`.**
 
 ---
 
-## フェーズ A: macOS ホスト
+## Phase A: the macOS host
 
-### A-1. セットアップ 2 本（**必ず既定の `--out` で**）
+### A-1. Two setup scripts (**always with the default `--out`**)
 
 ```bash
 cd <DEV>
-./gates/setup-buildtools.sh      # 先に。理由は下
+./gates/setup-buildtools.sh      # first; reason below
 ./gates/setup-emsdk.sh
 ```
 
-- **`--out` を指定しないこと。** 既定の出力先は、後段の解決関数
-  （`dn2cpp_emsdk_resolve` と `dist/package-toolchain.sh` の buildtools 解決）が
-  ピンのバージョンとホストタグから組み立てるパスと同一。別の場所に置くと、
-  バンドルに何も同梱されないまま静かに進む。
-- **`setup-buildtools.sh` は `setup-godot-fork.sh` より先。**
-  cmake/ninja 無しでのパッケージングは警告どまりで成功するが、
-  `dist/package-editor-macos.sh` は size report の `buildtools` 行が無いと die する。
-  同じ理由で `emsdk` 行と `emsdk/node` 行も必須。
-- どちらも冪等。ピンの sha256 を検証してから展開するので、途中で切れた
-  ダウンロードが完全なアーカイブとして読まれることはない。
+- **Do not pass `--out`.** The default output path is exactly what the later
+  resolvers (`dn2cpp_emsdk_resolve`, and the buildtools resolution in
+  `dist/package-toolchain.sh`) assemble from the pinned version and the host
+  tag. Put it anywhere else and the bundle silently ships with nothing in it.
+- **`setup-buildtools.sh` runs before `setup-godot-fork.sh`.** Packaging
+  without cmake/ninja merely warns and succeeds, but
+  `dist/package-editor-macos.sh` dies when the size report has no `buildtools`
+  row. The `emsdk` and `emsdk/node` rows are required for the same reason.
+- Both are idempotent, and both verify the pin's sha256 before unpacking, so a
+  truncated download is never read as a complete archive.
 
-### A-2. self-host CLI
+### A-2. The self-host CLI
 
-再ベイクが要るかは、ソースの最終コミット日時と既存バイナリの mtime を並べれば
-判断できる:
+Whether a re-bake is needed is the source's last commit date against the
+existing binary's mtime:
 
 ```bash
 git log -1 --format=%ci -- src runtime third_party
 ls -l artifacts/selfhost-fullcli/dn2cpp
 ```
 
-ソースの方が新しければ焼き直す。
+If the source is newer, re-bake.
 
 ```bash
 ./gates/selfhost-emit.sh
 cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 ```
 
-`dist/package-editor-macos.sh` は、このスタンプが `src/` `runtime/`
-`third_party/` の現在のハッシュと一致しない限り die する。
+`dist/package-editor-macos.sh` dies unless that stamp matches the current hash
+of `src/`, `runtime/` and `third_party/`.
 
-**`dist/package-toolchain.sh` の自動再ベイクを当てにしないこと。** stale を
-検出すると自分で `gates/selfhost-emit.sh` を呼ぶが、**それが失敗しても warning
-を出して続行し、古いバイナリをそのまま詰める**。手で先に走らせて成功を見るのが
-正しい。
+**Do not rely on `dist/package-toolchain.sh` re-baking for you.** It does call
+`gates/selfhost-emit.sh` when it detects a stale binary, but **if that call
+fails it warns, continues, and packages the old binary**. Run it by hand first
+and watch it succeed.
 
-### A-3. フォークのキャッシュとツールチェーンバンドル
+### A-3. The fork cache and the toolchain bundle
 
 ```bash
 ./gates/setup-godot-fork.sh 2>&1 | tee /tmp/setup-godot-fork.log
 ```
 
-エンジンのソースがベースコミットと同一なら、pristine clone のビルド済み
-バイナリを再利用する。エンジン C++ に差分があると scons ビルドに入る
-（長い。バックグラウンドで走らせる）。
+If the engine sources are identical to the base commit it reuses the pristine
+clone's prebuilt binaries. A difference in the engine C++ drops into a scons
+build — long; run it in the background.
 
-ログの `engine hash:` を控える。**両ホストでこの値が一致しないと、
-`engine_provenance` の照合で必ず死ぬ**（1 リリース = 1 エンジンツリー）。
+Note the `engine hash:` from the log. **If the two hosts disagree on it, the
+`engine_provenance` check kills the release** — one release, one engine tree.
 
-このログには MSBuild の出力がホストのロケールで混ざる。**ログを機械判定に
-使うなら英語を前提にしないこと。**
+That log interleaves MSBuild output in the host's locale. **Do not assume
+English if you parse it mechanically.**
 
-### A-4. Web テンプレートを焼く
+### A-4. Bake the Web template
 
 ```bash
 ./gates/setup-godot-fork-web.sh 2>&1 | tee /tmp/setup-godot-fork-web.log
 ```
 
-- engine hash が動いていなければ、ここは実質スキップになる。フォークの差分が
-  managed 側だけなら焼き直しは起きず、**zip の中身は前バージョンとバイト一致に
-  なりうる**。それでも A-5 の `dist/package-web-template.sh` は必ず走らせる ——
-  アセット名にバージョンが入り、`web.metadata` の `release_version` は全レーン
-  一致検査の対象だから、前バージョンのファイルを流用することはできない。
-- `CRI=1` を付けないこと。CRI 版は第三者 SDK を含む variant で、
-  リリースアセットにしてはならない（`dist/package-web-template.sh` が
-  flavor を検査して落とす）。
+- With an unchanged engine hash this is effectively a no-op. If the fork's
+  changes are managed-side only, nothing is re-baked and **the zip's contents
+  can be byte-identical to the previous version's**. Run `dist/package-web-template.sh`
+  in A-5 regardless — the asset name carries the version and `web.metadata`'s
+  `release_version` takes part in the all-lane agreement check, so the previous
+  version's file cannot be reused.
+- Do not pass `CRI=1`. The CRI build is a variant carrying a third-party SDK and
+  must never become a release asset (`dist/package-web-template.sh` checks the
+  flavor and fails).
 
-### A-5. アセットを焼く（**web → macos → editor の順で**）
+### A-5. Bake the assets (**web → macos → editor, in that order**)
 
 ```bash
 ./dist/package-web-template.sh   --version "$V"
@@ -221,86 +230,89 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 ./dist/package-editor-macos.sh   --version "$V" 2>&1 | tee /tmp/pkg-editor-macos.log
 ```
 
-- **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
-  `<out>/godot-dn2cpp-$V-web-template.zip` とその `.provenance` を
-  **リリース資産として**読み、それでエクスポートする。無ければ die して
-  「先に Web テンプレートを切れ」と言う。同梱 SDK の `emcc_version` が
-  `web.metadata` と一致することも要求する。食い違ったら順に:
-  `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`。
-- **macOS テンプレートも毎バージョン焼き直す。** 入力は **upstream 公式の
-  `macos.zip`**（エディタの「エクスポートテンプレートの管理」で入れたもの）で
-  あり、その sha は動かないが、出力 zip は非決定的で毎回別の sha になる。
-  流用できない理由は sha ではなく、アセット名のバージョンと
-  `macos.metadata` の `release_version` の一致検査。
-- `dist/package-editor-macos.sh` は既定で `--smoke` が付く
-  （`gates/build-and-run-godot-editor-export.sh` と
-  `gates/build-and-run-godot-editor-export-web.sh` を、組み立てた `.app` 自身に
-  対して実走させる）。切らないこと。
-- prebuilt 軸が 1 つでも欠けると die する。macOS の必須集合は
-  `host` + iOS 3 軸 + `android-arm64-v8a` + `web-wasm32`。
-  `--allow-partial-prebuilt` で降格を受け入れられるが、**ノートの
-  `prebuilt_axes` 行が劣化する**ので、まず欠けている前提（Xcode / NDK / emsdk）を
-  入れること。`host` 軸の欠落だけはこのフラグでも救われない。
+- **The order is enforced.** The smoke in `dist/package-editor-macos.sh` reads
+  `<out>/godot-dn2cpp-$V-web-template.zip` and its `.provenance` **as release
+  artifacts** and exports with them; absent, it dies telling you to cut the Web
+  template first. It also requires the bundled SDK's `emcc_version` to match
+  `web.metadata`. On a mismatch, in order:
+  `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`.
+- **Re-bake the macOS template every version too.** Its input is the **official
+  upstream `macos.zip`** (the one the editor's "Manage Export Templates"
+  installs), whose sha does not move, but the output zip is non-deterministic
+  and gets a fresh sha each time. What blocks reuse is not the sha: it is the
+  version in the asset name and the `release_version` agreement check in
+  `macos.metadata`.
+- `dist/package-editor-macos.sh` has `--smoke` on by default — it runs
+  `gates/build-and-run-godot-editor-export.sh` and
+  `gates/build-and-run-godot-editor-export-web.sh` against the assembled `.app`
+  itself. Do not turn it off.
+- A single missing prebuilt axis dies. The required macOS set is `host` + the 3
+  iOS axes + `android-arm64-v8a` + `web-wasm32`. `--allow-partial-prebuilt`
+  accepts the downgrade, but **it degrades the notes' `prebuilt_axes` line** —
+  install the missing prerequisite (Xcode / NDK / emsdk) instead. A missing
+  `host` axis is not rescued even by that flag.
 
-Web エクスポートの smoke は、終了時に必ず `Terminated: 15 ... http.server` を
-出す。**後片付けの SIGTERM であって失敗ではない。**
+The Web export smoke always ends with `Terminated: 15 ... http.server`. **That
+is the teardown SIGTERM, not a failure.**
 
-出力（`artifacts/release/`）:
+Output (`artifacts/release/`):
 
 ```
 Godot-dn2cpp-$V-macos-arm64.zip          + editor-macos.metadata
 godot-dn2cpp-$V-web-template.zip{,.provenance} + web.metadata
 godot-dn2cpp-$V-macos-arm64-template.zip + macos.metadata
-SHA256SUMS.txt                           ← この時点で 3 行
+SHA256SUMS.txt                           ← 3 rows at this point
 ```
 
-### A-6. dry-run
+### A-6. Dry run
 
 ```bash
 ./dist/release-github.sh --version "$V" --dry-run
 ```
 
-`--lane` を 1 つも渡さないときの既定が、ちょうど macOS ホストの 3 レーン
-（`editor-macos` `web` `macos`）。read-only で全プリコンディションを実走し、
-ノートをレンダリングし、実行するはずだった git / gh コマンドを印字して終わる。
+With no `--lane` at all the default is exactly the macOS host's three lanes
+(`editor-macos` `web` `macos`). It runs every precondition for real read-only,
+renders the notes, prints the git / gh commands it would have run, and stops.
 
-**認識が食い違ったら議論せずこれを回す。** 落ちた行がそのまま原因。
+**When two accounts of the state disagree, run this instead of arguing.** The
+line that fails is the cause.
 
-### A-7. draft を作る
+### A-7. Create the draft
 
 ```bash
 ./dist/release-github.sh --version "$V" 2>&1 | tee /tmp/release-macos.log
 ```
 
-- **`--publish` を付けない。** draft のまま Windows に渡す。draft は
-  「アセットが途中までしか載っていない状態が誰にも見えない」唯一の状態。
-- **`SHA256SUMS.txt` を 3 行のまま置く。** Windows のアセット行を先回りして
-  足すと、行集合とアクティブレーンの照合で die する
-  （"rows for no active lane"）。4 行目は Windows のパッケージャが自分で足す。
-- タグはここで作られて push される。以後の再実行では「既に origin にある」と
-  報告してタグには触らない。
+- **Do not pass `--publish`.** Hand it to Windows as a draft — a draft is the
+  only state in which a half-populated asset list is invisible to everyone else.
+- **Leave `SHA256SUMS.txt` at 3 rows.** Adding the Windows asset's row ahead of
+  time dies on the row-set / active-lane check (`rows for no active lane`). The
+  Windows packager adds the fourth row itself.
+- The tag is created and pushed here. Later runs report it as already on origin
+  and leave it alone.
 
 ---
 
-## フェーズ B: 引き渡し
+## Phase B: the handoff
 
-Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**と、フォーク
-ルートの **`web_emcc.txt`** の計 7 点。
+The Windows host gets **six files** from `artifacts/release/` plus
+**`web_emcc.txt`** from the fork root — seven items.
 
-| 渡すもの | なぜ |
+| item | why |
 |---|---|
-| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` はメタデータを**ローカルの `<out>/<lane>.metadata` から読む**。公開中のノート本文が照合先になるので、手で書き直してはいけない |
-| `SHA256SUMS.txt`（3 行） | Windows のパッケージャが 4 行目を追記する。全 4 行が最終レンダリングの入力 |
-| `godot-dn2cpp-$V-web-template.zip` | 実体が要る。Windows エディタの smoke が**リリース版の**テンプレートでエクスポートするため |
-| `godot-dn2cpp-$V-web-template.zip.provenance` | 同 smoke がエンジンの provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
-| フォークルートの `web_emcc.txt` | `dist/package-editor-windows.sh` の smoke が smoke-root へコピーする必須ファイルの 1 つで、無ければ `the fork root has no web_emcc.txt` で die する。**書くのは `gates/setup-godot-fork-web.sh` だけ**で、Windows はそれを走らせない（C-1）ので macOS 側のものを置くしかない |
+| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` reads metadata **from the local `<out>/<lane>.metadata`**, and checks it against the published notes body — never rewrite these by hand |
+| `SHA256SUMS.txt` (3 rows) | the Windows packager appends the fourth; all four rows are the input to the final rendering |
+| `godot-dn2cpp-$V-web-template.zip` | needed in the flesh: the Windows editor's smoke exports with **the release** template |
+| `godot-dn2cpp-$V-web-template.zip.provenance` | that same smoke reads the engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
+| `web_emcc.txt` from the fork root | one of the files `dist/package-editor-windows.sh`'s smoke copies into the smoke root; absent, it dies with `the fork root has no web_emcc.txt`. **Only `gates/setup-godot-fork-web.sh` writes it**, and Windows does not run that (C-1), so the macOS copy is the only source |
 
-`web_emcc.txt` の**中身**は emcc の版文字列で、Web エクスポートゲートの
-キャッシュキーに入るだけ。emcc の一致検査（C-2 / `godot_fork_web_template_emcc_assert`）
-は、`release_version` の合う `web.metadata` があればそちらを witness に使うので、
-このファイルは実質「存在が要る」ファイル。
+The **contents** of `web_emcc.txt` are an emcc version string, and they only
+enter the Web export gates' cache key. The emcc agreement check (C-2 /
+`godot_fork_web_template_emcc_assert`) prefers a `web.metadata` with a matching
+`release_version` as its witness, so this file is in practice one that merely
+has to exist.
 
-作る側（macOS）:
+On the producing side (macOS):
 
 ```bash
 tar czf ~/dn2cpp-windows-handoff-$V.tgz \
@@ -310,85 +322,87 @@ tar czf ~/dn2cpp-windows-handoff-$V.tgz \
   -C "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}" web_emcc.txt
 ```
 
-**渡さないもの:**
+**What you do not hand over:**
 
-- **macOS エディタの zip と macOS テンプレートの zip**（合わせて数百 MB）。
-  `--uploaded-lane` は「アップロードすること」と「アセットが `--out` に
-  あること」の 2 つだけを免除する。**検証は 1 つも免除しない** ——
-  バイトは GitHub が配信している digest と、メタデータの各値は公開中の
-  ノート本文と、それぞれ照合される。
-- **これが 2 ホストの順序が固定である理由。** 逆順にすると、Windows ホストに
-  macOS のアセット実体を置く必要が出る。
+- **The macOS editor zip and the macOS template zip** (hundreds of MB between
+  them). `--uploaded-lane` waives exactly two things — uploading, and the asset
+  being present in `--out`. **It waives no verification**: the bytes are checked
+  against the digest GitHub serves, and every metadata value against the
+  published notes body.
+- **This is why the host order is fixed.** Reversed, the Windows host would need
+  the macOS assets themselves on disk.
 
-配置（Windows 側）:
+Placing them (Windows side):
 
 ```bash
 mkdir -p <DEV>/artifacts/release
-tar xzf <受け取った tgz> -C <DEV>/artifacts/release
+tar xzf <the tgz you received> -C <DEV>/artifacts/release
 mv <DEV>/artifacts/release/web_emcc.txt "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}/web_emcc.txt"
 ```
 
-Windows 側も、前回リリースの資産が `artifacts/release/` に残っていれば先に
-退避する（§0-D）。
+If the previous release's artifacts are still in `artifacts/release/` on the
+Windows side, move them aside first too (§0-D).
 
-### tgz を運ぶ手段が無いとき
+### When there is no way to carry the tgz
 
-7 点のうち**バイトが要るのは Web テンプレートの zip だけ**で、残る 6 点は
-合わせて 2 KB に満たないテキスト。だから 2 ホスト間にファイル共有が無くても
-渡せる:
+Of the seven items **only the Web template zip needs its bytes**; the remaining
+six are under 2 KB of text between them. So the handoff works without any file
+sharing between the hosts:
 
 ```bash
-# Windows 側。draft のアセットは、リリースの所有者なら gh で取得できる
+# Windows side. The release owner can fetch a draft's assets with gh
 gh release download "$V" --repo "$REPO" \
   --pattern "godot-dn2cpp-$V-web-template.zip" --dir artifacts/release
 ```
 
-残り 6 点は中身を書き写す。`SHA256SUMS.txt` は区切りが**半角スペース 2 個**で、
-書き写しで壊しやすい唯一の箇所 —— 置いたあとに
-`shasum -a 256 -c SHA256SUMS.txt` が通ることまで見ておくとよい。
+Transcribe the other six. `SHA256SUMS.txt` separates its columns with **two
+spaces** and is the one place transcription is easy to break — check that
+`shasum -a 256 -c SHA256SUMS.txt` passes once the files are in place.
 
-これは metadata を「手で書く」ことにはあたらない。禁じているのは**値を考えて
-書く**ことで、パッケージしたホストの内容をそのまま複製するのは経路が違うだけ。
+This does not count as writing metadata by hand. What is forbidden is
+**deciding a value and writing it**; copying the packaging host's content
+verbatim is the same content over a different route.
 
 ---
 
-## フェーズ C: Windows ホスト
+## Phase C: the Windows host
 
-シェルは Git Bash / MSYS。
+The shell is Git Bash / MSYS.
 
-### C-0. Windows 固有の前提
+### C-0. Windows-specific prerequisites
 
-- **ホストに Python 3 を入れる。** `resolve_python` の候補は `python3` /
-  `python` / `py -3` の 3 つだけで、同梱 Emscripten SDK が持つ portable
-  CPython は候補に入らない（あれは `EMSDK_PYTHON` として `emcc.exe` にだけ
-  渡される）。`dist/package-editor-windows.sh` は manifest の読み出しから
-  zip の作成まで全部これを使う。逃げ道は `DN2CPP_PYTHON` の明示だけ。
-- **`CMAKE_CXX_COMPILER=cl` を export する。**
+- **Install a host Python 3.** `resolve_python` considers exactly `python3`,
+  `python` and `py -3`; the portable CPython inside the bundled Emscripten SDK
+  is not a candidate (it is passed to `emcc.exe` alone, as `EMSDK_PYTHON`).
+  `dist/package-editor-windows.sh` uses it for everything from reading the
+  manifest to creating the zip. The only way out is naming one in
+  `DN2CPP_PYTHON`.
+- **Export `CMAKE_CXX_COMPILER=cl`.**
 
   ```bash
   export CMAKE_CXX_COMPILER=cl
   ```
 
-  `gates/_common.sh` はこの値を見たときだけ `vcvarsall x64` を取り込む
-  （`is_msvc_compiler` → `ensure_msvc_env`、source 時に実行）。設定しないと
-  素の Git Bash には `cl.exe` も `INCLUDE` / `LIB` も無く、prebuilt runtime の
-  host 軸の configure が失敗する。そして **`dist/package-toolchain.sh` は
-  それを警告で流して `prebuilt/` ごと削除し、exit 0 で終わる。**
-  失敗が表面化するのは、その後 `dist/package-editor-windows.sh` が
-  `the staged toolchain carries no prebuilt/host` で die するとき。
-  （Developer Command Prompt から起動した Git Bash でも同じ効果が得られる。）
-- **Android NDK を入れる。** 無いと `dist/package-toolchain.sh` は android 軸を
-  黙って外し（情報行 1 行）、`dist/package-editor-windows.sh` が
-  `missing prebuilt axes` で die する。回避は `--allow-partial-prebuilt` のみ
-  だが、それはノートの `prebuilt_axes` を劣化させる。
-  Windows の必須軸は `host` + `android-arm64-v8a` + `web-wasm32` の 3 つ
-  （iOS 軸は Windows では焼けないので要求されない）。
-- **.NET SDK は macOS 側と同じバージョン。** 違うと `corelib_framework` の
-  一致検査で die する。
+  `gates/_common.sh` pulls in `vcvarsall x64` only when it sees that value
+  (`is_msvc_compiler` → `ensure_msvc_env`, run at source time). Without it, a
+  bare Git Bash has neither `cl.exe` nor `INCLUDE` / `LIB`, and the prebuilt
+  runtime's host axis fails to configure. **`dist/package-toolchain.sh` then
+  warns that away, deletes `prebuilt/` entirely and exits 0.** The failure
+  surfaces later, when `dist/package-editor-windows.sh` dies with
+  `the staged toolchain carries no prebuilt/host`. (A Git Bash launched from a
+  Developer Command Prompt has the same effect.)
+- **Install the Android NDK.** Without it `dist/package-toolchain.sh` silently
+  drops the android axis (one informational line) and
+  `dist/package-editor-windows.sh` dies with `missing prebuilt axes`. The only
+  workaround is `--allow-partial-prebuilt`, which degrades the notes'
+  `prebuilt_axes`. Windows requires three axes: `host` + `android-arm64-v8a` +
+  `web-wasm32` (the iOS axes cannot be baked on Windows and are not asked for).
+- **The same .NET SDK version as macOS.** A different one dies on the
+  `corelib_framework` agreement check.
 
-### C-1. セットアップ（macOS と同じ 2 本 + self-host + fork）
+### C-1. Setup (the same two scripts, plus self-host and fork)
 
-チェックアウトは `main` ではなく、macOS 側が使った dn2cpp のコミット（§0-C）。
+Check out the dn2cpp commit the macOS side used (§0-C), not `main`.
 
 ```bash
 cd <DEV>
@@ -399,41 +413,41 @@ export CMAKE_CXX_COMPILER=cl
 ./gates/setup-godot-fork.sh 2>&1 | tee /tmp/setup-godot-fork.log
 ```
 
-`engine hash:` が macOS 側で控えた値と一致すること。**違ったらここで止める。**
-一致しないまま進めると `engine_provenance` の照合で必ず死ぬ。
+`engine hash:` must equal the value noted on macOS. **If it differs, stop
+here.** Carrying on guarantees death at the `engine_provenance` check.
 
-`gates/setup-godot-fork-web.sh` は **走らせない**。Web テンプレートは 1 リリースに
-1 本で、macOS 側で焼いたものを使う。
+Do **not** run `gates/setup-godot-fork-web.sh`. There is one Web template per
+release and it is the one macOS baked.
 
-### C-2. emcc の一致を先に確認する
+### C-2. Confirm the emcc agreement first
 
 ```bash
 python -c "import json;print(json.load(open('artifacts/toolchain/dn2cpp-toolchain-0.1.0-windows-x86_64/emsdk/emsdk.json'))['emcc_version'])"
 sed -n 's/^emcc=//p' artifacts/release/web.metadata
 ```
 
-**2 つが一致すること。** 一致しないと C-3 が die する。Windows 側に逃げ道は
-無い（Web テンプレートを焼き直せるのは macOS 側だけ）。
+**The two must match.** If they do not, C-3 dies, and Windows has no way out —
+only macOS can re-bake the Web template.
 
-### C-3. Windows エディタをパッケージ
+### C-3. Package the Windows editor
 
 ```bash
 ./dist/package-editor-windows.sh --version "$V" 2>&1 | tee /tmp/pkg-editor-windows.log
 ```
 
-確認:
+Check:
 
-- `web template: emcc matches the bundled toolchain (.../artifacts/release/web.metadata)`
-- `prebuilt:` に host / android / web の 3 軸が並ぶ
-- smoke の 2 ゲートが緑
-- 末尾 `OK: ...-windows-x86_64.zip`
+- `web template:  emcc matches the bundled toolchain (.../artifacts/release/web.metadata)`
+- `prebuilt:` lists the three axes host / android / web
+- both smoke gates green
+- a final `OK: ...-windows-x86_64.zip`
 
 ```bash
-grep '^fork_commit=' artifacts/release/editor-windows.metadata   # macOS 側と同じ SHA
+grep '^fork_commit=' artifacts/release/editor-windows.metadata   # same SHA as macOS
 wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ```
 
-### C-4. dry-run
+### C-4. Dry run
 
 ```bash
 ./dist/release-github.sh --version "$V" \
@@ -442,12 +456,12 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   --dry-run
 ```
 
-- `--uploaded-lane` は「そのレーンを active にする」+「アセットは既にリリース上に
-  ある」の 2 つを意味する。**4 レーンすべてを名指すこと。**
-- 各 uploaded レーンについて
-  `on the release as ..., digest and published notes agree` が出ること。
+- `--uploaded-lane` means two things: make that lane active, and its asset is
+  already on the release. **Name all four lanes.**
+- Every uploaded lane must report
+  `on the release as ..., digest and published notes agree`.
 
-### C-5. 本番 + 公開
+### C-5. The real run, and publish
 
 ```bash
 ./dist/release-github.sh --version "$V" \
@@ -456,13 +470,14 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   --publish 2>&1 | tee /tmp/release-windows.log
 ```
 
-draft のうちは `SHA256SUMS.txt` が先、アセットは小さい順。公開済みリリースへ
-追記する場合はアセットが先で `SHA256SUMS.txt` が最後（リリースが、まだ載って
-いないアセットを名指す窓を開けないため）。どちらもスクリプトが選ぶ。
+While the release is a draft, `SHA256SUMS.txt` goes up first and the assets
+follow smallest-first. Appending to a published release reverses it — assets
+first, `SHA256SUMS.txt` last — so no window opens in which the release names an
+asset that is not there yet. The script picks either one.
 
 ---
 
-## フェーズ D: 公開後の確認
+## Phase D: after publishing
 
 ```bash
 gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
@@ -470,127 +485,132 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 ```
 
 - `isDraft: false`
-- アセットは 5 点（エディタ 2 + テンプレート 2 + `SHA256SUMS.txt`）
-- `targetCommitish` がタグを張ったフォークのコミット
+- five assets (2 editors + 2 templates + `SHA256SUMS.txt`)
+- `targetCommitish` is the fork commit the tag landed on
 
 ```bash
-gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '@@'   # → 何も出ないこと
-gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '<!--' # → 何も出ないこと
+gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '@@'   # → no output
+gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '<!--' # → no output
 ```
 
-（スクリプトもレンダリング時に同じ 2 つを検査して die するが、公開本文を
-目で確認する価値はある。）
+(The script dies on both of these at render time as well, but the published body
+is worth one look with your own eyes.)
 
-最後に、実際にダウンロードして展開できることを 1 度だけ確認する:
-`SHA256SUMS.txt` の照合 → macOS なら `xattr -dr com.apple.quarantine`、
-Windows なら zip のブロック解除。
-
----
-
-## リリースノート
-
-- **原本は `dist/release-notes-template.md`（日本語）。** リリースページの本文を
-  直接編集してはいけない。`dist/release-github.sh` の再実行だけが本文を変える。
-- **GitHub は段落内の単一改行を改行として描画する。**したがってテンプレートは
-  **1 段落 = 1 行**で書く。折り返すと公開本文が改行だらけになる。
-- `@@KEY@@` は、レーン表が bind している集合の**部分集合**でなければならない。
-  未 bind の `@@KEY@@` が 1 つでも残るとレンダリングが die する。
-- `<!--lane:NAME-->` は、行頭に置いて後ろに本文があればその 1 行、単独なら
-  `<!--/lane-->` までのブロックを、そのレーンが無いカットから落とす。
-  `!NAME` は否定。**入れ子にはできない**（内側の `-->` が外側を早く閉じ、
-  残りが本文としてリリースページに出る）。存在しないレーン名は die。
-- `dist/` の md に Emscripten / Node.js / cmake / ninja のバージョンを直書き
-  しない。ピンが唯一の出所で、ノートは `@@EMSDK_VERSION@@` などのプレース
-  ホルダで受け取る。直書きは `gates/build-and-run-doc-claims.sh` が落とす。
+Finally, download and unpack it once for real: verify against `SHA256SUMS.txt`,
+then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
 
 ---
 
-## トラブルシューティング
+## The release notes
 
-**まず `--dry-run`。** read-only で全プリコンディションを実走する。認識が
-食い違ったときに議論する必要はない。
+- **The original is `dist/release-notes-template.md` (in Japanese).** Never edit
+  the release page body directly; only re-running `dist/release-github.sh`
+  changes it.
+- **GitHub renders a single newline inside a paragraph as a line break.** So the
+  template is written **one paragraph per line**. Wrap it and the published body
+  fills with line breaks.
+- The `@@KEY@@` set must be a **subset** of what the lane table binds. One
+  unbound `@@KEY@@` left over and the rendering dies.
+- `<!--lane:NAME-->` at the start of a line drops that one line if body follows
+  it, or everything up to `<!--/lane-->` if it stands alone, from a cut without
+  that lane. `!NAME` negates. **It does not nest** — the inner `-->` closes the
+  outer marker early and the remainder reaches the release page as body. An
+  unknown lane name dies.
+- Do not spell an Emscripten / Node.js / cmake / ninja version into the markdown
+  under `dist/`. The pin is the single source and the notes receive it through a
+  placeholder such as `@@EMSDK_VERSION@@`. A spelled-out version fails
+  `gates/build-and-run-doc-claims.sh`.
 
-| 症状 | 原因と対処 |
+---
+
+## Troubleshooting
+
+**Start with `--dry-run`.** It runs every precondition for real, read-only.
+There is nothing to argue about when accounts of the state disagree.
+
+| symptom | cause and remedy |
 |---|---|
-| `--version '...' is not of the form <godot version>-dn2cpp.<n>` | 形式違反。`<base>-dn2cpp.<n>` 以外は受け付けない |
-| `--version base X != the fork's version.py (Y)` | フォークのチェックアウトが別のベース |
-| `lanes 'A' and 'B' disagree on engine_provenance` | 2 ホストのエンジンツリーが違う。片方を焼き直す |
-| `... disagree on corelib_framework` | 2 ホストの .NET SDK が違う |
-| `the packaged X editor was built from A, but the tag would name B` | パッケージ時と現在のフォーク HEAD が違う。焼き直すか `--commit A` |
-| `is not reachable from origin/...` | push していない。フォークまたは dn2cpp を push する |
-| `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` なら前バージョンの資産が `--out` に残っている（§0-D）。それ以外はレーンの名指し忘れか、先回りして足した行 |
-| `the notes on release ... do not mention KEY=...` | 手元の metadata が公開中のノートと食い違う。**手で直さず**、パッケージしたホストからコピーし直す |
-| `no working Python 3 interpreter found` | Windows。ホストに Python 3 を入れる |
-| `the staged toolchain carries no prebuilt/host` | Windows なら `CMAKE_CXX_COMPILER=cl` の未設定をまず疑う。`dist/package-toolchain.sh` のログ（`prebuilt-host-configure.log`）に本当の原因がある |
-| `missing prebuilt axes: android-arm64-v8a ...` | NDK / emsdk / Xcode が無い。入れるのが本筋 |
-| `the Web template and the bundled toolchain were linked by different emcc` | `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` の順で焼き直す（macOS 側のみ） |
-| `predates the current sources` | `gates/selfhost-emit.sh` を焼き直す |
-| `the fork root has no web_emcc.txt` | Windows。macOS から引き渡した `web_emcc.txt` をフォークルート直下に置き忘れている（§B） |
+| `--version '...' is not of the form <godot version>-dn2cpp.<n>` | malformed; nothing but `<base>-dn2cpp.<n>` is accepted |
+| `--version base X != the fork's version.py (Y)` | the fork is checked out at a different base |
+| `lanes 'A' and 'B' disagree on engine_provenance` | the two hosts have different engine trees; re-bake one |
+| `... disagree on corelib_framework` | the two hosts have different .NET SDKs |
+| `the packaged X editor was built from A, but the tag would name B` | the fork HEAD moved since packaging; re-bake, or pass `--commit A` |
+| `is not reachable from origin/...` | not pushed; push the fork or dn2cpp |
+| `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` means the previous version's artifacts are still in `--out` (§0-D). Otherwise you forgot to name a lane, or added a row ahead of time |
+| `the notes on release ... do not mention KEY=...` | the local metadata disagrees with the published notes. **Do not fix it by hand** — re-copy it from the packaging host |
+| `no working Python 3 interpreter found` | Windows; install a host Python 3 |
+| `the staged toolchain carries no prebuilt/host` | on Windows suspect an unset `CMAKE_CXX_COMPILER=cl` first. The real cause is in `dist/package-toolchain.sh`'s log (`prebuilt-host-configure.log`) |
+| `missing prebuilt axes: android-arm64-v8a ...` | no NDK / emsdk / Xcode. Installing it is the answer |
+| `the Web template and the bundled toolchain were linked by different emcc` | re-bake, in order: `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` (macOS only) |
+| `predates the current sources` | re-bake `gates/selfhost-emit.sh` |
+| `the fork root has no web_emcc.txt` | Windows; the `web_emcc.txt` handed over from macOS was not placed at the fork root (§B) |
 
-**紛らわしいが失敗ではないログ:**
+**Log lines that look like failures and are not:**
 
-- Web エクスポート smoke 末尾の `Terminated: 15 ... http.server` —— 後片付けの
-  SIGTERM。
-- `gates/setup-godot-fork.sh` のログに混ざる非英語の MSBuild 出力 —— ホストの
-  ロケール。
+- `Terminated: 15 ... http.server` at the end of the Web export smoke — the
+  teardown SIGTERM.
+- Non-English MSBuild output mixed into `gates/setup-godot-fork.sh`'s log — the
+  host locale.
 
-**検証用のヘルパを `gates/` の外に置かないこと。** `gates/_common.sh` は
-`BASH_SOURCE[1]`（source した側）からリポジトリルートを導くので、リポジトリ外の
-スクリプトから source するとルートを誤認して die する。
+**Keep verification helpers inside `gates/`.** `gates/_common.sh` derives the
+repository root from `BASH_SOURCE[1]` — its caller — and nothing validates the
+result, so a script outside the repository that sources it does not die: it runs
+on quietly believing some other directory is the root.
 
-**アセットを触らずノート本文だけ直したいとき:** 全 4 レーンを
-`--uploaded-lane` で宣言して再実行する。アップロード対象が空になり、
-`SHA256SUMS.txt` の再アップロードとノートの再レンダリングだけが走る。
-metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが条件。
-
----
-
-## やってはいけないこと
-
-1. **前回リリースの資産を残したまま新バージョンを焼かない。** ディレクトリごと
-   退避する（§0-D）。
-2. **全レーンが載ったあとに、レーンの部分集合で `dist/release-github.sh` を
-   再実行しない。** `--lane` / `--uploaded-lane` に無いレーンはノートから
-   ブロックごと落ち、`SHA256SUMS.txt` の行も消える。一方 GitHub 上のアセットは
-   残る ——「Windows エディタが添付されているのに、ノートは無いと言い、
-   `SHA256SUMS.txt` にも行が無い」リリースになる。**スクリプトはこれを検出
-   しない。**やり直すときは常に全レーンを名指す。
-3. **macOS 側で `--publish` しない。** draft のまま渡す。
-4. **macOS 側で `SHA256SUMS.txt` を 4 行にしない。**
-5. **`--uploaded-lane` 用の metadata を手で書かない。** パッケージしたホストの
-   ものをそのままコピーする。必須キーの集合はバージョンをまたいで増えるので
-   （`node_version` はある版で追加された）、**古い metadata を手直しして新しい
-   バージョンを名乗らせることはできない**。
-6. **セットアップ 2 本を `--out` 付きで走らせない。**
-7. **リリースページの本文を web UI で編集しない。**次の再実行で消える。
-8. **`--allow-partial-prebuilt` を常用しない。** 前提が入っていないことの
-   宣言であって、回避策ではない。
+**To fix only the notes body, touching no asset:** re-run with all four lanes
+declared as `--uploaded-lane`. Nothing is left to upload, and only the
+`SHA256SUMS.txt` re-upload and the notes re-render happen. It requires the four
+metadata files and the four-row `SHA256SUMS.txt` to be present locally.
 
 ---
 
-## 署名について（ダウンロード側への告知事項）
+## What not to do
 
-- **macOS エディタは ad-hoc 署名のみで、公証（notarize）されていない。**
-  ブラウザ経由でダウンロードすると quarantine 属性が付き、起動を拒否される。
-  ノートには `xattr -dr com.apple.quarantine` の手順が入っている。
-  （`spctl --master-disable` を案内しないこと。）
-- **Windows エディタは未署名。** SmartScreen が発行元不明と報告する。
-  身元を保証するのは `SHA256SUMS.txt` とパッケージ内の `RELEASE.txt` だけ。
-
-どちらも現状の仕様で、`docs/STATUS.md` に行がある。
+1. **Do not bake a new version on top of the previous release's artifacts.**
+   Move the whole directory aside (§0-D).
+2. **Once every lane is up, do not re-run `dist/release-github.sh` on a subset
+   of lanes.** A lane absent from `--lane` / `--uploaded-lane` loses its whole
+   block from the notes and its row from `SHA256SUMS.txt`, while its asset stays
+   on GitHub — a release with the Windows editor attached, notes that say it is
+   not, and no row for it in `SHA256SUMS.txt`. **The script does not detect
+   this.** Always name every lane when re-running.
+3. **Do not `--publish` from macOS.** Hand it over as a draft.
+4. **Do not let `SHA256SUMS.txt` reach 4 rows on macOS.**
+5. **Do not hand-write metadata for `--uploaded-lane`.** Copy the packaging
+   host's verbatim. The required key set grows across versions (`node_version`
+   was added in one), so **an old metadata file cannot be edited into claiming a
+   newer version**.
+6. **Do not run the two setup scripts with `--out`.**
+7. **Do not edit the release body in the web UI.** The next re-run erases it.
+8. **Do not make `--allow-partial-prebuilt` routine.** It declares a missing
+   prerequisite; it does not work around one.
 
 ---
 
-## 未検証（この手順で裏が取れていない項目）
+## Signing (what to tell people downloading)
 
-- **冷たいツリーの所要時間。** 上の表は温かいツリーの 1 ホスト 1 回の実測で、
-  冷たい側は測っていない。
-- **Windows で `CMAKE_CXX_COMPILER=cl` を設定しなくても、既に vcvars 済みの
-  シェルなら通るか** —— コード上は `ensure_msvc_env` が何もせず、cmake の
-  既定検出に委ねられる。通る可能性はあるがコードからは断定できない。
-  設定しておくのが安全。
-- **`web_emcc.txt` の内容がホスト間で必ず一致するか** —— スタンプは `emcc` の
-  版文字列で、同じピンの SDK なら一致するはずだが、ホスト差が出ないことを
-  保証する検査は無い。emcc の一致は `web.metadata` を witness に取る側で
-  担保されるので実害は Web エクスポートゲートのキャッシュキーだけだが、
-  実測はしていない。
+- **The macOS editor is ad-hoc signed only, and not notarized.** Downloaded
+  through a browser it picks up the quarantine attribute and refuses to launch.
+  The notes carry the `xattr -dr com.apple.quarantine` step. (Do not advise
+  `spctl --master-disable`.)
+- **The Windows editor is unsigned.** SmartScreen reports an unknown publisher.
+  The only things vouching for identity are `SHA256SUMS.txt` and the
+  `RELEASE.txt` inside the package.
+
+Both are current behaviour, each with a row in `docs/STATUS.md`.
+
+---
+
+## Unverified (what this procedure has not confirmed)
+
+- **Cold-tree timings.** The table above is one measured run on one host with a
+  warm tree; the cold side is unmeasured.
+- **Whether Windows works without `CMAKE_CXX_COMPILER=cl` in a shell that
+  already ran vcvars** — in code `ensure_msvc_env` then does nothing and cmake's
+  default detection takes over. It may well work, but the code does not settle
+  it. Setting it is the safe choice.
+- **Whether `web_emcc.txt` necessarily agrees across hosts** — the stamp is
+  emcc's version string and SDKs from the same pin ought to produce the same
+  one, but no check guarantees the hosts cannot differ. The emcc agreement is
+  underwritten by the side that takes `web.metadata` as its witness, so the only
+  exposure is the Web export gates' cache key — but this is unmeasured.

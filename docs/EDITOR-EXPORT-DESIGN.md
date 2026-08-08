@@ -753,7 +753,8 @@ at link naming `dn2cpp_http2_call_open` rather than shipping.
 ## 11. Distributing the fork
 
 This section is why the pieces are shaped as they are; the order to run them in,
-host by host, is `docs/RELEASE.md` and is not repeated here.
+host by host, is `docs/RELEASE.md` (`docs/RELEASE.ja.md` translates it) and is
+not repeated here.
 
 A release carries one asset per row below, each with its own packaging script and
 a `*.metadata` file beside it:
