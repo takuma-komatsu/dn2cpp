@@ -287,11 +287,12 @@ unsigned char dn2cpptest_u1_truthy(void) { return 7; }
 
 // ---- char[] marshalling under the default/Ansi CharSet ----
 
-// A char[] under the default/Ansi CharSet is encoded as one NUL-terminated UTF-8 buffer
-// for the whole array, so its byte length differs from the element count. The default
-// direction is [In]; only [In,Out]/[Out] decode the native's buffer back.
+// A char[] under the default/Ansi CharSet is encoded whole into one buffer, so its byte
+// length differs from the element count. The default direction is [In]; only
+// [In,Out]/[Out] decode the native's buffer back.
 
-// [In]: UTF-8 byte length up to the NUL (proves the array was encoded as UTF-8).
+// [In]: byte length up to the first NUL. The buffer carries no terminator of its own, so
+// this is meaningful only over an array holding its own NUL.
 int32_t dn2cpptest_aarr_len(const char *s) { return (int32_t)strlen(s); }
 // [In]: the i-th raw byte (a multi-byte char proves UTF-8, not 1-byte-per-element).
 int32_t dn2cpptest_aarr_byte(const unsigned char *a, int32_t i) { return (int32_t)a[i]; }
