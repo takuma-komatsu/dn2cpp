@@ -76,10 +76,11 @@ DN2CPP_REQUIRE_ALL=1 ./gates/run-all-gates.sh # every gate must RUN — a skip i
 the Debug suite, each under `DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0`, with
 `gates/verify-culture-invariance.sh` ahead of both, and re-derives its verdict
 from the run's own artifacts rather than trusting an exit code.
-`.github/workflows/linux-smoke.yml` is **not** that gate: the cross-toolchain
-gates cannot run on a hosted runner, so CI runs the console lane and the
-`SKIP_GODOT=1` suite in normal mode. It buys Linux build coverage; passing it is
-not permission to merge.
+The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
+`.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) are
+**not** that gate: the cross-toolchain gates cannot run on a hosted runner, so CI
+runs the console lane and the `SKIP_GODOT=1` suite in normal mode. Passing them
+is not permission to merge.
 
 For a quick manual check, one script per lane:
 `gates/build-and-run-sample.sh` (console: C# → IL → C++ → native),
