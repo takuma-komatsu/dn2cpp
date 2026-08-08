@@ -7,6 +7,8 @@
 #                                                       # build + one run per locale each
 #     ./gates/verify-culture-invariance.sh ConvertParse MathSubset   # named buckets only
 #     DN2CPP_CULTURE_LOCALES="en_US.UTF-8 de_DE.UTF-8" ./gates/verify-culture-invariance.sh
+#     DN2CPP_CULTURE_RUN_SECS=15 ./gates/verify-culture-invariance.sh   # per-run cap
+#     JOBS=1 ./gates/verify-culture-invariance.sh       # one subject at a time
 #
 # WHAT IT ASSERTS, AND WHY A REAL-.NET RUN DECIDES IT. Every gate compares a
 # transpiled binary against something: a live `dotnet $app` oracle, or a
@@ -34,8 +36,9 @@
 #     off the host the snapshot was taken on. These buckets are the larger half
 #     of the subject set.
 #
-# WHY IT IS NOT A GATE, AND WHERE IT RUNS INSTEAD. It rebuilds ~80 sample
-# projects and runs each once per locale: minutes of wall clock to re-assert a
+# WHY IT IS NOT A GATE, AND WHERE IT RUNS INSTEAD. It rebuilds every subject the
+# derivation below returns and runs each once per locale, as many subjects at a
+# time as the host has cores: minutes of wall clock to re-assert a
 # property that changes only when somebody adds a bucket or a section. Paid on
 # every suite run — including the dozens a day spent on an unrelated fix — that
 # is a tax on work it can never inform. The alternative considered and rejected
@@ -69,13 +72,26 @@ set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${CONFIG:-Release}"
 LOCALES="${DN2CPP_CULTURE_LOCALES:-en_US.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 ja_JP.UTF-8}"
+# Lowering the cap is the fail-OPEN direction — a subject that times out is
+# skipped, and coverage drops silently — so leave headroom over the slowest
+# subject that legitimately sleeps.
+RUN_SECS="${DN2CPP_CULTURE_RUN_SECS:-60}"
+JOBS="${JOBS:-$(sysctl -n hw.logicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-culture.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
 n_pass=0; n_fail=0; n_skip=0
-good() { printf '  \033[32mOK\033[0m        %s\n' "$*"; n_pass=$((n_pass + 1)); }
-bad()  { printf '  \033[31mHOST-DEP\033[0m  %s\n' "$*" >&2; n_fail=$((n_fail + 1)); }
-skip() { printf '  \033[33mskip\033[0m      %s\n' "$*"; n_skip=$((n_skip + 1)); }
+
+# Subjects are checked in parallel, and a counter incremented in a child never
+# reaches the parent. Each subject writes one verdict file instead: line 1 is
+# ok/fail/skip, every later line is display text tagged with the stream it
+# belongs on (1 = stdout, 2 = stderr). The parent replays them in subject order,
+# so the transcript does not move with the scheduler.
+say()    { printf '1%s\n' "$*" >>"$VF"; }
+sayerr() { printf '2%s\n' "$*" >>"$VF"; }
+good() { printf 'ok\n'   >"$VF"; say    "$(printf '  \033[32mOK\033[0m        %s' "$*")"; }
+bad()  { printf 'fail\n' >"$VF"; sayerr "$(printf '  \033[31mHOST-DEP\033[0m  %s' "$*")"; }
+skip() { printf 'skip\n' >"$VF"; say    "$(printf '  \033[33mskip\033[0m      %s' "$*")"; }
 
 # The subject set is DERIVED, never listed — a hand-written list is how a bucket
 # added next month quietly stops being covered. Two derivations, because the
@@ -161,7 +177,8 @@ projects_under_gates() {
 # only the run's prefix, so the subject is reported as a skip rather than a green.
 run_bounded_locale() {  # LOCALE DLL OUTFILE CWD
     ( cd "$4" && LANG="$1" LC_ALL="$1" \
-        perl -e 'alarm 300; exec @ARGV' dotnet "$2" </dev/null >"$3" 2>&1 ) 2>/dev/null
+        perl -e 'alarm shift; exec @ARGV' "$RUN_SECS" dotnet "$2" \
+        </dev/null >"$3" 2>&1 ) 2>/dev/null
 }
 
 # --- the fail-closed precondition -------------------------------------------
@@ -235,10 +252,12 @@ echo "locales: $LOCALES"
 probe_locales
 echo
 
-for p in $SUBJECTS; do
+check_subject() {
+    local p="$1" VF csproj o dll first same rc L why
+    VF="$WORK/_verdict/$p"
     csproj="$REPO/samples/dotnet/$p/$p.csproj"
-    if [ ! -f "$csproj" ]; then skip "$p (no csproj)"; continue; fi
-    if ! grep -qi '<OutputType>Exe' "$csproj"; then skip "$p (not an exe)"; continue; fi
+    if [ ! -f "$csproj" ]; then skip "$p (no csproj)"; return; fi
+    if ! grep -qi '<OutputType>Exe' "$csproj"; then skip "$p (not an exe)"; return; fi
     # <InvariantGlobalization> used to be counted as immunity. It is not, and
     # it is worse than not: the property is a runtimeconfig knob that
     # only REAL .NET reads, so it pins the oracle and this harness's probe while
@@ -253,23 +272,28 @@ for p in $SUBJECTS; do
     # documenting the rule they follow.
     if grep -q '<InvariantGlobalization>' "$csproj"; then
         bad "$p — <InvariantGlobalization> in $p.csproj blinds this probe."
-        echo "      It pins real .NET only; the transpiled subject still reads the host" >&2
-        echo "      locale. Remove it and pin the driver's first statements instead —" >&2
-        echo "        CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;" >&2
-        echo "        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;" >&2
-        continue
+        sayerr "      It pins real .NET only; the transpiled subject still reads the host"
+        sayerr "      locale. Remove it and pin the driver's first statements instead —"
+        sayerr "        CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;"
+        sayerr "        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;"
+        return
     fi
 
     o="$WORK/$p"; mkdir -p "$o"
     if ! dotnet build "$csproj" -c "$CONFIG" -o "$o/bin" >"$o/build.log" 2>&1; then
-        bad "$p (build failed; see $o/build.log)"; continue
+        bad "$p (build failed; see $o/build.log)"; return
     fi
     dll="$o/bin/$p.dll"
-    [ -f "$dll" ] || { bad "$p (no $p.dll)"; continue; }
+    [ -f "$dll" ] || { bad "$p (no $p.dll)"; return; }
 
     first=""; same=1; rc=0
     for L in $LOCALES; do
         run_bounded_locale "$L" "$dll" "$o/$L.out" "$o"; rc=$?
+        # One incomplete run already settles the subject as a skip below, and the
+        # remaining locales cannot unsettle it. Reading only the LAST locale's
+        # status was also wrong: locale 1 dying and locale 4 completing left rc=0
+        # and compared two truncated prefixes.
+        [ "$rc" -eq 0 ] || break
         if [ -z "$first" ]; then first="$L"
         elif ! diff -q "$o/$first.out" "$o/$L.out" >/dev/null 2>&1; then same=0; fi
     done
@@ -294,17 +318,25 @@ for p in $SUBJECTS; do
     # then says is "this was not decided here", which is what sends the reader to
     # the driver pin instead of to a verdict nobody earned.
     if [ "$rc" -ne 0 ]; then
+        # 128+SIGALRM is the cap firing, which is a different subject from one
+        # that dies at once: it never finishes standalone at any cap, so a reader
+        # must not go looking for a regression that made it slow.
+        if [ "$rc" -eq 142 ]; then
+            why="the oracle reached the ${RUN_SECS}s cap (DN2CPP_CULTURE_RUN_SECS) — it does not run to completion standalone at any cap"
+        else
+            why="the oracle exited $rc — did not complete standalone"
+        fi
         # Say which of the two situations it is, because the remedy differs and
         # the wrong one wastes the reader's time: a driver that already pins is
         # covered by the pin and merely unverifiable HERE, while one that does not
         # is an open hole this harness has just declined to call green.
         if grep -q 'CurrentCulture = CultureInfo.InvariantCulture' \
                 "$REPO/samples/dotnet/$p/Program.cs" 2>/dev/null; then
-            skip "$p (the oracle exited $rc — did not complete standalone, so only its prefix was swept; the driver DOES pin, which is what covers it)"
+            skip "$p ($why, so only its prefix was swept; the driver DOES pin, which is what covers it)"
         else
-            skip "$p (the oracle exited $rc — did not complete standalone, so only its prefix was swept; the driver does NOT pin — add it, nothing here can decide this subject)"
+            skip "$p ($why, so only its prefix was swept; the driver does NOT pin — add it, nothing here can decide this subject)"
         fi
-        continue
+        return
     fi
 
     if [ "$same" = 1 ]; then
@@ -313,16 +345,45 @@ for p in $SUBJECTS; do
         bad "$p — the oracle moves with the host locale:"
         for L in $LOCALES; do
             diff -q "$o/$first.out" "$o/$L.out" >/dev/null 2>&1 && continue
-            printf '      vs %s (%s lines):\n' "$L" \
-                "$(diff "$o/$first.out" "$o/$L.out" | grep -c '^[<>]')"
-            LC_ALL=C sed 's/^/        /' <<<"$(head -6 <<<"$(diff "$o/$first.out" "$o/$L.out")")"
+            say "$(printf '      vs %s (%s lines):' "$L" \
+                "$(diff "$o/$first.out" "$o/$L.out" | grep -c '^[<>]')")"
+            LC_ALL=C sed 's/^/1        /' \
+                <<<"$(head -6 <<<"$(diff "$o/$first.out" "$o/$L.out")")" >>"$VF"
         done
-        echo "      remedy: pin the driver's first statements — BOTH of them, since"
-        echo "      the UI culture selects the resource set (a DisplayName, a"
-        echo "      TimeZoneInfo.StandardName, an LCID) without touching a separator:"
-        echo "        CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;"
-        echo "        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;"
+        say "      remedy: pin the driver's first statements — BOTH of them, since"
+        say "      the UI culture selects the resource set (a DisplayName, a"
+        say "      TimeZoneInfo.StandardName, an LCID) without touching a separator:"
+        say "        CultureInfo.CurrentCulture   = CultureInfo.InvariantCulture;"
+        say "        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;"
     fi
+}
+
+mkdir -p "$WORK/_verdict"
+export -f check_subject run_bounded_locale good bad skip say sayerr
+export REPO WORK CONFIG LOCALES RUN_SECS
+printf '%s\n' $SUBJECTS | xargs -P "$JOBS" -I{} bash -c 'check_subject "$@"' _ {}
+
+# Replay in $SUBJECTS order, never completion order: a transcript that moves with
+# the scheduler cannot be diffed against a previous run.
+for p in $SUBJECTS; do
+    vf="$WORK/_verdict/$p"
+    if [ ! -s "$vf" ]; then
+        printf '  \033[31mHOST-DEP\033[0m  %s\n' "$p (produced no verdict)" >&2
+        n_fail=$((n_fail + 1)); continue
+    fi
+    { read -r verdict
+      while IFS= read -r line; do
+          case "$line" in
+              2*) printf '%s\n' "${line#?}" >&2 ;;
+              *)  printf '%s\n' "${line#?}" ;;
+          esac
+      done
+    } <"$vf"
+    case "$verdict" in
+        ok)   n_pass=$((n_pass + 1)) ;;
+        fail) n_fail=$((n_fail + 1)) ;;
+        *)    n_skip=$((n_skip + 1)) ;;
+    esac
 done
 
 echo
