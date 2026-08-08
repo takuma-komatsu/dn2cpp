@@ -1,0 +1,230 @@
+# windows-smoke.yml — THIS IS NOT THE MERGE GATE.
+#
+# The merge gate is `./gates/pre-merge.sh` (two full suites, Release and Debug,
+# each under DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0). It is run by a human on
+# a fully provisioned machine, and it CANNOT be run here. Not "has not been
+# wired up yet" — cannot, and the reasons are structural:
+#
+#   - The desktop/iOS/Android/Web editor-export lane runs a scons-built dn2cpp
+#     FORK of the Godot editor. gates/setup-godot-fork.sh does have a Windows
+#     arm, so provisioning that lane here is possible in principle — but the
+#     scons build it drives takes on the order of an hour, which is its own
+#     reason to keep it off a per-push smoke check. That is a scope choice,
+#     not a structural wall; the wall below is.
+#   - The CRI ADX LE gates need the proprietary CriWare.CriAtomLE NuGet package
+#     and the adjacent private cri_adx_le_for_csharp sample repository. No
+#     script in this repository fetches them, and none can: the licence is the
+#     obstacle, not the automation. This one is structural on every OS.
+#   - The godot-dotnet gates need a MONO editor + glue at a pinned commit,
+#     produced either by a macOS scons build or by a hand-supplied prebuilt.
+#   - The iOS gates need Xcode, a simulator, and an export template repaired by
+#     a local scons build (godot#118161) — macOS-only, structural on Windows.
+#
+# DN2CPP_REQUIRE_ALL=1 turns every one of those skips into a failure — which is
+# the whole point of the mode — so a hosted runner can never be green under it.
+# Running REQUIRE_ALL here would produce a permanently red check that says
+# nothing about the code, and NOT running it while calling this file "CI" would
+# be worse: it would let a green badge stand in for a gate nobody ran. So this
+# workflow does neither. It runs the part of the suite a hosted runner can
+# honestly run, and says in its name, here, and in AGENTS.md that passing it is
+# not permission to merge.
+#
+# What it does buy, which nothing else in the repository does: it is the only
+# automatic check that the tree still builds and transpiles against REAL MSVC
+# (cl.exe) — every merge gate run to date has used clang, on macOS or Linux.
+
+name: windows-smoke (NOT the merge gate)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  # The MSVC opt-in gates/_common.sh's is_msvc_compiler() looks for — the one
+  # toggle that makes ensure_msvc_env() import vcvarsall x64 automatically, so
+  # no separate MSVC-setup action (e.g. ilammy/msvc-dev-cmd) is used here.
+  CMAKE_CXX_COMPILER: cl
+  # The engine is a manual prerequisite everywhere else (nothing in gates/
+  # downloads it). Here it is pinned to the same version gates/_common.sh
+  # verifies, and fetched from the public godot-builds release.
+  GODOT_VERSION: 4.7.1-stable
+
+jobs:
+  # ── The cheap, high-confidence half: does the transpiler still take C# to a
+  # running native binary, built with real MSVC? Needs no Godot and no
+  # extension_api.json.
+  console:
+    name: console lane (no Godot)
+    runs-on: windows-latest
+    timeout-minutes: 60 # generous vs. Linux's 45 — first-run MSVC timing is unmeasured here
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # windows-latest preinstalls cmake and Visual Studio (so cl.exe exists);
+      # ninja is the one native tool missing, same role as Linux's apt-get line.
+      - name: Install native toolchain
+        run: choco install ninja -y
+
+      # Cheap diagnostic, not load-bearing: ensure_msvc_env() (gates/_common.sh)
+      # finds the same install itself. Kept as a first-failure-triage aid for
+      # this workflow's first real runs.
+      - name: Report the Visual Studio install vswhere sees
+        run: |
+          vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+          "$vswhere" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+
+      - name: Build the CLI
+        run: dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c Release -v q
+
+      # dotnet build can leave an MSBuild/VBCSCompiler node-reuse server running
+      # with an inherited handle on this step's stdout pipe; shut it down before
+      # it can outlive the step and wedge a later log read.
+      - name: Shut down dotnet build servers
+        if: always()
+        run: dotnet build-server shutdown
+
+      # The two console-lane representative end-to-end checks AGENTS.md names.
+      # Run directly, not through run-all-gates.sh: the runner's Phase 2 builds
+      # the GodotSharpShim, which needs extension_api.json, which needs Godot.
+      - name: Console end-to-end (C# -> IL -> C++ -> native -> run)
+        run: ./gates/build-and-run-sample.sh
+
+      - name: Multi-assembly end-to-end
+        run: ./gates/build-and-run-multiassembly.sh
+
+      - name: Shut down dotnet build servers
+        if: always()
+        run: dotnet build-server shutdown
+
+  # ── The wider half: the whole non-Godot suite, built with real MSVC. Skips
+  # are EXPECTED here and are allowed — the cross-toolchain gates (Emscripten,
+  # NDK, Xcode, CRI, godot-dotnet) opt out by design, and the runner names
+  # every one of them in its summary. That tolerance is exactly what makes
+  # this not a merge gate.
+  suite-smoke:
+    name: SKIP_GODOT suite (skips allowed — not the merge gate)
+    runs-on: windows-latest
+    timeout-minutes: 240 # generous vs. Linux's 180 — first-run MSVC timing is unmeasured here
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # run-all-gates.sh defaults LOGDIR to /tmp/dn2cpp-gates, which git-bash
+      # maps under its own root rather than a path Windows tools can see.
+      # Resolve one Windows-style path up front and hand it to both this job's
+      # bash steps (via LOGDIR) and the Node-based upload-artifact action
+      # (via $GITHUB_ENV) so they agree on the same directory.
+      - name: Resolve a Windows-visible LOGDIR
+        run: echo "LOGDIR=$(cygpath -m "$RUNNER_TEMP/dn2cpp-gates")" >> "$GITHUB_ENV"
+
+      - name: Install native toolchain
+        run: choco install ninja -y
+
+      - name: Ensure shasum is on PATH (Git for Windows core_perl gap on this runner)
+        run: |
+          if command -v shasum >/dev/null 2>&1; then
+            echo "shasum already on PATH: $(command -v shasum)"
+            exit 0
+          fi
+          # gates/_common.sh (and ~30 other call sites under gates/) assume
+          # Perl's `shasum -a 256`, bundled with Git for Windows under
+          # usr/bin/core_perl locally — but that directory is evidently not
+          # on PATH (or not installed) on this runner's Git install. GNU
+          # sha256sum IS present (same usr/bin as find/sed/awk, confirmed by
+          # this job's own earlier phases succeeding) and every call site
+          # here spells the flag identically (`-a 256`) and only reads the
+          # first output field, so a thin shim is behavior-compatible without
+          # touching the shared gates/ scripts.
+          shim_dir="$RUNNER_TEMP/shasum-shim"
+          mkdir -p "$shim_dir"
+          printf '%s\n' \
+            '#!/usr/bin/env bash' \
+            'if [ "$1" = "-a" ] && [ "$2" = "256" ]; then shift 2; fi' \
+            'exec sha256sum "$@"' \
+            > "$shim_dir/shasum"
+          chmod +x "$shim_dir/shasum"
+          echo "$shim_dir" >> "$GITHUB_PATH"
+          echo "shimmed shasum -> sha256sum at $shim_dir/shasum"
+
+      # extension_api.json is gitignored and required even for a SKIP_GODOT=1
+      # run: the runner's Phase 2 builds src/GodotSharpShim, whose
+      # GodotShims.g.cs is generated from it by an MSBuild target. The engine is
+      # downloaded for that one dump and nothing else — the fork/export lane
+      # never runs here.
+      - name: Provision Godot ${{ env.GODOT_VERSION }}
+        run: |
+          set -euo pipefail
+          asset="Godot_v${GODOT_VERSION}_win64.exe"
+          url="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${asset}.zip"
+          curl -fL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$url"
+          unzip -q -o "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$(cygpath -u "$RUNNER_TEMP/godot/$asset")" >> "$GITHUB_ENV"
+
+      - name: Confirm Godot runs headless
+        run: "\"$GODOT\" --headless --version"
+
+      - name: Dump extension_api.json
+        run: "\"$GODOT\" --headless --dump-extension-api"
+
+      # Normal mode on purpose. DN2CPP_REQUIRE_ALL=1 would fail on the
+      # cross-toolchain gates this runner cannot satisfy — see the header.
+      #
+      # openssl: Git for Windows ships openssl.exe under usr/bin, which this
+      # bash step's PATH should resolve — but that is unverified as of this
+      # workflow's first run. gates/build-and-run-http-get.sh treats a missing
+      # openssl as a hard failure, not a gate_skip (see its command -v check),
+      # so this is the first thing to look at if suite-smoke goes red here.
+      - name: Run the non-Godot suite
+        run: SKIP_GODOT=1 ./gates/run-all-gates.sh
+
+      # Before the log upload so a lingering build-server handle on a log file
+      # cannot make the upload step see a partially-flushed file.
+      - name: Shut down dotnet build servers
+        if: always()
+        run: dotnet build-server shutdown
+
+      - name: Upload gate logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-logs-windows
+          path: ${{ env.LOGDIR }}
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Restate what a green run here does and does not mean
+        if: success()
+        run: |
+          echo "The non-Godot suite passed on Windows against real MSVC (cl.exe),"
+          echo "with the runner's declared skips. This is NOT the merge gate."
+          echo "Before merging to main, run:"
+          echo "    ./gates/pre-merge.sh"
+          echo "on a fully provisioned machine (Release + Debug, DN2CPP_REQUIRE_ALL=1)."
+
+# Deliberately out of scope for this first version:
+#   - ccache: gates/_common.sh already no-ops it when `command -v ccache` fails,
+#     so skipping it here costs nothing but native-build wall time; MSVC ccache
+#     support is comparatively less battle-tested than the clang/gcc path.
+#   - An explicit MSVC-setup action (ilammy/msvc-dev-cmd or similar): would
+#     duplicate what ensure_msvc_env() already does from CMAKE_CXX_COMPILER=cl,
+#     defeating the point of exercising that self-contained detection path.
