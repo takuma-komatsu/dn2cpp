@@ -24,7 +24,7 @@
 - **シェルは普段のもので構わない**（macOS は zsh のままで通る）。Windows だけは
   Git Bash / MSYS が前提。macOS で python3 の版が問われるのは Web エクスポート
   ゲート（`gates/build-and-run-godot-editor-export-web.sh` ほか）の中だけで、
-  Homebrew などの実 python3 が PATH の先頭にあれば発火しない。
+  Homebrew などの本物の python3 が PATH の先頭にあれば発火しない。
 
 ### 事前に決めること
 
@@ -135,7 +135,7 @@ mv artifacts/release artifacts/release-<旧バージョン>
 ```
 
 現行のレーン表に無い旧世代の metadata（例: 昔の `editor.metadata`）も、これで
-同時に消える。**`--out` の中身を選んで消すのではなく、ディレクトリごと退けること。**
+同時に消える。**`--out` の中身を選んで消すのではなく、ディレクトリごと退避すること。**
 
 ---
 
@@ -196,7 +196,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 （長い。バックグラウンドで走らせる）。
 
 ログの `engine hash:` を控える。**両ホストでこの値が一致しないと、
-`engine_provenance` の照合で必ず死ぬ**（1 リリース = 1 エンジンのソース）。
+`engine_provenance` の照合で必ず die する**（1 リリース = 1 エンジンのソース）。
 
 このログには MSBuild の出力がホストのロケールで混ざる。**ログを機械判定に
 使うなら英語を前提にしないこと。**
@@ -226,8 +226,8 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 
 - **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
   `<out>/godot-dn2cpp-$V-web-template.zip` とその `.provenance` を
-  **リリース資産として**読み、それでエクスポートする。無ければ die して
-  「先に Web テンプレートを切れ」と言う。同梱 SDK の `emcc_version` が
+  **リリース資産として**読み、それでエクスポートする。無ければ「先に Web
+  テンプレートを切れ」というメッセージを出して die する。同梱 SDK の `emcc_version` が
   `web.metadata` と一致することも要求する。食い違ったら順に:
   `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`。
 - **macOS テンプレートも毎バージョンビルドし直す。** 入力は **upstream 公式の
@@ -243,7 +243,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
   `host` + iOS 3 軸 + `android-arm64-v8a` + `web-wasm32`。
   `--allow-partial-prebuilt` で降格を受け入れられるが、**ノートの
   `prebuilt_axes` 行が劣化する**ので、まず欠けている前提（Xcode / NDK / emsdk）を
-  入れること。`host` 軸の欠落だけはこのフラグでも救われない。
+  入れること。`host` 軸が欠けている場合だけは、このフラグを付けても die する。
 
 Web エクスポートの smoke は、終了時に必ず `Terminated: 15 ... http.server` を
 出す。**後片付けの SIGTERM であって失敗ではない。**
@@ -301,7 +301,7 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 `web_emcc.txt` の**中身**は emcc の版文字列で、Web エクスポートゲートの
 キャッシュキーに入るだけ。emcc の一致検査（C-2 / `godot_fork_web_template_emcc_assert`）
 は、`release_version` の合う `web.metadata` があればそちらを witness に使うので、
-このファイルは実質「存在が要る」ファイル。
+このファイルは実質、存在しさえすればよい。
 
 作る側（macOS）:
 
@@ -321,7 +321,7 @@ tar czf ~/dn2cpp-windows-handoff-$V.tgz \
   バイトは GitHub が配信している digest と、メタデータの各値は公開中の
   ノート本文と、それぞれ照合される。
 - **これが 2 ホストの順序が固定である理由。** 逆順にすると、Windows ホストに
-  macOS のアセット実体を置く必要が出る。
+  macOS のアセット実体を置かなければならなくなる。
 
 配置（Windows 側）:
 
@@ -403,7 +403,7 @@ export CMAKE_CXX_COMPILER=cl
 ```
 
 `engine hash:` が macOS 側で控えた値と一致すること。**違ったらここで止める。**
-一致しないまま進めると `engine_provenance` の照合で必ず死ぬ。
+一致しないまま進めると `engine_provenance` の照合で必ず die する。
 
 `gates/setup-godot-fork-web.sh` は **走らせない**。Web テンプレートは 1 リリースに
 1 本で、macOS 側でビルドしたものを使う。
@@ -461,7 +461,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 
 draft のうちは `SHA256SUMS.txt` が先、アセットは小さい順。公開済みリリースへ
 追記する場合はアセットが先で `SHA256SUMS.txt` が最後（リリースが、まだ載って
-いないアセットを名指す窓を開けないため）。どちらもスクリプトが選ぶ。
+いないアセットを名指す瞬間を作らないため）。どちらもスクリプトが選ぶ。
 
 ---
 
@@ -527,7 +527,7 @@ Windows なら zip のブロック解除。
 | `the staged toolchain carries no prebuilt/host` | Windows なら `CMAKE_CXX_COMPILER=cl` の未設定をまず疑う。`dist/package-toolchain.sh` のログ（`prebuilt-host-configure.log`）に本当の原因がある |
 | `missing prebuilt axes: android-arm64-v8a ...` | NDK / emsdk / Xcode が無い。入れるのが本筋 |
 | `the Web template and the bundled toolchain were linked by different emcc` | `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` の順でビルドし直す（macOS 側のみ） |
-| `predates the current sources` | `gates/selfhost-emit.sh` をビルドし直す |
+| `predates the current sources` | `gates/selfhost-emit.sh` を走らせてビルドし直す |
 | `the fork root has no web_emcc.txt` | Windows。macOS から引き渡した `web_emcc.txt` をフォークルート直下に置き忘れている（§B） |
 
 **紛らわしいが失敗ではないログ:**
