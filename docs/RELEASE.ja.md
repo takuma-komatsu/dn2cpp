@@ -13,9 +13,9 @@
 
 ### 必要なホスト
 
-| ホスト | 焼くレーン | 必須 |
+| ホスト | 担当レーン | 必須 |
 |---|---|---|
-| macOS（Apple Silicon） | `editor-macos` / `web` / `macos` | Xcode Command Line Tools、Xcode（iOS 軸）、Android NDK、real な python3、`gh`（認証済み） |
+| macOS（Apple Silicon） | `editor-macos` / `web` / `macos` | Xcode Command Line Tools、Xcode（iOS 軸）、Android NDK、本物の python3（Xcode 同梱のスタブは不可）、`gh`（認証済み） |
 | Windows（x86_64） | `editor-windows` | Visual Studio の C++ ワークロード、Android NDK、ホストの Python 3、`gh`（認証済み） |
 
 - **順序は固定**（macOS → Windows）。理由は §B の冒頭。
@@ -24,7 +24,7 @@
 - **シェルは普段のもので構わない**（macOS は zsh のままで通る）。Windows だけは
   Git Bash / MSYS が前提。macOS で python3 の版が問われるのは Web エクスポート
   ゲート（`gates/build-and-run-godot-editor-export-web.sh` ほか）の中だけで、
-  Homebrew などの実 python3 が PATH の先頭にあれば発火しない。
+  Homebrew などの本物の python3 が PATH の先頭にあれば発火しない。
 
 ### 事前に決めること
 
@@ -42,11 +42,12 @@ REPO=takuma-komatsu/godot-dn2cpp      # --repo の既定値。変えるなら両
 
 ### 所要時間の目安
 
-macOS（Apple Silicon）で、**セットアップ済み・温かいツリー**を実測した値。冷たい
-ツリーは未実測で、桁が変わる。特に **エンジン C++ に差分があって
-`gates/setup-godot-fork.sh` が scons ビルドに入ると、そこだけで別途 1〜2 時間**。
+macOS（Apple Silicon）で、**セットアップ済み・ビルドキャッシュが効いた状態**を
+実測した値。まっさらな状態からは未実測で、桁が変わる。特に **エンジン C++ に
+差分があって `gates/setup-godot-fork.sh` が scons ビルドに入ると、そこだけで
+別途 1〜2 時間**。
 
-| 段階 | 温かいツリー |
+| 段階 | 所要時間 |
 |---|---|
 | `gates/setup-buildtools.sh` / `gates/setup-emsdk.sh` | 各 1 秒未満（どちらもスキップ） |
 | `gates/selfhost-emit.sh` | 約 13 分（スタンプ一致なら即） |
@@ -126,7 +127,7 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 `dist/release-github.sh` は `SHA256SUMS.txt` の**行集合とアクティブレーンの
 アセット集合が両方向で一致する**ことを要求する。一方、各パッケージャは
 `SHA256SUMS.txt` の**自分の行しか**差し替えない。前回の資産を残したまま新
-バージョンを焼くと、旧 3 行 + 新 3 行の 6 行になって
+バージョンをビルドすると、旧 3 行 + 新 3 行の 6 行になって
 `rows for no active lane` で die する。
 
 ```bash
@@ -134,7 +135,7 @@ mv artifacts/release artifacts/release-<旧バージョン>
 ```
 
 現行のレーン表に無い旧世代の metadata（例: 昔の `editor.metadata`）も、これで
-同時に消える。**`--out` の中身を選んで消すのではなく、ディレクトリごと退けること。**
+同時に消える。**`--out` の中身を選んで消すのではなく、ディレクトリごと退避すること。**
 
 ---
 
@@ -161,7 +162,7 @@ cd <DEV>
 
 ### A-2. self-host CLI
 
-再ベイクが要るかは、ソースの最終コミット日時と既存バイナリの mtime を並べれば
+ビルドし直しが要るかは、ソースの最終コミット日時と既存バイナリの mtime を並べれば
 判断できる:
 
 ```bash
@@ -169,7 +170,7 @@ git log -1 --format=%ci -- src runtime third_party
 ls -l artifacts/selfhost-fullcli/dn2cpp
 ```
 
-ソースの方が新しければ焼き直す。
+ソースの方が新しければビルドし直す。
 
 ```bash
 ./gates/selfhost-emit.sh
@@ -179,7 +180,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 `dist/package-editor-macos.sh` は、このスタンプが `src/` `runtime/`
 `third_party/` の現在のハッシュと一致しない限り die する。
 
-**`dist/package-toolchain.sh` の自動再ベイクを当てにしないこと。** stale を
+**`dist/package-toolchain.sh` の自動での再ビルドを当てにしないこと。** stale を
 検出すると自分で `gates/selfhost-emit.sh` を呼ぶが、**それが失敗しても warning
 を出して続行し、古いバイナリをそのまま詰める**。手で先に走らせて成功を見るのが
 正しい。
@@ -195,19 +196,19 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 （長い。バックグラウンドで走らせる）。
 
 ログの `engine hash:` を控える。**両ホストでこの値が一致しないと、
-`engine_provenance` の照合で必ず死ぬ**（1 リリース = 1 エンジンツリー）。
+`engine_provenance` の照合で必ず die する**（1 リリース = 1 エンジンのソース）。
 
 このログには MSBuild の出力がホストのロケールで混ざる。**ログを機械判定に
 使うなら英語を前提にしないこと。**
 
-### A-4. Web テンプレートを焼く
+### A-4. Web テンプレートをビルドする
 
 ```bash
 ./gates/setup-godot-fork-web.sh 2>&1 | tee /tmp/setup-godot-fork-web.log
 ```
 
 - engine hash が動いていなければ、ここは実質スキップになる。フォークの差分が
-  managed 側だけなら焼き直しは起きず、**zip の中身は前バージョンとバイト一致に
+  managed 側だけなら再ビルドは起きず、**zip の中身は前バージョンとバイト一致に
   なりうる**。それでも A-5 の `dist/package-web-template.sh` は必ず走らせる ——
   アセット名にバージョンが入り、`web.metadata` の `release_version` は全レーン
   一致検査の対象だから、前バージョンのファイルを流用することはできない。
@@ -215,7 +216,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
   リリースアセットにしてはならない（`dist/package-web-template.sh` が
   flavor を検査して落とす）。
 
-### A-5. アセットを焼く（**web → macos → editor の順で**）
+### A-5. アセットをビルドする（**web → macos → editor の順で**）
 
 ```bash
 ./dist/package-web-template.sh   --version "$V"
@@ -225,11 +226,11 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 
 - **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
   `<out>/godot-dn2cpp-$V-web-template.zip` とその `.provenance` を
-  **リリース資産として**読み、それでエクスポートする。無ければ die して
-  「先に Web テンプレートを切れ」と言う。同梱 SDK の `emcc_version` が
+  **リリース資産として**読み、それでエクスポートする。無ければ「先に Web
+  テンプレートを切れ」というメッセージを出して die する。同梱 SDK の `emcc_version` が
   `web.metadata` と一致することも要求する。食い違ったら順に:
   `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`。
-- **macOS テンプレートも毎バージョン焼き直す。** 入力は **upstream 公式の
+- **macOS テンプレートも毎バージョンビルドし直す。** 入力は **upstream 公式の
   `macos.zip`**（エディタの「エクスポートテンプレートの管理」で入れたもの）で
   あり、その sha は動かないが、出力 zip は非決定的で毎回別の sha になる。
   流用できない理由は sha ではなく、アセット名のバージョンと
@@ -242,7 +243,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
   `host` + iOS 3 軸 + `android-arm64-v8a` + `web-wasm32`。
   `--allow-partial-prebuilt` で降格を受け入れられるが、**ノートの
   `prebuilt_axes` 行が劣化する**ので、まず欠けている前提（Xcode / NDK / emsdk）を
-  入れること。`host` 軸の欠落だけはこのフラグでも救われない。
+  入れること。`host` 軸が欠けている場合だけは、このフラグを付けても die する。
 
 Web エクスポートの smoke は、終了時に必ず `Terminated: 15 ... http.server` を
 出す。**後片付けの SIGTERM であって失敗ではない。**
@@ -300,7 +301,7 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 `web_emcc.txt` の**中身**は emcc の版文字列で、Web エクスポートゲートの
 キャッシュキーに入るだけ。emcc の一致検査（C-2 / `godot_fork_web_template_emcc_assert`）
 は、`release_version` の合う `web.metadata` があればそちらを witness に使うので、
-このファイルは実質「存在が要る」ファイル。
+このファイルは実質、存在しさえすればよい。
 
 作る側（macOS）:
 
@@ -320,7 +321,7 @@ tar czf ~/dn2cpp-windows-handoff-$V.tgz \
   バイトは GitHub が配信している digest と、メタデータの各値は公開中の
   ノート本文と、それぞれ照合される。
 - **これが 2 ホストの順序が固定である理由。** 逆順にすると、Windows ホストに
-  macOS のアセット実体を置く必要が出る。
+  macOS のアセット実体を置かなければならなくなる。
 
 配置（Windows 側）:
 
@@ -384,7 +385,7 @@ gh release download "$V" --repo "$REPO" \
   `missing prebuilt axes` で die する。回避は `--allow-partial-prebuilt` のみ
   だが、それはノートの `prebuilt_axes` を劣化させる。
   Windows の必須軸は `host` + `android-arm64-v8a` + `web-wasm32` の 3 つ
-  （iOS 軸は Windows では焼けないので要求されない）。
+  （iOS 軸は Windows ではビルドできないので要求されない）。
 - **.NET SDK は macOS 側と同じバージョン。** 違うと `corelib_framework` の
   一致検査で die する。
 
@@ -402,10 +403,10 @@ export CMAKE_CXX_COMPILER=cl
 ```
 
 `engine hash:` が macOS 側で控えた値と一致すること。**違ったらここで止める。**
-一致しないまま進めると `engine_provenance` の照合で必ず死ぬ。
+一致しないまま進めると `engine_provenance` の照合で必ず die する。
 
 `gates/setup-godot-fork-web.sh` は **走らせない**。Web テンプレートは 1 リリースに
-1 本で、macOS 側で焼いたものを使う。
+1 本で、macOS 側でビルドしたものを使う。
 
 ### C-2. emcc の一致を先に確認する
 
@@ -415,7 +416,7 @@ sed -n 's/^emcc=//p' artifacts/release/web.metadata
 ```
 
 **2 つが一致すること。** 一致しないと C-3 が die する。Windows 側に逃げ道は
-無い（Web テンプレートを焼き直せるのは macOS 側だけ）。
+無い（Web テンプレートをビルドし直せるのは macOS 側だけ）。
 
 ### C-3. Windows エディタをパッケージ
 
@@ -460,7 +461,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 
 draft のうちは `SHA256SUMS.txt` が先、アセットは小さい順。公開済みリリースへ
 追記する場合はアセットが先で `SHA256SUMS.txt` が最後（リリースが、まだ載って
-いないアセットを名指す窓を開けないため）。どちらもスクリプトが選ぶ。
+いないアセットを名指す瞬間を作らないため）。どちらもスクリプトが選ぶ。
 
 ---
 
@@ -498,7 +499,7 @@ Windows なら zip のブロック解除。
 - `@@KEY@@` は、レーン表が bind している集合の**部分集合**でなければならない。
   未 bind の `@@KEY@@` が 1 つでも残るとレンダリングが die する。
 - `<!--lane:NAME-->` は、行頭に置いて後ろに本文があればその 1 行、単独なら
-  `<!--/lane-->` までのブロックを、そのレーンが無いカットから落とす。
+  `<!--/lane-->` までのブロックを、そのレーンを含まない構成では丸ごと落とす。
   `!NAME` は否定。**入れ子にはできない**（内側の `-->` が外側を早く閉じ、
   残りが本文としてリリースページに出る）。存在しないレーン名は die。
 - `dist/` の md に Emscripten / Node.js / cmake / ninja のバージョンを直書き
@@ -516,17 +517,17 @@ Windows なら zip のブロック解除。
 |---|---|
 | `--version '...' is not of the form <godot version>-dn2cpp.<n>` | 形式違反。`<base>-dn2cpp.<n>` 以外は受け付けない |
 | `--version base X != the fork's version.py (Y)` | フォークのチェックアウトが別のベース |
-| `lanes 'A' and 'B' disagree on engine_provenance` | 2 ホストのエンジンツリーが違う。片方を焼き直す |
+| `lanes 'A' and 'B' disagree on engine_provenance` | 2 ホストのエンジンのソースが違う。片方をビルドし直す |
 | `... disagree on corelib_framework` | 2 ホストの .NET SDK が違う |
-| `the packaged X editor was built from A, but the tag would name B` | パッケージ時と現在のフォーク HEAD が違う。焼き直すか `--commit A` |
+| `the packaged X editor was built from A, but the tag would name B` | パッケージ時と現在のフォーク HEAD が違う。ビルドし直すか `--commit A` |
 | `is not reachable from origin/...` | push していない。フォークまたは dn2cpp を push する |
 | `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` なら前バージョンの資産が `--out` に残っている（§0-D）。それ以外はレーンの名指し忘れか、先回りして足した行 |
 | `the notes on release ... do not mention KEY=...` | 手元の metadata が公開中のノートと食い違う。**手で直さず**、パッケージしたホストからコピーし直す |
 | `no working Python 3 interpreter found` | Windows。ホストに Python 3 を入れる |
 | `the staged toolchain carries no prebuilt/host` | Windows なら `CMAKE_CXX_COMPILER=cl` の未設定をまず疑う。`dist/package-toolchain.sh` のログ（`prebuilt-host-configure.log`）に本当の原因がある |
 | `missing prebuilt axes: android-arm64-v8a ...` | NDK / emsdk / Xcode が無い。入れるのが本筋 |
-| `the Web template and the bundled toolchain were linked by different emcc` | `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` の順で焼き直す（macOS 側のみ） |
-| `predates the current sources` | `gates/selfhost-emit.sh` を焼き直す |
+| `the Web template and the bundled toolchain were linked by different emcc` | `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` の順でビルドし直す（macOS 側のみ） |
+| `predates the current sources` | `gates/selfhost-emit.sh` を走らせてビルドし直す |
 | `the fork root has no web_emcc.txt` | Windows。macOS から引き渡した `web_emcc.txt` をフォークルート直下に置き忘れている（§B） |
 
 **紛らわしいが失敗ではないログ:**
@@ -550,7 +551,7 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
 
 ## やってはいけないこと
 
-1. **前回リリースの資産を残したまま新バージョンを焼かない。** ディレクトリごと
+1. **前回リリースの資産を残したまま新バージョンをビルドしない。** ディレクトリごと
    退避する（§0-D）。
 2. **全レーンが載ったあとに、レーンの部分集合で `dist/release-github.sh` を
    再実行しない。** `--lane` / `--uploaded-lane` に無いレーンはノートから
@@ -586,8 +587,8 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
 
 ## 未検証（この手順で裏が取れていない項目）
 
-- **冷たいツリーの所要時間。** 上の表は温かいツリーの 1 ホスト 1 回の実測で、
-  冷たい側は測っていない。
+- **まっさらな状態からの所要時間。** 上の表はビルドキャッシュが効いた状態で
+  1 ホスト 1 回測っただけで、初回のビルドは測っていない。
 - **Windows で `CMAKE_CXX_COMPILER=cl` を設定しなくても、既に vcvars 済みの
   シェルなら通るか** —— コード上は `ensure_msvc_env` が何もせず、cmake の
   既定検出に委ねられる。通る可能性はあるがコードからは断定できない。
