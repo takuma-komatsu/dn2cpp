@@ -63,6 +63,15 @@ detect_os() {
 }
 DN2CPP_OS=${DN2CPP_OS:-$(detect_os)}
 
+# Windows's host toolchain is MSVC, so name it rather than making every caller
+# do it: unset, cmake dies on its own "No CMAKE_CXX_COMPILER could be found"
+# instead of reaching ensure_msvc_env's vcvarsall import. Anything else on
+# Windows — clang++, clang-cl — is still spelled out here explicitly.
+if [ "$DN2CPP_OS" = windows ]; then
+    : "${CMAKE_CXX_COMPILER:=cl}"
+    export CMAKE_CXX_COMPILER
+fi
+
 # LIB_EXT (extension, no dot) / LIB_PREFIX ("lib", empty on Windows) /
 # LIB_PATH_ENV (loader's run-time shared-library search-path env var).
 case "$DN2CPP_OS" in
