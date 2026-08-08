@@ -331,6 +331,25 @@ mv <DEV>/artifacts/release/web_emcc.txt "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/
 Windows 側も、前回リリースの資産が `artifacts/release/` に残っていれば先に
 退避する（§0-D）。
 
+### tgz を運ぶ手段が無いとき
+
+7 点のうち**バイトが要るのは Web テンプレートの zip だけ**で、残る 6 点は
+合わせて 2 KB に満たないテキスト。だから 2 ホスト間にファイル共有が無くても
+渡せる:
+
+```bash
+# Windows 側。draft のアセットは、リリースの所有者なら gh で取得できる
+gh release download "$V" --repo "$REPO" \
+  --pattern "godot-dn2cpp-$V-web-template.zip" --dir artifacts/release
+```
+
+残り 6 点は中身を書き写す。`SHA256SUMS.txt` は区切りが**半角スペース 2 個**で、
+書き写しで壊しやすい唯一の箇所 —— 置いたあとに
+`shasum -a 256 -c SHA256SUMS.txt` が通ることまで見ておくとよい。
+
+これは metadata を「手で書く」ことにはあたらない。禁じているのは**値を考えて
+書く**ことで、パッケージしたホストの内容をそのまま複製するのは経路が違うだけ。
+
 ---
 
 ## フェーズ C: Windows ホスト
