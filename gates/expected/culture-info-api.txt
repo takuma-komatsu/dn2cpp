@@ -30,6 +30,8 @@ GetCultures(All).Length=1
   'pt-br' -> 'pt-BR' n=-1.234,50 c=R$ 1.234,50 nan=NaN
   'ur-PK' N=[3,2] C=[3,2] P=[3,2] digits=0
   'ur-PK' n=‎-1,23,45,678.90 c=‎-Rs12,34,568
+  'en-US' c-=-$1,234.50
+  'ja-JP' symbolMatchesOsSplit=True
   unmodeled name='xx-YY' LCID=4096
 GetFormat(DTFI) null? False
 Calendar: PlatformNotSupportedException

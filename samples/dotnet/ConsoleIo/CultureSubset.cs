@@ -16,14 +16,20 @@ namespace CultureSubset;
 
 static class Program
 {
-    static void Show(string tag, CultureInfo c)
+    // en-US's CurrencyNegativePattern and ja-JP's currency symbol (U+00A5 vs U+FFE5) are
+    // ICU-version-sensitive, so no live host diff can hold them; skipCurrency omits those
+    // cultures' C+/C-/fmt lines — CultureInfoApi's frozen "-- table breadth --" asserts them.
+    static void Show(string tag, CultureInfo c, bool skipCurrency = false)
     {
         double money = 1234.5, neg = -1234567.891, pct = 0.1234;
         Console.WriteLine($"[{tag}]");
         Console.WriteLine("  N2  = " + neg.ToString("N2", c));
         Console.WriteLine("  F2  = " + (-12.5).ToString("F2", c));
-        Console.WriteLine("  C+  = " + money.ToString("C", c));
-        Console.WriteLine("  C-  = " + (-money).ToString("C", c));
+        if (!skipCurrency)
+        {
+            Console.WriteLine("  C+  = " + money.ToString("C", c));
+            Console.WriteLine("  C-  = " + (-money).ToString("C", c));
+        }
         Console.WriteLine("  P2  = " + pct.ToString("P2", c));
         Console.WriteLine("  E2  = " + (12345.678).ToString("E2", c));
         Console.WriteLine("  def = " + (1.0 / 3).ToString(c));
@@ -31,16 +37,17 @@ static class Program
         Console.WriteLine("  inf = " + double.PositiveInfinity.ToString(c));
         Console.WriteLine("  -inf= " + double.NegativeInfinity.ToString(c));
         Console.WriteLine("  iN0 = " + (-1234567).ToString("N0", c));
-        Console.WriteLine("  fmt = " + string.Format(c, "{0:N2} / {1:C}", neg, money));
+        if (!skipCurrency)
+            Console.WriteLine("  fmt = " + string.Format(c, "{0:N2} / {1:C}", neg, money));
     }
 
     internal static void __GateEntry()
     {
         Show("invariant", CultureInfo.InvariantCulture);
-        Show("en-US", new CultureInfo("en-US"));
+        Show("en-US", new CultureInfo("en-US"), skipCurrency: true);
         Show("de-DE", new CultureInfo("de-DE"));
         Show("fr-FR", CultureInfo.GetCultureInfo("fr-FR"));
-        Show("ja-JP", new CultureInfo("ja-JP"));
+        Show("ja-JP", new CultureInfo("ja-JP"), skipCurrency: true);
 
         // The NumberFormat property is itself an IFormatProvider.
         var de = new CultureInfo("de-DE");

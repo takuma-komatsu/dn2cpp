@@ -98,6 +98,25 @@ namespace CultureInfoApi
             Console.WriteLine("  'ur-PK' n=" + (-12345678.9).ToString("N2", urPK)
                 + " c=" + (-1234567.89m).ToString("C", urPK));
 
+            // en-US's CurrencyNegativePattern is another such ICU-revised row, moved here out
+            // of ConsoleIo's CultureSubset (its Show now takes skipCurrency) for the same
+            // reason: only a frozen bucket can assert it.
+            CultureInfo enUS = new CultureInfo("en-US");
+            CultureInfo jaJP = new CultureInfo("ja-JP");
+            double money = 1234.5, neg = -1234567.891;
+            Console.WriteLine("  'en-US' c-=" + (-money).ToString("C", enUS));
+
+            // ja-JP's currency SYMBOL is the one field dn2cpp itself intentionally varies by
+            // build OS (dn2cpp_culture_table.inc: U+FFE5 on Linux vs U+00A5 elsewhere, matching
+            // glibc's ICU) — a single frozen literal can't hold both right answers, so assert
+            // dn2cpp's own OS split instead of the symbol text: this stays True on every host
+            // as long as the #if here agrees with the C# check.
+            char expectedYen = OperatingSystem.IsLinux() ? '\uffe5' : '\u00a5';
+            bool jaJPSymbolMatchesOsSplit = money.ToString("C", jaJP).Contains(expectedYen)
+                && (-money).ToString("C", jaJP).Contains(expectedYen)
+                && string.Format(jaJP, "{0:N2} / {1:C}", neg, money).Contains(expectedYen);
+            Console.WriteLine("  'ja-JP' symbolMatchesOsSplit=" + jaJPSymbolMatchesOsSplit);
+
             // A culture the table does not carry keeps its requested name over invariant
             // symbols — deliberately, and unchanged by (b): widening the table moves the line
             // between these two answers, it does not remove the second one.

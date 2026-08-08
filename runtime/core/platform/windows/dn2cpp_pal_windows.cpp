@@ -136,19 +136,11 @@ int32_t dn2cpp_pal_ansi_decode(const char* bytes, int32_t byteLen, char16_t* out
 
 char16_t dn2cpp_pal_ansi_decode_char(uint8_t b)
 {
-    char in = static_cast<char>(b);
-    wchar_t out;
-    // MB_ERR_INVALID_CHARS makes a lone DBCS lead byte (or any byte with no code-page
-    // mapping) fail rather than best-fit-substitute, so it falls back to U+FFFD —
-    // matching real .NET's Encoding.Default.GetChars replacement-fallback behaviour.
-    // MultiByteToWideChar sets the thread's Win32 last-error on failure
-    // (ERROR_NO_UNICODE_TRANSLATION); save and restore it so a lossy char decode never
-    // perturbs the slot Marshal.GetLastWin32Error reads, exactly as real .NET keeps its
-    // own marshalling noise out of that slot.
-    DWORD saved = ::GetLastError();
-    int written = ::MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, &in, 1, &out, 1);
-    ::SetLastError(saved);
-    return written == 1 ? static_cast<char16_t>(out) : static_cast<char16_t>(0xFFFD);
+    // Real .NET's Encoding.Default is UTF8Encoding on every platform (.NET Core
+    // 3.0+), Windows included -- CP_ACP is not involved here. Only 0x00-0x7F is
+    // a complete single-byte UTF-8 sequence; every 0x80-0xFF byte is a lead or
+    // continuation byte that cannot stand alone -> U+FFFD.
+    return b <= 0x7F ? static_cast<char16_t>(b) : static_cast<char16_t>(0xFFFD);
 }
 
 int dn2cpp_pal_executable_path(char* buf, size_t size)
