@@ -75,7 +75,7 @@ git -C <FORK> status --porcelain --untracked-files=no    # → 空であるこ�
 git -C <FORK> rev-parse HEAD                             # ← 控える（両ホストで一致必須）
 git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 
-# dn2cpp
+# dn2cpp — 1 番目のホストは main、2 番目は 1 番目が使ったコミット（下記）
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
 git -C <DEV> rev-parse HEAD                              # ← 控える
@@ -103,7 +103,17 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
   強制される（`.NET SDK` のバージョン違いは `corelib_framework` で落ちる）。
 - **dn2cpp のコミットは強制されない。** レーンごとに別の値でも通り、ノートは
   エディタごとに行を分けて両方を印字する。これは既知の未解決点で、
-  `docs/STATUS.md` に行がある。
+  `docs/STATUS.md` に行がある。だから **2 番目のホストは `main` の先端では
+  なく、1 番目のホストが使ったコミットをチェックアウトする**:
+
+  ```bash
+  git -C <DEV> checkout "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)"
+  ```
+
+  引き渡された metadata がその値の唯一の出所。**`main` を追うと 2 つの経路で
+  壊れる** —— 1 番目のホストがリリースを切ったあとに `main` が進んでいれば
+  ノートが 2 つの dn2cpp コミットを印字し、その進んだ分がまだ push されて
+  いなければ「`origin/main` に含まれない」で die する。
 - **リリースノートは、最後に走ったホストの `dist/release-notes-template.md`
   で全文が再レンダリングされる。**テンプレートが両ホストで違えば、後から
   走ったホストの版が公開本文になる。これがホスト間でコミットを揃える実務上の
@@ -358,6 +368,8 @@ Windows 側も、前回リリースの資産が `artifacts/release/` に残っ�
   一致検査で die する。
 
 ### C-1. セットアップ（macOS と同じ 2 本 + self-host + fork）
+
+チェックアウトは `main` ではなく、macOS 側が使った dn2cpp のコミット（§0-C）。
 
 ```bash
 cd <DEV>
