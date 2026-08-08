@@ -648,7 +648,12 @@ internal static class Http2StreamBackend
                 }
             }
             if (!await work.ConfigureAwait(false))
+            {
+                // Same ordering hazard as the read: the abort releases the worker, so the
+                // token is asked before the drain failure is reported as an ended call.
+                cancellationToken.ThrowIfCancellationRequested();
                 throw Ended();
+            }
         }
 
         public override void Flush()
@@ -752,7 +757,14 @@ internal static class Http2StreamBackend
                         throw new TaskCanceledException("The read was canceled.", null, cancellationToken);
                 }
             }
-            return Interpret(await work.ConfigureAwait(false));
+            int n = await work.ConfigureAwait(false);
+            // A fired token's abort and a transport failure both come back as n<0, and the
+            // abort can complete the read before the arm above observes the cancel — so the
+            // token, not that race, is what tells them apart: real HttpClient answers a
+            // fired token with an OperationCanceledException, never an IOException.
+            if (n < 0)
+                cancellationToken.ThrowIfCancellationRequested();
+            return Interpret(n);
         }
 
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
