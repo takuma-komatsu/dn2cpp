@@ -69,6 +69,13 @@ enum ELong : long { A }
 [StructLayout(LayoutKind.Explicit)] struct Overlap { [FieldOffset(0)] public int A; [FieldOffset(8)] public int B; }
 struct WithEnumField { public EByte E; public int I; }
 struct NestedBlittable { public Multi M; public SubWord S; }
+// A descriptor may only name the width the field already has AT EVERY POINTER WIDTH: a
+// fixed width on a pointer-wide field, or SysInt on a fixed-width one, contradicts itself
+// at one of the two and .NET refuses it at both. The pair that agrees is the control.
+struct PtrU8 { [MarshalAs(UnmanagedType.U8)] public IntPtr F; }
+struct LongSysInt { [MarshalAs(UnmanagedType.SysInt)] public long F; }
+struct PtrSysInt { [MarshalAs(UnmanagedType.SysInt)] public IntPtr F; }
+struct IntI4 { [MarshalAs(UnmanagedType.I4)] public int F; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -235,6 +242,12 @@ unsafe class Program
         Console.WriteLine("m sized6shorttail=" + Marshal.SizeOf(typeof(Sized6ShortTail))
             + "/" + (long)Marshal.OffsetOf<Sized6ShortTail>("T")
             + " u=" + System.Runtime.CompilerServices.Unsafe.SizeOf<Sized6ShortTail>());
+        // Both spellings on every row: a verdict the folded constant and the runtime stamp
+        // disagree on is the failure this block exists to catch.
+        Console.WriteLine("m ptr-u8=" + Verdict(() => Marshal.SizeOf(typeof(PtrU8))) + "/" + Verdict(() => Marshal.SizeOf<PtrU8>()));
+        Console.WriteLine("m long-sysint=" + Verdict(() => Marshal.SizeOf(typeof(LongSysInt))) + "/" + Verdict(() => Marshal.SizeOf<LongSysInt>()));
+        Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());
+        Console.WriteLine("m int-i4=" + Marshal.SizeOf(typeof(IntI4)) + "/" + Marshal.SizeOf<IntI4>());
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'

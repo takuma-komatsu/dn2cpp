@@ -8,8 +8,8 @@
 # generic and non-generic Type-based forms, mutate-through-buffer = real memcpy);
 # SizeOf/OffsetOf exactly matching real .NET (including the
 # [StructLayout(Size=N)] floor rows — Size is never rounded up to the alignment,
-# standalone or as a member, with the three unrepresentable shapes asserted
-# as loud transpile refusals by this gate's negative arms below); Marshal.Copy
+# standalone or as a member, with every unrepresentable shape asserted
+# as a loud transpile refusal by this gate's negative arms below); Marshal.Copy
 # both directions; a
 # conservative-GC coherence section (pin -> native write -> heap churn -> free ->
 # managed read); the native-memory primitives (Read*/Write* typed accessors,
@@ -20,6 +20,9 @@
 # NativeMemory.Alloc product that does not fit is decided before the allocator is
 # asked anything and throws OutOfMemoryException, where the allocator refusing
 # stays an abort — the section proves it by running on past the catch.
+# A width-naming [MarshalAs] is also asserted to reach the SAME verdict at both
+# pointer widths, from both spellings of SizeOf, so a descriptor that contradicts
+# its field only at 32 bits cannot be measured at 64.
 # Sub-word-field structs
 # are carved out (their
 # C++ field width is int32-widened, so the marshalled sizeof diverges from .NET).
@@ -126,5 +129,27 @@ fi
 grep -q "error: .*PtrUnderExplicit: the LayoutKind.Explicit total cannot be written in sizeof(void\*)" <<<"$_xnarrow_err" \
     || { echo "FAIL: the refusal did not name the type and the width-dependent total" >&2; printf '%s\n' "$_xnarrow_err" | tail -3 >&2; exit 1; }
 echo "width-dependent-total refusal OK: exit 2, named type and the unwritable total"
+
+echo "== Asserting an explicit layout whose fields end past the declared Size refuses =="
+# SUBJECT: the explicit refusal's offender is max(Size, end), not Size — fields ending
+# at byte 9 over a declared Size=4 is what real .NET measures (9 from sizeof,
+# Unsafe.SizeOf, Marshal.SizeOf and the array stride alike, alignment 8 intact), and
+# dn2cpp emitted a silent __explicit_pad[8 + sizeof(void*)] for it. The arm the
+# sequential model has always had; its own project because the CLI stops at the first
+# error, so a second type inside LayoutSizeBadNarrowExplicit would never reach the grep.
+build_proj samples/dotnet/LayoutSizeBadExplicitOver/LayoutSizeBadExplicitOver.csproj
+_xover_app="samples/dotnet/LayoutSizeBadExplicitOver/bin/$CONFIG/$TFM/LayoutSizeBadExplicitOver.dll"
+_xover_out="artifacts/marshalpinning-layoutsize-over-explicit"
+rm -rf "$_xover_out"
+_xover_rc=0
+_xover_err=$(invoke_cli "$_xover_app" -r "$_neg_corelib" -o "$_xover_out" 2>&1) || _xover_rc=$?
+if [ "$_xover_rc" -ne 2 ]; then
+    echo "FAIL: the Explicit Size=4-over-{IntPtr,byte} transpile exited $_xover_rc (want 2: the fields-past-Size refusal)" >&2
+    printf '%s\n' "$_xover_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*PtrOverExplicit: explicit Size=4 over fields ending at byte 9 gives a 9-byte struct, not a multiple of its 8-byte alignment" <<<"$_xover_err" \
+    || { echo "FAIL: the refusal did not name the type, Size, field end, total and alignment" >&2; printf '%s\n' "$_xover_err" | tail -3 >&2; exit 1; }
+echo "fields-past-Size refusal OK: exit 2, named type, Size, field end, total and alignment"
 
 corelib_diff_gate MarshalPinning

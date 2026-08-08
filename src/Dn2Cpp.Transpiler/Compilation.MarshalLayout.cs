@@ -122,12 +122,16 @@ internal sealed partial class Compilation
         cls.IsAutoLayout ? MarshalExtent.Refused : MarshalLayoutWalk(cls, PointerWidth.Bytes64).Extent;
 
     /// <summary>The top-level size as C++ text, null when the verdict is not
-    /// <see cref="MarshalSizeVerdict.Known"/>. The narrow reading only supplies a number: a
-    /// 32-bit walk that answers nothing degrades to the guarded 64-bit constant.</summary>
+    /// <see cref="MarshalSizeVerdict.Known"/> — or when the size is GUARDED, i.e. right only
+    /// at 64 bits. Both readers of this text must agree, and the stamp already declines a
+    /// guarded size, so folding one into <c>SizeOf&lt;T&gt;</c> would answer where the
+    /// non-generic spelling throws. Declining it here is what makes them agree.</summary>
     internal ModeledSize? TopLevelMarshalSizeText(ClassInfo cls)
     {
         var e = TopLevelMarshalExtent(cls);
-        return e.IsKnown ? PointerWidth.Model(e.Size, NarrowTopLevel(cls)?.Extent.Size) : null;
+        if (!e.IsKnown)
+            return null;
+        return PointerWidth.Model(e.Size, NarrowTopLevel(cls)?.Extent.Size) is { Guarded: false } m ? m : null;
     }
 
     /// <summary>One field's top-level <c>Marshal.OffsetOf</c> as C++ text; null when the type
@@ -333,11 +337,12 @@ internal sealed partial class Compilation
         // same 6 is what sizeof, Unsafe.SizeOf and the ARRAY STRIDE read, i.e. .NET keeps
         // size 6 with alignment 4, which no C++ type can express (sizeof is always a
         // multiple of alignof). The representation side therefore refuses those shapes
-        // loudly at emission (CppEmitter.SequentialSizePadding and its explicit-layout
-        // twin), so this floor's non-multiple arm is only ever consulted for a type the
-        // transpile is about to reject; the member arithmetic below stays live where the
-        // member IS representable (N a multiple of a smaller alignment — after a Size=3
-        // byte struct a byte field sits at offset 3 and the container measures 4).
+        // loudly at emission (CppEmitter.SequentialSizePadding and ExplicitLayoutExtent,
+        // both on max(Size, field end)), so this floor's non-multiple arm is only ever
+        // consulted for a type the transpile is about to reject; the member arithmetic
+        // below stays live where the member IS representable (N a multiple of a smaller
+        // alignment — after a Size=3 byte struct a byte field sits at offset 3 and the
+        // container measures 4).
         if (cls.LayoutSize > size)
             size = cls.LayoutSize;
         return new MarshalLayoutInfo
@@ -499,8 +504,8 @@ internal sealed partial class Compilation
     /// <item><c>char</c> — <c>U1</c> forces 1 and <c>U2</c> forces 2, overriding the
     /// CharSet.</item>
     /// </list>
-    /// For every other type a matching width is accepted as the no-op it is and a mismatched
-    /// one is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
+    /// For every other type a width matching AT BOTH POINTER WIDTHS is accepted as the no-op
+    /// it is and anything else is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
     /// <c>int</c> is <c>ArgumentException</c>). Anything this does not model answers Unknown,
     /// never a number — the permanent COM carve-outs (<c>BStr</c>, <c>SafeArray</c>,
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
@@ -554,7 +559,20 @@ internal sealed partial class Compilation
             };
         if (!natural.IsKnown)
             return natural;
-        return named == natural.Size ? natural : MarshalExtent.Refused;
+        // The descriptor has to name the field's width AT BOTH POINTER WIDTHS, not just at
+        // the one being walked. .NET refuses [MarshalAs(U8)] IntPtr and [MarshalAs(SysInt)]
+        // long on x64, where the two coincide, so a per-width comparison would measure at 64
+        // exactly what it refuses at 32 — and the verdict is the 64-bit walk's alone.
+        int other = ptr == PointerWidth.Bytes64 ? PointerWidth.Bytes32 : PointerWidth.Bytes64;
+        var alt = MarshalNaturalExtent(t, unicode, other);
+        // No natural extent's VERDICT depends on the width, only its number, so a known
+        // reading at one width is known at both and this arm does not fire. It stands so
+        // that a future width-dependent verdict declines rather than reads alt.Size as 0.
+        if (!alt.IsKnown)
+            return MarshalExtent.Unknown;
+        return named == natural.Size && NamedUnmanagedWidth(u, other) == alt.Size
+            ? natural
+            : MarshalExtent.Refused;
     }
 
     /// <summary>The fixed byte width an <c>UnmanagedType</c> names, or -1 when it names no
