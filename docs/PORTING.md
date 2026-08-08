@@ -512,10 +512,12 @@ that stopped pulling `clock_gettime` in transitively through `<sys/time.h>` brok
 the POSIX PAL's compile until an explicit `<ctime>` was added.
 
 **CI is not the merge gate and cannot be made into one.**
-`.github/workflows/linux-smoke.yml` runs the console lane end to end and the
-`SKIP_GODOT=1` suite in normal mode, fetching a public Godot build only to dump
-`extension_api.json` (the runner's pre-build needs it even when the Godot phase
-never runs, because it compiles the `GodotSharpShim`). Four lanes cannot run on a
+The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
+`.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) run
+the console lane end to end and the `SKIP_GODOT=1` suite in normal mode,
+fetching a public Godot build only to dump `extension_api.json` (the runner's
+pre-build needs it even when the Godot phase never runs, because it compiles the
+`GodotSharpShim`). Four lanes cannot run on a hosted runner and none is a
 hosted runner and none is a provisioning problem somebody could solve: the
 editor-export gates need a scons-built dn2cpp *fork* of the Godot editor, whose
 setup script has no Linux arm; the CRI ADX LE gates need a proprietary package and

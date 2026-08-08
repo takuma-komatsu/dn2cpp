@@ -7,9 +7,11 @@ discussed.
 
 ## What CI can and cannot say
 
-`.github/workflows/linux-smoke.yml` runs on every pull request and is the only
-green a contributor can see. It answers one question: does the tree still build
-on Linux, and does C# still reach a running native binary.
+The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
+`.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) run
+on every pull request and are the only green a contributor can see. They answer
+one question: does the tree still build across Linux, Windows, and macOS, and
+does C# still reach a running native binary.
 
 The merge gate — `./gates/pre-merge.sh` — does not run there and cannot. Its
 header states each structural reason (a scons-built dn2cpp fork of the Godot
