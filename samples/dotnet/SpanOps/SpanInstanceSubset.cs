@@ -61,5 +61,26 @@ class Program
         ((Span<int>)empty).Clear();                              // no-op
         int[] ecopy = ((ReadOnlySpan<int>)empty).ToArray();
         Console.WriteLine(ecopy.Length);                         // 0
+
+        // --- Span.Clear over a STRUCT element (whole + a Slice view) ---
+        // A struct has no cast from 0, so the zero written per element must be
+        // the value-initialized T{}, not a scalar conversion.
+        Pair[] ps = { new Pair(1, 2), new Pair(3, 4), new Pair(5, 6) };
+        ((Span<Pair>)ps).Slice(1, 1).Clear();
+        Console.WriteLine($"{ps[0].A},{ps[0].B};{ps[1].A},{ps[1].B};{ps[2].A},{ps[2].B}"); // 1,2;0,0;5,6
+        ((Span<Pair>)ps).Clear();
+        Console.WriteLine($"{ps[0].A},{ps[2].B}");               // 0,0
+    }
+}
+
+internal struct Pair
+{
+    internal long A;
+    internal long B;
+
+    internal Pair(long a, long b)
+    {
+        A = a;
+        B = b;
     }
 }
