@@ -79,6 +79,10 @@ include(CheckCXXSourceCompiles)
 
 # ── Options / inputs ──────────────────────────────────────────────────────────
 option(DN2CPP_USE_GC      "Compile and link the vendored Boehm-Demers-Weiser GC" ON)
+set(DN2CPP_GC_BACKEND     "unity" CACHE STRING "GC source tree: unity (Unity fork) | upstream (bdwgc 8.2.8, development-only)")
+if(NOT DN2CPP_GC_BACKEND STREQUAL "unity" AND NOT DN2CPP_GC_BACKEND STREQUAL "upstream")
+    message(FATAL_ERROR "DN2CPP_GC_BACKEND=${DN2CPP_GC_BACKEND} is not a valid GC source tree; use unity or upstream")
+endif()
 option(DN2CPP_USE_ZLIB    "Compile and link the vendored zlib for System.IO.Compression" ON)
 option(DN2CPP_USE_BROTLI  "Compile and link the vendored brotli for System.IO.Compression.Brotli" ON)
 option(DN2CPP_USE_CURL    "Compile and link the vendored libcurl (over vendored Mbed TLS + CA bundle) for HTTP/HTTPS transport" ON)
@@ -430,10 +434,16 @@ else()
     # Vendored bdw-gc amalgamation, compiled as C and warning-suppressed (third-party
     # source). Thread-aware with compiler builtin atomics, matching BDWGC_CFLAGS.
     if(DN2CPP_USE_GC)
-        add_library(dn2cpp_gc STATIC "${DN2CPP_ROOT}/third_party/bdwgc/extra/gc.c")
+        if(DN2CPP_GC_BACKEND STREQUAL "upstream")
+            set(_dn2cpp_gc_root "${DN2CPP_ROOT}/third_party/bdwgc-upstream")
+        else()
+            set(_dn2cpp_gc_root "${DN2CPP_ROOT}/third_party/bdwgc")
+        endif()
+        add_library(dn2cpp_gc STATIC "${_dn2cpp_gc_root}/extra/gc.c")
         if(EMSCRIPTEN)
-            # No GC_THREADS — bdwgc's EMSCRIPTEN arm #errors under it (the wasm
-            # build is single-threaded). GC_DISABLE_INCREMENTAL — there is no
+            # No GC_THREADS — the wasm build is single-threaded; upstream's
+            # EMSCRIPTEN arm #errors under it, the Unity fork's does not, but
+            # neither backend needs it here. GC_DISABLE_INCREMENTAL — there is no
             # mprotect-based dirty-bit VDB on wasm, a belt to the runtime's own
             # force-off of incremental mode. _GNU_SOURCE — emscripten's unistd.h
             # hides the sbrk() declaration behind it, and os_dep.c's EMSCRIPTEN arm
@@ -442,6 +452,14 @@ else()
                 GC_BUILTIN_ATOMIC NO_EXECUTE_PERMISSION GC_DISABLE_INCREMENTAL _GNU_SOURCE)
         else()
             target_compile_definitions(dn2cpp_gc PRIVATE GC_THREADS GC_BUILTIN_ATOMIC NO_EXECUTE_PERMISSION)
+        endif()
+        if(DN2CPP_GC_BACKEND STREQUAL "upstream")
+            # The fork forces MANUAL_VDB unconditionally in its private gcconfig.h;
+            # upstream defaults it off, so it must be told explicitly here or
+            # GC_enable_incremental picks page-protection VDB instead, and the
+            # emitted write barriers (GC_end_stubborn_change) stop being the
+            # dirty-bit source the two backends otherwise share.
+            target_compile_definitions(dn2cpp_gc PRIVATE MANUAL_VDB)
         endif()
         if(WIN32)
             # gc_config_macros.h auto-defines GC_DLL (-> GC_API = __declspec(dllimport)
@@ -463,7 +481,7 @@ else()
             target_compile_definitions(dn2cpp_gc PUBLIC GC_NOT_DLL)
         endif()
         _dn2cpp_compile_options_silent(dn2cpp_gc)
-        target_include_directories(dn2cpp_gc PUBLIC "${DN2CPP_ROOT}/third_party/bdwgc/include")
+        target_include_directories(dn2cpp_gc PUBLIC "${_dn2cpp_gc_root}/include")
         list(APPEND _rt_export_targets dn2cpp_gc)
     endif()
 
@@ -902,8 +920,9 @@ else()
     if(DN2CPP_USE_GC)
         # PUBLIC so the app's generated*.cpp inherit the GC define + gc.h include too.
         target_compile_definitions(dn2cpp_runtime PUBLIC DN2CPP_USE_BOEHM_GC)
-        # GC_THREADS only off wasm: bdwgc's EMSCRIPTEN arm #errors under it, so it
-        # must not reach any consumer's <gc.h> on the wasm axis.
+        # GC_THREADS only off wasm: the wasm build is single-threaded (and the
+        # upstream tree's EMSCRIPTEN arm #errors under it), so it must not reach
+        # any consumer's <gc.h> on the wasm axis.
         if(NOT EMSCRIPTEN)
             target_compile_definitions(dn2cpp_runtime PUBLIC GC_THREADS)
         endif()

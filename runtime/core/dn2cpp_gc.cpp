@@ -473,17 +473,26 @@ void dn2cpp_runtime_init()
     {
         // Print the active mode immediately (not via atexit), so it is observable
         // even when the host does not exit cleanly (e.g. the Godot engine).
+        unsigned gcVersion = GC_get_version();
+        std::fprintf(stderr, "[dn2cpp] GC version: %d.%d.%d\n",
+                     static_cast<int>((gcVersion >> 16) & 0xffu),
+                     static_cast<int>((gcVersion >> 8) & 0xffu),
+                     static_cast<int>(gcVersion & 0xffu));
         if (incremental)
             std::fprintf(stderr, "[dn2cpp] GC mode: incremental (time-limit %lu ms)\n", ms);
         else
             std::fprintf(stderr, "[dn2cpp] GC mode: stop-the-world\n");
         // How much of the heap the incremental collector WOULD write-protect to
         // recover dirty bits. It describes the platform's dirty-bit strategy, not the
-        // mode in force, and reads the same under stop-the-world. The vendored fork
-        // forces MANUAL_VDB, so this always reads 0 today; an mprotect-based VDB would
-        // read 1 where a heap block is exactly one page, 3 where it is not (16 KB-page
-        // arm64 macOS protects the pointer-free heap too, which is why allocating
-        // atomically does not exempt a buffer).
+        // mode in force, and reads the same under stop-the-world. Both selectable
+        // backends run MANUAL_VDB and never actually protect a page, but they answer
+        // this query differently: the fork's gcconfig.h forces MANUAL_VDB into the
+        // same branch that undefines every mprotect-style VDB, so it always reads 0.
+        // Upstream is only told via -DMANUAL_VDB, which leaves those VDBs compiled in
+        // and skips just the runtime probe (GC_dirty_init) that would zero this out,
+        // so it falls back to a page-size heuristic and reads nonzero — 1 where a
+        // heap block is exactly one page, 3 where it is not (16 KB-page arm64 macOS
+        // protects the pointer-free heap too) — despite protecting nothing.
         //
         // Whether a kernel write into a managed buffer actually bounces is this value
         // AND incremental mode — report that conjunction rather than leave a reader to
@@ -866,8 +875,11 @@ int dn2cpp_gc_kernel_write_unsafe(const void* p)
     // here and pays nothing.
     if (!GC_is_incremental_mode())
         return 0;
-    // Under MANUAL_VDB nothing is ever mprotected, so this answers
-    // GC_PROTECTS_NONE on every platform.
+    // Under MANUAL_VDB nothing is ever mprotected, but only the fork's build
+    // reports that as GC_PROTECTS_NONE; upstream's plain -DMANUAL_VDB build
+    // reports a nonzero page-size heuristic instead (see dn2cpp_core.h), so
+    // this check short-circuits on the fork only — upstream falls through to
+    // the heap-pointer check below and answers 1, conservatively.
     if (GC_incremental_protection_needs() == GC_PROTECTS_NONE)
         return 0;
     // Outside the heap — the C stack (where a `localloc`/`stackalloc` buffer

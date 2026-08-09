@@ -3308,11 +3308,17 @@ void dn2cpp_gc_memmove_refs(void* destination, const void* source, size_t bytes)
 
 // True when `p` names memory the incremental collector may have write-protected.
 //
-// The vendored fork forces MANUAL_VDB, so GC_incremental_protection_needs
-// answers GC_PROTECTS_NONE on every platform and this function answers 0
-// today. It stays as the guard an mprotect-based VDB would need: a kernel
-// store into a protected page fails EFAULT instead of reaching the fault
-// handler a user-space store would trigger.
+// Both selectable backends run MANUAL_VDB, so no page is ever actually
+// protected — but GC_incremental_protection_needs only says so on the fork
+// (gcconfig.h forces MANUAL_VDB there, so it always answers GC_PROTECTS_NONE).
+// Upstream is merely compiled with -DMANUAL_VDB, which leaves the platform's
+// mprotect-style VDB compiled in and skips only the runtime probe that would
+// zero this query out, so it answers a nonzero page-size heuristic instead —
+// this function then answers 1 for a heap pointer under upstream's incremental
+// mode, conservatively (never wrong, just never free there). It stays as the
+// guard an mprotect-based VDB would need: a kernel store into a protected
+// page fails EFAULT instead of reaching the fault handler a user-space store
+// would trigger.
 int dn2cpp_gc_kernel_write_unsafe(const void* p);
 
 // Per-thread GC-visible block backing managed thread-static fields whose type
