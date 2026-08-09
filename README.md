@@ -515,6 +515,9 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
   incremental (Godot default, bounded frame pauses), with
   `DN2CPP_GC_INCREMENTAL` / `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS`
   overrides; `DN2CPP_NO_GC=1` opts out to a calloc fallback.
+  `-DDN2CPP_GC_BACKEND=upstream` swaps in vendored upstream bdwgc 8.2.8
+  (`third_party/bdwgc-upstream/`) instead of the fork — a dev-only
+  cross-check, not shipped; covered by `gates/build-and-run-gc-upstream.sh`.
 - **Finalizers** — `Finalize` overrides detected at build time and
   registered at allocation *before* the ctor runs, matching .NET's
   partially-constructed-object semantics; a dedicated finalizer thread
@@ -832,6 +835,10 @@ Vendored third-party components keep their own licenses:
   **bdw-gc** license
   ([provenance](third_party/bdwgc/DN2CPP-VENDORED.md),
   [`LICENSE`](third_party/bdwgc/LICENSE))
+- `third_party/bdwgc-upstream/` — pre-fork upstream bdwgc 8.2.8,
+  dev-only alternate backend, same permissive **bdw-gc** license
+  ([provenance](third_party/bdwgc-upstream/DN2CPP-VENDORED.md),
+  [`LICENSE`](third_party/bdwgc-upstream/LICENSE))
 - `third_party/zlib/` — classic zlib 1.3.2, **zlib** license
   ([`third_party/zlib/LICENSE`](third_party/zlib/LICENSE))
 - `third_party/brotli/` — google/brotli 1.1.0, **MIT**
