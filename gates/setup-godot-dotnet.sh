@@ -208,10 +208,12 @@ resolve_prebuilt() {
             echo "       directly with DN2CPP_GODOT_PREBUILT=<editor binary>." >&2
             return 1
         fi
-        # GodotSharp/ sits beside the REAL binary, so resolve the link first —
-        # a PATH entry is very often a symlink into an install elsewhere.
-        editor="$(readlink -f "$editor" 2>/dev/null || printf '%s\n' "$editor")"
     fi
+    # GodotSharp/ sits beside the REAL binary, so resolve the link before anything
+    # reads the dirname — a named editor is very often a symlink into an install
+    # elsewhere, whether it came off PATH or out of DN2CPP_GODOT_PREBUILT. Left
+    # unresolved, a correct mono install is refused as "not a mono install".
+    editor="$(readlink -f "$editor" 2>/dev/null || printf '%s\n' "$editor")"
     [ -x "$editor" ] || { echo "error: prebuilt editor not executable: $editor" >&2; return 1; }
     prebuilt_pin_ok "$editor" || return 1
     printf '%s\n' "$editor"
