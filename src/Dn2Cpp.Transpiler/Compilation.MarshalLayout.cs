@@ -511,6 +511,10 @@ internal sealed partial class Compilation
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
     {
+        // void* rejects width descriptors. FunctionPtr is valid on delegate*, but both
+        // decode as Pointer(void), so conservatively refuse descriptors until they differ.
+        if (t.Kind == TypeKind.Pointer)
+            return MarshalExtent.Refused;
         if (t.Kind == TypeKind.Primitive)
         {
             switch (t.Primitive)
