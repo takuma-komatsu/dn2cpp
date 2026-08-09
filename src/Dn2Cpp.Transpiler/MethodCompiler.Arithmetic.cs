@@ -622,7 +622,8 @@ internal sealed partial class MethodCompiler
     private void EmitArrayCopy(StackEntry src, string srcIdx, StackEntry dst, string dstIdx, string len,
                                ArrayOperandKind srcKind = ArrayOperandKind.Argument,
                                ArrayOperandKind dstKind = ArrayOperandKind.CopyDest,
-                               bool sameElementByConstruction = false)
+                               bool sameElementByConstruction = false,
+                               TypeDesc? elementType = null)
     {
         ArrRep? rep = ArrayRepOfCppTypeOrNull(src.CppType);
         ArrRep? dstRep = ArrayRepOfCppTypeOrNull(dst.CppType);
@@ -650,9 +651,24 @@ internal sealed partial class MethodCompiler
         Emit($"{cs} = {GuardArray(Cast(src, cpp), srcKind)};");
         Emit($"{cd} = {GuardArray(Cast(dst, cpp), dstKind)};");
         Emit($"dn2cpp_array_copy_range({cs}->length, {si}, {cd}->length, {di}, {n});");
+        string move = CopyMovesRefs(rep.Value, src, elementType) ? "dn2cpp_gc_memmove_refs" : "std::memmove";
         Emit(rep == ArrRep.N
-            ? $"std::memmove({cd}->data + (size_t){di} * {cd}->elemSize, {cs}->data + (size_t){si} * {cs}->elemSize, (size_t){n} * {cs}->elemSize);"
-            : $"std::memmove(&{cd}->data[{di}], &{cs}->data[{si}], (size_t){n} * sizeof({(rep == ArrRep.I4 ? "int32_t" : "Dn2CppObject*")}));");
+            ? $"{move}({cd}->data + (size_t){di} * {cd}->elemSize, {cs}->data + (size_t){si} * {cs}->elemSize, (size_t){n} * {cs}->elemSize);"
+            : $"{move}(&{cd}->data[{di}], &{cs}->data[{si}], (size_t){n} * sizeof({(rep == ArrRep.I4 ? "int32_t" : "Dn2CppObject*")}));");
+    }
+
+    /// <summary>Whether an inline Array.Copy arm moves GC references, so the move must
+    /// dirty its destination. An element-sized rep with no element type in hand answers
+    /// yes — the verdict dn2cpp_array_copy_dyn already makes for the same move.</summary>
+    private static bool CopyMovesRefs(ArrRep rep, StackEntry src, TypeDesc? element)
+    {
+        if (rep == ArrRep.Ref)
+            return true;
+        if (rep == ArrRep.I4)
+            return false;
+        TypeDesc? e = element
+            ?? (src.StaticType is { Kind: TypeKind.SZArray } s ? s.Element : null);
+        return e is null || e.ContainsGcReferences();
     }
 
     private void EmitArrayClear(StackEntry arr, string idx, string len,
@@ -809,6 +825,10 @@ internal sealed partial class MethodCompiler
             _ => $"*({CppTypes.StorageOf(elem)}*)dn2cpp_elem_addr(({Cast(array, "Dn2CppArrayN*")}), __fi) = ({CppTypes.StorageOf(elem)})({vt})",
         };
         Emit($"for (int32_t __fi = ({startExpr}); __fi < ({startExpr}) + ({countExpr}); __fi++) {{ {store}; }}");
+        // Dirtying the array dirties every slot the loop wrote; an empty range
+        // costs one no-op call.
+        if (elem.ContainsGcReferences())
+            Emit($"dn2cpp_gc_write_barrier((void*)({array.Expr}));");
     }
 
     // ---- element ordering: Array.Sort / Array.BinarySearch / MemoryExtensions.Sort ----
@@ -1628,7 +1648,7 @@ internal sealed partial class MethodCompiler
         : $"dn2cpp_stelem_i4(({Cast(arr, "Dn2CppArrayI4*")}), {idx.Expr}, {valExpr});";
 
     private string StelemRef(StackEntry arr, StackEntry idx, string valExpr) => _method.SkipBoundsChecks
-        ? $"({Cast(arr, "Dn2CppArrayRef*")})->data[{idx.Expr}] = {valExpr};"
+        ? $"dn2cpp_gc_store_ref(&({Cast(arr, "Dn2CppArrayRef*")})->data[{idx.Expr}], {valExpr});"
         : $"dn2cpp_stelem_ref(({Cast(arr, "Dn2CppArrayRef*")}), {idx.Expr}, {valExpr});";
 
     private string ElemAddr(StackEntry arr, StackEntry idx) => _method.SkipBoundsChecks
@@ -1694,6 +1714,8 @@ internal sealed partial class MethodCompiler
                 Emit(st == ct
                     ? $"*({ct}*){addr} = {Cast(val, ct)};"
                     : $"*({st}*){addr} = ({st})({Cast(val, ct)});");
+                if (element.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier((void*)({addr}));");
                 break;
             }
         }
@@ -1827,6 +1849,7 @@ internal sealed partial class MethodCompiler
         var p = Pop();
         string slot = RefSlotCppType(p);
         Emit($"*(({slot}*)({p.Expr})) = {Cast(val, slot)};");
+        Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({p.Expr}));");
     }
 
     /// <summary>The canonical <c>f_method</c> spelling of one delegate position: a
@@ -1969,6 +1992,7 @@ internal sealed partial class MethodCompiler
             }
         }
         Emit($"__atomic_store_n((Dn2CppObject**)({p}), (Dn2CppObject*)({v}), __ATOMIC_SEQ_CST);");
+        Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({p}));");
     }
 
     private void CondBranch(Instruction insn, string op, bool unsigned)

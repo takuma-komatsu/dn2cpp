@@ -3290,27 +3290,29 @@ void* dn2cpp_alloc_atomic(size_t size);
 void* dn2cpp_alloc_pinned(size_t size);
 void dn2cpp_free_pinned(void* p);
 
+// Incremental-GC write barriers. Call after publishing managed references.
+// The first form requires an address inside GC-managed storage; the second is
+// for an arbitrary byref which may instead name the stack or static data.
+void dn2cpp_gc_write_barrier(void* heapAddress);
+void dn2cpp_gc_write_barrier_if_heap(void* address);
+
+template <typename T>
+inline void dn2cpp_gc_store_ref(T** slot, T* value)
+{
+    *slot = value;
+    dn2cpp_gc_write_barrier(slot);
+}
+
+// Reference-bearing bulk moves must use this rather than raw memmove.
+void dn2cpp_gc_memmove_refs(void* destination, const void* source, size_t bytes);
+
 // True when `p` names memory the incremental collector may have write-protected.
 //
-// Boehm's incremental mode recovers its dirty bits from a fault handler, so it
-// keeps the heap mprotect'ed. A USER-SPACE store into such a page is fine: it
-// faults, the handler unprotects, the store retries. A *kernel* store is not —
-// the kernel's copyout does not reach the handler, and read(2)/pread(2) into a
-// managed byte[] returns EFAULT ("Bad address") instead. The pages keep
-// PROT_READ, so a kernel *read* (write(2)/pwrite(2) OUT of a managed buffer) is
-// unaffected: only a syscall that WRITES into a caller buffer must bounce.
-//
-// Two facts decide the shape of this. The protection is NOT confined to the mark
-// phase — bdwgc re-arms at the end of a cycle, so a non-freshly-allocated buffer is
-// protected essentially all the time. And allocating the buffer ATOMIC does not help:
-// bdwgc skips pointer-free blocks only when GC_page_size == HBLKSIZE, which fails on a
-// 16 KB-page host, so `protect_all` covers the whole heap.
-//
-// Answers 0 — two table lookups, not a syscall — whenever protection is impossible:
-// stop-the-world mode (every console binary), a dirty-bit strategy needing no mprotect
-// (SOFT_VDB on Linux x86_64, GWW_VDB on Windows), or a pointer outside the GC heap.
-// The Godot lane is the one that pays, being the only lane where incremental is the
-// default.
+// The vendored fork forces MANUAL_VDB, so GC_incremental_protection_needs
+// answers GC_PROTECTS_NONE on every platform and this function answers 0
+// today. It stays as the guard an mprotect-based VDB would need: a kernel
+// store into a protected page fails EFAULT instead of reaching the fault
+// handler a user-space store would trigger.
 int dn2cpp_gc_kernel_write_unsafe(const void* p);
 
 // Per-thread GC-visible block backing managed thread-static fields whose type
@@ -5393,7 +5395,7 @@ inline Dn2CppObject* dn2cpp_ldelem_ref(Dn2CppArrayRef* arr, int32_t index)
 inline void dn2cpp_stelem_ref(Dn2CppArrayRef* arr, int32_t index, Dn2CppObject* value)
 {
     dn2cpp_bounds_check(arr, index);
-    arr->data[index] = value;
+    dn2cpp_gc_store_ref(&arr->data[index], value);
 }
 
 inline void* dn2cpp_elem_addr(Dn2CppArrayN* arr, int32_t index)

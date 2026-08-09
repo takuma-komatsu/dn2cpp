@@ -378,6 +378,7 @@ void dn2cpp_eventsource_ctor(Dn2CppObject* src, Dn2CppString* name, int32_t sett
         // does, .NET's last write wins too.
         g_identities[i].name = name;
         g_identities[i].settings = validated;
+        dn2cpp_gc_write_barrier(&g_identities[i]);
         return;
     }
     if (g_identityCount == g_identityCap)
@@ -386,7 +387,7 @@ void dn2cpp_eventsource_ctor(Dn2CppObject* src, Dn2CppString* name, int32_t sett
         auto* grown = static_cast<CtorIdentity*>(dn2cpp_alloc_pinned(sizeof(CtorIdentity) * (size_t)cap));
         if (g_identities != nullptr)
         {
-            std::memcpy(grown, g_identities, sizeof(CtorIdentity) * (size_t)g_identityCount);
+            dn2cpp_gc_memmove_refs(grown, g_identities, sizeof(CtorIdentity) * (size_t)g_identityCount);
             dn2cpp_free_pinned(g_identities);
         }
         g_identities = grown;
@@ -395,6 +396,7 @@ void dn2cpp_eventsource_ctor(Dn2CppObject* src, Dn2CppString* name, int32_t sett
     g_identities[g_identityCount].src = src;
     g_identities[g_identityCount].name = name;
     g_identities[g_identityCount].settings = validated;
+    dn2cpp_gc_write_barrier(&g_identities[g_identityCount]);
     g_identityCount++;
 }
 

@@ -238,6 +238,8 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 Emit($"*(({st}*)({dest.Expr})) = {Cast(val, st)};");
+                if (ga[0].ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 return true;
             }
             case "WriteUnaligned": // WriteUnaligned<T>(void*|ref byte destination, T value)
@@ -249,6 +251,8 @@ internal sealed partial class MethodCompiler
                 string tmp = NewTemp(st);
                 Emit($"{tmp} = {Cast(val, st)};");
                 Emit($"std::memcpy((void*)({dest.Expr}), &{tmp}, sizeof({st}));");
+                if (ga[0].ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 return true;
             }
             case "Copy": // Copy<T>(void* dest, ref T src) / Copy<T>(ref T dest, void* src)
@@ -259,6 +263,8 @@ internal sealed partial class MethodCompiler
                 NoteBuiltStructLayout(ga[0]);
                 string st = CppTypes.StorageOf(ga[0]);
                 Emit($"std::memcpy((void*)({dest.Expr}), (const void*)({src.Expr}), sizeof({st}));");
+                if (ga[0].ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 return true;
             }
             // NB: CopyBlock/InitBlock are non-generic, so they arrive on the
@@ -1402,15 +1408,13 @@ internal sealed partial class MethodCompiler
             return true;
         }
         // Buffer.BulkMoveWithWriteBarrier(ref byte dst, ref byte src, nuint byteCount) —
-        // the overlap-safe move the CLR pairs with GC card-table maintenance. dn2cpp's
-        // Boehm GC has no write barrier or GC poll points, so it collapses to a plain
-        // memmove (same argument order).
+        // the overlap-safe move plus the collector notification its contract names.
         if (name == "BulkMoveWithWriteBarrier" && sig.ParameterTypes.Length == 3)
         {
             var count = Pop();
             var src = Pop();
             var dst = Pop();
-            Emit($"std::memmove((void*)({dst.Expr}), (const void*)({src.Expr}), (size_t)({count.Expr}));");
+            Emit($"dn2cpp_gc_memmove_refs((void*)({dst.Expr}), (const void*)({src.Expr}), (size_t)({count.Expr}));");
             return true;
         }
         // Buffer.ZeroMemoryInternal(void* b, nuint byteLength) — the large-block zeroing

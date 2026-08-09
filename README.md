@@ -740,11 +740,13 @@ it does not come back as a ticket.
   loudly, at link time, naming the missing symbol. The intercepted
   `File.*` subset still works against MEMFS.
 - **A user `[DllImport]` whose native side fills an `[Out] byte[]` with a
-  syscall** is unsafe under the incremental collector (the Godot lane's
-  default): managed arrays cross unpinned and uncopied by design, and a
-  kernel store into a write-protected page returns `EFAULT` rather than
-  faulting into the GC's handler. Ask `dn2cpp_gc_kernel_write_unsafe(p)`
-  and stage through your own buffer, as the PAL's own syscalls do.
+  syscall** is unsafe only when the incremental collector (the Godot lane's
+  default) write-protects heap pages to recover dirty bits — which the
+  vendored fork's MANUAL_VDB build never does: managed arrays cross unpinned
+  and uncopied by design, and a kernel store into a write-protected page would
+  return `EFAULT` rather than faulting into the GC's handler. Ask
+  `dn2cpp_gc_kernel_write_unsafe(p)` and stage through your own buffer, as the
+  PAL's own syscalls do, should that ever change.
 - **Hand-written runtime types refuse `MemberwiseClone`** (`Thread`,
   `SemaphoreSlim`, `CountdownEvent`, `Barrier`, `ReaderWriterLockSlim`,
   `Timer`, `ManualResetEventSlim`, and `WaitHandle` with the event handles

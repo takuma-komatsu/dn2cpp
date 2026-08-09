@@ -2467,6 +2467,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     var exVal = Pop();
                     var exObj = Pop();
                     Emit($"{ExceptionFieldLValue(fld, exObj)} = {Cast(exVal, ExceptionFieldCppType(fld))};");
+                    Emit($"dn2cpp_gc_write_barrier((void*)({exObj.Expr}));");
                     break;
                 }
                 NoteFieldOwnerLayout(cls);
@@ -2486,6 +2487,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                     break;
                 }
                 Emit($"{FieldAccess(cls, fld, obj)} = {Cast(val, storeType)};");
+                if (fld.Type.ContainsGcReferences())
+                {
+                    string barrier = obj.Kind == StackKind.Ref
+                        ? "dn2cpp_gc_write_barrier"
+                        : "dn2cpp_gc_write_barrier_if_heap";
+                    Emit($"{barrier}((void*)({obj.Expr}));");
+                }
                 break;
             }
             case ILOpCode.Ldflda:
@@ -2660,6 +2668,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 EnsureCctorBefore(fld.DeclaringClass);
                 _c.NoteForceEmit(fld.DeclaringClass);
                 Emit($"{fld.CppStaticAccess} = {Cast(Pop(), CppTypes.FieldOf(fld))};");
+                if (fld.IsGcRootedThreadStatic)
+                    Emit($"dn2cpp_gc_write_barrier((void*)&({fld.CppStaticAccess}));");
                 break;
             }
 
@@ -2699,6 +2709,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 Emit(mt == ct
                     ? $"*(({ct}*)({p.Expr})) = {Cast(val, ct)};"
                     : $"*(({mt}*)({p.Expr})) = ({mt})({Cast(val, ct)});");
+                if (t.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({p.Expr}));");
                 break;
             }
 
@@ -2748,6 +2760,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 var src = Pop();
                 var dest = Pop();
                 Emit($"std::memmove((void*)({dest.Expr}), (void*)({src.Expr}), (size_t)({size.Expr}));");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 break;
             }
             case ILOpCode.Initblk:

@@ -1362,7 +1362,7 @@ internal sealed partial class MethodCompiler
             EmitArrayCopy(new StackEntry(slot, StackKind.Ref, arrCpp), "0",
                 new StackEntry(nw, StackKind.Ref, arrCpp), "0", cnt,
                 ArrayOperandKind.Unchecked, ArrayOperandKind.Unchecked,
-                sameElementByConstruction: true);
+                sameElementByConstruction: true, elementType: t);
             Emit("}");
             Emit($"{slot} = {nw};");
             return;

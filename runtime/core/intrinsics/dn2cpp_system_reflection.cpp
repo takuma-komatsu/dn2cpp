@@ -4345,11 +4345,13 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
                                               dn2cpp_get_type_from_handle(v->type)) == 0)
             dn2cpp_throw_array_store_mismatch();
         std::memcpy(dst, &v, sizeof(Dn2CppObject*));
+        dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
     if (v == nullptr)
     {
         std::memset(dst, 0, static_cast<size_t>(elemSize));
+        dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(elem))
@@ -4367,6 +4369,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         double r;
         dn2cpp_read_boxed_num(v, &sc, &i, &r);
         dn2cpp_write_prim(static_cast<char*>(dst) + off, uc, sc, i, r);
+        dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
     if ((elem->flags & DN2CPP_TF_ENUM) != 0)
@@ -4378,6 +4381,7 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         double r;
         dn2cpp_read_boxed_num(v, &sc, &i, &r);
         dn2cpp_write_prim(dst, sc, sc, i, r);
+        dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
     int32_t dc = dn2cpp_prim_code(elem);
@@ -4395,12 +4399,14 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
             dn2cpp_throw_argument();
         }
         dn2cpp_write_prim(dst, dc, sc, i, r);
+        dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
     // Any other value type (struct / IntPtr / decimal / …): exact type, bitwise.
     if (v->type != elem)
         dn2cpp_throw_array_store_mismatch();
     std::memcpy(dst, v + 1, static_cast<size_t>(elemSize));
+    dn2cpp_gc_write_barrier_if_heap(dst);
 }
 
 // Box the element of `elem` stored at `src` (`elemSize` bytes) — the
@@ -4604,14 +4610,14 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
     {
         if (s.isRef == d.isRef && s.stride == d.stride)
         {
-            std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+            dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
             return;
         }
         dn2cpp_throw_array_copy_mismatch();
     }
     if (se == de)
     {
-        std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+        dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
     }
     bool sv = (se->flags & DN2CPP_TF_VALUETYPE) != 0;
@@ -4626,7 +4632,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
             : de;
         if (es == ed)
         {
-            std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+            dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
             return;
         }
         int32_t cs = dn2cpp_prim_code(es);
@@ -4635,7 +4641,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         {
             if (dn2cpp_prim_norm(cs) == dn2cpp_prim_norm(cd))
             {
-                std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+                dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
                 return;
             }
             if (dn2cpp_prim_widens(cs, cd))
@@ -4656,7 +4662,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         if ((es == &dn2cpp_intptr_type || es == &dn2cpp_uintptr_type)
             && (ed == &dn2cpp_intptr_type || ed == &dn2cpp_uintptr_type))
         {
-            std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+            dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
             return;
         }
         dn2cpp_throw_array_copy_mismatch();
@@ -4670,7 +4676,9 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         {
             Dn2CppObject* b = dn2cpp_array_box_element(
                 se, sp + static_cast<size_t>(k) * s.stride, static_cast<int32_t>(s.stride), false);
-            std::memcpy(dp + static_cast<size_t>(k) * d.stride, &b, sizeof(Dn2CppObject*));
+            char* slot = dp + static_cast<size_t>(k) * d.stride;
+            std::memcpy(slot, &b, sizeof(Dn2CppObject*));
+            dn2cpp_gc_write_barrier_if_heap(slot);
         }
         return;
     }
@@ -4711,13 +4719,14 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
             {
                 std::memcpy(slot, v + 1, d.stride);
             }
+            dn2cpp_gc_write_barrier_if_heap(slot);
         }
         return;
     }
     // Reference <-> reference.
     if (dn2cpp_typeinfo_assignable(se, de) != 0)
     {
-        std::memmove(dp, sp, static_cast<size_t>(len) * s.stride);
+        dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
     }
     if (dn2cpp_typeinfo_assignable(de, se) == 0)
@@ -4728,7 +4737,9 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         std::memcpy(&v, sp + static_cast<size_t>(k) * s.stride, sizeof(Dn2CppObject*));
         if (v != nullptr && dn2cpp_typeinfo_assignable(v->type, de) == 0)
             dn2cpp_throw_array_copy_elem_cast();
-        std::memcpy(dp + static_cast<size_t>(k) * d.stride, &v, sizeof(Dn2CppObject*));
+        char* slot = dp + static_cast<size_t>(k) * d.stride;
+        std::memcpy(slot, &v, sizeof(Dn2CppObject*));
+        dn2cpp_gc_write_barrier_if_heap(slot);
     }
     return;
 }
