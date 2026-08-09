@@ -6,6 +6,21 @@
 
 トランスパイラと C++ ランタイムは別プロジェクトとして公開されています: <https://github.com/takuma-komatsu/dn2cpp>
 
+## 前回リリース（4.7.1-dn2cpp.2）からの変更
+
+- ポインタフィールドへの `[MarshalAs]` 指定を拒否するよう修正（dn2cpp#8）
+- `Span<T>.Clear` が構造体要素に対して不正な C++ を生成していた問題を修正（dn2cpp#12, dn2cpp#11）
+- macOS `.app` バンドル内での GodotSharp 解決処理を修正（dn2cpp#9）
+- Windows 専用の P/Invoke ネイティブ層のバグを 2 件修正
+- HTTP/2 読み取りキャンセル時のレース条件を修正（dn2cpp#6）
+- Windows ホストの既定コンパイラを `cl` に変更（dn2cpp#7）
+- ICU バージョンに依存していた en-US/ja-JP の通貨ロケール行を固定
+- Web エクスポートのスモークテストが、Godot エンジン本体（upstream）由来の無害なシャットダウン診断を誤ってエラー扱いしていた問題を修正
+- macOS・Windows それぞれの smoke CI ワークフローを追加（dn2cpp#5, dn2cpp#4）
+- リリース手順書（`docs/RELEASE.md`）を新設
+
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/0153e082f734a102cbbfb6a25ee505139ddb6e67...d89b8f474f6b72be56ec86dbaf46b3e7d88e5569> を参照してください。
+
 ## アセット
 
 | ファイル | 内容 | SHA-256 |
