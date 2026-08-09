@@ -36,10 +36,10 @@ STATIC word GC_faulted[NSUMS] = { 0 };
 
 STATIC size_t GC_n_faulted = 0;
 
-#ifdef MPROTECT_VDB
+#if defined(MPROTECT_VDB) && !defined(DARWIN)
   void GC_record_fault(struct hblk * h)
   {
-    word page = (word)h & ~(word)(GC_page_size-1);
+    word page = (word)h & ~(GC_page_size - 1);
 
     GC_ASSERT(GC_page_size != 0);
     if (GC_n_faulted >= NSUMS) ABORT("write fault log overflowed");
@@ -50,7 +50,7 @@ STATIC size_t GC_n_faulted = 0;
 STATIC GC_bool GC_was_faulted(struct hblk *h)
 {
     size_t i;
-    word page = (word)h & ~(word)(GC_page_size-1);
+    word page = (word)h & ~(GC_page_size - 1);
 
     for (i = 0; i < GC_n_faulted; ++i) {
         if (GC_faulted[i] == page) return TRUE;
@@ -118,7 +118,7 @@ STATIC void GC_add_block(struct hblk *h, word dummy GC_ATTR_UNUSED)
 {
    hdr * hhdr = HDR(h);
 
-   GC_bytes_in_used_blocks += (hhdr->hb_sz + HBLKSIZE-1) & ~(word)(HBLKSIZE-1);
+   GC_bytes_in_used_blocks += (hhdr->hb_sz + HBLKSIZE-1) & ~(HBLKSIZE-1);
 }
 
 STATIC void GC_check_blocks(void)
@@ -127,8 +127,8 @@ STATIC void GC_check_blocks(void)
 
     GC_bytes_in_used_blocks = 0;
     GC_apply_to_all_blocks(GC_add_block, (word)0);
-    GC_COND_LOG_PRINTF("GC_bytes_in_used_blocks= %lu,"
-                       " bytes_in_free_blocks= %lu, heapsize= %lu\n",
+    GC_COND_LOG_PRINTF("GC_bytes_in_used_blocks = %lu,"
+                       " bytes_in_free_blocks = %lu, heapsize = %lu\n",
                        (unsigned long)GC_bytes_in_used_blocks,
                        (unsigned long)bytes_in_free_blocks,
                        (unsigned long)GC_heapsize);

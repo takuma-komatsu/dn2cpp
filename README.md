@@ -507,9 +507,10 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 
 ### Runtime services
 
-- **Boehm-Demers-Weiser GC** (`third_party/bdwgc/`, compiled with the
-  runtime, thread-aware). Reference-free arrays allocate through the
-  unscanned allocator; `ArrayPool<T>.Shared` is a real size-bucketed
+- **Boehm-Demers-Weiser GC** (vendored from Unity Technologies' fork under
+  `third_party/bdwgc/`, compiled with the runtime, thread-aware).
+  Reference-free arrays allocate through the unscanned allocator;
+  `ArrayPool<T>.Shared` is a real size-bucketed
   pool. Modes: classic stop-the-world (console default) and Boehm
   incremental (Godot default, bounded frame pauses), with
   `DN2CPP_GC_INCREMENTAL` / `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS`
@@ -825,8 +826,10 @@ dn2cpp is licensed under the [MIT License](LICENSE).
 
 Vendored third-party components keep their own licenses:
 
-- `third_party/bdwgc/` — Boehm-Demers-Weiser GC, permissive **bdw-gc**
-  license ([`third_party/bdwgc/LICENSE`](third_party/bdwgc/LICENSE))
+- `third_party/bdwgc/` — Unity Technologies' bdwgc fork, permissive
+  **bdw-gc** license
+  ([provenance](third_party/bdwgc/DN2CPP-VENDORED.md),
+  [`LICENSE`](third_party/bdwgc/LICENSE))
 - `third_party/zlib/` — classic zlib 1.3.2, **zlib** license
   ([`third_party/zlib/LICENSE`](third_party/zlib/LICENSE))
 - `third_party/brotli/` — google/brotli 1.1.0, **MIT**

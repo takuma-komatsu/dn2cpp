@@ -27,7 +27,6 @@
 /* This interface is most useful for compilers that generate C.         */
 /* It is also used internally for thread-local allocation.              */
 /* Manual use is hereby discouraged.                                    */
-/* There is no debugging version of this allocation API.                */
 
 #include "gc.h"
 #include "gc_tiny_fl.h"
@@ -96,7 +95,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* The ultimately general inline allocation macro.  Allocate an object  */
 /* of size granules, putting the resulting pointer in result.  Tiny_fl  */
 /* is a "tiny" free list array, which will be used first, if the size   */
-/* is appropriate.  If granules argument is too large, we allocate with */
+/* is appropriate.  If granules is too large, we allocate with          */
 /* default_expr instead.  If we need to refill the free list, we use    */
 /* GC_generic_malloc_many with the indicated kind.                      */
 /* Tiny_fl should be an array of GC_TINY_FREELISTS void * pointers.     */
@@ -109,8 +108,8 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* size that are used to satisfy size 0 allocation requests.            */
 /* We rely on much of this hopefully getting optimized away in the      */
 /* num_direct = 0 case.                                                 */
-/* Particularly, if granules argument is constant, this should generate */
-/* a small amount of code.                                              */
+/* Particularly if granules is constant, this should generate a small   */
+/* amount of code.                                                      */
 # define GC_FAST_MALLOC_GRANS(result,granules,tiny_fl,num_direct, \
                               kind,default_expr,init) \
   do { \
@@ -129,10 +128,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
                 GC_FAST_M_AO_STORE(my_fl, next); \
                 init; \
                 GC_PREFETCH_FOR_WRITE(next); \
-                if ((kind) != GC_I_PTRFREE) { \
-                    GC_end_stubborn_change(my_fl); \
-                    GC_reachable_here(next); \
-                } \
+                if ((kind) != GC_I_PTRFREE) GC_end_stubborn_change(my_fl); \
                 GC_ASSERT(GC_size(result) >= (granules)*GC_GRANULE_BYTES); \
                 GC_ASSERT((kind) == GC_I_PTRFREE \
                           || ((GC_word *)result)[1] == 0); \
@@ -141,10 +137,11 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
             /* Entry contains counter or NULL */ \
             if ((GC_signed_word)my_entry - (GC_signed_word)(num_direct) <= 0 \
                     /* (GC_word)my_entry <= (num_direct) */ \
-                    && my_entry != 0 /* NULL */) { \
+                    && my_entry != NULL) { \
                 /* Small counter value, not NULL */ \
                 GC_FAST_M_AO_STORE(my_fl, (char *)my_entry \
                                           + (granules) + 1); \
+                if ((kind) != GC_I_PTRFREE) GC_end_stubborn_change(my_fl); \
                 result = (default_expr); \
                 break; \
             } else { \
@@ -168,9 +165,10 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* Allocate n words (NOT BYTES).  X is made to point to the result.     */
 /* This should really only be used if GC_all_interior_pointers is       */
 /* not set, or DONT_ADD_BYTE_AT_END is set.  See above.                 */
-/* Does not acquire lock.  The caller is responsible for supplying      */
-/* a cleared tiny_fl free list array.  For single-threaded              */
-/* applications, this may be a global array.                            */
+/* The semantics changed in version 7.0; we no longer lock, and         */
+/* the caller is responsible for supplying a cleared tiny_fl            */
+/* free list array.  For single-threaded applications, this may be      */
+/* a global array.                                                      */
 # define GC_MALLOC_WORDS_KIND(result,n,tiny_fl,kind,init) \
     do { \
       size_t granules = GC_WORDS_TO_WHOLE_GRANULES(n); \
@@ -189,13 +187,11 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 /* And once more for two word initialized objects: */
 # define GC_CONS(result, first, second, tiny_fl) \
     do { \
-      void *l = (void *)(first); \
-      void *r = (void *)(second); \
       GC_MALLOC_WORDS_KIND(result, 2, tiny_fl, GC_I_NORMAL, (void)0); \
-      if ((result) != 0 /* NULL */) { \
-        *(void **)(result) = l; \
-        GC_ptr_store_and_dirty((void **)(result) + 1, r); \
-        GC_reachable_here(l); \
+      if ((result) != NULL) { \
+        *(void **)(result) = (void *)(first); \
+        ((void **)(result))[1] = (void *)(second); \
+        GC_end_stubborn_change(result); \
       } \
     } while (0)
 

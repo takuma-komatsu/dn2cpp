@@ -4,7 +4,6 @@
  * Copyright (c) 1998 by Fergus Henderson.  All rights reserved.
  * Copyright (c) 2000-2009 by Hewlett-Packard Development Company.
  * All rights reserved.
- * Copyright (c) 2008-2020 Ivan Maidanski
  *
  * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
@@ -71,28 +70,30 @@
 # define GC_WIN32_THREADS
 #endif
 
+
 #if defined(GC_AIX_THREADS) || defined(GC_DARWIN_THREADS) \
     || defined(GC_DGUX386_THREADS) || defined(GC_FREEBSD_THREADS) \
     || defined(GC_HPUX_THREADS) \
     || defined(GC_IRIX_THREADS) || defined(GC_LINUX_THREADS) \
     || defined(GC_NETBSD_THREADS) || defined(GC_OPENBSD_THREADS) \
     || defined(GC_OSF1_THREADS) || defined(GC_SOLARIS_THREADS) \
-    || defined(GC_WIN32_THREADS) || defined(GC_RTEMS_PTHREADS)
+    || defined(GC_WIN32_THREADS) || defined(GC_RTEMS_PTHREADS) \
+    || defined(SN_TARGET_PSP2)
 # ifndef GC_THREADS
 #   define GC_THREADS
 # endif
 #elif defined(GC_THREADS)
 # if defined(__linux__)
 #   define GC_LINUX_THREADS
-# elif defined(__OpenBSD__)
-#   define GC_OPENBSD_THREADS
 # elif defined(_PA_RISC1_1) || defined(_PA_RISC2_0) || defined(hppa) \
        || defined(__HPPA) || (defined(__ia64) && defined(_HPUX_SOURCE))
 #   define GC_HPUX_THREADS
 # elif defined(__HAIKU__)
 #   define GC_HAIKU_THREADS
-# elif (defined(__DragonFly__) || defined(__FreeBSD_kernel__) \
-        || defined(__FreeBSD__)) && !defined(GC_NO_FREEBSD)
+# elif defined(__OpenBSD__)
+#   define GC_OPENBSD_THREADS
+# elif ( defined(__DragonFly__) || defined(__FreeBSD_kernel__) \
+       || defined(__FreeBSD__) ) && !defined(GC_NO_FREEBSD)
 #   define GC_FREEBSD_THREADS
 # elif defined(__NetBSD__)
 #   define GC_NETBSD_THREADS
@@ -131,7 +132,7 @@
 #undef GC_PTHREADS
 #if (!defined(GC_WIN32_THREADS) || defined(GC_WIN32_PTHREADS) \
      || defined(__CYGWIN32__) || defined(__CYGWIN__)) && defined(GC_THREADS) \
-    && !defined(NN_PLATFORM_CTR) && !defined(NN_BUILD_TARGET_PLATFORM_NX)
+    && !defined(NN_PLATFORM_CTR) && !defined(NN_BUILD_TARGET_PLATFORM_NX) && !defined(NINTENDO_SWITCH2)
   /* Posix threads. */
 # define GC_PTHREADS
 #endif
@@ -147,7 +148,7 @@
 #if !defined(_REENTRANT) && defined(GC_PTHREADS) && !defined(GC_WIN32_THREADS)
   /* Better late than never.  This fails if system headers that depend  */
   /* on this were previously included.                                  */
-# define _REENTRANT 1
+# define _REENTRANT
 #endif
 
 #define __GC
@@ -177,20 +178,11 @@
 
 #if defined(GC_DLL) && !defined(GC_API)
 
-# if defined(__CEGCC__)
-#   if defined(GC_BUILD)
+# if defined(__MINGW32__) || defined(__CEGCC__)
+#   if defined(GC_BUILD) || defined(__MINGW32_DELAY_LOAD__)
 #     define GC_API __declspec(dllexport)
 #   else
 #     define GC_API __declspec(dllimport)
-#   endif
-
-# elif defined(__MINGW32__)
-#   if defined(__cplusplus) && defined(GC_BUILD)
-#     define GC_API extern __declspec(dllexport)
-#   elif defined(GC_BUILD) || defined(__MINGW32_DELAY_LOAD__)
-#     define GC_API __declspec(dllexport)
-#   else
-#     define GC_API extern __declspec(dllimport)
 #   endif
 
 # elif defined(_MSC_VER) || defined(__DMC__) || defined(__BORLANDC__) \
@@ -286,14 +278,6 @@
 # endif
 #endif
 
-#ifndef GC_ATTR_CONST
-# if GC_GNUC_PREREQ(4, 0)
-#   define GC_ATTR_CONST __attribute__((__const__))
-# else
-#   define GC_ATTR_CONST /* empty */
-# endif
-#endif
-
 #ifndef GC_ATTR_DEPRECATED
 # ifdef GC_BUILD
 #   undef GC_ATTR_DEPRECATED
@@ -328,7 +312,6 @@
 #endif /* GLIBC */
 
 #if defined(_MSC_VER) && _MSC_VER >= 1200 /* version 12.0+ (MSVC 6.0+) */ \
-        && !defined(_M_ARM) && !defined(_M_ARM64) \
         && !defined(_AMD64_) && !defined(_M_X64) && !defined(_WIN32_WCE) \
         && !defined(GC_HAVE_NO_BUILTIN_BACKTRACE) \
         && !defined(GC_HAVE_BUILTIN_BACKTRACE)
@@ -361,13 +344,10 @@
     /* how to generate call stacks.                                     */
 #   define GC_RETURN_ADDR (GC_word)__builtin_return_address(0)
 #   if GC_GNUC_PREREQ(4, 0) && (defined(__i386__) || defined(__amd64__) \
-                        || defined(__x86_64__) /* and probably others... */) \
-       && !defined(GC_NO_RETURN_ADDR_PARENT)
+                        || defined(__x86_64__) /* and probably others... */)
 #     define GC_HAVE_RETURN_ADDR_PARENT
 #     define GC_RETURN_ADDR_PARENT \
         (GC_word)__builtin_extract_return_addr(__builtin_return_address(1))
-            /* Note: a compiler might complain that calling                 */
-            /* __builtin_return_address with a nonzero argument is unsafe.  */
 #   endif
 # else
     /* Just pass 0 for gcc compatibility.       */
@@ -385,7 +365,7 @@
 # endif
 
 # if (defined(GC_DARWIN_THREADS) || defined(GC_WIN32_PTHREADS) \
-      || defined(__native_client__)) \
+      || defined(GC_OPENBSD_THREADS) || defined(__native_client__)) \
      && !defined(GC_NO_PTHREAD_SIGMASK)
     /* Either there is no pthread_sigmask() or no need to intercept it. */
 #   define GC_NO_PTHREAD_SIGMASK
@@ -425,42 +405,5 @@
 # endif
 
 #endif /* GC_PTHREADS */
-
-#ifdef __cplusplus
-
-#ifndef GC_ATTR_EXPLICIT
-# if __cplusplus >= 201103L && !defined(__clang__) || _MSVC_LANG >= 201103L \
-     || defined(CPPCHECK)
-#   define GC_ATTR_EXPLICIT explicit
-# else
-#   define GC_ATTR_EXPLICIT /* empty */
-# endif
-#endif
-
-#ifndef GC_NOEXCEPT
-# if defined(__DMC__) || (defined(__BORLANDC__) \
-        && (defined(_RWSTD_NO_EXCEPTIONS) || defined(_RWSTD_NO_EX_SPEC))) \
-     || (defined(_MSC_VER) && defined(_HAS_EXCEPTIONS) && !_HAS_EXCEPTIONS) \
-     || (defined(__WATCOMC__) && !defined(_CPPUNWIND))
-#   define GC_NOEXCEPT /* empty */
-#   ifndef GC_NEW_ABORTS_ON_OOM
-#     define GC_NEW_ABORTS_ON_OOM
-#   endif
-# elif __cplusplus >= 201103L || _MSVC_LANG >= 201103L
-#   define GC_NOEXCEPT noexcept
-# else
-#   define GC_NOEXCEPT throw()
-# endif
-#endif
-
-#ifndef GC_CONSTEXPR
-# if __cplusplus >= 202002L
-#   define GC_CONSTEXPR constexpr
-# else
-#   define GC_CONSTEXPR /* empty */
-# endif
-#endif
-
-#endif /* __cplusplus */
 
 #endif

@@ -15,9 +15,6 @@
  * modified is included with the above copyright notice.
  */
 
-#ifndef GC_JAVAXFC_H
-#define GC_JAVAXFC_H
-
 #ifndef GC_H
 # include "gc.h"
 #endif
@@ -61,5 +58,3 @@ GC_API void GC_CALL GC_finalize_all(void);
 #ifdef __cplusplus
   } /* extern "C" */
 #endif
-
-#endif /* GC_JAVAXFC_H */

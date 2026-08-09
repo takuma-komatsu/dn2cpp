@@ -18,9 +18,6 @@
 /* Our pthread support normally needs to intercept a number of thread   */
 /* calls.  We arrange to do that here, if appropriate.                  */
 
-#ifndef GC_PTHREAD_REDIRECTS_H
-#define GC_PTHREAD_REDIRECTS_H
-
 /* Included from gc.h only.  Included only if GC_PTHREADS.              */
 #if defined(GC_H) && defined(GC_PTHREADS)
 
@@ -56,14 +53,11 @@
 # endif /* !GC_NO_DLOPEN */
 
 # ifndef GC_NO_PTHREAD_SIGMASK
-#   if defined(GC_PTHREAD_SIGMASK_NEEDED) || defined(_BSD_SOURCE) \
-        || defined(_GNU_SOURCE) || defined(_NETBSD_SOURCE) \
-        || (_POSIX_C_SOURCE >= 199506L) || (_XOPEN_SOURCE >= 500) \
-        || (__POSIX_VISIBLE >= 199506) /* xBSD internal macro */
+#   if defined(GC_PTHREAD_SIGMASK_NEEDED) \
+        || defined(_BSD_SOURCE) || defined(_GNU_SOURCE) \
+        || (_POSIX_C_SOURCE >= 199506L) || (_XOPEN_SOURCE >= 500)
       GC_API int GC_pthread_sigmask(int /* how */, const sigset_t *,
                                     sigset_t * /* oset */);
-#   else
-#     define GC_NO_PTHREAD_SIGMASK
 #   endif
 # endif /* !GC_NO_PTHREAD_SIGMASK */
 
@@ -123,5 +117,3 @@
 #endif /* !GC_NO_THREAD_REDIRECTS */
 
 #endif /* GC_PTHREADS */
-
-#endif /* GC_PTHREAD_REDIRECTS_H */

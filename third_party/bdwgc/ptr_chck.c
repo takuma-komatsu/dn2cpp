@@ -123,7 +123,6 @@ GC_API void * GC_CALL GC_is_valid_displacement(void *p)
     word sz;
 
     if (!EXPECT(GC_is_initialized, TRUE)) GC_init();
-    if (NULL == p) return NULL;
     hhdr = HDR((word)p);
     if (hhdr == 0) return(p);
     h = HBLKPTR(p);
@@ -132,7 +131,8 @@ GC_API void * GC_CALL GC_is_valid_displacement(void *p)
            h = FORWARDED_ADDR(h, hhdr);
            hhdr = HDR(h);
         }
-    } else if (IS_FORWARDING_ADDR_OR_NIL(hhdr)) {
+    }
+    if (IS_FORWARDING_ADDR_OR_NIL(hhdr)) {
         goto fail;
     }
     sz = hhdr -> hb_sz;
@@ -140,8 +140,7 @@ GC_API void * GC_CALL GC_is_valid_displacement(void *p)
     offset = pdispl % sz;
     if ((sz > MAXOBJBYTES && (word)p >= (word)h + sz)
         || !GC_valid_offsets[offset]
-        || ((word)p + (sz - offset) > (word)(h + 1)
-            && !IS_FORWARDING_ADDR_OR_NIL(HDR(h + 1)))) {
+        || (word)p - offset + sz > (word)(h + 1)) {
         goto fail;
     }
     return(p);
@@ -208,26 +207,23 @@ GC_API void * GC_CALL GC_is_visible(void *p)
             /* Else do it again correctly:      */
 #           if defined(DYNAMIC_LOADING) || defined(MSWIN32) \
                 || defined(MSWINCE) || defined(CYGWIN32) || defined(PCR)
-              if (!GC_no_dls) {
-                GC_register_dynamic_libraries();
-                if (GC_is_static_root(p)) return p;
-              }
+              GC_register_dynamic_libraries();
+              if (GC_is_static_root(p))
+                return(p);
 #           endif
             goto fail;
         } else {
             /* p points to the heap. */
             word descr;
-            ptr_t base = (ptr_t)GC_base(p);
-                        /* TODO: should GC_base be manually inlined? */
+            ptr_t base = (ptr_t)GC_base(p); /* Should be manually inlined? */
 
-            if (NULL == base) goto fail;
-            if (HBLKPTR(base) != HBLKPTR(p))
-                hhdr = HDR(base);
+            if (base == 0) goto fail;
+            if (HBLKPTR(base) != HBLKPTR(p)) hhdr = HDR((word)p);
             descr = hhdr -> hb_descr;
     retry:
             switch(descr & GC_DS_TAGS) {
                 case GC_DS_LENGTH:
-                    if ((word)p - (word)base >= descr) goto fail;
+                    if ((word)p - (word)base > descr) goto fail;
                     break;
                 case GC_DS_BITMAP:
                     if ((word)p - (word)base >= WORDS_TO_BYTES(BITMAP_BITS)
@@ -241,13 +237,9 @@ GC_API void * GC_CALL GC_is_visible(void *p)
                     break;
                 case GC_DS_PER_OBJECT:
                     if ((signed_word)descr >= 0) {
-                      descr = *(word *)((ptr_t)base
-                                        + (descr & ~(word)GC_DS_TAGS));
+                      descr = *(word *)((ptr_t)base + (descr & ~GC_DS_TAGS));
                     } else {
                       ptr_t type_descr = *(ptr_t *)base;
-
-                      if (EXPECT(NULL == type_descr, FALSE))
-                        goto fail; /* see comment in GC_mark_from */
                       descr = *(word *)(type_descr
                                         - (descr - (word)(GC_DS_PER_OBJECT
                                            - GC_INDIR_PER_OBJ_BIAS)));
