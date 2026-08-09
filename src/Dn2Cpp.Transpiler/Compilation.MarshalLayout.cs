@@ -511,6 +511,10 @@ internal sealed partial class Compilation
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
     {
+        // An unmanaged pointer field accepts no descriptor, including SysInt. Its natural
+        // pointer-wide form is valid only when the descriptor is absent.
+        if (t.Kind == TypeKind.Pointer)
+            return MarshalExtent.Refused;
         if (t.Kind == TypeKind.Primitive)
         {
             switch (t.Primitive)

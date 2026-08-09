@@ -554,6 +554,8 @@ internal static class CppTypes
         var u = f.MarshalAs;
         if (u == default)
             return true;
+        if (f.Type.Kind == TypeKind.Pointer)
+            return false;
         if (u == System.Runtime.InteropServices.UnmanagedType.ByValArray)
             return IsByValArrayField(f);
         var t = f.Type;
@@ -577,14 +579,11 @@ internal static class CppTypes
                 or System.Runtime.InteropServices.UnmanagedType.SysUInt => 8,
             _ => -1,
         };
-        // A pointer-WIDE field takes a pointer-width descriptor and not a fixed-width one:
-        // the two coincide at 64 bits, where NativeAbiWidth reads them, so comparing numbers
-        // alone would accept [MarshalAs(U8)] IntPtr, which real .NET raises TypeLoadException
-        // for. Still laxer than .NET on an unmanaged POINTER field, which takes no descriptor
-        // at all — SysInt included — and is a standing over-acceptance, not a rule.
-        bool ptrWide = t.Kind == TypeKind.Pointer
-            || (t.Kind == TypeKind.Primitive
-                && t.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr);
+        // An IntPtr field takes a pointer-width descriptor and not a fixed-width one: the
+        // two coincide at 64 bits, where NativeAbiWidth reads them, so comparing numbers
+        // alone would accept [MarshalAs(U8)] IntPtr, which real .NET rejects.
+        bool ptrWide = t.Kind == TypeKind.Primitive
+            && t.Primitive is PrimitiveTypeCode.IntPtr or PrimitiveTypeCode.UIntPtr;
         bool namesPtr = u is System.Runtime.InteropServices.UnmanagedType.SysInt
             or System.Runtime.InteropServices.UnmanagedType.SysUInt;
         return named > 0 && NativeAbiWidth(t) == named && ptrWide == namesPtr;
@@ -632,10 +631,8 @@ internal static class CppTypes
             if (!StructFieldDescriptorSupported(f))
                 return $"its field '{f.Name}' carries [MarshalAs(UnmanagedType.{f.MarshalAs})], "
                     + "which the P/Invoke struct marshaller does not implement (deliberate "
-                    + "carve-out — the marshalled-layout model still sizes what it models for "
-                    + "Marshal.SizeOf/OffsetOf, but a boundary crossing must refuse, not "
-                    + "answer; real .NET refuses the mismatched-width forms too, with a "
-                    + "TypeLoadException at the call)";
+                    + "carve-out — a boundary crossing must refuse rather than ignore the "
+                    + "descriptor; real .NET raises TypeLoadException at the call)";
             if (StructFieldDescriptorReject(f.Type) is { } nested)
                 return $"its field '{f.Name}' ({f.Type}) is descriptor-rejected: {nested}";
         }

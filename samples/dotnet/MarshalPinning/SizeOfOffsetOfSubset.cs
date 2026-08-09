@@ -76,6 +76,10 @@ struct PtrU8 { [MarshalAs(UnmanagedType.U8)] public IntPtr F; }
 struct LongSysInt { [MarshalAs(UnmanagedType.SysInt)] public long F; }
 struct PtrSysInt { [MarshalAs(UnmanagedType.SysInt)] public IntPtr F; }
 struct IntI4 { [MarshalAs(UnmanagedType.I4)] public int F; }
+unsafe struct BarePointer { public void* F; }
+unsafe struct PointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public void* F; }
+unsafe struct FunctionPointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public delegate* unmanaged<void> F; }
+unsafe struct PointerI8 { [MarshalAs(UnmanagedType.I8)] public void* F; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -248,6 +252,12 @@ unsafe class Program
         Console.WriteLine("m long-sysint=" + Verdict(() => Marshal.SizeOf(typeof(LongSysInt))) + "/" + Verdict(() => Marshal.SizeOf<LongSysInt>()));
         Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());
         Console.WriteLine("m int-i4=" + Marshal.SizeOf(typeof(IntI4)) + "/" + Marshal.SizeOf<IntI4>());
+        // An unmanaged pointer field takes no descriptor at all. The bare pointer is the
+        // control; SysInt and matching fixed-width descriptors are still invalid.
+        Console.WriteLine("m pointer-bare=" + Marshal.SizeOf(typeof(BarePointer)) + "/" + Marshal.SizeOf<BarePointer>());
+        Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
+        Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
+        Console.WriteLine("m pointer-i8=" + Verdict(() => Marshal.SizeOf(typeof(PointerI8))) + "/" + Verdict(() => Marshal.SizeOf<PointerI8>()));
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'
