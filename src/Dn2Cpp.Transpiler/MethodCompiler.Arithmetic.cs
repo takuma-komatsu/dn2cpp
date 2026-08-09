@@ -1372,7 +1372,7 @@ internal sealed partial class MethodCompiler
             case "Clear":
             {
                 string sp = SpanPtr(Pop(), spanCt);
-                Emit($"for ({i} = 0; {i} < {sp}->f__length; {i}++) (({elemSt}*){sp}->f__reference)[{i}] = ({elemSt})0;");
+                Emit($"for ({i} = 0; {i} < {sp}->f__length; {i}++) (({elemSt}*){sp}->f__reference)[{i}] = {CppTypes.ZeroInitExpr(elemSt)};");
                 return true;
             }
             case "Fill":
