@@ -479,13 +479,22 @@ else
         "HARNESS_FAILED" \
         "null function or function signature mismatch" \
         "__PAGE_EXCEPTION" \
-        "ERROR" \
         "SCRIPT ERROR"; do
         if grep -q "$bad" "$LOG"; then
             echo "FAIL: the browser run reported \"$bad\"" >&2
             exit 1
         fi
     done
+    # Godot's WorkerThreadPool::Group is never freed on a single-threaded
+    # (Web) build: wait_for_group_task_completion is compiled out under
+    # !THREADS_ENABLED, and the physics step unconditionally allocates one
+    # group per tick. Upstream engine behavior, unrelated to dn2cpp or the
+    # fork; exclude only this exact benign shutdown line from the ERROR sweep.
+    if grep "ERROR" "$LOG" \
+        | grep -qv "Pages in use exist at exit in PagedAllocator: N16WorkerThreadPool5GroupE"; then
+        echo "FAIL: the browser run reported \"ERROR\"" >&2
+        exit 1
+    fi
 fi
 
 echo "== 8/8 Refusing a preset the engine could not load the drop-in from =="
