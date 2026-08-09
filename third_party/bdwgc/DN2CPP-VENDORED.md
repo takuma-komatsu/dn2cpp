@@ -10,6 +10,10 @@ collector is compiled directly into the dn2cpp runtime.
 - Commit: `4314cf4a2b1473ae8ec1aac7887af91d0fbe4d0c`
 - Collector version: 7.7.0 development (`include/gc_version.h`)
 
+`third_party/bdwgc-upstream/` holds the pre-fork upstream bdw-gc 8.2.8
+snapshot as a development-only alternate backend, selected with
+`-DDN2CPP_GC_BACKEND=upstream`; see its own `DN2CPP-VENDORED.md`.
+
 ## Local modifications
 
 - `include/private/gc_atomic_ops.h` implements the `GC_BUILTIN_ATOMIC` subset
