@@ -2297,7 +2297,11 @@ EXTERN_C_BEGIN
 #     define OS_TYPE "LINUX"
 #     define LINUX_STACKBOTTOM
 #     define DYNAMIC_LOADING
+#     ifdef HOST_ANDROID
+      extern int __data_start[] __attribute__((__weak__));
+#     else
       extern int __data_start[];
+#     endif
       extern int _end[];
 #     define DATASTART ((ptr_t)__data_start)
 #     define DATAEND ((ptr_t)(&_end))

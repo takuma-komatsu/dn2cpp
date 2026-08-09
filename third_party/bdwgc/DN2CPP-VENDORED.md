@@ -15,6 +15,9 @@ collector is compiled directly into the dn2cpp runtime.
 - `include/private/gc_atomic_ops.h` implements the `GC_BUILTIN_ATOMIC` subset
   with `_Interlocked*` intrinsics under real MSVC. Unity's GNU/Clang arm uses
   `__atomic_*`, which `cl.exe` does not provide.
+- `mark_rts.c` provides `GC_remove_roots` on Windows. dn2cpp unregisters
+  malloc-backed finalizer spill roots before freeing them, while Unity's fork
+  omits that API implementation on Windows.
 - `include/private/gcconfig.h` keeps Emscripten stack scanning enabled and marks
   its direction; `os_dep.c` obtains its cold end from
   `emscripten_stack_get_base()`. The runtime link runs Binaryen's SpillPointers
