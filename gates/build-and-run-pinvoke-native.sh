@@ -16,7 +16,7 @@
 # asserting a width-MISMATCHED [MarshalAs] on a blittable-typed field
 # ([MarshalAs(I2)] int) refuses too: it used to cross RAW through the blittable
 # fast path where real .NET raises TypeLoadException (measured), and a fourth
-# asserting that an unmanaged pointer field takes no descriptor at all.
+# asserting that SysInt on a void* field is likewise refused.
 #
 # Also the system-libc section (PInvokeLibcSubset, folded in from its own gate):
 # [DllImport] into always-linked libc/libSystem with blittable primitives,
@@ -176,11 +176,10 @@ grep -q "error: .*MisWidth.*'X' carries \[MarshalAs(UnmanagedType.I2)\]" <<<"$wm
     || { echo "FAIL: the refusal did not name the field and its I2 descriptor" >&2; printf '%s\n' "$wm_err" | tail -3 >&2; exit 1; }
 echo "width-mismatch crossing refusal OK: exit 2, named the field and descriptor"
 
-echo "== 8/9 Asserting an unmanaged pointer field with [MarshalAs] refuses at transpile =="
-# SUBJECT: an unmanaged pointer field takes no [MarshalAs] descriptor, even SysInt.
-# Numeric width agreement is insufficient: real .NET raises TypeLoadException when the
-# struct crosses a P/Invoke boundary. Same non-cached, before-the-cache-gate doctrine as
-# the other refusal arms.
+echo "== 8/9 Asserting [MarshalAs(SysInt)] on void* refuses at transpile =="
+# SUBJECT: SysInt is not a valid descriptor for a void* field. Numeric width agreement is
+# insufficient: real .NET raises TypeLoadException when the struct crosses a P/Invoke
+# boundary. Same non-cached, before-the-cache-gate doctrine as the other refusal arms.
 build_proj samples/dotnet/PInvokePointerDescriptorBad/PInvokePointerDescriptorBad.csproj
 pd_app="samples/dotnet/PInvokePointerDescriptorBad/bin/$CONFIG/$TFM/PInvokePointerDescriptorBad.dll"
 PD_OUT="artifacts/pinvokenative-pointerdescriptor-neg"

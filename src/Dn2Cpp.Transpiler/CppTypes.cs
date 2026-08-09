@@ -540,9 +540,7 @@ internal static class CppTypes
     /// a string encoding override against the struct CharSet, a ByValArray of non-blittable
     /// elements — takes the struct out of the marshalable set so the P/Invoke lowering
     /// refuses loudly, naming the field (<see cref="StructFieldDescriptorReject"/>), instead
-    /// of emitting a layout the descriptor contradicts. Only the boundary crossing refuses:
-    /// the marshalled-layout model keeps answering <c>Marshal.SizeOf</c>/<c>OffsetOf</c> for
-    /// the shapes it models.
+    /// of emitting a layout the descriptor contradicts.
     ///
     /// <para>TWO askers, one predicate: <see cref="IsBlittableStruct"/> asks it too, so a
     /// width-MISMATCHED descriptor on a blittable-typed field (<c>[MarshalAs(I2)] int</c>)
@@ -592,11 +590,10 @@ internal static class CppTypes
     /// <summary>The byte width of a blittable field type on the native ABI — the numeric
     /// twin of <see cref="NativeAbiType"/>, used only to test whether a width-naming
     /// <c>[MarshalAs]</c> descriptor is the no-op it claims to be. -1 for anything that is
-    /// not a blittable scalar/enum/pointer.</summary>
+    /// not a blittable scalar/enum.</summary>
     private static int NativeAbiWidth(TypeDesc t) => t.Kind switch
     {
         TypeKind.Primitive => PrimitiveAbiWidth(t.Primitive),
-        TypeKind.Pointer => 8,
         TypeKind.Class when t.Class is { IsEnum: true } ec => PrimitiveAbiWidth(ec.EnumUnderlying),
         _ => -1,
     };

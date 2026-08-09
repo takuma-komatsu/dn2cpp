@@ -3,8 +3,8 @@ using System.Runtime.InteropServices;
 
 namespace PInvokePointerDescriptorBad;
 
-/// <summary>Refusal subject: an unmanaged pointer field carrying any
-/// <c>[MarshalAs]</c> descriptor while crossing a P/Invoke boundary. Real .NET raises
+/// <summary>Refusal subject: a <c>void*</c> field carrying
+/// <c>[MarshalAs(UnmanagedType.SysInt)]</c> across a P/Invoke boundary. Real .NET raises
 /// <c>TypeLoadException</c>; the transpile refuses before the descriptor can be ignored.
 /// Transpiled by the negative arm of gates/build-and-run-pinvoke-native.sh, never run.</summary>
 [StructLayout(LayoutKind.Sequential)]

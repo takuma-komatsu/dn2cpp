@@ -252,8 +252,8 @@ unsafe class Program
         Console.WriteLine("m long-sysint=" + Verdict(() => Marshal.SizeOf(typeof(LongSysInt))) + "/" + Verdict(() => Marshal.SizeOf<LongSysInt>()));
         Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());
         Console.WriteLine("m int-i4=" + Marshal.SizeOf(typeof(IntI4)) + "/" + Marshal.SizeOf<IntI4>());
-        // An unmanaged pointer field takes no descriptor at all. The bare pointer is the
-        // control; SysInt and matching fixed-width descriptors are still invalid.
+        // The bare pointer is the control; SysInt and I8 are invalid on void* and SysInt is
+        // invalid on delegate*. FunctionPtr on delegate* needs a distinct decoded type.
         Console.WriteLine("m pointer-bare=" + Marshal.SizeOf(typeof(BarePointer)) + "/" + Marshal.SizeOf<BarePointer>());
         Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
         Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
