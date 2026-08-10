@@ -138,39 +138,26 @@ echo "== dn2cpp toolchain bundle: $NAME =="
 
 # 1. Native self-hosted CLI (the enabler — transpiles with no .NET present).
 #
-# A prebuilt one is reused only when it was built from the sources now in the tree,
-# never merely because a file is sitting there. `[ -x ]` alone is how a binary from
-# an older tree once got bundled into the fork's export toolchain and failed every
-# gate in that chain — some on a runtime header that had since moved out of the
-# runtime's own header and into the emitted one, the rest on a CLI flag that did not
-# exist yet: one cause, differing only in which stage died first. Nothing upstream
-# could see it, because the binary is an INPUT to the packaging — a stale one
-# produces a bundle that packages and installs perfectly.
-#
-# `src_tree_hash` (gates/_common.sh) is the shared definition; gates/selfhost-emit.sh
-# writes it beside the binary it links. mtime was the cheap alternative and is the
-# wrong one — `find src -newer <binary>` re-fires on every `git checkout`, i.e. an
-# unconditional full self-host rebuild for switching branches. So is the manifest's
-# `dn2cpp_commit`: it names the commit the BUNDLE was cut at and cannot see an
-# uncommitted edit under `src/`, which is the state this runs in most of the time.
+# A prebuilt one is reused only when selfhost_bin_fresh (gates/_common.sh) says it
+# was built from the sources now in the tree — the same predicate the fork gates'
+# preflight asserts with, so a binary reused here is one they accept. Neither mtime
+# nor the manifest's `dn2cpp_commit` would serve: `find src -newer <binary>` re-fires
+# on every `git checkout`, and a commit id cannot see the uncommitted edit under
+# `src/` this runs over most of the time.
 #
 # An explicit --dn2cpp-bin is honoured as given, unchecked: the caller named a
 # specific file (every gate does, through stage_editor_toolchain), and second-guessing
 # a named path is not this script's business. The blind-reuse branch below is
 # therefore reached only by gates/setup-godot-fork.sh and by hand-run packaging —
-# which is precisely where that stale binary came from. The gates cover their
-# own side of that bargain: godot_fork_preflight (gates/_godot_fork.sh) runs
-# this same stamp comparison against $SELFHOST_BIN before the cache check and
-# FAILs on a mismatch, so the path they name here is one they have verified.
+# which is precisely where that stale binary came from.
 if [ -z "$DN2CPP_BIN" ]; then
-    DN2CPP_BIN=artifacts/selfhost-fullcli/dn2cpp$EXE_EXT
-    DN2CPP_SRC_STAMP=artifacts/selfhost-fullcli/dn2cpp.src-hash
-    DN2CPP_SRC_HASH="$(src_tree_hash)"
-    if [ ! -x "$DN2CPP_BIN" ] || [ ! -f "$DN2CPP_SRC_STAMP" ] \
-        || [ "$(cat "$DN2CPP_SRC_STAMP")" != "$DN2CPP_SRC_HASH" ]; then
+    SELFHOST_FRESH=0
+    selfhost_bin_fresh || SELFHOST_FRESH=1
+    DN2CPP_BIN="$SELFHOST_BIN_PATH"
+    if [ "$SELFHOST_FRESH" = 1 ]; then
         if [ -x "$DN2CPP_BIN" ]; then
             echo "-- the native dn2cpp at $DN2CPP_BIN predates the current sources"
-            echo "   stamped $(cat "$DN2CPP_SRC_STAMP" 2>/dev/null || echo '<no stamp>') != $DN2CPP_SRC_HASH"
+            echo "   stamped $SELFHOST_SRC_STAMPED != $SELFHOST_SRC_NOW"
         fi
         echo "-- building the self-hosted native dn2cpp (gates/selfhost-emit.sh)"
         # What the bundle needs is the binary step 4/5 links. Step 5/5 is a separate
@@ -180,7 +167,7 @@ if [ -z "$DN2CPP_BIN" ]; then
         ./gates/selfhost-emit.sh \
             || echo "warning: gates/selfhost-emit.sh did not complete; packaging the binary it produced" >&2
     else
-        echo "-- reusing native dn2cpp: $DN2CPP_BIN (built from src $DN2CPP_SRC_HASH)"
+        echo "-- reusing native dn2cpp: $DN2CPP_BIN (built from src $SELFHOST_SRC_NOW)"
     fi
 fi
 [ -x "$DN2CPP_BIN" ] || { echo "error: native dn2cpp not executable: $DN2CPP_BIN" >&2; exit 1; }

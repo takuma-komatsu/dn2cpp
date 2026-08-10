@@ -74,8 +74,11 @@ DN2CPP_REQUIRE_ALL=1 ./gates/run-all-gates.sh # every gate must RUN — a skip i
 
 **Before a merge, run `./gates/pre-merge.sh`.** It runs the Release suite then
 the Debug suite, each under `DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0`, with
-`gates/verify-culture-invariance.sh` ahead of both, and re-derives its verdict
-from the run's own artifacts rather than trusting an exit code.
+`gates/verify-culture-invariance.sh` ahead of both and, ahead of the suites, a
+self-host rebuild (`gates/selfhost-emit.sh`) whenever the binary's stamp no
+longer matches the source tree — the fork lane's gates require that binary, so
+there is no separate manual step to run first. It re-derives its verdict from
+the run's own artifacts rather than trusting an exit code.
 The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 `.github/workflows/windows-smoke.yml`, `.github/workflows/macos-smoke.yml`) are
 **not** that gate: the cross-toolchain gates cannot run on a hosted runner, so CI

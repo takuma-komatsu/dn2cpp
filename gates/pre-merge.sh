@@ -3,17 +3,18 @@
 # merge to `main`, so that "which two commands, under which config, with which
 # environment" stops living in somebody's memory.
 #
-#     ./gates/pre-merge.sh                # the real thing (~1-2h; both configs)
+#     ./gates/pre-merge.sh                # the real thing (~1-2h, + a self-host build when one is due)
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
 #     ./gates/pre-merge.sh --keep-going   # run Debug even after Release fails
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
 #
-# WHAT IT RUNS, AND WHY EXACTLY THIS. One harness and two full suites, in this
-# order:
+# WHAT IT RUNS, AND WHY EXACTLY THIS. One harness, one build and two full
+# suites, in this order:
 #
 #   0. gates/verify-culture-invariance.sh
-#   1. CONFIG=Release  DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
-#   2. CONFIG=Debug    DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
+#   1. gates/selfhost-emit.sh — only when the binary no longer describes src/
+#   2. CONFIG=Release  DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
+#   3. CONFIG=Debug    DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
 #
 #   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. Without
 #     it a machine missing a prerequisite reports green over a hole, which is
@@ -40,6 +41,13 @@
 #     It exits 77 when the HOST cannot decide the question (Windows ignores
 #     LANG), which is reported as not-performed rather than failed — see the
 #     refusal at its site.
+#   - The self-host build is here as an INPUT the suites require, not as a
+#     verdict of its own: godot_fork_preflight (gates/_godot_fork.sh) demands
+#     artifacts/selfhost-fullcli/dn2cpp and the src stamp beside it before every
+#     fork-lane gate. Without the binary they gate_skip, which DN2CPP_REQUIRE_ALL=1
+#     turns into a failure; with a stale one they FAIL outright — and either way
+#     the news arrives hours into the run. It builds only when the stamp no longer
+#     matches src_tree_hash, so a tree whose binary is current pays nothing here.
 #
 # WHY THIS IS NOT A GATE. It runs the suite — twice. It lives beside
 # gates/verify-locks.sh and gates/measure-*.sh, outside the build-and-run-*.sh
@@ -47,17 +55,20 @@
 # gate suite does not terminate.
 #
 # WHAT IT DELIBERATELY DOES NOT RUN, so nobody grows it into a junk drawer:
-# gates/verify-locks.sh, gates/selfhost-*.sh, gates/measure-*.sh,
-# dist/smoke-test.sh, dist/nuget-smoke-test.sh. Each is a manual AID for a
-# surface some gate already covers, or a measurement with no pass/fail verdict;
-# AGENTS.md names them at the change that obliges them. A merge gate whose
-# runtime doubles for things that answer no pass/fail question is a merge gate
-# people stop running. The test that admitted verify-culture-invariance.sh and
-# keeps the rest out is not "is it useful" — it is whether the surface is one NO
-# suite run covers: verify-locks.sh exercises the lock machinery the suite
-# itself runs under every time, and the selfhost harnesses assert a fixpoint the
-# suite's own gates transpile through, whereas nothing in either suite can
-# observe that a bucket's green was a fact about ja-JP.
+# gates/verify-locks.sh, gates/selfhost-measure*.sh, gates/selfhost-emit-console.sh,
+# gates/measure-*.sh, dist/smoke-test.sh, dist/nuget-smoke-test.sh. Each is a
+# manual AID for a surface some gate already covers, or a measurement with no
+# pass/fail verdict; AGENTS.md names them at the change that obliges them. A merge
+# gate whose runtime doubles for things that answer no pass/fail question is a
+# merge gate people stop running. The test that admitted
+# verify-culture-invariance.sh and keeps those out is not "is it useful" — it is
+# whether the surface is one NO suite run covers: verify-locks.sh exercises the
+# lock machinery the suite itself runs under every time, and the console selfhost
+# harness emits what the suite's own gates transpile through, whereas nothing in
+# either suite can observe that a bucket's green was a fact about ja-JP.
+# gates/selfhost-emit.sh is in on a different test again, and it is the only thing
+# that may be: it answers no verdict at all — it produces a file the suites refuse
+# to run without.
 #
 # WHY IT RE-DERIVES THE VERDICT INSTEAD OF TRUSTING THE EXIT CODE. The runner's
 # exit code and this script's verdict are not the same question, and the gap is
@@ -111,6 +122,21 @@ set -uo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
+# ── the self-host freshness probe (a child of this script, never a source) ────
+# The predicate is selfhost_bin_fresh (gates/_common.sh), and reaching it means
+# BEING the script that sources _common.sh: it cd's to its sourcer's parent and
+# turns on `set -euo pipefail`, so a `bash -c` sourcing it dies on its own `set
+# -u` and this script must not inherit either option. Hence a child of itself in
+# probe mode, printing `<0|1> <src-tree-hash> <binary path>` on one line.
+# Ahead of the self-test block on purpose: the self-test spawns this mode.
+if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "1" ]; then
+    source "$REPO/gates/_common.sh"
+    probe_rc=0
+    selfhost_bin_fresh || probe_rc=1
+    printf '%s %s %s\n' "$probe_rc" "$SELFHOST_SRC_NOW" "$SELFHOST_BIN_PATH"
+    exit 0
+fi
+
 DRY_RUN=0
 KEEP_GOING=0
 for arg in "$@"; do
@@ -133,6 +159,23 @@ done
 # refuses a second runner sharing one).
 LOGROOT=${DN2CPP_PREMERGE_LOGROOT:-/tmp/dn2cpp-premerge-$(basename "$REPO")}
 RECEIPT="$LOGROOT/_receipt.txt"
+TRANSCRIPT="$LOGROOT/_premerge.log"
+
+# The whole run, on disk. Phase lines and the verdict live nowhere else — the
+# per-gate logs are the runner's — so a scrollback that is lost or overwritten
+# takes two hours of record with it.
+#
+# A pipeline and not `exec > >(tee …)`: a process substitution is not waited for
+# at exit, so the tail of the run — which is the verdict — can be dropped.
+# Three modes stay out: --dry-run, whose whole contract is to leave nothing
+# behind; the probe, whose stdout IS its return value; and the self-test, which
+# spawns runs of its own and would bury LOGROOT under theirs.
+if [ "$DRY_RUN" = "0" ] && [ "${DN2CPP_PREMERGE_SELFTEST:-0}" != "1" ] \
+   && [ "${DN2CPP_PREMERGE_TRANSCRIPT:-0}" != "1" ]; then
+    mkdir -p "$LOGROOT"
+    DN2CPP_PREMERGE_TRANSCRIPT=1 bash "$0" "$@" 2>&1 | tee "$TRANSCRIPT"
+    exit "${PIPESTATUS[0]}"
+fi
 
 # The runner's own TOTAL: every build-and-run-*.sh, Godot gates included.
 EXPECTED_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
@@ -159,12 +202,27 @@ _premerge_stamp_name() {
 
 # CMake's truthiness, narrowed to what a cache entry can hold. Compared
 # normalized so a cache written as `1` never reads as a flip of a default
-# written `ON`.
+# written `ON`. Answers in _PCB_VALUE and folds case through `nocasematch`
+# rather than `tr`: this sits in the innermost loop of a scan over every build
+# dir, where a subshell per question is the whole cost of the scan.
 _premerge_cmake_bool() {
-    case "$(printf '%s' "$1" | tr 'a-z' 'A-Z')" in
-        1|ON|TRUE|YES|Y)                   printf 'ON' ;;
-        0|OFF|FALSE|NO|N|IGNORE|''|*NOTFOUND) printf 'OFF' ;;
-        *)                                 printf '%s' "$1" ;;
+    shopt -s nocasematch
+    case "$1" in
+        1|on|true|yes|y)                      _PCB_VALUE=ON ;;
+        0|off|false|no|n|ignore|''|*notfound)  _PCB_VALUE=OFF ;;
+        *)                                    _PCB_VALUE="$1" ;;
+    esac
+    shopt -u nocasematch
+}
+
+# _premerge_lookup NAME TABLE — sets _PL_VALUE to the LAST "NAME VALUE" line's
+# value, empty when absent. `##` is greedy from the left, which is what makes
+# the last -D of a configure command the one that counts.
+_premerge_lookup() {
+    local t=$'\n'"$2"
+    case "$t" in
+        *$'\n'"$1 "*) _PL_VALUE=${t##*$'\n'"$1 "}; _PL_VALUE=${_PL_VALUE%%$'\n'*} ;;
+        *)            _PL_VALUE="" ;;
     esac
 }
 
@@ -202,14 +260,33 @@ premerge_cmake_cache_warn() {
     # bash 3.2: no associative arrays, and `${#a[@]}` on an empty array is an
     # error under `set -u`. Both accumulators are newline-separated strings.
     local moved="" frozen="" stale_dirs="" n_dirs=0 n_stamped=0
-    local c dir rel home home_phys stamp name want cached ov
+    local caches=() c dir rel home home_phys stamp entries stampopts
+    local name want cached cbool wbool
     for c in "$art"/.cmake*/CMakeCache.txt "$art"/*/.cmake*/CMakeCache.txt; do
         [ -f "$c" ] || continue
+        caches[$n_dirs]="$c"
         n_dirs=$((n_dirs + 1))
-        dir=$(dirname "$c")
+    done
+
+    if [ "$n_dirs" -eq 0 ]; then
+        note "no configured CMake build dir under artifacts/ — nothing can be stale."
+        return 0
+    fi
+    # The scan reads every one of them before it can say anything, so name the
+    # size first: silence for the length of a scan reads as a hung run.
+    note "scanning $n_dirs CMakeCache.txt under artifacts/ ..."
+
+    for c in "${caches[@]}"; do
+        dir=${c%/*}
         rel=${dir#"$repo"/}
-        home=$(LC_ALL=C sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$c")
-        home=${home%%$'\n'*}
+        # ONE sed per cache file, feeding the pure-bash lookup above. Per-lookup
+        # sed is a subshell per (build dir × option), which is the whole cost of
+        # this scan and long enough to look like a hang.
+        entries=$(LC_ALL=C sed -n \
+            -e 's/^CMAKE_HOME_DIRECTORY:INTERNAL=/CMAKE_HOME_DIRECTORY /p' \
+            -e 's/^\([A-Za-z_][A-Za-z0-9_]*\):BOOL=/\1 /p' "$c")
+        _premerge_lookup CMAKE_HOME_DIRECTORY "$entries"
+        home=$_PL_VALUE
         # The test is "names a source dir INSIDE this repository", not "equals
         # $repo/runtime": a build dir may legitimately be configured from
         # another source dir in the tree (the P/Invoke gates build
@@ -235,17 +312,24 @@ premerge_cmake_cache_warn() {
         stamp="$dir/$stampname"
         [ -f "$stamp" ] || continue
         n_stamped=$((n_stamped + 1))
+        # Every -D of the recorded configure command in one pass; the lookup's
+        # last-wins rule is what carries `tail -1` across.
+        stampopts=$(LC_ALL=C sed -n 's/^-D\([A-Za-z_][A-Za-z0-9_]*\)=/\1 /p' "$stamp")
         while read -r name want; do
             [ -n "$name" ] || continue
-            cached=$(LC_ALL=C sed -n "s/^$name:BOOL=//p" "$c")
-            cached=${cached%%$'\n'*}
+            _premerge_lookup "$name" "$entries"
+            cached=$_PL_VALUE
             [ -n "$cached" ] || continue
             # An explicit -D in the recorded configure command IS the intent;
             # only where the configure said nothing does the CMakeLists default
             # get to be the expected value.
-            ov=$(LC_ALL=C sed -n "s/^-D$name=//p" "$stamp" | tail -1)
-            [ -n "$ov" ] && want="$ov"
-            if [ "$(_premerge_cmake_bool "$cached")" != "$(_premerge_cmake_bool "$want")" ]; then
+            _premerge_lookup "$name" "$stampopts"
+            [ -n "$_PL_VALUE" ] && want="$_PL_VALUE"
+            _premerge_cmake_bool "$cached"
+            cbool=$_PCB_VALUE
+            _premerge_cmake_bool "$want"
+            wbool=$_PCB_VALUE
+            if [ "$cbool" != "$wbool" ]; then
                 frozen="$frozen$name $cached $want $rel
 "
                 stale_dirs="$stale_dirs$dir
@@ -255,11 +339,6 @@ premerge_cmake_cache_warn() {
 $defaults
 OPTIONS
     done
-
-    if [ "$n_dirs" -eq 0 ]; then
-        note "no configured CMake build dir under artifacts/ — nothing can be stale."
-        return 0
-    fi
 
     if [ -n "$moved" ]; then
         while IFS='|' read -r rel home; do
@@ -348,6 +427,29 @@ premerge_culture_argv() {
         PREMERGE_CULTURE_ARGV+=(caffeinate -i)
     fi
     PREMERGE_CULTURE_ARGV+=(bash "$REPO/gates/verify-culture-invariance.sh")
+}
+
+# premerge_selfhost_argv — the self-host build's command line, same shape and
+# same reason as the two above.
+premerge_selfhost_argv() {
+    PREMERGE_SELFHOST_ARGV=()
+    if [ "${DN2CPP_PREMERGE_NO_CAFFEINATE:-0}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
+        PREMERGE_SELFHOST_ARGV+=(caffeinate -i)
+    fi
+    PREMERGE_SELFHOST_ARGV+=(bash "$REPO/gates/selfhost-emit.sh")
+}
+
+# premerge_selfhost_state — ask the probe above, into SELFHOST_FRESH (0 reuse,
+# 1 rebuild), SELFHOST_SRC (the tree hash the answer was taken against) and
+# SELFHOST_BIN (the file the predicate looked at). A probe that cannot answer at
+# all means rebuild: the phase this feeds must never omit a build on a guess.
+premerge_selfhost_state() {
+    local out="" fresh="" src="" bin=""
+    out=$(DN2CPP_PREMERGE_PROBE=1 bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
+    read -r fresh src bin <<<"$out" || :
+    SELFHOST_FRESH=${fresh:-1}
+    SELFHOST_SRC=${src:-unknown}
+    SELFHOST_BIN=${bin:-artifacts/selfhost-fullcli/dn2cpp}
 }
 
 # ── the verdict, re-derived from the run's own artifacts ─────────────────────
@@ -553,15 +655,29 @@ echo "stub culture harness"
 exit "${DN2CPP_STUB_CULTURE_RC:-0}"
 CSTUB
     chmod +x "$FAKE/gates/verify-culture-invariance.sh"
+    # Stub self-host build, for the reason the culture stub exists — and one more:
+    # the real one is a many-minute native link, and a self-test that could reach
+    # it is a self-test nobody runs. The fake repo carries no gates/_common.sh, so
+    # the freshness probe cannot answer there and every e2e case takes the rebuild
+    # arm, which is what makes this stub the ONLY selfhost-emit.sh reachable here.
+    cat > "$FAKE/gates/selfhost-emit.sh" <<'SSTUB'
+#!/usr/bin/env bash
+echo "stub self-host build"
+printf 'called\n' >> "${DN2CPP_STUB_SELFHOST_MARK:-/dev/null}"
+exit "${DN2CPP_STUB_SELFHOST_RC:-0}"
+SSTUB
+    chmod +x "$FAKE/gates/selfhost-emit.sh"
 
-    # e2e NAME EXPECT_RC RELEASE_RC DEBUG_RC EXPECT_CALLS [EXTRA_ARG] [CULTURE_RC]
+    # e2e NAME EXPECT_RC RELEASE_RC DEBUG_RC EXPECT_CALLS [EXTRA_ARG] [CULTURE_RC] [SELFHOST_RC]
     e2e() {
-        local name="$1" want_rc="$2" rel_rc="$3" dbg_rc="$4" want_calls="$5" extra="${6:-}" cult="${7:-0}"
+        local name="$1" want_rc="$2" rel_rc="$3" dbg_rc="$4" want_calls="$5" extra="${6:-}" cult="${7:-0}" sh_rc="${8:-0}"
         local root="$ST_TMP/e2e-$name" rc=0 calls
         mkdir -p "$root"
         DN2CPP_PREMERGE_SELFTEST=0 \
         DN2CPP_PREMERGE_LOGROOT="$root" \
         DN2CPP_STUB_CULTURE_RC="$cult" \
+        DN2CPP_STUB_SELFHOST_RC="$sh_rc" \
+        DN2CPP_STUB_SELFHOST_MARK="$root/_selfhost_calls.txt" \
         DN2CPP_STUB_RC_Release="$rel_rc" \
         DN2CPP_STUB_RC_Debug="$dbg_rc" \
             bash "$FAKE/gates/pre-merge.sh" $extra >"$root/_out.txt" 2>&1 || rc=$?
@@ -612,6 +728,160 @@ CSTUB
         st_bad "culture-not-performed: the receipt hides it"
     fi
 
+    # Phase 1's two outcomes that the driver owns. A red self-host build must stop
+    # the suites before they run, for the same reason a red culture harness does.
+    e2e selfhost-red           1 0 0 ""               ""            0 1
+    e2e selfhost-red-keepgoing 1 0 0 "Release,Debug," --keep-going  0 1
+    if grep -q 'selfhost=RED' "$ST_TMP/e2e-selfhost-red/_out.txt"; then
+        st_ok "selfhost-red: verdict names selfhost=RED"
+    else
+        st_bad "selfhost-red: verdict does not name selfhost=RED — see $ST_TMP/e2e-selfhost-red/_out.txt"
+    fi
+    # The stub is reached through the FAKE repo's gates/ — proof that no self-test
+    # path can spend minutes in the real native link.
+    if [ -f "$ST_TMP/e2e-both-green/_selfhost_calls.txt" ]; then
+        st_ok "both-green: the self-host phase ran the fake repo's stub"
+    else
+        st_bad "both-green: no self-host build was attempted at all"
+    fi
+    if grep -q '^selfhost: rebuilt' "$ST_TMP/e2e-both-green/_receipt.txt" 2>/dev/null; then
+        st_ok "both-green: the receipt records the self-host binary's provenance"
+    else
+        st_bad "both-green: the receipt does not record the self-host build"
+    fi
+
+    # The transcript, and specifically its LAST line: a form that loses the tail
+    # loses the verdict, which is the one line the transcript exists for.
+    ST_LOG="$ST_TMP/e2e-both-green/_premerge.log"
+    if [ -f "$ST_LOG" ]; then
+        st_ok "both-green: a transcript was written"
+    else
+        st_bad "both-green: no transcript at $ST_LOG"
+    fi
+    if grep -q 'PRE-MERGE PASSED' "$ST_LOG" 2>/dev/null; then
+        st_ok "both-green: the transcript carries the verdict"
+    else
+        st_bad "both-green: the transcript does not reach the verdict — $ST_LOG"
+    fi
+    if [ "$(tail -1 "$ST_LOG" 2>/dev/null)" = "$(tail -1 "$ST_TMP/e2e-both-green/_out.txt")" ]; then
+        st_ok "both-green: the transcript's last line is the run's last line"
+    else
+        st_bad "both-green: the transcript is short of the run's last line — $ST_LOG"
+    fi
+
+    say "self-host freshness (the real predicate, against a synthetic tree)"
+
+    # A repo-shaped git checkout whose gates/_common.sh is one line delegating to
+    # the real one: _common.sh cd's to ITS SOURCER's parent, so the real
+    # selfhost_bin_fresh and src_tree_hash then run over THIS tree.
+    SH_REPO="$ST_TMP/selfhostrepo"
+    mkdir -p "$SH_REPO/gates" "$SH_REPO/src" "$SH_REPO/artifacts/selfhost-fullcli"
+    printf 'source "%s"\n' "$REPO/gates/_common.sh" > "$SH_REPO/gates/_common.sh"
+    cp "$0" "$SH_REPO/gates/pre-merge.sh"
+    : > "$SH_REPO/gates/build-and-run-a.sh"
+    printf 'the transpiler\n' > "$SH_REPO/src/a.cs"
+    git -C "$SH_REPO" init -q
+
+    # sh_probe — the real predicate's answer for $SH_REPO: "<0|1> <hash> <bin>".
+    # The binary's NAME comes back from the probe rather than being spelled here,
+    # so the fixtures below write the file EXE_EXT actually makes it look for.
+    sh_probe() { DN2CPP_PREMERGE_PROBE=1 bash "$SH_REPO/gates/pre-merge.sh" 2>/dev/null; }
+    sh_bin() { local o; o=$(sh_probe); printf '%s' "${o##* }"; }
+    sh_hash() { local o r; o=$(sh_probe); r=${o#* }; printf '%s' "${r%% *}"; }
+
+    # sh_case NAME WANT — assert the freshness answer (0 fresh, 1 rebuild).
+    sh_case() {
+        local got o
+        o=$(sh_probe)
+        got=${o%% *}
+        if [ "$got" = "$2" ]; then
+            st_ok "$1 -> $([ "$2" = 0 ] && echo fresh || echo rebuild)"
+        else
+            st_bad "$1 -> '$got' (expected $2); probe said '$o'"
+        fi
+    }
+
+    SH_BIN=$(sh_bin)
+    SH_STAMP="$SH_REPO/artifacts/selfhost-fullcli/dn2cpp.src-hash"
+    if [ -n "$SH_BIN" ]; then
+        st_ok "the probe answers for a synthetic tree: $SH_BIN"
+    else
+        st_bad "the probe produced no answer for $SH_REPO — see gates/_common.sh"
+    fi
+
+    sh_case "no binary at all" 1
+    printf '#!/bin/sh\n' > "$SH_REPO/$SH_BIN"
+    chmod +x "$SH_REPO/$SH_BIN"
+    # Unknown provenance, not a pass: this is the state a hand-copied binary is in.
+    sh_case "a binary with no stamp" 1
+    printf 'deadbeefdeadbeef\n' > "$SH_STAMP"
+    sh_case "a binary stamped for other sources" 1
+    printf '%s\n' "$(sh_hash)" > "$SH_STAMP"
+    sh_case "a binary stamped for these sources" 0
+    # Content, not mtime: an edit under src/ that leaves the stamp file alone is
+    # what a `git checkout` between branches looks like from here.
+    printf 'the transpiler, edited\n' > "$SH_REPO/src/a.cs"
+    sh_case "a source edit under a matching stamp" 1
+
+    # --dry-run must answer the reuse question BEFORE the hours, in both states.
+    printf '%s\n' "$(sh_hash)" > "$SH_STAMP"
+    SH_DRY=0
+    DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$ST_TMP/e2e-selfhost-dry" \
+        bash "$SH_REPO/gates/pre-merge.sh" --dry-run >"$ST_TMP/selfhost-dry.txt" 2>&1 || SH_DRY=$?
+    if [ "$SH_DRY" = 0 ] && grep -q 'NOT rebuilt' "$ST_TMP/selfhost-dry.txt"; then
+        st_ok "--dry-run reports a current binary as not-rebuilt"
+    else
+        st_bad "--dry-run (exit $SH_DRY) does not report the reuse — see $ST_TMP/selfhost-dry.txt"
+    fi
+    rm -f "$SH_STAMP"
+    DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$ST_TMP/e2e-selfhost-dry" \
+        bash "$SH_REPO/gates/pre-merge.sh" --dry-run >"$ST_TMP/selfhost-dry2.txt" 2>&1 || SH_DRY=$?
+    if grep -q 'gates/selfhost-emit.sh' "$ST_TMP/selfhost-dry2.txt"; then
+        st_ok "--dry-run prints the command a stale binary would run"
+    else
+        st_bad "--dry-run does not name gates/selfhost-emit.sh — see $ST_TMP/selfhost-dry2.txt"
+    fi
+
+    # The three modes the transcript must not wrap. --dry-run and the probe are
+    # asserted by what they leave on disk: neither may create a LOGROOT at all.
+    ST_NOLOG="$ST_TMP/nolog-dryrun"
+    DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$ST_NOLOG" \
+        bash "$FAKE/gates/pre-merge.sh" --dry-run >/dev/null 2>&1
+    if [ -e "$ST_NOLOG" ]; then
+        st_bad "--dry-run created $ST_NOLOG"
+    else
+        st_ok "--dry-run writes no transcript and no LOGROOT"
+    fi
+    ST_NOLOG="$ST_TMP/nolog-probe"
+    DN2CPP_PREMERGE_PROBE=1 DN2CPP_PREMERGE_LOGROOT="$ST_NOLOG" \
+        bash "$SH_REPO/gates/pre-merge.sh" >/dev/null 2>&1
+    if [ -e "$ST_NOLOG" ]; then
+        st_bad "the probe created $ST_NOLOG"
+    else
+        st_ok "the probe writes no transcript and no LOGROOT"
+    fi
+    # And the self-test: reaching this line un-re-executed IS the assertion.
+    if [ "${DN2CPP_PREMERGE_TRANSCRIPT:-0}" = "1" ]; then
+        st_bad "the self-test is running inside a transcript re-exec"
+    else
+        st_ok "the self-test is not wrapped in a transcript"
+    fi
+
+    say "premerge_selfhost_argv"
+
+    premerge_selfhost_argv
+    ARGV_SH="${PREMERGE_SELFHOST_ARGV[*]}"
+    case "$ARGV_SH" in
+        *"$REPO/gates/selfhost-emit.sh"*) st_ok "the argv names this repo's selfhost-emit.sh" ;;
+        *) st_bad "the argv does not name gates/selfhost-emit.sh: $ARGV_SH" ;;
+    esac
+    # The one thing the argv cannot prove about itself: that the script is there.
+    if [ -f "$REPO/gates/selfhost-emit.sh" ]; then
+        st_ok "gates/selfhost-emit.sh exists"
+    else
+        st_bad "gates/selfhost-emit.sh does not exist — the phase would die at exec"
+    fi
+
     # A pre-merge that honours SKIP_GODOT would be a merge gate with seventeen
     # gates missing; the refusal has to come from here, not as a mystery exit 2
     # out of run #1.
@@ -625,6 +895,25 @@ CSTUB
     fi
 
     say "premerge_cmake_cache_warn"
+
+    # The table lookup the scan reads both a cache and a configure stamp
+    # through. The third case is the load-bearing one: a name given twice is the
+    # last one cmake acted on.
+    ST_TBL='DN2CPP_ALPHA ON
+DN2CPP_BETA OFF
+DN2CPP_ALPHA OFF'
+    # st_lookup NAME WANT
+    st_lookup() {
+        _premerge_lookup "$1" "$ST_TBL"
+        if [ "$_PL_VALUE" = "$2" ]; then
+            st_ok "_premerge_lookup $1 -> '${2:-<empty>}'"
+        else
+            st_bad "_premerge_lookup $1 -> '$_PL_VALUE' (expected '$2')"
+        fi
+    }
+    st_lookup DN2CPP_GAMMA ""
+    st_lookup DN2CPP_BETA OFF
+    st_lookup DN2CPP_ALPHA OFF
 
     # st_repo NAME — a repo-shaped dir declaring two options (ALPHA ON, BETA
     # OFF) and carrying the real _common.sh's stamp-name assignment, so the
@@ -924,6 +1213,7 @@ note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
 note "logs:   $LOGROOT"
+[ "$DRY_RUN" = "0" ] && note "record: $TRANSCRIPT"
 
 # Before anything long starts, and before --dry-run prints its plan: a person
 # deciding whether to spend two hours is exactly who needs to know the tree
@@ -939,6 +1229,16 @@ if [ "$DRY_RUN" = "1" ]; then
     printf '\n  culture-invariance harness:\n    '
     printf '%s ' "${PREMERGE_CULTURE_ARGV[@]}"
     printf '\n    then assert: exit 0 (green) or 77 (host cannot decide); 1 is a red merge gate\n'
+    premerge_selfhost_state
+    printf '\n  self-hosted native CLI:\n'
+    if [ "$SELFHOST_FRESH" = "0" ]; then
+        printf '    %s already describes src %s — NOT rebuilt\n' "$SELFHOST_BIN" "$SELFHOST_SRC"
+    else
+        premerge_selfhost_argv
+        printf '    %s does not describe src %s; this would run:\n      ' "$SELFHOST_BIN" "$SELFHOST_SRC"
+        printf '%s ' "${PREMERGE_SELFHOST_ARGV[@]}"
+        printf '\n'
+    fi
     for cfg in $CONFIGS; do
         logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
         premerge_argv "$cfg" "$logdir"
@@ -1001,6 +1301,39 @@ case "$CULTURE_RC" in
         ;;
 esac
 
+# ── phase 1: the self-hosted native CLI the suites require ───────────────────
+# The reuse condition here MUST be godot_fork_preflight's accept condition, which
+# is why neither is written twice: a build this phase skips and the fork gates
+# then demand is the worst failure shape available — hours of green, then a
+# REQUIRE_ALL skip over a file this run could have produced in minutes.
+say "self-host native CLI (gates/selfhost-emit.sh)"
+premerge_selfhost_state
+SELFHOST_NOTE="(unset)"
+if [ "$SELFHOST_FRESH" = "0" ]; then
+    SELFHOST_NOTE="reused (src $SELFHOST_SRC)"
+    good "self-host: $SELFHOST_BIN already describes these sources."
+    note "reusing the binary stamped src $SELFHOST_SRC — nothing to rebuild."
+    RESULTS="${RESULTS}selfhost=reused "
+else
+    premerge_selfhost_argv
+    "${PREMERGE_SELFHOST_ARGV[@]}" 2>&1 | tee "$LOGROOT/_selfhost.log"
+    SELFHOST_RC=${PIPESTATUS[0]}
+    if [ "$SELFHOST_RC" -eq 0 ]; then
+        SELFHOST_NOTE="rebuilt (src $SELFHOST_SRC)"
+        good "self-host: rebuilt $SELFHOST_BIN from src $SELFHOST_SRC."
+        RESULTS="${RESULTS}selfhost=rebuilt "
+    else
+        # dist/package-toolchain.sh downgrades this same failure to a warning,
+        # because it wants the binary step 4 links and a step-5 fixpoint
+        # divergence is a separate question. A merge gate has no such licence:
+        # the divergence is precisely a thing that must not merge.
+        SELFHOST_NOTE="FAILED (exit $SELFHOST_RC)"
+        bad "self-host: FAILED (exit $SELFHOST_RC) — see $LOGROOT/_selfhost.log"
+        RESULTS="${RESULTS}selfhost=RED "
+        OVERALL=1
+    fi
+fi
+
 for cfg in $CONFIGS; do
     logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
     if [ "$OVERALL" -ne 0 ] && [ "$KEEP_GOING" != "1" ]; then
@@ -1041,6 +1374,9 @@ if [ "$OVERALL" -eq 0 ]; then
         printf 'commit:  %s @ %s%s\n' "$HEAD_BRANCH" "$HEAD_SHA" "$DIRTY"
         printf 'gates:   %s per config\n' "$EXPECTED_GATES"
         printf 'culture: %s\n' "$CULTURE_NOTE"
+        # Which sources the binary the fork lane ran on was built from: a green
+        # produced over somebody else's self-host binary is a different claim.
+        printf 'selfhost: %s\n' "$SELFHOST_NOTE"
         printf 'runs:    %s\n' "$RESULTS"
         printf 'elapsed: %ss\n' "$ELAPSED"
         # What the green was produced over. A reader who was not there cannot
@@ -1051,10 +1387,12 @@ if [ "$OVERALL" -eq 0 ]; then
     } > "$RECEIPT"
     good "PRE-MERGE PASSED — both configs, $EXPECTED_GATES gates each, every gate ran."
     note "receipt: $RECEIPT"
+    note "record:  $TRANSCRIPT"
     exit 0
 fi
 
 rm -f "$RECEIPT"
 bad "PRE-MERGE FAILED — do not merge."
 note "Per-gate logs: $LOGROOT/{release,debug}/<gate>.log"
+note "This run's own output: $TRANSCRIPT"
 exit 1
