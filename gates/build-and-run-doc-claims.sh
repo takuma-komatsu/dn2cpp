@@ -368,6 +368,55 @@ tpl_lanes=$(grep -oE '<!--lane:!?[a-z0-9-]+-->' "$TPL" | sed -E 's/^<!--lane:!?/
 known_lanes=$(sed -nE 's/^LANES_KNOWN="(.*)"$/\1/p' "$RG" | tr ' ' '\n' | sort -u)
 set_eq "$TPL lane markers vs LANES_KNOWN" "the template" "$tpl_lanes" "$RG" "$known_lanes"
 
+# The notes carry only what changes per release; the standing text lives in a
+# guide the notes link at a pinned sha. Three ways that split rots, none of them
+# visible in a green cut.
+
+# (A) A renamed guide turns EVERY past release's links into 404s, silently — the
+# links are pinned to a sha, so nothing revisits them. The linked path therefore
+# has to exist AND be the one $RG states, which is what a cut checks for itself.
+tpl_guide=$(grep -oE 'blob/@@DOCS_REF@@/[A-Za-z0-9_./+-]+' "$TPL" \
+            | sed 's|^blob/@@DOCS_REF@@/||' | sort -u)
+guide_files=""
+for g in $tpl_guide; do
+    if [ -f "$g" ]; then
+        ok "$TPL links '$g', which exists"
+        guide_files="$guide_files $g"
+    else
+        bad "$TPL links '$g', which is not a file — a renamed guide 404s every past release's links; restore the path or re-point the notes"
+    fi
+done
+rg_guide=$(sed -nE 's/^GUIDE=["'"'"']?([^"'"'"']*)["'"'"']?$/\1/p' "$RG" | sort -u)
+set_eq "$TPL guide links vs $RG's GUIDE=" "linked by the template" "$tpl_guide" "GUIDE= in $RG" "$rg_guide"
+
+# (B) and (C) read the linked files, so they have a subject only once (A) holds.
+if [ -n "${guide_files// }" ]; then
+
+    # (B) A renamed guide SECTION is worse than a 404: the link still returns 200
+    # and lands the reader at the top of the page with no sign anything is wrong.
+    # The slug rule below approximates GitHub's (lowercase, spaces to `-`, ASCII
+    # punctuation dropped, non-ASCII kept) — which is why the guide's headings are
+    # written without punctuation, keeping the two in agreement by construction.
+    tpl_anchors=$(grep -oE 'blob/@@DOCS_REF@@/[A-Za-z0-9_./+-]+#[^)]+' "$TPL" \
+                  | sed 's/^[^#]*#//' | sort -u)
+    guide_slugs=$(sed -n 's/^#\{2,6\} //p' $guide_files \
+                  | LC_ALL=C tr 'A-Z' 'a-z' \
+                  | LC_ALL=C sed -e 's/[]!"#$%&'"'"'()*+,./:;<=>?@[\^`{|}~]//g' -e 's/ /-/g' \
+                  | sort -u)
+    lost_anchors=$(comm -23 <(printf '%s\n' "$tpl_anchors") <(printf '%s\n' "$guide_slugs") | tr '\n' ' ')
+    eq "$TPL link anchors that name no heading in the guide" "none" "${lost_anchors:-none}" \
+       "a link to a missing anchor still returns 200 and lands at the top of the page; rename the anchor with the heading, or restore the heading"
+
+    # (C) The one way the split itself rots is a section written on both sides and
+    # corrected on one. Sharing a `## ` heading is that state, whichever copy is
+    # stale, so the two top-level heading sets must be disjoint.
+    tpl_h2=$(sed -n 's/^## //p' "$TPL" | sort -u)
+    guide_h2=$(sed -n 's/^## //p' $guide_files | sort -u)
+    shared_h2=$(comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
+    eq "sections written in both $TPL and the guide" "none" "${shared_h2:-none}" \
+       "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
+fi
+
 echo "== 9/11 the pinned toolchains a bundle ships, and their keep lists =="
 # Everything here holds for BOTH pins — the Emscripten SDK and the cmake+ninja
 # pair — because both are the same thing: an upstream archive per host, unpacked,
