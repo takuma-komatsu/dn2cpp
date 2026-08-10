@@ -616,7 +616,7 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 | `runtime/godot/`, `runtime/dotnetmodule/` | Table-driven GDExtension bridge; `modules/mono` drop-in glue |
 | `runtime/CMakeLists.txt` | Sole native build backend (Ninja); gates thin-wrap it |
 | `internal/DnZlib/`, `internal/DnBrotli/`, `internal/DnHttp/` | Managed-swap libraries shipped as conditional default references |
-| `third_party/` | Vendored: `bdwgc/`, `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
+| `third_party/` | Vendored: `bdwgc/`, `bdwgc-upstream/` (alternate GC source tree, `DN2CPP_GC_BACKEND=upstream`), `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
