@@ -493,9 +493,12 @@ namespace Http2Unary
                               " server-aborted=" + stat.Contains("aborted=1"));
         }
 
-        // Its own frame, so the dropped response is not a live local of the loop
-        // above — on a conservative collector a stack slot still naming it would
-        // keep it (and its stream) reachable forever.
+        // Its own REAL call frame, so the dropped response is dead once this
+        // returns: on a conservative collector the graph is only unrooted when an
+        // epilogue restores the caller's callee-saved registers, so the inliner
+        // must be blocked — inlined, a register can name the send's Task through
+        // every collection of the loop above.
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         private static void DropResponse(HttpClient client, string h2cBase)
         {
             var req = new HttpRequestMessage(HttpMethod.Get, h2cBase + "/drip")
