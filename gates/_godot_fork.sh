@@ -448,19 +448,18 @@ godot_fork_preflight() {
                 ;;
         esac
     fi
-    if [ ! -x "$SELFHOST_BIN" ]; then
-        gate_skip "no $SELFHOST_BIN — run gates/selfhost-emit.sh or gates/setup-godot-fork.sh"
-    fi
-    # Same stamp, same comparison as dist/package-toolchain.sh's blind-reuse
-    # guard: gates/selfhost-emit.sh writes src_tree_hash beside the binary it
-    # links; a missing stamp is stale (unknown provenance), not a pass.
-    local stamp_file stamped src_now
-    stamp_file="$(dirname "$SELFHOST_BIN")/dn2cpp.src-hash"
-    stamped="$(cat "$stamp_file" 2>/dev/null || echo '<no stamp>')"
-    src_now="$(src_tree_hash)"
-    if [ "$stamped" != "$src_now" ]; then
+    # selfhost_bin_fresh (gates/_common.sh) is the one definition of "this binary
+    # describes today's sources", shared with dist/package-toolchain.sh's
+    # blind-reuse guard and with gates/pre-merge.sh's self-host phase; its
+    # SELFHOST_BIN_PATH is $SELFHOST_BIN, since EXE_EXT is where FORK_EXE came from.
+    # The absent binary and the stale one are told apart here because they are
+    # different answers: nothing to judge versus a judgement.
+    if ! selfhost_bin_fresh; then
+        if [ ! -x "$SELFHOST_BIN" ]; then
+            gate_skip "no $SELFHOST_BIN — run gates/selfhost-emit.sh or gates/setup-godot-fork.sh"
+        fi
         echo "FAIL: $SELFHOST_BIN predates the current sources" >&2
-        echo "      stamped $stamped != $src_now (src_tree_hash of src/ runtime/ third_party/)" >&2
+        echo "      stamped $SELFHOST_SRC_STAMPED != $SELFHOST_SRC_NOW (src_tree_hash of src/ runtime/ third_party/)" >&2
         echo "      Rebuild the self-hosted CLI: gates/selfhost-emit.sh" >&2
         exit 1
     fi

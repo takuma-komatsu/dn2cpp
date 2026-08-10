@@ -581,6 +581,26 @@ src_tree_hash() {
     ) | shasum -a 256 | cut -c1-16
 }
 
+# selfhost_bin_fresh — 0 when the self-hosted native CLI was built from the
+# sources now in the tree, 1 when it has to be rebuilt. Reports nothing and sets
+# SELFHOST_BIN_PATH / SELFHOST_SRC_STAMPED / SELFHOST_SRC_NOW instead: the askers
+# (godot_fork_preflight, dist/package-toolchain.sh, gates/pre-merge.sh) each phrase
+# the same fact differently, and a rebuild one of them skips is a rebuild another
+# demands — which is why the comparison lives here and not at any of them.
+#
+# A MISSING stamp is unknown provenance, not a pass. `[ -x ]` alone is how a binary
+# from an older tree once got bundled into the fork's export toolchain and failed
+# every gate in that chain, naming neither the binary nor its age.
+selfhost_bin_fresh() {
+    SELFHOST_BIN_PATH="artifacts/selfhost-fullcli/dn2cpp$EXE_EXT"
+    SELFHOST_SRC_STAMP_FILE="artifacts/selfhost-fullcli/dn2cpp.src-hash"
+    SELFHOST_SRC_STAMPED="$(cat "$SELFHOST_SRC_STAMP_FILE" 2>/dev/null || echo '<no stamp>')"
+    SELFHOST_SRC_NOW="$(src_tree_hash)"
+    [ -x "$SELFHOST_BIN_PATH" ] || return 1
+    [ -f "$SELFHOST_SRC_STAMP_FILE" ] || return 1
+    [ "$SELFHOST_SRC_STAMPED" = "$SELFHOST_SRC_NOW" ]
+}
+
 # ── Native build backend (CMake) ──────────────────────────────────────────────
 # Sole native backend. compile_console / compile_gdextension link the runtime
 # libs ensure_cmake_runtime builds once and exports as dn2cpp-targets.cmake.
