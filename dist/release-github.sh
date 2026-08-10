@@ -17,6 +17,9 @@
 #
 # The notes are a RENDERING of that metadata, not a document to edit: re-running
 # this script is the only thing that changes them, published release included.
+# The prose that does not change between releases lives in docs/EDITOR-GUIDE.ja.md,
+# which the notes link at this repository's HEAD sha so a link keeps saying what
+# it said the day it was published.
 #
 # Usage:
 #   dist/release-github.sh --version <V> [options]
@@ -147,6 +150,10 @@ ACTIVE_LANES="$seen"
 NOTES="$OUT/RELEASE-NOTES.md"
 TEMPLATE=dist/release-notes-template.md
 [ -f "$TEMPLATE" ] || die "release notes template missing: $TEMPLATE"
+# The guide the notes link. Renaming it turns every past release's links into
+# 404s, so the path is stated once, here, and checked before anything is cut.
+GUIDE=docs/EDITOR-GUIDE.ja.md
+[ -f "$GUIDE" ] || die "the guide the notes link is missing: $GUIDE"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -371,6 +378,22 @@ for lane in $ACTIVE_LANES; do
 done
 echo "-- dn2cpp origin/$DN2CPP_BRANCH: contains every editor lane's dn2cpp_commit"
 
+# The notes link the guide at a fixed sha — this worktree's HEAD, not the remote
+# tip, so a reader clicking through gets the text the operator read before
+# cutting. Both checks are read-only, so --dry-run runs them for real.
+DOCS_REF="$(git rev-parse HEAD)"
+git merge-base --is-ancestor "$DOCS_REF" "$dn2cpp_tip" || die \
+    "HEAD ($DOCS_REF) is not reachable from the dn2cpp origin/$DN2CPP_BRANCH ($dn2cpp_tip)
+       The notes link $GUIDE at it, so every reader's first click is a 404.
+       Push dn2cpp first:
+         git push origin $DN2CPP_BRANCH"
+# Only the guide, not the whole worktree: unrelated work in progress is no
+# reason to refuse a cut, but an edit to the linked file is not in that sha.
+guide_dirty="$(git status --porcelain -- "$GUIDE")"
+[ -z "$guide_dirty" ] || die "$GUIDE has uncommitted changes, and the notes would link $DOCS_REF, which does not have them:
+$guide_dirty"
+echo "-- docs ref: $(git rev-parse --short "$DOCS_REF") ($GUIDE is committed and pushed)"
+
 # ── 6. The checksums ──────────────────────────────────────────────────────────
 # The rows and the active lanes' assets are the SAME set, both ways: a row for an
 # asset no lane declares is another host's cut leaking in, and a missing row is
@@ -491,6 +514,7 @@ map_put FORK_COMMIT       "$COMMIT"
 map_put BASE_PIN          "$BASE_PIN"
 map_put ENGINE_PROVENANCE "$ENGINE_PROVENANCE"
 map_put CORELIB_FRAMEWORK "$CORELIB_FRAMEWORK"
+map_put DOCS_REF          "$DOCS_REF"
 
 # The lane rows say which placeholder each value binds, so the notes gain a lane
 # by gaining a row and a template block — never a second list here.

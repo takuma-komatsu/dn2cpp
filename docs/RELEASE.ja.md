@@ -118,9 +118,10 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
   ノートが 2 つの dn2cpp コミットを印字し、その進んだ分がまだ push されて
   いなければ「`origin/main` に含まれない」で die する。
 - **リリースノートは、最後に走ったホストの `dist/release-notes-template.md`
-  で全文が再レンダリングされる。**テンプレートが両ホストで違えば、後から
-  走ったホストの版が公開本文になる。これがホスト間でコミットを揃える実務上の
-  最大の理由。
+  で全文が再レンダリングされる。**しかもノートは `docs/EDITOR-GUIDE.ja.md` を
+  *そのホストの* dn2cpp `HEAD` で固定してリンクする。どちらかが両ホストで
+  違えば、後から走ったホストの版が読者の見るものになる。これがホスト間で
+  コミットを揃える実務上の最大の理由。
 
 ### 0-D. 前回リリースの資産を退避する（**新バージョンの第一手**）
 
@@ -266,6 +267,9 @@ SHA256SUMS.txt                           ← この時点で 3 行
 `--lane` を 1 つも渡さないときの既定が、ちょうど macOS ホストの 3 レーン
 （`editor-macos` `web` `macos`）。read-only で全プリコンディションを実走し、
 ノートをレンダリングし、実行するはずだった git / gh コマンドを印字して終わる。
+
+**`--dry-run` でもノート本文は実際に書き出される。**誰の目にも触れる前に本文を
+読み、`docs/EDITOR-GUIDE.ja.md` へのリンクを辿るのはここ。
 
 **認識が食い違ったら議論せずこれを回す。** 落ちた行がそのまま原因。
 
@@ -449,6 +453,9 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   ある」の 2 つを意味する。**4 レーンすべてを名指すこと。**
 - 各 uploaded レーンについて
   `on the release as ..., digest and published notes agree` が出ること。
+- 公開されるノートをレンダリングするのはこのホスト。`--dry-run` でも本文は
+  実際に書き出されるので、本文と `docs/EDITOR-GUIDE.ja.md` へのリンクはここで
+  読む。
 
 ### C-5. 本番 + 公開
 
@@ -484,6 +491,19 @@ gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '<!--' # �
 （スクリプトもレンダリング時に同じ 2 つを検査して die するが、公開本文を
 目で確認する価値はある。）
 
+```bash
+gh release view "$V" --repo "$REPO" --json body --jq .body \
+  | grep -o 'https://github.com/[^ )]*/docs/[^ )]*' | sort -u \
+  | xargs -n1 curl -sfI -o /dev/null -w '%{http_code} %{url_effective}\n'   # → すべて 200
+```
+
+ノートから外へ出るリンクはこれだけで、公開前の検査はすべてローカルのツリーに
+対して行われている —— そのコミットでそのパスを GitHub が配信するかを尋ねた
+ものは、ここまで 1 つも無い。フラグメントはサーバへ送られないので、200 は
+ページの存在を言うだけでアンカーの着地点については何も言わない。照合先の
+スラグ規則は `gates/build-and-run-doc-claims.sh` の近似なので、1 つ開いて
+目で見ること。
+
 最後に、実際にダウンロードして展開できることを 1 度だけ確認する:
 `SHA256SUMS.txt` の照合 → macOS なら `xattr -dr com.apple.quarantine`、
 Windows なら zip のブロック解除。
@@ -494,6 +514,25 @@ Windows なら zip のブロック解除。
 
 - **原本は `dist/release-notes-template.md`（日本語）。** リリースページの本文を
   直接編集してはいけない。`dist/release-github.sh` の再実行だけが本文を変える。
+- **公開本文に載るのは**概要、前回リリースからの変更、アセット、ガイドへの
+  リンク、Provenance、ライセンス**だけ**。ダウンロードした人が次にやること
+  —— インストール、動作要件、各プラットフォームへのエクスポート、
+  トラブルシューティング、既知の制限 —— は `docs/EDITOR-GUIDE.ja.md` にあり、
+  ノートはそれをコミット固定でリンクする。公開した日に言っていたことを、
+  リンクが以後も言い続けるため。
+- **リリースごとに手で書くのは「前回リリースからの変更」だけ。**残りはすべて
+  レーンの metadata から bind されるか、リリース間で動かない文章。**古いまま
+  なのを検出する仕組みは無い** —— 手を入れ忘れてもノートは何事もなく
+  レンダリングされ、1 つ前のリリースの内容を説明したまま公開される。
+- **ガイドを直すのはエディタの挙動が変わったときで、リリースを切るときでは
+  ない。**ガイド自身はバージョンを持たない。リリースごとに動く値はノート側に
+  置き、ガイドは Provenance 表を指す。
+- `@@DOCS_REF@@` はリリースを切る時点のこのリポジトリの `HEAD`。だから
+  **ガイドを直したら commit して push してから切る。**さもないと
+  `dist/release-github.sh` が die する —— その sha が `origin/main` から
+  辿れない（読者の最初のクリックが 404 になる）か、ガイドに未コミットの変更が
+  ある（その sha はその変更を持たない）かで。どちらも read-only の検査なので
+  `--dry-run` でも実走する。
 - **GitHub は段落内の単一改行を改行として描画する。**したがってテンプレートは
   **1 段落 = 1 行**で書く。折り返すと公開本文が改行だらけになる。
 - `@@KEY@@` は、レーン表が bind している集合の**部分集合**でなければならない。
@@ -502,9 +541,11 @@ Windows なら zip のブロック解除。
   `<!--/lane-->` までのブロックを、そのレーンを含まない構成では丸ごと落とす。
   `!NAME` は否定。**入れ子にはできない**（内側の `-->` が外側を早く閉じ、
   残りが本文としてリリースページに出る）。存在しないレーン名は die。
-- `dist/` の md に Emscripten / Node.js / cmake / ninja のバージョンを直書き
-  しない。ピンが唯一の出所で、ノートは `@@EMSDK_VERSION@@` などのプレース
-  ホルダで受け取る。直書きは `gates/build-and-run-doc-claims.sh` が落とす。
+- `dist/` の md にも `docs/EDITOR-GUIDE.ja.md` にも、Emscripten / Node.js /
+  cmake / ninja のバージョンを直書きしない。ピンが唯一の出所で、ノートは
+  `@@EMSDK_VERSION@@` などのプレースホルダで受け取る。ガイドは対象の名前だけを
+  書き、数字はノートの Provenance 表を見に行かせる。直書きは
+  `gates/build-and-run-doc-claims.sh` が落とす。
 
 ---
 
@@ -521,6 +562,9 @@ Windows なら zip のブロック解除。
 | `... disagree on corelib_framework` | 2 ホストの .NET SDK が違う |
 | `the packaged X editor was built from A, but the tag would name B` | パッケージ時と現在のフォーク HEAD が違う。ビルドし直すか `--commit A` |
 | `is not reachable from origin/...` | push していない。フォークまたは dn2cpp を push する |
+| `HEAD (...) is not reachable from the dn2cpp origin/...` | ノートがガイドをリンクするコミットが未 push。上の行はレーンの `dn2cpp_commit` の話で、こちらは作業中の `HEAD`。`git push origin main` |
+| `... has uncommitted changes, and the notes would link ...` | ガイドを先に commit して push する。検査対象はガイド 1 ファイルだけなので、無関係な作業中の変更は原因ではない |
+| `the guide the notes link is missing: ...` | フォークではなく dn2cpp のチェックアウトで実行する。あるいは `dist/release-github.sh` の `GUIDE=` を直さずにガイドを rename した（過去の全リリースのリンクも 404 になる） |
 | `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` なら前バージョンの資産が `--out` に残っている（§0-D）。それ以外はレーンの名指し忘れか、先回りして足した行 |
 | `the notes on release ... do not mention KEY=...` | 手元の metadata が公開中のノートと食い違う。**手で直さず**、パッケージしたホストからコピーし直す |
 | `no working Python 3 interpreter found` | Windows。ホストに Python 3 を入れる |

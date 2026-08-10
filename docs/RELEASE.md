@@ -122,9 +122,10 @@ on which `gates/pre-merge.sh` is green.**
   notes print two dn2cpp commits; and if the move is not pushed yet, it dies as
   not contained in `origin/main`.
 - **The release notes are re-rendered in full from the `dist/release-notes-template.md`
-  of whichever host ran last.** If the template differs between hosts, the later
-  host's version is what gets published. This is the strongest practical reason
-  to keep the two hosts on one commit.
+  of whichever host ran last**, and they link `docs/EDITOR-GUIDE.ja.md` at *that*
+  host's dn2cpp `HEAD`. If either differs between hosts, the later host's version
+  is what readers get. This is the strongest practical reason to keep the two
+  hosts on one commit.
 
 ### 0-D. Move the previous release's artifacts aside (**first move of a new version**)
 
@@ -273,6 +274,10 @@ SHA256SUMS.txt                           ← 3 rows at this point
 With no `--lane` at all the default is exactly the macOS host's three lanes
 (`editor-macos` `web` `macos`). It runs every precondition for real read-only,
 renders the notes, prints the git / gh commands it would have run, and stops.
+
+**The rendered notes are written for real under `--dry-run`**, so this is where
+you read the body and follow its links to `docs/EDITOR-GUIDE.ja.md` before
+anyone else can.
 
 **When two accounts of the state disagree, run this instead of arguing.** The
 line that fails is the cause.
@@ -460,6 +465,9 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   already on the release. **Name all four lanes.**
 - Every uploaded lane must report
   `on the release as ..., digest and published notes agree`.
+- This host renders the notes that get published, so read the rendered body and
+  its `docs/EDITOR-GUIDE.ja.md` links here — under `--dry-run` they are written
+  for real.
 
 ### C-5. The real run, and publish
 
@@ -496,6 +504,19 @@ gh release view "$V" --repo "$REPO" --json body --jq .body | grep -n '<!--' # �
 (The script dies on both of these at render time as well, but the published body
 is worth one look with your own eyes.)
 
+```bash
+gh release view "$V" --repo "$REPO" --json body --jq .body \
+  | grep -o 'https://github.com/[^ )]*/docs/[^ )]*' | sort -u \
+  | xargs -n1 curl -sfI -o /dev/null -w '%{http_code} %{url_effective}\n'   # → 200 each
+```
+
+These are the notes' only outbound links, and every check before publication was
+made against the local tree — nothing so far has asked GitHub whether it serves
+that path at that commit. Fragments never reach the server, so a 200 says
+the page exists and nothing about where the anchor lands; the slug rules
+`gates/build-and-run-doc-claims.sh` checks them against are an approximation, so
+open one and look.
+
 Finally, download and unpack it once for real: verify against `SHA256SUMS.txt`,
 then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
 
@@ -506,6 +527,25 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
 - **The original is `dist/release-notes-template.md` (in Japanese).** Never edit
   the release page body directly; only re-running `dist/release-github.sh`
   changes it.
+- **The published body carries only** an overview, what changed since the
+  previous release, the assets, a link to the guide, provenance and the licence.
+  Everything a downloader does next — installing, host requirements, exporting
+  to each platform, troubleshooting, the known limits — is
+  `docs/EDITOR-GUIDE.ja.md`, which the notes link at a fixed commit so that a
+  published link keeps saying what it said the day it was published.
+- **"Changes since the previous release" is the only section written by hand.**
+  Everything else is bound from the lane metadata or is prose that does not move.
+  Nothing detects a stale one: leave it untouched and the notes render happily,
+  still describing the release before this one.
+- **The guide is edited when the editor's behaviour changes, not when a release
+  is cut.** It names no version of its own; a value that moves per release stays
+  in the notes, and the guide points at the provenance table for it.
+- `@@DOCS_REF@@` is this repository's `HEAD` at the moment of the cut, so
+  **commit and push a guide edit before cutting.** `dist/release-github.sh`
+  otherwise dies — on the sha not being reachable from `origin/main`, whose
+  readers' first click would 404, or on the guide having uncommitted changes,
+  which that sha does not carry. Both checks are read-only and run under
+  `--dry-run`.
 - **GitHub renders a single newline inside a paragraph as a line break.** So the
   template is written **one paragraph per line**. Wrap it and the published body
   fills with line breaks.
@@ -517,8 +557,10 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
   outer marker early and the remainder reaches the release page as body. An
   unknown lane name dies.
 - Do not spell an Emscripten / Node.js / cmake / ninja version into the markdown
-  under `dist/`. The pin is the single source and the notes receive it through a
-  placeholder such as `@@EMSDK_VERSION@@`. A spelled-out version fails
+  under `dist/`, nor into `docs/EDITOR-GUIDE.ja.md`. The pin is the single source
+  and the notes receive it through a placeholder such as `@@EMSDK_VERSION@@`; the
+  guide names the pinned thing and sends the reader to the notes' provenance
+  table for the number. A spelled-out version fails
   `gates/build-and-run-doc-claims.sh`.
 
 ---
@@ -536,6 +578,9 @@ There is nothing to argue about when accounts of the state disagree.
 | `... disagree on corelib_framework` | the two hosts have different .NET SDKs |
 | `the packaged X editor was built from A, but the tag would name B` | the fork HEAD moved since packaging; re-bake, or pass `--commit A` |
 | `is not reachable from origin/...` | not pushed; push the fork or dn2cpp |
+| `HEAD (...) is not reachable from the dn2cpp origin/...` | the commit the notes would link the guide at is unpushed. Distinct from the row above, which is about a lane's `dn2cpp_commit`: this one is your working `HEAD`. `git push origin main` |
+| `... has uncommitted changes, and the notes would link ...` | commit and push the guide first. Only the guide is checked, so unrelated work in progress is not the cause |
+| `the guide the notes link is missing: ...` | run from the dn2cpp checkout, not the fork's; or the guide was renamed without renaming `GUIDE=` in `dist/release-github.sh`, which would 404 every past release's links too |
 | `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` means the previous version's artifacts are still in `--out` (§0-D). Otherwise you forgot to name a lane, or added a row ahead of time |
 | `the notes on release ... do not mention KEY=...` | the local metadata disagrees with the published notes. **Do not fix it by hand** — re-copy it from the packaging host |
 | `no working Python 3 interpreter found` | Windows; install a host Python 3 |
