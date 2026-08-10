@@ -754,7 +754,9 @@ at link naming `dn2cpp_http2_call_open` rather than shipping.
 
 This section is why the pieces are shaped as they are; the order to run them in,
 host by host, is `docs/RELEASE.md` (`docs/RELEASE.ja.md` translates it) and is
-not repeated here.
+not repeated here. What a *downloader* does with the result is
+`docs/EDITOR-GUIDE.ja.md`, which the release notes link at a fixed commit rather
+than restating each time.
 
 A release carries one asset per row below, each with its own packaging script and
 a `*.metadata` file beside it:
