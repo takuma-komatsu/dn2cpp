@@ -159,6 +159,23 @@ done
 # refuses a second runner sharing one).
 LOGROOT=${DN2CPP_PREMERGE_LOGROOT:-/tmp/dn2cpp-premerge-$(basename "$REPO")}
 RECEIPT="$LOGROOT/_receipt.txt"
+TRANSCRIPT="$LOGROOT/_premerge.log"
+
+# The whole run, on disk. Phase lines and the verdict live nowhere else — the
+# per-gate logs are the runner's — so a scrollback that is lost or overwritten
+# takes two hours of record with it.
+#
+# A pipeline and not `exec > >(tee …)`: a process substitution is not waited for
+# at exit, so the tail of the run — which is the verdict — can be dropped.
+# Three modes stay out: --dry-run, whose whole contract is to leave nothing
+# behind; the probe, whose stdout IS its return value; and the self-test, which
+# spawns runs of its own and would bury LOGROOT under theirs.
+if [ "$DRY_RUN" = "0" ] && [ "${DN2CPP_PREMERGE_SELFTEST:-0}" != "1" ] \
+   && [ "${DN2CPP_PREMERGE_TRANSCRIPT:-0}" != "1" ]; then
+    mkdir -p "$LOGROOT"
+    DN2CPP_PREMERGE_TRANSCRIPT=1 bash "$0" "$@" 2>&1 | tee "$TRANSCRIPT"
+    exit "${PIPESTATUS[0]}"
+fi
 
 # The runner's own TOTAL: every build-and-run-*.sh, Godot gates included.
 EXPECTED_GATES=$(ls "$REPO"/gates/build-and-run-*.sh 2>/dev/null | wc -l | tr -d ' ')
@@ -185,12 +202,27 @@ _premerge_stamp_name() {
 
 # CMake's truthiness, narrowed to what a cache entry can hold. Compared
 # normalized so a cache written as `1` never reads as a flip of a default
-# written `ON`.
+# written `ON`. Answers in _PCB_VALUE and folds case through `nocasematch`
+# rather than `tr`: this sits in the innermost loop of a scan over every build
+# dir, where a subshell per question is the whole cost of the scan.
 _premerge_cmake_bool() {
-    case "$(printf '%s' "$1" | tr 'a-z' 'A-Z')" in
-        1|ON|TRUE|YES|Y)                   printf 'ON' ;;
-        0|OFF|FALSE|NO|N|IGNORE|''|*NOTFOUND) printf 'OFF' ;;
-        *)                                 printf '%s' "$1" ;;
+    shopt -s nocasematch
+    case "$1" in
+        1|on|true|yes|y)                      _PCB_VALUE=ON ;;
+        0|off|false|no|n|ignore|''|*notfound)  _PCB_VALUE=OFF ;;
+        *)                                    _PCB_VALUE="$1" ;;
+    esac
+    shopt -u nocasematch
+}
+
+# _premerge_lookup NAME TABLE — sets _PL_VALUE to the LAST "NAME VALUE" line's
+# value, empty when absent. `##` is greedy from the left, which is what makes
+# the last -D of a configure command the one that counts.
+_premerge_lookup() {
+    local t=$'\n'"$2"
+    case "$t" in
+        *$'\n'"$1 "*) _PL_VALUE=${t##*$'\n'"$1 "}; _PL_VALUE=${_PL_VALUE%%$'\n'*} ;;
+        *)            _PL_VALUE="" ;;
     esac
 }
 
@@ -228,14 +260,33 @@ premerge_cmake_cache_warn() {
     # bash 3.2: no associative arrays, and `${#a[@]}` on an empty array is an
     # error under `set -u`. Both accumulators are newline-separated strings.
     local moved="" frozen="" stale_dirs="" n_dirs=0 n_stamped=0
-    local c dir rel home home_phys stamp name want cached ov
+    local caches=() c dir rel home home_phys stamp entries stampopts
+    local name want cached cbool wbool
     for c in "$art"/.cmake*/CMakeCache.txt "$art"/*/.cmake*/CMakeCache.txt; do
         [ -f "$c" ] || continue
+        caches[$n_dirs]="$c"
         n_dirs=$((n_dirs + 1))
-        dir=$(dirname "$c")
+    done
+
+    if [ "$n_dirs" -eq 0 ]; then
+        note "no configured CMake build dir under artifacts/ — nothing can be stale."
+        return 0
+    fi
+    # The scan reads every one of them before it can say anything, so name the
+    # size first: silence for the length of a scan reads as a hung run.
+    note "scanning $n_dirs CMakeCache.txt under artifacts/ ..."
+
+    for c in "${caches[@]}"; do
+        dir=${c%/*}
         rel=${dir#"$repo"/}
-        home=$(LC_ALL=C sed -n 's/^CMAKE_HOME_DIRECTORY:INTERNAL=//p' "$c")
-        home=${home%%$'\n'*}
+        # ONE sed per cache file, feeding the pure-bash lookup above. Per-lookup
+        # sed is a subshell per (build dir × option), which is the whole cost of
+        # this scan and long enough to look like a hang.
+        entries=$(LC_ALL=C sed -n \
+            -e 's/^CMAKE_HOME_DIRECTORY:INTERNAL=/CMAKE_HOME_DIRECTORY /p' \
+            -e 's/^\([A-Za-z_][A-Za-z0-9_]*\):BOOL=/\1 /p' "$c")
+        _premerge_lookup CMAKE_HOME_DIRECTORY "$entries"
+        home=$_PL_VALUE
         # The test is "names a source dir INSIDE this repository", not "equals
         # $repo/runtime": a build dir may legitimately be configured from
         # another source dir in the tree (the P/Invoke gates build
@@ -261,17 +312,24 @@ premerge_cmake_cache_warn() {
         stamp="$dir/$stampname"
         [ -f "$stamp" ] || continue
         n_stamped=$((n_stamped + 1))
+        # Every -D of the recorded configure command in one pass; the lookup's
+        # last-wins rule is what carries `tail -1` across.
+        stampopts=$(LC_ALL=C sed -n 's/^-D\([A-Za-z_][A-Za-z0-9_]*\)=/\1 /p' "$stamp")
         while read -r name want; do
             [ -n "$name" ] || continue
-            cached=$(LC_ALL=C sed -n "s/^$name:BOOL=//p" "$c")
-            cached=${cached%%$'\n'*}
+            _premerge_lookup "$name" "$entries"
+            cached=$_PL_VALUE
             [ -n "$cached" ] || continue
             # An explicit -D in the recorded configure command IS the intent;
             # only where the configure said nothing does the CMakeLists default
             # get to be the expected value.
-            ov=$(LC_ALL=C sed -n "s/^-D$name=//p" "$stamp" | tail -1)
-            [ -n "$ov" ] && want="$ov"
-            if [ "$(_premerge_cmake_bool "$cached")" != "$(_premerge_cmake_bool "$want")" ]; then
+            _premerge_lookup "$name" "$stampopts"
+            [ -n "$_PL_VALUE" ] && want="$_PL_VALUE"
+            _premerge_cmake_bool "$cached"
+            cbool=$_PCB_VALUE
+            _premerge_cmake_bool "$want"
+            wbool=$_PCB_VALUE
+            if [ "$cbool" != "$wbool" ]; then
                 frozen="$frozen$name $cached $want $rel
 "
                 stale_dirs="$stale_dirs$dir
@@ -281,11 +339,6 @@ premerge_cmake_cache_warn() {
 $defaults
 OPTIONS
     done
-
-    if [ "$n_dirs" -eq 0 ]; then
-        note "no configured CMake build dir under artifacts/ — nothing can be stale."
-        return 0
-    fi
 
     if [ -n "$moved" ]; then
         while IFS='|' read -r rel home; do
@@ -697,6 +750,25 @@ SSTUB
         st_bad "both-green: the receipt does not record the self-host build"
     fi
 
+    # The transcript, and specifically its LAST line: a form that loses the tail
+    # loses the verdict, which is the one line the transcript exists for.
+    ST_LOG="$ST_TMP/e2e-both-green/_premerge.log"
+    if [ -f "$ST_LOG" ]; then
+        st_ok "both-green: a transcript was written"
+    else
+        st_bad "both-green: no transcript at $ST_LOG"
+    fi
+    if grep -q 'PRE-MERGE PASSED' "$ST_LOG" 2>/dev/null; then
+        st_ok "both-green: the transcript carries the verdict"
+    else
+        st_bad "both-green: the transcript does not reach the verdict — $ST_LOG"
+    fi
+    if [ "$(tail -1 "$ST_LOG" 2>/dev/null)" = "$(tail -1 "$ST_TMP/e2e-both-green/_out.txt")" ]; then
+        st_ok "both-green: the transcript's last line is the run's last line"
+    else
+        st_bad "both-green: the transcript is short of the run's last line — $ST_LOG"
+    fi
+
     say "self-host freshness (the real predicate, against a synthetic tree)"
 
     # A repo-shaped git checkout whose gates/_common.sh is one line delegating to
@@ -770,6 +842,31 @@ SSTUB
         st_bad "--dry-run does not name gates/selfhost-emit.sh — see $ST_TMP/selfhost-dry2.txt"
     fi
 
+    # The three modes the transcript must not wrap. --dry-run and the probe are
+    # asserted by what they leave on disk: neither may create a LOGROOT at all.
+    ST_NOLOG="$ST_TMP/nolog-dryrun"
+    DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$ST_NOLOG" \
+        bash "$FAKE/gates/pre-merge.sh" --dry-run >/dev/null 2>&1
+    if [ -e "$ST_NOLOG" ]; then
+        st_bad "--dry-run created $ST_NOLOG"
+    else
+        st_ok "--dry-run writes no transcript and no LOGROOT"
+    fi
+    ST_NOLOG="$ST_TMP/nolog-probe"
+    DN2CPP_PREMERGE_PROBE=1 DN2CPP_PREMERGE_LOGROOT="$ST_NOLOG" \
+        bash "$SH_REPO/gates/pre-merge.sh" >/dev/null 2>&1
+    if [ -e "$ST_NOLOG" ]; then
+        st_bad "the probe created $ST_NOLOG"
+    else
+        st_ok "the probe writes no transcript and no LOGROOT"
+    fi
+    # And the self-test: reaching this line un-re-executed IS the assertion.
+    if [ "${DN2CPP_PREMERGE_TRANSCRIPT:-0}" = "1" ]; then
+        st_bad "the self-test is running inside a transcript re-exec"
+    else
+        st_ok "the self-test is not wrapped in a transcript"
+    fi
+
     say "premerge_selfhost_argv"
 
     premerge_selfhost_argv
@@ -798,6 +895,25 @@ SSTUB
     fi
 
     say "premerge_cmake_cache_warn"
+
+    # The table lookup the scan reads both a cache and a configure stamp
+    # through. The third case is the load-bearing one: a name given twice is the
+    # last one cmake acted on.
+    ST_TBL='DN2CPP_ALPHA ON
+DN2CPP_BETA OFF
+DN2CPP_ALPHA OFF'
+    # st_lookup NAME WANT
+    st_lookup() {
+        _premerge_lookup "$1" "$ST_TBL"
+        if [ "$_PL_VALUE" = "$2" ]; then
+            st_ok "_premerge_lookup $1 -> '${2:-<empty>}'"
+        else
+            st_bad "_premerge_lookup $1 -> '$_PL_VALUE' (expected '$2')"
+        fi
+    }
+    st_lookup DN2CPP_GAMMA ""
+    st_lookup DN2CPP_BETA OFF
+    st_lookup DN2CPP_ALPHA OFF
 
     # st_repo NAME — a repo-shaped dir declaring two options (ALPHA ON, BETA
     # OFF) and carrying the real _common.sh's stamp-name assignment, so the
@@ -1097,6 +1213,7 @@ note "repo:   $REPO"
 note "commit: $HEAD_BRANCH @ $HEAD_SHA$DIRTY"
 note "gates:  $EXPECTED_GATES"
 note "logs:   $LOGROOT"
+[ "$DRY_RUN" = "0" ] && note "record: $TRANSCRIPT"
 
 # Before anything long starts, and before --dry-run prints its plan: a person
 # deciding whether to spend two hours is exactly who needs to know the tree
@@ -1270,10 +1387,12 @@ if [ "$OVERALL" -eq 0 ]; then
     } > "$RECEIPT"
     good "PRE-MERGE PASSED — both configs, $EXPECTED_GATES gates each, every gate ran."
     note "receipt: $RECEIPT"
+    note "record:  $TRANSCRIPT"
     exit 0
 fi
 
 rm -f "$RECEIPT"
 bad "PRE-MERGE FAILED — do not merge."
 note "Per-gate logs: $LOGROOT/{release,debug}/<gate>.log"
+note "This run's own output: $TRANSCRIPT"
 exit 1
