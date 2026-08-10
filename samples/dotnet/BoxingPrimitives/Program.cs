@@ -26,6 +26,14 @@ namespace BoxingPrimitives
     //     back, asserted against the type TEST that admits the same pairs. It also
     //     pins dn2cpp_object_compare's Decimal / date-time ordering arms, which
     //     nothing else in the suite reaches.
+    //   * BoxedNegativeItfSubset is the NEGATIVE half of that itable test: an
+    //     interface a boxed primitive does not implement must answer False. The
+    //     positive matrix cannot see a test that over-admits, and the arm such a
+    //     test lets run reads the box payload as a type pointer.
+    //   * ConstrainedObjectEqualsSubset is the RECEIVER side of the same hazard:
+    //     `constrained. !T; callvirt object::Equals(object)` hands the helper a
+    //     managed pointer to the raw value, so a receiver left unboxed there is its
+    //     own bits read as a type-info. Every T kind that reaches the prefix.
     //   * MouthAgreementSubset is a MOUTH-AGREEMENT test over three surfaces
     //     that are not boxing at heart: a boxed enum's cut ISpanFormattable.TryFormat
     //     against its IFormattable text, the self-instantiated IComparable<T>/
@@ -49,6 +57,8 @@ namespace BoxingPrimitives
             PrimitiveCompareHashSubset.Program.Run();
             BoxedBuiltinItfDispatchSubset.Program.Run();
             MouthAgreementSubset.Program.Run();
+            BoxedNegativeItfSubset.Program.Run();
+            ConstrainedObjectEqualsSubset.Program.Run();
         }
     }
 }

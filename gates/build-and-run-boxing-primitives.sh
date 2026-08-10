@@ -33,6 +33,19 @@
 #     answering `is IConvertible` and the set that can dispatch one are one set. Its
 #     IComparable half is also the only coverage of dn2cpp_object_compare's Decimal
 #     and date/time ordering arms.
+#   * BoxedNegativeItfSubset — the NEGATIVE half of that itable test, and not a
+#     boxing test either: `is IEnumerable` / IList / IDictionary / ICollection /
+#     IEnumerable<char> over boxed float/double/int/enum/DateTime/decimal, each
+#     of which must answer False, against string and int[] as the True controls.
+#     The positive matrix above cannot see a type test that OVER-admits, and the
+#     arm one lets run reads the box payload as a type pointer.
+#   * ConstrainedObjectEqualsSubset — the RECEIVER side of that hazard, over a
+#     generic wrapper: `constrained. !T; callvirt object::Equals(object)` boxes
+#     only the ARGUMENT, so a receiver left unboxed at the call site is its own
+#     bits read as a type-info (0.003f as a Dn2CppTypeInfo* — a SIGSEGV, seen in
+#     a real game's settings comparison). Every T kind that reaches the prefix:
+#     the primitives, enum, an overriding struct, decimal/DateTime, string and
+#     object — the last four being the arms that already boxed.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the

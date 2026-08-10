@@ -3710,7 +3710,7 @@ internal sealed partial class MethodCompiler
             // reference path, which neither boxes the value nor emits the interface's ti_/struct.
             // Devirtualize to a typed value compare (the EqualityComparer<T>.Default.Equals form)
             // instead. Distinguish the typed Equals (the value is on the stack) from
-            // Object::Equals(object) (a boxed reference arg), which is left to the normal path.
+            // Object::Equals(object) (a boxed reference arg), which the arm below claims.
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
                                 || c is { Kind: TypeKind.Class, Class.IsEnum: true })
                 && _stack.Count >= 2 && _stack[^1].Kind != StackKind.Ref:
@@ -3720,6 +3720,20 @@ internal sealed partial class MethodCompiler
                 string ct = CppTypes.Of(c);
                 var x = new StackEntry(ConstrainedReceiverValue(c, receiver.Expr), CppTypes.KindOf(c), ct);
                 Push(StackKind.I4, "int32_t", EqualityEqualsExpr(c, x, arg));
+                return true;
+            }
+            // Object::Equals(object) on a primitive or enum receiver — only the ARGUMENT
+            // is boxed by the IL, so box the receiver too rather than handing
+            // dn2cpp_object_equals a managed pointer whose pointee it would read as an
+            // object header (the struct twin below, for the same reason).
+            case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
+                                || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var receiver = Pop(); // managed pointer to the constrained value
+                string boxed = BoxedConstrainedReceiver(c, receiver);
+                Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({boxed}, {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
             // IComparable<T>.CompareTo(T) on a primitive or string key (the LINQ
