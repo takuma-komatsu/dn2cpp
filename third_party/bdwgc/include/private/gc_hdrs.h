@@ -15,7 +15,7 @@
 #ifndef GC_HEADERS_H
 #define GC_HEADERS_H
 
-#if CPP_WORDSZ != 32 && CPP_WORDSZ < 36 && !defined(CPPCHECK)
+#if CPP_WORDSZ != 32 && CPP_WORDSZ < 36
 # error Get a real machine
 #endif
 
@@ -63,11 +63,11 @@ typedef struct hblkhdr hdr;
 #ifdef COUNT_HDR_CACHE_HITS
   extern word GC_hdr_cache_hits; /* used for debugging/profiling */
   extern word GC_hdr_cache_misses;
-# define HC_HIT() (void)(++GC_hdr_cache_hits)
-# define HC_MISS() (void)(++GC_hdr_cache_misses)
+# define HC_HIT() ++GC_hdr_cache_hits
+# define HC_MISS() ++GC_hdr_cache_misses
 #else
-# define HC_HIT() /* empty */
-# define HC_MISS() /* empty */
+# define HC_HIT()
+# define HC_MISS()
 #endif
 
 typedef struct hce {
@@ -82,10 +82,9 @@ typedef struct hce {
 
 #define INIT_HDR_CACHE BZERO(hdr_cache, sizeof(hdr_cache))
 
-#define HCE(h) \
-        (hdr_cache + (((word)(h) >> LOG_HBLKSIZE) & (HDR_CACHE_SIZE-1)))
+#define HCE(h) hdr_cache + (((word)(h) >> LOG_HBLKSIZE) & (HDR_CACHE_SIZE-1))
 
-#define HCE_VALID_FOR(hce, h) ((hce) -> block_addr == \
+#define HCE_VALID_FOR(hce,h) ((hce) -> block_addr == \
                                 ((word)(h) >> LOG_HBLKSIZE))
 
 #define HCE_HDR(h) ((hce) -> hce_hdr)

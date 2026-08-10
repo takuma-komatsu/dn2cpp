@@ -1034,6 +1034,7 @@ _cmake_app_builddir() {
     elif [ -n "${DN2CPP_NO_CURL:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-nocurl"
     elif [ -n "${PAL_REFERENCE:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-palref"
     elif [ -n "${DN2CPP_NO_GC:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-nogc"
+    elif [ -n "${DN2CPP_GC_BACKEND:-}" ] && [ "${DN2CPP_GC_BACKEND}" != unity ]; then printf '%s\n' "$PWD/$1/.cmake-gc$DN2CPP_GC_BACKEND"
     else printf '%s\n' "$PWD/$1/.cmake"; fi
 }
 
@@ -1125,9 +1126,16 @@ $want"
 # echo the exported dn2cpp-targets.cmake; honors DN2CPP_CMAKE_RUNTIME_EXPORT*
 # when run-all-gates.sh prebuilt that axis. Axes, each in its own dir: SCALAR,
 # HIGHWAY (isolates a DN2CPP_HIGHWAY_ARCH override), WASM (emcmake), IOS_DEV,
-# IOS_SIM, ANDROID, DN2CPP_NO_CURL, PAL_REFERENCE, DN2CPP_NO_GC — an axis never
-# falls through to the native export. Always builds; configure per the stamp.
+# IOS_SIM, ANDROID, DN2CPP_NO_CURL, PAL_REFERENCE, DN2CPP_NO_GC,
+# DN2CPP_GC_BACKEND (non-unity) — an axis never falls through to the native
+# export. Always builds; configure per the stamp.
 ensure_cmake_runtime() {
+    # GC=OFF makes the source-tree choice moot, and the two together would
+    # otherwise silently pick one (dir naming order) rather than say so.
+    if [ -n "${DN2CPP_NO_GC:-}" ] && [ -n "${DN2CPP_GC_BACKEND:-}" ] && [ "${DN2CPP_GC_BACKEND}" != unity ]; then
+        echo "error: DN2CPP_NO_GC and DN2CPP_GC_BACKEND=${DN2CPP_GC_BACKEND} together — GC is off, so the backend choice is moot" >&2
+        return 1
+    fi
     if [ -n "${WASM:-}" ]; then
         [ -n "${DN2CPP_CMAKE_RUNTIME_EXPORT_WASM:-}" ] && { printf '%s\n' "$DN2CPP_CMAKE_RUNTIME_EXPORT_WASM"; return 0; }
     elif [ -n "${IOS_DEV:-}" ]; then
@@ -1145,6 +1153,9 @@ ensure_cmake_runtime() {
         :
     elif [ -n "${PAL_REFERENCE:-}" ] || [ -n "${DN2CPP_NO_GC:-}" ]; then
         # Same: not pre-built, and the default export is host-PAL + Boehm GC.
+        :
+    elif [ -n "${DN2CPP_GC_BACKEND:-}" ] && [ "${DN2CPP_GC_BACKEND}" != unity ]; then
+        # Same: not pre-built, and the default export links the Unity fork.
         :
     else
         [ -n "${DN2CPP_CMAKE_RUNTIME_EXPORT:-}" ] && { printf '%s\n' "$DN2CPP_CMAKE_RUNTIME_EXPORT"; return 0; }
@@ -1199,6 +1210,13 @@ ensure_cmake_runtime() {
         # what makes DN2CPP_NO_GC=1 settable: gc=OFF would otherwise reconfigure
         # the SHARED .cmake-runtime and every later gate would link calloc too.
         dir="$PWD/artifacts/.cmake-runtime-nogc"
+    elif [ -n "${DN2CPP_GC_BACKEND:-}" ] && [ "${DN2CPP_GC_BACKEND}" != unity ]; then
+        # The GC source-tree axis (dev-only; gates/build-and-run-gc-upstream.sh).
+        # Own dir for the reason DN2CPP_NO_GC has one: a configure cannot un-set
+        # -DDN2CPP_GC_BACKEND once cached, so reusing .cmake-runtime would pin
+        # every later gate to whichever tree ran here first.
+        dir="$PWD/artifacts/.cmake-runtime-gc${DN2CPP_GC_BACKEND}"
+        args+=(-DDN2CPP_GC_BACKEND="${DN2CPP_GC_BACKEND}")
     else
         dir="$PWD/artifacts/.cmake-runtime"
     fi
@@ -2009,9 +2027,10 @@ gate_cache_check() {
             printf 'context:%s\n' "$context"
             # Every env var that selects a build axis MUST appear here: add an
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
-            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
                 "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" \
                 "${IOS_SIM:-}" "${IOS_DEV:-}" "${ANDROID:-}" "${DN2CPP_NO_GC:-}" \
+                "${DN2CPP_GC_BACKEND:-}" \
                 "${DN2CPP_NO_CURL:-}" "${PAL_REFERENCE:-}" \
                 "${DN2CPP_SPLIT_BYTES:-}" "${DN2CPP_OUT_SUFFIX:-}" \
                 "${CMAKE_CXX_COMPILER:-}" "${DN2CPP_EXTRA_CMAKE_ARGS:-}" \

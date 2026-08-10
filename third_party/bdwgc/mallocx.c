@@ -3,7 +3,6 @@
  * Copyright (c) 1991-1994 by Xerox Corporation.  All rights reserved.
  * Copyright (c) 1996 by Silicon Graphics.  All rights reserved.
  * Copyright (c) 2000 by Hewlett-Packard Company.  All rights reserved.
- * Copyright (c) 2009-2021 Ivan Maidanski
  *
  * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
@@ -28,14 +27,20 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifndef MSWINCE
+#ifdef MSWINCE
+# ifndef WIN32_LEAN_AND_MEAN
+#   define WIN32_LEAN_AND_MEAN 1
+# endif
+# define NOSERVICE
+# include <windows.h>
+#else
 # include <errno.h>
 #endif
 
 /* Some externally visible but unadvertised variables to allow access to */
 /* free lists from inlined allocators without including gc_priv.h        */
 /* or introducing dependencies on internal data structure layouts.       */
-#include "private/gc_alloc_ptrs.h"
+#include "gc_alloc_ptrs.h"
 void ** const GC_objfreelist_ptr = GC_objfreelist;
 void ** const GC_aobjfreelist_ptr = GC_aobjfreelist;
 void ** const GC_uobjfreelist_ptr = GC_uobjfreelist;
@@ -79,12 +84,6 @@ GC_API void * GC_CALL GC_realloc(void * p, size_t lb)
     struct hblk * h;
     hdr * hhdr;
     void * result;
-#   if defined(_FORTIFY_SOURCE) && defined(__GNUC__) && !defined(__clang__)
-      volatile  /* Use cleared_p instead of p as a workaround to avoid  */
-                /* passing alloc_size(lb) attribute associated with p   */
-                /* to memset (including memset call inside GC_free).    */
-#   endif
-      word cleared_p = (word)p;
     size_t sz;      /* Current size in bytes    */
     size_t orig_sz; /* Original sz in bytes     */
     int obj_kind;
@@ -152,7 +151,7 @@ GC_API void * GC_CALL GC_realloc(void * p, size_t lb)
             if (orig_sz > lb) {
               /* Clear unneeded part of object to avoid bogus pointer */
               /* tracing.                                             */
-                BZERO((ptr_t)cleared_p + lb, orig_sz - lb);
+                BZERO(((ptr_t)p) + lb, orig_sz - lb);
             }
             return(p);
         }
@@ -165,7 +164,7 @@ GC_API void * GC_CALL GC_realloc(void * p, size_t lb)
       /* But this gives the client warning of imminent disaster.        */
       BCOPY(p, result, sz);
 #     ifndef IGNORE_FREE
-        GC_free((ptr_t)cleared_p);
+        GC_free(p);
 #     endif
     }
     return result;
@@ -211,7 +210,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL
     lb_rounded = GRANULES_TO_BYTES(lg);
     n_blocks = OBJ_SZ_TO_BLOCKS(lb_rounded);
     init = GC_obj_kinds[k].ok_init;
-    if (EXPECT(get_have_errors(), FALSE))
+    if (EXPECT(GC_have_errors, FALSE))
       GC_print_all_errors();
     GC_INVOKE_FINALIZERS();
     GC_DBG_COLLECT_AT_MALLOC(lb);
@@ -256,13 +255,13 @@ GC_API GC_ATTR_MALLOC void * GC_CALL
 
 /* Increment GC_bytes_allocd from code that doesn't have direct access  */
 /* to GC_arrays.                                                        */
-void GC_CALL GC_incr_bytes_allocd(size_t n)
+GC_API void GC_CALL GC_incr_bytes_allocd(size_t n)
 {
     GC_bytes_allocd += n;
 }
 
 /* The same for GC_bytes_freed.                         */
-void GC_CALL GC_incr_bytes_freed(size_t n)
+GC_API void GC_CALL GC_incr_bytes_freed(size_t n)
 {
     GC_bytes_freed += n;
 }
@@ -293,8 +292,7 @@ GC_API size_t GC_CALL GC_get_expl_freed_bytes_since_gc(void)
 /* GC_malloc_many or friends to replenish it.  (We do not round up      */
 /* object sizes, since a call indicates the intention to consume many   */
 /* objects of exactly this size.)                                       */
-/* We assume that the size is non-zero and a multiple of                */
-/* GRANULE_BYTES, and that it already includes EXTRA_BYTES value.       */
+/* We assume that the size is a multiple of GRANULE_BYTES.              */
 /* We return the free-list by assigning it to *result, since it is      */
 /* not safe to return, e.g. a linked list of pointer-free objects,      */
 /* since the collector would not retain the entire list if it were      */
@@ -313,29 +311,20 @@ GC_API void GC_CALL GC_generic_malloc_many(size_t lb, int k, void **result)
     DCL_LOCK_STATE;
 
     GC_ASSERT(lb != 0 && (lb & (GRANULE_BYTES-1)) == 0);
-    /* Currently a single object is always allocated if manual VDB. */
-    /* TODO: GC_dirty should be called for each linked object (but  */
-    /* the last one) to support multiple objects allocation.        */
-    if (!EXPECT(lb <= MAXOBJBYTES, TRUE) || GC_manual_vdb) {
-        op = GC_generic_malloc(lb - EXTRA_BYTES, k);
+    if (!SMALL_OBJ(lb)) {
+        op = GC_generic_malloc(lb, k);
         if (EXPECT(0 != op, TRUE))
             obj_link(op) = 0;
         *result = op;
-#       ifndef GC_DISABLE_INCREMENTAL
-          if (GC_manual_vdb && GC_is_heap_ptr(result)) {
-            GC_dirty_inner(result);
-            REACHABLE_AFTER_DIRTY(op);
-          }
-#       endif
         return;
     }
     GC_ASSERT(k < MAXOBJKINDS);
     lw = BYTES_TO_WORDS(lb);
     lg = BYTES_TO_GRANULES(lb);
-    if (EXPECT(get_have_errors(), FALSE))
+    if (EXPECT(GC_have_errors, FALSE))
       GC_print_all_errors();
     GC_INVOKE_FINALIZERS();
-    GC_DBG_COLLECT_AT_MALLOC(lb - EXTRA_BYTES);
+    GC_DBG_COLLECT_AT_MALLOC(lb);
     if (!EXPECT(GC_is_initialized, TRUE)) GC_init();
     LOCK();
     /* Do our share of marking work */
@@ -351,9 +340,10 @@ GC_API void GC_CALL GC_generic_malloc_many(size_t lb, int k, void **result)
         struct hblk * hbp;
         hdr * hhdr;
 
-        while ((hbp = rlh[lg]) != NULL) {
+        rlh += lg;
+        while ((hbp = *rlh) != 0) {
             hhdr = HDR(hbp);
-            rlh[lg] = hhdr -> hb_next;
+            *rlh = hhdr -> hb_next;
             GC_ASSERT(hhdr -> hb_sz == lb);
             hhdr -> hb_last_reclaimed = (unsigned short) GC_gc_no;
 #           ifdef PARALLEL_MARK
@@ -417,9 +407,6 @@ GC_API void GC_CALL GC_generic_malloc_many(size_t lb, int k, void **result)
                 /* GC lock is needed for reclaim list access.   We      */
                 /* must decrement fl_builder_count before reacquiring   */
                 /* the lock.  Hopefully this path is rare.              */
-
-                rlh = ok -> ok_reclaim_list; /* reload rlh after locking */
-                if (NULL == rlh) break;
               }
 #           endif
         }
@@ -445,7 +432,7 @@ GC_API void GC_CALL GC_generic_malloc_many(size_t lb, int k, void **result)
     /* Next try to allocate a new block worth of objects of this size.  */
     {
         struct hblk *h = GC_allochblk(lb, k, 0);
-        if (h /* != NULL */) { /* CPPCHECK */
+        if (h != 0) {
           if (IS_UNCOLLECTABLE(k)) GC_set_hdr_marks(HDR(h));
           GC_bytes_allocd += HBLKSIZE - HBLKSIZE % lb;
 #         ifdef PARALLEL_MARK
@@ -474,7 +461,7 @@ GC_API void GC_CALL GC_generic_malloc_many(size_t lb, int k, void **result)
 
     /* As a last attempt, try allocating a single object.  Note that    */
     /* this may trigger a collection or expand the heap.                */
-      op = GC_generic_malloc_inner(lb - EXTRA_BYTES, k);
+      op = GC_generic_malloc_inner(lb, k);
       if (0 != op) obj_link(op) = 0;
 
   out:
@@ -537,10 +524,8 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_memalign(size_t align, size_t lb)
 /* This one exists largely to redirect posix_memalign for leaks finding. */
 GC_API int GC_CALL GC_posix_memalign(void **memptr, size_t align, size_t lb)
 {
-  void *p;
-  size_t align_minus_one = align - 1; /* to workaround a cppcheck warning */
-
   /* Check alignment properly.  */
+  size_t align_minus_one = align - 1; /* to workaround a cppcheck warning */
   if (align < sizeof(void *) || (align_minus_one & align) != 0) {
 #   ifdef MSWINCE
       return ERROR_INVALID_PARAMETER;
@@ -549,16 +534,14 @@ GC_API int GC_CALL GC_posix_memalign(void **memptr, size_t align, size_t lb)
 #   endif
   }
 
-  p = GC_memalign(align, lb);
-  if (EXPECT(NULL == p, FALSE)) {
+  if ((*memptr = GC_memalign(align, lb)) == NULL) {
 #   ifdef MSWINCE
       return ERROR_NOT_ENOUGH_MEMORY;
 #   else
       return ENOMEM;
 #   endif
   }
-  *memptr = p;
-  return 0; /* success */
+  return 0;
 }
 
 /* provide a version of strdup() that uses the collector to allocate the
@@ -618,26 +601,17 @@ GC_API GC_ATTR_MALLOC char * GC_CALL GC_strndup(const char *str, size_t size)
   }
 #endif /* GC_REQUIRE_WCSDUP */
 
-#ifndef CPPCHECK
-  GC_API void * GC_CALL GC_malloc_stubborn(size_t lb)
-  {
-    return GC_malloc(lb);
-  }
+GC_API void * GC_CALL GC_malloc_stubborn(size_t lb)
+{
+  return GC_malloc(lb);
+}
 
-  GC_API void GC_CALL GC_change_stubborn(const void *p GC_ATTR_UNUSED)
-  {
-    /* Empty. */
-  }
-#endif /* !CPPCHECK */
+GC_API void GC_CALL GC_change_stubborn(const void *p GC_ATTR_UNUSED)
+{
+  /* Empty. */
+}
 
 GC_API void GC_CALL GC_end_stubborn_change(const void *p)
 {
   GC_dirty(p); /* entire object */
-}
-
-GC_API void GC_CALL GC_ptr_store_and_dirty(void *p, const void *q)
-{
-  *(const void **)p = q;
-  GC_dirty(p);
-  REACHABLE_AFTER_DIRTY(q);
 }

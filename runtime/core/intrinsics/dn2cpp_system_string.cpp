@@ -1903,7 +1903,7 @@ Dn2CppArray* dn2cpp_array_empty_cached(const Dn2CppTypeInfo* ti, Alloc alloc)
     if (it != pool.end())
         return *it->second;
     auto** cell = static_cast<Dn2CppArray**>(dn2cpp_alloc_pinned(sizeof(Dn2CppArray*)));
-    *cell = alloc();
+    dn2cpp_gc_store_ref(cell, alloc());
     pool.emplace(ti, cell);
     return *cell;
 }
@@ -2072,17 +2072,17 @@ void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
     {
         auto* ms = reinterpret_cast<Dn2CppMDArray*>(src);
         auto* md = reinterpret_cast<Dn2CppMDArray*>(dst);
-        std::memmove(md->data + static_cast<size_t>(dstIdx) * md->elemSize,
-                     ms->data + static_cast<size_t>(srcIdx) * ms->elemSize,
-                     static_cast<size_t>(len) * ms->elemSize);
+        dn2cpp_gc_memmove_refs(md->data + static_cast<size_t>(dstIdx) * md->elemSize,
+                               ms->data + static_cast<size_t>(srcIdx) * ms->elemSize,
+                               static_cast<size_t>(len) * ms->elemSize);
         return;
     }
     switch (dn2cpp_array_rep_dyn(src, "InvalidCastException (Array.Copy source is not an SZArray)"))
     {
         case 0:
-            std::memmove(&static_cast<Dn2CppArrayRef*>(dst)->data[dstIdx],
-                         &static_cast<Dn2CppArrayRef*>(src)->data[srcIdx],
-                         static_cast<size_t>(len) * sizeof(Dn2CppObject*));
+            dn2cpp_gc_memmove_refs(&static_cast<Dn2CppArrayRef*>(dst)->data[dstIdx],
+                                   &static_cast<Dn2CppArrayRef*>(src)->data[srcIdx],
+                                   static_cast<size_t>(len) * sizeof(Dn2CppObject*));
             return;
         case 1:
             std::memmove(&static_cast<Dn2CppArrayI4*>(dst)->data[dstIdx],
@@ -2093,9 +2093,9 @@ void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
         {
             Dn2CppArrayN* cs = static_cast<Dn2CppArrayN*>(src);
             Dn2CppArrayN* cd = static_cast<Dn2CppArrayN*>(dst);
-            std::memmove(cd->data + static_cast<size_t>(dstIdx) * cd->elemSize,
-                         cs->data + static_cast<size_t>(srcIdx) * cs->elemSize,
-                         static_cast<size_t>(len) * cs->elemSize);
+            dn2cpp_gc_memmove_refs(cd->data + static_cast<size_t>(dstIdx) * cd->elemSize,
+                                   cs->data + static_cast<size_t>(srcIdx) * cs->elemSize,
+                                   static_cast<size_t>(len) * cs->elemSize);
             return;
         }
     }
@@ -2337,7 +2337,7 @@ Dn2CppString* dn2cpp_string_intern(Dn2CppString* s)
     if (it != pool.end())
         return it->second->str;
     auto* cell = static_cast<Dn2CppStringInternCell*>(dn2cpp_alloc_pinned(sizeof(Dn2CppStringInternCell)));
-    cell->str = s;
+    dn2cpp_gc_store_ref(&cell->str, s);
     pool.emplace(dn2cpp_string_intern_key(s), cell);
     return s;
 }

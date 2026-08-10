@@ -24,6 +24,20 @@
  * level tree.
  */
 
+STATIC bottom_index * GC_all_bottom_indices = 0;
+                        /* Pointer to the first (lowest address)        */
+                        /* bottom_index.  Assumes the lock is held.     */
+
+STATIC bottom_index * GC_all_bottom_indices_end = 0;
+                        /* Pointer to the last (highest address)        */
+                        /* bottom_index.  Assumes the lock is held.     */
+
+void GC_clear_bottom_indices()
+{
+    GC_all_bottom_indices = 0;
+    GC_all_bottom_indices_end = 0;
+}
+
 /* Non-macro version of header location routine */
 GC_INNER hdr * GC_find_header(ptr_t h)
 {
@@ -102,33 +116,34 @@ GC_INNER hdr *
 /* Routines to dynamically allocate collector data structures that will */
 /* never be freed.                                                      */
 
+static ptr_t scratch_free_ptr = 0;
+
+/* GC_scratch_last_end_ptr is end point of last obtained scratch area.  */
+/* GC_scratch_end_ptr is end point of current scratch area.             */
+
 GC_INNER ptr_t GC_scratch_alloc(size_t bytes)
 {
-    ptr_t result = GC_scratch_free_ptr;
+    ptr_t result = scratch_free_ptr;
     size_t bytes_to_get;
 
     bytes = ROUNDUP_GRANULE_SIZE(bytes);
     for (;;) {
-        GC_ASSERT((word)GC_scratch_end_ptr >= (word)result);
-        if (bytes <= (word)GC_scratch_end_ptr - (word)result) {
+        scratch_free_ptr += bytes;
+        if ((word)scratch_free_ptr <= (word)GC_scratch_end_ptr) {
             /* Unallocated space of scratch buffer has enough size. */
-            GC_scratch_free_ptr = result + bytes;
             return result;
         }
 
-        GC_ASSERT(GC_page_size != 0);
         if (bytes >= MINHINCR * HBLKSIZE) {
             bytes_to_get = ROUNDUP_PAGESIZE_IF_MMAP(bytes);
             result = (ptr_t)GET_MEM(bytes_to_get);
+            GC_add_to_our_memory(result, bytes_to_get);
+            /* Undo scratch free area pointer update; get memory directly. */
+            scratch_free_ptr -= bytes;
             if (result != NULL) {
-              GC_add_to_our_memory(result, bytes_to_get);
-              /* No update of scratch free area pointer;        */
-              /* get memory directly.                           */
-#             ifdef USE_SCRATCH_LAST_END_PTR
                 /* Update end point of last obtained area (needed only  */
                 /* by GC_register_dynamic_libraries for some targets).  */
                 GC_scratch_last_end_ptr = result + bytes;
-#             endif
             }
             return result;
         }
@@ -136,49 +151,43 @@ GC_INNER ptr_t GC_scratch_alloc(size_t bytes)
         bytes_to_get = ROUNDUP_PAGESIZE_IF_MMAP(MINHINCR * HBLKSIZE);
                                                 /* round up for safety */
         result = (ptr_t)GET_MEM(bytes_to_get);
-        if (EXPECT(NULL == result, FALSE)) {
+        GC_add_to_our_memory(result, bytes_to_get);
+        if (NULL == result) {
             WARN("Out of memory - trying to allocate requested amount"
-                 " (%" WARN_PRIuPTR " bytes)...\n", bytes);
+                 " (%" WARN_PRIdPTR " bytes)...\n", (word)bytes);
+            scratch_free_ptr -= bytes; /* Undo free area pointer update */
             bytes_to_get = ROUNDUP_PAGESIZE_IF_MMAP(bytes);
             result = (ptr_t)GET_MEM(bytes_to_get);
-            if (result != NULL) {
-              GC_add_to_our_memory(result, bytes_to_get);
-#             ifdef USE_SCRATCH_LAST_END_PTR
-                GC_scratch_last_end_ptr = result + bytes;
-#             endif
-            }
+            GC_add_to_our_memory(result, bytes_to_get);
             return result;
         }
-
-        GC_add_to_our_memory(result, bytes_to_get);
-        /* TODO: some amount of unallocated space may remain unused forever */
         /* Update scratch area pointers and retry.      */
-        GC_scratch_free_ptr = result;
-        GC_scratch_end_ptr = GC_scratch_free_ptr + bytes_to_get;
-#       ifdef USE_SCRATCH_LAST_END_PTR
-          GC_scratch_last_end_ptr = GC_scratch_end_ptr;
-#       endif
+        scratch_free_ptr = result;
+        GC_scratch_end_ptr = scratch_free_ptr + bytes_to_get;
+        GC_scratch_last_end_ptr = GC_scratch_end_ptr;
     }
 }
+
+static hdr * hdr_free_list = 0;
 
 /* Return an uninitialized header */
 static hdr * alloc_hdr(void)
 {
     hdr * result;
 
-    if (NULL == GC_hdr_free_list) {
+    if (NULL == hdr_free_list) {
         result = (hdr *)GC_scratch_alloc(sizeof(hdr));
     } else {
-        result = GC_hdr_free_list;
-        GC_hdr_free_list = (hdr *) result -> hb_next;
+        result = hdr_free_list;
+        hdr_free_list = (hdr *) (result -> hb_next);
     }
     return(result);
 }
 
 GC_INLINE void free_hdr(hdr * hhdr)
 {
-    hhdr -> hb_next = (struct hblk *) GC_hdr_free_list;
-    GC_hdr_free_list = hhdr;
+    hhdr -> hb_next = (struct hblk *) hdr_free_list;
+    hdr_free_list = hhdr;
 }
 
 #ifdef COUNT_HDR_CACHE_HITS
@@ -191,11 +200,13 @@ GC_INNER void GC_init_headers(void)
 {
     unsigned i;
 
-    GC_ASSERT(NULL == GC_all_nils);
-    GC_all_nils = (bottom_index *)GC_scratch_alloc(sizeof(bottom_index));
-    if (GC_all_nils == NULL) {
-      GC_err_printf("Insufficient memory for GC_all_nils\n");
-      EXIT();
+    if (GC_all_nils == NULL)
+    {
+        GC_all_nils = (bottom_index *)GC_scratch_alloc(sizeof(bottom_index));
+        if (GC_all_nils == NULL) {
+          GC_err_printf("Insufficient memory for GC_all_nils\n");
+          EXIT();
+        }
     }
     BZERO(GC_all_nils, sizeof(bottom_index));
     for (i = 0; i < TOP_SZ; i++) {
@@ -281,19 +292,15 @@ GC_INNER GC_bool GC_install_counts(struct hblk *h, size_t sz/* bytes */)
     struct hblk * hbp;
 
     for (hbp = h; (word)hbp < (word)h + sz; hbp += BOTTOM_SZ) {
-        if (!get_index((word)hbp))
-            return FALSE;
-        if ((word)hbp > GC_WORD_MAX - (word)BOTTOM_SZ * HBLKSIZE)
-            break; /* overflow of hbp+=BOTTOM_SZ is expected */
+        if (!get_index((word) hbp)) return(FALSE);
     }
-    if (!get_index((word)h + sz - 1))
-        return FALSE;
+    if (!get_index((word)h + sz - 1)) return(FALSE);
     for (hbp = h + 1; (word)hbp < (word)h + sz; hbp += 1) {
         word i = HBLK_PTR_DIFF(hbp, h);
 
         SET_HDR(hbp, (hdr *)(i > MAX_JUMP? MAX_JUMP : i));
     }
-    return TRUE;
+    return(TRUE);
 }
 
 /* Remove the header for block h */
@@ -309,15 +316,6 @@ GC_INNER void GC_remove_header(struct hblk *h)
 GC_INNER void GC_remove_counts(struct hblk *h, size_t sz/* bytes */)
 {
     struct hblk * hbp;
-
-    if (sz <= HBLKSIZE) return;
-    if (HDR(h+1) == 0) {
-#     ifdef GC_ASSERTIONS
-        for (hbp = h+2; (word)hbp < (word)h + sz; hbp++)
-          GC_ASSERT(HDR(hbp) == 0);
-#     endif
-      return;
-    }
 
     for (hbp = h+1; (word)hbp < (word)h + sz; hbp += 1) {
         SET_HDR(hbp, 0);
@@ -344,16 +342,18 @@ void GC_apply_to_all_blocks(void (*fn)(struct hblk *h, word client_data),
                           client_data);
                 }
                 j--;
-            } else if (index_p->index[j] == 0) {
+             } else if (index_p->index[j] == 0) {
                 j--;
-            } else {
+             } else {
                 j -= (signed_word)(index_p->index[j]);
-            }
-        }
-    }
+             }
+         }
+     }
 }
 
-GC_INNER struct hblk * GC_next_block(struct hblk *h, GC_bool allow_free)
+/* Get the next valid block whose address is at least h */
+/* Return 0 if there is none.                           */
+GC_INNER struct hblk * GC_next_used_block(struct hblk *h)
 {
     REGISTER bottom_index * bi;
     REGISTER word j = ((word)h >> LOG_HBLKSIZE) & (BOTTOM_SZ-1);
@@ -367,15 +367,14 @@ GC_INNER struct hblk * GC_next_block(struct hblk *h, GC_bool allow_free)
         while (bi != 0 && bi -> key < hi) bi = bi -> asc_link;
         j = 0;
     }
-
-    while (bi != 0) {
+    while(bi != 0) {
         while (j < BOTTOM_SZ) {
             hdr * hhdr = bi -> index[j];
             if (IS_FORWARDING_ADDR_OR_NIL(hhdr)) {
                 j++;
             } else {
-                if (allow_free || !HBLK_IS_FREE(hhdr)) {
-                    return ((struct hblk *)
+                if (!HBLK_IS_FREE(hhdr)) {
+                    return((struct hblk *)
                               (((bi -> key << LOG_BOTTOM_SZ) + j)
                                << LOG_HBLKSIZE));
                 } else {
@@ -389,6 +388,9 @@ GC_INNER struct hblk * GC_next_block(struct hblk *h, GC_bool allow_free)
     return(0);
 }
 
+/* Get the last (highest address) block whose address is        */
+/* at most h.  Return 0 if there is none.                       */
+/* Unlike the above, this may return a free block.              */
 GC_INNER struct hblk * GC_prev_block(struct hblk *h)
 {
     bottom_index * bi;

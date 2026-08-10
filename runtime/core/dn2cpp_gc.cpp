@@ -473,16 +473,26 @@ void dn2cpp_runtime_init()
     {
         // Print the active mode immediately (not via atexit), so it is observable
         // even when the host does not exit cleanly (e.g. the Godot engine).
+        unsigned gcVersion = GC_get_version();
+        std::fprintf(stderr, "[dn2cpp] GC version: %d.%d.%d\n",
+                     static_cast<int>((gcVersion >> 16) & 0xffu),
+                     static_cast<int>((gcVersion >> 8) & 0xffu),
+                     static_cast<int>(gcVersion & 0xffu));
         if (incremental)
             std::fprintf(stderr, "[dn2cpp] GC mode: incremental (time-limit %lu ms)\n", ms);
         else
             std::fprintf(stderr, "[dn2cpp] GC mode: stop-the-world\n");
         // How much of the heap the incremental collector WOULD write-protect to
         // recover dirty bits. It describes the platform's dirty-bit strategy, not the
-        // mode in force, and reads the same under stop-the-world: 0 where no mprotect
-        // is needed, 1 where a heap block is exactly one page, 3 where it is not
-        // (16 KB-page arm64 macOS protects the pointer-free heap too, which is why
-        // allocating atomically does not exempt a buffer).
+        // mode in force, and reads the same under stop-the-world. Both selectable
+        // backends run MANUAL_VDB and never actually protect a page, but they answer
+        // this query differently: the fork's gcconfig.h forces MANUAL_VDB into the
+        // same branch that undefines every mprotect-style VDB, so it always reads 0.
+        // Upstream is only told via -DMANUAL_VDB, which leaves those VDBs compiled in
+        // and skips just the runtime probe (GC_dirty_init) that would zero this out,
+        // so it falls back to a page-size heuristic and reads nonzero — 1 where a
+        // heap block is exactly one page, 3 where it is not (16 KB-page arm64 macOS
+        // protects the pointer-free heap too) — despite protecting nothing.
         //
         // Whether a kernel write into a managed buffer actually bounces is this value
         // AND incremental mode — report that conjunction rather than leave a reader to
@@ -590,7 +600,7 @@ void dn2cpp_sync_ctx_set(Dn2CppObject* ctx)
             return; // clearing an never-installed slot: nothing to store
         t_sync_ctx_slot = static_cast<Dn2CppObject**>(dn2cpp_alloc_pinned(sizeof(Dn2CppObject*)));
     }
-    *t_sync_ctx_slot = ctx;
+    dn2cpp_gc_store_ref(t_sync_ctx_slot, ctx);
 }
 
 // Thread exit: drop the slot with the thread, like the thread-static block —
@@ -825,6 +835,37 @@ void* dn2cpp_alloc_atomic(size_t size)
     return p;
 }
 
+void dn2cpp_gc_write_barrier(void* heapAddress)
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    if (heapAddress != nullptr)
+        GC_end_stubborn_change(heapAddress);
+#else
+    (void)heapAddress;
+#endif
+}
+
+void dn2cpp_gc_write_barrier_if_heap(void* address)
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    if (address == nullptr)
+        return;
+    void* base = GC_base(address);
+    if (base != nullptr)
+        GC_end_stubborn_change(base);
+#else
+    (void)address;
+#endif
+}
+
+void dn2cpp_gc_memmove_refs(void* destination, const void* source, size_t bytes)
+{
+    if (bytes == 0)
+        return;
+    std::memmove(destination, source, bytes);
+    dn2cpp_gc_write_barrier_if_heap(destination);
+}
+
 int dn2cpp_gc_kernel_write_unsafe(const void* p)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
@@ -834,9 +875,11 @@ int dn2cpp_gc_kernel_write_unsafe(const void* p)
     // here and pays nothing.
     if (!GC_is_incremental_mode())
         return 0;
-    // SOFT_VDB (Linux x86_64/i386: soft-dirty bits via /proc) and GWW_VDB
-    // (Windows: GetWriteWatch) get their dirty bits without mprotect, and iOS
-    // compiles no VDB at all. All report GC_PROTECTS_NONE.
+    // Under MANUAL_VDB nothing is ever mprotected, but only the fork's build
+    // reports that as GC_PROTECTS_NONE; upstream's plain -DMANUAL_VDB build
+    // reports a nonzero page-size heuristic instead (see dn2cpp_core.h), so
+    // this check short-circuits on the fork only — upstream falls through to
+    // the heap-pointer check below and answers 1, conservatively.
     if (GC_incremental_protection_needs() == GC_PROTECTS_NONE)
         return 0;
     // Outside the heap — the C stack (where a `localloc`/`stackalloc` buffer
@@ -1219,6 +1262,9 @@ void GC_CALLBACK dn2cpp_finalizer_callback(void* obj, void* /* clientData */)
         {
             g_finalizer_ring[h % kFinalizerRingCapacity].store(
                 static_cast<Dn2CppObject*>(obj), std::memory_order_release);
+            // A pinned block is rescanned only when dirty; the release/acquire
+            // pairing on the slot is unaffected.
+            dn2cpp_gc_write_barrier(&g_finalizer_ring[h % kFinalizerRingCapacity]);
             return;
         }
     }
@@ -1985,7 +2031,7 @@ void dn2cpp_dependenthandle_set_target_null(Dn2CppDependentHandle h)
 void dn2cpp_dependenthandle_set_dependent(Dn2CppDependentHandle h, Dn2CppObject* dependent)
 {
     if (h.cell != nullptr)
-        h.cell->dependent = dependent;
+        dn2cpp_gc_store_ref(&h.cell->dependent, dependent);
 }
 
 void dn2cpp_dependenthandle_free_value(Dn2CppDependentHandle h)
@@ -1994,7 +2040,7 @@ void dn2cpp_dependenthandle_free_value(Dn2CppDependentHandle h)
         return;
     dn2cpp_gchandle_internal_free(h.cell->targetWeak);
     h.cell->targetWeak = 0;
-    h.cell->dependent = nullptr;
+    dn2cpp_gc_store_ref(&h.cell->dependent, static_cast<Dn2CppObject*>(nullptr));
 }
 
 void dn2cpp_dependenthandle_free(Dn2CppDependentHandle* h)
@@ -2115,7 +2161,7 @@ Dn2CppGCHandle dn2cpp_gchandle_alloc(Dn2CppObject* target, void* dataAddr, int32
         cell->weakCell = dn2cpp_gchandle_internal_alloc(target, handleType);
     else // Normal or Pinned: a strong pointer + (Pinned) the pinned data address
     {
-        cell->target = target;
+        dn2cpp_gc_store_ref(&cell->target, target);
         cell->dataAddr = dataAddr;
     }
     cell->kind = handleType + 1;
@@ -2153,7 +2199,7 @@ void dn2cpp_gchandle_set_target(Dn2CppGCHandle h, Dn2CppObject* value)
         // discover the data address from the runtime type.
         cell->dataAddr = dn2cpp_pinned_data_addr(value);
     }
-    cell->target = value;
+    dn2cpp_gc_store_ref(&cell->target, value);
 }
 
 void* dn2cpp_gchandle_addr(Dn2CppGCHandle h)

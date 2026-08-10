@@ -250,7 +250,8 @@ void dn2cpp_exc_stamp_trace(Dn2CppObject* obj)
         t->count = stored;
         for (int32_t i = 0; i < stored; i++)
             t->entries[i] = const_cast<char*>(ss->frames[stored - 1 - i]);
-        static_cast<Dn2CppExceptionObject*>(obj)->trace = t;
+        dn2cpp_gc_store_ref<const Dn2CppExcTrace>(
+            &static_cast<Dn2CppExceptionObject*>(obj)->trace, t);
         return;
     }
     void* buf[kExcTraceMax];
@@ -268,7 +269,8 @@ void dn2cpp_exc_stamp_trace(Dn2CppObject* obj)
     t->dropped = 0;
     t->count = n;
     std::memcpy(t->entries, buf, sizeof(void*) * static_cast<size_t>(n));
-    static_cast<Dn2CppExceptionObject*>(obj)->trace = t;
+    dn2cpp_gc_store_ref<const Dn2CppExcTrace>(
+        &static_cast<Dn2CppExceptionObject*>(obj)->trace, t);
 }
 
 [[noreturn]] void dn2cpp_rethrow(Dn2CppObject* obj)
@@ -1443,7 +1445,8 @@ void dn2cpp_aggregate_set_inner_wrapper(Dn2CppObject* ex, Dn2CppObject* wrapper)
 {
     if (ex == nullptr)
         dn2cpp_throw_null_reference();
-    reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerWrapper = wrapper;
+    dn2cpp_gc_store_ref(&reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerWrapper,
+                        wrapper);
 }
 
 // AggregateException.get_InnerExceptions: the stored Exception[] array. `arrTi` is the
@@ -1464,7 +1467,8 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
         // ReadOnlyCollection ctor wrapping it rejects a null list. Hand back a real
         // zero-length Exception[] so the empty case reads .Count == 0 like .NET.
         a = dn2cpp_newarr_ref_t(0, arrTi);
-        reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions = a;
+        dn2cpp_gc_store_ref(
+            &reinterpret_cast<Dn2CppAggregateExceptionObject*>(ex)->innerExceptions, a);
         return a;
     }
     if (arrTi != nullptr)

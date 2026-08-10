@@ -507,13 +507,17 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 
 ### Runtime services
 
-- **Boehm-Demers-Weiser GC** (`third_party/bdwgc/`, compiled with the
-  runtime, thread-aware). Reference-free arrays allocate through the
-  unscanned allocator; `ArrayPool<T>.Shared` is a real size-bucketed
+- **Boehm-Demers-Weiser GC** (vendored from Unity Technologies' fork under
+  `third_party/bdwgc/`, compiled with the runtime, thread-aware).
+  Reference-free arrays allocate through the unscanned allocator;
+  `ArrayPool<T>.Shared` is a real size-bucketed
   pool. Modes: classic stop-the-world (console default) and Boehm
   incremental (Godot default, bounded frame pauses), with
   `DN2CPP_GC_INCREMENTAL` / `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS`
   overrides; `DN2CPP_NO_GC=1` opts out to a calloc fallback.
+  `-DDN2CPP_GC_BACKEND=upstream` swaps in vendored upstream bdwgc 8.2.8
+  (`third_party/bdwgc-upstream/`) instead of the fork — a dev-only
+  cross-check, not shipped; covered by `gates/build-and-run-gc-upstream.sh`.
 - **Finalizers** — `Finalize` overrides detected at build time and
   registered at allocation *before* the ctor runs, matching .NET's
   partially-constructed-object semantics; a dedicated finalizer thread
@@ -612,7 +616,7 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 | `runtime/godot/`, `runtime/dotnetmodule/` | Table-driven GDExtension bridge; `modules/mono` drop-in glue |
 | `runtime/CMakeLists.txt` | Sole native build backend (Ninja); gates thin-wrap it |
 | `internal/DnZlib/`, `internal/DnBrotli/`, `internal/DnHttp/` | Managed-swap libraries shipped as conditional default references |
-| `third_party/` | Vendored: `bdwgc/`, `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
+| `third_party/` | Vendored: `bdwgc/`, `bdwgc-upstream/` (alternate GC source tree, `DN2CPP_GC_BACKEND=upstream`), `zlib/`, `brotli/`, `highway/`, `curl/`, `mbedtls/`, `nghttp2/`, `cacert/`, `gdextension_interface.h` (see License) |
 | `samples/dotnet/` | Themed feature buckets — one `*.cs` per feature, driven by a themed gate |
 | `samples/godot/`, `samples/godot-dotnet/`, `samples/native/` | GDExtension + Godot.NET.Sdk + hot-update projects; drop-in and editor-export projects; a small C library for P/Invoke testing |
 | `gates/` | The regression suite (`build-and-run-*.sh`), `run-all-gates.sh` (parallel runner), `pre-merge.sh` (the merge gate), `_common.sh` (shared helpers) |
@@ -739,11 +743,13 @@ it does not come back as a ticket.
   loudly, at link time, naming the missing symbol. The intercepted
   `File.*` subset still works against MEMFS.
 - **A user `[DllImport]` whose native side fills an `[Out] byte[]` with a
-  syscall** is unsafe under the incremental collector (the Godot lane's
-  default): managed arrays cross unpinned and uncopied by design, and a
-  kernel store into a write-protected page returns `EFAULT` rather than
-  faulting into the GC's handler. Ask `dn2cpp_gc_kernel_write_unsafe(p)`
-  and stage through your own buffer, as the PAL's own syscalls do.
+  syscall** is unsafe only when the incremental collector (the Godot lane's
+  default) write-protects heap pages to recover dirty bits — which the
+  vendored fork's MANUAL_VDB build never does: managed arrays cross unpinned
+  and uncopied by design, and a kernel store into a write-protected page would
+  return `EFAULT` rather than faulting into the GC's handler. Ask
+  `dn2cpp_gc_kernel_write_unsafe(p)` and stage through your own buffer, as the
+  PAL's own syscalls do, should that ever change.
 - **Hand-written runtime types refuse `MemberwiseClone`** (`Thread`,
   `SemaphoreSlim`, `CountdownEvent`, `Barrier`, `ReaderWriterLockSlim`,
   `Timer`, `ManualResetEventSlim`, and `WaitHandle` with the event handles
@@ -825,8 +831,14 @@ dn2cpp is licensed under the [MIT License](LICENSE).
 
 Vendored third-party components keep their own licenses:
 
-- `third_party/bdwgc/` — Boehm-Demers-Weiser GC, permissive **bdw-gc**
-  license ([`third_party/bdwgc/LICENSE`](third_party/bdwgc/LICENSE))
+- `third_party/bdwgc/` — Unity Technologies' bdwgc fork, permissive
+  **bdw-gc** license
+  ([provenance](third_party/bdwgc/DN2CPP-VENDORED.md),
+  [`LICENSE`](third_party/bdwgc/LICENSE))
+- `third_party/bdwgc-upstream/` — pre-fork upstream bdwgc 8.2.8,
+  dev-only alternate backend, same permissive **bdw-gc** license
+  ([provenance](third_party/bdwgc-upstream/DN2CPP-VENDORED.md),
+  [`LICENSE`](third_party/bdwgc-upstream/LICENSE))
 - `third_party/zlib/` — classic zlib 1.3.2, **zlib** license
   ([`third_party/zlib/LICENSE`](third_party/zlib/LICENSE))
 - `third_party/brotli/` — google/brotli 1.1.0, **MIT**

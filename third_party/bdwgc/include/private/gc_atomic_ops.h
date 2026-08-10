@@ -12,7 +12,7 @@
  */
 
 /* This is a private GC header which provides an implementation of      */
-/* libatomic_ops subset primitives sufficient for GC assuming that GCC  */
+/* libatomic_ops subset primitives sufficient for GC assuming that C11  */
 /* atomic intrinsics are available (and have correct implementation).   */
 /* This is enabled by defining GC_BUILTIN_ATOMIC macro.  Otherwise,     */
 /* libatomic_ops library is used to define the primitives.              */
@@ -41,14 +41,9 @@
 # define AO_TS_INITIALIZER (AO_TS_t)AO_TS_CLEAR
 
 # if defined(_MSC_VER) && !defined(__clang__)
-    /* Real MSVC (cl.exe): no __atomic_* / __GCC_ATOMIC_* builtins (clang-cl still
-       defines __clang__ and takes the GNU/Clang arm below). dn2cpp targets
-       64-bit only (see the atomic-probe comment in runtime/CMakeLists.txt), so
-       AO_t == GC_word == unsigned __int64 here; the small primitive set bdwgc
-       actually needs is implemented with the _Interlocked*64 intrinsics,
-       matching the GNU/Clang arm's signatures 1:1. x86/x64 loads/stores are
-       already acquire/release under MSVC's volatile memory model, so no
-       separate fence is needed for AO_load_acquire/AO_store_release. */
+    /* Modified by dn2cpp: real MSVC lacks the GNU/Clang __atomic_* builtins.
+       dn2cpp targets 64-bit only, so AO_t is implemented with _Interlocked*64;
+       x86/x64 volatile loads and stores provide the required ordering. */
 #   include <intrin.h>
 
 #   define AO_TS_SET (AO_TS_t)1 /* true */
@@ -111,7 +106,7 @@
 #   define AO_HAVE_compare_and_swap_release
 # endif
 
-# else /* GNU/Clang __atomic builtins (real Clang, GCC, and clang-cl, which defines __clang__) */
+# else /* GNU/Clang __atomic builtins, including clang-cl */
 
 # if defined(__GCC_ATOMIC_TEST_AND_SET_TRUEVAL) && !defined(CPPCHECK)
 #   define AO_TS_SET __GCC_ATOMIC_TEST_AND_SET_TRUEVAL
@@ -119,8 +114,7 @@
 #   define AO_TS_SET (AO_TS_t)1 /* true */
 # endif
 # define AO_CLEAR(p) __atomic_clear(p, __ATOMIC_RELEASE)
-# define AO_test_and_set_acquire(p) \
-        (__atomic_test_and_set(p, __ATOMIC_ACQUIRE) ? AO_TS_SET : AO_TS_CLEAR)
+# define AO_test_and_set_acquire(p) __atomic_test_and_set(p, __ATOMIC_ACQUIRE)
 # define AO_HAVE_test_and_set_acquire
 
 # define AO_compiler_barrier() __atomic_signal_fence(__ATOMIC_SEQ_CST)
@@ -177,12 +171,7 @@
     } /* extern "C" */
 # endif
 
-# ifndef NO_LOCKFREE_AO_OR
-    /* __atomic_or_fetch is assumed to be lock-free.    */
-#   define HAVE_LOCKFREE_AO_OR 1
-# endif
-
-#else
+#elif !defined(NN_PLATFORM_CTR)
   /* Fallback to libatomic_ops. */
 # include "atomic_ops.h"
 
@@ -191,7 +180,7 @@
   /* only if AO_REQUIRE_CAS is defined (or if the corresponding         */
   /* AO_HAVE_x macro is defined).  x86/x64 targets have AO_nop_full,    */
   /* AO_load_acquire, AO_store_release, at least.                       */
-# if (!defined(AO_HAVE_load) || !defined(AO_HAVE_store)) && !defined(CPPCHECK)
+# if !defined(AO_HAVE_load) || !defined(AO_HAVE_store)
 #   error AO_load or AO_store is missing; probably old version of atomic_ops
 # endif
 

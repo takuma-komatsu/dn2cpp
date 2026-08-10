@@ -2326,6 +2326,7 @@ namespace
             auto* ud = static_cast<Dn2CppGodotCallableShim*>(
                 dn2cpp_alloc_pinned(sizeof(Dn2CppGodotCallableShim)));
             *ud = *shim;
+            dn2cpp_gc_write_barrier(ud);
             GDExtensionCallableCustomInfo2 info = {};
             info.callable_userdata = ud;
             info.token = g_library;
@@ -2742,7 +2743,8 @@ uint8_t dn2cpp_godot_try_anchor_refcounted(Dn2CppObject* self)
         }
         return 0;
     }
-    g_refcounted_anchor_table[g_refcounted_anchor_count++] = self;
+    dn2cpp_gc_store_ref(&g_refcounted_anchor_table[g_refcounted_anchor_count], self);
+    g_refcounted_anchor_count++;
     return 1;
 }
 

@@ -22,8 +22,8 @@
  * included from header files that are frequently included by clients.
  */
 
-#ifndef GC_DBG_MLC_H
-#define GC_DBG_MLC_H
+#ifndef _DBG_MLC_H
+#define _DBG_MLC_H
 
 #include "gc_priv.h"
 #ifdef KEEP_BACK_PTRS
@@ -80,7 +80,7 @@ typedef struct {
     /* We're careful never to overwrite a value with lsb 0.     */
 #   if ALIGNMENT == 1
       /* Fudge back pointer to be even. */
-#     define HIDE_BACK_PTR(p) GC_HIDE_POINTER(~(word)1 & (word)(p))
+#     define HIDE_BACK_PTR(p) GC_HIDE_POINTER(~1 & (word)(p))
 #   else
 #     define HIDE_BACK_PTR(p) GC_HIDE_POINTER(p)
 #   endif
@@ -95,8 +95,8 @@ typedef struct {
       word oh_dummy;
 #   endif
 # endif
-  const char * oh_string;       /* object descriptor string (file name)    */
-  signed_word oh_int;           /* object descriptor integer (line number) */
+  const char * oh_string;       /* object descriptor string     */
+  word oh_int;                  /* object descriptor integers   */
 # ifdef NEED_CALLINFO
     struct callinfo oh_ci[NFRAMES];
 # endif
@@ -131,12 +131,6 @@ typedef struct {
   GC_INNER void GC_save_callers(struct callinfo info[NFRAMES]);
   GC_INNER void GC_print_callers(struct callinfo info[NFRAMES]);
 # define ADD_CALL_CHAIN(base, ra) GC_save_callers(((oh *)(base)) -> oh_ci)
-# if defined(REDIRECT_MALLOC) && defined(THREADS) && defined(DBG_HDRS_ALL) \
-     && NARGS == 0 && NFRAMES % 2 == 0 && defined(GC_HAVE_BUILTIN_BACKTRACE)
-    GC_INNER void GC_save_callers_no_unlock(struct callinfo info[NFRAMES]);
-#   define ADD_CALL_CHAIN_INNER(base) \
-                    GC_save_callers_no_unlock(((oh *)(base)) -> oh_ci)
-# endif
 # define PRINT_CALL_CHAIN(base) GC_print_callers(((oh *)(base)) -> oh_ci)
 #elif defined(GC_ADD_CALLER)
   struct callinfo;
@@ -146,11 +140,6 @@ typedef struct {
 #else
 # define ADD_CALL_CHAIN(base, ra)
 # define PRINT_CALL_CHAIN(base)
-#endif
-
-#if !defined(ADD_CALL_CHAIN_INNER) && defined(DBG_HDRS_ALL)
-  /* A variant of ADD_CALL_CHAIN() used for internal allocations.   */
-# define ADD_CALL_CHAIN_INNER(base) ADD_CALL_CHAIN(base, GC_RETURN_ADDR)
 #endif
 
 #ifdef GC_ADD_CALLER
@@ -169,7 +158,7 @@ typedef struct {
 #endif
 
 #if defined(KEEP_BACK_PTRS) || defined(MAKE_BACK_GRAPH)
-# if defined(SHORT_DBG_HDRS) && !defined(CPPCHECK)
+# ifdef SHORT_DBG_HDRS
 #   error Non-ptr stored in object results in GC_HAS_DEBUG_INFO malfunction
     /* We may mistakenly conclude that p has a debugging wrapper.       */
 # endif
@@ -190,4 +179,4 @@ typedef struct {
 
 EXTERN_C_END
 
-#endif /* GC_DBG_MLC_H */
+#endif /* _DBG_MLC_H */

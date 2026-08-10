@@ -124,7 +124,10 @@ static inline void dn2cpp_atomic_store_u8(uint64_t* p, uint64_t v) { __atomic_st
 Dn2CppObject* dn2cpp_interlocked_cmpxchg_ref(Dn2CppObject** loc, Dn2CppObject* value, Dn2CppObject* comparand)
 {
     // the value found in *loc (== comparand on success)
-    return static_cast<Dn2CppObject*>(dn2cpp_atomic_cmpxchg_ptr(reinterpret_cast<void**>(loc), comparand, value));
+    auto* original = static_cast<Dn2CppObject*>(
+        dn2cpp_atomic_cmpxchg_ptr(reinterpret_cast<void**>(loc), comparand, value));
+    dn2cpp_gc_write_barrier_if_heap(loc);
+    return original;
 }
 
 // Sub-word (1-/2-byte) variants: declared-width hardware CAS/exchange, so the
@@ -153,7 +156,10 @@ int64_t dn2cpp_interlocked_cmpxchg_i8(int64_t* loc, int64_t value, int64_t compa
 
 Dn2CppObject* dn2cpp_interlocked_exchange_ref(Dn2CppObject** loc, Dn2CppObject* value)
 {
-    return static_cast<Dn2CppObject*>(dn2cpp_atomic_exchange_ptr(reinterpret_cast<void**>(loc), value));
+    auto* original = static_cast<Dn2CppObject*>(
+        dn2cpp_atomic_exchange_ptr(reinterpret_cast<void**>(loc), value));
+    dn2cpp_gc_write_barrier_if_heap(loc);
+    return original;
 }
 
 int8_t dn2cpp_interlocked_exchange_i1(int8_t* loc, int8_t value)

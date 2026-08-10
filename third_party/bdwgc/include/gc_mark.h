@@ -33,14 +33,6 @@
   extern "C" {
 #endif
 
-#define GC_PROC_BYTES 100
-
-#if defined(GC_BUILD) || defined(NOT_GCBUILD)
-  struct GC_ms_entry;
-#else
-  struct GC_ms_entry { void *opaque; };
-#endif
-
 /* A client supplied mark procedure.  Returns new mark stack pointer.   */
 /* Primary effect should be to push new entries on the mark stack.      */
 /* Mark stack pointer values are passed and returned explicitly.        */
@@ -62,10 +54,14 @@
 /* residing on a free list.  Such objects are cleared, except for a     */
 /* free list link field in the first word.  Thus mark procedures may    */
 /* not count on the presence of a type descriptor, and must handle this */
-/* case correctly somehow.  Also, a mark procedure should be prepared   */
-/* to be executed concurrently from the marker threads (the later ones  */
-/* are created only if the client has called GC_start_mark_threads()    */
-/* or started a user thread previously).                                */
+/* case correctly somehow.                                              */
+#define GC_PROC_BYTES 100
+
+#ifdef GC_BUILD
+  struct GC_ms_entry;
+#else
+  struct GC_ms_entry { void *opaque; };
+#endif
 typedef struct GC_ms_entry * (*GC_mark_proc)(GC_word * /* addr */,
                                 struct GC_ms_entry * /* mark_stack_ptr */,
                                 struct GC_ms_entry * /* mark_stack_limit */,
@@ -82,14 +78,14 @@ typedef struct GC_ms_entry * (*GC_mark_proc)(GC_word * /* addr */,
 
 /* Object descriptors on mark stack or in objects.  Low order two       */
 /* bits are tags distinguishing among the following 4 possibilities     */
-/* for the rest (high order) bits.                                      */
+/* for the high order 30 bits.                                          */
 #define GC_DS_TAG_BITS 2
 #define GC_DS_TAGS   ((1 << GC_DS_TAG_BITS) - 1)
 #define GC_DS_LENGTH 0  /* The entire word is a length in bytes that    */
                         /* must be a multiple of 4.                     */
-#define GC_DS_BITMAP 1  /* The high order bits are describing pointer   */
-                        /* fields.  The most significant bit is set if  */
-                        /* the first word is a pointer.                 */
+#define GC_DS_BITMAP 1  /* 30 (62) bits are a bitmap describing pointer */
+                        /* fields.  The msb is 1 if the first word      */
+                        /* is a pointer.                                */
                         /* (This unconventional ordering sometimes      */
                         /* makes the marker slightly faster.)           */
                         /* Zeroes indicate definite nonpointers.  Ones  */
@@ -101,7 +97,7 @@ typedef struct GC_ms_entry * (*GC_mark_proc)(GC_word * /* addr */,
                         /* PROC(descr).  ENV(descr) is passed as the    */
                         /* last argument.                               */
 #define GC_MAKE_PROC(proc_index, env) \
-            ((((((GC_word)(env)) << GC_LOG_MAX_MARK_PROCS) \
+            (((((env) << GC_LOG_MAX_MARK_PROCS) \
                | (proc_index)) << GC_DS_TAG_BITS) | GC_DS_PROC)
 #define GC_DS_PER_OBJECT 3  /* The real descriptor is at the            */
                         /* byte displacement from the beginning of the  */
@@ -125,8 +121,7 @@ GC_API void * GC_greatest_plausible_heap_addr;
                         /* Bounds on the heap.  Guaranteed valid        */
                         /* Likely to include future heap expansion.     */
                         /* Hence usually includes not-yet-mapped        */
-                        /* memory, or might overlap with other data     */
-                        /* roots.                                       */
+                        /* memory.                                      */
 
 /* Handle nested references in a custom mark procedure.                 */
 /* Check if obj is a valid object. If so, ensure that it is marked.     */
@@ -157,23 +152,20 @@ GC_API struct GC_ms_entry * GC_CALL GC_mark_and_push(void * /* obj */,
            (GC_word)(obj) <= (GC_word)GC_greatest_plausible_heap_addr ? \
            GC_mark_and_push(obj, msp, lim, src) : (msp))
 
-/* The size of the header added to objects allocated through the        */
-/* GC_debug routines.  Defined as a function so that client mark        */
-/* procedures do not need to be recompiled for the collector library    */
-/* version changes.                                                     */
-GC_API GC_ATTR_CONST size_t GC_CALL GC_get_debug_header_size(void);
-#define GC_USR_PTR_FROM_BASE(p) \
-                ((void *)((char *)(p) + GC_get_debug_header_size()))
+GC_API struct GC_ms_entry * GC_CALL GC_custom_push_range(void * /* bottom */, void * /* top */,
+                                struct GC_ms_entry * /* mark_stack_ptr */,
+                                struct GC_ms_entry * /* mark_stack_limit */);
 
-/* The same but defined as a variable.  Exists only for the backward    */
-/* compatibility.  Some compilers do not accept "const" together with   */
-/* deprecated or dllimport attributes, so the symbol is exported as     */
-/* a non-constant one.                                                  */
-GC_API GC_ATTR_DEPRECATED
-# ifdef GC_BUILD
-    const
-# endif
-  size_t GC_debug_header_size;
+GC_API struct GC_ms_entry * GC_CALL GC_custom_push_proc(GC_word /* proc */, void * /* start */,
+                                struct GC_ms_entry * /* mark_stack_ptr */,
+                                struct GC_ms_entry * /* mark_stack_limit */);
+
+GC_API size_t GC_debug_header_size;
+       /* The size of the header added to objects allocated through    */
+       /* the GC_debug routines.                                       */
+       /* Defined as a variable so that client mark procedures don't   */
+       /* need to be recompiled for collector version changes.         */
+#define GC_USR_PTR_FROM_BASE(p) ((void *)((char *)(p) + GC_debug_header_size))
 
 /* And some routines to support creation of new "kinds", e.g. with      */
 /* custom mark procedures, by language runtimes.                        */
@@ -200,7 +192,7 @@ GC_API unsigned GC_CALL GC_new_proc(GC_mark_proc);
 GC_API unsigned GC_CALL GC_new_proc_inner(GC_mark_proc);
 
 /* Allocate an object of a given kind.  By default, there are only      */
-/* a few kinds: composite (pointerful), atomic, uncollectible, etc.     */
+/* a few kinds: composite (pointer-free), atomic, uncollectible, etc.   */
 /* We claim it is possible for clever client code that understands the  */
 /* GC internals to add more, e.g. to communicate object layout          */
 /* information to the collector.  Note that in the multi-threaded       */
@@ -217,7 +209,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
                                         GC_generic_malloc_ignore_off_page(
                                             size_t /* lb */, int /* knd */);
                                 /* As above, but pointers to past the   */
-                                /* first hblk of the resulting object   */
+                                /* first page of the resulting object   */
                                 /* are ignored.                         */
 
 /* Generalized version of GC_malloc_[atomic_]uncollectable.     */
@@ -245,7 +237,7 @@ GC_API GC_ATTR_MALLOC GC_ATTR_ALLOC_SIZE(1) void * GC_CALL
 #endif /* !GC_DEBUG */
 
 /* Similar to GC_size but returns object kind.  Size is returned too    */
-/* if psize is not NULL.  The object pointer should not be NULL.        */
+/* if psize is not NULL.                                                */
 GC_API int GC_CALL GC_get_kind_and_size(const void *, size_t * /* psize */)
                                                         GC_ATTR_NONNULL(1);
 
@@ -303,6 +295,9 @@ GC_API void GC_CALL GC_push_conditional(void * /* bottom */, void * /* top */,
                                         int /* bool all */);
 GC_API void GC_CALL GC_push_finalizer_structures(void);
 
+
+GC_API void GC_CALL GC_push_proc(GC_word /* proc */, void * /* start */);
+
 /* Set and get the client push-other-roots procedure.  A client         */
 /* supplied procedure should also call the original procedure.          */
 /* Note that both the setter and getter require some external           */
@@ -325,6 +320,15 @@ GC_API int GC_CALL GC_is_tmp_root(void *);
 
 GC_API void GC_CALL GC_print_trace(GC_word /* gc_no */);
 GC_API void GC_CALL GC_print_trace_inner(GC_word /* gc_no */);
+
+/* Set the client for when mark stack is empty.  A client can use       */
+/* this callback to process (un)marked objects and push additional      */
+/* work onto the stack. Useful for implementing ephemerons.             */
+typedef struct GC_ms_entry* (GC_CALLBACK* GC_mark_stack_empty_proc)(
+  struct GC_ms_entry* /* mark_stack_ptr */,
+  struct GC_ms_entry* /* mark_stack_limit */);
+GC_API void GC_CALL GC_set_mark_stack_empty (GC_mark_stack_empty_proc);
+GC_API GC_mark_stack_empty_proc GC_CALL GC_get_mark_stack_empty (void);
 
 #ifdef __cplusplus
   } /* extern "C" */

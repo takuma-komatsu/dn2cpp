@@ -485,8 +485,13 @@ internal sealed partial class MethodCompiler
                         Emit($"dn2cpp_stelem_ref(({Cast(arr, "Dn2CppArrayRef*")}), {idx.Expr}, {Cast(value, "Dn2CppObject*")});");
                         break;
                     default:
-                        Emit($"*({et}*)dn2cpp_elem_addr(({Cast(arr, "Dn2CppArrayN*")}), {idx.Expr}) = {Cast(value, et)};");
+                    {
+                        string addr = $"dn2cpp_elem_addr(({Cast(arr, "Dn2CppArrayN*")}), {idx.Expr})";
+                        Emit($"*({et}*){addr} = {Cast(value, et)};");
+                        if (arrayType.Element!.ContainsGcReferences())
+                            Emit($"dn2cpp_gc_write_barrier((void*)({addr}));");
                         break;
+                    }
                 }
             }
             else if (name == "Address")
@@ -550,6 +555,8 @@ internal sealed partial class MethodCompiler
             Emit(st == ct
                 ? $"*({ct}*){addrExpr} = {Cast(value, ct)};"
                 : $"*({st}*){addrExpr} = ({st})({Cast(value, ct)});");
+            if (arrayType.Element!.ContainsGcReferences())
+                Emit($"dn2cpp_gc_write_barrier((void*)({addrExpr}));");
         }
         else if (name == "Address")
         {

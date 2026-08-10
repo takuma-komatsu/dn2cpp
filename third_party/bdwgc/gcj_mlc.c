@@ -31,17 +31,28 @@
  * possibly with some tuning of the constants.  But the immediate goal
  * is to get better gcj performance.
  *
- * We assume: counting on explicit initialization of this interface is OK.
+ * We assume:
+ *  1) Counting on explicit initialization of this interface is OK;
+ *  2) FASTLOCK is not a significant win.
  */
 
 #include "gc_gcj.h"
 #include "private/dbg_mlc.h"
+
+#ifdef GC_ASSERTIONS
+  GC_INNER /* variable is also used in thread_local_alloc.c */
+#else
+  STATIC
+#endif
+GC_bool GC_gcj_malloc_initialized = FALSE;
 
 int GC_gcj_kind = 0;    /* Object kind for objects with descriptors     */
                         /* in "vtable".                                 */
 int GC_gcj_debug_kind = 0;
                         /* The kind of objects that is always marked    */
                         /* with a mark proc call.                       */
+
+GC_INNER ptr_t * GC_gcjobjfreelist = NULL;
 
 STATIC struct GC_ms_entry * GC_gcj_fake_mark_proc(word * addr GC_ATTR_UNUSED,
                         struct GC_ms_entry *mark_stack_ptr,
@@ -56,9 +67,7 @@ STATIC struct GC_ms_entry * GC_gcj_fake_mark_proc(word * addr GC_ATTR_UNUSED,
 GC_API void GC_CALL GC_init_gcj_malloc(int mp_index,
                                        void * /* really GC_mark_proc */mp)
 {
-#   ifndef GC_IGNORE_GCJ_INFO
-      GC_bool ignore_gcj_info;
-#   endif
+    GC_bool ignore_gcj_info;
     DCL_LOCK_STATE;
 
     if (mp == 0)        /* In case GC_DS_PROC is unused.        */
@@ -66,14 +75,14 @@ GC_API void GC_CALL GC_init_gcj_malloc(int mp_index,
 
     GC_init();  /* In case it's not already done.       */
     LOCK();
-    if (GC_gcjobjfreelist != NULL) {
-      /* Already initialized.   */
+    if (GC_gcj_malloc_initialized) {
       UNLOCK();
       return;
     }
+    GC_gcj_malloc_initialized = TRUE;
 #   ifdef GC_IGNORE_GCJ_INFO
       /* This is useful for debugging on platforms with missing getenv(). */
-#     define ignore_gcj_info TRUE
+      ignore_gcj_info = 1;
 #   else
       ignore_gcj_info = (0 != GETENV("GC_IGNORE_GCJ_INFO"));
 #   endif
@@ -85,29 +94,31 @@ GC_API void GC_CALL GC_init_gcj_malloc(int mp_index,
     if ((unsigned)mp_index >= GC_n_mark_procs)
         ABORT("GC_init_gcj_malloc: bad index");
     /* Set up object kind gcj-style indirect descriptor. */
-    GC_gcjobjfreelist = (ptr_t *)GC_new_free_list_inner();
-    if (ignore_gcj_info) {
+      GC_gcjobjfreelist = (ptr_t *)GC_new_free_list_inner();
+      if (ignore_gcj_info) {
         /* Use a simple length-based descriptor, thus forcing a fully   */
         /* conservative scan.                                           */
         GC_gcj_kind = GC_new_kind_inner((void **)GC_gcjobjfreelist,
                                         /* 0 | */ GC_DS_LENGTH,
                                         TRUE, TRUE);
-        GC_gcj_debug_kind = GC_gcj_kind;
-    } else {
+      } else {
         GC_gcj_kind = GC_new_kind_inner(
                         (void **)GC_gcjobjfreelist,
                         (((word)(-(signed_word)MARK_DESCR_OFFSET
                                  - GC_INDIR_PER_OBJ_BIAS))
                          | GC_DS_PER_OBJECT),
                         FALSE, TRUE);
-        /* Set up object kind for objects that require mark proc call.  */
+      }
+    /* Set up object kind for objects that require mark proc call.      */
+      if (ignore_gcj_info) {
+        GC_gcj_debug_kind = GC_gcj_kind;
+      } else {
         GC_gcj_debug_kind = GC_new_kind_inner(GC_new_free_list_inner(),
                                 GC_MAKE_PROC(mp_index,
                                              1 /* allocated with debug info */),
                                 FALSE, TRUE);
-    }
+      }
     UNLOCK();
-#   undef ignore_gcj_info
 }
 
 #define GENERAL_MALLOC_INNER(lb,k) \
@@ -122,7 +133,7 @@ GC_API void GC_CALL GC_init_gcj_malloc(int mp_index,
 /* rarely executed point at which it is safe to release the lock.       */
 /* We do this even where we could just call GC_INVOKE_FINALIZERS,       */
 /* since it's probably cheaper and certainly more uniform.              */
-/* TODO: Consider doing the same elsewhere? */
+/* FIXME - Consider doing the same elsewhere?                           */
 static void maybe_finalize(void)
 {
    static word last_finalized_no = 0;
@@ -139,6 +150,7 @@ static void maybe_finalize(void)
 /* Allocate an object, clear it, and store the pointer to the   */
 /* type structure (vtable in gcj).                              */
 /* This adds a byte at the end of the object if GC_malloc would.*/
+#if !IL2CPP_ENABLE_WRITE_BARRIER_VALIDATION
 #ifdef THREAD_LOCAL_ALLOC
   GC_INNER void * GC_core_gcj_malloc(size_t lb,
                                      void * ptr_to_struct_containing_descr)
@@ -183,40 +195,40 @@ static void maybe_finalize(void)
     *(void **)op = ptr_to_struct_containing_descr;
     UNLOCK();
     GC_dirty(op);
-    REACHABLE_AFTER_DIRTY(ptr_to_struct_containing_descr);
-    return (void *)op;
+    return((void *) op);
 }
+
+#endif
 
 /* Similar to GC_gcj_malloc, but add debug info.  This is allocated     */
 /* with GC_gcj_debug_kind.                                              */
 GC_API GC_ATTR_MALLOC void * GC_CALL GC_debug_gcj_malloc(size_t lb,
                 void * ptr_to_struct_containing_descr, GC_EXTRA_PARAMS)
 {
-    void *base, *result;
+    void * result;
     DCL_LOCK_STATE;
 
     /* We're careful to avoid extra calls, which could          */
     /* confuse the backtrace.                                   */
     LOCK();
     maybe_finalize();
-    base = GC_generic_malloc_inner(SIZET_SAT_ADD(lb, DEBUG_BYTES),
-                                   GC_gcj_debug_kind);
-    if (NULL == base) {
+    result = GC_generic_malloc_inner(SIZET_SAT_ADD(lb, DEBUG_BYTES),
+                                     GC_gcj_debug_kind);
+    if (result == 0) {
         GC_oom_func oom_fn = GC_oom_fn;
         UNLOCK();
         GC_err_printf("GC_debug_gcj_malloc(%lu, %p) returning NULL (%s:%d)\n",
                 (unsigned long)lb, ptr_to_struct_containing_descr, s, i);
         return((*oom_fn)(lb));
     }
-    *((void **)((ptr_t)base + sizeof(oh))) = ptr_to_struct_containing_descr;
+    *((void **)((ptr_t)result + sizeof(oh))) = ptr_to_struct_containing_descr;
     if (!GC_debugging_started) {
         GC_start_debugging_inner();
     }
-    result = GC_store_debug_info_inner(base, (word)lb, s, i);
-    ADD_CALL_CHAIN(base, ra);
+    ADD_CALL_CHAIN(result, ra);
+    result = GC_store_debug_info_inner(result, (word)lb, s, i);
     UNLOCK();
     GC_dirty(result);
-    REACHABLE_AFTER_DIRTY(ptr_to_struct_containing_descr);
     return result;
 }
 
@@ -259,8 +271,7 @@ GC_API GC_ATTR_MALLOC void * GC_CALL GC_gcj_malloc_ignore_off_page(size_t lb,
     *(void **)op = ptr_to_struct_containing_descr;
     UNLOCK();
     GC_dirty(op);
-    REACHABLE_AFTER_DIRTY(ptr_to_struct_containing_descr);
-    return (void *)op;
+    return((void *) op);
 }
 
 #endif  /* GC_GCJ_SUPPORT */

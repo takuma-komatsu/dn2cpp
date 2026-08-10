@@ -21,19 +21,14 @@
 EXTERN_C_BEGIN
 
 struct thread_stop_info {
-#   if !defined(GC_OPENBSD_UTHREADS) && !defined(NACL) \
-       && !defined(PLATFORM_STOP_WORLD) && !defined(SN_TARGET_PSP2)
-      volatile AO_t last_stop_count;
+#   if !defined(GC_OPENBSD_UTHREADS) && !defined(NACL)
+#     ifdef GC_ATOMIC_OPS_H
+        volatile AO_t last_stop_count;
+#     else
+        word last_stop_count;
+#     endif
                         /* The value of GC_stop_count when the thread   */
                         /* last successfully handled a suspend signal.  */
-#     ifdef GC_ENABLE_SUSPEND_THREAD
-        volatile AO_t ext_suspend_cnt;
-                        /* An odd value means thread was suspended      */
-                        /* externally.  Incremented on every call of    */
-                        /* GC_suspend_thread() and GC_resume_thread().  */
-                        /* Updated with the GC lock held, but could be  */
-                        /* read from a signal handler.                  */
-#     endif
 #   endif
 
     ptr_t stack_ptr;            /* Valid only when stopped.             */
@@ -43,7 +38,7 @@ struct thread_stop_info {
       /* going into a syscall.  20 is more than we need, but it's an    */
       /* overestimate in case the instrumented function uses any callee */
       /* saved registers, they may be pushed to the stack much earlier. */
-      /* Also, on x64 'push' puts 8 bytes on the stack even though      */
+      /* Also, on amd64 'push' puts 8 bytes on the stack even though    */
       /* our pointers are 4 bytes.                                      */
 #     ifdef ARM32
         /* Space for r4-r8, r10-r12, r14.       */
@@ -52,9 +47,11 @@ struct thread_stop_info {
 #       define NACL_GC_REG_STORAGE_SIZE 20
 #     endif
       ptr_t reg_storage[NACL_GC_REG_STORAGE_SIZE];
-#   elif defined(PLATFORM_HAVE_GC_REG_STORAGE_SIZE)
-      word registers[PLATFORM_GC_REG_STORAGE_SIZE]; /* used externally */
 #   endif
+
+#if defined(PLATFORM_GC_REG_STORAGE_SIZE)
+    __uint64_t registers[PLATFORM_GC_REG_STORAGE_SIZE];
+#endif
 };
 
 GC_INNER void GC_stop_init(void);

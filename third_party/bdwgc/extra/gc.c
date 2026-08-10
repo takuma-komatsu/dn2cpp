@@ -4,7 +4,6 @@
  * Copyright (c) 1998 by Fergus Henderson.  All rights reserved.
  * Copyright (c) 2000-2009 by Hewlett-Packard Development Company.
  * All rights reserved.
- * Copyright (c) 2009-2018 Ivan Maidanski
  *
  * THIS MATERIAL IS PROVIDED AS IS, WITH ABSOLUTELY NO WARRANTY EXPRESSED
  * OR IMPLIED.  ANY USE IS AT YOUR OWN RISK.
@@ -63,15 +62,19 @@
 #include "../os_dep.c"
 #include "../thread_local_alloc.c"
 
+/* Unity specific includes */
+#include "../heapsections.c"
+#include "../vector_mlc.c"
+
 /* Most platform-specific files go here... */
 #include "../darwin_stop_world.c"
 #include "../dyn_load.c"
 #include "../gc_dlopen.c"
 #if !defined(PLATFORM_MACH_DEP)
-# include "../mach_dep.c"
+#include "../mach_dep.c"
 #endif
 #if !defined(PLATFORM_STOP_WORLD)
-# include "../pthread_stop_world.c"
+#include "../pthread_stop_world.c"
 #endif
 #include "../pthread_support.c"
 #include "../specific.c"

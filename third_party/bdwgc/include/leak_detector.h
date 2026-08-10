@@ -16,7 +16,7 @@
 #define GC_LEAK_DETECTOR_H
 
 /* Include leak_detector.h (e.g., via GCC --include directive)  */
-/* to turn libgc into a leak detector.                          */
+/* to turn BoehmGC into a Leak Detector.                        */
 
 #ifndef GC_DEBUG
 # define GC_DEBUG
@@ -56,9 +56,6 @@
 #define memalign(a,n) GC_memalign(a,n)
 #undef posix_memalign
 #define posix_memalign(p,a,n) GC_posix_memalign(p,a,n)
-
-#undef malloc_usable_size
-#define malloc_usable_size(p) GC_size(p)
 
 #ifndef CHECK_LEAKS
 # define CHECK_LEAKS() GC_gcollect()

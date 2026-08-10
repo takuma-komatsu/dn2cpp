@@ -2617,6 +2617,7 @@ void interp_ensure_cctor(const Dn2CppInterpImage* img, uint32_t typeIdx, int32_t
     catch (const Dn2CppException& e)
     {
         img->cctorFailed[typeIdx] = e.obj;
+        dn2cpp_gc_write_barrier(&img->cctorFailed[typeIdx]);
         img->cctorStarted[typeIdx] = kCctorFailed;
         throw;
     }
@@ -3740,6 +3741,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             {
                                 Slot* addr = patch_static_addr(img, insn.a, insn.b, depth);
                                 *addr = pop();
+                                dn2cpp_gc_write_barrier(addr);
                                 break;
                             }
                             uint32_t idx = DN2CPP_BPI_REF_INDEX(insn.a);
@@ -3774,6 +3776,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     break;
                                 case kMarshalRef:
                                     std::memcpy(p, &v.ref, sizeof(void*));
+                                    dn2cpp_gc_write_barrier(p);
                                     break;
                                 default:
                                     interp_fail("interp: bad patch field kind");
@@ -3909,7 +3912,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             {
                                 auto* ar = static_cast<Dn2CppArrayRef*>(arr);
                                 if (insn.op == 0xA4)
-                                    ar->data[idx] = static_cast<Dn2CppObject*>(val.ref);
+                                    dn2cpp_gc_store_ref(
+                                        &ar->data[idx], static_cast<Dn2CppObject*>(val.ref));
                                 else
                                 {
                                     v.ref = ar->data[idx];
@@ -4949,6 +4953,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     break;
                                 case kMarshalRef:
                                     std::memcpy(p, &v.ref, sizeof(void*));
+                                    dn2cpp_gc_write_barrier(p);
                                     break;
                                 default:
                                     interp_fail("interp: bad patch field kind");
@@ -4989,6 +4994,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         {
                             Slot* addr = patch_static_addr(img, insn.a, insn.b, depth);
                             *addr = regs[r0];
+                            dn2cpp_gc_write_barrier(addr);
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
@@ -5154,8 +5160,9 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     static_cast<int32_t>(val.i);
                                 break;
                             case kElemRef:
-                                static_cast<Dn2CppArrayRef*>(arr)->data[idx] =
-                                    static_cast<Dn2CppObject*>(val.ref);
+                                dn2cpp_gc_store_ref(
+                                    &static_cast<Dn2CppArrayRef*>(arr)->data[idx],
+                                    static_cast<Dn2CppObject*>(val.ref));
                                 break;
                             default:
                             {

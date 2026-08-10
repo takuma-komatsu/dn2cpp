@@ -477,7 +477,8 @@ void dn2cpp_array_set_value(Dn2CppObject* a, Dn2CppObject* value, int64_t index)
 {
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
-    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_linear(&v, index), v.elemSize, v.elemIsRef);
+    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_linear(&v, index),
+                             v.elemSize, v.elemIsRef);
 }
 
 // The indices copied out of the managed int[]/long[] argument (null ->
@@ -523,7 +524,8 @@ void dn2cpp_array_set_value_indices(Dn2CppObject* a, Dn2CppObject* value, Dn2Cpp
     dn2cpp_array_view_rt(a, &v);
     int64_t idx[32];
     int32_t n = dn2cpp_array_copy_indices(indices, isLong, idx);
-    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx, n), v.elemSize, v.elemIsRef);
+    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx, n),
+                             v.elemSize, v.elemIsRef);
 }
 
 // The fixed-arity GetValue(int, int[, int]) / SetValue(object, int, int[, int])
@@ -545,7 +547,8 @@ void dn2cpp_array_set_value_fixed(Dn2CppObject* a, Dn2CppObject* value, const in
     int64_t idx64[3];
     for (int32_t i = 0; i < n; i++)
         idx64[i] = idx[i];
-    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx64, n), v.elemSize, v.elemIsRef);
+    dn2cpp_array_store_boxed(value, v.elem, dn2cpp_array_slot_indices(&v, idx64, n),
+                             v.elemSize, v.elemIsRef);
 }
 
 // Runtime-dispatched array shape queries, for receivers whose static type

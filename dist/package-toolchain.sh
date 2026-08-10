@@ -34,10 +34,13 @@
 #                     (runtime/godot omitted — DN2CPP_GODOT stays OFF for the
 #                      dotnet-module build, so the bridge is never referenced)
 #   third_party/      every vendored native tree runtime/CMakeLists.txt reaches
-#                     for: bdwgc brotli curl highway mbedtls zlib, the cacert CA
-#                     bundle the DN2CPP_USE_CURL arm embeds, and
+#                     for: bdwgc brotli curl highway mbedtls nghttp2 zlib, the
+#                     cacert CA bundle the DN2CPP_USE_CURL arm embeds, and
 #                     gdextension_interface.h. Each tree whole — see the copy
 #                     loop for why no packaging-time subset is available.
+#                     (third_party/bdwgc-upstream omitted — only the
+#                      DN2CPP_GC_BACKEND=upstream arm names it, and the bundle
+#                      builds the default; see the guard below)
 #   ref/              the pinned net10 shared-framework managed DLLs — the WHOLE
 #                     closure, because --auto-ref resolves the BCL from the dir
 #                     that holds System.Private.CoreLib.dll (Compilation.cs
@@ -320,9 +323,22 @@ cp "third_party/gdextension_interface.h" "$LAYOUT/third_party/"
 # game fails to export. Derive the required set from the copy of the CMakeLists
 # that actually ships, so adding a vendored library to it and forgetting the list
 # above cannot get past packaging.
+#
+# It allows exactly one omission: third_party/bdwgc-upstream, named only by the
+# DN2CPP_GC_BACKEND=upstream arm, which no bundle build selects. That premise is
+# the bundle's own default, so read it back rather than assert it — the day the
+# default moves, the tree IS built and the omission has to go.
+gc_default=$(sed -n 's/^set(DN2CPP_GC_BACKEND *"\([a-z]*\)".*/\1/p' \
+                 "$LAYOUT/runtime/CMakeLists.txt")
+[ "$gc_default" = unity ] || {
+    echo "error: bundled runtime/CMakeLists.txt defaults DN2CPP_GC_BACKEND to '$gc_default'," >&2
+    echo "       so third_party/bdwgc-upstream is built: add it to BUNDLED_THIRD_PARTY in" >&2
+    echo "       dist/package-toolchain.sh and drop the omission below" >&2
+    exit 1; }
 tp_missing=""
 for tp in $(grep -o 'third_party/[A-Za-z0-9_][A-Za-z0-9_.-]*' "$LAYOUT/runtime/CMakeLists.txt" \
                 | sed 's|^third_party/||' | sort -u); do
+    [ "$tp" = bdwgc-upstream ] && continue
     [ -e "$LAYOUT/third_party/$tp" ] || tp_missing="$tp_missing $tp"
 done
 [ -z "$tp_missing" ] || {

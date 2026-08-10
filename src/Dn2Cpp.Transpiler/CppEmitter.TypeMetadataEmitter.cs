@@ -1290,6 +1290,18 @@ internal sealed partial class CppEmitter
                         : isRef
                         ? $"{access} = ({memberT})val;"
                         : $"{access} = *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
+                    if (f.Type.ContainsGcReferences())
+                    {
+                        if (f.IsStatic)
+                        {
+                            if (f.IsGcRootedThreadStatic)
+                                setBody += $" dn2cpp_gc_write_barrier((void*)&({access}));";
+                        }
+                        else
+                        {
+                            setBody += " dn2cpp_gc_write_barrier((void*)o);";
+                        }
+                    }
                     _sb.AppendLine($"static Dn2CppObject* {getName}([[maybe_unused]] Dn2CppObject* o) {{ {getBody} }}");
                     _sb.AppendLine($"static void {setName}([[maybe_unused]] Dn2CppObject* o, [[maybe_unused]] Dn2CppObject* val) {{ {setBody} }}");
                     (get, set) = ($"&{getName}", $"&{setName}");
