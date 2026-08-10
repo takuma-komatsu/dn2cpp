@@ -1748,10 +1748,12 @@ static bool dn2cpp_task_drain_settle(Dn2CppTask* t)
         // wait can never be satisfied.
         if (!dn2cpp_task_settler_exists())
         {
-            // Re-check before the verdict: a worker settles `t` BEFORE decrementing
-            // the in-flight count, so `t` may have completed between the loop's status
-            // read and the counter read. If `t` is still pending with no principal, no
-            // one holds a claim that could settle it.
+            // Re-probe before the verdict: a departing settler settles tasks and
+            // enqueues continuations BEFORE it leaves the count, so a zero read
+            // (acquire) makes both visible here. Only "queue still empty and `t`
+            // still pending" proves no one holds a claim that could settle `t`.
+            if (dn2cpp_sched_run_one())
+                continue;
             if (t->status != DN2CPP_TASK_PENDING)
                 break;
             return false;
