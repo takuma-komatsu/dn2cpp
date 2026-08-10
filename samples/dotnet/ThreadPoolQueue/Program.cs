@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Threading;
 
 // ThreadPool.QueueUserWorkItem. Every queued item signals a CountdownEvent the main thread
@@ -17,6 +18,10 @@ static class Program
 
     static void Main()
     {
+        // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
         var done = new CountdownEvent(N + M);
 
         // 1-arg overload (null state). QueueUserWorkItem always returns true.
@@ -59,5 +64,6 @@ static class Program
         UserThreadDelay.Program.__GateEntry();
         FfSettler.Program.__GateEntry();
         TimerSettler.Program.__GateEntry();
+        FastSettler.Program.__GateEntry();
     }
 }

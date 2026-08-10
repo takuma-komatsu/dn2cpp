@@ -48,5 +48,14 @@
 # mid-callback Change again does not misprint and does not hang either: the timer
 # disarms, the settler set empties under the blocked waiter, and the run dies on the
 # defeated-wait verdict ("no armed timer") — verified by reverting the fix.
+#
+# The FastSettler section covers the drain's verdict-taking itself, over Task.Start /
+# await / Task<T>.Result (System.Threading.Tasks): a pool worker that settles and leaves
+# the in-flight count immediately — FfSettler's sleeps are the opposite extreme — while
+# the blocked thread's own queue holds the just-enqueued continuation of the still-pending
+# outer task (an async method awaiting a started cold task, blocked on with .Result). A
+# drain that reads the empty count as a deadlock verdict without re-probing its own queue
+# dies here with a false deadlock; the section loops the shape because the window is a
+# few instructions wide.
 source "$(dirname "$0")/_common.sh"
 corelib_diff_gate ThreadPoolQueue System.Threading
