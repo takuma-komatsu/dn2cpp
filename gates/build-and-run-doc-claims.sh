@@ -397,22 +397,26 @@ if [ -n "${guide_files// }" ]; then
     # The slug rule below approximates GitHub's (lowercase, spaces to `-`, ASCII
     # punctuation dropped, non-ASCII kept) — which is why the guide's headings are
     # written without punctuation, keeping the two in agreement by construction.
+    # These sets are the only ones here that are not ASCII, and sort/comm must
+    # agree on collation or comm answers nonsense: under a UTF-8 locale BSD
+    # strcoll ranks every Japanese heading equal, which reads as "every anchor
+    # found" — the fail-open direction. Byte order on both sides, always.
     tpl_anchors=$(grep -oE 'blob/@@DOCS_REF@@/[A-Za-z0-9_./+-]+#[^)]+' "$TPL" \
-                  | sed 's/^[^#]*#//' | sort -u)
+                  | sed 's/^[^#]*#//' | LC_ALL=C sort -u)
     guide_slugs=$(sed -n 's/^#\{2,6\} //p' $guide_files \
                   | LC_ALL=C tr 'A-Z' 'a-z' \
                   | LC_ALL=C sed -e 's/[]!"#$%&'"'"'()*+,./:;<=>?@[\^`{|}~]//g' -e 's/ /-/g' \
-                  | sort -u)
-    lost_anchors=$(comm -23 <(printf '%s\n' "$tpl_anchors") <(printf '%s\n' "$guide_slugs") | tr '\n' ' ')
+                  | LC_ALL=C sort -u)
+    lost_anchors=$(LC_ALL=C comm -23 <(printf '%s\n' "$tpl_anchors") <(printf '%s\n' "$guide_slugs") | tr '\n' ' ')
     eq "$TPL link anchors that name no heading in the guide" "none" "${lost_anchors:-none}" \
        "a link to a missing anchor still returns 200 and lands at the top of the page; rename the anchor with the heading, or restore the heading"
 
     # (C) The one way the split itself rots is a section written on both sides and
     # corrected on one. Sharing a `## ` heading is that state, whichever copy is
     # stale, so the two top-level heading sets must be disjoint.
-    tpl_h2=$(sed -n 's/^## //p' "$TPL" | sort -u)
-    guide_h2=$(sed -n 's/^## //p' $guide_files | sort -u)
-    shared_h2=$(comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
+    tpl_h2=$(sed -n 's/^## //p' "$TPL" | LC_ALL=C sort -u)
+    guide_h2=$(sed -n 's/^## //p' $guide_files | LC_ALL=C sort -u)
+    shared_h2=$(LC_ALL=C comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
     eq "sections written in both $TPL and the guide" "none" "${shared_h2:-none}" \
        "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
 fi
