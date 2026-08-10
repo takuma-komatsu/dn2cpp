@@ -1049,17 +1049,32 @@ _ios_toolchain_args() {
 # exact configure command, one argument per line, and any difference deletes the
 # dir and configures cold — `cmake -D` cannot un-set a cached value. The stamp
 # holds the absolute -B path, so a moved repository rebuilds too.
+#
+# A front-end that picks the toolchain file itself (emcmake) is invisible in that
+# command, so which SDK configured the dir is not recoverable from it. Such an
+# arm passes that identity as STAMP_EXTRA; without it a dir configured by another
+# Emscripten reads as current and keeps its cached CMAKE_TOOLCHAIN_FILE forever.
 _CMAKE_CONFIGURE_STAMP=.dn2cpp-configure-stamp
 
-# _cmake_configure MODE DIR LOG WHAT CMD... — configure DIR by running CMD...,
-# keeping DIR's configure stamp in agreement with it.
+# _cmake_stamp_extra — the stamp term for the active build axis. WASM only: the
+# identity is the gate cache's own emsdk term, so bundle-vs-pinned and a tree
+# re-unpacked at one path both read as different (a path compare would not).
+_cmake_stamp_extra() {
+    [ -n "${WASM:-}" ] && printf 'emsdk %s\n' "${_GATE_EMSDK_CTX:-}"
+    return 0
+}
+
+# _cmake_configure MODE STAMP_EXTRA DIR LOG WHAT CMD... — configure DIR by
+# running CMD..., keeping DIR's configure stamp in agreement with it.
 #   MODE=once   — configure only when the stamp does not name CMD... (runtime dirs).
 #   MODE=always — configure every call (app dirs: sources re-globbed, OUT
 #                 re-transpiled); the stamp then only discards a stale dir.
+# STAMP_EXTRA joins the stamp ahead of the command; empty leaves it unchanged.
+# _cmake_stamp_extra is what the two callers pass.
 # The stamp is written only after the configure succeeded.
 _cmake_configure() {
-    local mode="$1" dir="$2" log="$3" what="$4"
-    shift 4
+    local mode="$1" extra="$2" dir="$3" log="$4" what="$5"
+    shift 5
     # A mistyped mode must not read as `once`: an app dir would silently stop
     # reconfiguring.
     case "$mode" in
@@ -1068,6 +1083,10 @@ _cmake_configure() {
     esac
     local stamp="$dir/$_CMAKE_CONFIGURE_STAMP" want current=0
     want="$(printf '%s\n' "$@")"
+    if [ -n "$extra" ]; then
+        want="$extra
+$want"
+    fi
     if [ -f "$dir/CMakeCache.txt" ] && [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
         current=1
     fi
@@ -1179,7 +1198,7 @@ ensure_cmake_runtime() {
         args+=(-UCMAKE_C_COMPILER_LAUNCHER -UCMAKE_CXX_COMPILER_LAUNCHER)
     fi
     local cmd=("${configure[@]}" "${args[@]}" -B "$dir")
-    _cmake_configure once "$dir" "$dir/dn2cpp-configure.log" \
+    _cmake_configure once "$(_cmake_stamp_extra)" "$dir" "$dir/dn2cpp-configure.log" \
         "configuring the runtime build ($dir)" "${cmd[@]}" || return 1
     # Check the build: ninja leaves the previously linked libdn2cpp_runtime.a,
     # so without this the app links the STALE archive and passes. `set -e` misses
@@ -1266,7 +1285,9 @@ cmake_build_app() {
     # globbed. The stamp still matters — a configure cannot un-set an option the
     # previous one passed (the three conditional args above), and a build dir
     # carried along by a moved repository cannot be reconfigured in place.
-    _cmake_configure always "$builddir" "$builddir/dn2cpp-configure.log" \
+    # The stamp term matters here despite MODE=always: reconfiguring a warm dir
+    # keeps the CMAKE_TOOLCHAIN_FILE the other SDK's emcmake put in it.
+    _cmake_configure always "$(_cmake_stamp_extra)" "$builddir" "$builddir/dn2cpp-configure.log" \
         "configuring the app build ($name)" "${configure[@]}" "${args[@]}" || return 1
     _cmake_step "$builddir/dn2cpp-build.log" "building the app ($name)" \
         "$CMAKE" --build "$builddir" || return 1
