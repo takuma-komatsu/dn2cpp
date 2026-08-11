@@ -37,7 +37,7 @@ OUT=artifacts/godot-ios
 GODOT=${GODOT:-godot}
 PROJECT=samples/godot/godot-project
 EXPORT_DIR=artifacts/godot-ios-export
-XCFW="$PROJECT/bin/libgodotsample.ios.xcframework"
+XCFW="$PROJECT/bin/lib$DN2CPP_GDEXT_LIB.ios.xcframework"
 
 echo "== 1/6 Building sample C# assembly =="
 build_proj samples/godot/GodotSample/GodotSample.csproj
@@ -94,10 +94,11 @@ echo "== 6/6 Asserting the exported Xcode project =="
 # Layout (Godot 4.6-4.7): the engine xcframework is renamed after the app
 # (godotsample.xcframework, libgodot.a per SDK slice); the extension dylibs are
 # converted to per-slice .frameworks under <app>/dylibs/; the project data is
-# <app>.pck next to the .xcodeproj.
+# <app>.pck next to the .xcodeproj. Only the engine side follows the app name —
+# the extension keeps the fixed base this lane builds under.
 PBXPROJ="$EXPORT_DIR/godotsample.xcodeproj/project.pbxproj"
 [ -f "$PBXPROJ" ] || { echo "FAIL: no Xcode project at $PBXPROJ" >&2; exit 1; }
-grep -q "libgodotsample.ios.xcframework" "$PBXPROJ" \
+grep -q "lib$DN2CPP_GDEXT_LIB.ios.xcframework" "$PBXPROJ" \
     || { echo "FAIL: pbxproj does not reference the dn2cpp extension xcframework" >&2; exit 1; }
 [ -f "$EXPORT_DIR/godotsample.xcframework/ios-arm64/libgodot.a" ] \
     || { echo "FAIL: no engine static library (godotsample.xcframework/ios-arm64/libgodot.a)" >&2; exit 1; }
@@ -107,7 +108,7 @@ grep -q "libgodotsample.ios.xcframework" "$PBXPROJ" \
 # `|| true` keeps the FAIL line below reachable: with the dylibs directory
 # missing entirely find exits 1, and an unguarded substitution would abort
 # under `set -e` before the message that says what is wrong.
-_fw="$(find "$EXPORT_DIR/godotsample/dylibs" -type d -name "libgodotsample.framework" 2>/dev/null || true)"
+_fw="$(find "$EXPORT_DIR/godotsample/dylibs" -type d -name "lib$DN2CPP_GDEXT_LIB.framework" 2>/dev/null || true)"
 [ -n "$_fw" ] \
     || { echo "FAIL: the dn2cpp extension frameworks are not embedded in the exported tree" >&2; exit 1; }
 [ -f "$EXPORT_DIR/godotsample.pck" ] \

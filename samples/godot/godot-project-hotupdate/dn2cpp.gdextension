@@ -5,9 +5,9 @@ compatibility_minimum = "4.4"
 
 [libraries]
 
-macos.debug = "res://bin/libhotupdategodot.dylib"
-macos.release = "res://bin/libhotupdategodot.dylib"
-linux.debug = "res://bin/libhotupdategodot.so"
-linux.release = "res://bin/libhotupdategodot.so"
-windows.debug.x86_64 = "res://bin/hotupdategodot.dll"
-windows.release.x86_64 = "res://bin/hotupdategodot.dll"
+macos.debug = "res://bin/libdn2cpp.dylib"
+macos.release = "res://bin/libdn2cpp.dylib"
+linux.debug = "res://bin/libdn2cpp.so"
+linux.release = "res://bin/libdn2cpp.so"
+windows.debug.x86_64 = "res://bin/dn2cpp.dll"
+windows.release.x86_64 = "res://bin/dn2cpp.dll"

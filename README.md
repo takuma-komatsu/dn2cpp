@@ -283,8 +283,12 @@ GodotSharp shim rather than the real one, so an existing Godot .NET
 project has to be re-targeted, and its classes register in ClassDB as
 GDExtension classes rather than as C# scripts.
 
-- **What.** Emits `libNAME.dylib`/`.so`/`.dll` that Godot loads at
-  runtime, with transpiled C# registered in ClassDB. Public C# static and
+- **What.** Emits `libdn2cpp.dylib`/`libdn2cpp.so`/`dn2cpp.dll` that Godot
+  loads at runtime, with transpiled C# registered in ClassDB. The name is
+  fixed rather than derived from the app, so a shipped artifact carries no
+  product name; `DN2CPP_APP_NAME` names only the CMake target here. On
+  Windows it is spelled like the managed CLI assembly, which is a different
+  file — the two never share a directory. Public C# static and
   instance methods and properties are callable from GDScript;
   **`Godot.Node`-derived C# classes are placeable in scenes** and receive
   engine virtual callbacks (`_Ready`, `_Process`, `_Notification`, and
@@ -292,7 +296,10 @@ GDExtension classes rather than as C# scripts.
   trampolines are generated per class from the API dump, not just the
   lifecycle/input set).
 - **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --gdextension -o <outdir>`,
-  then compile as a shared library. Ship `<name>.gdextension` next to it.
+  then compile as a shared library. Ship `dn2cpp.gdextension` next to it —
+  copy `samples/godot/godot-project/dn2cpp.gdextension`, whose `[libraries]`
+  already name the fixed library. Because both that name and `entry_symbol`
+  are fixed, one project carries at most one dn2cpp GDExtension.
 - **Gate.** `gates/build-and-run-godot-sample.sh` (real headless Godot
   4.7), `gates/build-and-run-sdk-sample.sh` (a Godot.NET.Sdk API-surface
   project).
@@ -406,7 +413,7 @@ flowchart TB
     E --> I["... + runtime/godot<br/>+ ClassDB registration table"]
     F --> J["... + runtime/dotnetmodule<br/>+ godotsharp_game_main_init epilogue"]
     H -->|clang++| K[Native executable]
-    I -->|"clang++ -shared"| L[libNAME.dylib / .so / .dll]
+    I -->|"clang++ -shared"| L[libdn2cpp.dylib / .so / dn2cpp.dll]
     J -->|"clang++ -shared"| M["modules/mono drop-in library"]
     G -->|BPI encoder| N[patch.bpi]
     N -.->|"HotUpdate.LoadDirectory<br/>on --hotupdate-base binary"| O[Interpreter dn2cpp_interp.cpp]

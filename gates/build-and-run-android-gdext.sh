@@ -123,13 +123,13 @@ if gate_cache_check "$OUT" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSample.dll" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSharp.dll" \
         "$PROJECT" \
-        "$PROJECT/bin/libgodotsample.android.arm64.so"; then
+        "$PROJECT/bin/lib$DN2CPP_GDEXT_LIB.android.arm64.so"; then
     gate_cache_hit_msg
     exit 0
 fi
 mkdir -p "$PROJECT/bin"
-compile_gdextension_android "$OUT" "$PROJECT/bin/libgodotsample.android.arm64.so"
-assert_elf_aarch64 "$PROJECT/bin/libgodotsample.android.arm64.so"
+compile_gdextension_android "$OUT" "$PROJECT/bin/lib$DN2CPP_GDEXT_LIB.android.arm64.so"
+assert_elf_aarch64 "$PROJECT/bin/lib$DN2CPP_GDEXT_LIB.android.arm64.so"
 
 # Optional tail — the Unity-style "produce an APK" step. Runs only when the
 # whole Android export stack is present: the Godot editor, its Android export
@@ -172,7 +172,7 @@ mkdir -p "$EXPORT_DIR"
 # remaining entries — a false "not embedded" on an APK that does embed the .so.
 # Same fix as the compression gates' nm checks.
 apk_listing="$(unzip -l "$EXPORT_DIR/godotsample.apk")"
-grep -q "lib/arm64-v8a/libgodotsample.android.arm64.so" <<<"$apk_listing" \
+grep -q "lib/arm64-v8a/lib$DN2CPP_GDEXT_LIB.android.arm64.so" <<<"$apk_listing" \
     || { echo "FAIL: the APK does not embed the dn2cpp GDExtension .so" >&2; exit 1; }
 echo "APK exported: $EXPORT_DIR/godotsample.apk"
 gate_cache_commit

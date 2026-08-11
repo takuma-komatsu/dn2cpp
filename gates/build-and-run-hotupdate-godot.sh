@@ -84,7 +84,7 @@ fi
 
 echo "== 3/7 Compiling the GDExtension shared library =="
 mkdir -p "$PROJECT/bin"
-compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name hotupdategodot)"
+compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name "$DN2CPP_GDEXT_LIB")"
 
 echo "== 4/7 Baking the patch BPIs + assembling the deployment directories =="
 invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/base-abi.json" --patch-version 1 -o "$OUT"

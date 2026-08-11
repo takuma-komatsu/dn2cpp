@@ -64,7 +64,7 @@ OUT=artifacts/godot-ios-sim
 GODOT=${GODOT:-godot}
 PROJECT=samples/godot/godot-project
 EXPORT_DIR=artifacts/godot-ios-sim-export
-XCFW="$PROJECT/bin/libgodotsample.ios.xcframework"
+XCFW="$PROJECT/bin/lib$DN2CPP_GDEXT_LIB.ios.xcframework"
 BUNDLE_ID=org.dn2cpp.godotsample
 
 echo "== 1/6 Building sample C# assembly =="

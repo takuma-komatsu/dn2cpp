@@ -94,6 +94,12 @@ esac
 # / x.dll).
 lib_name() { printf '%s%s.%s\n' "$LIB_PREFIX" "$1" "$LIB_EXT"; }
 
+# DN2CPP_GDEXT_LIB — base name of every GDExtension artifact this lane builds.
+# Fixed rather than app-derived, matching the OUTPUT_NAME pin in
+# runtime/CMakeLists.txt; a .gdextension declaring any other name is a dlopen
+# failure at run time that names no cause.
+DN2CPP_GDEXT_LIB=dn2cpp
+
 # native_path PATH — PATH as a NATIVE (non-MSYS) program resolves it: `cygpath -m`
 # on Windows, pass-through elsewhere. MSYS converts an argument only when the path
 # is the WHOLE token (`-L/c/foo` converts, `-L/c/foo -lbar` does not), and never
@@ -1381,15 +1387,24 @@ compile_console_wasm() {
     stage_binary "$builddir/$bin.wasm" "$out/$bin.wasm"
 }
 
+# _assert_gdext_dest DEST — DEST's basename must be the fixed base name, with or
+# without the platform's lib prefix. The three builders below no longer derive
+# the CMake target from DEST, so nothing else keeps the two ends in agreement.
+_assert_gdext_dest() {
+    local b; b="$(basename "$1")"; b="${b#lib}"
+    case "$b" in
+        "$DN2CPP_GDEXT_LIB".*) ;;
+        *) echo "FAIL: GDExtension destination '$1' does not name $DN2CPP_GDEXT_LIB" >&2; exit 1 ;;
+    esac
+}
+
 # compile_gdextension OUT DYLIB — build OUT/generated*.cpp into the GDExtension
 # shared library DYLIB via CMake (links the Godot runtime).
 compile_gdextension() {
     local out="$1" dylib="$2"
-    # SHARED target name = dylib basename without lib-prefix and extension;
-    # CMake re-derives lib<name>.<ext>, which lib_name reproduces.
-    local base; base="$(basename "$dylib")"; base="${base#lib}"; base="${base%.*}"
-    cmake_build_app "$out" "$base" gdext
-    stage_binary "$(_cmake_app_builddir "$out")/$(lib_name "$base")" "$dylib"
+    _assert_gdext_dest "$dylib"
+    cmake_build_app "$out" "$DN2CPP_GDEXT_LIB" gdext
+    stage_binary "$(_cmake_app_builddir "$out")/$(lib_name "$DN2CPP_GDEXT_LIB")" "$dylib"
 }
 
 # compile_gdextension_ios OUT XCFRAMEWORK — build an iOS GDExtension
@@ -1398,8 +1413,8 @@ compile_gdextension() {
 # both. The subshells scope one iOS axis each and drop any the caller exported.
 compile_gdextension_ios() {
     local out="$1" xcfw="$2"
-    # libgodotsample.ios.xcframework -> target/base name godotsample.
-    local base; base="$(basename "$xcfw")"; base="${base#lib}"; base="${base%%.*}"
+    _assert_gdext_dest "$xcfw"
+    local base="$DN2CPP_GDEXT_LIB"
     (unset IOS_SIM WASM HIGHWAY SCALAR; export IOS_DEV=1; cmake_build_app "$out" "$base" gdext)
     (unset IOS_DEV WASM HIGHWAY SCALAR; export IOS_SIM=1; cmake_build_app "$out" "$base" gdext)
     local dev_dir sim_dir
@@ -1418,8 +1433,8 @@ compile_gdextension_ios() {
 # the HOST extension and does not apply).
 compile_gdextension_android() {
     local out="$1" so="$2"
-    # libgodotsample.android.arm64.so -> target/base name godotsample.
-    local base; base="$(basename "$so")"; base="${base#lib}"; base="${base%%.*}"
+    _assert_gdext_dest "$so"
+    local base="$DN2CPP_GDEXT_LIB"
     (unset IOS_DEV IOS_SIM WASM HIGHWAY SCALAR; export ANDROID=1; cmake_build_app "$out" "$base" gdext)
     local builddir
     builddir="$(unset IOS_DEV IOS_SIM WASM HIGHWAY SCALAR; export ANDROID=1; _cmake_app_builddir "$out")"
