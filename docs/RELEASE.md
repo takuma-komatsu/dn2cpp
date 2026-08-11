@@ -157,6 +157,46 @@ That also clears metadata from a previous generation of the lane table (an old
 `editor.metadata`, say). **Move the whole directory aside rather than picking
 files out of `--out`.**
 
+### 0-E. A release in which only dn2cpp moved
+
+The fork may not have moved at all — a new transpiler inside the same editor.
+**It is still every lane and both hosts.** Two reasons:
+
+- The version is part of every asset name, so the previous release's files
+  cannot be reused (§A-5).
+- `dist/release-github.sh` matches `SHA256SUMS.txt`'s row set against the active
+  lanes' asset set in both directions, and requires every lane's metadata
+  `release_version` to be this release's.
+
+What drops out by itself — the commands are the same, the work inside them is
+not:
+
+- `gates/setup-godot-fork.sh` reuses the pristine clone's prebuilt editor and
+  templates on a matching engine hash, so no scons build (§A-3).
+- `gates/setup-godot-fork-web.sh` is effectively a no-op (§A-4).
+- Pushing the fork: it did not move, so §0-A already holds.
+- Only the tag is new. It lands on the same fork commit the previous release's
+  tag names, beside it; `dist/release-github.sh` refuses a tag of this name only
+  when origin carries it at a *different* commit, so this passes and `--commit`
+  is not needed.
+
+What does not drop out:
+
+| step | why |
+|---|---|
+| `gates/selfhost-emit.sh` re-bake | `src/` moved — that is what this release is |
+| both template lanes re-packaged | for the name and for `release_version`; the contents may be byte-identical to the previous version's |
+| both editor lanes re-packaged, smoke included | the transpiler is the thing that changed, so the smoke *is* the release |
+| moving `artifacts/release` aside (§0-D) | as in any other release |
+| editing `dist/release-notes-template.md` by hand | `--prev-version` binds the version in the heading; the bullet list and the compare URL stay hand-written, and a stale one is detected by nothing (*The release notes*) |
+| the handoff (§B) | the Windows editor is a lane like any other |
+
+Times are the ones in *How long it takes*.
+
+The other direction: a release in which the fork moved takes `X+1` and `Y=0`
+(*Decide before you start*), and none of the above drops out — the engine hash
+has moved, so a scons build is on the table.
+
 ---
 
 ## Phase A: the macOS host
