@@ -12,14 +12,15 @@
 # assembling step for why that is an invariant here and not a preference.
 #
 # Usage:
-#   dist/package-editor-windows.sh --version <base>-dn2cpp.<n> [options]
+#   dist/package-editor-windows.sh --version <base>-dn2cpp.<X>.<Y> [options]
 #     --out DIR                  output parent (default: artifacts/release)
-#     --app-name NAME            package name (default: Godot-dn2cpp)
+#     --app-name NAME            package name (default: Godot-dn2cpp); names the
+#                                directory inside the zip, never the asset file
 #     --smoke | --no-smoke       run the two editor-export gates against the
 #                                assembled package (default: --smoke)
 #     --allow-partial-prebuilt   accept a toolchain missing cross-compile axes
 #     --web-asset PATH           the RELEASE Web template the smoke exports with
-#                                (default: <out>/godot-dn2cpp-<version>-web-template.zip)
+#                                (default: <out>/godot-<version>-web-template.zip)
 #     -h | --help
 source "$(dirname "$0")/../gates/_common.sh"       # repo-root cd, DN2CPP_OS, EXE_EXT, stage_editor_toolchain
 source "$(dirname "$0")/../gates/_godot_fork.sh"   # FORK_ROOT/FORK_EDITOR/FORK_GODOTSHARP, SELFHOST_BIN
@@ -48,7 +49,7 @@ while [ $# -gt 0 ]; do
         *) echo "error: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.1)"
+[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.3.1)"
 
 # ── 0. Prerequisites ─────────────────────────────────────────────────────────
 # Every one is a hard FAIL, never gate_skip: this is a release cut asked for by
@@ -88,10 +89,8 @@ echo "selfhost CLI:  $SELFHOST_BIN (src $SRC_NOW)"
 
 # ── 1. Version ───────────────────────────────────────────────────────────────
 echo "== 1/12 version =="
-if [[ ! "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dn2cpp\.([0-9]+)$ ]]; then
-    die "--version must read <major>.<minor>.<patch>-dn2cpp.<n>, got: $VERSION"
-fi
-VERSION_BASE="${BASH_REMATCH[1]}"
+release_version_split "$VERSION" || exit 1
+VERSION_BASE="$RELEASE_BASE_VER"
 # version.py is the engine's own declaration of what this editor reports; a
 # release named for another base would ship an editor that contradicts its name.
 FORK_VERSION="$(awk -F' *= *' '/^major/{ma=$2} /^minor/{mi=$2} /^patch/{pa=$2} \
@@ -331,7 +330,7 @@ if [ "$SMOKE" -eq 1 ]; then
     done
     # The Web template must be the RELEASE one, not the fork root's: the archive
     # a user downloads and this run must agree about the engine inside it.
-    [ -n "$WEB_ASSET" ] || WEB_ASSET="$OUT/godot-dn2cpp-$VERSION-web-template.zip"
+    [ -n "$WEB_ASSET" ] || WEB_ASSET="$OUT/godot-$VERSION-web-template.zip"
     [ -f "$WEB_ASSET" ] \
         || die "no $WEB_ASSET — cut the Web template first: dist/package-web-template.sh --version $VERSION"
     cp "$WEB_ASSET" "$SMOKE_ROOT/web_template.zip"
@@ -382,7 +381,7 @@ fi
 # function of the staged tree: one input tree, one sha256, which `ditto` on the
 # macOS side does not give.
 echo "== 9/12 archiving =="
-ASSET="$OUT/$APP_NAME-$VERSION-windows-x86_64.zip"
+ASSET="$OUT/Godot-$VERSION-windows-x86_64.zip"
 rm -f "$ASSET"
 # The fork commit's own date, so the entry timestamps name the engine rather than
 # the hour this ran.

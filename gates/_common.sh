@@ -761,6 +761,19 @@ pin_field() {
     awk -v k="$2" '$1 == k { v = $2 } END { print v }' "$1"
 }
 
+# release_version_split VERSION — split a release version into RELEASE_BASE_VER
+# (the Godot version) and RELEASE_DN2CPP_VER (dn2cpp's own semver). Every dist/
+# script asks here rather than spelling the form again: a second spelling drifts,
+# and the one that drifts accepts a version the release is not named for.
+release_version_split() {
+    if [[ ! "$1" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dn2cpp\.([0-9]+\.[0-9]+)$ ]]; then
+        echo "error: --version must read <major>.<minor>.<patch>-dn2cpp.<X>.<Y>, got: $1" >&2
+        return 1
+    fi
+    RELEASE_BASE_VER="${BASH_REMATCH[1]}"
+    RELEASE_DN2CPP_VER="${BASH_REMATCH[2]}"
+}
+
 # dn2cpp_host_tag — this machine's key in a pin file's `archive <host> …` rows,
 # and the host term of gates/setup-emsdk.sh's default output directory.
 dn2cpp_host_tag() {

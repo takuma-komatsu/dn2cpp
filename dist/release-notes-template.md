@@ -6,7 +6,7 @@
 
 トランスパイラと C++ ランタイムは別プロジェクトとして公開されています: <https://github.com/takuma-komatsu/dn2cpp>
 
-## 前回リリース（4.7.1-dn2cpp.2）からの変更
+## 前回リリース（@@PREV_VERSION@@）からの変更
 
 - ポインタフィールドへの `[MarshalAs]` 指定を拒否するよう修正（dn2cpp#8）
 - `Span<T>.Clear` が構造体要素に対して不正な C++ を生成していた問題を修正（dn2cpp#12, dn2cpp#11）

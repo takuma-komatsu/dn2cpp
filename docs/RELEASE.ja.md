@@ -28,17 +28,31 @@
 
 ### 事前に決めること
 
-**バージョン番号。** 形式は `<godot のバージョン>-dn2cpp.<n>` 以外を受け付けない
-（`dist/release-github.sh`、両エディタパッケージャの 3 か所が独立に die する）。
-エディタパッケージャはさらに、`<godot のバージョン>` がフォークの `version.py`
-と一致することを要求する。
+**バージョン番号。** 形式は `<godot のバージョン>-dn2cpp.<X>.<Y>` 以外を
+受け付けない。判定は `gates/_common.sh` の `release_version_split` 1 つで、
+`dist/release-github.sh`、`dist/package-editor-macos.sh`、
+`dist/package-editor-windows.sh`、`dist/package-macos-template.sh`、
+`dist/package-web-template.sh` がそこを通る。エディタパッケージャはさらに、
+`<godot のバージョン>` がフォークの `version.py` と一致することを要求する。
+
+`<X>.<Y>` は dn2cpp 自身の semver で、何が動いたかで採番する:
+
+- フォーク（エディタ）が更新された → `X+1`、`Y=0`
+- dn2cpp だけが更新された → `Y+1`
+
+旧形式 `<godot のバージョン>-dn2cpp.<n>` で公開済みのリリースはそのまま残るが、
+スクリプトが受け付けるのは新形式だけ。
 
 以降のコマンドは、両ホストでこの変数を置いてから実行する:
 
 ```bash
-V=<godot のバージョン>-dn2cpp.<n>      # 例: 4.7.1-dn2cpp.1 の形
+V=<godot のバージョン>-dn2cpp.<X>.<Y>      # 例: 4.7.1-dn2cpp.3.1 の形
+PREV=<1 つ前のリリース>                # ノートの見出しに出る。旧形式でもよい
 REPO=takuma-komatsu/godot-dn2cpp      # --repo の既定値。変えるなら両ホストで揃える
 ```
+
+`artifacts/toolchain/dn2cpp-toolchain-<n>-…` の `<n>` はツールチェーンバンドルの
+レイアウト版であって、リリースバージョンではない。
 
 ### 所要時間の目安
 
@@ -226,7 +240,7 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 ```
 
 - **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
-  `<out>/godot-dn2cpp-$V-web-template.zip` とその `.provenance` を
+  `<out>/godot-$V-web-template.zip` とその `.provenance` を
   **リリース資産として**読み、それでエクスポートする。無ければ「先に Web
   テンプレートを切れ」というメッセージを出して die する。同梱 SDK の `emcc_version` が
   `web.metadata` と一致することも要求する。食い違ったら順に:
@@ -252,16 +266,16 @@ Web エクスポートの smoke は、終了時に必ず `Terminated: 15 ... htt
 出力（`artifacts/release/`）:
 
 ```
-Godot-dn2cpp-$V-macos-arm64.zip          + editor-macos.metadata
-godot-dn2cpp-$V-web-template.zip{,.provenance} + web.metadata
-godot-dn2cpp-$V-macos-arm64-template.zip + macos.metadata
-SHA256SUMS.txt                           ← この時点で 3 行
+Godot-$V-macos-arm64.zip                + editor-macos.metadata
+godot-$V-web-template.zip{,.provenance} + web.metadata
+godot-$V-macos-arm64-template.zip       + macos.metadata
+SHA256SUMS.txt                          ← この時点で 3 行
 ```
 
 ### A-6. dry-run
 
 ```bash
-./dist/release-github.sh --version "$V" --dry-run
+./dist/release-github.sh --version "$V" --prev-version "$PREV" --dry-run
 ```
 
 `--lane` を 1 つも渡さないときの既定が、ちょうど macOS ホストの 3 レーン
@@ -276,7 +290,7 @@ SHA256SUMS.txt                           ← この時点で 3 行
 ### A-7. draft を作る
 
 ```bash
-./dist/release-github.sh --version "$V" 2>&1 | tee /tmp/release-macos.log
+./dist/release-github.sh --version "$V" --prev-version "$PREV" 2>&1 | tee /tmp/release-macos.log
 ```
 
 - **`--publish` を付けない。** draft のまま Windows に渡す。draft は
@@ -298,8 +312,8 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 |---|---|
 | `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` はメタデータを**ローカルの `<out>/<lane>.metadata` から読む**。公開中のノート本文が照合先になるので、手で書き直してはいけない |
 | `SHA256SUMS.txt`（3 行） | Windows のパッケージャが 4 行目を追記する。全 4 行が最終レンダリングの入力 |
-| `godot-dn2cpp-$V-web-template.zip` | 実体が要る。Windows エディタの smoke が**リリース版の**テンプレートでエクスポートするため |
-| `godot-dn2cpp-$V-web-template.zip.provenance` | 同 smoke がエンジンの provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
+| `godot-$V-web-template.zip` | 実体が要る。Windows エディタの smoke が**リリース版の**テンプレートでエクスポートするため |
+| `godot-$V-web-template.zip.provenance` | 同 smoke がエンジンの provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
 | フォークルートの `web_emcc.txt` | `dist/package-editor-windows.sh` の smoke が smoke-root へコピーする必須ファイルの 1 つで、無ければ `the fork root has no web_emcc.txt` で die する。**書くのは `gates/setup-godot-fork-web.sh` だけ**で、Windows はそれを走らせない（C-1）ので macOS 側のものを置くしかない |
 
 `web_emcc.txt` の**中身**は emcc の版文字列で、Web エクスポートゲートの
@@ -313,7 +327,7 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 tar czf ~/dn2cpp-windows-handoff-$V.tgz \
   -C artifacts/release \
     editor-macos.metadata web.metadata macos.metadata SHA256SUMS.txt \
-    "godot-dn2cpp-$V-web-template.zip" "godot-dn2cpp-$V-web-template.zip.provenance" \
+    "godot-$V-web-template.zip" "godot-$V-web-template.zip.provenance" \
   -C "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}" web_emcc.txt
 ```
 
@@ -347,7 +361,7 @@ Windows 側も、前回リリースの資産が `artifacts/release/` に残っ�
 ```bash
 # Windows 側。draft のアセットは、リリースの所有者なら gh で取得できる
 gh release download "$V" --repo "$REPO" \
-  --pattern "godot-dn2cpp-$V-web-template.zip" --dir artifacts/release
+  --pattern "godot-$V-web-template.zip" --dir artifacts/release
 ```
 
 残り 6 点は中身を書き写す。`SHA256SUMS.txt` は区切りが**半角スペース 2 個**で、
@@ -443,7 +457,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ### C-4. dry-run
 
 ```bash
-./dist/release-github.sh --version "$V" \
+./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --dry-run
@@ -460,7 +474,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ### C-5. 本番 + 公開
 
 ```bash
-./dist/release-github.sh --version "$V" \
+./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish 2>&1 | tee /tmp/release-windows.log
@@ -520,9 +534,11 @@ Windows なら zip のブロック解除。
   トラブルシューティング、既知の制限 —— は `docs/EDITOR-GUIDE.ja.md` にあり、
   ノートはそれをコミット固定でリンクする。公開した日に言っていたことを、
   リンクが以後も言い続けるため。
-- **リリースごとに手で書くのは「前回リリースからの変更」だけ。**残りはすべて
-  レーンの metadata から bind されるか、リリース間で動かない文章。**古いまま
-  なのを検出する仕組みは無い** —— 手を入れ忘れてもノートは何事もなく
+- **リリースごとに手で書くのは「前回リリースからの変更」だけ**で、そのうちでも
+  箇条書き本文と compare の URL だけ。見出しのバージョン名は
+  `@@PREV_VERSION@@` で、`--prev-version` から bind される。残りはすべて
+  レーンの metadata から bind されるか、リリース間で動かない文章。**箇条書きが
+  古いままなのを検出する仕組みは無い** —— 手を入れ忘れてもノートは何事もなく
   レンダリングされ、1 つ前のリリースの内容を説明したまま公開される。
 - **ガイドを直すのはエディタの挙動が変わったときで、リリースを切るときでは
   ない。**ガイド自身はバージョンを持たない。リリースごとに動く値はノート側に
@@ -556,7 +572,7 @@ Windows なら zip のブロック解除。
 
 | 症状 | 原因と対処 |
 |---|---|
-| `--version '...' is not of the form <godot version>-dn2cpp.<n>` | 形式違反。`<base>-dn2cpp.<n>` 以外は受け付けない |
+| `--version must read <major>.<minor>.<patch>-dn2cpp.<X>.<Y>, got: ...` | 形式違反。`<base>-dn2cpp.<X>.<Y>` 以外は受け付けない |
 | `--version base X != the fork's version.py (Y)` | フォークのチェックアウトが別のベース |
 | `lanes 'A' and 'B' disagree on engine_provenance` | 2 ホストのエンジンのソースが違う。片方をビルドし直す |
 | `... disagree on corelib_framework` | 2 ホストの .NET SDK が違う |

@@ -16,7 +16,7 @@
 #
 # Usage:
 #   dist/package-macos-template.sh --version V [options]
-#     --version V   release version string, e.g. 4.7.1-dn2cpp.1 (required)
+#     --version V   release version string, e.g. 4.7.1-dn2cpp.3.1 (required)
 #     --out DIR     asset directory (default: artifacts/release)
 #     --src PATH    upstream macos.zip (default: the installed <base>.stable.mono one)
 #     -h | --help
@@ -42,12 +42,9 @@ done
 
 die() { echo "error: $*" >&2; exit 1; }
 
-[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.1)"
-# The same derivation dist/release-github.sh makes, and for its reason: the
-# version IS "<godot version>-dn2cpp.<n>", and a second spelling of it drifts.
-BASE_VER="${VERSION%%-dn2cpp*}"
-[ "$BASE_VER" != "$VERSION" ] \
-    || die "--version '$VERSION' is not of the form <godot version>-dn2cpp.<n>"
+[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.3.1)"
+release_version_split "$VERSION" || exit 1
+BASE_VER="$RELEASE_BASE_VER"
 [ "$DN2CPP_OS" = macos ] || die "lipo is macOS-only; this asset is cut on a macOS host"
 
 echo "== packaging the macOS arm64 export template: $VERSION =="
@@ -139,7 +136,7 @@ for cfg in release debug; do
 done
 
 # ── 6. Archive, and check the archive rather than the tree ────────────────────
-ASSET="godot-dn2cpp-$VERSION-macos-arm64-template.zip"
+ASSET="godot-$VERSION-macos-arm64-template.zip"
 mkdir -p "$OUT_DIR"
 # Absolute from here: the zip is written from inside $STAGE.
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
