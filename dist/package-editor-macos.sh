@@ -18,9 +18,10 @@
 # mean rewriting the very IL the transpiler reads.
 #
 # Usage:
-#   dist/package-editor-macos.sh --version <base>-dn2cpp.<n> [options]
+#   dist/package-editor-macos.sh --version <base>-dn2cpp.<X>.<Y> [options]
 #     --out DIR                  output parent (default: artifacts/release)
-#     --app-name NAME            bundle name (default: Godot-dn2cpp)
+#     --app-name NAME            bundle name (default: Godot-dn2cpp); names the
+#                                .app inside, never the asset file
 #     --smoke | --no-smoke       run the two editor-export gates against the
 #                                assembled .app (default: --smoke)
 #     --allow-partial-prebuilt   accept a toolchain missing cross-compile axes
@@ -50,7 +51,7 @@ while [ $# -gt 0 ]; do
         *) echo "error: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.1)"
+[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.3.1)"
 
 # ── 0. Prerequisites ─────────────────────────────────────────────────────────
 # Every one is a hard FAIL, never gate_skip: this is a release cut asked for by
@@ -86,10 +87,8 @@ echo "selfhost CLI:  $SELFHOST_BIN (src $SRC_NOW)"
 
 # ── 1. Version ───────────────────────────────────────────────────────────────
 echo "== 1/13 version =="
-if [[ ! "$VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-dn2cpp\.([0-9]+)$ ]]; then
-    die "--version must read <major>.<minor>.<patch>-dn2cpp.<n>, got: $VERSION"
-fi
-VERSION_BASE="${BASH_REMATCH[1]}"
+release_version_split "$VERSION" || exit 1
+VERSION_BASE="$RELEASE_BASE_VER"
 # version.py is the engine's own declaration of what this editor reports; a
 # release named for another base would ship an editor that contradicts its name.
 FORK_VERSION="$(awk -F' *= *' '/^major/{ma=$2} /^minor/{mi=$2} /^patch/{pa=$2} \
@@ -250,7 +249,7 @@ ln -s ../Resources/GodotSharp "$APP/Contents/MacOS/GodotSharp"
 
 # ── 6. Info.plist ────────────────────────────────────────────────────────────
 # CFBundleShortVersionString / CFBundleVersion stay as the engine wrote them:
-# macOS constrains both to dotted digits, so `4.7.1-dn2cpp.1` cannot go there.
+# macOS constrains both to dotted digits, so `4.7.1-dn2cpp.3.1` cannot go there.
 # The release identity lives in the three DN2CPP* keys instead.
 echo "== 6/13 Info.plist =="
 PLIST="$APP/Contents/Info.plist"
@@ -319,7 +318,7 @@ if [ "$SMOKE" -eq 1 ]; then
     done
     # The Web template must be the RELEASE one, not the fork root's: the archive
     # a user downloads and this run must agree about the engine inside it.
-    WEB_ASSET="$OUT/godot-dn2cpp-$VERSION-web-template.zip"
+    WEB_ASSET="$OUT/godot-$VERSION-web-template.zip"
     for sfx in "" .provenance; do
         [ -f "$WEB_ASSET$sfx" ] \
             || die "no $WEB_ASSET$sfx — cut the Web template first: dist/package-web-template.sh --version $VERSION"
@@ -373,7 +372,7 @@ echo "signed:        $NESTED nested Mach-O image(s) + the bundle (ad-hoc)"
 # `ditto`, never `zip`: the latter drops the exec bit and the extended attributes
 # the signature is sealed over, so the unpacked .app fails to launch or verify.
 echo "== 10/13 archiving =="
-ASSET="$OUT/$APP_NAME-$VERSION-macos-arm64.zip"
+ASSET="$OUT/Godot-$VERSION-macos-arm64.zip"
 rm -f "$ASSET"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ASSET"
 

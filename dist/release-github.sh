@@ -22,8 +22,10 @@
 # it said the day it was published.
 #
 # Usage:
-#   dist/release-github.sh --version <V> [options]
-#     --version V           release version, and the tag name (e.g. 4.7.1-dn2cpp.1)
+#   dist/release-github.sh --version <V> --prev-version <P> [options]
+#     --version V           release version, and the tag name (e.g. 4.7.1-dn2cpp.3.1)
+#     --prev-version P      the release this one follows, named in the notes'
+#                           "changes since the previous release" heading
 #     --repo R              GitHub repo (default: takuma-komatsu/godot-dn2cpp)
 #     --commit SHA          fork commit to tag (default: the fork worktree's HEAD)
 #     --out DIR             directory holding the assets (default: artifacts/release)
@@ -53,6 +55,7 @@ FORK_BRANCH=dn2cpp/main
 DN2CPP_BRANCH=main
 
 VERSION=
+PREV_VERSION=
 REPO=takuma-komatsu/godot-dn2cpp
 COMMIT=
 OUT=artifacts/release
@@ -64,6 +67,7 @@ DRY_RUN=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --version)       VERSION="$2"; shift 2 ;;
+        --prev-version)  PREV_VERSION="$2"; shift 2 ;;
         --repo)          REPO="$2"; shift 2 ;;
         --commit)        COMMIT="$2"; shift 2 ;;
         --out)           OUT="$2"; shift 2 ;;
@@ -127,14 +131,19 @@ lane_uploaded() {
     return 1
 }
 
-[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.1)"
+[ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.3.1)"
 TAG="$VERSION"
 # The upstream release the fork is based on, for the notes. Derived rather than
-# passed: the version IS "<godot version>-dn2cpp.<n>", and a second spelling of
-# it is the one that drifts.
-BASE_VER="${VERSION%%-dn2cpp*}"
-[ "$BASE_VER" != "$VERSION" ] \
-    || die "--version '$VERSION' is not of the form <godot version>-dn2cpp.<n>"
+# passed: the version IS "<godot version>-dn2cpp.<X>.<Y>", and a second
+# spelling of it is the one that drifts.
+release_version_split "$VERSION" || exit 1
+BASE_VER="$RELEASE_BASE_VER"
+
+# The notes name the release this one follows. Deliberately not format-checked:
+# the previous release's name is a historical fact, and the ones cut before the
+# version form changed carry the old form.
+[ -n "$PREV_VERSION" ] || die "--prev-version is required — the notes name the release this one follows (e.g. --prev-version 4.7.1-dn2cpp.3)"
+[ "$PREV_VERSION" != "$VERSION" ] || die "--prev-version is $VERSION, this release's own version — name the one it follows"
 
 # The default is a macOS host's whole cut, which is what a lane-less invocation
 # has always meant.
@@ -509,6 +518,7 @@ MAP="$WORK/notes.map"
 map_put() { printf '%s\t%s\n' "$1" "$2" >> "$MAP"; }
 
 map_put VERSION           "$VERSION"
+map_put PREV_VERSION      "$PREV_VERSION"
 map_put BASE_VER          "$BASE_VER"
 map_put FORK_COMMIT       "$COMMIT"
 map_put BASE_PIN          "$BASE_PIN"

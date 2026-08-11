@@ -28,17 +28,31 @@ way is `docs/EDITOR-EXPORT-DESIGN.md` §11 and is not repeated here.
 
 ### Decide before you start
 
-**The version number.** No form but `<godot version>-dn2cpp.<n>` is accepted —
-`dist/release-github.sh` and both editor packagers die on it independently. The
-editor packagers additionally require `<godot version>` to match the fork's
-`version.py`.
+**The version number.** No form but `<godot version>-dn2cpp.<X>.<Y>` is
+accepted: `release_version_split` in `gates/_common.sh` is the one judgement,
+and `dist/release-github.sh`, `dist/package-editor-macos.sh`,
+`dist/package-editor-windows.sh`, `dist/package-macos-template.sh` and
+`dist/package-web-template.sh` all pass through it. The editor packagers
+additionally require `<godot version>` to match the fork's `version.py`.
 
-Every command below assumes these two variables, set on both hosts:
+`<X>.<Y>` is dn2cpp's own semver, bumped by what changed:
+
+- the fork (the editor) moved → `X+1`, `Y=0`
+- dn2cpp alone moved → `Y+1`
+
+Releases published under the old `<godot version>-dn2cpp.<n>` form stay where
+they are; the scripts accept the new form only.
+
+Every command below assumes these variables, set on both hosts:
 
 ```bash
-V=<godot version>-dn2cpp.<n>          # e.g. 4.7.1-dn2cpp.1
+V=<godot version>-dn2cpp.<X>.<Y>      # e.g. 4.7.1-dn2cpp.3.1
+PREV=<the release this one follows>   # the notes' heading; may be the old form
 REPO=takuma-komatsu/godot-dn2cpp      # the --repo default; if you change it, change it on both hosts
 ```
+
+The `<n>` in an `artifacts/toolchain/dn2cpp-toolchain-<n>-…` path is the
+toolchain bundle's layout version, unrelated to the release version.
 
 ### How long it takes
 
@@ -143,6 +157,46 @@ That also clears metadata from a previous generation of the lane table (an old
 `editor.metadata`, say). **Move the whole directory aside rather than picking
 files out of `--out`.**
 
+### 0-E. A release in which only dn2cpp moved
+
+The fork may not have moved at all — a new transpiler inside the same editor.
+**It is still every lane and both hosts.** Two reasons:
+
+- The version is part of every asset name, so the previous release's files
+  cannot be reused (§A-5).
+- `dist/release-github.sh` matches `SHA256SUMS.txt`'s row set against the active
+  lanes' asset set in both directions, and requires every lane's metadata
+  `release_version` to be this release's.
+
+What drops out by itself — the commands are the same, the work inside them is
+not:
+
+- `gates/setup-godot-fork.sh` reuses the pristine clone's prebuilt editor and
+  templates on a matching engine hash, so no scons build (§A-3).
+- `gates/setup-godot-fork-web.sh` is effectively a no-op (§A-4).
+- Pushing the fork: it did not move, so §0-A already holds.
+- Only the tag is new. It lands on the same fork commit the previous release's
+  tag names, beside it; `dist/release-github.sh` refuses a tag of this name only
+  when origin carries it at a *different* commit, so this passes and `--commit`
+  is not needed.
+
+What does not drop out:
+
+| step | why |
+|---|---|
+| `gates/selfhost-emit.sh` re-bake | `src/` moved — that is what this release is |
+| both template lanes re-packaged | for the name and for `release_version`; the contents may be byte-identical to the previous version's |
+| both editor lanes re-packaged, smoke included | the transpiler is the thing that changed, so the smoke *is* the release |
+| moving `artifacts/release` aside (§0-D) | as in any other release |
+| editing `dist/release-notes-template.md` by hand | `--prev-version` binds the version in the heading; the bullet list and the compare URL stay hand-written, and a stale one is detected by nothing (*The release notes*) |
+| the handoff (§B) | the Windows editor is a lane like any other |
+
+Times are the ones in *How long it takes*.
+
+The other direction: a release in which the fork moved takes `X+1` and `Y=0`
+(*Decide before you start*), and none of the above drops out — the engine hash
+has moved, so a scons build is on the table.
+
 ---
 
 ## Phase A: the macOS host
@@ -232,7 +286,7 @@ English if you parse it mechanically.**
 ```
 
 - **The order is enforced.** The smoke in `dist/package-editor-macos.sh` reads
-  `<out>/godot-dn2cpp-$V-web-template.zip` and its `.provenance` **as release
+  `<out>/godot-$V-web-template.zip` and its `.provenance` **as release
   artifacts** and exports with them; absent, it dies telling you to cut the Web
   template first. It also requires the bundled SDK's `emcc_version` to match
   `web.metadata`. On a mismatch, in order:
@@ -259,16 +313,16 @@ is the teardown SIGTERM, not a failure.**
 Output (`artifacts/release/`):
 
 ```
-Godot-dn2cpp-$V-macos-arm64.zip          + editor-macos.metadata
-godot-dn2cpp-$V-web-template.zip{,.provenance} + web.metadata
-godot-dn2cpp-$V-macos-arm64-template.zip + macos.metadata
-SHA256SUMS.txt                           ← 3 rows at this point
+Godot-$V-macos-arm64.zip                + editor-macos.metadata
+godot-$V-web-template.zip{,.provenance} + web.metadata
+godot-$V-macos-arm64-template.zip       + macos.metadata
+SHA256SUMS.txt                          ← 3 rows at this point
 ```
 
 ### A-6. Dry run
 
 ```bash
-./dist/release-github.sh --version "$V" --dry-run
+./dist/release-github.sh --version "$V" --prev-version "$PREV" --dry-run
 ```
 
 With no `--lane` at all the default is exactly the macOS host's three lanes
@@ -285,7 +339,7 @@ line that fails is the cause.
 ### A-7. Create the draft
 
 ```bash
-./dist/release-github.sh --version "$V" 2>&1 | tee /tmp/release-macos.log
+./dist/release-github.sh --version "$V" --prev-version "$PREV" 2>&1 | tee /tmp/release-macos.log
 ```
 
 - **Do not pass `--publish`.** Hand it to Windows as a draft — a draft is the
@@ -307,8 +361,8 @@ The Windows host gets **six files** from `artifacts/release/` plus
 |---|---|
 | `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` reads metadata **from the local `<out>/<lane>.metadata`**, and checks it against the published notes body — never rewrite these by hand |
 | `SHA256SUMS.txt` (3 rows) | the Windows packager appends the fourth; all four rows are the input to the final rendering |
-| `godot-dn2cpp-$V-web-template.zip` | needed in the flesh: the Windows editor's smoke exports with **the release** template |
-| `godot-dn2cpp-$V-web-template.zip.provenance` | that same smoke reads the engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
+| `godot-$V-web-template.zip` | needed in the flesh: the Windows editor's smoke exports with **the release** template |
+| `godot-$V-web-template.zip.provenance` | that same smoke reads the engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
 | `web_emcc.txt` from the fork root | one of the files `dist/package-editor-windows.sh`'s smoke copies into the smoke root; absent, it dies with `the fork root has no web_emcc.txt`. **Only `gates/setup-godot-fork-web.sh` writes it**, and Windows does not run that (C-1), so the macOS copy is the only source |
 
 The **contents** of `web_emcc.txt` are an emcc version string, and they only
@@ -323,7 +377,7 @@ On the producing side (macOS):
 tar czf ~/dn2cpp-windows-handoff-$V.tgz \
   -C artifacts/release \
     editor-macos.metadata web.metadata macos.metadata SHA256SUMS.txt \
-    "godot-dn2cpp-$V-web-template.zip" "godot-dn2cpp-$V-web-template.zip.provenance" \
+    "godot-$V-web-template.zip" "godot-$V-web-template.zip.provenance" \
   -C "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}" web_emcc.txt
 ```
 
@@ -357,7 +411,7 @@ sharing between the hosts:
 ```bash
 # Windows side. The release owner can fetch a draft's assets with gh
 gh release download "$V" --repo "$REPO" \
-  --pattern "godot-dn2cpp-$V-web-template.zip" --dir artifacts/release
+  --pattern "godot-$V-web-template.zip" --dir artifacts/release
 ```
 
 Transcribe the other six. `SHA256SUMS.txt` separates its columns with **two
@@ -455,7 +509,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ### C-4. Dry run
 
 ```bash
-./dist/release-github.sh --version "$V" \
+./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --dry-run
@@ -472,7 +526,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ### C-5. The real run, and publish
 
 ```bash
-./dist/release-github.sh --version "$V" \
+./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish 2>&1 | tee /tmp/release-windows.log
@@ -533,10 +587,12 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
   to each platform, troubleshooting, the known limits — is
   `docs/EDITOR-GUIDE.ja.md`, which the notes link at a fixed commit so that a
   published link keeps saying what it said the day it was published.
-- **"Changes since the previous release" is the only section written by hand.**
-  Everything else is bound from the lane metadata or is prose that does not move.
-  Nothing detects a stale one: leave it untouched and the notes render happily,
-  still describing the release before this one.
+- **"Changes since the previous release" is the only section written by hand**,
+  and only its bullet list and its compare URL: the version in the heading is
+  `@@PREV_VERSION@@`, bound from `--prev-version`. Everything else is bound from
+  the lane metadata or is prose that does not move. Nothing detects a stale
+  list: leave it untouched and the notes render happily, still describing the
+  release before this one.
 - **The guide is edited when the editor's behaviour changes, not when a release
   is cut.** It names no version of its own; a value that moves per release stays
   in the notes, and the guide points at the provenance table for it.
@@ -572,7 +628,7 @@ There is nothing to argue about when accounts of the state disagree.
 
 | symptom | cause and remedy |
 |---|---|
-| `--version '...' is not of the form <godot version>-dn2cpp.<n>` | malformed; nothing but `<base>-dn2cpp.<n>` is accepted |
+| `--version must read <major>.<minor>.<patch>-dn2cpp.<X>.<Y>, got: ...` | malformed; nothing but `<base>-dn2cpp.<X>.<Y>` is accepted |
 | `--version base X != the fork's version.py (Y)` | the fork is checked out at a different base |
 | `lanes 'A' and 'B' disagree on engine_provenance` | the two hosts have different engine trees; re-bake one |
 | `... disagree on corelib_framework` | the two hosts have different .NET SDKs |

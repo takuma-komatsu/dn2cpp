@@ -15,7 +15,7 @@
 #
 # Usage:
 #   dist/package-web-template.sh --version V [options]
-#     --version V   release version string, e.g. 4.7.1-dn2cpp.1 (required)
+#     --version V   release version string, e.g. 4.7.1-dn2cpp.3.1 (required)
 #     --out DIR     asset directory (default: artifacts/release)
 #     --src PATH    template zip (default: <fork root>/web_template.zip)
 #     -h | --help
@@ -39,6 +39,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$VERSION" ] || { echo "error: --version is required" >&2; exit 2; }
+release_version_split "$VERSION" || exit 1
 
 # 1. The fork worktree, which is what the provenance stamp is compared against.
 godot_fork_resolve || exit 1
@@ -104,7 +105,7 @@ echo "flavor: stock"
 godot_fork_web_template_assert "$SRC"
 
 # 6. Stage the asset and its provenance stamp side by side.
-ASSET="godot-dn2cpp-$VERSION-web-template.zip"
+ASSET="godot-$VERSION-web-template.zip"
 mkdir -p "$OUT_DIR"
 # Absolute from here: the editor resolves a relative OUT_DIR against the project.
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
