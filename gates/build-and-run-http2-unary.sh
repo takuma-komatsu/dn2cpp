@@ -131,14 +131,7 @@ dotnet "$srv" > "$h2cdir/ready.out" 2>"$h2cdir/server.err" &
 h2cpid=$!
 disown "$h2cpid" 2>/dev/null || true
 trap 'kill "$h2cpid" "$tlspid" 2>/dev/null; rm -rf "$h2cdir" "$tlsdir"' EXIT
-ready=""
-for _ in $(seq 1 100); do
-    [ -s "$h2cdir/ready.out" ] && { ready="$(head -1 "$h2cdir/ready.out")"; break; }
-    sleep 0.1
-done
-[ -n "$ready" ] || {
-    echo "FAIL: the h2 oracle server never printed READY" >&2
-    cat "$h2cdir/server.err" >&2; exit 1; }
+ready=$(wait_ready_line "h2 oracle server" "$h2cpid" "$h2cdir/ready.out" "$h2cdir/server.err") || exit 1
 read -r tag h2cport h1port <<<"$ready"
 [ "$tag" = "READY" ] && [ -n "${h2cport:-}" ] && [ -n "${h1port:-}" ] || {
     echo "FAIL: could not parse the oracle's READY line (expected 2 ports): $ready" >&2; exit 1; }
@@ -343,14 +336,7 @@ dotnet "$srv" --cert "$tlsdir/srv.pem" --key "$tlsdir/srv.key" \
     > "$tlsdir/ready.out" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
-tlsready=""
-for _ in $(seq 1 100); do
-    [ -s "$tlsdir/ready.out" ] && { tlsready="$(head -1 "$tlsdir/ready.out")"; break; }
-    sleep 0.1
-done
-[ -n "$tlsready" ] || {
-    echo "FAIL: the TLS oracle server never printed READY" >&2
-    cat "$tlsdir/server.err" >&2; exit 1; }
+tlsready=$(wait_ready_line "TLS oracle server" "$tlspid" "$tlsdir/ready.out" "$tlsdir/server.err") || exit 1
 read -r tag _ _ tlsport <<<"$tlsready"
 [ "$tag" = "READY" ] && [ -n "${tlsport:-}" ] || {
     echo "FAIL: could not parse the TLS oracle's READY line (expected 3 ports): $tlsready" >&2; exit 1; }

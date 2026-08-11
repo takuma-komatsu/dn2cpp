@@ -165,14 +165,7 @@ dotnet "$srv" > "$srvdir/ready.out" 2>"$srvdir/server.err" &
 srvpid=$!
 disown "$srvpid" 2>/dev/null || true
 trap 'kill "$srvpid" 2>/dev/null; rm -rf "$srvdir"' EXIT
-ready=""
-for _ in $(seq 1 100); do
-    [ -s "$srvdir/ready.out" ] && { ready="$(head -1 "$srvdir/ready.out")"; break; }
-    sleep 0.1
-done
-[ -n "$ready" ] || {
-    echo "FAIL: the gRPC oracle server never printed READY" >&2
-    cat "$srvdir/server.err" >&2; exit 1; }
+ready=$(wait_ready_line "gRPC oracle server" "$srvpid" "$srvdir/ready.out" "$srvdir/server.err") || exit 1
 read -r tag port <<<"$ready"
 [ "$tag" = "READY" ] && [ -n "${port:-}" ] || {
     echo "FAIL: could not parse the oracle's READY line: $ready" >&2; exit 1; }
