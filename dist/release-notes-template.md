@@ -8,18 +8,15 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- ポインタフィールドへの `[MarshalAs]` 指定を拒否するよう修正（dn2cpp#8）
-- `Span<T>.Clear` が構造体要素に対して不正な C++ を生成していた問題を修正（dn2cpp#12, dn2cpp#11）
-- macOS `.app` バンドル内での GodotSharp 解決処理を修正（dn2cpp#9）
-- Windows 専用の P/Invoke ネイティブ層のバグを 2 件修正
-- HTTP/2 読み取りキャンセル時のレース条件を修正（dn2cpp#6）
-- Windows ホストの既定コンパイラを `cl` に変更（dn2cpp#7）
-- ICU バージョンに依存していた en-US/ja-JP の通貨ロケール行を固定
-- Web エクスポートのスモークテストが、Godot エンジン本体（upstream）由来の無害なシャットダウン診断を誤ってエラー扱いしていた問題を修正
-- macOS・Windows それぞれの smoke CI ワークフローを追加（dn2cpp#5, dn2cpp#4）
-- リリース手順書（`docs/RELEASE.md`）を新設
+- **破壊的変更**: アセットのファイル名から重複していた `dn2cpp` を削除し、`Godot-<バージョン>-macos-arm64.zip` のような形に変更（展開後の `.app` / `.exe` と zip 内トップディレクトリの名前は従来どおり `Godot-dn2cpp`）（dn2cpp#18）
+- **破壊的変更**: リリースのバージョン表記を `<Godot バージョン>-dn2cpp.<X>.<Y>` に変更 — エディタ（フォーク）が更新されると `X`、dn2cpp だけの更新なら `Y` が上がる（dn2cpp#18）
+- **破壊的変更**: GDExtension 出力のライブラリ名を `libdn2cpp.dylib` / `libdn2cpp.so` / `dn2cpp.dll` に固定 — CLI の `--gdextension` を直接使っている場合は `.gdextension` の `[libraries]` の書き換えが必要（エディタからのエクスポートは別経路のため影響なし）（dn2cpp#19）
+- GC の実装を Unity Technologies の bdwgc フォークへ差し替え、インクリメンタル GC（Godot ランの既定）が必要とする書き込みバリアを追加（dn2cpp#10）
+- プリミティブ・enum を `constrained.` 経由で `object.Equals` に渡すとクラッシュしていた問題を修正（dn2cpp#15）
+- タスクの完了待ちが、実行可能な継続が残っているのに稀にデッドロックと判定していた問題を修正（dn2cpp#13）
+- インストール手順・動作要件・エクスポート手順・トラブルシューティング・既知の制限を、リリースノートからエディタ利用ガイド（`docs/EDITOR-GUIDE.ja.md`）へ移動（dn2cpp#17）
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/0153e082f734a102cbbfb6a25ee505139ddb6e67...d89b8f474f6b72be56ec86dbaf46b3e7d88e5569> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/d89b8f474f6b72be56ec86dbaf46b3e7d88e5569...be3bd576e0be2be739886ffbf9045c71604120e1> を参照してください。
 
 ## アセット
 
