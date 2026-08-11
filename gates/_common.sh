@@ -2768,6 +2768,59 @@ run_bounded() {
     run_with_watchdog "${DN2CPP_RUN_WATCHDOG_SECS:-600}" "$@"
 }
 
+# wait_ready_line NAME PID OUT ERR [SECONDS] — echo the first COMPLETE line the
+# background server PID writes to OUT, or print the evidence and return 1.
+# A pid that already exited fails at once: waiting the deadline out for a dead
+# process reports only "the file is empty", which is what made this unreadable.
+# The deadline governs only the slow case, and a slow case costs one xargs -P
+# worker slot for its length — so it is set well past a loaded runner's start,
+# far below run_bounded's own budget.
+wait_ready_line() {
+    local name="$1" pid="$2" out="$3" err="$4" secs="${5:-60}"
+    local t0=$SECONDS line="" waited=0 dead=0
+    while :; do
+        # `read` succeeds only on a NEWLINE-terminated line. `[ -s "$out" ]` also
+        # accepts a half-written "READY 5324", and the caller then parses a port
+        # that is not there yet.
+        if { IFS= read -r line < "$out"; } 2>/dev/null && [ -n "$line" ]; then
+            waited=$((SECONDS - t0))
+            # stdout is this function's return channel, so the warning takes stderr;
+            # run-all-gates.sh folds stderr into the gate log its grep reads.
+            [ "$waited" -lt $((secs / 2)) ] \
+                || gate_warn "the $name took ${waited}s of its ${secs}s budget to print READY — a start this slow is one load spike from failing the gate" >&2
+            printf '%s\n' "${line%$'\r'}"
+            return 0
+        fi
+        # Liveness AFTER the read: a server that prints READY and exits is ready.
+        # kill -0 can read a zombie or a recycled pid as alive; both only cost the
+        # full deadline, neither manufactures a failure.
+        if ! kill -0 "$pid" 2>/dev/null; then
+            if { IFS= read -r line < "$out"; } 2>/dev/null && [ -n "$line" ]; then
+                printf '%s\n' "${line%$'\r'}"
+                return 0
+            fi
+            dead=1; break
+        fi
+        waited=$((SECONDS - t0))
+        [ "$waited" -lt "$secs" ] || break
+        sleep 0.1
+    done
+    waited=$((SECONDS - t0))
+    local state="still running"
+    [ "$dead" = 0 ] || state="already gone — it exited before printing READY"
+    {
+        printf 'FAIL: the %s never printed a READY line (waited %ss of %ss; pid %s %s)\n' \
+            "$name" "$waited" "$secs" "$pid" "$state"
+        # $(cat) rather than cat: a server killed mid-line leaves no trailing
+        # newline, and the next heading would then run onto its own evidence.
+        if [ -s "$out" ]; then printf -- '--- %s ---\n%s\n' "$out" "$(cat "$out")"
+        else printf -- '--- %s: EMPTY ---\n' "$out"; fi
+        if [ -s "$err" ]; then printf -- '--- %s ---\n%s\n' "$err" "$(cat "$err")"
+        else printf -- '--- %s: EMPTY ---\n' "$err"; fi
+    } >&2
+    return 1
+}
+
 # xcodebuild_pipe_budget [HELD] — bytes the kernel grants a FRESH pipe while HELD
 # pipes (default 10) are already open. Prints one integer, or 0 if it cannot
 # measure. The grant is graded out of a machine-wide budget (16384 down to 512
