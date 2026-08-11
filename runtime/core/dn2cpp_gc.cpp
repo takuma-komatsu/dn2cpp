@@ -1372,7 +1372,12 @@ bool dn2cpp_suppress_set_take(Dn2CppObject* obj)
 // against net10.0: an InvalidOperationException thrown from a finalizer body
 // aborts with no further finalizers run) — match that instead of swallowing it,
 // so any other queued finalizer is correctly left un-run rather than papered over.
-void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
+//
+// NOINLINE so this frame DIES on return: inlined, its object slots join the
+// consumer's long-lived loop frame, which is scanned live on every collection
+// and out of the idle scrub's reach — pinning a dropped entry's object past
+// the second unreachability its re-registration waits for.
+DN2CPP_NOINLINE void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
 {
     // The one place every queued entry passes through, so the one place a
     // suppress that arrived after the enqueue can still cancel the body.
@@ -1486,6 +1491,12 @@ void dn2cpp_finalizer_thread_main()
         // g_finalizer_tail below publishes this clear to a reusing producer.
         slot.store(nullptr, std::memory_order_relaxed);
         dn2cpp_run_finalizer_body(obj);
+        // Ring drains must arm the idle scrub exactly like spill drains: this
+        // body's dead frames (and the enqueue callback's, from any collection it
+        // ran) hold object pointers, and a thread that sleeps over them pins
+        // those blocks for as long as it keeps sleeping — including an object a
+        // dropped-entry's re-registration needs collectable a second time.
+        ranSinceIdle = true;
         tail++;
         g_finalizer_tail.store(tail, std::memory_order_release);
     }
