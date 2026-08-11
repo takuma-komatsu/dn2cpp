@@ -189,3 +189,9 @@ Windows でこのメッセージが出る場合は、Visual Studio の C++ ワ�
 - **Windows ゲームのエクスポートには MSVC が必要**なため、その場合のみ Visual Studio の C++ ワークロードが要ります。Web と Android へのエクスポートは対象外です（[動作要件](#動作要件)を参照）。
 - **Linux エディタはありません。** ホストプラットフォームとしてはバックエンド自体が対応しています。
 - 同梱の prebuilt ランタイムキャッシュは、パッケージしたホストのツールチェーンをキーにしています。clang や NDK が異なるマシンでは、そのターゲットへの初回エクスポート時にランタイムをソースからビルドします（一度だけ遅くなりますが、結果はバイト単位で同一です）。Web 軸だけは例外です。そのツールチェーンはバンドルに同梱されているため、どのマシンでも同じキーになります。
+
+## ライセンス
+
+Godot は MIT で、dn2cpp バックエンドも MIT です。エディタが同梱するツールチェーンには、エクスポートしたゲームがリンクする vendored な C ライブラリが加わり、それぞれ `third_party/` 以下に自身の条項があります。
+
+エディタは Emscripten SDK も同梱しています。upstream の Emscripten（MIT / University of Illinois NCSA）、その下の LLVM（LLVM 例外付き Apache-2.0）および Binaryen（Apache-2.0）、エクスポートした Web ゲームがリンクする wasm ランタイムライブラリ（libc++、libc++abi、libunwind、compiler-rt、および musl 由来の libc）、それにリンク時に `emcc` が読み込む npm パッケージ群です。同梱したバイナリに対応するライセンス文書は、LLVM と Binaryen のものも含めてすべて `emsdk/LICENSES/` 以下にまとめてあります — 両者は upstream のアーカイブ自体がライセンス文書を含んでいないため、ビルド元のリビジョンから取得した原文を dn2cpp 側で同梱しています。

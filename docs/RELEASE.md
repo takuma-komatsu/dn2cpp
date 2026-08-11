@@ -582,9 +582,9 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
   the release page body directly; only re-running `dist/release-github.sh`
   changes it.
 - **The published body carries only** an overview, what changed since the
-  previous release, the assets, a link to the guide, provenance and the licence.
-  Everything a downloader does next — installing, host requirements, exporting
-  to each platform, troubleshooting, the known limits — is
+  previous release, the assets, a link to the guide and provenance. Everything
+  a downloader does next — installing, host requirements, exporting to each
+  platform, troubleshooting, the known limits, the licence terms — is
   `docs/EDITOR-GUIDE.ja.md`, which the notes link at a fixed commit so that a
   published link keeps saying what it said the day it was published.
 - **"Changes since the previous release" is the only section written by hand**,
