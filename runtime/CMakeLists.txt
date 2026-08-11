@@ -94,7 +94,7 @@ option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"  
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
 option(DN2CPP_DOTNET_MODULE "Build the Godot .NET-module host runtime library, and the app (DN2CPP_APP_DIR) as a mono-module shared library" OFF)
 set(DN2CPP_APP_DIR        ""    CACHE PATH     "Transpiler output dir to build into a final binary")
-set(DN2CPP_APP_NAME       "app" CACHE STRING   "Name of the app target / output file")
+set(DN2CPP_APP_NAME       "app" CACHE STRING   "Name of the app target (and of the output file in every lane but DN2CPP_GDEXTENSION)")
 set(DN2CPP_APP_LINK_FLAGS ""    CACHE STRING   "Extra link flags for the app (e.g. -L<dir>)")
 set(DN2CPP_RUNTIME_EXPORT ""    CACHE FILEPATH "Prebuilt dn2cpp-targets.cmake to import the runtime from")
 option(DN2CPP_STRIP       "Strip the final binary's symbol table"                   ON)
@@ -1058,6 +1058,10 @@ if(DN2CPP_APP_DIR)
 
     if(DN2CPP_GDEXTENSION)
         add_library(${DN2CPP_APP_NAME} SHARED ${DN2CPP_APP_SRCS})
+        # The shipped name is fixed in this lane, so a distributed artifact never
+        # carries the product name: the .gdextension that declares it is
+        # hand-authored, not derived. DN2CPP_APP_NAME stays the target name only.
+        set_target_properties(${DN2CPP_APP_NAME} PROPERTIES OUTPUT_NAME dn2cpp)
         target_link_libraries(${DN2CPP_APP_NAME} PRIVATE dn2cpp::dn2cpp_runtime dn2cpp::dn2cpp_godot)
     elseif(DN2CPP_SHARED)
         # Plain shared library (no Godot runtime): a native host dlopens it, runs

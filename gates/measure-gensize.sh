@@ -102,7 +102,8 @@ cold_build() {
     (
         export DN2CPP_NO_CCACHE=1
         if [ "$mode" = gdext ]; then
-            compile_gdextension "$out" "$out/$(lib_name "$name")"
+            # NAME labels the run (and its log); the artifact's name is fixed.
+            compile_gdextension "$out" "$out/$(lib_name "$DN2CPP_GDEXT_LIB")"
         else
             compile_console "$out" "$name"
         fi

@@ -33,7 +33,7 @@ fi
 
 echo "== 3/7 Compiling GDExtension shared library =="
 mkdir -p "$PROJECT/bin"
-compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name godotsample)"
+compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name "$DN2CPP_GDEXT_LIB")"
 
 echo "== 4/7 Importing Godot project (registers the extension) =="
 # Note: the first import may abort during editor teardown (Godot headless

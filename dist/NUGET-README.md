@@ -36,7 +36,8 @@ the input, not a published app).
 - `--dotnet-module` emits a Godot mono-module drop-in library
   (`-DDN2CPP_DOTNET_MODULE=ON` on the cmake configure).
 - `--gdextension` emits a Godot GDExtension library
-  (`-DDN2CPP_GDEXTENSION=ON`); the engine-shim assembly is generated from your
+  (`-DDN2CPP_GDEXTENSION=ON`), always named `libdn2cpp.dylib`/`libdn2cpp.so`/
+  `dn2cpp.dll` whatever the app is called; the engine-shim assembly is generated from your
   Godot build's `extension_api.json` via `dn2cpp --generate-bindings` — see the
   repository docs.
 
