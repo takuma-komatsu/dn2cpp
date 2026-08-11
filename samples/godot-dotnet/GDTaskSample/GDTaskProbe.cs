@@ -60,9 +60,10 @@ public partial class GDTaskProbe : Node
             new[] { ComputeAsync(7), NeverEndingAsync() });
         GD.Print($"DN2CPP_GDTASK_WHENANY index={winnerIndex} result={winnerResult}");
 
-        // 7. Delay — the real-time timer path (ValueStopwatch / DelayType).
+        // 7. Delay — DelayType.Realtime waits on real time, as the marker measures it;
+        //    per-frame delta time would make the assertion frame-rate dependent.
         ulong t0 = Time.GetTicksMsec();
-        await GDTask.Delay(60, PlayerLoopTiming.Process);
+        await GDTask.Delay(60, DelayType.Realtime, PlayerLoopTiming.Process);
         GD.Print($"DN2CPP_GDTASK_DELAY elapsedOk={Time.GetTicksMsec() - t0 >= 50}");
 
         // 8. A CancellationToken-taking overload, cancellation observed as a
