@@ -10,9 +10,8 @@
 # engine's try_load_native_aot_library resolves.
 #
 # Then again for the Web, through the Emscripten SDK the bundle carries. On Linux
-# THAT SECTION IS THE TARBALL'S ONLY ACCEPTANCE GATE: the editor-export gates all
-# need a forked editor and no editor package is built for Linux, so nothing else
-# ever links a Linux bundle's Web toolchain.
+# THAT SECTION IS WHAT ACCEPTS THE TARBALL: the fork's Web-export gate links the
+# same toolchain, but only from a baked Web template, and none is cut for Linux.
 #
 # NOT a regression gate: the filename is deliberately outside the
 # build-and-run-*.sh glob (like the sibling selfhost-*.sh), so run-all-gates.sh

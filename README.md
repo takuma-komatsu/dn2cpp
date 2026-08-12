@@ -102,7 +102,9 @@ failing.
 **Note (Linux).** The full suite runs green on Linux — the Godot desktop
 GDExtension lane, the mono-module drop-in, and the forked editor's own
 desktop export, all against a real engine; every skip is cross-toolchain
-(Xcode, Android NDK), not a Linux support gap.
+(Xcode, Android NDK), not a Linux support gap. The packaged export
+toolchain is cut and accepted here too: `dist/smoke-test.sh` round-trips a
+game into a drop-in and into a wasm side module out of the tarball alone.
 
 ## Quick start
 
