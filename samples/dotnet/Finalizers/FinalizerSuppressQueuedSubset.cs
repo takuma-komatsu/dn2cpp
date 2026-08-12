@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace FinalizerSuppressQueuedSubset
 {
@@ -77,10 +78,12 @@ namespace FinalizerSuppressQueuedSubset
     {
         private static WeakReference<object> s_long;
         private static WeakReference<object> s_short;
+        private static bool s_requireFinalizerWindows;
         // A strong root over the re-registered victim. While it is set the
         // instance cannot become unreachable again, so a finalization observed
         // under it can only have come from the entry already queued.
         private static object s_root;
+        private static bool s_suppressWindowOpened;
         private static bool s_windowOpened;
         // The mirror-image ordering's root and window flag: re-register FIRST,
         // then suppress, both inside the window.
@@ -115,6 +118,19 @@ namespace FinalizerSuppressQueuedSubset
             s_short = new WeakReference<object>(v, trackResurrection: false);
         }
 
+        private static void RunOnDeadThread(ThreadStart action)
+        {
+            if (!s_requireFinalizerWindows)
+            {
+                // The threadless arm retains the queued-window partial.
+                action();
+                return;
+            }
+            var creator = new Thread(action);
+            creator.Start();
+            creator.Join();
+        }
+
         // TryGetTarget hands the referent to a local, so each probe has to sit in
         // its own frame: probing from the retry loop's frame instead leaves that
         // strong slot live across every later round, and a conservative collector
@@ -129,11 +145,8 @@ namespace FinalizerSuppressQueuedSubset
         // A short weak reference is cleared when the referent becomes
         // finalizer-reachable, a long one only once its Finalize() has run: short
         // dead + long alive is exactly "queued, body not yet run".
-        // Whether the window opened is never printed on its own: the wasm build
-        // never collects an object first named from inside a finalizer body, so it
-        // reaches this section with the victim merely live, and a bare answer
-        // would differ per host rather than per behaviour. It is folded into the
-        // window-dependent assertions below instead, which every host can hold.
+        // The threadless arm folds this window into the queued-window partial.
+        // The native gate requires every raw window.
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static bool WaitUntilQueued()
         {
@@ -148,8 +161,8 @@ namespace FinalizerSuppressQueuedSubset
 
         internal static void RunInsideWindow()
         {
-            CreateSuppressedVictim();
-            WaitUntilQueued();
+            RunOnDeadThread(CreateSuppressedVictim);
+            s_suppressWindowOpened = WaitUntilQueued();
             bool got = s_long.TryGetTarget(out object suppressed);
             Console.WriteLine("suppressing a victim: named=" + got + " unfinalized=" + (SuppressedVictim.Finalized == 0));
             GC.SuppressFinalize(suppressed);
@@ -157,7 +170,7 @@ namespace FinalizerSuppressQueuedSubset
             // The same window, opting the queued instance straight back in: the
             // suppress cancels the queued body and the re-registration arms a
             // fresh one, which must net out to exactly one finalization.
-            CreateReVictim();
+            RunOnDeadThread(CreateReVictim);
             s_windowOpened = WaitUntilQueued();
             got = s_long.TryGetTarget(out object revived);
             Console.WriteLine("re-registering a victim: named=" + got + " unfinalized=" + (ReVictim.Finalized == 0));
@@ -172,7 +185,7 @@ namespace FinalizerSuppressQueuedSubset
             // the LAST word on the queued entry — it must be dropped — but the
             // re-registration must stay armed for the next unreachability, so the
             // net is zero finalizations while rooted and exactly one after.
-            CreateReThenSuppressVictim();
+            RunOnDeadThread(CreateReThenSuppressVictim);
             s_reThenSuppressWindowOpened = WaitUntilQueued();
             got = s_long.TryGetTarget(out object reThenSuppressed);
             Console.WriteLine("re-then-suppress victim: named=" + got + " unfinalized=" + (ReThenSuppressVictim.Finalized == 0));
@@ -264,9 +277,10 @@ namespace FinalizerSuppressQueuedSubset
             }
         }
 
-        internal static void __GateEntry()
+        internal static void __GateEntry(bool requireFinalizerWindows)
         {
-            MakeWindow();
+            s_requireFinalizerWindows = requireFinalizerWindows;
+            RunOnDeadThread(MakeWindow);
             for (int rounds = 0; !WindowRan && rounds < 64; rounds++)
             {
                 GC.Collect();
@@ -277,6 +291,14 @@ namespace FinalizerSuppressQueuedSubset
             if (s_windowOpened)
                 DrainRe();
             Console.WriteLine("window ran=" + WindowRan);
+            // One line per window, not a folded boolean: a red run must name
+            // which window failed to open.
+            if (s_requireFinalizerWindows)
+            {
+                Console.WriteLine("suppress window opened=" + s_suppressWindowOpened);
+                Console.WriteLine("re-register window opened=" + s_windowOpened);
+                Console.WriteLine("re-then-suppress window opened=" + s_reThenSuppressWindowOpened);
+            }
             // The assertion, and the one line that pins the re-registration: the
             // dedicated count is read while the root still forbids a second
             // collection, so a 1 here can only be the entry already queued. A
@@ -305,10 +327,10 @@ namespace FinalizerSuppressQueuedSubset
             // Raw and unfolded: a post-enqueue suppress with no re-registration
             // must hold on every host, queued or merely live.
             Console.WriteLine("post-enqueue suppressed finalizations=" + SuppressedVictim.Finalized);
-            MakeControl();
+            RunOnDeadThread(MakeControl);
             DrainControl();
             Console.WriteLine("control finalizations=" + ControlVictim.Finalized);
-            DoubleSuppressThenReRegister();
+            RunOnDeadThread(DoubleSuppressThenReRegister);
             DrainDouble();
             Console.WriteLine("finalizations after double suppress + re-register=" + DoubleVictim.Finalized);
             Console.WriteLine("done-suppress-queued");
