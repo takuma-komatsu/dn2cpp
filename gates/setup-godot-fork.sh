@@ -17,10 +17,10 @@
 #      — the engine binaries and their GodotSharp tree are referenced in place by
 #      recorded path, never linked or copied in (see step 6 for why)
 #
-# It has one arm per OS whose engine it can build — macOS and Windows — and no
-# fallback: an unported host is refused up front rather than tens of minutes into
-# a scons run. gates/_godot_fork.sh's preflight names the same OS list, so the
-# gates skip with a remedy that works exactly where one exists.
+# It has one arm per OS whose engine it can build — macOS, Windows and Linux —
+# and no fallback: an unported host is refused up front rather than tens of
+# minutes into a scons run. gates/_godot_fork.sh's preflight names the same OS
+# list, so the gates skip with a remedy that works exactly where one exists.
 #
 # Idempotent, and "already there" means "built from the sources now in the fork"
 # rather than merely present — presence alone is what once let a stale editor pass
@@ -120,10 +120,13 @@ source "$(dirname "$0")/_godot_fork.sh"
 case "$DN2CPP_OS" in
     macos)   SCONS_PLATFORM=macos ;;
     windows) SCONS_PLATFORM=windows ;;
+    # scons spells Linux "linuxbsd", and so do the binary names EDITOR_REL builds
+    # from it — the same name the engine uses for the platform everywhere else.
+    linux)   SCONS_PLATFORM=linuxbsd ;;
     *)
         echo "error: gates/setup-godot-fork.sh has no $DN2CPP_OS arm — it can build a fork" >&2
-        echo "       engine for macOS and Windows only, so no fork cache can be produced" >&2
-        echo "       on this host. The editor-export gates gate_skip accordingly." >&2
+        echo "       engine for macOS, Windows and Linux only, so no fork cache can be" >&2
+        echo "       produced on this host. The editor-export gates gate_skip accordingly." >&2
         exit 1
         ;;
 esac

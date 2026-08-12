@@ -517,10 +517,10 @@ The hosted smoke workflows (`.github/workflows/linux-smoke.yml`,
 the console lane end to end and the `SKIP_GODOT=1` suite in normal mode,
 fetching a public Godot build only to dump `extension_api.json` (the runner's
 pre-build needs it even when the Godot phase never runs, because it compiles the
-`GodotSharpShim`). Four lanes cannot run on a hosted runner and none is a
-hosted runner and none is a provisioning problem somebody could solve: the
-editor-export gates need a scons-built dn2cpp *fork* of the Godot editor, whose
-setup script has no Linux arm; the CRI ADX LE gates need a proprietary package and
+`GodotSharpShim`). Four lanes cannot run on a hosted runner, and none of the four
+is a provisioning problem somebody could solve: the editor-export gates need a
+scons-built dn2cpp *fork* of the Godot editor, which is hours of build a hosted
+runner discards every time; the CRI ADX LE gates need a proprietary package and
 a private sample repository, where the licence is the obstacle rather than the
 automation; the godot-dotnet gates need a mono editor at a pinned commit; and the
 iOS gates need Xcode plus a locally repaired export template. `DN2CPP_REQUIRE_ALL=1`

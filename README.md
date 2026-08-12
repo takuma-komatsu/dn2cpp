@@ -87,11 +87,11 @@ Legend: ✅ verified in a gate · 🚧 not yet verified (see notes) · — not a
 
 **Note (Godot .NET drop-in).** Its E2E gates need a mono-enabled Godot
 editor + export template. `gates/setup-godot-dotnet.sh` takes them from
-an official install on any host and builds them with scons on macOS;
-`gates/setup-godot-fork.sh` builds the forked editor for macOS and
-Windows and has no Linux arm, so there the editor-export half opts out
-via `gate_skip` rather than genuinely running, which is what the 🚧 cell
-reflects.
+an official install on any host, downloads that install itself on Linux,
+and builds them with scons on macOS; the drop-in half of the lane is
+verified on Linux. The 🚧 cell is the editor-export half:
+`gates/setup-godot-fork.sh` has a Linux arm, but no Linux host has yet
+run the fork engine build it needs, so nothing there is verified.
 The Android cell is the NDK cross-build of the same drop-in, and the
 forked editor's Android export runs an unmodified C# demo on a physical
 device against the *official* mono export template. The WASM cell is a
@@ -102,9 +102,9 @@ nothing: a different engine build mis-dispatches silently instead of
 failing.
 
 **Note (Linux).** The full suite runs green on Linux, the Godot desktop
-GDExtension lane included against a real engine; every skip is
-cross-toolchain (Xcode, Android NDK, Emscripten) or the fork tooling
-above for want of a Linux arm, not a Linux support gap.
+GDExtension lane and the mono-module drop-in included against a real
+engine; every skip is cross-toolchain (Xcode, Android NDK) or the fork
+engine build above, not a Linux support gap.
 
 ## Quick start
 

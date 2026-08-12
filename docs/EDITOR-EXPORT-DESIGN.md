@@ -75,13 +75,14 @@ through `PublishProjectBlocking`.
    configure in step 3 spells no compiler, so cmake picks the platform default
    and the preflight probes for exactly that (`Dn2CppExporter.HostCxxCompiler`);
    Web and Android hand cmake their own toolchain files and need none. Platform
-   gate: **macOS and Windows share one host-compiled desktop arm** (`universal`
-   and cross-architecture presets refused, since the bundle carries only the
-   host's compiler); iOS, Android and Web each check the single architecture the
-   backend builds; anything else is a `NotSupportedException`. On the desktop
-   arm the **host OS must equal the target OS** — arch equality alone lets an
-   x86_64 Windows host accept an x86_64 macOS preset and die minutes later
-   inside a compiler.
+   gate: **macOS, Windows and Linux share one host-compiled desktop arm**
+   (`universal` and cross-architecture presets refused, since the bundle carries
+   only the host's compiler); iOS, Android and Web each check the single
+   architecture the backend builds; anything else is a `NotSupportedException`.
+   On the desktop arm the **host OS must equal the target OS** — arch equality
+   alone lets an x86_64 Windows host accept an x86_64 Linux preset and die
+   minutes later inside a compiler. One host predicate per target, never a
+   two-valued test: "Windows, else macOS" answers macOS for a third target.
 
 2. **Transpile** with the bundled native CLI:
    `dn2cpp {Assembly}.dll --dotnet-module -r <bundle>/<ref|ref-posix>/System.Private.CoreLib.dll -r <editor>/GodotSharp/Api/Release/GodotSharp.dll [-r <dep>.dll …] --auto-ref -o <gen>`.
@@ -152,8 +153,9 @@ the NDK's own CMake toolchain file and stages `lib{Assembly}.so`; its setup must
 also fill in the editor's `export/android/java_sdk_path`, a **hard**
 prerequisite and not a PATH one, since `EditorExportPlatformAndroid::can_export`
 reads that Editor Setting and refuses the whole preset when empty, before any
-dn2cpp step runs. **Web** is §10. **Linux** is absent; the option refuses with a
-clear message.
+dn2cpp step runs. **Linux** is the third host-compiled desktop arm: same
+host-equals-target rule as macOS and Windows, `lib{Assembly}.so` built and
+`{Assembly}.so` staged. **Web** is §10.
 
 ## 4. Packaging the dn2cpp toolchain into the editor
 
@@ -474,8 +476,8 @@ release script that publishes them (§11).
 
 Remaining, tracked in `docs/STATUS.md`: notarization and the hardened-runtime
 entitlements audit for an editor that spawns a host `clang++` from outside the
-`.app` and cmake, ninja and Emscripten's clang from inside it, the upstream
-re-pin to the next stable (§7), and a Linux host arm.
+`.app` and cmake, ninja and Emscripten's clang from inside it, and the upstream
+re-pin to the next stable (§7).
 
 ## 7. Re-pin procedure (when moving the drop-in/fork base)
 
@@ -542,8 +544,9 @@ re-pin to the next stable (§7), and a Linux host arm.
   `PROPERTY_USAGE_STORAGE` on macOS alone, so it is settable only by editing
   `export_presets.cfg`. lipo of two dn2cpp builds into a universal game remains
   future work.
-- **Linux hosts** are unsupported; the option fails with a clear message, and
-  `gates/setup-godot-fork.sh` says so up front rather than after a scons build.
+- **No Linux editor is packaged.** The backend serves Linux as host and as
+  target, and `gates/setup-godot-fork.sh` builds a Linux fork editor, but `dist/`
+  has no `package-editor-linux.sh` — a Linux user builds the fork themselves.
 - **macOS hardened runtime** — the shipped `.app` is ad-hoc signed with the
   hardened runtime *off*, so a first launch needs the quarantine attribute
   cleared. Notarizing means turning it on, and that is the point at which the
