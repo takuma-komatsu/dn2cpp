@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace FinalizerBasicSubset
 {
@@ -31,9 +32,25 @@ namespace FinalizerBasicSubset
             _ = new Finalizable(id);
         }
 
-        internal static void __GateEntry()
+        private static void CreateFirst()
         {
             CreateAndDrop(1);
+        }
+
+        internal static void __GateEntry(bool requireFinalizerWindows)
+        {
+            if (requireFinalizerWindows)
+            {
+                // A finished thread removes its whole stack from Boehm's root set.
+                var creator = new Thread(CreateFirst);
+                creator.Start();
+                creator.Join();
+            }
+            else
+            {
+                // The threadless arm preserves the WASM collection oracle.
+                CreateFirst();
+            }
             // A single collection cannot be relied on to reclaim the instance
             // under a conservative collector (a stale stack word or a
             // suspended thread's spilled register can pin it for a round), so

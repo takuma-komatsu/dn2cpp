@@ -16,9 +16,23 @@
 # managed route into that window is a long WeakReference read from inside another
 # finalizer body (which is what holds the queue still). The same section pins the
 # undo direction — a repeated suppress followed by ReRegisterForFinalize must
-# still finalize. Its teeth are the finalization COUNTS, not the window: the
-# wasm axis runs the same program and never opens the window, because that build
-# never collects an object first named from inside a finalizer body.
+# still finalize. A native-only sentinel requires every queue window to open;
+# the wasm axis retains the declared expected-partial comparison.
+#
+# The undone suppress is asserted with the instance STILL ROOTED, which is what
+# makes the assertion an invariant rather than a host lottery: a run that drops
+# the queued entry and waits for a second unreachability reads 0 there on every
+# host, where a conservative collector may otherwise grant that second death and
+# hide the loss. The rooted line folds the window in, so the wasm axis — which
+# has nothing queued to run — still prints what real .NET prints.
+#
+# The mirror ordering — re-register FIRST, then suppress, both while queued —
+# must come out the other way (measured against net10.0): the queued entry is
+# dropped, yet the re-registration survives to the NEXT unreachability, so the
+# count is asserted zero while still rooted and one after un-rooting. That
+# un-rooted half also arms the consumer-side hygiene: the drop leaves an object
+# that must become collectable a second time, which a sleeping finalizer
+# thread's unscrubbed dead frames would otherwise pin forever.
 #
 # Also covers the THIRD allocation mouth (FinalizerClonedSubset), whose subject
 # is Object.MemberwiseClone rather than any destructor shape: a clone is a fresh
@@ -29,5 +43,24 @@
 # finalizer simply never runs. It reaches MemberwiseClone through a reflective Invoke
 # because the method is `protected`. Former gates: none (new area).
 source "$(dirname "$0")/_common.sh"
+
+DN2CPP_GATE_RUN_ARGS='--require-finalizer-windows'
+
+gate_extra_asserts() {
+    local output line
+    set +e
+    output=$(run_bounded "./$1/Finalizers" --require-finalizer-windows 2>/dev/null)
+    set -e
+    output=$(strip_cr_win "$output")
+    for line in 'suppress window opened=True' \
+                're-register window opened=True' \
+                're-then-suppress window opened=True'; do
+        if ! LC_ALL=C grep -Fxq "$line" <<<"$output"; then
+            echo "FAIL: native queued-finalizer window did not open: '$line'" >&2
+            LC_ALL=C grep -F 'window' <<<"$output" >&2 || true
+            return 1
+        fi
+    done
+}
 
 corelib_diff_gate Finalizers

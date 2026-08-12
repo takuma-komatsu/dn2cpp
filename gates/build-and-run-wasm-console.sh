@@ -56,6 +56,7 @@ export WASM=1
 wasm_corelib_diff_gate StringCore System.Linq
 wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers
+gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
 wasm_corelib_diff_gate WeakReferences
 
 # ── 5th section: the Web lane's HTTP carve-out ────────────────────────────────

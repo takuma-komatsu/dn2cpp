@@ -137,6 +137,51 @@ void dn2cpp_gc_stats_dump_once()
     std::call_once(g_gc_stats_once, dn2cpp_gc_stats_dump);
 }
 
+// ── Suppressed-finalizer set work counters (opt-in report: DN2CPP_GC_SUPPRESS_STATS)
+// The set is walked slot by slot, so a drain's cost tracks the set's high-water mark
+// rather than its live size. These count that work directly; a wall clock cannot
+// separate it from collection time. Independent of DN2CPP_GC_STATS on purpose —
+// enabling one must not move the other's stderr.
+//
+// The walk runs under Boehm's allocator lock, where nothing may allocate, collect or
+// do I/O — relaxed adds are all these are. They are unconditional: a knob test on the
+// suppress and dequeue paths would cost more than the add it guards.
+std::atomic<uint64_t> g_suppress_calls;      // SuppressFinalize past the no-Finalize return
+std::atomic<uint64_t> g_suppress_recorded;   // …of which entered the set
+std::atomic<uint64_t> g_suppress_dequeues;   // finalizer bodies dequeued
+std::atomic<uint64_t> g_suppress_probes;     // …of which missed the bound and took the mutex
+std::atomic<uint64_t> g_suppress_scans;      // slot walks
+std::atomic<uint64_t> g_suppress_slots_walked;
+std::atomic<uint64_t> g_suppress_chunks;     // chunks currently on the chain
+
+void dn2cpp_gc_suppress_stats_dump()
+{
+    unsigned long long scans = g_suppress_scans.load();
+    unsigned long long walked = g_suppress_slots_walked.load();
+    std::fprintf(stderr, "\n=== dn2cpp GC suppress stats ===\n");
+    std::fprintf(stderr, "suppress calls:      %llu\n",
+                 static_cast<unsigned long long>(g_suppress_calls.load()));
+    std::fprintf(stderr, "  set entries added: %llu\n",
+                 static_cast<unsigned long long>(g_suppress_recorded.load()));
+    std::fprintf(stderr, "dequeues:            %llu\n",
+                 static_cast<unsigned long long>(g_suppress_dequeues.load()));
+    std::fprintf(stderr, "  locked probes:     %llu\n",
+                 static_cast<unsigned long long>(g_suppress_probes.load()));
+    std::fprintf(stderr, "scans:               %llu\n", scans);
+    std::fprintf(stderr, "slots walked:        %llu\n", walked);
+    std::fprintf(stderr, "  slots per scan:    %.1f\n",
+                 scans ? static_cast<double>(walked) / static_cast<double>(scans) : 0.0);
+    std::fprintf(stderr, "chunks:              %llu\n",
+                 static_cast<unsigned long long>(g_suppress_chunks.load()));
+    std::fprintf(stderr, "================================\n");
+}
+
+std::once_flag g_gc_suppress_stats_once;
+void dn2cpp_gc_suppress_stats_dump_once()
+{
+    std::call_once(g_gc_suppress_stats_once, dn2cpp_gc_suppress_stats_dump);
+}
+
 // Parse a boolean env override (0/1, true/false, yes/no, on/off — first letter,
 // case-insensitive; "on"/"off" disambiguated by the 2nd char). Returns def unset.
 bool dn2cpp_env_bool(const char* name, bool def)
@@ -505,6 +550,9 @@ void dn2cpp_runtime_init()
         GC_set_on_collection_event(dn2cpp_gc_event);
         std::atexit(dn2cpp_gc_stats_dump_once);
     }
+    //   DN2CPP_GC_SUPPRESS_STATS   suppressed-finalizer set work summary at exit
+    if (dn2cpp_pal_getenv("DN2CPP_GC_SUPPRESS_STATS") != nullptr)
+        std::atexit(dn2cpp_gc_suppress_stats_dump_once);
 #endif
     // No curl_global_init here, though this is the ordering curl's documentation asks
     // for: a hard reference from a TU EVERY program links makes every program link
@@ -538,6 +586,8 @@ void dn2cpp_runtime_init()
     // _Exit skips the atexit chain this is normally registered on.
     if (dn2cpp_pal_getenv("DN2CPP_GC_STATS") != nullptr)
         dn2cpp_gc_stats_dump_once();
+    if (dn2cpp_pal_getenv("DN2CPP_GC_SUPPRESS_STATS") != nullptr)
+        dn2cpp_gc_suppress_stats_dump_once();
 #endif
     dn2cpp_pal_console_flush();
 #ifdef DN2CPP_EXIT_VIA_STDEXIT
@@ -1270,6 +1320,12 @@ void GC_CALLBACK dn2cpp_finalizer_callback(void* obj, void* /* clientData */)
     }
 }
 
+// Client-data tag on every registration ReRegisterForFinalize arms. An
+// allocation-time registration passes null instead, so a suppress that removes
+// a registration can tell "armed after a queuing" (worth a marker below) from
+// the plain Dispose-pattern suppress, which stays markerless and cheap.
+char g_finalizer_rereg_tag;
+
 // Objects suppressed AFTER the collector had already queued them. Boehm's
 // deregistration only edits its finalizer table, which no longer holds an entry
 // the collection moved onto the ring, so the ring's consumer has to drop the
@@ -1284,33 +1340,104 @@ void GC_CALLBACK dn2cpp_finalizer_callback(void* obj, void* /* clientData */)
 // its own referent, and Boehm requires a heap address of the referent, not of the
 // link — and never moved, since relocating a slot means re-registering its link
 // against a referent that may have died in between.
+//
+// The registrar edit that JUSTIFIES a set write, and the set read that justifies
+// a registrar probe, are one step under g_suppress_mtx — hence the _locked
+// halves below. A dequeue may skip the mutex only on a zero bound, and a
+// suppress raises the bound before its first registrar edit, so a zero read
+// predates the whole critical section. Observed half-done, a suppress raced
+// by ReRegisterForFinalize runs one registration's body twice: the dequeue
+// misses a marker not yet published and runs it, then the collector clears
+// that marker as it queues the re-registration, and the second entry runs it
+// again.
+//
+// An entry also records whether the suppress REMOVED a registration that
+// ReRegisterForFinalize had armed (recognisable by its tagged client data).
+// Queued, that order means "drop the queued entry, keep the future one" —
+// real .NET runs the finalizer once, after the NEXT unreachability — so the
+// dequeue that drops the entry re-arms the registration the suppress removed.
+// On an object that was merely live the collector clears the marker at
+// f-reachability before it can act, and the removal already was the suppress.
 constexpr uint32_t kSuppressChunkEntries = 64;
 struct Dn2CppSuppressChunk
 {
     Dn2CppSuppressChunk* next;
     void* slots[kSuppressChunkEntries]; // GC_HIDE_POINTER'd; null = free or collector-cleared
+    uint8_t restore[kSuppressChunkEntries]; // re-arm the re-registration on drop
 };
 std::mutex& g_suppress_mtx = dn2cpp_never_destroyed<std::mutex>();
 Dn2CppSuppressChunk* g_suppress_head = nullptr;
-// Upper bound on occupied slots — the collector clears a slot without telling us,
-// so this only falls back to the truth on a full miss scan. It exists so the
-// drain of a program that never suppresses post-enqueue (i.e. nearly every one)
-// costs a single relaxed load.
+// Upper bound on occupied slots — an in-flight suppress holds a transient +1,
+// and the collector clears a slot without telling us, so this only falls back
+// to the truth on a full miss scan. It exists so the drain of a program that
+// never suppresses post-enqueue (i.e. nearly every one) costs a single
+// relaxed load.
 std::atomic<uint64_t> g_suppress_count{0};
 
-void dn2cpp_suppress_set_add(Dn2CppObject* obj)
+// The slot walk shared by add and take. It must run under Boehm's ALLOCATOR
+// lock, not just g_suppress_mtx: the collector clears a registered slot with a
+// plain write while the world runs (GC_finalize), so a read anywhere else is a
+// data race. Only the walk goes in the callback — the public link register /
+// unregister calls take the allocator lock themselves and would self-deadlock
+// inside it. A matched slot stays valid after the callback returns: every
+// caller strong-roots obj (parameter or dequeue local), so its short link
+// cannot be collector-cleared in between. restore[] is ours alone, under
+// g_suppress_mtx.
+struct Dn2CppSuppressScan
 {
-    std::lock_guard<std::mutex> lock(g_suppress_mtx);
-    void* hidden = reinterpret_cast<void*>(GC_HIDE_POINTER(obj));
-    void** slot = nullptr;
+    void* hidden;
+    void** match;
+    uint8_t* matchRestore;
+    void** freeSlot;
+    uint8_t* freeRestore;
+    uint64_t occupied;
+};
+
+void* GC_CALLBACK dn2cpp_scan_suppress_slots(void* data)
+{
+    auto& scan = *static_cast<Dn2CppSuppressScan*>(data);
+    // Accumulated locally and published once: the counted quantity is the loop's
+    // trip count, and an atomic per slot would itself dominate what it measures.
+    uint64_t walked = 0;
     for (Dn2CppSuppressChunk* c = g_suppress_head; c != nullptr; c = c->next)
         for (uint32_t i = 0; i < kSuppressChunkEntries; i++)
         {
-            if (c->slots[i] == hidden)
-                return; // already recorded; a repeated suppress is legal and a no-op
-            if (c->slots[i] == nullptr && slot == nullptr)
-                slot = &c->slots[i];
+            walked++;
+            void* value = c->slots[i];
+            if (value == scan.hidden)
+            {
+                scan.match = &c->slots[i];
+                scan.matchRestore = &c->restore[i];
+            }
+            if (value == nullptr && scan.freeSlot == nullptr)
+            {
+                scan.freeSlot = &c->slots[i];
+                scan.freeRestore = &c->restore[i];
+            }
+            if (value != nullptr)
+                scan.occupied++;
         }
+    g_suppress_scans.fetch_add(1, std::memory_order_relaxed);
+    g_suppress_slots_walked.fetch_add(walked, std::memory_order_relaxed);
+    return nullptr;
+}
+
+void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
+{
+    void* hidden = reinterpret_cast<void*>(GC_HIDE_POINTER(obj));
+    Dn2CppSuppressScan scan{hidden, nullptr, nullptr, nullptr, nullptr, 0};
+    GC_call_with_alloc_lock(dn2cpp_scan_suppress_slots, &scan);
+    if (scan.match != nullptr)
+    {
+        // Already recorded; a repeated suppress is legal. It can only
+        // strengthen the record: a later suppress that removed a fresh
+        // re-registration owes the dequeue its re-arm.
+        if (restore)
+            *scan.matchRestore = 1;
+        return;
+    }
+    void** slot = scan.freeSlot;
+    uint8_t* restoreSlot = scan.freeRestore;
     if (slot == nullptr)
     {
         auto* c = static_cast<Dn2CppSuppressChunk*>(
@@ -1319,8 +1446,11 @@ void dn2cpp_suppress_set_add(Dn2CppObject* obj)
             dn2cpp_fail("out of memory (suppressed-finalizer set)");
         c->next = g_suppress_head;
         g_suppress_head = c;
+        g_suppress_chunks.fetch_add(1, std::memory_order_relaxed);
         slot = &c->slots[0];
+        restoreSlot = &c->restore[0];
     }
+    *restoreSlot = restore ? 1 : 0; // before the slot: a reused slot's byte is stale
     *slot = hidden;
     // An unregistered link never disappears, so the slot would name this address
     // forever — and Boehm hands a dead object's address to the next allocation, so
@@ -1336,33 +1466,30 @@ void dn2cpp_suppress_set_add(Dn2CppObject* obj)
         *slot = nullptr;
         return;
     }
+    g_suppress_recorded.fetch_add(1, std::memory_order_relaxed);
     g_suppress_count.fetch_add(1, std::memory_order_release);
 }
 
 // True when obj's finalization was suppressed post-enqueue; consumes the entry.
-bool dn2cpp_suppress_set_take(Dn2CppObject* obj)
+bool dn2cpp_suppress_set_take_locked(Dn2CppObject* obj, bool* restore)
 {
-    if (g_suppress_count.load(std::memory_order_acquire) == 0)
-        return false;
-    std::lock_guard<std::mutex> lock(g_suppress_mtx);
     void* hidden = reinterpret_cast<void*>(GC_HIDE_POINTER(obj));
-    uint64_t occupied = 0;
-    for (Dn2CppSuppressChunk* c = g_suppress_head; c != nullptr; c = c->next)
-        for (uint32_t i = 0; i < kSuppressChunkEntries; i++)
-        {
-            if (c->slots[i] == hidden)
-            {
-                GC_unregister_disappearing_link(&c->slots[i]);
-                c->slots[i] = nullptr;
-                g_suppress_count.fetch_sub(1, std::memory_order_release);
-                return true;
-            }
-            if (c->slots[i] != nullptr)
-                occupied++;
-        }
+    Dn2CppSuppressScan scan{hidden, nullptr, nullptr, nullptr, nullptr, 0};
+    GC_call_with_alloc_lock(dn2cpp_scan_suppress_slots, &scan);
+    if (scan.match != nullptr)
+    {
+        *restore = *scan.matchRestore != 0;
+        GC_unregister_disappearing_link(scan.match);
+        // Unregistered first: the collector no longer knows the slot, so this
+        // plain clear cannot race its own.
+        *scan.match = nullptr;
+        g_suppress_count.fetch_sub(1, std::memory_order_release);
+        return true;
+    }
     // A full miss saw every slot, so the bound can be retightened here — and only
     // here, which is what lets a set the collector emptied stop costing a scan.
-    g_suppress_count.store(occupied, std::memory_order_release);
+    // Cannot erase an in-flight suppress's +1: bump and retighten share the mutex.
+    g_suppress_count.store(scan.occupied, std::memory_order_release);
     return false;
 }
 
@@ -1379,10 +1506,47 @@ bool dn2cpp_suppress_set_take(Dn2CppObject* obj)
 // the second unreachability its re-registration waits for.
 DN2CPP_NOINLINE void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
 {
+    g_suppress_dequeues.fetch_add(1, std::memory_order_relaxed);
     // The one place every queued entry passes through, so the one place a
-    // suppress that arrived after the enqueue can still cancel the body.
-    if (dn2cpp_suppress_set_take(obj))
-        return;
+    // suppress that arrived after the enqueue can still cancel the body. The
+    // unlocked bound is the fast path for the programs that never suppress one:
+    // a suppress raises the bound before its first registrar edit, so reading
+    // zero means no suppress critical section is in flight or published — this
+    // dequeue linearizes before all of them, a race it legitimately wins.
+    if (g_suppress_count.load(std::memory_order_acquire) != 0)
+    {
+        g_suppress_probes.fetch_add(1, std::memory_order_relaxed);
+        // The body must NOT run under this lock: a Finalize calling
+        // SuppressFinalize(this) takes the same, non-recursive, mutex.
+        std::lock_guard<std::mutex> lock(g_suppress_mtx);
+        bool restore = false;
+        if (dn2cpp_suppress_set_take_locked(obj, &restore))
+        {
+            // A registration still on the object was armed AFTER that suppress:
+            // the collector consumed the one whose queuing produced this entry,
+            // so the only thing that can have put one back is
+            // ReRegisterForFinalize undoing the suppress. Honour it from THIS
+            // entry, taking it so nothing fires twice. Dropping instead needs
+            // the object to become unreachable a second time, which a
+            // conservative scan may never grant.
+            GC_finalization_proc rearmed = nullptr;
+            void* rearmedData = nullptr;
+            GC_register_finalizer_no_order(obj, nullptr, nullptr, &rearmed, &rearmedData);
+            if (rearmed == nullptr)
+            {
+                // The marker's suppress came AFTER a re-registration and removed
+                // it (queue -> re-register -> suppress). The queued entry is
+                // dropped, but the registration must come back: real .NET runs
+                // it once, after the next unreachability. Re-armed under the
+                // mutex, so a racing suppress serializes behind this dequeue
+                // and sees the registration it must remove.
+                if (restore)
+                    GC_register_finalizer_no_order(obj, dn2cpp_finalizer_callback,
+                        &g_finalizer_rereg_tag, &rearmed, &rearmedData);
+                return;
+            }
+        }
+    }
     try
     {
         if (obj->type->finalize != nullptr)
@@ -1612,10 +1776,18 @@ void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj)
 #ifdef DN2CPP_USE_BOEHM_GC
     if (obj->type->finalize == nullptr)
         return; // no Finalize override -> nothing was ever registered
+    g_suppress_calls.fetch_add(1, std::memory_order_relaxed);
     // Initialised because the call below is a no-op that leaves both UNTOUCHED
     // under GC_FIND_LEAK, and oldProc is read.
     GC_finalization_proc oldProc = nullptr;
     void* oldData = nullptr;
+    // Under the set's lock, because the unregister is what the record MEANS: a
+    // consumer that reads the set between the two sees an object with neither.
+    std::lock_guard<std::mutex> lock(g_suppress_mtx);
+    // Raise the bound BEFORE the registrar edit: a drain that read zero then
+    // predates this whole critical section. A transient over-count is legal —
+    // the bound is an upper bound by contract.
+    g_suppress_count.fetch_add(1, std::memory_order_release);
     // Passing a null fn unregisters the current finalizer (GC_register_
     // finalizer's documented contract) without invoking it.
     GC_register_finalizer_no_order(obj, nullptr, nullptr, &oldProc, &oldData);
@@ -1624,7 +1796,15 @@ void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj)
     // finalized, or suppressed before). Only the queue's consumer can honour the
     // suppress from here, so record it for that consumer.
     if (oldProc == nullptr)
-        dn2cpp_suppress_set_add(obj);
+        dn2cpp_suppress_set_add_locked(obj, /*restore=*/false);
+    else if (oldData == &g_finalizer_rereg_tag)
+        // The registration this removed was armed by ReRegisterForFinalize, so
+        // the object may be sitting queued (queue -> re-register -> suppress):
+        // the marker tells the dequeue to drop the entry AND re-arm what this
+        // removed. If the object was merely live, the collector clears the
+        // marker at f-reachability and the removal alone was the suppress.
+        dn2cpp_suppress_set_add_locked(obj, /*restore=*/true);
+    g_suppress_count.fetch_sub(1, std::memory_order_release);
 #else
     (void)obj;
 #endif
@@ -1638,13 +1818,25 @@ void dn2cpp_gc_reregister_for_finalize(Dn2CppObject* obj)
     if (obj->type->finalize == nullptr)
         return; // matches real GC.ReRegisterForFinalize: legal, but a no-op
                  // on a type that was never finalizable
-    // No suppressed-set edit here on purpose. An entry left over from an earlier
-    // suppress is dropped by the collector at the moment obj next becomes
-    // finalizer-reachable, i.e. before the entry could cancel the registration
-    // this call just made; clearing it eagerly instead cancels nothing and lets
-    // the queued body run in ADDITION to the re-registered one — one finalization
-    // too many, measured against real .NET.
-    dn2cpp_register_finalizer(obj);
+    // Outside g_suppress_mtx, and it is the only one of the three paths that may
+    // be: this one never reads the set, and Boehm publishes the registration
+    // atomically, so a concurrent dequeue probe reads it before or after.
+    //
+    // No suppressed-set edit here on purpose, in either direction. For an entry
+    // naming a LIVE object the collector drops it when obj next becomes
+    // finalizer-reachable, before it could cancel the registration this call
+    // just made. For one naming an already-queued object the registration
+    // itself is the undo, and the ring's consumer reads it —
+    // dn2cpp_run_finalizer_body; clearing the entry here instead would let the
+    // queued body run in ADDITION to the re-registered one.
+    dn2cpp_ensure_finalizer_thread();
+    GC_finalization_proc oldProc;
+    void* oldData;
+    // Tagged client data — see g_finalizer_rereg_tag: a suppress that removes
+    // this registration must know it was armed by a re-register, because on a
+    // queued object it then has to survive the drop of the queued entry.
+    GC_register_finalizer_no_order(obj, dn2cpp_finalizer_callback,
+        &g_finalizer_rereg_tag, &oldProc, &oldData);
 #else
     (void)obj;
 #endif
