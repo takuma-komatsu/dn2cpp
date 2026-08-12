@@ -2964,8 +2964,13 @@ godot_export_step() {
     local rc=0
     run_with_watchdog "$secs" "$@" >"$log" 2>&1 || rc=$?
     [ "$rc" -eq 0 ] && return 0
+    # Whether the crash handler is still armed when the editor dies in teardown is
+    # a function of how far teardown got, not of whether the export ran: the late
+    # abort (EditorNode already gone, "singleton is null") prints no handle_crash
+    # line at all, and requiring one failed exports that had already written their
+    # artifact. The verdict is the artifact plus the log's failure lines; every
+    # caller re-verifies the artifact's contents afterwards.
     if [ "$rc" -gt 128 ] && [ -e "$artifact" ] \
-        && grep -q "handle_crash: Program crashed with signal" "$log" \
         && ! grep -q "^WATCHDOG: " "$log" \
         && ! grep -q "Project export for preset .* failed" "$log" \
         && ! grep -q "Cannot export project with preset" "$log"; then
