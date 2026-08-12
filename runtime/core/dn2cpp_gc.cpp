@@ -137,6 +137,51 @@ void dn2cpp_gc_stats_dump_once()
     std::call_once(g_gc_stats_once, dn2cpp_gc_stats_dump);
 }
 
+// ── Suppressed-finalizer set work counters (opt-in report: DN2CPP_GC_SUPPRESS_STATS)
+// The set is walked slot by slot, so a drain's cost tracks the set's high-water mark
+// rather than its live size. These count that work directly; a wall clock cannot
+// separate it from collection time. Independent of DN2CPP_GC_STATS on purpose —
+// enabling one must not move the other's stderr.
+//
+// The walk runs under Boehm's allocator lock, where nothing may allocate, collect or
+// do I/O — relaxed adds are all these are. They are unconditional: a knob test on the
+// suppress and dequeue paths would cost more than the add it guards.
+std::atomic<uint64_t> g_suppress_calls;      // SuppressFinalize past the no-Finalize return
+std::atomic<uint64_t> g_suppress_recorded;   // …of which entered the set
+std::atomic<uint64_t> g_suppress_dequeues;   // finalizer bodies dequeued
+std::atomic<uint64_t> g_suppress_probes;     // …of which missed the bound and took the mutex
+std::atomic<uint64_t> g_suppress_scans;      // slot walks
+std::atomic<uint64_t> g_suppress_slots_walked;
+std::atomic<uint64_t> g_suppress_chunks;     // chunks currently on the chain
+
+void dn2cpp_gc_suppress_stats_dump()
+{
+    unsigned long long scans = g_suppress_scans.load();
+    unsigned long long walked = g_suppress_slots_walked.load();
+    std::fprintf(stderr, "\n=== dn2cpp GC suppress stats ===\n");
+    std::fprintf(stderr, "suppress calls:      %llu\n",
+                 static_cast<unsigned long long>(g_suppress_calls.load()));
+    std::fprintf(stderr, "  set entries added: %llu\n",
+                 static_cast<unsigned long long>(g_suppress_recorded.load()));
+    std::fprintf(stderr, "dequeues:            %llu\n",
+                 static_cast<unsigned long long>(g_suppress_dequeues.load()));
+    std::fprintf(stderr, "  locked probes:     %llu\n",
+                 static_cast<unsigned long long>(g_suppress_probes.load()));
+    std::fprintf(stderr, "scans:               %llu\n", scans);
+    std::fprintf(stderr, "slots walked:        %llu\n", walked);
+    std::fprintf(stderr, "  slots per scan:    %.1f\n",
+                 scans ? static_cast<double>(walked) / static_cast<double>(scans) : 0.0);
+    std::fprintf(stderr, "chunks:              %llu\n",
+                 static_cast<unsigned long long>(g_suppress_chunks.load()));
+    std::fprintf(stderr, "================================\n");
+}
+
+std::once_flag g_gc_suppress_stats_once;
+void dn2cpp_gc_suppress_stats_dump_once()
+{
+    std::call_once(g_gc_suppress_stats_once, dn2cpp_gc_suppress_stats_dump);
+}
+
 // Parse a boolean env override (0/1, true/false, yes/no, on/off — first letter,
 // case-insensitive; "on"/"off" disambiguated by the 2nd char). Returns def unset.
 bool dn2cpp_env_bool(const char* name, bool def)
@@ -505,6 +550,9 @@ void dn2cpp_runtime_init()
         GC_set_on_collection_event(dn2cpp_gc_event);
         std::atexit(dn2cpp_gc_stats_dump_once);
     }
+    //   DN2CPP_GC_SUPPRESS_STATS   suppressed-finalizer set work summary at exit
+    if (dn2cpp_pal_getenv("DN2CPP_GC_SUPPRESS_STATS") != nullptr)
+        std::atexit(dn2cpp_gc_suppress_stats_dump_once);
 #endif
     // No curl_global_init here, though this is the ordering curl's documentation asks
     // for: a hard reference from a TU EVERY program links makes every program link
@@ -538,6 +586,8 @@ void dn2cpp_runtime_init()
     // _Exit skips the atexit chain this is normally registered on.
     if (dn2cpp_pal_getenv("DN2CPP_GC_STATS") != nullptr)
         dn2cpp_gc_stats_dump_once();
+    if (dn2cpp_pal_getenv("DN2CPP_GC_SUPPRESS_STATS") != nullptr)
+        dn2cpp_gc_suppress_stats_dump_once();
 #endif
     dn2cpp_pal_console_flush();
 #ifdef DN2CPP_EXIT_VIA_STDEXIT
@@ -1346,9 +1396,13 @@ struct Dn2CppSuppressScan
 void* GC_CALLBACK dn2cpp_scan_suppress_slots(void* data)
 {
     auto& scan = *static_cast<Dn2CppSuppressScan*>(data);
+    // Accumulated locally and published once: the counted quantity is the loop's
+    // trip count, and an atomic per slot would itself dominate what it measures.
+    uint64_t walked = 0;
     for (Dn2CppSuppressChunk* c = g_suppress_head; c != nullptr; c = c->next)
         for (uint32_t i = 0; i < kSuppressChunkEntries; i++)
         {
+            walked++;
             void* value = c->slots[i];
             if (value == scan.hidden)
             {
@@ -1363,6 +1417,8 @@ void* GC_CALLBACK dn2cpp_scan_suppress_slots(void* data)
             if (value != nullptr)
                 scan.occupied++;
         }
+    g_suppress_scans.fetch_add(1, std::memory_order_relaxed);
+    g_suppress_slots_walked.fetch_add(walked, std::memory_order_relaxed);
     return nullptr;
 }
 
@@ -1390,6 +1446,7 @@ void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
             dn2cpp_fail("out of memory (suppressed-finalizer set)");
         c->next = g_suppress_head;
         g_suppress_head = c;
+        g_suppress_chunks.fetch_add(1, std::memory_order_relaxed);
         slot = &c->slots[0];
         restoreSlot = &c->restore[0];
     }
@@ -1409,6 +1466,7 @@ void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
         *slot = nullptr;
         return;
     }
+    g_suppress_recorded.fetch_add(1, std::memory_order_relaxed);
     g_suppress_count.fetch_add(1, std::memory_order_release);
 }
 
@@ -1448,6 +1506,7 @@ bool dn2cpp_suppress_set_take_locked(Dn2CppObject* obj, bool* restore)
 // the second unreachability its re-registration waits for.
 DN2CPP_NOINLINE void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
 {
+    g_suppress_dequeues.fetch_add(1, std::memory_order_relaxed);
     // The one place every queued entry passes through, so the one place a
     // suppress that arrived after the enqueue can still cancel the body. The
     // unlocked bound is the fast path for the programs that never suppress one:
@@ -1456,6 +1515,7 @@ DN2CPP_NOINLINE void dn2cpp_run_finalizer_body(Dn2CppObject* obj)
     // dequeue linearizes before all of them, a race it legitimately wins.
     if (g_suppress_count.load(std::memory_order_acquire) != 0)
     {
+        g_suppress_probes.fetch_add(1, std::memory_order_relaxed);
         // The body must NOT run under this lock: a Finalize calling
         // SuppressFinalize(this) takes the same, non-recursive, mutex.
         std::lock_guard<std::mutex> lock(g_suppress_mtx);
@@ -1716,6 +1776,7 @@ void dn2cpp_gc_suppress_finalize(Dn2CppObject* obj)
 #ifdef DN2CPP_USE_BOEHM_GC
     if (obj->type->finalize == nullptr)
         return; // no Finalize override -> nothing was ever registered
+    g_suppress_calls.fetch_add(1, std::memory_order_relaxed);
     // Initialised because the call below is a no-op that leaves both UNTOUCHED
     // under GC_FIND_LEAK, and oldProc is read.
     GC_finalization_proc oldProc = nullptr;
