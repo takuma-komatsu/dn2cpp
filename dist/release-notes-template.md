@@ -8,15 +8,12 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- **破壊的変更**: アセットのファイル名から重複していた `dn2cpp` を削除し、`Godot-<バージョン>-macos-arm64.zip` のような形に変更（展開後の `.app` / `.exe` と zip 内トップディレクトリの名前は従来どおり `Godot-dn2cpp`）（dn2cpp#18）
-- **破壊的変更**: リリースのバージョン表記を `<Godot バージョン>-dn2cpp.<X>.<Y>` に変更 — エディタ（フォーク）が更新されると `X`、dn2cpp だけの更新なら `Y` が上がる（dn2cpp#18）
-- **破壊的変更**: GDExtension 出力のライブラリ名を `libdn2cpp.dylib` / `libdn2cpp.so` / `dn2cpp.dll` に固定 — CLI の `--gdextension` を直接使っている場合は `.gdextension` の `[libraries]` の書き換えが必要（エディタからのエクスポートは別経路のため影響なし）（dn2cpp#19）
-- GC の実装を Unity Technologies の bdwgc フォークへ差し替え、インクリメンタル GC（Godot ランの既定）が必要とする書き込みバリアを追加（dn2cpp#10）
-- プリミティブ・enum を `constrained.` 経由で `object.Equals` に渡すとクラッシュしていた問題を修正（dn2cpp#15）
-- タスクの完了待ちが、実行可能な継続が残っているのに稀にデッドロックと判定していた問題を修正（dn2cpp#13）
-- インストール手順・動作要件・エクスポート手順・トラブルシューティング・既知の制限・ライセンス表記を、リリースノートからエディタ利用ガイド（`docs/EDITOR-GUIDE.ja.md`）へ移動（dn2cpp#17）
+- `--dotnet-module` ドロップインが Linux でも動作するようになりました（従来は macOS / Windows のみ）
+- Godot エディタ本体（フォーク）に Linux をエクスポート先として追加
+- `SuppressFinalize` の窓の中でファイナライザが再度 arm されてしまう問題を修正
+- ファイナライザキューのリング drain 後、ファイナライザスレッドのスタックが以前の実行の残骸を保持していた問題を修正
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/d89b8f474f6b72be56ec86dbaf46b3e7d88e5569...be3bd576e0be2be739886ffbf9045c71604120e1> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/0e74c5faddef0dcdda017137dea6c0e92557e26c...7de20c4a84d4637186c69b6c3d7aef2c684f500b> を参照してください。
 
 ## アセット
 
