@@ -443,7 +443,13 @@ godot_user_data_dir() {
 godot_editor_config_dir() {
     case "$DN2CPP_OS" in
         macos|windows) godot_user_data_dir ;;
-        *)             printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/godot" ;;
+        *)
+            local config_home="$HOME/.config"
+            case "${XDG_CONFIG_HOME:-}" in
+                /*) config_home="$XDG_CONFIG_HOME" ;;
+            esac
+            printf '%s\n' "$config_home/godot"
+            ;;
     esac
 }
 
@@ -2952,13 +2958,9 @@ xcodebuild_bounded() {
 }
 
 # godot_export_step SECS LOG ARTIFACT CMD... — headless editor export under the
-# engine watchdog, judged by the editor's committed verdict plus the artifact,
-# never the exit code alone: the verdict is committed before exit, but at
-# teardown EditorFileSystem's scan thread can outlive EditorNode and crash, so
-# one completed export exits 0 and the next dies of SIGABRT. Tolerate a signal
-# death only with the crash-handler banner, no failure verdict and the artifact
-# present; a normal nonzero exit, a watchdog kill, a missing artifact or a named
-# failure verdict still fails.
+# engine watchdog. Tolerate signal death only when the artifact exists and the
+# log has no watchdog or named failure verdict; callers verify its contents.
+# Every other nonzero exit fails.
 godot_export_step() {
     local secs="$1" log="$2" artifact="$3"; shift 3
     local rc=0

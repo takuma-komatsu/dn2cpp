@@ -85,8 +85,7 @@ ROOT="${1:-${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}}"
 FORK="${DN2CPP_GODOT_FORK_CLONE:-$(dirname "$(pwd)")/godot-dn2cpp}"
 PRISTINE="${DN2CPP_GODOT_CLONE:-$(dirname "$(pwd)")/godot}"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 8)"
-
-ARCH="$(uname -m)"
+HOST_MACHINE="$(uname -m)"
 
 # ── Host platform seam ────────────────────────────────────────────────────────
 # Inlined rather than sourced from gates/_common.sh, like the copy in
@@ -111,6 +110,7 @@ DN2CPP_OS=${DN2CPP_OS:-$(detect_os)}
 # against the default one.
 export DN2CPP_GODOT_FORK_ROOT="$ROOT"
 source "$(dirname "$0")/_godot_fork.sh"
+ARCH="$(godot_fork_host_arch "$HOST_MACHINE")"
 
 # One arm per OS a fork engine can be built on. There is no fallback arm: an
 # unported host must be told so here, not discover it tens of minutes into a
@@ -398,7 +398,8 @@ echo "== 3/6 dn2cpp export toolchain bundle =="
 # Reuses a prebuilt artifacts/selfhost-fullcli/dn2cpp when one exists, otherwise
 # builds it via gates/selfhost-emit.sh — many minutes on a cold tree.
 bash dist/package-toolchain.sh --layout-only
-LAYOUT="$PWD/artifacts/toolchain/dn2cpp-toolchain-0.1.0-$DN2CPP_OS-$ARCH"
+# The bundle name records uname's host identity; its Godot products use $ARCH.
+LAYOUT="$PWD/artifacts/toolchain/dn2cpp-toolchain-0.1.0-$DN2CPP_OS-$HOST_MACHINE"
 [ -x "$LAYOUT/bin/dn2cpp$FORK_EXE" ] || { echo "error: no toolchain layout at $LAYOUT" >&2; exit 1; }
 
 echo "== 4/6 Managed assemblies + nuget feed + toolchain install =="

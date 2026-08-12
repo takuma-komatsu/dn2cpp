@@ -65,7 +65,7 @@ source "$(dirname "$0")/_godot_fork.sh"
 OUT=gates/out-godot-editor-export
 SAMPLE=samples/godot-dotnet/EditorExportSample
 PROJECT_NAME=EditorExportSample
-ARCH="$(uname -m)"
+ARCH="$(godot_fork_host_arch)"
 
 godot_fork_preflight
 
@@ -231,6 +231,28 @@ sed "s|custom_template/release=\"\"|custom_template/release=\"$DESKTOP_TEMPLATE_
 mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the preset" >&2; exit 1; }
+
+# Linux presets carry a checked-in x86_64 default, but this gate exports for the
+# host. Patch only that preset; the macOS and Windows negative controls below
+# must retain their own architecture.
+if [ "$DN2CPP_OS" = linux ]; then
+    presets_tmp="$(mktemp)"
+    awk -v arch="$ARCH" '
+        /^name="/ { linux = ($0 == "name=\"dn2cpp-app-linux\"") }
+        linux && /^binary_format\/architecture=/ {
+            print "binary_format/architecture=\"" arch "\""
+            next
+        }
+        { print }
+    ' "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
+    awk -v arch="$ARCH" '
+        /^name="/ { linux = ($0 == "name=\"dn2cpp-app-linux\"") }
+        linux && $0 == "binary_format/architecture=\"" arch "\"" { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$PROJ/export_presets.cfg" \
+        || { echo "FAIL: could not set the Linux preset architecture to $ARCH" >&2; exit 1; }
+fi
 
 echo "== 4/13 Importing the project (fork editor, headless) =="
 # The first import may abort in editor doc-gen teardown (Godot headless bug,

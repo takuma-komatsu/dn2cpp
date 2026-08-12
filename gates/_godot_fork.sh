@@ -83,6 +83,18 @@ FORK_GODOTSHARP="$(dirname "$FORK_EDITOR")/GodotSharp"
 # gates/setup-godot-fork.sh runs that on its way to the fork cache.
 SELFHOST_BIN="artifacts/selfhost-fullcli/dn2cpp$FORK_EXE"
 
+# godot_fork_host_arch [MACHINE] — echo the host architecture in Godot's
+# spelling. Linux reports aarch64, while SCons, export presets and the engine's
+# data-directory names use arm64.
+godot_fork_host_arch() {
+    local machine="${1:-$(uname -m)}"
+    case "$machine" in
+        aarch64|arm64) printf 'arm64\n' ;;
+        amd64|x86_64)  printf 'x86_64\n' ;;
+        *)             printf '%s\n' "$machine" ;;
+    esac
+}
+
 # godot_fork_scons PYTHON — echo a working SCons launcher, probing each candidate
 # by RUNNING it. Shared by the setup aids that build engine targets on a host this
 # lane is ported to (setup-godot-fork.sh, setup-godot-fork-web.sh); the iOS aid
@@ -142,7 +154,7 @@ godot_fork_desktop_template() {
     case "${DN2CPP_OS:-}" in
         macos)   printf '%s/macos_template.zip\n' "$1" ;;
         windows) printf '%s/windows_template.exe\n' "$1" ;;
-        linux)   printf '%s/linux_template.%s\n' "$1" "$(uname -m)" ;;
+        linux)   printf '%s/linux_template.%s\n' "$1" "$(godot_fork_host_arch)" ;;
         *)
             echo "error: no desktop export template rule for ${DN2CPP_OS:-unknown}" >&2
             return 1
