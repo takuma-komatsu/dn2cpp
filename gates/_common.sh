@@ -436,6 +436,17 @@ godot_user_data_dir() {
     esac
 }
 
+# godot_editor_config_dir — where the editor keeps editor_settings-*.tres. The
+# same directory as the data one on macOS/Windows, but NOT on Linux: there the
+# editor splits XDG config from XDG data, and reading the settings out of the
+# data dir finds no file on a fully configured host.
+godot_editor_config_dir() {
+    case "$DN2CPP_OS" in
+        macos|windows) godot_user_data_dir ;;
+        *)             printf '%s\n' "${XDG_CONFIG_HOME:-$HOME/.config}/godot" ;;
+    esac
+}
+
 # ── Godot export-template version identity ────────────────────────────────────
 # godot_template_version_dir [GODOT_BIN] — echo the export-template version dir
 # parsed from `GODOT_BIN --version` (default $GODOT, then `godot`); the ONE
@@ -1592,7 +1603,7 @@ android_jdk_candidates() {
 }
 
 # godot_editor_settings_file [GODOT_BIN] — echo
-# godot_user_data_dir()/editor_settings-<major>.<minor>.tres. Keyed on
+# godot_editor_config_dir()/editor_settings-<major>.<minor>.tres. Keyed on
 # major.minor ALONE: the editor shares one settings file across patch releases
 # and flavors, so one export/android/java_sdk_path serves stock and fork alike.
 # Status 1 and no output when the binary's version does not parse.
@@ -1602,7 +1613,7 @@ godot_editor_settings_file() {
     major="${num%%.*}"
     rest="${num#*.}"
     minor="${rest%%.*}"
-    printf '%s\n' "$(godot_user_data_dir)/editor_settings-${major}.${minor}.tres"
+    printf '%s\n' "$(godot_editor_config_dir)/editor_settings-${major}.${minor}.tres"
     return 0
 }
 
