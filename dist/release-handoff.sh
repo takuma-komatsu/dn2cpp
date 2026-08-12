@@ -33,6 +33,9 @@
 # is written down anywhere — `get` reads the digest off the release at fetch
 # time, over the bytes GitHub is serving.
 #
+# macOS tar can add AppleDouble sidecar entries (`._name`) alongside real ones;
+# `get` disregards them rather than treating them as undeclared members.
+#
 # Sourcing _common.sh cd's to the repo root; _godot_fork.sh is side-effect-free
 # and gives $FORK_ROOT.
 
@@ -180,7 +183,9 @@ put)
     # and dist/release-github.sh's row-set check dies on exactly that. Built for
     # real under --dry-run too — it is invisible in a temp dir, and it is the
     # only way a dry run proves the tar invocation.
-    tar czf "$WORK/$ASSET" \
+    # COPYFILE_DISABLE keeps macOS tar from writing AppleDouble sidecars
+    # (`._name`) for xattrs such as com.apple.provenance; harmless elsewhere.
+    COPYFILE_DISABLE=1 tar czf "$WORK/$ASSET" \
         -C "$OUT" $MEMBERS_OUT \
         -C "$FORK_ROOT" $MEMBERS_FORK
     echo "-- packed: $(wc -c < "$WORK/$ASSET" | tr -d ' ') bytes, sha256 $(shasum -a 256 "$WORK/$ASSET" | awk '{print $1}')"
@@ -221,7 +226,7 @@ get)
     # ── 5. The archive holds exactly the declared seven ───────────────────────
     # Both directions, before anything is unpacked: an eighth member, an absolute
     # path or a `..` is refused rather than written somewhere unexpected.
-    got_members="$(tar tzf "$WORK/$ASSET" | sort)"
+    got_members="$(tar tzf "$WORK/$ASSET" | grep -Ev '(^|/)\._' | sort)"
     want_members="$(printf '%s\n%s\n' "$MEMBERS_OUT" "$MEMBERS_FORK" | tr ' ' '\n' | grep -v '^$' | sort)"
     if [ "$got_members" != "$want_members" ]; then
         extra="$(comm -23 <(printf '%s\n' "$got_members") <(printf '%s\n' "$want_members") | tr '\n' ' ')"
@@ -232,7 +237,9 @@ get)
        Re-run put on the macOS host."
     fi
     mkdir -p "$WORK/x"
-    tar xzf "$WORK/$ASSET" -C "$WORK/x"
+    # Extract only the verified members, not the whole archive — otherwise a
+    # `._` sidecar excluded above by the member-list check would still land.
+    tar xzf "$WORK/$ASSET" -C "$WORK/x" $MEMBERS_OUT $MEMBERS_FORK
     echo "-- archive: the declared $(printf '%s\n' "$want_members" | wc -l | tr -d ' ') members, extracted to a temp dir"
 
     # ── 6. Nothing here is newer than what is arriving ────────────────────────
