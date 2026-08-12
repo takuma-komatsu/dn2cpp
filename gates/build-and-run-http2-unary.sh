@@ -228,8 +228,8 @@ grep -qF '[sink] body-line len=4194304' "$out/native.out" || {
     cat "$out/native.out" >&2; exit 1; }
 # A server that answers completely WITHOUT draining the request body is
 # a response, never an upload error — the line must be the 200 with the server's
-# own read=0, not an exception name.
-grep -qF '[earlyreply] status=200 body=early-reply read=0' "$out/native.out" || {
+# own read=1, not an exception name.
+grep -qF '[earlyreply] status=200 body=early-reply read=1' "$out/native.out" || {
     echo "FAIL: an early reply over an undrained request body did not surface as the response" >&2
     cat "$out/native.out" >&2; exit 1; }
 # A dropped, never-read ResponseHeadersRead response must be torn down
@@ -248,19 +248,28 @@ echo "OK: h2c version negotiation, trailers, exact-miss and OrLower downgrade ar
 # on a full send queue, and the queue really stayed bounded. Reported on STDERR under
 # DN2CPP_HTTP_SEND_STATS=1 (a measurement knob, like DN2CPP_GC_STATS) because a
 # counter on stdout could not be diffed against a real .NET that has no such queue.
-# Two lines at most, in section order: the sink's and the early-reply section's —
-# those are the only length-less uploads in this run. Every request rides the
-# streaming family, but only a call that fed the send queue (an
-# incremental, bodyMode-2 upload) reports, so a third line would mean a sized body
-# stopped going over whole at open(). The sink's line always prints; the
-# early-reply section's may not. Only the SINK line's numbers are asserted: the
-# early-reply upload races the server's reply by design, so neither its depth nor
-# its presence is stable.
-sinkstats="$(first_line "$(grep -F 'dn2cpp: http2 send queue' "$out/native.err" || true)")"
-sinkcount="$(grep -cF 'dn2cpp: http2 send queue' "$out/native.err" || true)"
-[ "$sinkcount" -ge 1 ] && [ "$sinkcount" -le 2 ] || {
-    echo "FAIL: expected one or two send-queue stats lines on stderr (sink, optionally earlyreply), found $sinkcount" >&2
+# EXACTLY two lines, and each is selected BY NAME rather than by position: the
+# sink's and the early-reply section's are the only length-less uploads in this
+# run, a third would mean a sized body stopped going over whole at open(), and a
+# missing one is a section that stopped feeding the send queue. Only the SINK's
+# numbers are asserted — the early-reply upload is cut short by the reply, so its
+# depth is not a stable fact, but its PRESENCE is: the server reads one body byte
+# before answering, so that call's write path has provably run.
+sinktag='dn2cpp: http2 send queue url=[^ ]*/sink parks='
+earlytag='dn2cpp: http2 send queue url=[^ ]*/earlyreply parks='
+sinkcount="$(grep -cE "$sinktag" "$out/native.err" || true)"
+earlycount="$(grep -cE "$earlytag" "$out/native.err" || true)"
+allcount="$(grep -cF 'dn2cpp: http2 send queue ' "$out/native.err" || true)"
+[ "$sinkcount" = 1 ] || {
+    echo "FAIL: expected exactly one send-queue stats line for /sink, found $sinkcount" >&2
     cat "$out/native.err" >&2; exit 1; }
+[ "$earlycount" = 1 ] || {
+    echo "FAIL: expected exactly one send-queue stats line for /earlyreply, found $earlycount — its incremental send path never ran" >&2
+    cat "$out/native.err" >&2; exit 1; }
+[ "$allcount" = 2 ] || {
+    echo "FAIL: expected exactly two send-queue stats lines, found $allcount — a sized body stopped going over whole at open()" >&2
+    cat "$out/native.err" >&2; exit 1; }
+sinkstats="$(first_line "$(grep -E "$sinktag" "$out/native.err")")"
 sinkre='parks=([0-9]+) peak=([0-9]+) highwater=([0-9]+)'
 [[ "$sinkstats" =~ $sinkre ]] || {
     echo "FAIL: could not parse the send-queue stats line: $sinkstats" >&2; exit 1; }

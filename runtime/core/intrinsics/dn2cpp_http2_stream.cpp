@@ -1206,10 +1206,16 @@ void dn2cpp_http2_call_free(Dn2CppHttp2Call* c)
         c->cv.wait(lk, [c] { return c->detached; });
     }
     // Only a call that uploaded reports, so the line names the send queue it is
-    // about rather than every request the program made.
+    // about rather than every request the program made — and it names its own
+    // request, because a run makes several and a positional read attributes one
+    // call's numbers to another's.
     if (c->sendPeak != 0 && SendStatsEnabled())
     {
-        fprintf(stderr, "dn2cpp: http2 send queue parks=%llu peak=%llu highwater=%llu\n",
+        const char* url = nullptr;
+        if (c->easy != nullptr)
+            curl_easy_getinfo(c->easy, CURLINFO_EFFECTIVE_URL, &url);
+        fprintf(stderr, "dn2cpp: http2 send queue url=%s parks=%llu peak=%llu highwater=%llu\n",
+                url != nullptr ? url : "(unknown)",
                 static_cast<unsigned long long>(c->sendParks),
                 static_cast<unsigned long long>(c->sendPeak),
                 static_cast<unsigned long long>(SendHighWater()));
