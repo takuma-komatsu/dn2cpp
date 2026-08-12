@@ -436,6 +436,23 @@ godot_user_data_dir() {
     esac
 }
 
+# godot_editor_config_dir — where the editor keeps editor_settings-*.tres. The
+# same directory as the data one on macOS/Windows, but NOT on Linux: there the
+# editor splits XDG config from XDG data, and reading the settings out of the
+# data dir finds no file on a fully configured host.
+godot_editor_config_dir() {
+    case "$DN2CPP_OS" in
+        macos|windows) godot_user_data_dir ;;
+        *)
+            local config_home="$HOME/.config"
+            case "${XDG_CONFIG_HOME:-}" in
+                /*) config_home="$XDG_CONFIG_HOME" ;;
+            esac
+            printf '%s\n' "$config_home/godot"
+            ;;
+    esac
+}
+
 # ── Godot export-template version identity ────────────────────────────────────
 # godot_template_version_dir [GODOT_BIN] — echo the export-template version dir
 # parsed from `GODOT_BIN --version` (default $GODOT, then `godot`); the ONE
@@ -1592,7 +1609,7 @@ android_jdk_candidates() {
 }
 
 # godot_editor_settings_file [GODOT_BIN] — echo
-# godot_user_data_dir()/editor_settings-<major>.<minor>.tres. Keyed on
+# godot_editor_config_dir()/editor_settings-<major>.<minor>.tres. Keyed on
 # major.minor ALONE: the editor shares one settings file across patch releases
 # and flavors, so one export/android/java_sdk_path serves stock and fork alike.
 # Status 1 and no output when the binary's version does not parse.
@@ -1602,7 +1619,7 @@ godot_editor_settings_file() {
     major="${num%%.*}"
     rest="${num#*.}"
     minor="${rest%%.*}"
-    printf '%s\n' "$(godot_user_data_dir)/editor_settings-${major}.${minor}.tres"
+    printf '%s\n' "$(godot_editor_config_dir)/editor_settings-${major}.${minor}.tres"
     return 0
 }
 
@@ -2941,20 +2958,21 @@ xcodebuild_bounded() {
 }
 
 # godot_export_step SECS LOG ARTIFACT CMD... — headless editor export under the
-# engine watchdog, judged by the editor's committed verdict plus the artifact,
-# never the exit code alone: the verdict is committed before exit, but at
-# teardown EditorFileSystem's scan thread can outlive EditorNode and crash, so
-# one completed export exits 0 and the next dies of SIGABRT. Tolerate a signal
-# death only with the crash-handler banner, no failure verdict and the artifact
-# present; a normal nonzero exit, a watchdog kill, a missing artifact or a named
-# failure verdict still fails.
+# engine watchdog. Tolerate signal death only when the artifact exists and the
+# log has no watchdog or named failure verdict; callers verify its contents.
+# Every other nonzero exit fails.
 godot_export_step() {
     local secs="$1" log="$2" artifact="$3"; shift 3
     local rc=0
     run_with_watchdog "$secs" "$@" >"$log" 2>&1 || rc=$?
     [ "$rc" -eq 0 ] && return 0
+    # Whether the crash handler is still armed when the editor dies in teardown is
+    # a function of how far teardown got, not of whether the export ran: the late
+    # abort (EditorNode already gone, "singleton is null") prints no handle_crash
+    # line at all, and requiring one failed exports that had already written their
+    # artifact. The verdict is the artifact plus the log's failure lines; every
+    # caller re-verifies the artifact's contents afterwards.
     if [ "$rc" -gt 128 ] && [ -e "$artifact" ] \
-        && grep -q "handle_crash: Program crashed with signal" "$log" \
         && ! grep -q "^WATCHDOG: " "$log" \
         && ! grep -q "Project export for preset .* failed" "$log" \
         && ! grep -q "Cannot export project with preset" "$log"; then

@@ -78,7 +78,7 @@ that diffs native output against real .NET.
 | Delivery target | CLI flag | Load path | Verification gate | Windows | macOS | Linux | iOS | Android | WASM |
 |----|----|----|----|:-:|:-:|:-:|:-:|:-:|:-:|
 | Console | *(default)* | Native executable | `gates/build-and-run-sample.sh` | ✅ | ✅ | ✅ | ✅ sim | ✅ NDK build | ✅ (full GC) |
-| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | ✅ | ✅ | 🚧 | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
+| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
 | GDExtension | `--gdextension` | Godot loads `.dylib`/`.so`/`.dll` | `gates/build-and-run-godot-sample.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | — |
 | Hot update (BPI) | `--hotupdate-base` + `--emit-patch` | `HotUpdate.LoadDirectory("<dir>")` | `gates/build-and-run-hotupdate-subset.sh`, `gates/build-and-run-hotupdate-godot.sh` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bindings generation | `--generate-bindings extension_api.json` | Build step | (runs inside every Godot-lane gate) | ✅ | ✅ | ✅ | — | — | — |
@@ -87,11 +87,9 @@ Legend: ✅ verified in a gate · 🚧 not yet verified (see notes) · — not a
 
 **Note (Godot .NET drop-in).** Its E2E gates need a mono-enabled Godot
 editor + export template. `gates/setup-godot-dotnet.sh` takes them from
-an official install on any host and builds them with scons on macOS;
-`gates/setup-godot-fork.sh` builds the forked editor for macOS and
-Windows and has no Linux arm, so there the editor-export half opts out
-via `gate_skip` rather than genuinely running, which is what the 🚧 cell
-reflects.
+an official install on any host, downloads that install itself on Linux,
+and builds them with scons on macOS; `gates/setup-godot-fork.sh` builds
+the forked editor for macOS, Windows and Linux.
 The Android cell is the NDK cross-build of the same drop-in, and the
 forked editor's Android export runs an unmodified C# demo on a physical
 device against the *official* mono export template. The WASM cell is a
@@ -101,10 +99,12 @@ hard-coded position with no runtime handshake**, so it is 4.7.1-stable or
 nothing: a different engine build mis-dispatches silently instead of
 failing.
 
-**Note (Linux).** The full suite runs green on Linux, the Godot desktop
-GDExtension lane included against a real engine; every skip is
-cross-toolchain (Xcode, Android NDK, Emscripten) or the fork tooling
-above for want of a Linux arm, not a Linux support gap.
+**Note (Linux).** The full suite runs green on Linux — the Godot desktop
+GDExtension lane, the mono-module drop-in, and the forked editor's own
+desktop export, all against a real engine; every skip is cross-toolchain
+(Xcode, Android NDK), not a Linux support gap. The packaged export
+toolchain is cut and accepted here too: `dist/smoke-test.sh` round-trips a
+game into a drop-in and into a wasm side module out of the tarball alone.
 
 ## Quick start
 

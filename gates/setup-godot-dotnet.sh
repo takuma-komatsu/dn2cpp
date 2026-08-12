@@ -55,11 +55,14 @@
 #     exit 255s without the Mesa build deps — so a failed detect is a hard error
 #     naming the remedy, never a silent fallback.
 #   - unset, on macOS: build from the clone with scons, as it always did.
-#   - unset, on Linux: same as Windows, no scons fallback — the scons
-#     invocations below are hardcoded platform=macos arch=arm64 (and
-#     --godot-platform=macos for build_assemblies.py), so this branch only
-#     ever builds a macOS binary. Supply DN2CPP_GODOT_PREBUILT=<editor binary>
-#     from an official Linux mono download instead.
+#   - unset, on Linux: no scons fallback either — the scons invocations below are
+#     hardcoded platform=macos arch=arm64 (and --godot-platform=macos for
+#     build_assemblies.py), so that branch only ever builds a macOS binary. A
+#     PATH godot is taken when it IS the pinned mono build; otherwise the pinned
+#     release's editor archive and export-templates tpz are downloaded into
+#     $DN2CPP_GODOT_DOWNLOAD_CACHE. Unlike Windows, a non-matching PATH godot is
+#     replaced rather than refused: the plain Linux build reports the pin and
+#     ships no GodotSharp, so it is the common case, not a mistake.
 #
 # Whichever source, the pin is *verified*, not assumed: a prebuilt editor must
 # report `<ver>.mono.official.<pin[0:9]>`. Running the ABI handshake against an
@@ -76,6 +79,9 @@
 #   DN2CPP_GODOT_PREBUILT_TEMPLATE
 #                              release export template for step 4 (default: the
 #                              editor's own export_templates dir)
+#   DN2CPP_GODOT_DOWNLOAD_CACHE
+#                              where the Linux arm keeps the release archives it
+#                              fetches (default: $HOME/.cache/dn2cpp-godot-downloads)
 #
 # The clone must be at the pinned commit below whichever source supplies the
 # binaries: it is what the gates' interop-ABI tripwire fingerprints
@@ -85,8 +91,13 @@ set -euo pipefail
 
 DN2CPP_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PINNED_COMMIT=a13da4feb8d8aefc283c3763d33a2f170a18d541
+# The godot-builds release tag naming the SAME tree as PINNED_COMMIT — the two
+# move together or the download arm fetches an engine the pin check then refuses.
+# It cannot be derived: it is what names the asset to fetch before any binary exists.
+PINNED_TAG=4.7.1-stable
 ROOT="${1:-${DN2CPP_GODOT_DOTNET_ROOT:-$HOME/.cache/dn2cpp-godot-dotnet}}"
 CLONE="${DN2CPP_GODOT_CLONE:-$(dirname "$DN2CPP_ROOT")/godot}"
+DOWNLOADS="${DN2CPP_GODOT_DOWNLOAD_CACHE:-$HOME/.cache/dn2cpp-godot-downloads}"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 8)"
 
 # Mirrors gates/_common.sh's detect_os + EXE_EXT. Inlined rather than sourced:
@@ -154,16 +165,79 @@ binary_reported_version() {
 # the binary, and only an official install ships those. A non-mono official build
 # would say "4.7.1.stable.official.<hash>" and ship no GodotSharp at all, so the
 # ".mono." is load-bearing too.
-prebuilt_pin_ok() {
-    local ver
-    ver="$(binary_reported_version "$1")"
-    case "$ver" in
+prebuilt_pin_matches() {
+    case "$(binary_reported_version "$1")" in
         *.mono.official."${PINNED_COMMIT:0:9}") return 0 ;;
     esac
+    return 1
+}
+
+prebuilt_pin_ok() {
+    prebuilt_pin_matches "$1" && return 0
     echo "error: prebuilt editor is not the pinned mono build: $1" >&2
-    echo "       reported: ${ver:-<no --version output>}" >&2
+    echo "       reported: $(binary_reported_version "$1")" >&2
     echo "       expected: *.mono.official.${PINNED_COMMIT:0:9}  (pin $PINNED_COMMIT)" >&2
     return 1
+}
+
+# godot_arch_tag — this machine's architecture as a godot-builds asset spells it.
+godot_arch_tag() {
+    case "$(uname -m)" in
+        x86_64|amd64)  printf 'x86_64\n' ;;
+        aarch64|arm64) printf 'arm64\n' ;;
+        *)             uname -m ;;
+    esac
+}
+
+# fetch_release_asset NAME — echo the path of $DOWNLOADS/NAME, downloading it
+# from the pinned godot-builds release first if it is not already there.
+# Verified non-empty BEFORE the atomic rename: `curl -f` catches an HTTP error,
+# but a zero-length 200 answered by a proxy is a successful transfer, and
+# renaming it makes every later run skip the download and hand the empty file to
+# unzip. Narration goes to stderr — callers capture this function's stdout.
+fetch_release_asset() {
+    local name="$1" dest="$DOWNLOADS/$1"
+    if [ -s "$dest" ]; then
+        printf '%s\n' "$dest"
+        return 0
+    fi
+    mkdir -p "$DOWNLOADS"
+    echo "-- downloading $name" >&2
+    curl -fL --progress-bar -o "$dest.part" \
+        "https://github.com/godotengine/godot-builds/releases/download/$PINNED_TAG/$name" >&2
+    [ -s "$dest.part" ] || {
+        echo "error: downloaded $name is empty (bad mirror?)" >&2
+        rm -f "$dest.part"
+        return 1
+    }
+    mv "$dest.part" "$dest"
+    printf '%s\n' "$dest"
+}
+
+# download_prebuilt_editor — echo an official mono editor binary for this host,
+# fetching and unpacking the pinned release's editor archive when needed. The
+# archive carries GodotSharp/ beside the binary, which is the whole reason the
+# prebuilt arm can take steps 1-3 from it.
+download_prebuilt_editor() {
+    local arch name zip dir editor
+    arch="$(godot_arch_tag)"
+    name="Godot_v${PINNED_TAG}_mono_${DN2CPP_OS}_${arch}.zip"
+    dir="$DOWNLOADS/${name%.zip}"
+    editor="$dir/Godot_v${PINNED_TAG}_mono_${DN2CPP_OS}.$arch"
+    if [ ! -x "$editor" ]; then
+        zip="$(fetch_release_asset "$name")" || return 1
+        echo "-- unpacking $name" >&2
+        rm -rf "$dir"
+        # Into $DOWNLOADS, not $dir: the archive's single top-level directory is
+        # named after itself, so unpacking one level up reconstructs $dir.
+        unzip -q "$zip" -d "$DOWNLOADS" >&2
+        chmod +x "$editor" 2>/dev/null || true
+    fi
+    [ -x "$editor" ] || {
+        echo "error: $name unpacked no editor at $editor" >&2
+        return 1
+    }
+    printf '%s\n' "$editor"
 }
 
 # clone_tree_hash — a fingerprint of the sources this clone would compile: the
@@ -198,12 +272,22 @@ clone_tree_hash() {
 resolve_prebuilt() {
     local editor="${DN2CPP_GODOT_PREBUILT:-}"
     if [ -z "$editor" ]; then
-        # Only Windows auto-detects: it has no scons path to fall back to.
-        [ "$DN2CPP_OS" = windows ] || return 0
+        # Windows and Linux only: the scons arm below is hardcoded platform=macos,
+        # so those two hosts have nothing to fall back to.
+        case "$DN2CPP_OS" in windows|linux) ;; *) return 0 ;; esac
         editor="$(command -v "${GODOT:-godot}" 2>/dev/null || true)"
-        if [ -z "$editor" ]; then
+        editor="$(readlink -f "$editor" 2>/dev/null || printf '%s\n' "$editor")"
+        if [ "$DN2CPP_OS" = linux ]; then
+            # A PATH godot is very often the plain build, which reports the pin
+            # and ships no GodotSharp at all — so a candidate that does not match
+            # is REPLACED here rather than refused, and only the download's own
+            # failure is fatal.
+            if [ -z "$editor" ] || [ ! -x "$editor" ] || ! prebuilt_pin_matches "$editor"; then
+                editor="$(download_prebuilt_editor)" || return 1
+            fi
+        elif [ -z "$editor" ]; then
             echo "error: no Godot on PATH, and Windows has no scons fallback" >&2
-            echo "       Install the official Godot ${PINNED_COMMIT:0:9} mono build (the 4.7.1-stable" >&2
+            echo "       Install the official Godot ${PINNED_COMMIT:0:9} mono build (the $PINNED_TAG" >&2
             echo "       release IS the pin), put it on PATH or point GODOT at it, or name it" >&2
             echo "       directly with DN2CPP_GODOT_PREBUILT=<editor binary>." >&2
             return 1
@@ -238,7 +322,7 @@ prebuilt_template() {
     esac
     case "$DN2CPP_OS" in
         windows) tpl_name=windows_release_x86_64.exe ;;
-        linux)   tpl_name="linux_release.$(uname -m)" ;;
+        linux)   tpl_name="linux_release.$(godot_arch_tag)" ;;
         *)
             # macOS ships macos.zip — an .app bundle, not a bare binary that
             # template_bin can point at. Say so rather than guess a path.
@@ -260,11 +344,23 @@ prebuilt_template() {
     ver="$("$editor" --version 2>/dev/null | tail -1 | tr -d '\r')"
     ver="${ver%.official.*}"
     local tpl="$data_dir/export_templates/$ver/$tpl_name"
+    if [ ! -f "$tpl" ] && [ "$DN2CPP_OS" = linux ]; then
+        # Same arm as the editor download: the host that cannot scons is the host
+        # that has to be handed the official artifact. Only the ONE template is
+        # extracted — the tpz carries every platform's, and the rest is ~1.4 GB of
+        # files nothing here opens.
+        local tpz
+        tpz="$(fetch_release_asset "Godot_v${PINNED_TAG}_mono_export_templates.tpz")" || return 1
+        echo "-- extracting $tpl_name into $data_dir/export_templates/$ver" >&2
+        mkdir -p "$data_dir/export_templates/$ver"
+        unzip -q -j -o "$tpz" "templates/$tpl_name" -d "$data_dir/export_templates/$ver" >&2
+        chmod +x "$tpl" 2>/dev/null || true
+    fi
     if [ ! -f "$tpl" ]; then
         echo "error: release export template not found: $tpl" >&2
         echo "       Install the export templates for $ver — the editor's" >&2
         echo "       Editor > Manage Export Templates, or extract $tpl_name from the" >&2
-        echo "       official Godot_v4.7.1-stable_mono_export_templates.tpz into that directory." >&2
+        echo "       official Godot_v${PINNED_TAG}_mono_export_templates.tpz into that directory." >&2
         return 1
     fi
     printf '%s\n' "$tpl"

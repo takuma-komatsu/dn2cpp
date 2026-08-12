@@ -6,16 +6,16 @@
 # wired up yet" — cannot, and the reasons are structural:
 #
 #   - The desktop/iOS/Android/Web editor-export lane runs a scons-built dn2cpp
-#     FORK of the Godot editor. gates/setup-godot-fork.sh has one arm per OS
-#     whose engine it can build — macOS and Windows — and no Linux arm;
-#     gates/_godot_fork.sh says so in the skip's own text: "running that script
-#     will NOT close this skip".
+#     FORK of the Godot editor. gates/setup-godot-fork.sh builds one here, but
+#     it is hours of engine build against a cache a hosted runner discards on
+#     every run, so the artifact this lane needs never survives to be reused.
 #   - The CRI ADX LE gates need the proprietary CriWare.CriAtomLE NuGet package
 #     and the adjacent private cri_adx_le_for_csharp sample repository. No
 #     script in this repository fetches them, and none can: the licence is the
 #     obstacle, not the automation.
-#   - The godot-dotnet gates need a MONO editor + glue at a pinned commit,
-#     produced either by a macOS scons build or by a hand-supplied prebuilt.
+#   - The godot-dotnet gates need a MONO editor + glue at a pinned commit.
+#     gates/setup-godot-dotnet.sh downloads the official one here, but it is
+#     1.3 GB the runner would re-fetch every run.
 #   - The iOS gates need Xcode, a simulator, and an export template repaired by
 #     a local scons build (godot#118161).
 #

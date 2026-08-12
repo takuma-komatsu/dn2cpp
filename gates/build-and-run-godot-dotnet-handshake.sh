@@ -89,7 +89,7 @@ echo "== 5/6 Assembling the loose run dir =="
 # <AssemblyName>.<dylib|dll|so> (no lib prefix — the NativeAOT publish naming,
 # not ours). Both halves are per-platform and neither is $DN2CPP_OS: the engine
 # maps Linux to "linuxbsd" (see GODOT_DOTNET_PLATFORM in _godot_dotnet.sh).
-ARCH="$(uname -m)"
+ARCH="$(godot_dotnet_host_arch)"
 cp -L "$GODOT_DOTNET_TEMPLATE" "$RUN/godot$EXE_EXT"
 chmod +x "$RUN/godot$EXE_EXT"
 mkdir -p "$RUN/data_DotnetSample_${GODOT_DOTNET_PLATFORM}_$ARCH"

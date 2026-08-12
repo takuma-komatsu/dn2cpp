@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Godot editor-export E2E gate: the *forked editor* exports a C# game with
 # `dotnet/export_backend = dn2cpp` and the exported desktop game runs in the real
-# engine. It runs on the two host-compiled desktop targets — macOS (a .app
-# bundle) and Windows (a bare .exe + data dir) — selecting the preset, the
-# template artifact and the artifact layout off $DN2CPP_OS; the four OS-specific
-# shapes are named once, in the seam just below the preflight, and the body reads
-# only those variables.
+# engine. It runs on the host-compiled desktop targets — macOS (a .app bundle),
+# Windows (a bare .exe + data dir) and Linux (a bare <name>.<arch> + data dir) —
+# selecting the preset, the template artifact and the artifact layout off
+# $DN2CPP_OS; the OS-specific shapes are named once, in the seam just below the
+# preflight, and the body reads only those variables.
 #
 # This is the oracle for the whole editor-export epic. It drives the pipeline the
 # way a user does — one `--export-release` — and every stage in between is the
@@ -65,33 +65,49 @@ source "$(dirname "$0")/_godot_fork.sh"
 OUT=gates/out-godot-editor-export
 SAMPLE=samples/godot-dotnet/EditorExportSample
 PROJECT_NAME=EditorExportSample
-ARCH="$(uname -m)"
+ARCH="$(godot_fork_host_arch)"
 
 godot_fork_preflight
 
 # ── Desktop-target seam ───────────────────────────────────────────────────────
-# The two host-compiled desktop targets differ in four shapes, and every one is
-# the engine's or the OS's, not a preference: the preset name (a Windows Desktop
-# preset cannot be named "macOS"), the export target path's extension (a bundle
-# vs a bare executable), where the platform exporter drops the data dir (inside
-# the bundle vs beside the exe), and the drop-in's file name (the loader opens
-# <name>.dylib on macOS, <name>.dll on Windows — see try_load_native_aot_library).
+# The host-compiled desktop targets differ in five shapes, and every one is the
+# engine's or the OS's, not a preference: the preset name (a Windows Desktop
+# preset cannot be named "macOS"), the export target path's extension (a bundle,
+# a .exe, or the arch name Linux's get_binary_extensions returns), where the
+# platform exporter drops the data dir (inside the bundle vs beside the
+# executable), the drop-in's file name (the loader opens <name>.dylib on macOS,
+# <name>.dll on Windows, <name>.so on Linux — see try_load_native_aot_library),
+# and GODOT_PLATFORM.
+#
+# GODOT_PLATFORM is the engine's own name for the platform, as it appears in the
+# data_<project>_<platform>_<arch> directory, and is NOT $DN2CPP_OS: the engine
+# maps Linux to "linuxbsd". Substituting $DN2CPP_OS agrees on the two OSes where
+# the names coincide and silently names a directory nothing writes on the third —
+# which in 13/13 would make a negative assertion vacuously true.
 # godot_editor_export_layout ARTIFACT sets DATA_DIR/DROPIN/GAME_EXE for a given
 # export target, so the primary export and the foreign-arch negative test derive
 # their paths one way.
 case "$DN2CPP_OS" in
     macos)
         PRESET=dn2cpp-app
-        EXPORT_TARGET="$PWD/$OUT/$PROJECT_NAME.app"
+        GODOT_PLATFORM=macos
+        EXPORT_EXT=app
         ;;
     windows)
         PRESET=dn2cpp-app-windows
-        EXPORT_TARGET="$PWD/$OUT/$PROJECT_NAME.exe"
+        GODOT_PLATFORM=windows
+        EXPORT_EXT=exe
+        ;;
+    linux)
+        PRESET=dn2cpp-app-linux
+        GODOT_PLATFORM=linuxbsd
+        EXPORT_EXT="$ARCH"
         ;;
     *)
-        gate_skip "the desktop editor-export gate has no $DN2CPP_OS arm (macOS and Windows only)"
+        gate_skip "the desktop editor-export gate has no $DN2CPP_OS arm (macOS, Windows and Linux only)"
         ;;
 esac
+EXPORT_TARGET="$PWD/$OUT/$PROJECT_NAME.$EXPORT_EXT"
 # Resolved only after the case has admitted the host: godot_fork_desktop_template
 # returns 1 for an OS it has no arm for, and under `set -e` that would turn the
 # designed gate_skip above into a FAIL.
@@ -99,19 +115,24 @@ DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
 
 # godot_editor_export_layout ARTIFACT — resolve the post-export paths for a given
 # export target. macOS packs the game into the bundle (data dir under
-# Contents/Resources, the launchable binary under Contents/MacOS); Windows lays
-# the data dir beside the .exe, which IS the launchable.
+# Contents/Resources, the launchable binary under Contents/MacOS); Windows and
+# Linux lay the data dir beside the executable, which IS the launchable.
 godot_editor_export_layout() {
     local artifact="$1"
     case "$DN2CPP_OS" in
         macos)
-            DATA_DIR="$artifact/Contents/Resources/data_${PROJECT_NAME}_macos_$ARCH"
+            DATA_DIR="$artifact/Contents/Resources/data_${PROJECT_NAME}_${GODOT_PLATFORM}_$ARCH"
             DROPIN="$DATA_DIR/$PROJECT_NAME.dylib"
             GAME_EXE="$artifact/Contents/MacOS/$PROJECT_NAME"
             ;;
         windows)
-            DATA_DIR="$(dirname "$artifact")/data_${PROJECT_NAME}_windows_$ARCH"
+            DATA_DIR="$(dirname "$artifact")/data_${PROJECT_NAME}_${GODOT_PLATFORM}_$ARCH"
             DROPIN="$DATA_DIR/$PROJECT_NAME.dll"
+            GAME_EXE="$artifact"
+            ;;
+        linux)
+            DATA_DIR="$(dirname "$artifact")/data_${PROJECT_NAME}_${GODOT_PLATFORM}_$ARCH"
+            DROPIN="$DATA_DIR/$PROJECT_NAME.so"
             GAME_EXE="$artifact"
             ;;
     esac
@@ -210,6 +231,28 @@ sed "s|custom_template/release=\"\"|custom_template/release=\"$DESKTOP_TEMPLATE_
 mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the preset" >&2; exit 1; }
+
+# Linux presets carry a checked-in x86_64 default, but this gate exports for the
+# host. Patch only that preset; the macOS and Windows negative controls below
+# must retain their own architecture.
+if [ "$DN2CPP_OS" = linux ]; then
+    presets_tmp="$(mktemp)"
+    awk -v arch="$ARCH" '
+        /^name="/ { linux = ($0 == "name=\"dn2cpp-app-linux\"") }
+        linux && /^binary_format\/architecture=/ {
+            print "binary_format/architecture=\"" arch "\""
+            next
+        }
+        { print }
+    ' "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
+    awk -v arch="$ARCH" '
+        /^name="/ { linux = ($0 == "name=\"dn2cpp-app-linux\"") }
+        linux && $0 == "binary_format/architecture=\"" arch "\"" { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$PROJ/export_presets.cfg" \
+        || { echo "FAIL: could not set the Linux preset architecture to $ARCH" >&2; exit 1; }
+fi
 
 echo "== 4/13 Importing the project (fork editor, headless) =="
 # The first import may abort in editor doc-gen teardown (Godot headless bug,
@@ -673,6 +716,9 @@ echo "== 10/13 Refusing an export whose target OS is not the host's =="
 case "$DN2CPP_OS" in
     macos)   FOREIGN_PRESET=dn2cpp-app-windows; FOREIGN_TARGET_OS=Windows; FOREIGN_OS_EXT=exe ;;
     windows) FOREIGN_PRESET=dn2cpp-app;         FOREIGN_TARGET_OS=macOS;   FOREIGN_OS_EXT=app ;;
+    # Linux throws the macOS preset for the Windows host's reason, and gets the
+    # same mismatch on both counts: the macOS preset is arm64 and this host is not.
+    linux)   FOREIGN_PRESET=dn2cpp-app;         FOREIGN_TARGET_OS=macOS;   FOREIGN_OS_EXT=app ;;
 esac
 # On a macOS host the foreign preset needs its own custom template before the
 # guard is even observable: EditorExportPlatformWindows::export_project validates
@@ -778,17 +824,19 @@ godot_export_refused "$NOCXX_LOG" "a host with no C++ compiler to be found"
 grep -qF "missing tools it cannot build without" "$NOCXX_LOG" \
     || { echo "FAIL: the export failed, but not on the C++ toolchain guard" >&2
          cat "$NOCXX_LOG" >&2; exit 1; }
-# clang++ is named by all three host arms of the missing-tool list, so this one
-# grep holds wherever the gate runs. The remedy is the half that differs, and it
-# is the half that has to be right: a macOS user is told about the Command Line
-# Tools, a Windows user to install the workload — never to relaunch from a
-# Developer Command Prompt, which 9/13 is the proof they do not need.
+# clang++ is named by every host arm of the missing-tool list, so this one grep
+# holds wherever the gate runs. The remedy is the half that differs, and it is
+# the half that has to be right: a macOS user is told about the Command Line
+# Tools, a Linux user their own package manager, a Windows user to install the
+# workload — never to relaunch from a Developer Command Prompt, which 9/13 is the
+# proof they do not need.
 grep -qF "clang++" "$NOCXX_LOG" \
     || { echo "FAIL: the toolchain refusal does not name the compiler it wanted" >&2
          cat "$NOCXX_LOG" >&2; exit 1; }
 case "$DN2CPP_OS" in
     macos)   REMEDY_NEEDLE="xcode-select --install" ;;
     windows) REMEDY_NEEDLE="Visual Studio C++ workload" ;;
+    linux)   REMEDY_NEEDLE="apt install clang" ;;
 esac
 grep -qF "$REMEDY_NEEDLE" "$NOCXX_LOG" \
     || { echo "FAIL: the toolchain refusal carries no $DN2CPP_OS remedy (\"$REMEDY_NEEDLE\")" >&2
@@ -906,14 +954,17 @@ echo "== 13/13 Refusing an architecture the host cannot compile for =="
 # desktop hosts have opposite native arches, so the foreign one is whichever the
 # host is not — arm64 on an x86_64 Windows box, x86_64 on an arm64 Mac.
 if [ "$ARCH" = "arm64" ]; then FOREIGN_ARCH=x86_64; else FOREIGN_ARCH=arm64; fi
-BAD_APP="$PWD/$OUT/$PROJECT_NAME-foreign-arch.$(basename "$EXPORT_TARGET" | sed 's/.*\.//')"
+BAD_APP="$PWD/$OUT/$PROJECT_NAME-foreign-arch.$EXPORT_EXT"
 BAD_LOG="$OUT/export-foreign-arch.log"
 # The smuggled-in arch's data dir path, resolved like the good export's but for
 # the foreign arch. Wiped up front for the same reason as the good export's:
 # on Windows it sits beside the exe in the never-wiped work dir, and a stale
 # copy would false-fail the must-not-exist assert below.
-BAD_ARCH_DATA_DIR="$(dirname "$BAD_APP")/data_${PROJECT_NAME}_${DN2CPP_OS}_$FOREIGN_ARCH"
-[ "$DN2CPP_OS" = macos ] && BAD_ARCH_DATA_DIR="$BAD_APP/Contents/Resources/data_${PROJECT_NAME}_macos_$FOREIGN_ARCH"
+# $GODOT_PLATFORM, never $DN2CPP_OS: the two agree on macOS and Windows and part
+# on Linux ("linuxbsd"), and a directory name nothing ever writes would make the
+# absence asserted below vacuously true.
+BAD_ARCH_DATA_DIR="$(dirname "$BAD_APP")/data_${PROJECT_NAME}_${GODOT_PLATFORM}_$FOREIGN_ARCH"
+[ "$DN2CPP_OS" = macos ] && BAD_ARCH_DATA_DIR="$BAD_APP/Contents/Resources/data_${PROJECT_NAME}_${GODOT_PLATFORM}_$FOREIGN_ARCH"
 rm -rf "$BAD_APP" "$BAD_ARCH_DATA_DIR"
 
 presets_tmp="$(mktemp)"

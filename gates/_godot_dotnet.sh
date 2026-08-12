@@ -62,6 +62,17 @@ case "$DN2CPP_OS" in
     *)       GODOT_DOTNET_PLATFORM=unknown ;;
 esac
 
+# godot_dotnet_host_arch [MACHINE] — echo the host architecture as
+# Engine::get_architecture_name spells it for data_<Assembly>_<platform>_<arch>.
+godot_dotnet_host_arch() {
+    local machine="${1:-$(uname -m)}"
+    case "$machine" in
+        aarch64|arm64) printf 'arm64\n' ;;
+        amd64|x86_64)  printf 'x86_64\n' ;;
+        *)             printf '%s\n' "$machine" ;;
+    esac
+}
+
 # godot_dotnet_root_ok — true when the setup artifacts a *build-only* gate needs
 # (the GodotSharp API assembly + the local Godot.NET.Sdk feed) are present.
 godot_dotnet_root_ok() {

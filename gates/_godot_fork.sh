@@ -83,6 +83,18 @@ FORK_GODOTSHARP="$(dirname "$FORK_EDITOR")/GodotSharp"
 # gates/setup-godot-fork.sh runs that on its way to the fork cache.
 SELFHOST_BIN="artifacts/selfhost-fullcli/dn2cpp$FORK_EXE"
 
+# godot_fork_host_arch [MACHINE] — echo the host architecture in Godot's
+# spelling. Linux reports aarch64, while SCons, export presets and the engine's
+# data-directory names use arm64.
+godot_fork_host_arch() {
+    local machine="${1:-$(uname -m)}"
+    case "$machine" in
+        aarch64|arm64) printf 'arm64\n' ;;
+        amd64|x86_64)  printf 'x86_64\n' ;;
+        *)             printf '%s\n' "$machine" ;;
+    esac
+}
+
 # godot_fork_scons PYTHON — echo a working SCons launcher, probing each candidate
 # by RUNNING it. Shared by the setup aids that build engine targets on a host this
 # lane is ported to (setup-godot-fork.sh, setup-godot-fork-web.sh); the iOS aid
@@ -126,17 +138,23 @@ godot_fork_native_path() {
 }
 
 # godot_fork_desktop_template ROOT — echo the DESKTOP export template artifact
-# gates/setup-godot-fork.sh assembles into ROOT for this host. The two platforms
-# hand the exporter different things and the difference is the engine's, not a
+# gates/setup-godot-fork.sh assembles into ROOT for this host. The platforms hand
+# the exporter different things and the difference is the engine's, not a
 # preference: the macOS exporter reads a zip laid out like misc/dist/
-# macos_template.app and picks the binary out of it, while the Windows one takes
-# the release template executable itself. Defined here so the setup script that
-# WRITES the artifact and the gate that READS it cannot drift — the one name
-# they must agree on has one home.
+# macos_template.app and picks the binary out of it, while the Windows and Linux
+# ones take the release template executable itself. Defined here so the setup
+# script that WRITES the artifact and the gate that READS it cannot drift — the
+# one name they must agree on has one home.
+#
+# The Linux name carries the architecture because the Linux exporter reads the
+# custom template's ELF machine and refuses a preset whose
+# binary_format/architecture disagrees — a mismatch there dies before the export
+# plugin runs at all.
 godot_fork_desktop_template() {
     case "${DN2CPP_OS:-}" in
         macos)   printf '%s/macos_template.zip\n' "$1" ;;
         windows) printf '%s/windows_template.exe\n' "$1" ;;
+        linux)   printf '%s/linux_template.%s\n' "$1" "$(godot_fork_host_arch)" ;;
         *)
             echo "error: no desktop export template rule for ${DN2CPP_OS:-unknown}" >&2
             return 1
@@ -440,11 +458,11 @@ godot_fork_preflight() {
         # "this box is under-provisioned" when it means "this lane has no port
         # to your OS".
         case "${DN2CPP_OS:-}" in
-            macos|windows)
+            macos|windows|linux)
                 gate_skip "fork cache absent/incomplete at $FORK_ROOT — run gates/setup-godot-fork.sh"
                 ;;
             *)
-                gate_skip "the Godot editor-export fork lane has no ${DN2CPP_OS:-non-macOS/Windows} arm — gates/setup-godot-fork.sh builds an engine only for macOS and Windows, so no fork cache can be produced at $FORK_ROOT on this host (running that script will NOT close this skip)"
+                gate_skip "the Godot editor-export fork lane has no ${DN2CPP_OS:-non-desktop} arm — gates/setup-godot-fork.sh builds an engine only for macOS, Windows and Linux, so no fork cache can be produced at $FORK_ROOT on this host (running that script will NOT close this skip)"
                 ;;
         esac
     fi
