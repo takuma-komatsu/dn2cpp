@@ -339,13 +339,17 @@ SHA256SUMS.txt                          ← この時点で 3 行
   （"rows for no active lane"）。4 行目は Windows のパッケージャが自分で足す。
 - タグはここで作られて push される。以後の再実行では「既に origin にある」と
   報告してタグには触らない。
+- **次に引き渡し用の tarball をこの draft に載せる**（§B）。載っている間
+  `--publish` は拒否するので、Windows ホストで落とす（C-4）。
 
 ---
 
 ## フェーズ B: 引き渡し
 
 Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**と、フォーク
-ルートの **`web_emcc.txt`** の計 7 点。
+ルートの **`web_emcc.txt`** の計 7 点。draft リリースに 1 つの tarball
+`internal-handoff-$V-macos-to-windows.tgz` として添付して運ぶ。点数は検査
+される —— `get` はアーカイブのメンバ一覧がちょうどこの 7 点であることを要求する。
 
 | 渡すもの | なぜ |
 |---|---|
@@ -363,12 +367,12 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 作る側（macOS）:
 
 ```bash
-tar czf ~/dn2cpp-windows-handoff-$V.tgz \
-  -C artifacts/release \
-    editor-macos.metadata web.metadata macos.metadata SHA256SUMS.txt \
-    "godot-$V-web-template.zip" "godot-$V-web-template.zip.provenance" \
-  -C "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}" web_emcc.txt
+./dist/release-handoff.sh put --version "$V"
 ```
+
+- **リリースが存在し、かつ draft のままでなければ拒否する。**
+- tarball は一時ディレクトリで作る。**`artifacts/release/` の中では作らない** ——
+  そこに置けばどのレーンも宣言していないアセットになり、行集合の照合が die する。
 
 **渡さないもの:**
 
@@ -383,32 +387,21 @@ tar czf ~/dn2cpp-windows-handoff-$V.tgz \
 配置（Windows 側）:
 
 ```bash
-mkdir -p <DEV>/artifacts/release
-tar xzf <受け取った tgz> -C <DEV>/artifacts/release
-mv <DEV>/artifacts/release/web_emcc.txt "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}/web_emcc.txt"
+./dist/release-handoff.sh get --version "$V"
 ```
+
+- 展開の前に、GitHub が配信している digest とバイトを照合する ——
+  `--uploaded-lane` が信頼するのと同じ witness。
+- `web_emcc.txt` はこれ自身がフォークルート直下に置く。
+- **`artifacts/release/SHA256SUMS.txt` が、引き渡しに無い行を既に持っていれば
+  拒否する。**その行は後続のパッケージング実行が足したものであり、引き渡しの
+  3 行版で上書きすると黙って巻き戻る。
+
+この経路の前提は `$REPO` に対して認証済みの `gh` だけで、それは両ホストが
+どのみち必要とするもの（§0）。手で運ぶものも、書き写す値も無い。
 
 Windows 側も、前回リリースの資産が `artifacts/release/` に残っていれば先に
 退避する（§0-D）。
-
-### tgz を運ぶ手段が無いとき
-
-7 点のうち**バイトが要るのは Web テンプレートの zip だけ**で、残る 6 点は
-合わせて 2 KB に満たないテキスト。だから 2 ホスト間にファイル共有が無くても
-渡せる:
-
-```bash
-# Windows 側。draft のアセットは、リリースの所有者なら gh で取得できる
-gh release download "$V" --repo "$REPO" \
-  --pattern "godot-$V-web-template.zip" --dir artifacts/release
-```
-
-残り 6 点は中身を書き写す。`SHA256SUMS.txt` は区切りが**半角スペース 2 個**で、
-書き写しで壊しやすい唯一の箇所 —— 置いたあとに
-`shasum -a 256 -c SHA256SUMS.txt` が通ることまで見ておくとよい。
-
-これは metadata を「手で書く」ことにはあたらない。禁じているのは**値を考えて
-書く**ことで、パッケージしたホストの内容をそのまま複製するのは経路が違うだけ。
 
 ---
 
@@ -493,15 +486,26 @@ grep '^fork_commit=' artifacts/release/editor-windows.metadata   # macOS 側と�
 wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ```
 
-### C-4. dry-run
+### C-4. 引き渡しアセットを落とす
+
+```bash
+./dist/release-handoff.sh drop --version "$V"
+```
+
+この時点で中身は消費済み。ここまでは `get` をやり直せる。冪等で、アセットが
+無ければ 1 行出して exit 0。
+
+### C-5. dry-run
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
-  --dry-run
+  --publish --dry-run
 ```
 
+- **ここでの `--publish` は無害で、「レーン外のアセットがあれば拒否」の
+  リハーサルになる。** C-4 の忘れが本番の公開ではなくここで表面化する。
 - `--uploaded-lane` は「そのレーンを active にする」+「アセットは既にリリース上に
   ある」の 2 つを意味する。**4 レーンすべてを名指すこと。**
 - 各 uploaded レーンについて
@@ -510,7 +514,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   実際に書き出されるので、本文と `docs/EDITOR-GUIDE.ja.md` へのリンクはここで
   読む。
 
-### C-5. 本番 + 公開
+### C-6. 本番 + 公開
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
@@ -533,7 +537,8 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 ```
 
 - `isDraft: false`
-- アセットは 5 点（エディタ 2 + テンプレート 2 + `SHA256SUMS.txt`）
+- アセットは 5 点（エディタ 2 + テンプレート 2 + `SHA256SUMS.txt`）。今はこれが
+  `--publish` の強制した内容でもあり、単にこちらが確認するだけのものではない
 - `targetCommitish` がタグを張ったフォークのコミット
 
 ```bash
@@ -627,7 +632,12 @@ Windows なら zip のブロック解除。
 | `missing prebuilt axes: android-arm64-v8a ...` | NDK / emsdk / Xcode が無い。入れるのが本筋 |
 | `the Web template and the bundled toolchain were linked by different emcc` | `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` の順でビルドし直す（macOS 側のみ） |
 | `predates the current sources` | `gates/selfhost-emit.sh` を走らせてビルドし直す |
-| `the fork root has no web_emcc.txt` | Windows。macOS から引き渡した `web_emcc.txt` をフォークルート直下に置き忘れている（§B） |
+| `the fork root has no web_emcc.txt` | Windows。このファイルを置くのは `dist/release-handoff.sh get` なので、それを走らせ直す（§B） |
+| `release ... carries assets no active lane declares` | 引き渡し tarball を落とし忘れている（C-4）。名前がそれ以外なら、手でアップロードしたか、今回の実行でレーンを名指し忘れたか —— 対処は両方ともメッセージが出す |
+| `put` が拒否: リリースが draft ではない | 既に公開済み。引き渡すものは残っていない |
+| `get` が拒否: リリースに引き渡しアセットが無い | macOS 側で `put` していないか、既に `drop` した |
+| `get` が拒否: ダウンロードした tarball が配信中の digest と一致しない | 壊れたダウンロード。やり直す |
+| `get` が拒否: 手元の `SHA256SUMS.txt` に引き渡しに無い行がある | Windows のパッケージングが既に 4 行目を足している。引き渡しの方が古く、工程はもう先（C-3） |
 
 **紛らわしいが失敗ではないログ:**
 
@@ -658,7 +668,8 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
    残る ——「Windows エディタが添付されているのに、ノートは無いと言い、
    `SHA256SUMS.txt` にも行が無い」リリースになる。**スクリプトはこれを検出
    しない。**やり直すときは常に全レーンを名指す。
-3. **macOS 側で `--publish` しない。** draft のまま渡す。
+3. **macOS 側で `--publish` しない。** draft のまま渡す。引き渡しアセットが
+   載っている間は機構的にも拒否されるが、それは C-4 で落とすまでの間だけ。
 4. **macOS 側で `SHA256SUMS.txt` を 4 行にしない。**
 5. **`--uploaded-lane` 用の metadata を手で書かない。** パッケージしたホストの
    ものをそのままコピーする。必須キーの集合はバージョンをまたいで増えるので
@@ -668,6 +679,9 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
 7. **リリースページの本文を web UI で編集しない。**次の再実行で消える。
 8. **`--allow-partial-prebuilt` を常用しない。** 前提が入っていないことの
    宣言であって、回避策ではない。
+9. **リリースへ手でアセットをアップロードしない。** `--publish` はどのレーンも
+   宣言していないアセットがあれば拒否し、それが自分の置いたものか流出かを
+   区別できない。
 
 ---
 

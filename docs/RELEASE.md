@@ -349,13 +349,18 @@ line that fails is the cause.
   Windows packager adds the fourth row itself.
 - The tag is created and pushed here. Later runs report it as already on origin
   and leave it alone.
+- **The handoff tarball goes onto this draft next** (§B). `--publish` refuses
+  while it is attached, so it is dropped on the Windows host (C-4).
 
 ---
 
 ## Phase B: the handoff
 
 The Windows host gets **six files** from `artifacts/release/` plus
-**`web_emcc.txt`** from the fork root — seven items.
+**`web_emcc.txt`** from the fork root — seven items, travelling as one tarball
+attached to the draft release, `internal-handoff-$V-macos-to-windows.tgz`. The
+count is checked: `get` requires the archive's member list to be exactly those
+seven.
 
 | item | why |
 |---|---|
@@ -374,12 +379,12 @@ has to exist.
 On the producing side (macOS):
 
 ```bash
-tar czf ~/dn2cpp-windows-handoff-$V.tgz \
-  -C artifacts/release \
-    editor-macos.metadata web.metadata macos.metadata SHA256SUMS.txt \
-    "godot-$V-web-template.zip" "godot-$V-web-template.zip.provenance" \
-  -C "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}" web_emcc.txt
+./dist/release-handoff.sh put --version "$V"
 ```
+
+- **It refuses unless the release exists and is still a draft.**
+- The tarball is built in a temp dir and **never in `artifacts/release/`**, where
+  it would be an asset no lane declares and the row-set check would die on it.
 
 **What you do not hand over:**
 
@@ -394,33 +399,22 @@ tar czf ~/dn2cpp-windows-handoff-$V.tgz \
 Placing them (Windows side):
 
 ```bash
-mkdir -p <DEV>/artifacts/release
-tar xzf <the tgz you received> -C <DEV>/artifacts/release
-mv <DEV>/artifacts/release/web_emcc.txt "${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}/web_emcc.txt"
+./dist/release-handoff.sh get --version "$V"
 ```
+
+- The bytes are verified against the digest GitHub is serving before anything is
+  extracted — the same witness `--uploaded-lane` trusts.
+- It places `web_emcc.txt` at the fork root itself.
+- **It refuses when `artifacts/release/SHA256SUMS.txt` already carries a row the
+  handoff does not**: that row is a later packaging run's, and writing the
+  handoff's three-row copy over it would revert it in silence.
+
+The route's only prerequisite is a `gh` authenticated against `$REPO`, which
+both hosts need anyway (§0), so nothing is carried by hand and no value is
+transcribed.
 
 If the previous release's artifacts are still in `artifacts/release/` on the
 Windows side, move them aside first too (§0-D).
-
-### When there is no way to carry the tgz
-
-Of the seven items **only the Web template zip needs its bytes**; the remaining
-six are under 2 KB of text between them. So the handoff works without any file
-sharing between the hosts:
-
-```bash
-# Windows side. The release owner can fetch a draft's assets with gh
-gh release download "$V" --repo "$REPO" \
-  --pattern "godot-$V-web-template.zip" --dir artifacts/release
-```
-
-Transcribe the other six. `SHA256SUMS.txt` separates its columns with **two
-spaces** and is the one place transcription is easy to break — check that
-`shasum -a 256 -c SHA256SUMS.txt` passes once the files are in place.
-
-This does not count as writing metadata by hand. What is forbidden is
-**deciding a value and writing it**; copying the packaging host's content
-verbatim is the same content over a different route.
 
 ---
 
@@ -506,15 +500,27 @@ grep '^fork_commit=' artifacts/release/editor-windows.metadata   # same SHA as m
 wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 ```
 
-### C-4. Dry run
+### C-4. Drop the handoff asset
+
+```bash
+./dist/release-handoff.sh drop --version "$V"
+```
+
+Its contents are consumed by now; up to this point `get` can still be re-run.
+Idempotent — it prints a line and exits 0 when the asset is not there.
+
+### C-5. Dry run
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
   --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
-  --dry-run
+  --publish --dry-run
 ```
 
+- **`--publish` here costs nothing and is what rehearses the "no asset outside
+  the lanes" refusal**, so a forgotten C-4 surfaces here instead of at the real
+  publish.
 - `--uploaded-lane` means two things: make that lane active, and its asset is
   already on the release. **Name all four lanes.**
 - Every uploaded lane must report
@@ -523,7 +529,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
   its `docs/EDITOR-GUIDE.ja.md` links here — under `--dry-run` they are written
   for real.
 
-### C-5. The real run, and publish
+### C-6. The real run, and publish
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
@@ -547,7 +553,8 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 ```
 
 - `isDraft: false`
-- five assets (2 editors + 2 templates + `SHA256SUMS.txt`)
+- five assets (2 editors + 2 templates + `SHA256SUMS.txt`) — now what `--publish`
+  enforced, not only what you are checking
 - `targetCommitish` is the fork commit the tag landed on
 
 ```bash
@@ -644,7 +651,12 @@ There is nothing to argue about when accounts of the state disagree.
 | `missing prebuilt axes: android-arm64-v8a ...` | no NDK / emsdk / Xcode. Installing it is the answer |
 | `the Web template and the bundled toolchain were linked by different emcc` | re-bake, in order: `FORCE=1 gates/setup-godot-fork-web.sh` → `dist/package-web-template.sh --version "$V"` (macOS only) |
 | `predates the current sources` | re-bake `gates/selfhost-emit.sh` |
-| `the fork root has no web_emcc.txt` | Windows; the `web_emcc.txt` handed over from macOS was not placed at the fork root (§B) |
+| `the fork root has no web_emcc.txt` | Windows; `dist/release-handoff.sh get` places this file, so re-run it (§B) |
+| `release ... carries assets no active lane declares` | the handoff tarball was not dropped (C-4). If the name is anything else, someone uploaded by hand or a lane was dropped from this run — the message names both remedies |
+| `put` refuses: the release is not a draft | it is already published; there is nothing left to hand over |
+| `get` refuses: the release carries no handoff asset | `put` was not run on macOS, or `drop` already ran |
+| `get` refuses: the downloaded tarball does not match the served digest | a corrupt download; re-run it |
+| `get` refuses: local `SHA256SUMS.txt` carries rows the handoff does not | a Windows packaging run already appended its fourth row. The handoff is stale — you are past it (C-3) |
 
 **Log lines that look like failures and are not:**
 
@@ -675,7 +687,9 @@ metadata files and the four-row `SHA256SUMS.txt` to be present locally.
    on GitHub — a release with the Windows editor attached, notes that say it is
    not, and no row for it in `SHA256SUMS.txt`. **The script does not detect
    this.** Always name every lane when re-running.
-3. **Do not `--publish` from macOS.** Hand it over as a draft.
+3. **Do not `--publish` from macOS.** Hand it over as a draft. While the handoff
+   asset is attached `--publish` refuses mechanically — but only until C-4 drops
+   it.
 4. **Do not let `SHA256SUMS.txt` reach 4 rows on macOS.**
 5. **Do not hand-write metadata for `--uploaded-lane`.** Copy the packaging
    host's verbatim. The required key set grows across versions (`node_version`
@@ -685,6 +699,8 @@ metadata files and the four-row `SHA256SUMS.txt` to be present locally.
 7. **Do not edit the release body in the web UI.** The next re-run erases it.
 8. **Do not make `--allow-partial-prebuilt` routine.** It declares a missing
    prerequisite; it does not work around one.
+9. **Do not upload anything to a release by hand.** `--publish` refuses on any
+   asset no lane declares, and cannot tell yours from a leak.
 
 ---
 

@@ -459,9 +459,12 @@ done
 # read-only, so --dry-run runs it too rather than guessing.
 RELEASE_EXISTS=0
 REL_IS_DRAFT=true
+rel_assets=
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
     RELEASE_EXISTS=1
     REL_IS_DRAFT="$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq '.isDraft')"
+    rel_assets="$(gh release view "$TAG" --repo "$REPO" --json assets \
+        --jq '.assets[] | "\(.name)\t\(.digest)"')"
 fi
 
 # --uploaded-lane subtracts exactly two things: the upload, and the demand that
@@ -469,8 +472,6 @@ fi
 if [ -n "${UPLOADED_LANES// }" ]; then
     [ "$RELEASE_EXISTS" -eq 1 ] || die \
         "--uploaded-lane names assets already on release $TAG, and $REPO has no release $TAG"
-    rel_assets="$(gh release view "$TAG" --repo "$REPO" --json assets \
-        --jq '.assets[] | "\(.name)\t\(.digest)"')"
     rel_body="$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body')"
     for lane in $UPLOADED_LANES; do
         asset="$(lane_asset "$lane")"
@@ -508,6 +509,26 @@ $rel_assets
         done
         echo "-- $lane: on the release as $asset, digest and published notes agree"
     done
+fi
+
+# ── 7b. Nothing extra goes public ─────────────────────────────────────────────
+# Only under --publish: between cutting the draft and dropping the handoff the
+# release legitimately carries an extra asset, and refusing then would break the
+# very flow this guards. Read-only like the rest of section 7, so
+# `--dry-run --publish` rehearses the refusal for real.
+if [ "$PUBLISH" -eq 1 ] && [ "$RELEASE_EXISTS" -eq 1 ] && [ -n "$rel_assets" ]; then
+    # comm -23 and never -13: at --publish time this run's own uploads are still
+    # pending (section 9 runs after this), so an expected asset not yet on the
+    # release is normal. Section 6 covers that direction against SHA256SUMS.txt.
+    expected="$( { for lane in $ACTIVE_LANES; do lane_asset "$lane"; done; echo SHA256SUMS.txt; } | sort)"
+    on_release="$(awk -F'\t' '{ print $1 }' <<<"$rel_assets" | sort)"
+    unexpected="$(comm -23 <(printf '%s\n' "$on_release") <(printf '%s\n' "$expected"))"
+    [ -z "$unexpected" ] || die "release $TAG carries assets no active lane declares:
+$(printf '%s\n' "$unexpected" | sed 's/^/       /')
+       Publishing would make them public. The handoff tarball is one of these:
+         dist/release-handoff.sh drop --version $VERSION --repo $REPO
+       Anything else: gh release delete-asset $TAG <name> --repo $REPO --yes"
+    echo "-- release $TAG carries only the active lanes' assets"
 fi
 
 # ── 8. Release notes ──────────────────────────────────────────────────────────
