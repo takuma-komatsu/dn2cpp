@@ -20,6 +20,12 @@
 # number in another doc.
 source "$(dirname "$0")/_common.sh"
 
+# Every check here compares two SORTED sets, and `comm` rejects input sorted
+# under a different collation than its own. A UTF-8 locale collates unlike C
+# (ja_JP.UTF-8: `comm: file 1 is not in sorted order`), so the whole gate reads
+# bytes — the names it compares are ASCII either way.
+export LC_ALL=C
+
 FAILS=0
 CHECKS=0
 
@@ -402,21 +408,21 @@ if [ -n "${guide_files// }" ]; then
     # strcoll ranks every Japanese heading equal, which reads as "every anchor
     # found" — the fail-open direction. Byte order on both sides, always.
     tpl_anchors=$(grep -oE 'blob/@@DOCS_REF@@/[A-Za-z0-9_./+-]+#[^)]+' "$TPL" \
-                  | sed 's/^[^#]*#//' | LC_ALL=C sort -u)
+                  | sed 's/^[^#]*#//' | sort -u)
     guide_slugs=$(sed -n 's/^#\{2,6\} //p' $guide_files \
-                  | LC_ALL=C tr 'A-Z' 'a-z' \
-                  | LC_ALL=C sed -e 's/[]!"#$%&'"'"'()*+,./:;<=>?@[\^`{|}~]//g' -e 's/ /-/g' \
-                  | LC_ALL=C sort -u)
-    lost_anchors=$(LC_ALL=C comm -23 <(printf '%s\n' "$tpl_anchors") <(printf '%s\n' "$guide_slugs") | tr '\n' ' ')
+                  | tr 'A-Z' 'a-z' \
+                  | sed -e 's/[]!"#$%&'"'"'()*+,./:;<=>?@[\^`{|}~]//g' -e 's/ /-/g' \
+                  | sort -u)
+    lost_anchors=$(comm -23 <(printf '%s\n' "$tpl_anchors") <(printf '%s\n' "$guide_slugs") | tr '\n' ' ')
     eq "$TPL link anchors that name no heading in the guide" "none" "${lost_anchors:-none}" \
        "a link to a missing anchor still returns 200 and lands at the top of the page; rename the anchor with the heading, or restore the heading"
 
     # (C) The one way the split itself rots is a section written on both sides and
     # corrected on one. Sharing a `## ` heading is that state, whichever copy is
     # stale, so the two top-level heading sets must be disjoint.
-    tpl_h2=$(sed -n 's/^## //p' "$TPL" | LC_ALL=C sort -u)
-    guide_h2=$(sed -n 's/^## //p' $guide_files | LC_ALL=C sort -u)
-    shared_h2=$(LC_ALL=C comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
+    tpl_h2=$(sed -n 's/^## //p' "$TPL" | sort -u)
+    guide_h2=$(sed -n 's/^## //p' $guide_files | sort -u)
+    shared_h2=$(comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
     eq "sections written in both $TPL and the guide" "none" "${shared_h2:-none}" \
        "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
 fi
@@ -522,12 +528,12 @@ for TRIM in "$EMSDK_TRIM" "$BUILDTOOLS_TRIM"; do
     badtag=$(printf '%s\n' "$trim_keep" | grep -oE '^[A-Za-z0-9_-]+:' \
              | grep -vE '^(windows|posix):' | sort -u | tr '\n' ' ' || true)
     eq "$TRIM OS-tag prefixes that are not windows:/posix:" "none" "${badtag:-none}"
-    dupes=$(printf '%s\n' "$trim_keep" | LC_ALL=C sort | uniq -d | tr '\n' ' ')
+    dupes=$(printf '%s\n' "$trim_keep" | sort | uniq -d | tr '\n' ' ')
     eq "$TRIM repeated keep entries" "none" "${dupes:-none}"
     # Subsumption holds only where both entries apply: within one tag, and an
     # untagged keep (both OSes) over a tagged one. A tagged directory does not
     # cover an untagged entry under it — the other OS still needs that line.
-    subsumed=$(printf '%s\n' "$trim_keep" | LC_ALL=C sort | awk '
+    subsumed=$(printf '%s\n' "$trim_keep" | sort | awk '
         { e[NR] = $0; t[NR] = ""
           if (e[NR] ~ /^windows: /) { t[NR] = "windows"; sub(/^windows: /, "", e[NR]) }
           else if (e[NR] ~ /^posix: /) { t[NR] = "posix"; sub(/^posix: /, "", e[NR]) }
