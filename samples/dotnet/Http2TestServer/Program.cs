@@ -298,13 +298,16 @@ static Task DripResetHandler(HttpContext context)
 }
 
 // POST /earlyreply: a complete, legitimate response with the request body deliberately
-// UNREAD — a server that answers before draining the request is ordinary HTTP (an auth
-// failure, a validation error, a cache hit), and the client must surface the response,
-// never an IOException about its own upload. The body line reports 0 by construction.
+// left UNDRAINED — 1 byte of 4 MiB. A server that answers before draining the request is
+// ordinary HTTP (an auth failure, a validation error, a cache hit), and the client must
+// surface the response, never an IOException about its own upload. The one byte is what
+// makes the client's send path provably engaged rather than racing the reply.
 static async Task EarlyReplyHandler(HttpContext context)
 {
+    byte[] one = new byte[1];
+    int n = await context.Request.Body.ReadAsync(one, 0, 1, context.RequestAborted);
     context.Response.ContentType = "text/plain";
-    await context.Response.WriteAsync("early-reply read=0");
+    await context.Response.WriteAsync("early-reply read=" + n);
 }
 
 // GET /trailers: a fixed body plus two trailers. HTTP trailers must be DECLARED

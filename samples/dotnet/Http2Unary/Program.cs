@@ -445,7 +445,7 @@ namespace Http2Unary
         }
 
         // (l) EARLY REPLY WITHOUT DRAINING THE REQUEST. The server answers /earlyreply
-        // completely while reading NONE of the incremental 4 MiB request body —
+        // completely after reading ONE byte of the incremental 4 MiB request body —
         // legitimate HTTP (an auth refusal, a validation error), which must surface as
         // the response. A transport that confuses "the call ended before my upload
         // finished" with "my upload failed" reports an exception here instead.

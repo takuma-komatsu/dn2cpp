@@ -60,10 +60,18 @@ public partial class GDTaskProbe : Node
             new[] { ComputeAsync(7), NeverEndingAsync() });
         GD.Print($"DN2CPP_GDTASK_WHENANY index={winnerIndex} result={winnerResult}");
 
-        // 7. Delay — the real-time timer path (ValueStopwatch / DelayType).
+        // 7. Delay — two timers, asserted on what each can promise. Realtime is the
+        //    one measured against a clock: a frame's delta is the PREVIOUS frame's, so
+        //    a hitch satisfies a delta-time delay inside one frame and an elapsed
+        //    threshold would be frame-rate dependent. The default DelayType (DeltaTime)
+        //    is a separate timer, so it gets its own witness on the only fact it owns:
+        //    it resumes on a later frame than it started.
         ulong t0 = Time.GetTicksMsec();
-        await GDTask.Delay(60, PlayerLoopTiming.Process);
+        await GDTask.Delay(60, DelayType.Realtime, PlayerLoopTiming.Process);
         GD.Print($"DN2CPP_GDTASK_DELAY elapsedOk={Time.GetTicksMsec() - t0 >= 50}");
+        ulong d0 = Engine.GetProcessFrames();
+        await GDTask.Delay(60, PlayerLoopTiming.Process);
+        GD.Print($"DN2CPP_GDTASK_DELTADELAY advanced={Engine.GetProcessFrames() > d0}");
 
         // 8. A CancellationToken-taking overload, cancellation observed as a
         //    THROW: GDTask's cancellation model is OperationCanceledException.
