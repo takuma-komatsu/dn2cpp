@@ -205,12 +205,14 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
     if (length <= 1)
         return;
     // Box the [index, index+length) window into a managed (GC-scanned) ref buffer, so the boxes
-    // survive a collection a comparison may trigger; buf itself is stack-rooted here. Sort the
-    // buffer with the proven ref primitive, then write the permutation back — dn2cpp_array_set_value
+    // survive a collection a comparison may trigger. A stack root keeps `buf` itself alive but
+    // not its contents once an incremental cycle blackens it mid-fill — the boxing loop
+    // allocates each iteration, so every store is barrier'd. Sort the buffer with the proven
+    // ref primitive, then write the permutation back — dn2cpp_array_set_value
     // applies real .NET's SetValue coercion (unbox to the element's stored rep, widening/exactness).
     Dn2CppArrayRef* buf = dn2cpp_newarr_ref(length);
     for (int32_t i = 0; i < length; i++)
-        buf->data[i] = dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i));
+        dn2cpp_gc_store_ref(&buf->data[i], dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i)));
     Dn2CppBoxedOrderCtx ctx{ icomparable_ti, comparer, icomparer_ti, comparer_slot };
     dn2cpp_array_sort_cmp_ref(buf, 0, length, &ctx, &dn2cpp_boxed_order);
     for (int32_t i = 0; i < length; i++)

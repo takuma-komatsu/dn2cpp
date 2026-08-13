@@ -395,18 +395,20 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* a
     static const char* const names[13] = {
         "Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec",""};
     Dn2CppArrayRef* a = dn2cpp_newarr_ref_t(13, arrType);
+    // The string alloc may blacken `a` mid-loop; barrier each store.
     for (int32_t i = 0; i < 13; i++)
-        a->data[i] = reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_string_from_utf8(names[i], static_cast<int32_t>(std::strlen(names[i]))));
+        dn2cpp_gc_store_ref(&a->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_string_from_utf8(names[i], static_cast<int32_t>(std::strlen(names[i])))));
     return a;
 }
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType)
 {
     static const char* const names[7] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
     Dn2CppArrayRef* a = dn2cpp_newarr_ref_t(7, arrType);
+    // The string alloc may blacken `a` mid-loop; barrier each store.
     for (int32_t i = 0; i < 7; i++)
-        a->data[i] = reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_string_from_utf8(names[i], static_cast<int32_t>(std::strlen(names[i]))));
+        dn2cpp_gc_store_ref(&a->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_string_from_utf8(names[i], static_cast<int32_t>(std::strlen(names[i])))));
     return a;
 }
 

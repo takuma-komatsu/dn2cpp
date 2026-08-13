@@ -2000,7 +2000,8 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src)
             dst->lowerBounds[i] = mdSrc->lowerBounds[i]; // newmdarr zeroes them; a clone keeps the source's
             total *= mdSrc->lengths[i];
         }
-        std::memcpy(dst->data, mdSrc->data, static_cast<size_t>(total) * static_cast<size_t>(mdSrc->elemSize));
+        dn2cpp_gc_memmove_refs(dst->data, mdSrc->data,
+            static_cast<size_t>(total) * static_cast<size_t>(mdSrc->elemSize));
         return dst;
     }
     const Dn2CppTypeInfo* el = t->elementType;

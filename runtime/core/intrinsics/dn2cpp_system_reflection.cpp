@@ -428,8 +428,9 @@ Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t)
     const Dn2CppTypeInfo* ti = t->typeInfo;
     int32_t n = ti->enumMemberCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
+    // The box alloc may blacken `arr` mid-loop; barrier each store.
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = dn2cpp_enum_box(ti, ti->enumMembers[i].value);
+        dn2cpp_gc_store_ref(&arr->data[i], dn2cpp_enum_box(ti, ti->enumMembers[i].value));
     return arr;
 }
 
@@ -2875,9 +2876,10 @@ static Dn2CppArrayRef* dn2cpp_attr_table_to_array(const Dn2CppAttrInfo* tab, int
         if (const Dn2CppTypeInfo* arrTi = dn2cpp_find_array_ti(filter))
             reinterpret_cast<Dn2CppObject*>(arr)->type = arrTi;
     int32_t k = 0;
+    // create() allocates and may blacken `arr` mid-loop; barrier each store.
     for (int32_t i = 0; i < count; i++)
         if (filter == nullptr || dn2cpp_type_is_a(tab[i].attrType, filter))
-            arr->data[k++] = tab[i].create();
+            dn2cpp_gc_store_ref(&arr->data[k++], tab[i].create());
     return arr;
 }
 
@@ -3262,9 +3264,10 @@ Dn2CppArrayRef* dn2cpp_assembly_get_manifest_resource_names(const char* name)
         std::fprintf(stderr, "DN2CPP_MANIFEST_TRACE names asm=%s -> %d\n",
             (e != nullptr && e->name != nullptr) ? e->name : "<unregistered>", n);
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
+    // The string alloc may blacken `arr` mid-loop; barrier each store.
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_utf8(
-            e->resources[i].name, static_cast<int32_t>(std::strlen(e->resources[i].name))));
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_utf8(
+            e->resources[i].name, static_cast<int32_t>(std::strlen(e->resources[i].name)))));
     return arr;
 }
 
@@ -3494,7 +3497,8 @@ static Dn2CppArrayRef* dn2cpp_attr_table_to_data_array(const Dn2CppAttrInfo* tab
         auto* d = static_cast<Dn2CppAttrDataRef*>(dn2cpp_alloc(sizeof(Dn2CppAttrDataRef)));
         d->type = &dn2cpp_customattributedata_type;
         d->attr = &tab[i];
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(d);
+        // The wrapper alloc may blacken `arr` mid-loop; barrier each store.
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(d));
     }
     return arr;
 }
@@ -3978,9 +3982,10 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameter_types(Dn2CppMethodRef* m)
 {
     int32_t n = dn2cpp_methodref_require(m)->paramCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
+    // A fabricated Type alloc may blacken `arr` mid-loop; barrier each store.
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_get_type_from_handle(m->method->parameters[i].paramType));
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_get_type_from_handle(m->method->parameters[i].paramType)));
     return arr;
 }
 
