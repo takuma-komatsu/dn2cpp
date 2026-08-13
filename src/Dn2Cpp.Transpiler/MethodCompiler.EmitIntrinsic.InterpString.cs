@@ -219,6 +219,9 @@ internal sealed partial class MethodCompiler
                 var src = Pop();
                 var dest = Pop();
                 Emit($"std::memmove((void*)({dest.Expr}), (void*)({src.Expr}), (size_t)({size.Expr}));");
+                // The destination is untyped, so it may have received references:
+                // barrier conservatively, like the raw cpblk lowering.
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 return true;
             }
             case ("System.Runtime.CompilerServices.Unsafe", "InitBlock"):
@@ -228,6 +231,8 @@ internal sealed partial class MethodCompiler
                 var val = Pop();
                 var dest = Pop();
                 Emit($"std::memset((void*)({dest.Expr}), (int)({val.Expr}), (size_t)({size.Expr}));");
+                // Untyped destination: barrier conservatively (see CopyBlock above).
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dest.Expr}));");
                 return true;
             }
 
