@@ -1883,10 +1883,11 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
     // flagged type's .cctor is the first entry of its own MethodTable run.
     if (img->typeCount > 0)
     {
-        img->cctorStarted = static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->typeCount));
+        dn2cpp_gc_store_ref(&img->cctorStarted,
+            static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->typeCount)));
         std::memset(img->cctorStarted, 0, img->typeCount);
-        img->cctorFailed = static_cast<Dn2CppObject**>(
-            dn2cpp_alloc(img->typeCount * sizeof(Dn2CppObject*)));
+        dn2cpp_gc_store_ref(&img->cctorFailed, static_cast<Dn2CppObject**>(
+            dn2cpp_alloc(img->typeCount * sizeof(Dn2CppObject*))));
         for (uint32_t t = 0; t < img->typeCount; t++)
         {
             if ((img->types[t].flags & DN2CPP_BPI_TF_HAS_CCTOR) == 0)
@@ -1919,14 +1920,15 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         interp_fail("BPI: a field table with no type table");
     if (img->typeCount > 0)
     {
-        img->patchTypes = static_cast<const Dn2CppTypeInfo**>(
-            dn2cpp_alloc(img->typeCount * sizeof(const Dn2CppTypeInfo*)));
+        dn2cpp_gc_store_ref(&img->patchTypes, static_cast<const Dn2CppTypeInfo**>(
+            dn2cpp_alloc(img->typeCount * sizeof(const Dn2CppTypeInfo*))));
         if (img->fieldCount > 0)
         {
-            img->instFieldOffsets = static_cast<uint32_t*>(
-                dn2cpp_alloc_atomic(img->fieldCount * sizeof(uint32_t)));
+            dn2cpp_gc_store_ref(&img->instFieldOffsets, static_cast<uint32_t*>(
+                dn2cpp_alloc_atomic(img->fieldCount * sizeof(uint32_t))));
             std::memset(img->instFieldOffsets, 0, img->fieldCount * sizeof(uint32_t));
-            img->instFieldKinds = static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->fieldCount));
+            dn2cpp_gc_store_ref(&img->instFieldKinds,
+                static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->fieldCount)));
             std::memset(img->instFieldKinds, 0, img->fieldCount);
         }
         for (uint32_t t = 0; t < img->typeCount; t++)
@@ -2021,7 +2023,8 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             // Wire the interned Type before the ti is published (loader is
             // single-threaded), so GetType()/typeof on patch types take the
             // same lock-free typeObject path as AOT types.
-            ti->typeObject = dn2cpp_get_type_from_handle_slow(ti);
+            dn2cpp_gc_store_ref(&ti->typeObject,
+                static_cast<const Dn2CppType*>(dn2cpp_get_type_from_handle_slow(ti)));
             if (bt.vtableDescOff != DN2CPP_BPI_REF_NONE)
             {
                 // Vtable overrides: copy the base vtable at the converter-baked
@@ -2190,9 +2193,9 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             buf[typeLen] = '.';
             std::memcpy(buf + typeLen + 1, name, nameLen);
             std::memcpy(buf + typeLen + 1 + nameLen, "()", 3);
-            names[i] = buf;
+            dn2cpp_gc_store_ref(&names[i], static_cast<const char*>(buf));
         }
-        img->frameNames = names;
+        dn2cpp_gc_store_ref(&img->frameNames, static_cast<const char* const*>(names));
     }
 
     if (img->typeCount > 0)
@@ -2372,9 +2375,10 @@ static void exc_seed_and_run_base_ctor(const ImportBinding& b, Dn2CppObject* sel
 {
     auto* e = reinterpret_cast<Dn2CppExceptionObject*>(self);
     if (b.excMsgArg >= 0)
-        e->message = reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]);
+        dn2cpp_gc_store_ref(&e->message,
+            reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]));
     if (b.excInnerArg >= 0)
-        e->inner = callArgs[b.excInnerArg];
+        dn2cpp_gc_store_ref(&e->inner, callArgs[b.excInnerArg]);
     // Seed the base COR_E_EXCEPTION default before the base body runs, matching the
     // AOT newobj intercept: a derived ctor's own set_HResult (above this in the
     // chain) then overwrites it with the per-type value. The general newobj that

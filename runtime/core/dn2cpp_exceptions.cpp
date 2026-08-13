@@ -127,7 +127,7 @@ void dn2cpp_exc_inflight_push(Dn2CppObject* obj)
     auto* node = static_cast<Dn2CppInflightExcNode*>(dn2cpp_alloc(sizeof(Dn2CppInflightExcNode)));
     node->obj = obj;
     std::lock_guard<std::mutex> lk(g_inflight_exc_mtx);
-    node->next = g_inflight_excs;
+    dn2cpp_gc_store_ref(&node->next, g_inflight_excs);
     g_inflight_excs = node;
     if (++g_inflight_exc_count > kInflightExcCap)
     {

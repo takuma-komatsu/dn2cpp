@@ -747,7 +747,7 @@ static void dn2cpp_cctor_unlink(Dn2CppCctorRun* node, Dn2CppCctorFailure* failur
     {
         // Failure: record, and leave the flag at 0 so no fast path ever reads this
         // type as initialized. A thread parked in the wait below re-tests the record.
-        failure->next = g_cctor_failed;
+        dn2cpp_gc_store_ref(&failure->next, g_cctor_failed);
         g_cctor_failed = failure;
     }
     else

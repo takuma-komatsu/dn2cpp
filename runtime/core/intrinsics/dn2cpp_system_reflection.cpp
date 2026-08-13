@@ -410,9 +410,9 @@ Dn2CppArrayRef* dn2cpp_enum_get_names(Dn2CppType* t)
     int32_t n = ti->enumMemberCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
             dn2cpp_string_from_utf8(ti->enumMembers[i].name,
-                static_cast<int32_t>(std::strlen(ti->enumMembers[i].name))));
+                static_cast<int32_t>(std::strlen(ti->enumMembers[i].name)))));
     return arr;
 }
 
@@ -1730,7 +1730,7 @@ static const Dn2CppMethodInfo* dn2cpp_meta_row(const Dn2CppMetaMember* d,
             r->args[i] = args[i];
         r->row.genericArgs = r->args;
     }
-    r->next = g_meta_rows;
+    dn2cpp_gc_store_ref(&r->next, g_meta_rows);
     g_meta_rows = r;
     return &r->row;
 }
@@ -1871,7 +1871,7 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameters(Dn2CppMethodRef* m)
         p->position = i;
         p->owner = m->method;
         p->ownerReflected = m->reflectedType;
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(p);
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(p));
     }
     return arr;
 }
@@ -2506,7 +2506,7 @@ Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
         pr->position = i;
         pr->owner = acc;
         pr->ownerReflected = p->reflectedType;
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(pr);
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(pr));
     }
     return arr;
 }
@@ -3128,7 +3128,7 @@ Dn2CppObject* dn2cpp_asm_wrap(const char* h, int32_t kind)
     auto* node = static_cast<Dn2CppAsmBoxNode*>(dn2cpp_alloc(sizeof(Dn2CppAsmBoxNode)));
     node->box.type = ti;
     node->box.name = h;
-    node->next = g_asmBoxes;
+    dn2cpp_gc_store_ref(&node->next, g_asmBoxes);
     g_asmBoxes = node;
     return &node->box;
 }

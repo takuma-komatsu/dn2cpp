@@ -1043,8 +1043,8 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
             if (!removeEmpty || segEnd > segStart)
             {
                 if (out != nullptr)
-                    out->data[kept] = reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_str_substring(s, segStart, segEnd - segStart));
+                    dn2cpp_gc_store_ref(&out->data[kept], reinterpret_cast<Dn2CppObject*>(
+                        dn2cpp_str_substring(s, segStart, segEnd - segStart)));
                 kept++;
             }
             if (kept == count - 1)
@@ -1075,8 +1075,8 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
         if (!removeEmpty || lastEnd > lastStart)
         {
             if (out != nullptr)
-                out->data[kept] = reinterpret_cast<Dn2CppObject*>(
-                    dn2cpp_str_substring(s, lastStart, lastEnd - lastStart));
+                dn2cpp_gc_store_ref(&out->data[kept], reinterpret_cast<Dn2CppObject*>(
+                    dn2cpp_str_substring(s, lastStart, lastEnd - lastStart)));
             kept++;
         }
         return kept;
@@ -1951,7 +1951,8 @@ Dn2CppArrayRef* dn2cpp_array_clone_ref(Dn2CppArrayRef* src)
     if (src == nullptr)
         dn2cpp_throw_null_reference();
     Dn2CppArrayRef* dst = dn2cpp_newarr_ref_t(src->length, src->type);
-    std::memcpy(dst->data, src->data, static_cast<size_t>(src->length) * sizeof(Dn2CppObject*));
+    dn2cpp_gc_memmove_refs(dst->data, src->data,
+        static_cast<size_t>(src->length) * sizeof(Dn2CppObject*));
     return dst;
 }
 
@@ -1960,7 +1961,8 @@ Dn2CppArrayN* dn2cpp_array_clone_n(Dn2CppArrayN* src)
     if (src == nullptr)
         dn2cpp_throw_null_reference();
     Dn2CppArrayN* dst = dn2cpp_newarr_n_t(src->length, src->elemSize, src->type);
-    std::memcpy(dst->data, src->data, static_cast<size_t>(src->length) * static_cast<size_t>(src->elemSize));
+    dn2cpp_gc_memmove_refs(dst->data, src->data,
+        static_cast<size_t>(src->length) * static_cast<size_t>(src->elemSize));
     return dst;
 }
 
@@ -2184,7 +2186,8 @@ Dn2CppArrayRef* dn2cpp_array_subarray_ref(Dn2CppArrayRef* src, int32_t offset, i
         dn2cpp_throw_argument_null(); // catchable, matching ThrowHelper.ThrowArgumentNullException
     Dn2CppArrayRef* dst = dn2cpp_newarr_ref_t(length, src->type);
     if (length > 0)
-        std::memcpy(dst->data, src->data + offset, static_cast<size_t>(length) * sizeof(Dn2CppObject*));
+        dn2cpp_gc_memmove_refs(dst->data, src->data + offset,
+            static_cast<size_t>(length) * sizeof(Dn2CppObject*));
     return dst;
 }
 
@@ -2194,8 +2197,9 @@ Dn2CppArrayN* dn2cpp_array_subarray_n(Dn2CppArrayN* src, int32_t offset, int32_t
         dn2cpp_throw_argument_null(); // catchable, matching ThrowHelper.ThrowArgumentNullException
     Dn2CppArrayN* dst = dn2cpp_newarr_n_t(length, src->elemSize, src->type);
     if (length > 0)
-        std::memcpy(dst->data, src->data + static_cast<size_t>(offset) * src->elemSize,
-                    static_cast<size_t>(length) * static_cast<size_t>(src->elemSize));
+        dn2cpp_gc_memmove_refs(dst->data,
+            src->data + static_cast<size_t>(offset) * src->elemSize,
+            static_cast<size_t>(length) * static_cast<size_t>(src->elemSize));
     return dst;
 }
 
@@ -2222,8 +2226,8 @@ Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, char** argv, const Dn2CppT
     for (int32_t i = 0; i < n; i++)
     {
         const char* s = argv[i + 1];
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_string_from_utf8(s, static_cast<int32_t>(std::strlen(s))));
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_string_from_utf8(s, static_cast<int32_t>(std::strlen(s)))));
     }
     return arr;
 }

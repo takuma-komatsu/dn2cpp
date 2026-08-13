@@ -203,7 +203,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
     auto* node = static_cast<Dn2CppCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppCultureCacheNode)));
     node->nfi = *dn2cpp_nfi_invariant();
     node->row = row;
-    node->next = g_cultureCache;
+    dn2cpp_gc_store_ref(&node->next, g_cultureCache);
     g_cultureCache = node;
     if (row == nullptr)
     {
@@ -474,7 +474,7 @@ Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
     auto* node = static_cast<Dn2CppNfiBoxNode*>(dn2cpp_alloc(sizeof(Dn2CppNfiBoxNode)));
     node->box.type = ti;
     node->box.nfi = n;
-    node->next = g_nfiBoxes;
+    dn2cpp_gc_store_ref(&node->next, g_nfiBoxes);
     g_nfiBoxes = node;
     return &node->box;
 }
