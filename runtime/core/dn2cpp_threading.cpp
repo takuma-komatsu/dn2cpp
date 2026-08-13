@@ -325,8 +325,11 @@ static void dn2cpp_parallel_run(int64_t count, void* ctx, void (*fn)(void*, int6
                 ExcNode** pp = &excHead;
                 while (*pp != nullptr && (*pp)->index < i)
                     pp = &(*pp)->next;
-                node->next = *pp;
+                // The chain mixes a stack head with heap nodes, and allocation
+                // happens while it exists — barrier both linking stores.
+                dn2cpp_gc_store_ref(&node->next, *pp);
                 *pp = node;
+                dn2cpp_gc_write_barrier_if_heap(pp);
                 excCount++;
             }
         }

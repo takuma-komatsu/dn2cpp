@@ -1586,7 +1586,10 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
             continue;
         entries[n++] = base->interfaces[bi];
     }
-    ti->interfaces = entries;
+    // The fill loops allocate, so an incremental cycle may blacken `entries`
+    // (and `ti`) mid-build; dirty both at publication.
+    dn2cpp_gc_write_barrier(entries);
+    dn2cpp_gc_store_ref(&ti->interfaces, static_cast<const Dn2CppInterfaceEntry*>(entries));
     ti->interfaceCount = static_cast<int32_t>(n);
 }
 
@@ -1816,8 +1819,9 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
     // them), then members.
     if (img->importCount > 0)
     {
-        img->bindings = static_cast<ImportBinding*>(
-            dn2cpp_alloc(img->importCount * sizeof(ImportBinding)));
+        // img is old by now (much allocation since its own): barrier the store.
+        dn2cpp_gc_store_ref(&img->bindings, static_cast<ImportBinding*>(
+            dn2cpp_alloc(img->importCount * sizeof(ImportBinding))));
         for (uint32_t i = 0; i < img->importCount; i++)
         {
             if (img->imports[i].kind != DN2CPP_BPI_IMPORT_TYPE)
@@ -1869,7 +1873,8 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             interp_fail("BPI: static slot index out of bounds");
     }
     if (staticCount > 0)
-        img->statics = static_cast<Slot*>(dn2cpp_alloc(staticCount * sizeof(Slot)));
+        dn2cpp_gc_store_ref(&img->statics,
+            static_cast<Slot*>(dn2cpp_alloc(staticCount * sizeof(Slot))));
     img->staticCount = staticCount;
 
     // Per-type lazy-cctor guard flags plus the per-type failure slots (the
@@ -2058,7 +2063,9 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
                                     "(signature shape outside the bridged surface)");
                     vt[slot] = fn;
                 }
-                ti->vtable = vt;
+                // The slot-fill above allocates nothing, but `vt`'s own alloc
+                // may have blackened `ti`; barrier the publish.
+                dn2cpp_gc_store_ref(&ti->vtable, vt);
             }
             // Interface implementations: a type with an ItfDesc run gets an
             // extended interface-dispatch map (base entries plus its own
@@ -2068,7 +2075,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             // sharing the base's interface map.
             if (bt.itfDescOff != DN2CPP_BPI_REF_NONE)
                 build_patch_itf_map(img, ti, base, bt.itfDescOff);
-            img->patchTypes[t] = ti;
+            dn2cpp_gc_store_ref(&img->patchTypes[t], static_cast<const Dn2CppTypeInfo*>(ti));
         }
     }
 
@@ -2143,8 +2150,10 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         ti->flags = DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED;
         ti->elementType = el;
         ti->arrayRank = 1;
-        ti->typeObject = dn2cpp_get_type_from_handle_slow(ti);
-        img->bindings[i].type = ti;
+        // The Type-object alloc may blacken the fresh `ti`; barrier both stores.
+        dn2cpp_gc_store_ref(&ti->typeObject,
+            static_cast<const Dn2CppType*>(dn2cpp_get_type_from_handle_slow(ti)));
+        dn2cpp_gc_store_ref(&img->bindings[i].type, static_cast<const Dn2CppTypeInfo*>(ti));
     }
 
     // A register-format image gets one linear verification scan per method
@@ -2201,7 +2210,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             dn2cpp_type_registry_add(img->patchTypes[t]->name, img->patchTypes[t]);
     }
 
-    img->nextLoaded = g_loadedImages;
+    dn2cpp_gc_store_ref(&img->nextLoaded, g_loadedImages);
     g_loadedImages = img;
     return img;
 }
@@ -3565,7 +3574,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     // that cannot answer degrades.
                                     check_patch_delegate_null_this(img, c->methodIdx, dti,
                                         static_cast<Dn2CppObject*>(targetSlot.ref));
-                                    c->boundThis = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(&c->boundThis, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
@@ -4782,7 +4791,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     // that cannot answer degrades.
                                     check_patch_delegate_null_this(img, c->methodIdx, dti,
                                         static_cast<Dn2CppObject*>(targetSlot.ref));
-                                    c->boundThis = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(&c->boundThis, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
@@ -5729,7 +5738,7 @@ int32_t dn2cpp_hotupdate_load_dir(Dn2CppString* dirPath)
         {
             cap *= 2;
             auto* grown = static_cast<Candidate*>(dn2cpp_alloc(cap * sizeof(Candidate)));
-            std::memcpy(grown, cands, count * sizeof(Candidate));
+            dn2cpp_gc_memmove_refs(grown, cands, count * sizeof(Candidate)); // entries carry GC name pointers
             cands = grown;
         }
         char* nameCopy = static_cast<char*>(dn2cpp_alloc_atomic(nameLen + 1));
@@ -5738,6 +5747,8 @@ int32_t dn2cpp_hotupdate_load_dir(Dn2CppString* dirPath)
         cands[count].len = len;
         cands[count].version = reinterpret_cast<const Dn2CppBpiHeader*>(blob)->patchVersion;
         cands[count].name = nameCopy;
+        // The per-entry name alloc may blacken `cands` mid-scan; dirty the entry.
+        dn2cpp_gc_write_barrier(&cands[count]);
         count++;
     }
     closedir(dp);

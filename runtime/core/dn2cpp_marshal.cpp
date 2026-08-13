@@ -900,7 +900,9 @@ Dn2CppArrayN* dn2cpp_pinvoke_byvalarr_out_n(const void* src, int32_t n, int32_t 
 // P/Invoke string[] marshalling. A string[] marshals as an array of
 // NUL-terminated buffer pointers — UTF-8 (default/Ansi) or UTF-16 (CharSet.Unicode) —
 // one per element (a null element -> a null pointer). The pointer array is GC-allocated
-// (Boehm-conservative scanning roots the per-element buffers across the native call); it
+// and roots the per-element buffers across the native call — but only if every fill
+// store is barrier'd: the encode calls allocate, so an incremental cycle can blacken
+// the pointer array mid-fill and unbarriered slots are never rescanned. It
 // is never null even for an empty array, matching real .NET. copyIn != 0 ([In]/[In,Out])
 // encodes each element in; copyIn == 0 ([Out]-only) zeroes the slots (no input read).
 void** dn2cpp_pinvoke_strarr_to_utf8(Dn2CppArrayRef* arr, int32_t copyIn)
@@ -910,9 +912,9 @@ void** dn2cpp_pinvoke_strarr_to_utf8(Dn2CppArrayRef* arr, int32_t copyIn)
     int32_t n = arr->length;
     void** buf = static_cast<void**>(dn2cpp_alloc(static_cast<size_t>(n > 0 ? n : 1) * sizeof(void*)));
     for (int32_t i = 0; i < n; i++)
-        buf[i] = copyIn
+        dn2cpp_gc_store_ref(&buf[i], copyIn
             ? static_cast<void*>(dn2cpp_pinvoke_str_to_utf8(reinterpret_cast<Dn2CppString*>(arr->data[i])))
-            : nullptr;
+            : nullptr);
     return buf;
 }
 
@@ -923,9 +925,9 @@ void** dn2cpp_pinvoke_strarr_to_utf16(Dn2CppArrayRef* arr, int32_t copyIn)
     int32_t n = arr->length;
     void** buf = static_cast<void**>(dn2cpp_alloc(static_cast<size_t>(n > 0 ? n : 1) * sizeof(void*)));
     for (int32_t i = 0; i < n; i++)
-        buf[i] = copyIn
+        dn2cpp_gc_store_ref(&buf[i], copyIn
             ? static_cast<void*>(dn2cpp_pinvoke_str_to_utf16(reinterpret_cast<Dn2CppString*>(arr->data[i])))
-            : nullptr;
+            : nullptr);
     return buf;
 }
 
@@ -938,9 +940,9 @@ void** dn2cpp_pinvoke_strarr_to_ansi(Dn2CppArrayRef* arr, int32_t copyIn)
     int32_t n = arr->length;
     void** buf = static_cast<void**>(dn2cpp_alloc(static_cast<size_t>(n > 0 ? n : 1) * sizeof(void*)));
     for (int32_t i = 0; i < n; i++)
-        buf[i] = copyIn
+        dn2cpp_gc_store_ref(&buf[i], copyIn
             ? static_cast<void*>(dn2cpp_pinvoke_str_to_ansi(reinterpret_cast<Dn2CppString*>(arr->data[i])))
-            : nullptr;
+            : nullptr);
     return buf;
 }
 
@@ -976,10 +978,12 @@ void dn2cpp_pinvoke_strarr_from_utf8(Dn2CppArrayRef* arr, void** buf, void** inb
     for (int32_t i = 0; i < n; i++)
     {
         char* p = static_cast<char*>(buf[i]);
-        arr->data[i] = p == nullptr
-            ? nullptr
+        // The caller's array is old and possibly black; every write-back store
+        // must dirty its slot (the decode allocates on every iteration).
+        dn2cpp_gc_store_ref(&arr->data[i], p == nullptr
+            ? static_cast<Dn2CppObject*>(nullptr)
             : reinterpret_cast<Dn2CppObject*>(
-                  dn2cpp_string_from_utf8(p, static_cast<int32_t>(std::strlen(p))));
+                  dn2cpp_string_from_utf8(p, static_cast<int32_t>(std::strlen(p)))));
         if (p != nullptr && (inbuf == nullptr || p != inbuf[i]))
             std::free(p);
     }
@@ -995,10 +999,11 @@ void dn2cpp_pinvoke_strarr_from_ansi(Dn2CppArrayRef* arr, void** buf, void** inb
     for (int32_t i = 0; i < n; i++)
     {
         char* p = static_cast<char*>(buf[i]);
-        arr->data[i] = p == nullptr
-            ? nullptr
+        // See _from_utf8: the write-back store must dirty its slot.
+        dn2cpp_gc_store_ref(&arr->data[i], p == nullptr
+            ? static_cast<Dn2CppObject*>(nullptr)
             : reinterpret_cast<Dn2CppObject*>(
-                  dn2cpp_string_from_ansi(p, static_cast<int32_t>(std::strlen(p))));
+                  dn2cpp_string_from_ansi(p, static_cast<int32_t>(std::strlen(p)))));
         if (p != nullptr && (inbuf == nullptr || p != inbuf[i]))
             std::free(p);
     }
@@ -1020,7 +1025,9 @@ void dn2cpp_pinvoke_strarr_from_utf16(Dn2CppArrayRef* arr, void** buf, void** in
         int32_t len = 0;
         while (p[len] != u'\0')
             len++;
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_chars(p, len));
+        // See _from_utf8: the write-back store must dirty its slot.
+        dn2cpp_gc_store_ref(&arr->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_string_from_chars(p, len)));
         if (inbuf == nullptr || p != inbuf[i])
             std::free(p);
     }

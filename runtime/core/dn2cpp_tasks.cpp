@@ -324,7 +324,7 @@ static void dn2cpp_pending_cont_link(Dn2CppCont* c)
 {
     std::lock_guard<std::mutex> lk(g_sched_pending_mtx);
     c->gcprev = nullptr;
-    c->gcnext = g_pending_conts;
+    dn2cpp_gc_store_ref(&c->gcnext, g_pending_conts);
     if (g_pending_conts != nullptr)
         dn2cpp_gc_store_ref(&g_pending_conts->gcprev, c);
     g_pending_conts = c;
@@ -462,7 +462,7 @@ static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* s
     std::lock_guard<std::mutex> lk(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING)
         return false;
-    c->next = t->continuations;
+    dn2cpp_gc_store_ref(&c->next, t->continuations);
     dn2cpp_gc_store_ref(&t->continuations, c);
     return true;
 }
@@ -2195,7 +2195,7 @@ void dn2cpp_thread_start(Dn2CppThread* t)
 
 void dn2cpp_thread_start_param(Dn2CppThread* t, Dn2CppObject* arg)
 {
-    t->arg = arg;
+    dn2cpp_gc_store_ref(&t->arg, arg);
     t->sync = new Dn2CppThreadSync();
     dn2cpp_thread_spawn(t, true);
 }
@@ -2379,6 +2379,7 @@ static void dn2cpp_pool_unlink_locked(Dn2CppPoolNode* node)
         if (*pp == node)
         {
             *pp = node->next;
+            dn2cpp_gc_write_barrier_if_heap(pp); // pp may name the static head
             node->next = nullptr;
             break;
         }

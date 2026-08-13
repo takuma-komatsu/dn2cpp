@@ -2203,6 +2203,9 @@ Dn2CppDependentHandle dn2cpp_dependenthandle_alloc(Dn2CppObject* target, Dn2CppO
     auto* cell = static_cast<Dn2CppDependentCell*>(dn2cpp_alloc(sizeof(Dn2CppDependentCell)));
     cell->targetWeak = dn2cpp_gchandle_internal_alloc(target, 0); // 0 = Weak (short link)
     cell->dependent = dependent;
+    // The internal alloc above can run an incremental step that blackens the
+    // fresh cell before these stores; one barrier covers both fields.
+    dn2cpp_gc_write_barrier(cell);
     return Dn2CppDependentHandle{cell};
 }
 
@@ -2361,7 +2364,12 @@ Dn2CppGCHandle dn2cpp_gchandle_alloc(Dn2CppObject* target, void* dataAddr, int32
     if (cell == nullptr) // uncollectable + zero-filled (see dn2cpp_alloc_pinned)
         cell = static_cast<Dn2CppGCHandleCell*>(dn2cpp_alloc_pinned(sizeof(Dn2CppGCHandleCell)));
     if (handleType <= 1) // Weak or WeakTrackResurrection: no strong ref in the cell
+    {
+        // The stored value is the collectable weak cell's address; the pooled
+        // uncollectable cell is old, so the store must dirty it.
         cell->weakCell = dn2cpp_gchandle_internal_alloc(target, handleType);
+        dn2cpp_gc_write_barrier(&cell->weakCell);
+    }
     else // Normal or Pinned: a strong pointer + (Pinned) the pinned data address
     {
         dn2cpp_gc_store_ref(&cell->target, target);

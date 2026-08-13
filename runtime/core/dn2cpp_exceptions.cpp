@@ -148,6 +148,7 @@ void dn2cpp_exc_inflight_pop(Dn2CppObject* obj)
         {
             Dn2CppInflightExcNode* dead = *pp;
             *pp = dead->next;
+            dn2cpp_gc_write_barrier_if_heap(pp); // pp may name the static head
             dead->next = nullptr;
             g_inflight_exc_count--;
             return;
@@ -1135,7 +1136,9 @@ Dn2CppStackFrame* dn2cpp_stackframe_new(Dn2CppString* fileName, int32_t line, in
 static Dn2CppStackFrame* dn2cpp_stackframe_of_text(const char* text, size_t len)
 {
     Dn2CppStackFrame* f = dn2cpp_stackframe_new(nullptr, 0, 0);
-    f->methodDesc = dn2cpp_string_from_utf8(text, static_cast<int32_t>(len));
+    // The string alloc may blacken the fresh frame; barrier the store.
+    dn2cpp_gc_store_ref(&f->methodDesc,
+        dn2cpp_string_from_utf8(text, static_cast<int32_t>(len)));
     return f;
 }
 
@@ -1241,7 +1244,9 @@ Dn2CppStackTrace* dn2cpp_stacktrace_new(const Dn2CppTypeInfo* frameArrTi, int32_
         // ss->frames[] is push order (outermost first); mirror the stamp
         // loop's reversal so entry 0 is the innermost un-skipped frame.
         const char* name = ss->frames[stored - 1 - skipStored - i];
-        frames->data[i] = dn2cpp_stackframe_of_text(name, std::strlen(name));
+        // The frame alloc may blacken `frames` mid-loop; barrier each store.
+        dn2cpp_gc_store_ref(&frames->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_stackframe_of_text(name, std::strlen(name))));
     }
     return dn2cpp_stacktrace_wrap(frames, overflowed - skipOverflow);
 }
@@ -1278,7 +1283,9 @@ Dn2CppStackTrace* dn2cpp_stacktrace_of_exception(const Dn2CppTypeInfo* frameArrT
         for (int32_t i = 0; i < n; i++)
         {
             const auto* name = static_cast<const char*>(trace->entries[skipEntries + i]);
-            frames->data[i] = dn2cpp_stackframe_of_text(name, std::strlen(name));
+            // See above: barrier each store of an allocating fill loop.
+            dn2cpp_gc_store_ref(&frames->data[i],
+                reinterpret_cast<Dn2CppObject*>(dn2cpp_stackframe_of_text(name, std::strlen(name))));
         }
         return dn2cpp_stacktrace_wrap(frames, trace->dropped - skipDropped);
     }
@@ -1301,7 +1308,9 @@ Dn2CppStackTrace* dn2cpp_stacktrace_of_exception(const Dn2CppTypeInfo* frameArrT
     for (int32_t i = 0; i < n; i++)
     {
         const std::string& line = lines[start + static_cast<size_t>(i)];
-        frames->data[i] = dn2cpp_stackframe_of_text(line.c_str(), line.size());
+        // See above: barrier each store of an allocating fill loop.
+        dn2cpp_gc_store_ref(&frames->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_stackframe_of_text(line.c_str(), line.size())));
     }
     return dn2cpp_stacktrace_wrap(frames, 0);
 }

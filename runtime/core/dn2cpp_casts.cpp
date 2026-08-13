@@ -1331,7 +1331,7 @@ Dn2CppObject* dn2cpp_box(const Dn2CppTypeInfo* ti, const void* value, size_t siz
 {
     auto* obj = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject) + size));
     obj->type = ti;
-    std::memcpy(obj + 1, value, size);
+    dn2cpp_gc_memmove_refs(obj + 1, value, size); // the payload may carry managed refs
     return obj;
 }
 
@@ -1378,7 +1378,9 @@ Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b)
     copy->type = bd->type;
     copy->target = bd->target;
     copy->method = bd->method;
-    copy->prev = dn2cpp_delegate_combine(a, bd->prev);
+    // The recursion allocates, so an incremental cycle may blacken `copy`
+    // before this store; barrier it or the combined chain is lost.
+    dn2cpp_gc_store_ref(&copy->prev, dn2cpp_delegate_combine(a, bd->prev));
     return copy;
 }
 
