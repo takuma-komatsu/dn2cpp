@@ -1697,9 +1697,11 @@ namespace
         if (tag == DN2CPP_GD_PACKED_STRING)
         {
             Dn2CppArrayRef* arr = dn2cpp_newarr_ref_t(len, dn2cpp_array_ti(&dn2cpp_string_type, 1));
+            // ManagedStringFromGd allocates, so an incremental cycle may blacken
+            // `arr` mid-loop; each store must re-dirty its slot.
             for (int32_t i = 0; i < len; i++)
-                arr->data[i] = reinterpret_cast<Dn2CppObject*>(
-                    ManagedStringFromGd(static_cast<const GdString*>(PackedElemPtr(tag, p, i))));
+                dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
+                    ManagedStringFromGd(static_cast<const GdString*>(PackedElemPtr(tag, p, i)))));
             return arr;
         }
         int32_t es = PackedElemSize(tag);
@@ -2290,8 +2292,13 @@ namespace
         int32_t n = argc > 0 ? static_cast<int32_t>(argc) : 0;
         Dn2CppArrayN* arr = dn2cpp_newarr_n(n, (int32_t)sizeof(Dn2CppGodotVariant));
         auto* dst = reinterpret_cast<Dn2CppGodotVariant*>(arr->data);
+        // DecodeVariant allocates, so an incremental cycle may blacken `arr`
+        // mid-loop; each store must re-dirty its slot or the ref is lost.
         for (int32_t i = 0; i < n; i++)
+        {
             DecodeVariant(p_args[i], &dst[i]);
+            dn2cpp_gc_write_barrier(&dst[i]);
+        }
         if (g_callable_dispatch != nullptr)
         {
             try
@@ -2429,8 +2436,13 @@ namespace
         if (len < 0) len = 0;
         Dn2CppArrayN* arr = dn2cpp_newarr_n(len, (int32_t)sizeof(Dn2CppGodotVariant));
         auto* dst = reinterpret_cast<Dn2CppGodotVariant*>(arr->data);
+        // DecodeVariant allocates, so an incremental cycle may blacken `arr`
+        // mid-loop; each store must re-dirty its slot or the ref is lost.
         for (int32_t i = 0; i < len; i++)
+        {
             DecodeVariant(gd_array_index(p, i), &dst[i]);
+            dn2cpp_gc_write_barrier(&dst[i]);
+        }
         return arr;
     }
 
@@ -2774,8 +2786,11 @@ void dn2cpp_godot_sweep_anchored_refcounted()
             // pointer there keeps pinning the object forever (the same
             // "clear before running" reasoning the finalizer ring itself
             // uses).
+            // The moved slot must be re-dirtied like the insert path's store:
+            // under MANUAL_VDB an unbarriered store into this table is invisible
+            // to an incremental cycle, and this table is the shim's only root.
             int32_t last = --g_refcounted_anchor_count;
-            g_refcounted_anchor_table[i] = g_refcounted_anchor_table[last];
+            dn2cpp_gc_store_ref(&g_refcounted_anchor_table[i], g_refcounted_anchor_table[last]);
             g_refcounted_anchor_table[last] = nullptr;
             continue;
         }
