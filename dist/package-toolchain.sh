@@ -93,6 +93,10 @@
 #     --install-into DIR  after assembling, copy the layout tree into DIR
 #                         (mkdir -p; e.g. <editor>/GodotSharp/Dn2Cpp)
 #     --dn2cpp-bin PATH   use this prebuilt native dn2cpp instead of building it
+#     --dn2cpp-commit SHA the dn2cpp commit this bundle must be built from: the
+#                         run refuses unless the tree IS it, so the manifest's
+#                         `dn2cpp_commit` is a verified claim rather than a
+#                         reading of HEAD. A release cut passes it; a gate does not
 #     --emsdk DIR         bundle this Emscripten SDK, and build the Web axis with it
 #     --buildtools DIR    bundle this cmake+ninja tree (gates/setup-buildtools.sh's
 #                         --out; $DN2CPP_BUILDTOOLS does the same)
@@ -110,6 +114,7 @@ OUT_PARENT=artifacts/toolchain
 LAYOUT_ONLY=0
 INSTALL_INTO=
 DN2CPP_BIN=
+DN2CPP_PIN=
 EMSDK_DIR=
 BUILDTOOLS_DIR=
 WITH_PREBUILT=1
@@ -121,6 +126,7 @@ while [ $# -gt 0 ]; do
         --layout-only)  LAYOUT_ONLY=1; shift ;;
         --install-into) INSTALL_INTO="$2"; shift 2 ;;
         --dn2cpp-bin)   DN2CPP_BIN="$2"; shift 2 ;;
+        --dn2cpp-commit) DN2CPP_PIN="$2"; shift 2 ;;
         --emsdk)        EMSDK_DIR="$2"; shift 2 ;;
         --buildtools)   BUILDTOOLS_DIR="$2"; shift 2 ;;
         --version)      PKG_VERSION="$2"; shift 2 ;;
@@ -139,6 +145,13 @@ LAYOUT="$OUT_PARENT/$NAME"
 
 echo "== dn2cpp toolchain bundle: $NAME =="
 
+# 0. The pinned commit, before anything is built — the run is minutes long and
+# every one of them is wasted on a tree that cannot honour the pin.
+if [ -n "$DN2CPP_PIN" ]; then
+    dn2cpp_commit_pin_resolve "$DN2CPP_PIN" || exit 1
+    echo "-- pinned to dn2cpp $DN2CPP_PIN_COMMIT (this tree is that commit, clean)"
+fi
+
 # 1. Native self-hosted CLI (the enabler — transpiles with no .NET present).
 #
 # A prebuilt one is reused only when selfhost_bin_fresh (gates/_common.sh) says it
@@ -148,9 +161,10 @@ echo "== dn2cpp toolchain bundle: $NAME =="
 # on every `git checkout`, and a commit id cannot see the uncommitted edit under
 # `src/` this runs over most of the time.
 #
-# An explicit --dn2cpp-bin is honoured as given, unchecked: the caller named a
-# specific file (every gate does, through stage_editor_toolchain), and second-guessing
-# a named path is not this script's business. The blind-reuse branch below is
+# An explicit --dn2cpp-bin is honoured as given, unchecked unless a pin says
+# otherwise: the caller named a specific file (every gate does, through
+# stage_editor_toolchain), and second-guessing a named path is not this script's
+# business — but a pin is a claim about what ships. The blind-reuse branch below is
 # therefore reached only by gates/setup-godot-fork.sh and by hand-run packaging —
 # which is precisely where that stale binary came from.
 if [ -z "$DN2CPP_BIN" ]; then
@@ -174,6 +188,21 @@ if [ -z "$DN2CPP_BIN" ]; then
     fi
 fi
 [ -x "$DN2CPP_BIN" ] || { echo "error: native dn2cpp not executable: $DN2CPP_BIN" >&2; exit 1; }
+
+# Under a pin the named binary is checked after all, against its own stamp: the
+# tree being the pinned commit says nothing about a CLI built from another one,
+# and that CLI is the largest thing the bundle carries.
+if [ -n "$DN2CPP_PIN" ]; then
+    BIN_STAMPED="$(cat "$(dirname "$DN2CPP_BIN")/dn2cpp.src-hash" 2>/dev/null || echo '<no stamp>')"
+    # selfhost_bin_fresh already measured it when this run resolved the binary
+    # itself; the sources cannot have moved since, and the hash is not cheap.
+    SRC_NOW="${SELFHOST_SRC_NOW:-$(src_tree_hash)}"
+    [ "$BIN_STAMPED" = "$SRC_NOW" ] || {
+        echo "error: $DN2CPP_BIN was not built from dn2cpp $DN2CPP_PIN_COMMIT" >&2
+        echo "       stamped $BIN_STAMPED != $SRC_NOW (src_tree_hash of src/ runtime/ third_party/)" >&2
+        echo "       Rebuild it at the pinned commit: gates/selfhost-emit.sh" >&2
+        exit 1; }
+fi
 
 # 1b. The managed support shim that must sit next to the CLI (see the header).
 SHIM="src/Dn2Cpp.Runtime/bin/$CONFIG/$TFM/Dn2Cpp.Runtime.dll"

@@ -18,7 +18,12 @@
 # mean rewriting the very IL the transpiler reads.
 #
 # Usage:
-#   dist/package-editor-macos.sh --version <base>-dn2cpp.<X>.<Y> [options]
+#   dist/package-editor-macos.sh --version <base>-dn2cpp.<X>.<Y>
+#                                --dn2cpp-commit <sha> [options]
+#     --dn2cpp-commit SHA        the dn2cpp commit both editors are cut from; the
+#                                run refuses unless this tree IS it. macOS is the
+#                                host that names it, and the value travels to the
+#                                Windows host in this lane's own metadata
 #     --out DIR                  output parent (default: artifacts/release)
 #     --app-name NAME            bundle name (default: Godot-dn2cpp); names the
 #                                .app inside, never the asset file
@@ -32,6 +37,7 @@ source "$(dirname "$0")/../gates/_godot_fork.sh"   # FORK_ROOT/FORK_EDITOR/FORK_
 die() { echo "error: $*" >&2; exit 1; }
 
 VERSION=
+DN2CPP_PIN=
 OUT=artifacts/release
 APP_NAME=Godot-dn2cpp
 SMOKE=1
@@ -40,6 +46,7 @@ ALLOW_PARTIAL_PREBUILT=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --version)                VERSION="$2"; shift 2 ;;
+        --dn2cpp-commit)          DN2CPP_PIN="$2"; shift 2 ;;
         --out)                    OUT="$2"; shift 2 ;;
         --app-name)               APP_NAME="$2"; shift 2 ;;
         --smoke)                  SMOKE=1; shift ;;
@@ -52,6 +59,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$VERSION" ] || die "--version is required (e.g. --version 4.7.1-dn2cpp.3.1)"
+# Required, not defaulted to HEAD: a value read off the tree could not be refused,
+# and refusing is the whole of it — the Windows host is pinned to whatever this
+# metadata says, months of drift later.
+[ -n "$DN2CPP_PIN" ] || die "--dn2cpp-commit is required — both editors are cut from one dn2cpp commit
+       This is the host that names it:
+         dist/package-editor-macos.sh --version $VERSION --dn2cpp-commit \"\$(git rev-parse HEAD)\""
 
 # ── 0. Prerequisites ─────────────────────────────────────────────────────────
 # Every one is a hard FAIL, never gate_skip: this is a release cut asked for by
@@ -81,9 +94,12 @@ if [ "$SELFHOST_STAMPED" != "$SRC_NOW" ]; then
     exit 1
 fi
 
+dn2cpp_commit_pin_resolve "$DN2CPP_PIN" || exit 1
+
 godot_fork_pin_abi_check   # sets FORK + BASE_COMMIT; exits on any mismatch
 FORK_HEAD="$(git -C "$FORK" rev-parse HEAD)"
 echo "selfhost CLI:  $SELFHOST_BIN (src $SRC_NOW)"
+echo "dn2cpp pin:    $DN2CPP_PIN_COMMIT (this tree is that commit, clean)"
 
 # ── 1. Version ───────────────────────────────────────────────────────────────
 echo "== 1/13 version =="
@@ -118,7 +134,7 @@ echo "== 3/13 staging the export toolchain =="
 mkdir -p "$OUT"
 # Absolute from here: the editor resolves a relative OUT against the project.
 OUT="$(cd "$OUT" && pwd)"
-stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
+stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log" "$DN2CPP_PIN_COMMIT"
 
 MANIFEST="$FORK_GODOTSHARP/Dn2Cpp/manifest.json"
 [ -f "$MANIFEST" ] || die "no staged manifest at $MANIFEST"
@@ -131,6 +147,11 @@ TOOLCHAIN_HASH="$(manifest_get content_hash)"
 DN2CPP_COMMIT="$(manifest_get dn2cpp_commit)"
 CORELIB_FRAMEWORK="$(manifest_get corelib_framework)"
 BUNDLE_EMCC="$(manifest_get emcc_version)"
+# The pin was verified where the bundle was built; this is the same claim read
+# back off the file the lane metadata below is copied from, which is the one a
+# reader of the release notes ends up trusting.
+[ "$DN2CPP_COMMIT" = "$DN2CPP_PIN_COMMIT" ] \
+    || die "the staged toolchain says dn2cpp_commit=$DN2CPP_COMMIT, not the pinned $DN2CPP_PIN_COMMIT"
 echo "toolchain:     content_hash $TOOLCHAIN_HASH, dn2cpp $DN2CPP_COMMIT, corelib $CORELIB_FRAMEWORK"
 
 # What the bundle weighs, from the report the packaging above wrote beside the
