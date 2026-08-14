@@ -95,12 +95,16 @@ git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 # dn2cpp — 1 番目のホストは main、2 番目は 1 番目が使ったコミット（下記）
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
+git -C <DEV> status --porcelain                          # → 空であること
 git -C <DEV> rev-parse HEAD                              # ← 控える
 git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 ```
 
 - フォークの追跡ファイルに未コミット変更があると die する（`bin/` などの
   untracked は対象外）。
+- **dn2cpp 側は untracked も対象**（上のコマンドに `--untracked-files=no` を
+  付けていないのはそのため）。ツールチェーン束はワーキングツリーから作られる
+  ので、`src/` に落ちている野良 `.cs` もそのまま束に入る。
 - `dn2cpp` 側で確認するリモートは **`origin`（公開リポジトリ）**。`archive`
   にしか無いコミットは、ノートがリンクする先から辿れないので die する。
 - タグが古いコミットを指したまま残っていると die する。消してから fetch し直す:
@@ -118,9 +122,12 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
   `fork_commit` が一致し、かつタグを張るコミットと一致していなければ die。
 - **`engine_provenance` / `base_pin` / `corelib_framework`** も全レーン一致を
   強制される（`.NET SDK` のバージョン違いは `corelib_framework` で落ちる）。
-- **dn2cpp のコミットは強制されない。** レーンごとに別の値でも通り、ノートは
-  エディタごとに行を分けて両方を印字する。これは既知の未解決点で、
-  `docs/STATUS.md` に行がある。だから **2 番目のホストは `main` の先端では
+- **dn2cpp のコミットも強制される**（両端で）。エディタのパッケージャは
+  `--dn2cpp-commit` を必須で取り、ツリーがそのコミット **そのもの** で、かつ
+  clean でなければ拒否する —— 束はワーキングツリーから作られるので、`HEAD` を
+  読むだけのスタンプは作られてもいないものを名指してしまう。その上で
+  `dist/release-github.sh` が `engine_provenance` と同じ機構でレーン間の一致を
+  要求する。だから **2 番目のホストは `main` の先端では
   なく、1 番目のホストが使ったコミットをチェックアウトする**:
 
   ```bash
@@ -129,7 +136,7 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 
   引き渡された metadata がその値の唯一の出所。**`main` を追うと 2 つの経路で
   壊れる** —— 1 番目のホストがリリースを切ったあとに `main` が進んでいれば
-  ノートが 2 つの dn2cpp コミットを印字し、その進んだ分がまだ push されて
+  レーン間の不一致で die し、その進んだ分がまだ push されて
   いなければ「`origin/main` に含まれない」で die する。
 - **リリースノートは、最後に走ったホストの `dist/release-notes-template.md`
   で全文が再レンダリングされる。**しかもノートは `docs/EDITOR-GUIDE.ja.md` を
@@ -275,8 +282,14 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 ```bash
 ./dist/package-web-template.sh   --version "$V"
 ./dist/package-macos-template.sh --version "$V"
-./dist/package-editor-macos.sh   --version "$V" 2>&1 | tee /tmp/pkg-editor-macos.log
+./dist/package-editor-macos.sh   --version "$V" --dn2cpp-commit "$(git rev-parse HEAD)" \
+    2>&1 | tee /tmp/pkg-editor-macos.log
 ```
+
+- **`--dn2cpp-commit` は、両エディタを切る元のコミットをこのホストが名指す
+  ためのもの。**必須で、ツリーがそのコミットでない場合も、未コミットの作業が
+  ある場合も拒否される（コンパイラが読む以上、untracked も含む）。Windows 側は
+  この値をこのレーンの metadata から取る（§C-3）。
 
 - **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
   `<out>/godot-$V-web-template.zip` とその `.provenance` を
@@ -442,6 +455,8 @@ Windows 側も、前回リリースの資産が `artifacts/release/` に残っ�
 ### C-1. セットアップ（macOS と同じ 2 本 + self-host + fork）
 
 チェックアウトは `main` ではなく、macOS 側が使った dn2cpp のコミット（§0-C）。
+C-3 も同じことを拒否で強制するが、その拒否は `gates/setup-godot-fork.sh` の
+あとに来る。ここでやれば無料、あとで食らえばそのビルド 1 本分の損。
 
 ```bash
 cd <DEV>
@@ -471,7 +486,9 @@ sed -n 's/^emcc=//p' artifacts/release/web.metadata
 ### C-3. Windows エディタをパッケージ
 
 ```bash
-./dist/package-editor-windows.sh --version "$V" 2>&1 | tee /tmp/pkg-editor-windows.log
+./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
+    "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)" \
+    2>&1 | tee /tmp/pkg-editor-windows.log
 ```
 
 確認:
@@ -620,6 +637,9 @@ Windows なら zip のブロック解除。
 | `--version base X != the fork's version.py (Y)` | フォークのチェックアウトが別のベース |
 | `lanes 'A' and 'B' disagree on engine_provenance` | 2 ホストのエンジンのソースが違う。片方をビルドし直す |
 | `... disagree on corelib_framework` | 2 ホストの .NET SDK が違う |
+| `... disagree on dn2cpp_commit` | 2 番目のホストが別のコミットからパッケージした。1 番目のホストのコミットを `--dn2cpp-commit` に渡して切り直す（§C-3） |
+| `--dn2cpp-commit names X, but this tree is at Y` | X をチェックアウトする。Windows では X は引き渡しの `editor-macos.metadata` にある値 |
+| `the working tree is not X — it carries changes of its own` | commit / stash / 削除のいずれか。untracked も対象 —— 追跡ファイルと同じように束へ入るため |
 | `the packaged X editor was built from A, but the tag would name B` | パッケージ時と現在のフォーク HEAD が違う。ビルドし直すか `--commit A` |
 | `is not reachable from origin/...` | push していない。フォークまたは dn2cpp を push する |
 | `HEAD (...) is not reachable from the dn2cpp origin/...` | ノートがガイドをリンクするコミットが未 push。上の行はレーンの `dn2cpp_commit` の話で、こちらは作業中の `HEAD`。`git push origin main` |
