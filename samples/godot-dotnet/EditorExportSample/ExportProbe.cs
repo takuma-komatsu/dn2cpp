@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Godot;
 
 // The scripted node of the exported game. Kept small on purpose: the deep
@@ -21,6 +22,7 @@ public partial class ExportProbe : Node
 
     private int _frames;
     private bool _gcReported;
+    private bool _signalResumed;
 
     public override void _Ready()
     {
@@ -30,6 +32,27 @@ public partial class ExportProbe : Node
         // One engine-logger line stays behind so the macOS gate still proves the
         // GD.Print path end to end.
         GD.Print("DN2CPP_EXPORT_GDPRINT engine logger path ok");
+
+        ProbeInterop();
+        _ = ProbeSignalAsync();
+    }
+
+    // Both calls below return the engine's `Error` — int-width in C++, `: long`
+    // in C# because the bindings generator widens every core enum. wasm32 checks
+    // the indirect call's signature, so the width has to be the engine's. Only
+    // bools are printed: an enum name lookup throws under --trim-reflection.
+    private void ProbeInterop()
+    {
+        var arr = new Godot.Collections.Array();
+        Error resized = arr.Resize(3);
+        Console.WriteLine($"DN2CPP_EXPORT_INTEROP resizeOk={resized == Error.Ok} sized={arr.Count == 3}");
+    }
+
+    private async Task ProbeSignalAsync()
+    {
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        _signalResumed = true;
+        Console.WriteLine("DN2CPP_EXPORT_SIGNAL awaited=True");
     }
 
     public override void _Process(double delta)
@@ -54,6 +77,11 @@ public partial class ExportProbe : Node
         }
 
         if (_gcReported)
+            return;
+        // The awaited continuation resumes on a ProcessFrame the churn above
+        // already spent, so holding the quit behind it costs nothing and stops a
+        // continuation that never resumes from passing as a race with the quit.
+        if (!_signalResumed)
             return;
         _gcReported = true;
 
