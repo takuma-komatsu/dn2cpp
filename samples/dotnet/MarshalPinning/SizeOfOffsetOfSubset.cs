@@ -80,6 +80,11 @@ unsafe struct BarePointer { public void* F; }
 unsafe struct PointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public void* F; }
 unsafe struct FunctionPointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public delegate* unmanaged<void> F; }
 unsafe struct PointerI8 { [MarshalAs(UnmanagedType.I8)] public void* F; }
+// An OFFSET that moves with the pointer width: I sits at 8 on a 64-bit target and at 4 on a
+// 32-bit one, so it folds to a sizeof(void*) sum instead of a literal. That is the only other
+// form an offset can take — the model has a 32-bit reading whenever it has a 64-bit one, so a
+// 64-bit-only offset never arises.
+struct PtrThenInt { public IntPtr P; public int I; }                 // 16, I@8
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -258,6 +263,11 @@ unsafe class Program
         Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
         Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
         Console.WriteLine("m pointer-i8=" + Verdict(() => Marshal.SizeOf(typeof(PointerI8))) + "/" + Verdict(() => Marshal.SizeOf<PointerI8>()));
+        // A size AND an offset that both move with the pointer width, from both spellings —
+        // the width rows above all fold to literals, so this is the only row here whose
+        // constants are sizeof(void*) sums.
+        Console.WriteLine("m ptr-then-int=" + Marshal.SizeOf(typeof(PtrThenInt)) + "/" + Marshal.SizeOf<PtrThenInt>()
+            + " I@" + (long)Marshal.OffsetOf<PtrThenInt>("I") + "/" + (long)Marshal.OffsetOf(typeof(PtrThenInt), "I"));
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'

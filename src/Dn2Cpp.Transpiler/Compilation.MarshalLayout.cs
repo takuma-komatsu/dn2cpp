@@ -135,13 +135,22 @@ internal sealed partial class Compilation
     }
 
     /// <summary>One field's top-level <c>Marshal.OffsetOf</c> as C++ text; null when the type
-    /// or the field is outside the model.</summary>
+    /// or the field is outside the model.
+    ///
+    /// <para>The fold is unfiltered because the result is never GUARDED: pointer width is a
+    /// number in this walk and never a verdict, so a layout known at 64 bits is known at 32
+    /// over the same field list. The assert is what keeps a 64-bit-only offset — right on
+    /// x64, wrong in a wasm32 build — from being folded should that stop holding.</para></summary>
     internal ModeledSize? TopLevelMarshalOffsetText(ClassInfo cls, FieldInfo f)
     {
         if (TopLevelMarshalLayout(cls) is not { Extent.IsKnown: true } l
             || !l.Offsets.TryGetValue(f, out int off))
             return null;
-        return PointerWidth.Model(off, NarrowOffset(NarrowTopLevel(cls), f));
+        var m = PointerWidth.Model(off, NarrowOffset(NarrowTopLevel(cls), f));
+        if (m.Guarded)
+            throw new InvalidOperationException(
+                $"marshalled offset of {cls.FullName}.{f.Name} has a 64-bit reading and no 32-bit one");
+        return m;
     }
 
     /// <summary>The member-position layout rendered as C++ text — what the emitted
