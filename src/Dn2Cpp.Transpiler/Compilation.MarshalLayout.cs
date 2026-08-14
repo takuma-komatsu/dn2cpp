@@ -123,9 +123,10 @@ internal sealed partial class Compilation
 
     /// <summary>The top-level size as C++ text, null when the verdict is not
     /// <see cref="MarshalSizeVerdict.Known"/> — or when the size is GUARDED, i.e. right only
-    /// at 64 bits. Both readers of this text must agree, and the stamp already declines a
-    /// guarded size, so folding one into <c>SizeOf&lt;T&gt;</c> would answer where the
-    /// non-generic spelling throws. Declining it here is what makes them agree.</summary>
+    /// at 64 bits. Guarded cannot arise (see <see cref="TopLevelMarshalOffsetText"/>), and
+    /// this site declines where that one asserts because an unfolded size has a safe
+    /// fallback: the runtime verdict, which answers a blittable type's target-evaluated
+    /// <c>instanceSize</c> and throws naming any other. An offset has no such fallback.</summary>
     internal ModeledSize? TopLevelMarshalSizeText(ClassInfo cls)
     {
         var e = TopLevelMarshalExtent(cls);
