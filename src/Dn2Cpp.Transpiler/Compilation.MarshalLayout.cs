@@ -504,9 +504,11 @@ internal sealed partial class Compilation
     /// <item><c>char</c> — <c>U1</c> forces 1 and <c>U2</c> forces 2, overriding the
     /// CharSet.</item>
     /// </list>
-    /// For every other type a width matching AT BOTH POINTER WIDTHS is accepted as the no-op
-    /// it is and anything else is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
-    /// <c>int</c> is <c>ArgumentException</c>). Anything this does not model answers Unknown,
+    /// For every other PRIMITIVE — and for an enum, which marshals as its underlying one — a
+    /// width matching AT BOTH POINTER WIDTHS is accepted as the no-op it is and anything else
+    /// is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
+    /// <c>int</c> is <c>ArgumentException</c>). A field of any other KIND takes no width
+    /// descriptor at all, whatever width it names. Anything this does not model answers Unknown,
     /// never a number — the permanent COM carve-outs (<c>BStr</c>, <c>SafeArray</c>,
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
@@ -563,6 +565,12 @@ internal sealed partial class Compilation
             };
         if (!natural.IsKnown)
             return natural;
+        // A width descriptor asks about the KIND before the number: .NET takes one only on a
+        // primitive field, and refuses it on a nested struct, a delegate, a sequential class,
+        // GCHandle or DateTime even where it names the width that field already has. An enum
+        // is the one non-primitive that takes one, at its underlying integer's width.
+        if (t.Kind != TypeKind.Primitive && t.Class is not { IsEnum: true })
+            return MarshalExtent.Refused;
         // The descriptor has to name the field's width AT BOTH POINTER WIDTHS, not just at
         // the one being walked. .NET refuses [MarshalAs(U8)] IntPtr and [MarshalAs(SysInt)]
         // long on x64, where the two coincide, so a per-width comparison would measure at 64

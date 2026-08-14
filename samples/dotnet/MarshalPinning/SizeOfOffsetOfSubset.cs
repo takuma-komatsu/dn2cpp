@@ -80,6 +80,24 @@ unsafe struct BarePointer { public void* F; }
 unsafe struct PointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public void* F; }
 unsafe struct FunctionPointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public delegate* unmanaged<void> F; }
 unsafe struct PointerI8 { [MarshalAs(UnmanagedType.I8)] public void* F; }
+// A width descriptor names a NUMBER, and .NET asks the KIND first: only a primitive field
+// takes one. Every fixture below names the width its field already has and is refused for
+// its kind alone. An ENUM is the one non-primitive that takes one, at its underlying width.
+[StructLayout(LayoutKind.Sequential)] struct InnerLong { public long V; }
+[StructLayout(LayoutKind.Sequential)] struct InnerInt { public int V; }
+[StructLayout(LayoutKind.Sequential)] struct InnerPtr { public IntPtr V; }
+delegate void Callback();
+struct NestedI8 { [MarshalAs(UnmanagedType.I8)] public InnerLong F; }
+struct NestedI4 { [MarshalAs(UnmanagedType.I4)] public InnerInt F; }
+struct NestedSysInt { [MarshalAs(UnmanagedType.SysInt)] public InnerPtr F; }
+struct DelegateSysInt { [MarshalAs(UnmanagedType.SysInt)] public Callback F; }
+struct HandleSysInt { [MarshalAs(UnmanagedType.SysInt)] public GCHandle F; }
+struct SeqClassI8 { [MarshalAs(UnmanagedType.I8)] public SeqClass F; }
+struct DateTimeI8 { [MarshalAs(UnmanagedType.I8)] public DateTime F; }
+struct NestedStruct { [MarshalAs(UnmanagedType.Struct)] public InnerLong F; }
+struct EnumI1 { [MarshalAs(UnmanagedType.I1)] public EByte F; }
+struct EnumI8 { [MarshalAs(UnmanagedType.I8)] public ELong F; }
+struct EnumI2 { [MarshalAs(UnmanagedType.I2)] public EByte F; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -258,6 +276,23 @@ unsafe class Program
         Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
         Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
         Console.WriteLine("m pointer-i8=" + Verdict(() => Marshal.SizeOf(typeof(PointerI8))) + "/" + Verdict(() => Marshal.SizeOf<PointerI8>()));
+        // Same descriptors, asked of the KIND instead of the number: each one names the width
+        // its field already has and .NET refuses it anyway, because a nested struct, a
+        // delegate, a sequential class, GCHandle and DateTime take no width descriptor at all.
+        Console.WriteLine("m nested-i8=" + Verdict(() => Marshal.SizeOf(typeof(NestedI8))) + "/" + Verdict(() => Marshal.SizeOf<NestedI8>()));
+        Console.WriteLine("m nested-i4=" + Verdict(() => Marshal.SizeOf(typeof(NestedI4))) + "/" + Verdict(() => Marshal.SizeOf<NestedI4>()));
+        Console.WriteLine("m nested-sysint=" + Verdict(() => Marshal.SizeOf(typeof(NestedSysInt))) + "/" + Verdict(() => Marshal.SizeOf<NestedSysInt>()));
+        Console.WriteLine("m delegate-sysint=" + Verdict(() => Marshal.SizeOf(typeof(DelegateSysInt))) + "/" + Verdict(() => Marshal.SizeOf<DelegateSysInt>()));
+        Console.WriteLine("m gchandle-sysint=" + Verdict(() => Marshal.SizeOf(typeof(HandleSysInt))) + "/" + Verdict(() => Marshal.SizeOf<HandleSysInt>()));
+        Console.WriteLine("m seqclass-i8=" + Verdict(() => Marshal.SizeOf(typeof(SeqClassI8))) + "/" + Verdict(() => Marshal.SizeOf<SeqClassI8>()));
+        Console.WriteLine("m datetime-i8=" + Verdict(() => Marshal.SizeOf(typeof(DateTimeI8))) + "/" + Verdict(() => Marshal.SizeOf<DateTimeI8>()));
+        // The controls that keep the kind test from being a blanket refusal: Struct names the
+        // nested struct's own form, and an enum takes a width descriptor equal to its
+        // underlying integer's — one naming a different width is refused as before.
+        Console.WriteLine("m nested-struct=" + Marshal.SizeOf(typeof(NestedStruct)) + "/" + Marshal.SizeOf<NestedStruct>());
+        Console.WriteLine("m enum-i1=" + Marshal.SizeOf(typeof(EnumI1)) + "/" + Marshal.SizeOf<EnumI1>());
+        Console.WriteLine("m enum-i8=" + Marshal.SizeOf(typeof(EnumI8)) + "/" + Marshal.SizeOf<EnumI8>());
+        Console.WriteLine("m enum-i2=" + Verdict(() => Marshal.SizeOf(typeof(EnumI2))) + "/" + Verdict(() => Marshal.SizeOf<EnumI2>()));
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'
