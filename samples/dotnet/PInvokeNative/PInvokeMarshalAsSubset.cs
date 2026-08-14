@@ -1,14 +1,18 @@
 #nullable enable
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 // A [MarshalAs] on a parameter or return overrides the type+CharSet default: a string
-// encoding whatever the method CharSet says, a bool width, and LPArray on a blittable
-// array. Integer and enum width overrides are carved out — .NET requires the unmanaged
-// width to match the managed integer's size — as are COM/BStr/SafeArray/FunctionPtr.
+// encoding whatever the method CharSet says, a bool width, LPArray on a blittable
+// array, and FunctionPtr on a function-pointer type (the no-op naming the raw pointer
+// the type already crosses as — on void* it is refused, asserted by the transpile
+// negative arm in gates/build-and-run-pinvoke-native.sh). Integer and enum width
+// overrides are carved out — .NET requires the unmanaged width to match the managed
+// integer's size — as are COM/BStr/SafeArray.
 namespace PInvokeMarshalAsSubset;
 
-internal static class Program
+internal static unsafe class Program
 {
     // Arg encodings that beat the method CharSet, in both directions: an Ansi-default
     // method forced to UTF-16, and a Unicode method forced back to UTF-8.
@@ -39,6 +43,41 @@ internal static class Program
     [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_iarr_sum")]
     private static extern int LpArraySum([MarshalAs(UnmanagedType.LPArray)] int[] a, int n);
 
+    // FunctionPtr on a function-pointer parameter and return: both cross as the raw
+    // pointer the bare type already is (PInvokeUcoReverseSubset carries the bare form).
+    [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_ucb_combine")]
+    private static extern int FnPtrCombine(
+        [MarshalAs(UnmanagedType.FunctionPtr)] delegate* unmanaged[Cdecl]<int, int, int> fn, int a, int b);
+    [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_fnptr_add")]
+    [return: MarshalAs(UnmanagedType.FunctionPtr)]
+    private static extern delegate* unmanaged[Cdecl]<int, int, int> FnPtrAddDescribed();
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static int Diff(int a, int b) => a - b;
+
+    // The same descriptor as a struct-FIELD no-op: the fields keep the struct blittable,
+    // so it crosses raw exactly like PInvokeVtblStructSubset's bare form of this vtable.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct DescribedVtbl
+    {
+        [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged[Cdecl]<int, int, int> Read;
+        [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged[Cdecl]<int, int, int, int> Seek;
+        [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged[Cdecl]<int, void> Close;
+    }
+
+    [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_io_install")]
+    private static extern void InstallDescribed(ref DescribedVtbl v);
+    [DllImport("dn2cpptest", EntryPoint = "dn2cpptest_io_exercise")]
+    private static extern int ExerciseDescribed(int handle);
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static int SeekD(int handle, int off, int whence) => handle + off * whence;
+
+    private static int s_closed;
+
+    [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+    private static void CloseD(int handle) => s_closed += handle;
+
     internal static void __GateEntry()
     {
         Console.WriteLine(WLenForcedUtf16("café"));    // 4 (UTF-16 code units)
@@ -57,5 +96,17 @@ internal static class Program
 
         int[] xs = { 4, 5, 6, 7 };
         Console.WriteLine(LpArraySum(xs, xs.Length));   // 22
+
+        // The described function pointer crosses in (invoked twice by the native) and
+        // back out (invoked here through calli).
+        Console.WriteLine(FnPtrCombine(&Diff, 30, 12)); // 17982
+        delegate* unmanaged[Cdecl]<int, int, int> add = FnPtrAddDescribed();
+        Console.WriteLine(add(19, 23));                 // 42
+
+        // The described struct fields cross raw and dispatch after the install returns.
+        var vt = new DescribedVtbl { Read = &Diff, Seek = &SeekD, Close = &CloseD };
+        InstallDescribed(ref vt);
+        Console.WriteLine(ExerciseDescribed(5));        // 202
+        Console.WriteLine(s_closed);                    // 5
     }
 }

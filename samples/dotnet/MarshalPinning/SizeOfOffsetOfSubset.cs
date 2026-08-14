@@ -80,6 +80,14 @@ unsafe struct BarePointer { public void* F; }
 unsafe struct PointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public void* F; }
 unsafe struct FunctionPointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public delegate* unmanaged<void> F; }
 unsafe struct PointerI8 { [MarshalAs(UnmanagedType.I8)] public void* F; }
+// FunctionPtr is the one descriptor a pointer-shaped field takes, and only a genuine
+// function pointer takes it — either calling convention; void* is refused. The bare
+// field is the control, and the tail field pins the described offset, not just the size.
+unsafe struct BareFnPtr { public delegate* unmanaged<void> F; }
+unsafe struct FnPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged<void> F; }
+unsafe struct ManagedFnPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate*<void> F; }
+unsafe struct VoidPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public void* F; }
+unsafe struct FnPtrTail { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged<void> F; public byte T; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -253,11 +261,19 @@ unsafe class Program
         Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());
         Console.WriteLine("m int-i4=" + Marshal.SizeOf(typeof(IntI4)) + "/" + Marshal.SizeOf<IntI4>());
         // The bare pointer is the control; SysInt and I8 are invalid on void* and SysInt is
-        // invalid on delegate*. FunctionPtr on delegate* needs a distinct decoded type.
+        // invalid on delegate*.
         Console.WriteLine("m pointer-bare=" + Marshal.SizeOf(typeof(BarePointer)) + "/" + Marshal.SizeOf<BarePointer>());
         Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
         Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
         Console.WriteLine("m pointer-i8=" + Verdict(() => Marshal.SizeOf(typeof(PointerI8))) + "/" + Verdict(() => Marshal.SizeOf<PointerI8>()));
+        // FunctionPtr is accepted on a function pointer alone — either calling
+        // convention, described or bare, size and offset — and refused on void*, where
+        // every descriptor is refused.
+        Console.WriteLine("m fnptr-bare=" + Marshal.SizeOf(typeof(BareFnPtr)) + "/" + Marshal.SizeOf<BareFnPtr>());
+        Console.WriteLine("m fnptr-fnptr=" + Marshal.SizeOf(typeof(FnPtrFnPtr)) + "/" + Marshal.SizeOf<FnPtrFnPtr>());
+        Console.WriteLine("m fnptr-managed=" + Marshal.SizeOf(typeof(ManagedFnPtrFnPtr)) + "/" + Marshal.SizeOf<ManagedFnPtrFnPtr>());
+        Console.WriteLine("m voidptr-fnptr=" + Verdict(() => Marshal.SizeOf(typeof(VoidPtrFnPtr))) + "/" + Verdict(() => Marshal.SizeOf<VoidPtrFnPtr>()));
+        Console.WriteLine("m fnptr-tail=" + Marshal.SizeOf(typeof(FnPtrTail)) + "/" + (long)Marshal.OffsetOf<FnPtrTail>("T"));
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'
