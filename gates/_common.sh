@@ -624,6 +624,25 @@ selfhost_bin_fresh() {
     [ "$SELFHOST_SRC_STAMPED" = "$SELFHOST_SRC_NOW" ]
 }
 
+# dn2cpp_pin_bin_assert BIN SRC_HASH PIN_COMMIT — refuse unless the native CLI at
+# BIN was built from the sources SRC_HASH fingerprints. selfhost_bin_fresh asks
+# the same question about the standard path; this one is for a binary named by
+# hand (--dn2cpp-bin), where the stamp beside it is the only witness there is.
+# A MISSING stamp is unknown provenance, not a pass, for the reason written at
+# selfhost_bin_fresh.
+#
+# SRC_HASH is an argument rather than a src_tree_hash call: the hash is not cheap
+# and the caller usually holds one already.
+dn2cpp_pin_bin_assert() {
+    local bin="$1" src_hash="$2" pin="$3" stamped
+    stamped="$(cat "$(dirname "$bin")/dn2cpp.src-hash" 2>/dev/null || echo '<no stamp>')"
+    [ "$stamped" = "$src_hash" ] && return 0
+    echo "error: $bin was not built from dn2cpp $pin" >&2
+    echo "       stamped $stamped != $src_hash (src_tree_hash of src/ runtime/ third_party/)" >&2
+    echo "       Rebuild it at the pinned commit: gates/selfhost-emit.sh" >&2
+    return 1
+}
+
 # dn2cpp_commit_pin_resolve PIN — PIN's full sha in DN2CPP_PIN_COMMIT, once this
 # tree is proved to BE it; a message and 1 otherwise. A release cuts every editor
 # lane from one dn2cpp commit, and the hosts that cut them are different machines

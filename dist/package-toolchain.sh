@@ -193,15 +193,10 @@ fi
 # tree being the pinned commit says nothing about a CLI built from another one,
 # and that CLI is the largest thing the bundle carries.
 if [ -n "$DN2CPP_PIN" ]; then
-    BIN_STAMPED="$(cat "$(dirname "$DN2CPP_BIN")/dn2cpp.src-hash" 2>/dev/null || echo '<no stamp>')"
-    # selfhost_bin_fresh already measured it when this run resolved the binary
-    # itself; the sources cannot have moved since, and the hash is not cheap.
-    SRC_NOW="${SELFHOST_SRC_NOW:-$(src_tree_hash)}"
-    [ "$BIN_STAMPED" = "$SRC_NOW" ] || {
-        echo "error: $DN2CPP_BIN was not built from dn2cpp $DN2CPP_PIN_COMMIT" >&2
-        echo "       stamped $BIN_STAMPED != $SRC_NOW (src_tree_hash of src/ runtime/ third_party/)" >&2
-        echo "       Rebuild it at the pinned commit: gates/selfhost-emit.sh" >&2
-        exit 1; }
+    # selfhost_bin_fresh already measured the hash when this run resolved the
+    # binary itself; the sources cannot have moved since, and it is not cheap.
+    dn2cpp_pin_bin_assert "$DN2CPP_BIN" "${SELFHOST_SRC_NOW:-$(src_tree_hash)}" \
+        "$DN2CPP_PIN_COMMIT" || exit 1
 fi
 
 # 1b. The managed support shim that must sit next to the CLI (see the header).
