@@ -279,8 +279,8 @@ godot_dotnet_pin_abi_check() {
 # both sides' parameter spellings would cost. Aggregates are not modelled either
 # — many slots return a struct by value and the glue collapses all ten
 # packed-array flavours onto one opaque type. A pair with an aggregate on either
-# side is skipped, and the per-side count of those is frozen in AGG_EXPECTED so a
-# new type spelling cannot quietly leave the comparison.
+# side is skipped, and its slot plus return spelling is frozen in AGG_EXPECTED so
+# no change can silently move a slot out of the width comparison.
 godot_dotnet_interop_return_abi_check() {
     local clone="$1" agg_expected="$2"
     local cpp="$clone/modules/mono/glue/runtime_interop.cpp"
@@ -294,7 +294,7 @@ godot_dotnet_interop_return_abi_check() {
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     # A wasm32 value type. An unrecognised spelling is "aggregate", which drops
     # the pair from the comparison rather than inventing a width for it — the
-    # frozen aggregate count is what refuses that drift.
+    # frozen slot-and-spelling manifest is what refuses that drift.
     function reduce(t, side,   s) {
         s = trim(t); sub(/^const[ \t]+/, "", s); s = trim(s)
         if (s ~ /[*&]$/ || s ~ /^delegate\*/) return "i32"   # a pointer is 32-bit here
@@ -391,12 +391,19 @@ godot_dotnet_interop_return_abi_check() {
             bad++
         }
 
-        got = sprintf("cpp-aggregate %d\ncs-aggregate %d\n", cagg, sagg)
+        got = ""
+        for (i = 1; i <= ns; i++) {
+            n = slot[i]
+            if (reduce(cppret[n], "cpp") == "aggregate")
+                got = got sprintf("cpp-aggregate\t%s\t%s\n", n, cppret[n])
+            if (reduce(csret[n], "cs") == "aggregate")
+                got = got sprintf("cs-aggregate\t%s\t%s\n", n, csret[n])
+        }
         want = ""
         while ((getline ln < agg_expected) > 0) want = want ln "\n"
         if (want != got) {
-            printf "FAIL: aggregate-return counts differ from %s\nexpected:\n%sactual:\n%s", agg_expected, want, got
-            printf "      A slot changed to a type spelling the reduction table does not name — widen the table or audit the slot, then re-freeze.\n"
+            printf "FAIL: aggregate-return manifest differs from %s\nexpected:\n%sactual:\n%s", agg_expected, want, got
+            printf "      A slot or return spelling changed — widen the reduction table or audit the slot, then re-freeze.\n"
             printf "      Unmodelled return spellings, glue side:\n"
             for (s in caggspell) printf "        %-32s %d\n", s, caggspell[s]
             printf "      Unmodelled return spellings, C# side:\n"

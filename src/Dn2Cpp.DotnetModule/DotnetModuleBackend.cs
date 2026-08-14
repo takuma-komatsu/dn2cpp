@@ -155,7 +155,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// and not a list of names, so a re-pin that adds such a slot is covered.</summary>
     public string? CalliAbiType(MethodInfo enclosing, TypeDesc declared)
     {
-        if (enclosing.DeclaringClass.FullName != NativeFuncsType)
+        if (enclosing.Module.AssemblyName != "GodotSharp"
+            || enclosing.DeclaringClass.FullName != NativeFuncsType)
             return null;
         return declared.Kind == TypeKind.Class && declared.Class is { IsEnum: true }
             ? "int32_t" : null;

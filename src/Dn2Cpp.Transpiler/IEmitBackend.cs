@@ -95,7 +95,9 @@ internal interface IEmitBackend
     /// mapping. A standalone signature describes the managed declaration, not
     /// necessarily the ABI of the callee it names: a register-width target absorbs a
     /// narrower return, wasm32 traps on it. The emitter casts the result back to the
-    /// declared type. Default: the declaration is the ABI.</summary>
+    /// declared type. Implementations must identify the declaring module as well as
+    /// the type: another assembly may define the same fully-qualified name. Default:
+    /// the declaration is the ABI.</summary>
     string? CalliAbiType(MethodInfo enclosing, TypeDesc declared) => null;
 
     /// <summary>Engine-wrapper allowlist trim (<c>--trim-godot-classes</c>): a backend
