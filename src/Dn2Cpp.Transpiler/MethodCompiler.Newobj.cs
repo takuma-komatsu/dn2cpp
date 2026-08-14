@@ -119,12 +119,12 @@ internal sealed partial class MethodCompiler
         // non-blittable array/struct / object / unsupported [MarshalAs]).
         if (CppTypes.PInvokeNativeType(ret, isReturn: true, charUnicode, retMa) is null)
             throw new NotSupportedException(Where(retMa is { } rm
-                ? $"return [MarshalAs(UnmanagedType.{rm})] on {ret} is not supported (deliberate carve-out: COM/BStr/ByValArray/SafeArray/FunctionPtr marshalling)"
+                ? $"return [MarshalAs(UnmanagedType.{rm})] on {ret} is not supported (deliberate carve-out: COM/BStr/ByValArray/SafeArray marshalling, or a descriptor invalid on the type — FunctionPtr fits only a function-pointer (delegate*) type)"
                 : $"return type {ret} is not marshallable — object (and array-return / non-blittable-struct) marshalling is not supported yet"));
         for (int i = 0; i < pts.Length; i++)
             if (CppTypes.PInvokeNativeType(pts[i], charUnicode: charUnicode, marshalAs: Ma(i)) is null)
                 throw new NotSupportedException(Where(Ma(i) is { } pm
-                    ? $"parameter {i} [MarshalAs(UnmanagedType.{pm})] on {pts[i]} is not supported (deliberate carve-out: COM/BStr/ByValArray/SafeArray/FunctionPtr marshalling)"
+                    ? $"parameter {i} [MarshalAs(UnmanagedType.{pm})] on {pts[i]} is not supported (deliberate carve-out: COM/BStr/ByValArray/SafeArray marshalling, or a descriptor invalid on the type — FunctionPtr fits only a function-pointer (delegate*) type)"
                     : pts[i].Kind == TypeKind.Class && pts[i].Class!.IsDelegate
                         ? $"parameter {i} delegate {pts[i]} cannot marshal as a native callback function pointer: {CppTypes.CallbackDelegateRejectReason(pts[i])}"
                         // A struct whose only obstacle is a field's [MarshalAs] descriptor

@@ -58,7 +58,7 @@ PROJECT=PInvokeNative
 OUT="artifacts/pinvokenative"
 LIBDIR="$PWD/$OUT/lib"
 
-echo "== 1/9 Building the native test library libdn2cpptest =="
+echo "== 1/10 Building the native test library libdn2cpptest =="
 mkdir -p "$LIBDIR"
 libtest="$LIBDIR/$(lib_name dn2cpptest)"
 if is_msvc_compiler; then
@@ -90,19 +90,19 @@ else
         samples/native/dn2cpptest/dn2cpptest.c -o "$libtest"
 fi
 
-echo "== 2/9 Locating the real CoreLib =="
+echo "== 2/10 Locating the real CoreLib =="
 corelib=$(locate_corelib)
 echo "corlib: $corelib"
 
-echo "== 3/9 Building app assembly (PInvokeRefLib rides along via ProjectReference) =="
+echo "== 3/10 Building app assembly (PInvokeRefLib rides along via ProjectReference) =="
 build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
 app="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 reflib="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/PInvokeRefLib.dll"
 
-echo "== 4/9 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
+echo "== 4/10 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
 invoke_cli "$app" -r "$corelib" -r "$reflib" --pinvoke-module dn2cpptest -o "$OUT"
 
-echo "== 5/9 Asserting the flagless transpile refuses the cross-assembly import =="
+echo "== 5/10 Asserting the flagless transpile refuses the cross-assembly import =="
 # Deliberately NOT cached, and BEFORE the cache gate (the trim-reflection
 # typo-arm doctrine): the refusal leaves no output surface to key on, and the
 # regression this arm pins — a referenced module's [DllImport] lowering without
@@ -125,7 +125,7 @@ grep -q "error: .*PInvokeRefLib.*dn2cpptest_.*no IL body and no intrinsic mappin
     || { echo "FAIL: the refusal did not name the cross-assembly import" >&2; exit 1; }
 echo "flagless refusal OK: exit 2, named the cross-assembly import"
 
-echo "== 6/9 Asserting the ByValTStr struct-field crossing refuses at transpile =="
+echo "== 6/10 Asserting the ByValTStr struct-field crossing refuses at transpile =="
 # SUBJECT: the P/Invoke STRUCT-FIELD [MarshalAs] descriptor gate
 # (CppTypes.StructFieldDescriptorSupported), not another marshalling shape. A
 # [MarshalAs(ByValTStr)] string field asks for an INLINE character buffer; the
@@ -153,7 +153,7 @@ grep -q "error: .*FixedName.*'Name' carries \[MarshalAs(UnmanagedType.ByValTStr)
     || { echo "FAIL: the refusal did not name the field and its ByValTStr descriptor" >&2; printf '%s\n' "$bvt_err" | tail -3 >&2; exit 1; }
 echo "ByValTStr crossing refusal OK: exit 2, named the field and descriptor"
 
-echo "== 7/9 Asserting the width-mismatched [MarshalAs] struct field refuses at transpile =="
+echo "== 7/10 Asserting the width-mismatched [MarshalAs] struct field refuses at transpile =="
 # SUBJECT: the SAME descriptor gate asked by IsBlittableStruct —
 # a width-MISMATCHED [MarshalAs] on a blittable-typed field ([MarshalAs(I2)] int)
 # used to leave the struct on the blittable fast path and cross RAW, where real
@@ -176,7 +176,7 @@ grep -q "error: .*MisWidth.*'X' carries \[MarshalAs(UnmanagedType.I2)\]" <<<"$wm
     || { echo "FAIL: the refusal did not name the field and its I2 descriptor" >&2; printf '%s\n' "$wm_err" | tail -3 >&2; exit 1; }
 echo "width-mismatch crossing refusal OK: exit 2, named the field and descriptor"
 
-echo "== 8/9 Asserting [MarshalAs(SysInt)] on void* refuses at transpile =="
+echo "== 8/10 Asserting [MarshalAs(SysInt)] on void* refuses at transpile =="
 # SUBJECT: SysInt is not a valid descriptor for a void* field. Numeric width agreement is
 # insufficient: real .NET raises TypeLoadException when the struct crosses a P/Invoke
 # boundary. Same non-cached, before-the-cache-gate doctrine as the other refusal arms.
@@ -195,6 +195,28 @@ grep -q "error: .*DescribedPointer.*'Value' carries \[MarshalAs(UnmanagedType.Sy
     || { echo "FAIL: the refusal did not name the field and its SysInt descriptor" >&2; printf '%s\n' "$pd_err" | tail -3 >&2; exit 1; }
 echo "pointer-descriptor crossing refusal OK: exit 2, named the field and descriptor"
 
+echo "== 9/10 Asserting [MarshalAs(FunctionPtr)] on a void* parameter refuses at transpile =="
+# SUBJECT: FunctionPtr is honoured only on a genuine function-pointer type (the
+# PInvokeMarshalAsSubset positive rows); on void* real .NET raises
+# MarshalDirectiveException at the call ("pointers must not have a MarshalAs attribute
+# set"), so the acceptance must not widen to every pointer-shaped type. Same non-cached,
+# before-the-cache-gate doctrine as the other refusal arms: a regression here leaves the
+# positive transpile's bytes identical, so a warm cache would replay green right over it.
+build_proj samples/dotnet/PInvokeFnPtrDescriptorBad/PInvokeFnPtrDescriptorBad.csproj
+fpd_app="samples/dotnet/PInvokeFnPtrDescriptorBad/bin/$CONFIG/$TFM/PInvokeFnPtrDescriptorBad.dll"
+FPD_OUT="artifacts/pinvokenative-fnptrdescriptor-neg"
+rm -rf "$FPD_OUT"
+fpd_rc=0
+fpd_err=$(invoke_cli "$fpd_app" -r "$corelib" -o "$FPD_OUT" 2>&1) || fpd_rc=$?
+if [ "$fpd_rc" -ne 2 ]; then
+    echo "FAIL: the FunctionPtr-on-void* transpile exited $fpd_rc (want 2: the descriptor refusal)" >&2
+    printf '%s\n' "$fpd_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*\[MarshalAs(UnmanagedType.FunctionPtr)\] on Void\* is not supported" <<<"$fpd_err" \
+    || { echo "FAIL: the refusal did not name the FunctionPtr descriptor and the void* parameter" >&2; printf '%s\n' "$fpd_err" | tail -3 >&2; exit 1; }
+echo "FunctionPtr-on-void* refusal OK: exit 2, named the descriptor and the parameter type"
+
 # The native test library's source dir is a key input beyond the transpile
 # surface: the run dlopens what step 1 built from it.
 if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
@@ -204,7 +226,7 @@ if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
     exit 0
 fi
 
-echo "== 9/9 Linking against libdn2cpptest and running (exact diff vs real .NET) =="
+echo "== 10/10 Linking against libdn2cpptest and running (exact diff vs real .NET) =="
 extra_link_flags="$(libpath_flag "$LIBDIR")"
 consumer_rpath="$(consumer_rpath_flags "$LIBDIR")"
 [ -n "$consumer_rpath" ] && extra_link_flags="$extra_link_flags $consumer_rpath"

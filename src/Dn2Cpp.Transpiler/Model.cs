@@ -47,6 +47,17 @@ internal sealed class TypeDesc
                                     // (kept so a member reference on the instance
                                     // can substitute the declaring type's !n params)
 
+    /// <summary>A metadata function-pointer type (FNPTR — <c>delegate*&lt;...&gt;</c>, any
+    /// calling convention). Kind stays Pointer over Void: a function pointer is one
+    /// unmanaged pointer everywhere layout, codegen, mangling and the hot-update sigShape
+    /// look, and the last two are baked into emitted builds, so this shape must not print
+    /// or mangle apart from <c>void*</c>. The flag carries the one distinction real .NET
+    /// draws: <c>[MarshalAs(FunctionPtr)]</c> is valid on it alone — refused on
+    /// <c>void*</c>, as every width descriptor is on both (measured). Read by
+    /// <c>Compilation.MarshalDescribedExtent</c>, <c>CppTypes.MarshalAsNativeType</c> and
+    /// <c>CppTypes.StructFieldDescriptorSupported</c>.</summary>
+    public bool IsFunctionPointer;
+
     /// <summary>Lazily cached <c>Compilation.MangleArg</c> fragment — write-once and
     /// content-derived, so the never-mutated-after-construction rule above stays honest. The
     /// Class arm is NOT cached here (it reads the live <c>ClassInfo.CppName</c>, which the
@@ -139,6 +150,17 @@ internal sealed class TypeDesc
     public static TypeDesc MakePointer(TypeDesc element) =>
         Born(new() { Kind = TypeKind.Pointer, Element = element });
 
+    /// <summary>The interned function-pointer descriptor — ONE instance, because the
+    /// decoded signature is deliberately dropped (see
+    /// <c>SignatureProvider.GetFunctionPointerType</c>) and function pointers pervade real
+    /// CoreLib signatures. Declared after <see cref="s_primitives"/>, whose Void entry it
+    /// reads at static init.</summary>
+    private static readonly TypeDesc s_functionPointer = new()
+        { Kind = TypeKind.Pointer, IsFunctionPointer = true,
+          Element = MakePrimitive(PrimitiveTypeCode.Void) };
+
+    public static TypeDesc MakeFunctionPointer() => s_functionPointer;
+
     /// <summary>The interned generic-parameter placeholders, two rows (type <c>!n</c>
     /// / method <c>!!n</c>) indexed by parameter position. Real arities sit far under
     /// the bound; past it the factory falls back to a fresh object. ARRAYS, for the
@@ -191,6 +213,9 @@ internal sealed class TypeDesc
         TypeKind.SZArray => MakeSZArray(Element!.Substitute(ctx)),
         TypeKind.MDArray => MakeMDArray(Element!.Substitute(ctx), Rank),
         TypeKind.ByRef => MakeByRef(Element!.Substitute(ctx)),
+        // A function pointer's element is the interned Void — nothing to substitute, and
+        // rebuilding through MakePointer would silently drop the flag.
+        TypeKind.Pointer when IsFunctionPointer => this,
         TypeKind.Pointer => MakePointer(Element!.Substitute(ctx)),
         _ => this,
     };

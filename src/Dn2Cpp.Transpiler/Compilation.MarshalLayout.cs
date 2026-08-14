@@ -521,10 +521,15 @@ internal sealed partial class Compilation
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
     {
-        // void* rejects width descriptors. FunctionPtr is valid on delegate*, but both
-        // decode as Pointer(void), so conservatively refuse descriptors until they differ.
+        // A pointer-shaped field accepts exactly one descriptor: FunctionPtr, and only on
+        // a genuine function pointer (delegate*, either calling convention) — the no-op
+        // naming the one pointer the field already is. .NET refuses FunctionPtr on void*
+        // along with every width form ("pointers must not have a MarshalAs attribute
+        // set"), and refuses the width forms on a function pointer too (measured).
         if (t.Kind == TypeKind.Pointer)
-            return MarshalExtent.Refused;
+            return u == UT.FunctionPtr && t.IsFunctionPointer
+                ? MarshalExtent.Ok(ptr, ptr)
+                : MarshalExtent.Refused;
         if (t.Kind == TypeKind.Primitive)
         {
             switch (t.Primitive)

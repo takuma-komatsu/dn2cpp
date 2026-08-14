@@ -321,8 +321,11 @@ internal static class CppTypes
     /// encoding (<c>LPStr</c>/<c>LPUTF8Str</c>/<c>LPWStr</c> → a NUL-terminated buffer, so
     /// <c>void*</c> either way; the UTF-8 vs UTF-16 choice is woven at the call site),
     /// <c>LPArray</c> on a blittable-element array (a pointer to element 0, parameter
-    /// position only — identical to the default array marshalling), or a bool width
-    /// (<c>I1</c>/<c>U1</c> = 1-byte, <c>Bool</c> = the 4-byte default). A width override on
+    /// position only — identical to the default array marshalling), a bool width
+    /// (<c>I1</c>/<c>U1</c> = 1-byte, <c>Bool</c> = the 4-byte default), or
+    /// <c>FunctionPtr</c> on a function-pointer type (the no-op naming the raw pointer the
+    /// type already crosses as — .NET refuses the same descriptor on <c>void*</c>, so the
+    /// null here keeps that a loud carve-out). A width override on
     /// a fixed-size integer/enum is intentionally NOT supported: .NET requires the unmanaged
     /// width to match the managed integer's size (so <c>[MarshalAs(U1)] int</c> is a
     /// <c>MarshalDirectiveException</c>, and a matching width is a redundant no-op), leaving
@@ -330,6 +333,9 @@ internal static class CppTypes
     private static string? MarshalAsNativeType(
         TypeDesc t, bool isReturn, System.Runtime.InteropServices.UnmanagedType u)
     {
+        if (t is { Kind: TypeKind.Pointer, IsFunctionPointer: true }
+            && u == System.Runtime.InteropServices.UnmanagedType.FunctionPtr)
+            return "void*";
         if (t.IsString && u is System.Runtime.InteropServices.UnmanagedType.LPStr
             or System.Runtime.InteropServices.UnmanagedType.LPUTF8Str
             or System.Runtime.InteropServices.UnmanagedType.LPWStr)
@@ -554,7 +560,8 @@ internal static class CppTypes
     /// so a descriptor is acceptable only when it is that implemented form or an exact
     /// no-op — one naming the form the untouched lowering already emits (the same no-op set
     /// <c>Compilation.MarshalDescribedExtent</c> accepts): <c>Bool</c> on a <c>bool</c> (the
-    /// 4-byte default), <c>Struct</c> on a value-struct field, or a width-naming descriptor
+    /// 4-byte default), <c>Struct</c> on a value-struct field, <c>FunctionPtr</c> on a
+    /// function-pointer field, or a width-naming descriptor
     /// equal to the field's natural native width (<c>[MarshalAs(U4)] uint</c>). Everything
     /// else — <c>ByValTStr</c> (an inline character buffer the emitter would pass as a
     /// pointer), <c>I1</c>/<c>U1</c> on a bool (a 1-byte width the emitter would pass as 4),
@@ -573,8 +580,14 @@ internal static class CppTypes
         var u = f.MarshalAs;
         if (u == default)
             return true;
+        // FunctionPtr on a genuine function-pointer field names the raw pointer the
+        // untouched lowering already emits, so the struct stays blittable (measured: .NET
+        // passes it raw). Every other pointer/descriptor pairing — FunctionPtr on void*
+        // included — is .NET's TypeLoadException at the call ("pointers must not have a
+        // MarshalAs attribute set").
         if (f.Type.Kind == TypeKind.Pointer)
-            return false;
+            return f.Type.IsFunctionPointer
+                && u == System.Runtime.InteropServices.UnmanagedType.FunctionPtr;
         if (u == System.Runtime.InteropServices.UnmanagedType.ByValArray)
             return IsByValArrayField(f);
         var t = f.Type;
