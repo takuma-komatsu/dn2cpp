@@ -3310,6 +3310,17 @@ inline void dn2cpp_gc_store_ref(T** slot, T* value)
     dn2cpp_gc_write_barrier(slot);
 }
 
+// The same store into a slot readers may load without holding the lock the writer
+// holds: release, so acquiring the pointer acquires the referent's fields. The
+// barrier still FOLLOWS the store and is unaffected by it — it takes the slot's
+// address only, and dirties a page in the collector's own bitmap.
+template <typename T>
+inline void dn2cpp_gc_store_ref(std::atomic<T*>* slot, T* value)
+{
+    slot->store(value, std::memory_order_release);
+    dn2cpp_gc_write_barrier(slot);
+}
+
 // Reference-bearing bulk moves must use this rather than raw memmove.
 void dn2cpp_gc_memmove_refs(void* destination, const void* source, size_t bytes);
 
@@ -5844,21 +5855,32 @@ struct Dn2CppTask : Dn2CppObject
     std::atomic<int32_t> status; // DN2CPP_TASK_*
     int32_t id;                // Task.Id — positive, minted at alloc (fills the pad after status)
     Dn2CppObject* exception;   // managed exception object when faulted
-    Dn2CppObject* exceptionAggregate; // Task.Exception cache: the AggregateException wrapper,
-                               // minted on first get_Exception read (identity-stable). Never
-                               // stored into `exception` — await/Wait re-raise the bare fault.
+    // Task.Exception cache: the AggregateException wrapper, minted on first
+    // get_Exception read (identity-stable). Never stored into `exception` —
+    // await/Wait re-raise the bare fault. Atomic because that mint happens AFTER the
+    // settle, so unlike every other field here it rides no publication edge of its
+    // own; readers hold no lock (they allocate, which must not run under one).
+    std::atomic<Dn2CppObject*> exceptionAggregate;
     uint64_t result;           // Task<T> result, reinterpreted by T (0 for Task)
     Dn2CppCont* continuations; // resumptions waiting on this task (fired on complete)
     Dn2CppObject* workerKeepAlive; // Task.Run: keeps the worker delegate GC-reachable
-    Dn2CppTaskCold* cold;      // `new Task(...)` work not yet claimed by Start (else null)
+    // `new Task(...)` work not yet claimed by Start (else null). Atomic for the
+    // null-ness test generated Task.Status makes without the claim's lock; nothing
+    // dereferences it unlocked, so there is nothing to publish through it.
+    std::atomic<Dn2CppTaskCold*> cold;
 };
 
-// Generated code reads Dn2CppTask by offset: a status that is not int32_t-shaped
-// moves every field after it, and a lock-backed one puts a mutex where the id is.
+// Generated code reads Dn2CppTask by offset: an atomic field that is not shaped like
+// the scalar it replaces moves every field after it, and a lock-backed one puts a
+// mutex inside the struct. Pointer-shaped is also what keeps the conservative
+// collector able to see a referent through the slot.
 static_assert(sizeof(std::atomic<int32_t>) == sizeof(int32_t)
                   && alignof(std::atomic<int32_t>) == alignof(int32_t)
-                  && std::atomic<int32_t>::is_always_lock_free,
-              "Dn2CppTask::status must keep the ABI of a plain int32_t");
+                  && std::atomic<int32_t>::is_always_lock_free
+                  && sizeof(std::atomic<void*>) == sizeof(void*)
+                  && alignof(std::atomic<void*>) == alignof(void*)
+                  && std::atomic<void*>::is_always_lock_free,
+              "Dn2CppTask's atomic fields must keep the ABI of the plain scalars");
 
 // AsyncTaskMethodBuilder / AsyncTaskMethodBuilder<T> — value type. `boxed` is the
 // heap copy of the owning state machine once it has suspended (null until then);

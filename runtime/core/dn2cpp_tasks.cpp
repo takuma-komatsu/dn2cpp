@@ -72,11 +72,11 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->status.store(DN2CPP_TASK_PENDING, std::memory_order_relaxed);
     t->id = dn2cpp_task_next_id();
     t->exception = nullptr;
-    t->exceptionAggregate = nullptr;
+    t->exceptionAggregate.store(nullptr, std::memory_order_relaxed);
     t->result = 0;
     t->continuations = nullptr;
     t->workerKeepAlive = nullptr;
-    t->cold = nullptr;
+    t->cold.store(nullptr, std::memory_order_relaxed);
     return t;
 }
 
@@ -1962,7 +1962,9 @@ int32_t dn2cpp_task_wait_any(Dn2CppArrayRef* tasks)
 // the first read and cached in its own slot so every read returns the same
 // object (real .NET identity). The allocations happen OUTSIDE the lock (the
 // allocator may collect); the install is if-absent under g_task_mtx, so two
-// racing readers agree on one wrapper (the loser's is garbage).
+// racing readers agree on one wrapper (the loser's is garbage). A reader that
+// finds one already installed holds no lock, so the slot is atomic: that release
+// install is the only edge making the wrapper's own fields visible to it.
 Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t)
 {
     if (t == nullptr)
