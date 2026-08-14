@@ -477,7 +477,7 @@ else
         "Failed to load hostfxr" \
         "Unable to find the .NET assemblies directory" \
         "HARNESS_FAILED" \
-        "null function or function signature mismatch" \
+        "function signature mismatch" \
         "__PAGE_EXCEPTION" \
         "SCRIPT ERROR"; do
         if grep -q "$bad" "$LOG"; then
