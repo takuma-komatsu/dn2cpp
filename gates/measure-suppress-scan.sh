@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# The suppressed-finalizer set is searched by walking its slots, so a program
-# that suppresses a batch post-enqueue and then drains it may or may not pay
-# the set's size once per dequeue. DN2CPP_GC_SUPPRESS_STATS counts that walk
-# directly — a wall clock cannot separate it from collection time.
+# The suppressed-finalizer set is searched through an index whose hit paths
+# read one slot, so a program that suppresses a batch post-enqueue and then
+# drains it must NOT pay the set's size once per dequeue. DN2CPP_GC_SUPPRESS_STATS
+# counts the slot reads directly — a wall clock cannot separate them from
+# collection time.
 #
 # This is a measurement aid, NOT a regression gate: the walk cost is not
 # asserted against a bound, only printed alongside the linear-scan target for
@@ -46,12 +47,13 @@ if [ "$(grep -cF '=== dn2cpp GC suppress stats ===' <<<"$stats")" -ne 1 ]; then
     exit 1
 fi
 
-# Both operands are the constants that produce the walk, read where they are
+# Both operands are the constants that bound the walk, read where they are
 # declared rather than restated here: the sample suppresses (and then dequeues)
-# `Count` victims, and the set is searched a chunk at a time. A search that stops
-# at what it found costs a chunk per dequeue, so their product is the linear
-# target; walking the whole set per dequeue costs the square of the set's size.
-# Freezing the measured number instead would only track this machine's collector.
+# `Count` victims, and the set grows a chunk at a time. A chunk's worth of reads
+# per dequeue is the widest a healthy search may be, so their product is the
+# linear target; walking the whole set per dequeue costs the square of the set's
+# size. Freezing the measured number instead would only track this machine's
+# collector.
 suppresses=$(sed -n 's/^ *private const int Count = \([0-9_]*\);.*/\1/p' \
     "samples/dotnet/$project/Program.cs" | LC_ALL=C tr -d '_')
 chunk_entries=$(sed -n 's/^constexpr uint32_t kSuppressChunkEntries = \([0-9]*\);.*/\1/p' \
