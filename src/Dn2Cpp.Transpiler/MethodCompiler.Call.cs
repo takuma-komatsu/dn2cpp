@@ -1006,8 +1006,16 @@ internal sealed partial class MethodCompiler
             args[i] = CoerceTo(Pop(), ps[i], CppTypes.Of(ps[i]));
 
         string retC = sig.ReturnType.IsVoid ? "void" : CppTypes.Of(sig.ReturnType);
-        string fnPtrType = $"{retC} (*)({string.Join(", ", ps.Select(CppTypes.Of))})";
+        // The pointer must be spelled with the callee's ABI return, which the backend
+        // may know to be narrower than the declaration (IEmitBackend.CalliAbiType).
+        string abiRetC = sig.ReturnType.IsVoid ? "void"
+            : _backend?.CalliAbiType(_method, sig.ReturnType) ?? retC;
+        string fnPtrType = $"{abiRetC} (*)({string.Join(", ", ps.Select(CppTypes.Of))})";
         string call = $"(({fnPtrType})({Cast(ftn, "void*")}))({string.Join(", ", args)})";
+        // A plain cast, so the widening takes its direction from the narrow type's
+        // signedness rather than from the declaration's.
+        if (abiRetC != retC)
+            call = $"(({retC}){call})";
 
         if (sig.ReturnType.IsVoid)
             Emit(call + ";");

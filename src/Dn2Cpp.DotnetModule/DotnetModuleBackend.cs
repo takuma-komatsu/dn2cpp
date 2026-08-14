@@ -21,6 +21,10 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         _godotClassRoots = godotClassRoots ?? Array.Empty<string>();
     }
 
+    /// <summary>Real GodotSharp's engine interop surface: one declaration per slot of
+    /// the table, each invoking its <c>delegate* unmanaged</c> field by <c>calli</c>.</summary>
+    private const string NativeFuncsType = "Godot.NativeInterop.NativeFuncs";
+
     public string RuntimeHeader => "dn2cpp_dotnetmodule.h";
 
     public ICallIntrinsics? CallIntrinsics { get; } = new DotnetModuleCallIntrinsics();
@@ -145,6 +149,18 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     public bool WantsTypeofReflectionSurface(ClassInfo cls)
         => cls.Module.AssemblyName != "GodotSharp";
 
+    /// <summary>An interop slot returning a core enum returns <c>int32_t</c>: Godot's
+    /// C++ enums are int-width and the glue spells the return so, while the bindings
+    /// generator widens every core enum to <c>: long</c> on the C# side. A predicate
+    /// and not a list of names, so a re-pin that adds such a slot is covered.</summary>
+    public string? CalliAbiType(MethodInfo enclosing, TypeDesc declared)
+    {
+        if (enclosing.DeclaringClass.FullName != NativeFuncsType)
+            return null;
+        return declared.Kind == TypeKind.Class && declared.Class is { IsEnum: true }
+            ? "int32_t" : null;
+    }
+
     /// <summary>The transpiled bootstrap chain the emitted export calls: engine
     /// interop-table install, managed-callback table fill, script registration.
     /// None of these is reachable from an app-module root (the game assembly's
@@ -152,7 +168,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     public IEnumerable<MethodInfo> AdditionalRootMethods(Compilation c)
     {
         _appAssemblyName = c.AppModule.AssemblyName;
-        _nativeFuncsInitialize = ResolveRoot(c, "Godot.NativeInterop.NativeFuncs", "Initialize", 2);
+        _nativeFuncsInitialize = ResolveRoot(c, NativeFuncsType, "Initialize", 2);
         _managedCallbacksCreate = ResolveRoot(c, "Godot.Bridge.ManagedCallbacks", "Create", 1);
         _lookupScriptsInAssembly = ResolveRoot(c, "Godot.Bridge.ScriptManagerBridge", "LookupScriptsInAssembly", 1);
         // The main-thread SynchronizationContext singleton: the epilogue's
@@ -168,7 +184,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // The struct whose size the emitted entry's interop-size probe reports (see
         // EmitEpilogue). Resolved here, with the other roots, so a missing/renamed
         // one fails at the same loud place they do rather than inside the emit.
-        _unmanagedCallbacks = ResolveNestedStruct(c, "Godot.NativeInterop.NativeFuncs", "UnmanagedCallbacks");
+        _unmanagedCallbacks = ResolveNestedStruct(c, NativeFuncsType, "UnmanagedCallbacks");
         // The ManagedCallbacks slot the emitted entry wraps (the per-frame
         // callback), resolved BY NAME from the model — the same structural
         // resolution UnmanagedCallbacks gets above — so a GodotSharp re-pin that

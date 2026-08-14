@@ -58,6 +58,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     public System.Reflection.Metadata.MetadataReader Reader => _reader;
     public LiteralPool Literals => _literals;
 
+    private readonly IEmitBackend? _backend;
+
     private readonly StringBuilder _body = new();
     private readonly List<(string Type, string Name)> _decls = new();
     private readonly HashSet<string> _declared = new();
@@ -412,14 +414,15 @@ internal sealed partial class MethodCompiler : IEvalStack
         return $", (const void* const*){slot}";
     }
 
-    public MethodCompiler(Compilation c, MethodInfo method, LiteralPool literals, ICallIntrinsics? intrinsics = null)
+    public MethodCompiler(Compilation c, MethodInfo method, LiteralPool literals, IEmitBackend? backend = null)
     {
         _c = c;
         _method = method;
         _module = method.Module;
         _reader = _module.Reader;
         _literals = literals;
-        _intrinsics = intrinsics;
+        _backend = backend;
+        _intrinsics = backend?.CallIntrinsics;
     }
 
     /// <summary>Marks <paramref name="cls"/> and its base chain as referenced so

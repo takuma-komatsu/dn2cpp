@@ -1690,7 +1690,7 @@ internal sealed partial class CppEmitter
             foreach (var m in synthetic)
             {
                 if (compiled.Add(m)
-                    && new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    && new MethodCompiler(_c, m, literals, _backend)
                         .CompileIntrinsicCallWrapper() is { } wrapper)
                 {
                     emitBody?.Invoke(m, wrapper);
@@ -1722,7 +1722,7 @@ internal sealed partial class CppEmitter
                 // which is the premise of the emit set's own CppName dedupe.
                 if (!mintedSymbols.Add(m.CppName))
                     continue;
-                emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                     .CompileSynthesizedValueBody());
                 compiledMethods.Add(m);
             }
@@ -1750,7 +1750,7 @@ internal sealed partial class CppEmitter
                 // reached in Compilation.Reach, so no discovery is lost.
                 if (CoreIntrinsics.BrHttpShim.Matches(cls.FullName, m.Name))
                 {
-                    emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                         .CompileHttpShimBody());
                     compiledMethods.Add(m);
                     continue;
@@ -1762,7 +1762,7 @@ internal sealed partial class CppEmitter
                 // null so the null-conditional skips the compile.
                 if (CoreIntrinsics.BrEnumInstanceFormat.Matches(cls.FullName, m.Name))
                 {
-                    emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)
                         .CompileEnumInstanceFormatBody());
                     compiledMethods.Add(m);
                     continue;
@@ -1772,7 +1772,7 @@ internal sealed partial class CppEmitter
                 // a forwarder from the same P/Invoke lowering a call site gets.
                 if (_c.PInvokeFtnTargets.Contains(m))
                 {
-                    var forwarder = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    var forwarder = new MethodCompiler(_c, m, literals, _backend)
                             .CompilePInvokeWrapper()
                         ?? throw new NotSupportedException(
                             $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
@@ -1788,7 +1788,7 @@ internal sealed partial class CppEmitter
                 // transpiled — synthesize one from the call intrinsic's lowering.
                 if (_c.IntrinsicFtnTargets.Contains(m))
                 {
-                    var wrapper = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    var wrapper = new MethodCompiler(_c, m, literals, _backend)
                             .CompileCoreIntrinsicWrapper()
                         ?? throw new NotSupportedException(
                             $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
@@ -1809,7 +1809,7 @@ internal sealed partial class CppEmitter
                 // own symbol, so the slot, any ldftn and a direct call all resolve to it.
                 if (CoreIntrinsics.MdComparerCompare.Matches(m))
                 {
-                    var wrapper = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    var wrapper = new MethodCompiler(_c, m, literals, _backend)
                             .CompileCoreIntrinsicWrapper()
                         ?? throw new NotSupportedException(
                             $"{m.DeclaringClass.FullName}::{m.Name}: non-generic boxed-ordering body intercept has no intrinsic lowering to synthesize from");
@@ -1853,13 +1853,13 @@ internal sealed partial class CppEmitter
                 if (CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName))
                 {
                     string body;
-                    if (new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    if (new MethodCompiler(_c, m, literals, _backend)
                             .CompileCoreIntrinsicWrapper() is { } iw)
                         body = iw;
                     else
                         try
                         {
-                            body = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics).Compile();
+                            body = new MethodCompiler(_c, m, literals, _backend).Compile();
                         }
                         // Must-escape (Compilation.IsMustEscape): a bound overrun is a
                         // NotSupportedException, so the type alone does not filter it —
@@ -1897,7 +1897,7 @@ internal sealed partial class CppEmitter
                 // error.
                 if (_c.SharedGenericsEnabled && Compilation.IsCanonicalMethod(m))
                 {
-                    var mc = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics)
+                    var mc = new MethodCompiler(_c, m, literals, _backend)
                     {
                         SharedTrial = true,
                         SharedDirectCallees = planning ? new List<(MethodInfo, bool)>() : null,
@@ -1959,7 +1959,7 @@ internal sealed partial class CppEmitter
                 }
                 if (diagnostics is null)
                 {
-                    var body = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics).Compile();
+                    var body = new MethodCompiler(_c, m, literals, _backend).Compile();
                     if (!planning)
                     {
                         emitBody?.Invoke(m, body);
@@ -1969,7 +1969,7 @@ internal sealed partial class CppEmitter
                 }
                 try
                 {
-                    string body = new MethodCompiler(_c, m, literals, _backend.CallIntrinsics).Compile();
+                    string body = new MethodCompiler(_c, m, literals, _backend).Compile();
                     emitBody?.Invoke(m, body);
                     compiledMethods.Add(m);
                 }
