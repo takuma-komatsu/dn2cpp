@@ -181,11 +181,14 @@ godot_dotnet_link_lib() {
 # godot_dotnet_pin_abi_check PINNED_COMMIT ABI_EXPECTED — the shared pin +
 # interop-ABI tripwire of the engine E2E gates. The artifacts, the clone, and
 # the gate's expectations must all describe one commit: a drifted clone
-# silently changes the engine side of the handshake ABI. Fingerprints the two
+# silently changes the engine side of the handshake ABI. Fingerprints the three
 # ABI surfaces the emitted entry hard-codes assumptions about: the engine's
 # interop function table (order/count of unmanaged_callbacks —
-# NativeFuncs.Initialize indexes into it) and the ManagedCallbacks struct
-# (order/count of the 37 slots; the FrameCallback wrap addresses slot 7).
+# NativeFuncs.Initialize indexes into it), the ManagedCallbacks struct
+# (order/count of the 37 slots; the FrameCallback wrap addresses slot 7), and
+# the C# interop declarations themselves — the backend reconstructs each calli
+# function-pointer type from those signatures, so a changed one is a re-audit
+# and not a re-freeze.
 # Requires $GODOT_DOTNET_ROOT/pin.txt + editor_bin; exports CLONE.
 godot_dotnet_pin_abi_check() {
     local pinned="$1" abi_expected="$2"
@@ -232,6 +235,8 @@ godot_dotnet_pin_abi_check() {
             | shasum -a 256 | awk '{print $1"  unmanaged_callbacks"}'
         shasum -a 256 "$CLONE/modules/mono/glue/GodotSharp/GodotSharp/Core/Bridge/ManagedCallbacks.cs" \
             | awk '{print $1"  ManagedCallbacks.cs"}'
+        shasum -a 256 "$CLONE/modules/mono/glue/GodotSharp/GodotSharp/Core/NativeInterop/NativeFuncs.cs" \
+            | awk '{print $1"  NativeFuncs.cs"}'
     )"
     # A MISSING baseline is a failure, not an invitation to record one. The
     # self-freezing arm this replaces turned the whole ABI assertion into
@@ -254,8 +259,153 @@ godot_dotnet_pin_abi_check() {
         echo "expected:" >&2; cat "$abi_expected" >&2
         echo "actual:" >&2; printf '%s\n' "$abi_actual" >&2
         echo "      The mono-module handshake ABI changed — re-audit the emitted entry" >&2
-        echo "      (slot order/count) before re-freezing the fingerprints." >&2
+        echo "      (slot order/count, interop signature widths) before re-freezing." >&2
         return 1
     fi
     echo "pin OK: $pinned (clone: $CLONE); ABI fingerprints OK"
+}
+
+# godot_dotnet_interop_return_abi_check CLONE AGG_EXPECTED — that no interop
+# slot's RETURN width disagrees between the C# declaration and the engine's C
+# definition, except the one class the DotnetModule backend corrects: a
+# return-position core enum, which Godot's bindings generator emits as `: long`
+# while the glue returns `int32_t`. The backend rebuilds each calli
+# function-pointer type from the managed signature, so that pair traps wasm32's
+# call_indirect ("function signature mismatch"); a native target absorbs it in
+# the return register, which is why nothing else names it.
+#
+# Parameters are not compared: the NativeFuncs.cs fingerprint above already
+# turns any declaration change into a re-audit, for a fraction of what modelling
+# both sides' parameter spellings would cost. Aggregates are not modelled either
+# — many slots return a struct by value and the glue collapses all ten
+# packed-array flavours onto one opaque type. A pair with an aggregate on either
+# side is skipped, and the per-side count of those is frozen in AGG_EXPECTED so a
+# new type spelling cannot quietly leave the comparison.
+godot_dotnet_interop_return_abi_check() {
+    local clone="$1" agg_expected="$2"
+    local cpp="$clone/modules/mono/glue/runtime_interop.cpp"
+    local cs="$clone/modules/mono/glue/GodotSharp/GodotSharp/Core/NativeInterop/NativeFuncs.cs"
+    if [ ! -f "$agg_expected" ]; then
+        echo "FAIL: $agg_expected is missing — the baseline is committed, so this is a deletion, not a first run." >&2
+        echo "      Restore it from git rather than re-freezing: a regenerated baseline certifies whatever this clone says." >&2
+        return 1
+    fi
+    LC_ALL=C awk -v agg_expected="$agg_expected" '
+    function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
+    # A wasm32 value type. An unrecognised spelling is "aggregate", which drops
+    # the pair from the comparison rather than inventing a width for it — the
+    # frozen aggregate count is what refuses that drift.
+    function reduce(t, side,   s) {
+        s = trim(t); sub(/^const[ \t]+/, "", s); s = trim(s)
+        if (s ~ /[*&]$/ || s ~ /^delegate\*/) return "i32"   # a pointer is 32-bit here
+        if (side == "cs")  return (s in csw)  ? csw[s]  : "aggregate"
+        return (s in cppw) ? cppw[s] : "aggregate"
+    }
+    function fill(spec, tbl,   a, kv, i) {
+        split(spec, a, " ")
+        for (i in a) { split(a[i], kv, ":"); tbl[kv[1]] = kv[2] }
+    }
+    BEGIN {
+        # C++, as the glue spells it. Bare `long` is absent on purpose: C `long`
+        # is pointer-width, so widening it here would invent an ABI.
+        fill("void:void bool:i32 char:i32 int:i32 int8_t:i32 uint8_t:i32 int16_t:i32 uint16_t:i32 int32_t:i32 uint32_t:i32 Error:i32 int64_t:i64 uint64_t:i64 float:f32 double:f64", cppw)
+        # C#. IntPtr is POINTER-width, i.e. i32 on wasm32 and not i64. godot_bool
+        # is a byte-backed enum, so it too is a scalar; every other Godot core
+        # enum is `: long`, which is the whole disagreement this checks for.
+        fill("void:void bool:i32 char:i32 sbyte:i32 byte:i32 short:i32 ushort:i32 int:i32 uint:i32 Int32:i32 UInt32:i32 IntPtr:i32 UIntPtr:i32 nint:i32 nuint:i32 godot_bool:i32 long:i64 ulong:i64 Int64:i64 UInt64:i64 float:f32 double:f64", csw)
+        enum64["Error"] = 1
+        for (e in enum64) csw[e] = "i64"
+    }
+    NR == FNR {
+        if ($0 ~ /^static const void \*unmanaged_callbacks\[\]\{/) { blk = 1; next }
+        if (blk) {
+            if ($0 ~ /^\};/) { blk = 0; next }
+            if (match($0, /godotsharp_[A-Za-z0-9_]+/)) slot[++ns] = substr($0, RSTART, RLENGTH)
+            next
+        }
+        # Every definition puts `<rettype> godotsharp_<name>(` on one line at
+        # column 0; only the parameter lists wrap.
+        if ($0 ~ /^[A-Za-z_]/ && match($0, /godotsharp_[A-Za-z0-9_]+\(/)) {
+            n = substr($0, RSTART, RLENGTH - 1); nc++
+            cppret[n] = trim(substr($0, 1, RSTART - 1))
+        }
+        next
+    }
+    # The C# return type is on the `static partial` line even for the two
+    # declarations that wrap before the name.
+    {
+        if (pend != "") {
+            if (match($0, /godotsharp_[A-Za-z0-9_]+/)) {
+                n = substr($0, RSTART, RLENGTH); csname[++nm] = n; csret[n] = pend
+            }
+            pend = ""; next
+        }
+        if (match($0, /static partial /)) {
+            r = substr($0, RSTART + RLENGTH)
+            if (match(r, /godotsharp_[A-Za-z0-9_]+\(/)) {
+                n = substr(r, RSTART, RLENGTH - 1); csname[++nm] = n
+                csret[n] = trim(substr(r, 1, RSTART - 1))
+            } else pend = trim(r)
+        }
+    }
+    END {
+        if (ns == 0) { print "FAIL: no unmanaged_callbacks[] block parsed — the slot count has no source"; exit 1 }
+        if (ns != nc || ns != nm) {
+            printf "FAIL: parse counts differ — %d unmanaged_callbacks[] slots, %d glue definitions, %d C# declarations\n", ns, nc, nm
+            bad++
+        }
+        # The C# declarations are compared in ORDER (NativeFuncs.Initialize
+        # indexes into the table); the glue definitions only as a set, because
+        # they are grouped by the header they wrap and never were in table order.
+        for (i = 1; i <= ns; i++) {
+            if (slot[i] != csname[i]) {
+                printf "FAIL: slot %d is %s in unmanaged_callbacks[] and %s in NativeFuncs.cs\n", \
+                    i, slot[i], (i in csname) ? csname[i] : "<nothing parsed>"
+                bad++
+            }
+            if (!(slot[i] in cppret)) { printf "FAIL: no glue definition parsed for %s\n", slot[i]; bad++ }
+            # An empty token means the line matched but the return type is not on
+            # it — a wrapped definition, which would otherwise reduce to
+            # "aggregate" and leave the slot uncompared.
+            if (cppret[slot[i]] == "") { printf "FAIL: no return type on the glue definition line of %s\n", slot[i]; bad++ }
+            if (csret[slot[i]] == "")  { printf "FAIL: no return type on the C# declaration of %s\n", slot[i]; bad++ }
+            known[slot[i]] = 1
+        }
+        for (i = ns + 1; i <= nm; i++) { printf "FAIL: NativeFuncs.cs declares %s, which no slot names\n", csname[i]; bad++ }
+        for (n in cppret) if (!(n in known)) { printf "FAIL: the glue defines %s, which no slot names\n", n; bad++ }
+
+        for (i = 1; i <= ns; i++) {
+            n = slot[i]
+            cr = reduce(cppret[n], "cpp"); sr = reduce(csret[n], "cs")
+            if (cr == "aggregate") { cagg++; caggspell[cppret[n]]++ }
+            if (sr == "aggregate") { sagg++; saggspell[csret[n]]++ }
+            if (cr == "aggregate" || sr == "aggregate") continue
+            ncmp++
+            if (cr == sr) continue
+            if (cr == "i32" && sr == "i64" && (csret[n] in enum64)) {
+                if (corrected != "") corrected = corrected ", "
+                corrected = corrected n
+                continue
+            }
+            printf "FAIL: %s returns %s (%s) in C# and %s (%s) in the glue\n", n, csret[n], sr, cppret[n], cr
+            bad++
+        }
+
+        got = sprintf("cpp-aggregate %d\ncs-aggregate %d\n", cagg, sagg)
+        want = ""
+        while ((getline ln < agg_expected) > 0) want = want ln "\n"
+        if (want != got) {
+            printf "FAIL: aggregate-return counts differ from %s\nexpected:\n%sactual:\n%s", agg_expected, want, got
+            printf "      A slot changed to a type spelling the reduction table does not name — widen the table or audit the slot, then re-freeze.\n"
+            printf "      Unmodelled return spellings, glue side:\n"
+            for (s in caggspell) printf "        %-32s %d\n", s, caggspell[s]
+            printf "      Unmodelled return spellings, C# side:\n"
+            for (s in saggspell) printf "        %-32s %d\n", s, saggspell[s]
+            bad++
+        }
+        if (bad) exit 1
+        printf "interop returns OK: %d slots, %d width-compared, %d aggregate (glue) / %d aggregate (C#)\n", ns, ncmp, cagg, sagg
+        printf "corrected return-position enums (glue int32_t, C# 64-bit enum): %s\n", (corrected != "") ? corrected : "none"
+    }
+    ' "$cpp" "$cs" || return 1
 }

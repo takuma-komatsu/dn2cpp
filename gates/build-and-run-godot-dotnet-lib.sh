@@ -8,7 +8,13 @@
 # symbol resolved — no engine run here (that is the handshake gate,
 # gates/build-and-run-godot-dotnet-handshake.sh).
 #
-# Section 3 cross-builds the SAME generated C++ for Android through the NDK.
+# Section 1 is static: it holds every interop slot's RETURN width to the engine's
+# own C definition, which is the cheapest place to ask — no emcc, no engine, no
+# link. It also carries the pin/ABI tripwire, so this gate now FAILS rather than
+# skips on a machine with the artifact root but no clone; four other DM gates
+# already do.
+#
+# Section 4 cross-builds the SAME generated C++ for Android through the NDK.
 # The drop-in is what an exported APK carries in lib/<abi>/, and the engine
 # there dlopens it by bare soname — so the assertion is the ELF shape plus the
 # same export surface, in the ELF spelling (no leading underscore). It is the
@@ -24,12 +30,21 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_dotnet.sh"
 
 OUT=gates/out-godot-dotnet-lib
+PINNED_COMMIT=a13da4feb8d8aefc283c3763d33a2f170a18d541
+ABI_EXPECTED=gates/expected/godot-dotnet-abi.sha256
+INTEROP_AGG_EXPECTED=gates/expected/godot-dotnet-interop-aggregates.txt
 
-if ! godot_dotnet_root_ok; then
+if ! godot_dotnet_root_ok || [ ! -f "$GODOT_DOTNET_ROOT/pin.txt" ]; then
     gate_skip "godot-dotnet artifacts absent/incomplete at $GODOT_DOTNET_ROOT — run gates/setup-godot-dotnet.sh (or set DN2CPP_GODOT_DOTNET_ROOT)"
 fi
 
-echo "== 1/3 Building the mono-module shared library =="
+echo "== 1/4 Pin + interop ABI, statically =="
+# The pin check first: it is what resolves and verifies $CLONE, so the extractor
+# below cannot read a drifted tree.
+godot_dotnet_pin_abi_check "$PINNED_COMMIT" "$ABI_EXPECTED"
+godot_dotnet_interop_return_abi_check "$CLONE" "$INTEROP_AGG_EXPECTED"
+
+echo "== 2/4 Building the mono-module shared library =="
 godot_dotnet_transpile "$OUT"
 
 # Keyed on the transpile surface, and checked BEFORE the native link: the link
@@ -54,7 +69,7 @@ fi
 godot_dotnet_link_lib "$OUT"
 DYLIB="$OUT/$(lib_name DotnetSample)"
 
-echo "== 2/3 Asserting the export surface =="
+echo "== 3/4 Asserting the export surface =="
 # The engine resolves godotsharp_game_main_init from the loaded library.
 # (grep without -q so it drains the dump's full output — `grep -q` exits on the
 # first match, the tool dies of SIGPIPE, and pipefail turns that into a bogus
@@ -71,7 +86,7 @@ if [ "$DN2CPP_OS" = windows ]; then
     # existing is the assertion. The POSIX arm below is not redundant, it asks a
     # question that only has an answer there.
     echo "link OK: no undefined dn2cpp_dm_* symbols (a PE link cannot leave one)"
-# Unanchored, exactly like the ELF twin in section 3, and that is the whole
+# Unanchored, exactly like the ELF twin in section 4, and that is the whole
 # point: the host functions are declared in runtime/dotnetmodule/
 # dn2cpp_dotnetmodule.h with NO `extern "C"`, so an undefined reference is
 # Itanium-mangled (__Z38dn2cpp_dm_set_managed_frame_callback…) and the character
@@ -86,7 +101,7 @@ else
     echo "link OK: no undefined dn2cpp_dm_* symbols"
 fi
 
-echo "== 3/3 Cross-building the drop-in for Android (NDK) =="
+echo "== 4/4 Cross-building the drop-in for Android (NDK) =="
 if [ -z "${ANDROID_NDK_ROOT:-}" ] || [ ! -f "$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" ]; then
     # A SECTION opt-out, not a whole-gate one: the host build above did run and
     # did hold. Point ANDROID_NDK_ROOT at an installed NDK to activate this.
@@ -110,10 +125,10 @@ case "$desc" in
     *) echo "FAIL: not an ELF 64-bit aarch64 shared library: $SO" >&2; exit 1 ;;
 esac
 
-# The same two asserts as section 2, in the ELF spelling: -D reads the dynamic
+# The same two asserts as section 3, in the ELF spelling: -D reads the dynamic
 # symbol table (the only one a dlopen consumer can resolve through), and ELF
 # carries no leading underscore. (grep without -q so it drains llvm-nm's output —
-# see the note in section 2.)
+# see the note in section 3.)
 if ! "$LLVM_NM" -D --defined-only "$SO" | grep "godotsharp_game_main_init" >/dev/null; then
     echo "FAIL: $SO does not export godotsharp_game_main_init" >&2
     exit 1
