@@ -131,11 +131,22 @@ user identity, and the low-level monitor.
   already-blittable shapes, so those calls direct-link once the modules are
   admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port is a line in
   the transpiler and a `target_link_libraries` row.
-- **wasm defines exactly one.**
+- **wasm defines three.**
   `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp` supplies
-  `SystemNative_GetCryptographicallySecureRandomBytes`, because that symbol has a
-  caller that is not a P/Invoke. The rest is deliberately absent: `FileStream` does
-  not link on wasm, and the intercepted `File.*` subset works against MEMFS.
+  `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
+  P/Invoke at all, plus the `pal_time.c` clocks behind
+  `Stopwatch.GetTimestamp` and `Environment.TickCount64`. Both user calls resolve
+  from MemberReferences to real CoreLib bodies and reach P/Invokes. An in-CoreLib
+  MethodDefinition call to `TickCount64` can instead take the
+  `dn2cpp_tickcount64` intrinsic. Lowering a P/Invoke is
+  target-neutral, so excluding the POSIX file excludes the definition and leaves
+  its caller. The timestamp-resolution entry has no counterpart here because
+  `Stopwatch.Frequency` is a constant on this CoreLib. The rest is deliberately
+  absent: `FileStream` does not link on wasm, and the intercepted `File.*` subset
+  works against MEMFS. Absent means something weaker here than in an executable
+  link: on a side module an undefined symbol is a wasm IMPORT that throws only
+  when first called, which is why the export gates assert the drop-in's whole
+  import closure rather than trusting the link.
 
 So the first question of a port is not "how do I write these functions" but
 **"which CoreLib flavour will this target's programs be transpiled from, and what

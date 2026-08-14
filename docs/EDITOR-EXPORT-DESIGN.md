@@ -706,6 +706,15 @@ condition so an unstamped or differently stamped zip is relinked.
   first for an async send, so a Web build uses the synchronous `Send`.
 - **`FileStream` does not link** (the pre-existing wasm carve-out). The
   intercepted `File.*` subset works against MEMFS.
+- **The `libSystem.Native` surface this target defines is hand-picked**, and the
+  omissions do not behave like the two above. Lowering a P/Invoke is
+  target-neutral, so an omitted PAL symbol is still called; on a side module that
+  is a wasm IMPORT rather than a link error, and it throws
+  `TypeError: resolved is not a function` at the first call, naming a function
+  index. Nothing upstream sees it — which is why the two Web export gates assert
+  the drop-in's whole import closure against the exported main module and glue,
+  and why `gates/build-and-run-wasm-console.sh` carries the clock section: that
+  axis links an executable, where the same gap is a named wasm-ld failure.
 - The publish uses the **host RID**, never `browser-wasm`: dn2cpp consumes only
   IL, and a `browser-wasm` publish would demand the `wasm-tools` workload and a
   Mono-flavoured CoreLib, changing the very IL we transpile. The RID is a
