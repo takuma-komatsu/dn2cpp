@@ -116,6 +116,11 @@ git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 エディタエクスポートの 2 ゲートを流すだけで、それ以外は一切検証しない。
 **`gates/pre-merge.sh` が green な `main` からリリースを切ること。**
 
+例外はリリーススクリプト自身の拒否で、こちらは通常のスイート内の
+`gates/build-and-run-release-preconditions.sh` が実行している —— 合成 metadata で
+各拒否を発火させ、終了コードだけでなく remedy の文言まで照合する。つまり
+スイートが green なら、本ファイル末尾の表にある文言は実際に出てくるものと同じ。
+
 ### 0-C. 両ホストが同じコミットにいること
 
 - **フォークのコミット**は `dist/release-github.sh` が強制する。両エディタの

@@ -118,6 +118,12 @@ A release runs no gates. `--smoke` in `dist/package-editor-*.sh` runs the two
 editor-export gates and nothing else is verified. **Cut a release from a `main`
 on which `gates/pre-merge.sh` is green.**
 
+The release scripts' own refusals are the exception, and they are exercised by
+`gates/build-and-run-release-preconditions.sh` in the ordinary suite: it drives
+them over synthetic metadata and asserts the remedy text, not just the exit
+status. So a green suite says the messages in the table at the bottom of this
+file are the ones you will actually see.
+
 ### 0-C. Both hosts on the same commit
 
 - **The fork commit** is enforced by `dist/release-github.sh`: both editors'
