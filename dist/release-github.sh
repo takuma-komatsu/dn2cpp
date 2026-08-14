@@ -98,7 +98,7 @@ LANES_KNOWN="editor-macos editor-windows web macos"
 editor_row() {
     printf 'editor|%s|%s\n' \
         "release_version asset asset_sha256 fork_commit base_pin engine_provenance editor_version_string dn2cpp_commit toolchain_content_hash corelib_framework prebuilt_axes cmake_version ninja_version node_version" \
-        "ASSET_EDITOR$1:asset ASSET_EDITOR$1_SHA256:asset_sha256 EDITOR_VERSION_STRING$1:editor_version_string DN2CPP_COMMIT$1:dn2cpp_commit TOOLCHAIN_CONTENT_HASH$1:toolchain_content_hash PREBUILT_AXES$1:prebuilt_axes CMAKE_VERSION$1:cmake_version NINJA_VERSION$1:ninja_version NODE_VERSION$1:node_version"
+        "ASSET_EDITOR$1:asset ASSET_EDITOR$1_SHA256:asset_sha256 EDITOR_VERSION_STRING$1:editor_version_string DN2CPP_COMMIT:dn2cpp_commit TOOLCHAIN_CONTENT_HASH$1:toolchain_content_hash PREBUILT_AXES$1:prebuilt_axes CMAKE_VERSION$1:cmake_version NINJA_VERSION$1:ninja_version NODE_VERSION$1:node_version"
 }
 
 lane_row() {
@@ -292,6 +292,15 @@ echo "-- engine_provenance: $ENGINE_PROVENANCE (every lane that has one agrees)"
 CORELIB_FRAMEWORK="$(lane_agree corelib_framework \
     "Both editors are built against one SDK; re-package the stale one")"
 
+# One release names ONE dn2cpp, for the reason it names one engine: an editor is
+# its export toolchain, and two toolchains built from different commits are two
+# transpilers behind one version number. The hosts cut hours apart, so agreement
+# is not something a packaging run can notice on its own — it is pinned there
+# (--dn2cpp-commit) and read back here.
+DN2CPP_COMMIT="$(lane_agree dn2cpp_commit \
+    "Re-package the second host's editor pinned to the first's, e.g.:
+         dist/package-editor-windows.sh --version $VERSION --dn2cpp-commit <sha>")"
+
 # ── 4. The fork worktree, and the commit the editors were built from ──────────
 godot_fork_resolve || die "cannot resolve the fork worktree (see above)"
 [ -n "$COMMIT" ] || COMMIT="$(git -C "$FORK" rev-parse HEAD)"
@@ -385,7 +394,7 @@ for lane in $ACTIVE_LANES; do
        The notes print it beside a link to the repository. Push dn2cpp first:
          git push origin $DN2CPP_BRANCH"
 done
-echo "-- dn2cpp origin/$DN2CPP_BRANCH: contains every editor lane's dn2cpp_commit"
+echo "-- dn2cpp: $DN2CPP_COMMIT (every editor lane agrees; origin/$DN2CPP_BRANCH contains it)"
 
 # The notes link the guide at a fixed sha — this worktree's HEAD, not the remote
 # tip, so a reader clicking through gets the text the operator read before
@@ -398,7 +407,7 @@ git merge-base --is-ancestor "$DOCS_REF" "$dn2cpp_tip" || die \
          git push origin $DN2CPP_BRANCH"
 # Only the guide, not the whole worktree: unrelated work in progress is no
 # reason to refuse a cut, but an edit to the linked file is not in that sha.
-guide_dirty="$(git status --porcelain -- "$GUIDE")"
+guide_dirty="$(git status --porcelain --untracked-files=all -- "$GUIDE")"
 [ -z "$guide_dirty" ] || die "$GUIDE has uncommitted changes, and the notes would link $DOCS_REF, which does not have them:
 $guide_dirty"
 echo "-- docs ref: $(git rev-parse --short "$DOCS_REF") ($GUIDE is committed and pushed)"
@@ -630,7 +639,7 @@ Godot $BASE_VER + the dn2cpp .NET export backend.
 
 base pin:       $BASE_PIN
 fork commit:    $COMMIT
-dn2cpp commit:  $(lane_val "$FIRST_EDITOR_LANE" dn2cpp_commit)
+dn2cpp commit:  $DN2CPP_COMMIT
 toolchain hash: $(lane_val "$FIRST_EDITOR_LANE" toolchain_content_hash)"
 
 existing_tag="$(git -C "$FORK" rev-parse --verify --quiet "refs/tags/$TAG^{commit}" || true)"

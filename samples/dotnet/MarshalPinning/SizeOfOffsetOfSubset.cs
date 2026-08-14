@@ -80,6 +80,46 @@ unsafe struct BarePointer { public void* F; }
 unsafe struct PointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public void* F; }
 unsafe struct FunctionPointerSysInt { [MarshalAs(UnmanagedType.SysInt)] public delegate* unmanaged<void> F; }
 unsafe struct PointerI8 { [MarshalAs(UnmanagedType.I8)] public void* F; }
+// An OFFSET that moves with the pointer width: I sits at 8 on a 64-bit target and at 4 on a
+// 32-bit one, so it folds to a sizeof(void*) sum instead of a literal. That is the only other
+// form an offset can take — the model has a 32-bit reading whenever it has a 64-bit one, so a
+// 64-bit-only offset never arises.
+struct PtrThenInt { public IntPtr P; public int I; }                 // 16, I@8
+// FunctionPtr is the one descriptor a pointer-shaped field takes, and only a genuine
+// function pointer takes it — either calling convention; void* is refused. The bare
+// field is the control, and the tail field pins the described offset, not just the size.
+unsafe struct BareFnPtr { public delegate* unmanaged<void> F; }
+unsafe struct FnPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged<void> F; }
+unsafe struct ManagedFnPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate*<void> F; }
+unsafe struct VoidPtrFnPtr { [MarshalAs(UnmanagedType.FunctionPtr)] public void* F; }
+unsafe struct FnPtrTail { [MarshalAs(UnmanagedType.FunctionPtr)] public delegate* unmanaged<void> F; public byte T; }
+// A width descriptor names a NUMBER, and .NET asks the KIND first: only a primitive field
+// takes one. Every fixture below names the width its field already has and is refused for
+// its kind alone. An ENUM is the one non-primitive that takes one, at its underlying width.
+[StructLayout(LayoutKind.Sequential)] struct InnerLong { public long V; }
+[StructLayout(LayoutKind.Sequential)] struct InnerInt { public int V; }
+[StructLayout(LayoutKind.Sequential)] struct InnerPtr { public IntPtr V; }
+delegate void Callback();
+struct NestedI8 { [MarshalAs(UnmanagedType.I8)] public InnerLong F; }
+struct NestedI4 { [MarshalAs(UnmanagedType.I4)] public InnerInt F; }
+struct NestedSysInt { [MarshalAs(UnmanagedType.SysInt)] public InnerPtr F; }
+struct DelegateSysInt { [MarshalAs(UnmanagedType.SysInt)] public Callback F; }
+struct HandleSysInt { [MarshalAs(UnmanagedType.SysInt)] public GCHandle F; }
+struct SeqClassI8 { [MarshalAs(UnmanagedType.I8)] public SeqClass F; }
+struct DateTimeI8 { [MarshalAs(UnmanagedType.I8)] public DateTime F; }
+struct NestedStruct { [MarshalAs(UnmanagedType.Struct)] public InnerLong F; }
+struct EnumI1 { [MarshalAs(UnmanagedType.I1)] public EByte F; }
+struct EnumI8 { [MarshalAs(UnmanagedType.I8)] public ELong F; }
+struct EnumI2 { [MarshalAs(UnmanagedType.I2)] public EByte F; }
+// Struct names the INLINE-STRUCT form, and .NET asks the kind for it too: an enum marshals
+// as its underlying integer and a delegate as a function pointer, so neither takes it,
+// while a [StructLayout] CLASS does — its marshalled form IS an inline struct.
+struct RefField { public string S; }
+struct StructOnEnum { [MarshalAs(UnmanagedType.Struct)] public EByte F; }
+struct StructOnDelegate { [MarshalAs(UnmanagedType.Struct)] public Callback F; }
+struct StructOnAuto { [MarshalAs(UnmanagedType.Struct)] public AutoLaidOut F; }
+struct StructOnSeqClass { [MarshalAs(UnmanagedType.Struct)] public SeqClass F; }
+struct StructOnRefField { [MarshalAs(UnmanagedType.Struct)] public RefField F; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -253,11 +293,49 @@ unsafe class Program
         Console.WriteLine("m ptr-sysint=" + Marshal.SizeOf(typeof(PtrSysInt)) + "/" + Marshal.SizeOf<PtrSysInt>());
         Console.WriteLine("m int-i4=" + Marshal.SizeOf(typeof(IntI4)) + "/" + Marshal.SizeOf<IntI4>());
         // The bare pointer is the control; SysInt and I8 are invalid on void* and SysInt is
-        // invalid on delegate*. FunctionPtr on delegate* needs a distinct decoded type.
+        // invalid on delegate*.
         Console.WriteLine("m pointer-bare=" + Marshal.SizeOf(typeof(BarePointer)) + "/" + Marshal.SizeOf<BarePointer>());
         Console.WriteLine("m pointer-sysint=" + Verdict(() => Marshal.SizeOf(typeof(PointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<PointerSysInt>()));
         Console.WriteLine("m fnptr-sysint=" + Verdict(() => Marshal.SizeOf(typeof(FunctionPointerSysInt))) + "/" + Verdict(() => Marshal.SizeOf<FunctionPointerSysInt>()));
         Console.WriteLine("m pointer-i8=" + Verdict(() => Marshal.SizeOf(typeof(PointerI8))) + "/" + Verdict(() => Marshal.SizeOf<PointerI8>()));
+        // A size AND an offset that both move with the pointer width, from both spellings —
+        // the width rows above all fold to literals, so this is the only row here whose
+        // constants are sizeof(void*) sums.
+        Console.WriteLine("m ptr-then-int=" + Marshal.SizeOf(typeof(PtrThenInt)) + "/" + Marshal.SizeOf<PtrThenInt>()
+            + " I@" + (long)Marshal.OffsetOf<PtrThenInt>("I") + "/" + (long)Marshal.OffsetOf(typeof(PtrThenInt), "I"));
+        // FunctionPtr is accepted on a function pointer alone — either calling
+        // convention, described or bare, size and offset — and refused on void*, where
+        // every descriptor is refused.
+        Console.WriteLine("m fnptr-bare=" + Marshal.SizeOf(typeof(BareFnPtr)) + "/" + Marshal.SizeOf<BareFnPtr>());
+        Console.WriteLine("m fnptr-fnptr=" + Marshal.SizeOf(typeof(FnPtrFnPtr)) + "/" + Marshal.SizeOf<FnPtrFnPtr>());
+        Console.WriteLine("m fnptr-managed=" + Marshal.SizeOf(typeof(ManagedFnPtrFnPtr)) + "/" + Marshal.SizeOf<ManagedFnPtrFnPtr>());
+        Console.WriteLine("m voidptr-fnptr=" + Verdict(() => Marshal.SizeOf(typeof(VoidPtrFnPtr))) + "/" + Verdict(() => Marshal.SizeOf<VoidPtrFnPtr>()));
+        Console.WriteLine("m fnptr-tail=" + Marshal.SizeOf(typeof(FnPtrTail)) + "/" + (long)Marshal.OffsetOf<FnPtrTail>("T"));
+        // Same descriptors, asked of the KIND instead of the number: each one names the width
+        // its field already has and .NET refuses it anyway, because a nested struct, a
+        // delegate, a sequential class, GCHandle and DateTime take no width descriptor at all.
+        Console.WriteLine("m nested-i8=" + Verdict(() => Marshal.SizeOf(typeof(NestedI8))) + "/" + Verdict(() => Marshal.SizeOf<NestedI8>()));
+        Console.WriteLine("m nested-i4=" + Verdict(() => Marshal.SizeOf(typeof(NestedI4))) + "/" + Verdict(() => Marshal.SizeOf<NestedI4>()));
+        Console.WriteLine("m nested-sysint=" + Verdict(() => Marshal.SizeOf(typeof(NestedSysInt))) + "/" + Verdict(() => Marshal.SizeOf<NestedSysInt>()));
+        Console.WriteLine("m delegate-sysint=" + Verdict(() => Marshal.SizeOf(typeof(DelegateSysInt))) + "/" + Verdict(() => Marshal.SizeOf<DelegateSysInt>()));
+        Console.WriteLine("m gchandle-sysint=" + Verdict(() => Marshal.SizeOf(typeof(HandleSysInt))) + "/" + Verdict(() => Marshal.SizeOf<HandleSysInt>()));
+        Console.WriteLine("m seqclass-i8=" + Verdict(() => Marshal.SizeOf(typeof(SeqClassI8))) + "/" + Verdict(() => Marshal.SizeOf<SeqClassI8>()));
+        Console.WriteLine("m datetime-i8=" + Verdict(() => Marshal.SizeOf(typeof(DateTimeI8))) + "/" + Verdict(() => Marshal.SizeOf<DateTimeI8>()));
+        // The controls that keep the kind test from being a blanket refusal: Struct names the
+        // nested struct's own form, and an enum takes a width descriptor equal to its
+        // underlying integer's — one naming a different width is refused as before.
+        Console.WriteLine("m nested-struct=" + Marshal.SizeOf(typeof(NestedStruct)) + "/" + Marshal.SizeOf<NestedStruct>());
+        Console.WriteLine("m enum-i1=" + Marshal.SizeOf(typeof(EnumI1)) + "/" + Marshal.SizeOf<EnumI1>());
+        Console.WriteLine("m enum-i8=" + Marshal.SizeOf(typeof(EnumI8)) + "/" + Marshal.SizeOf<EnumI8>());
+        Console.WriteLine("m enum-i2=" + Verdict(() => Marshal.SizeOf(typeof(EnumI2))) + "/" + Verdict(() => Marshal.SizeOf<EnumI2>()));
+        // Struct asks the kind as well: an enum, a delegate and an auto-layout struct are all
+        // refused, where a [StructLayout] class and a value struct holding a reference field
+        // both name the inline form they already marshal as and answer.
+        Console.WriteLine("m struct-on-enum=" + Verdict(() => Marshal.SizeOf(typeof(StructOnEnum))) + "/" + Verdict(() => Marshal.SizeOf<StructOnEnum>()));
+        Console.WriteLine("m struct-on-delegate=" + Verdict(() => Marshal.SizeOf(typeof(StructOnDelegate))) + "/" + Verdict(() => Marshal.SizeOf<StructOnDelegate>()));
+        Console.WriteLine("m struct-on-auto=" + Verdict(() => Marshal.SizeOf(typeof(StructOnAuto))) + "/" + Verdict(() => Marshal.SizeOf<StructOnAuto>()));
+        Console.WriteLine("m struct-on-seqclass=" + Marshal.SizeOf(typeof(StructOnSeqClass)) + "/" + Marshal.SizeOf<StructOnSeqClass>());
+        Console.WriteLine("m struct-on-reffield=" + Marshal.SizeOf(typeof(StructOnRefField)) + "/" + Marshal.SizeOf<StructOnRefField>());
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'

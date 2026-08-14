@@ -175,9 +175,14 @@ projects_under_gates() {
 # still shows up, as a difference in that file. An abort that EVERY locale takes
 # is a different matter and is handled at the call site: it means the sweep saw
 # only the run's prefix, so the subject is reported as a skip rather than a green.
+#
+# The locale rides only the EXEC'd child: a wrapper started under a locale glibc
+# lacks warns onto the compared file, differently per locale, so every subject
+# reads HOST-DEP. .NET reads ICU, so the child needs no glibc locale.
 run_bounded_locale() {  # LOCALE DLL OUTFILE CWD
-    ( cd "$4" && LANG="$1" LC_ALL="$1" \
-        perl -e 'alarm shift; exec @ARGV' "$RUN_SECS" dotnet "$2" \
+    ( cd "$4" && LANG=C LC_ALL=C \
+        perl -e '$ENV{LANG} = $ENV{LC_ALL} = shift; alarm shift; exec @ARGV; exit 127' \
+        "$1" "$RUN_SECS" dotnet "$2" \
         </dev/null >"$3" 2>&1 ) 2>/dev/null
 }
 

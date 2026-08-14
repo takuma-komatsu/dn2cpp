@@ -58,10 +58,14 @@ Everything outside the table — object marshalling, array returns, a
 **non-blittable struct in return position**, and the
 `COM`/`BStr`/`ByValArray`/`SafeArray`/`FunctionPtr` `[MarshalAs]` kinds **on a
 parameter or return** — is a precise `NotSupportedException` at transpile time,
-never a silent default. Two narrowings of that sentence: a non-blittable struct *is*
-marshalled in parameter and byref position (its own row above), and `ByValArray` is
+never a silent default. Three narrowings of that sentence: a non-blittable struct *is*
+marshalled in parameter and byref position (its own row above); `ByValArray` is
 a carve-out only as a parameter/return `[MarshalAs]` — as a struct-field descriptor
-it is a supported row.
+it is a supported row; and `FunctionPtr` is a carve-out only off its own type — on a
+function-pointer (`delegate*`) parameter, return or struct field it is the no-op
+naming the raw pointer the type already crosses as (`PInvokeMarshalAsSubset`; on
+`void*` real .NET refuses it, and the native gate's FunctionPtr-on-`void*` arm
+asserts the transpile does too).
 
 Three further sections of the same bucket assert a P/Invoke **mechanism** rather
 than a marshalling shape, so they have no row: `PInvokeCrossAsmSubset` (imports

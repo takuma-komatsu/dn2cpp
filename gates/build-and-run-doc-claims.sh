@@ -118,7 +118,7 @@ check_paths() {
     ok "$f: all $n cited repo paths exist"
 }
 
-echo "== 1/12 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
+echo "== 1/13 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
 PM=docs/PINVOKE-MARSHALLING.md
 BUCKET=samples/dotnet/PInvokeNative
 
@@ -137,7 +137,7 @@ driven=$(grep -o '^[[:space:]]*[A-Za-z0-9_]*\.Program\.__GateEntry();' "$BUCKET/
          | sed 's/^[[:space:]]*//; s/\.Program\.__GateEntry();$//' | sort -u)
 set_eq "PInvokeNative sections: bucket vs driver" "present in the bucket" "$tree_sections" "driven by Program.cs" "$driven"
 
-echo "== 2/12 AGENTS.md — the default-reference wiring =="
+echo "== 2/13 AGENTS.md — the default-reference wiring =="
 # The conditional default references. This is the one claim in AGENTS.md that
 # says out loud that nothing checks it — "Nothing references these assemblies at
 # build time, so nothing fails when a wiring is dropped", and of the destinations
@@ -190,7 +190,7 @@ for f in $(printf '%s' "$flat" | grep -oE '`dist/[a-z-]*smoke-test\.sh`' | tr -d
     fi
 done
 
-echo "== 3/12 docs/PORTING.md — the PAL seam's declared contract =="
+echo "== 3/13 docs/PORTING.md — the PAL seam's declared contract =="
 # The seam is a contract between this repository and somebody porting to a target
 # it has never seen. The SOURCE of the classification is the `// PAL-CONTRACT:`
 # marker on each declaration in the header, not the table in the doc, so this
@@ -246,7 +246,7 @@ for impl in runtime/core/platform/*/dn2cpp_pal_*.cpp; do
     set_eq "$impl vs the seam" "seam" "$pal_required" "impl" "$have"
 done
 
-echo "== 4/12 the generated culture table's own header =="
+echo "== 4/13 the generated culture table's own header =="
 # It states a row count and a provenance, and it is a "do not edit by hand" file —
 # which is why the count is worth checking: a hand-added row leaves the header
 # describing a table that no longer exists. The candidate list is the generator's
@@ -265,7 +265,7 @@ ct_cands=$(grep -cE '^[^#[:space:]]' "$CT_CAND" || true)
 eq "$CT_CAND names one candidate per emitted row" "$ct_cands" "$ct_rows" \
    "a candidate the generator REFUSES is legitimately absent from the table — it prints the reason; otherwise regenerate"
 
-echo "== 5/12 the BCL exception-message key set, written twice =="
+echo "== 5/13 the BCL exception-message key set, written twice =="
 # The transpiler emits the texts (Dn2Cpp.BclMessages) and the runtime asks for
 # them by name (the DN2CPP_SR_* constants). The lookup is by key, so drift can
 # only LOSE a message — the runtime asks for a key nothing emitted, reads null,
@@ -277,7 +277,7 @@ set_eq "the BCL message key set" \
     "src/Dn2Cpp.Transpiler/BclMessages.cs" "$sr_emitted" \
     "runtime/core/dn2cpp_core.h DN2CPP_SR_*" "$sr_asked"
 
-echo "== 6/12 the banned pipeline shape — an early-exiting consumer =="
+echo "== 6/13 the banned pipeline shape — an early-exiting consumer =="
 # gates/_common.sh's `set -o pipefail` note claims the tree builds no pipeline
 # into a consumer that can quit before its producer is done. It is the one claim
 # here whose subject is a shape rather than a number, and it has two failure modes
@@ -315,7 +315,7 @@ eq "gates/_common.sh 'none of which builds a pipeline at all' — pipelines into
    "0" "$n_badpipe" \
    "each is: ${badpipe:-none}. Rewrite as \`grep -q P <<<\"\$(X)\"\`, \`grep -q P FILE\`, \`head -N <<<\"\$(X)\"\`, \`\${x%%\$'\''\\n'\''*}\` or \`first_line \"\$(X)\"\`; see the note beside \`set -o pipefail\` in gates/_common.sh"
 
-echo "== 7/12 docs/EDITOR-EXPORT-DESIGN.md — the release assets and the bundle layout =="
+echo "== 7/13 docs/EDITOR-EXPORT-DESIGN.md — the release assets and the bundle layout =="
 # A release asset is exactly a dist/ script that writes the `<lane>.metadata`
 # dist/release-github.sh consumes; §11's table is the hand-written copy of that
 # set. Both directions matter: a lane packaged and undocumented leaves a release
@@ -340,7 +340,7 @@ tree_top=$(grep -oE '\$LAYOUT/[A-Za-z0-9_.-]+' dist/package-toolchain.sh \
 set_eq "$EED §4 bundle contents vs the layout dist/package-toolchain.sh stages" \
        "named by §4" "$doc_top" "staged under \$LAYOUT" "$tree_top"
 
-echo "== 8/12 dist/release-notes-template.md — bound by its renderer =="
+echo "== 8/13 dist/release-notes-template.md — bound by its renderer =="
 # The template is rendered on a packaging host at release time, and that is the
 # only machine its two failure modes reach: an @@KEY@@ nothing binds dies mid-cut,
 # and a comment that is not a lane marker publishes verbatim onto the release
@@ -427,7 +427,7 @@ if [ -n "${guide_files// }" ]; then
        "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
 fi
 
-echo "== 9/12 the pinned toolchains a bundle ships, and their keep lists =="
+echo "== 9/13 the pinned toolchains a bundle ships, and their keep lists =="
 # Everything here holds for BOTH pins — the Emscripten SDK and the cmake+ninja
 # pair — because both are the same thing: an upstream archive per host, unpacked,
 # trimmed to a keep list, staged into the bundle.
@@ -549,7 +549,7 @@ for TRIM in "$EMSDK_TRIM" "$BUILDTOOLS_TRIM"; do
        "a kept directory keeps its whole subtree, so naming something inside one narrows nothing"
 done
 
-echo "== 10/12 README.md — the vendored set against third_party/ =="
+echo "== 10/13 README.md — the vendored set against third_party/ =="
 # README's License section is the only inventory of what this repository vendors
 # and under what terms, so a tree added without a row ships with its license
 # unstated — and one whose row outlived it credits a license nothing carries.
@@ -565,12 +565,12 @@ doc_vendored=$(awk '/^## /{s = ($0 == "## License")} s' README.md \
 set_eq "README.md's vendored license list vs third_party/" \
        "licensed by README.md" "$doc_vendored" "present under third_party/" "$tree_vendored"
 
-echo "== 11/12 dangling path references in every doc =="
+echo "== 11/13 dangling path references in every doc =="
 for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"
 done
 
-echo "== 12/12 the GDExtension library name, written in five places =="
+echo "== 12/13 the GDExtension library name, written in five places =="
 # One fixed name is spelled by the CMake pin that produces the library, by the
 # [libraries] of every shipped .gdextension, and by README. A .gdextension that
 # drifts is a dlopen failure in the engine naming no cause, and README is what a
@@ -602,6 +602,28 @@ else
         fi
     done
 fi
+
+echo "== 13/13 the exec bit on every script a doc tells you to run =="
+# AGENTS.md and README spell `./gates/<name>.sh`; a script committed 100644
+# answers that with permission denied, and no suite notices — the runner invokes
+# a gate as `bash "$script"`, and a measure script has no suite at all. The
+# exemption is the sourced libraries, and the first check is what licenses the
+# second: `gates/_` marks a file that is sourced and never run, so the exemption
+# stays exactly the set the tree sources.
+libs_sourced=$(git ls-files '*.sh' '.github/workflows/*.yml' \
+    | while read -r f; do
+        sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]#[^"'"'"'`]*$//' "$f" \
+            | grep -E '^[[:space:]]*(source|\.)[[:space:]]' \
+            | grep -oE '[A-Za-z0-9_.-]+\.sh' || true
+      done | sort -u)
+set_eq "the sourced-library set against the gates/_ prefix" \
+    "sourced somewhere" "$libs_sourced" \
+    "named gates/_*.sh" "$(git ls-files 'gates/_*.sh' | sed 's|.*/||' | sort -u)"
+
+nonexec=$(git ls-files -s '*.sh' | awk '$1 != "100755" && $4 !~ /^gates\/_/ { print $4 }')
+eq "runnable scripts committed without their exec bit" \
+   "0" "$(grep -c . <<<"$nonexec" || true)" \
+   "each is: $(tr '\n' ' ' <<<"$nonexec"); fix with \`git update-index --chmod=+x <path>\`"
 
 echo
 if [ "$FAILS" -ne 0 ]; then

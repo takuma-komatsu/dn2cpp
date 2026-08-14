@@ -624,6 +624,62 @@ selfhost_bin_fresh() {
     [ "$SELFHOST_SRC_STAMPED" = "$SELFHOST_SRC_NOW" ]
 }
 
+# dn2cpp_pin_bin_assert BIN SRC_HASH PIN_COMMIT — refuse unless the native CLI at
+# BIN was built from the sources SRC_HASH fingerprints. selfhost_bin_fresh asks
+# the same question about the standard path; this one is for a binary named by
+# hand (--dn2cpp-bin), where the stamp beside it is the only witness there is.
+# A MISSING stamp is unknown provenance, not a pass, for the reason written at
+# selfhost_bin_fresh.
+#
+# SRC_HASH is an argument rather than a src_tree_hash call: the hash is not cheap
+# and the caller usually holds one already.
+dn2cpp_pin_bin_assert() {
+    local bin="$1" src_hash="$2" pin="$3" stamped
+    stamped="$(cat "$(dirname "$bin")/dn2cpp.src-hash" 2>/dev/null || echo '<no stamp>')"
+    [ "$stamped" = "$src_hash" ] && return 0
+    echo "error: $bin was not built from dn2cpp $pin" >&2
+    echo "       stamped $stamped != $src_hash (src_tree_hash of src/ runtime/ third_party/)" >&2
+    echo "       Rebuild it at the pinned commit: gates/selfhost-emit.sh" >&2
+    return 1
+}
+
+# dn2cpp_commit_pin_resolve PIN — PIN's full sha in DN2CPP_PIN_COMMIT, once this
+# tree is proved to BE it; a message and 1 otherwise. A release cuts every editor
+# lane from one dn2cpp commit, and the hosts that cut them are different machines
+# at different hours, so the commit is named by the operator and verified here
+# rather than read off HEAD and believed.
+#
+# Cleanliness is half the answer, not a courtesy: the packaging runs over the
+# WORKING TREE, so under an uncommitted edit the stamped commit is a name for
+# something that was never built. Untracked-but-not-ignored counts — src_tree_hash
+# fingerprints those files and the compiler reads them — and it is asked for
+# EXPLICITLY, because `status.showUntrackedFiles=no` in the operator's own config
+# otherwise answers "clean" for exactly the tree this refuses to vouch for.
+dn2cpp_commit_pin_resolve() {
+    local pin="$1" full head dirty
+    full="$(git rev-parse --verify --quiet "$pin^{commit}")" || {
+        echo "error: --dn2cpp-commit $pin is not a commit in this repository" >&2
+        echo "       Fetch it and try again: git fetch origin" >&2
+        return 1
+    }
+    head="$(git rev-parse HEAD)"
+    [ "$head" = "$full" ] || {
+        echo "error: --dn2cpp-commit names $full, but this tree is at $head" >&2
+        echo "       The bundle is built from the tree; check the pinned commit out:" >&2
+        echo "         git checkout $full" >&2
+        return 1
+    }
+    dirty="$(git status --porcelain --untracked-files=all)"
+    [ -z "$dirty" ] || {
+        echo "error: the working tree is not $full — it carries changes of its own:" >&2
+        printf '%s\n' "$dirty" | sed 's/^/       /' >&2
+        echo "       Commit or stash them: what ships must be the commit the other host" >&2
+        echo "       is pinned to, not a tree that merely started there." >&2
+        return 1
+    }
+    DN2CPP_PIN_COMMIT="$full"
+}
+
 # ── Native build backend (CMake) ──────────────────────────────────────────────
 # Sole native backend. compile_console / compile_gdextension link the runtime
 # libs ensure_cmake_runtime builds once and exports as dn2cpp-targets.cmake.
@@ -3256,18 +3312,25 @@ _toolchain_stage_unlock() {
     _pidlock_release "$1/.dn2cpp-stage-lock.d"
 }
 
-# stage_editor_toolchain GODOTSHARP SELFHOST_BIN PACKAGE_LOG — package the
-# working tree's toolchain and install it into GODOTSHARP/Dn2Cpp (pass
-# $FORK_GODOTSHARP), atomically and idempotently.
+# stage_editor_toolchain GODOTSHARP SELFHOST_BIN PACKAGE_LOG [DN2CPP_COMMIT] —
+# package the working tree's toolchain and install it into GODOTSHARP/Dn2Cpp
+# (pass $FORK_GODOTSHARP), atomically and idempotently. The optional fourth
+# argument is a release cut's --dn2cpp-commit pin.
 stage_editor_toolchain() {
-    local godotsharp="$1" selfhost_bin="$2" package_log="$3"
+    local godotsharp="$1" selfhost_bin="$2" package_log="$3" pin="${4:-}"
     local lock_parent
     lock_parent="$(dirname "$godotsharp")"
     _toolchain_stage_lock "$lock_parent" || return 1
 
+    # The pin is a release cut's argument and a gate never passes one; forwarded
+    # rather than checked here, because the manifest it has to be true of is
+    # written one level down.
+    local pkg_argv=(--layout-only --dn2cpp-bin "$selfhost_bin")
+    [ -z "$pin" ] || pkg_argv+=(--dn2cpp-commit "$pin")
+
     # Packaging runs INSIDE the lock: package-toolchain.sh rm -rf's the shared
     # layout dir, so this closes the layout-dir race too.
-    bash dist/package-toolchain.sh --layout-only --dn2cpp-bin "$selfhost_bin" \
+    bash dist/package-toolchain.sh "${pkg_argv[@]}" \
         >"$package_log" 2>&1 || {
         echo "FAIL: packaging the toolchain failed (see below)" >&2
         cat "$package_log" >&2

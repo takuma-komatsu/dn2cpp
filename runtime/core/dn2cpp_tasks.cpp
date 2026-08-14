@@ -67,21 +67,23 @@ Dn2CppTask* dn2cpp_task_alloc()
 {
     auto* t = static_cast<Dn2CppTask*>(dn2cpp_alloc(sizeof(Dn2CppTask)));
     t->type = &dn2cpp_task_type;
-    t->status = DN2CPP_TASK_PENDING;
+    // Relaxed here and in every other pre-completed mint below: the task is private
+    // to this thread until the caller publishes it, and that handoff carries it.
+    t->status.store(DN2CPP_TASK_PENDING, std::memory_order_relaxed);
     t->id = dn2cpp_task_next_id();
     t->exception = nullptr;
-    t->exceptionAggregate = nullptr;
+    t->exceptionAggregate.store(nullptr, std::memory_order_relaxed);
     t->result = 0;
     t->continuations = nullptr;
     t->workerKeepAlive = nullptr;
-    t->cold = nullptr;
+    t->cold.store(nullptr, std::memory_order_relaxed);
     return t;
 }
 
 Dn2CppTask* dn2cpp_task_completed()
 {
     auto* t = dn2cpp_task_alloc();
-    t->status = DN2CPP_TASK_SUCCEEDED;
+    t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     return t;
 }
 
@@ -90,18 +92,15 @@ Dn2CppTask* dn2cpp_task_completed()
 // segment and references nothing; read-only by construction — every reader sees
 // the non-PENDING status before touching result/exception, so the mutating
 // suspend/continuation paths never run on it.
-Dn2CppTask dn2cpp_task_default_completed = [] {
-    Dn2CppTask t{};
-    t.type = &dn2cpp_task_type;
-    t.status = DN2CPP_TASK_SUCCEEDED;
-    t.id = dn2cpp_task_next_id(); // keep the "Id > 0" invariant for the sentinel too
-    return t;
-}();
+// Aggregate-initialized: an atomic member makes Dn2CppTask non-copyable.
+Dn2CppTask dn2cpp_task_default_completed{
+    { &dn2cpp_task_type }, DN2CPP_TASK_SUCCEEDED,
+    dn2cpp_task_next_id() }; // keep the "Id > 0" invariant for the sentinel too
 
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result)
 {
     auto* t = dn2cpp_task_alloc();
-    t->status = DN2CPP_TASK_SUCCEEDED;
+    t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
     return t;
 }
@@ -431,7 +430,9 @@ static void dn2cpp_task_complete(Dn2CppTask* t, int32_t status, uint64_t result,
         t->result = result;
         dn2cpp_gc_write_barrier(&t->result);
         dn2cpp_gc_store_ref(&t->exception, exception);
-        t->status = status; // settled last; await-registration gates on it
+        // Settled last, with release: await-registration gates on it under this
+        // lock, and the drain reads it — and then result/exception — without it.
+        t->status.store(status, std::memory_order_release);
         conts = t->continuations;
         dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     }
@@ -975,7 +976,7 @@ Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception)
 {
     auto* t = dn2cpp_task_alloc();
     t->exception = exception;
-    t->status = DN2CPP_TASK_FAULTED;
+    t->status.store(DN2CPP_TASK_FAULTED, std::memory_order_relaxed);
     return t;
 }
 
@@ -1060,7 +1061,7 @@ Dn2CppTask* dn2cpp_task_from_canceled()
 {
     auto* t = dn2cpp_task_alloc();
     dn2cpp_gc_store_ref(&t->exception, dn2cpp_make_task_canceled_exception());
-    t->status = DN2CPP_TASK_CANCELED;
+    t->status.store(DN2CPP_TASK_CANCELED, std::memory_order_relaxed);
     return t;
 }
 
@@ -1081,7 +1082,7 @@ static int32_t dn2cpp_task_try_complete(Dn2CppTask* t, int32_t status, uint64_t 
         t->result = result;
         dn2cpp_gc_write_barrier(&t->result);
         dn2cpp_gc_store_ref(&t->exception, exception);
-        t->status = status; // settled last; await-registration gates on it
+        t->status.store(status, std::memory_order_release); // settled last, as above
         conts = t->continuations;
         dn2cpp_gc_store_ref(&t->continuations, static_cast<Dn2CppCont*>(nullptr));
     }
@@ -1961,7 +1962,9 @@ int32_t dn2cpp_task_wait_any(Dn2CppArrayRef* tasks)
 // the first read and cached in its own slot so every read returns the same
 // object (real .NET identity). The allocations happen OUTSIDE the lock (the
 // allocator may collect); the install is if-absent under g_task_mtx, so two
-// racing readers agree on one wrapper (the loser's is garbage).
+// racing readers agree on one wrapper (the loser's is garbage). A reader that
+// finds one already installed holds no lock, so the slot is atomic: that release
+// install is the only edge making the wrapper's own fields visible to it.
 Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t)
 {
     if (t == nullptr)

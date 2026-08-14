@@ -1970,10 +1970,9 @@ internal sealed partial class CppEmitter
                 esName = $"\"{es.Name}\"";
                 esGuid = es.Guid is null ? null : $"\"{es.Guid}\"";
             }
-            // A guarded size is a 64-bit number the model could not restate at 32 bits.
-            // TopLevelMarshalSizeText already declines one so both spellings of SizeOf agree;
-            // this filter is the backstop that keeps a 64-bit-only number out of the stamp.
-            string? marshalSize = _c.MarshalStampSize(cls) is { Guarded: false } msz ? msz.Int32Expr : null;
+            // The stamp and the folded SizeOf<T> constant are one text from one builder, which
+            // is what keeps the two spellings agreeing — do not re-decide the size here.
+            string? marshalSize = _c.MarshalStampSize(cls) is { } msz ? msz.Int32Expr : null;
             string tail = TypeInfoTail(
                 ("0", null),                                 // varianceMask
                 ("0", marshalSize),                          // marshalSize

@@ -123,9 +123,10 @@ internal sealed partial class Compilation
 
     /// <summary>The top-level size as C++ text, null when the verdict is not
     /// <see cref="MarshalSizeVerdict.Known"/> — or when the size is GUARDED, i.e. right only
-    /// at 64 bits. Both readers of this text must agree, and the stamp already declines a
-    /// guarded size, so folding one into <c>SizeOf&lt;T&gt;</c> would answer where the
-    /// non-generic spelling throws. Declining it here is what makes them agree.</summary>
+    /// at 64 bits. Guarded cannot arise (see <see cref="TopLevelMarshalOffsetText"/>), and
+    /// this site declines where that one asserts because an unfolded size has a safe
+    /// fallback: the runtime verdict, which answers a blittable type's target-evaluated
+    /// <c>instanceSize</c> and throws naming any other. An offset has no such fallback.</summary>
     internal ModeledSize? TopLevelMarshalSizeText(ClassInfo cls)
     {
         var e = TopLevelMarshalExtent(cls);
@@ -135,13 +136,22 @@ internal sealed partial class Compilation
     }
 
     /// <summary>One field's top-level <c>Marshal.OffsetOf</c> as C++ text; null when the type
-    /// or the field is outside the model.</summary>
+    /// or the field is outside the model.
+    ///
+    /// <para>The fold is unfiltered because the result is never GUARDED: pointer width is a
+    /// number in this walk and never a verdict, so a layout known at 64 bits is known at 32
+    /// over the same field list. The assert is what keeps a 64-bit-only offset — right on
+    /// x64, wrong in a wasm32 build — from being folded should that stop holding.</para></summary>
     internal ModeledSize? TopLevelMarshalOffsetText(ClassInfo cls, FieldInfo f)
     {
         if (TopLevelMarshalLayout(cls) is not { Extent.IsKnown: true } l
             || !l.Offsets.TryGetValue(f, out int off))
             return null;
-        return PointerWidth.Model(off, NarrowOffset(NarrowTopLevel(cls), f));
+        var m = PointerWidth.Model(off, NarrowOffset(NarrowTopLevel(cls), f));
+        if (m.Guarded)
+            throw new InvalidOperationException(
+                $"marshalled offset of {cls.FullName}.{f.Name} has a 64-bit reading and no 32-bit one");
+        return m;
     }
 
     /// <summary>The member-position layout rendered as C++ text — what the emitted
@@ -504,17 +514,24 @@ internal sealed partial class Compilation
     /// <item><c>char</c> — <c>U1</c> forces 1 and <c>U2</c> forces 2, overriding the
     /// CharSet.</item>
     /// </list>
-    /// For every other type a width matching AT BOTH POINTER WIDTHS is accepted as the no-op
-    /// it is and anything else is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
-    /// <c>int</c> is <c>ArgumentException</c>). Anything this does not model answers Unknown,
+    /// For every other PRIMITIVE — and for an enum, which marshals as its underlying one — a
+    /// width matching AT BOTH POINTER WIDTHS is accepted as the no-op it is and anything else
+    /// is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
+    /// <c>int</c> is <c>ArgumentException</c>). A field of any other KIND takes no width
+    /// descriptor at all, whatever width it names. Anything this does not model answers Unknown,
     /// never a number — the permanent COM carve-outs (<c>BStr</c>, <c>SafeArray</c>,
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
     {
-        // void* rejects width descriptors. FunctionPtr is valid on delegate*, but both
-        // decode as Pointer(void), so conservatively refuse descriptors until they differ.
+        // A pointer-shaped field accepts exactly one descriptor: FunctionPtr, and only on
+        // a genuine function pointer (delegate*, either calling convention) — the no-op
+        // naming the one pointer the field already is. .NET refuses FunctionPtr on void*
+        // along with every width form ("pointers must not have a MarshalAs attribute
+        // set"), and refuses the width forms on a function pointer too (measured).
         if (t.Kind == TypeKind.Pointer)
-            return MarshalExtent.Refused;
+            return u == UT.FunctionPtr && t.IsFunctionPointer
+                ? MarshalExtent.Ok(ptr, ptr)
+                : MarshalExtent.Refused;
         if (t.Kind == TypeKind.Primitive)
         {
             switch (t.Primitive)
@@ -554,15 +571,22 @@ internal sealed partial class Compilation
         if (named < 0)
             return u switch
             {
-                // A nested struct or a delegate may name its own form; both are no-ops.
-                UT.Struct when natural.IsKnown && t.Kind == TypeKind.Class
-                    && t.Class is { IsValueType: true } => natural,
+                // `Struct` names the INLINE-STRUCT form, so it is the no-op it claims to be
+                // exactly where that form is what the type marshals as. The kind row decides
+                // that; a Class-kind field it declines is one .NET refuses outright.
+                UT.Struct when t.Kind == TypeKind.Class =>
+                    MarshalDescriptorKindAllows(t, u) ? natural : MarshalExtent.Refused,
                 UT.FunctionPtr when t.Kind == TypeKind.Class && t.Class is { IsDelegate: true }
                     => MarshalExtent.Ok(ptr, ptr),
                 _ => MarshalExtent.Unknown,
             };
         if (!natural.IsKnown)
             return natural;
+        // The KIND comes before the number: a nested struct, a delegate, a sequential class,
+        // GCHandle or DateTime takes no width descriptor at all, even one naming the width
+        // the field already has.
+        if (!MarshalDescriptorKindAllows(t, u))
+            return MarshalExtent.Refused;
         // The descriptor has to name the field's width AT BOTH POINTER WIDTHS, not just at
         // the one being walked. .NET refuses [MarshalAs(U8)] IntPtr and [MarshalAs(SysInt)]
         // long on x64, where the two coincide, so a per-width comparison would measure at 64
@@ -577,6 +601,30 @@ internal sealed partial class Compilation
         return named == natural.Size && NamedUnmanagedWidth(u, other) == alt.Size
             ? natural
             : MarshalExtent.Refused;
+    }
+
+    /// <summary>Whether a field of type <paramref name="t"/> may carry the descriptor
+    /// <paramref name="u"/> AT ALL — the KIND question, and the one row both askers of a
+    /// <c>[MarshalAs]</c> reference: this file, which then asks what extent the descriptor
+    /// yields, and <see cref="CppTypes.StructFieldDescriptorSupported"/>, which then asks
+    /// whether it is a byte-image no-op the P/Invoke struct marshaller can emit. The two
+    /// remaining questions are genuinely different — <c>LPWStr</c> on a string field is
+    /// pointer-wide either way and still changes the bytes — so only the kind is shared.
+    ///
+    /// <para>Measured .NET, in both positions: a WIDTH-naming descriptor is valid on a
+    /// primitive and on an ENUM (which marshals as its underlying integer) and on nothing
+    /// else; <c>Struct</c> is valid on exactly the types whose marshalled form IS an inline
+    /// struct — a value type or a <c>[StructLayout]</c> class — so on neither an enum nor a
+    /// delegate. Every other descriptor answers true here and is decided by its asker.</para></summary>
+    internal static bool MarshalDescriptorKindAllows(TypeDesc t, UT u)
+    {
+        if (u == UT.Struct)
+            return t.Kind == TypeKind.Class && t.Class is { IsEnum: false, IsDelegate: false };
+        // The width argument only scales the answer for SysInt; whether a width is named at
+        // all is width-independent.
+        if (NamedUnmanagedWidth(u, PointerWidth.Bytes64) < 0)
+            return true;
+        return t.Kind == TypeKind.Primitive || t.Class is { IsEnum: true };
     }
 
     /// <summary>The fixed byte width an <c>UnmanagedType</c> names, or -1 when it names no

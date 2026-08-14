@@ -138,12 +138,12 @@ void dn2cpp_gc_stats_dump_once()
 }
 
 // ── Suppressed-finalizer set work counters (opt-in report: DN2CPP_GC_SUPPRESS_STATS)
-// The set is walked slot by slot, so a drain's cost tracks the set's high-water mark
-// rather than its live size. These count that work directly; a wall clock cannot
-// separate it from collection time. Independent of DN2CPP_GC_STATS on purpose —
+// These count slot reads under the allocator lock — the indexed hit paths read one
+// slot, a full-miss sweep reads every live entry — directly; a wall clock cannot
+// separate them from collection time. Independent of DN2CPP_GC_STATS on purpose —
 // enabling one must not move the other's stderr.
 //
-// The walk runs under Boehm's allocator lock, where nothing may allocate, collect or
+// The reads run under Boehm's allocator lock, where nothing may allocate, collect or
 // do I/O — relaxed adds are all these are. They are unconditional: a knob test on the
 // suppress and dequeue paths would cost more than the add it guards.
 std::atomic<uint64_t> g_suppress_calls;      // SuppressFinalize past the no-Finalize return
@@ -1359,99 +1359,268 @@ char g_finalizer_rereg_tag;
 // On an object that was merely live the collector clears the marker at
 // f-reachability before it can act, and the removal already was the suppress.
 constexpr uint32_t kSuppressChunkEntries = 64;
+struct Dn2CppSuppressSlot
+{
+    void* value;     // GC_HIDE_POINTER'd; the registered link — collector clears to null
+    uint8_t restore; // re-arm the re-registration on drop; ours alone, under g_suppress_mtx
+};
 struct Dn2CppSuppressChunk
 {
     Dn2CppSuppressChunk* next;
-    void* slots[kSuppressChunkEntries]; // GC_HIDE_POINTER'd; null = free or collector-cleared
-    uint8_t restore[kSuppressChunkEntries]; // re-arm the re-registration on drop
+    Dn2CppSuppressSlot slots[kSuppressChunkEntries];
 };
 std::mutex& g_suppress_mtx = dn2cpp_never_destroyed<std::mutex>();
 Dn2CppSuppressChunk* g_suppress_head = nullptr;
 // Upper bound on occupied slots — an in-flight suppress holds a transient +1,
 // and the collector clears a slot without telling us, so this only falls back
-// to the truth on a full miss scan. It exists so the drain of a program that
+// to the truth on a full miss sweep. It exists so the drain of a program that
 // never suppresses post-enqueue (i.e. nearly every one) costs a single
 // relaxed load.
 std::atomic<uint64_t> g_suppress_count{0};
 
-// The slot walk shared by add and take. It must run under Boehm's ALLOCATOR
-// lock, not just g_suppress_mtx: the collector clears a registered slot with a
-// plain write while the world runs (GC_finalize), so a read anywhere else is a
-// data race. Only the walk goes in the callback — the public link register /
-// unregister calls take the allocator lock themselves and would self-deadlock
-// inside it. A matched slot stays valid after the callback returns: every
-// caller strong-roots obj (parameter or dequeue local), so its short link
-// cannot be collector-cleared in between. restore[] is ours alone, under
-// g_suppress_mtx.
-struct Dn2CppSuppressScan
+// Open-addressed index (hidden -> slot) making add and take O(1). It holds only
+// plain data — hidden keys and slot addresses — so it may rehash freely while
+// the slots it names never move; the disappearing links live in the slots
+// alone, so no rehash ever re-registers one. The collector clears a slot
+// without telling the index; a stale entry is harmless (its slot verifies
+// null) and is reclaimed on detection or by a sweep. Invariant: a slot holds a
+// non-null value iff exactly one live entry names it with that value as key —
+// insert follows the link registration, and every consume erases the entry as
+// it clears or freelists the slot, all under g_suppress_mtx.
+struct Dn2CppSuppressIndexEntry
 {
+    void* key;
+    Dn2CppSuppressSlot* slot; // null = empty; &g_suppress_index_tomb = erased
+};
+Dn2CppSuppressSlot g_suppress_index_tomb;
+Dn2CppSuppressIndexEntry* g_suppress_index = nullptr;
+size_t g_suppress_index_cap = 0;  // 0 or a power of two
+size_t g_suppress_index_used = 0; // live + tombstones
+size_t g_suppress_index_live = 0;
+
+// Free slots, disjoint from indexed ones and never link-registered: a consumed
+// slot is unregistered before it is pushed, and bdwgc deletes a short link from
+// its own table as it clears the slot, so a harvested one carries none either.
+Dn2CppSuppressSlot** g_suppress_free = nullptr;
+size_t g_suppress_free_len = 0;
+size_t g_suppress_free_cap = 0;
+
+size_t dn2cpp_suppress_index_hash(void* key)
+{
+    // Fibonacci scramble; the caller masks. Plain arithmetic, no seed.
+    return static_cast<size_t>(
+        (static_cast<uint64_t>(reinterpret_cast<uintptr_t>(key))
+         * 0x9E3779B97F4A7C15ull) >> 32);
+}
+
+Dn2CppSuppressIndexEntry* dn2cpp_suppress_index_find(void* key)
+{
+    if (g_suppress_index_live == 0)
+        return nullptr;
+    size_t mask = g_suppress_index_cap - 1;
+    for (size_t i = dn2cpp_suppress_index_hash(key) & mask;; i = (i + 1) & mask)
+    {
+        Dn2CppSuppressIndexEntry& e = g_suppress_index[i];
+        if (e.slot == nullptr)
+            return nullptr;
+        if (e.slot != &g_suppress_index_tomb && e.key == key)
+            return &e;
+    }
+}
+
+// Callers guarantee key is absent and a free entry exists (insert grows first).
+void dn2cpp_suppress_index_place(void* key, Dn2CppSuppressSlot* slot)
+{
+    size_t mask = g_suppress_index_cap - 1;
+    for (size_t i = dn2cpp_suppress_index_hash(key) & mask;; i = (i + 1) & mask)
+    {
+        Dn2CppSuppressIndexEntry& e = g_suppress_index[i];
+        if (e.slot != nullptr && e.slot != &g_suppress_index_tomb)
+            continue;
+        if (e.slot == nullptr)
+            g_suppress_index_used++;
+        e.key = key;
+        e.slot = slot;
+        g_suppress_index_live++;
+        return;
+    }
+}
+
+void dn2cpp_suppress_index_rehash(size_t newCap)
+{
+    Dn2CppSuppressIndexEntry* old = g_suppress_index;
+    size_t oldCap = g_suppress_index_cap;
+    g_suppress_index = static_cast<Dn2CppSuppressIndexEntry*>(
+        std::calloc(newCap, sizeof(Dn2CppSuppressIndexEntry)));
+    if (g_suppress_index == nullptr)
+        dn2cpp_fail("out of memory (suppressed-finalizer index)");
+    g_suppress_index_cap = newCap;
+    g_suppress_index_used = 0;
+    g_suppress_index_live = 0;
+    for (size_t i = 0; i < oldCap; i++)
+        if (old[i].slot != nullptr && old[i].slot != &g_suppress_index_tomb)
+            dn2cpp_suppress_index_place(old[i].key, old[i].slot);
+    std::free(old);
+}
+
+void dn2cpp_suppress_index_insert(void* key, Dn2CppSuppressSlot* slot)
+{
+    // Keep half the table free so probes terminate; a tombstone-heavy table is
+    // rehashed at the same size, dropping them.
+    if ((g_suppress_index_used + 1) * 2 > g_suppress_index_cap)
+        dn2cpp_suppress_index_rehash(
+            g_suppress_index_cap == 0 ? 64
+            : g_suppress_index_live * 4 <= g_suppress_index_cap
+                ? g_suppress_index_cap
+                : g_suppress_index_cap * 2);
+    dn2cpp_suppress_index_place(key, slot);
+}
+
+void dn2cpp_suppress_index_erase(Dn2CppSuppressIndexEntry* e)
+{
+    e->key = nullptr;
+    e->slot = &g_suppress_index_tomb;
+    g_suppress_index_live--;
+}
+
+void dn2cpp_suppress_free_reserve(size_t cap)
+{
+    if (g_suppress_free_cap >= cap)
+        return;
+    size_t newCap = g_suppress_free_cap == 0 ? kSuppressChunkEntries : g_suppress_free_cap;
+    while (newCap < cap)
+        newCap *= 2;
+    auto* grown = static_cast<Dn2CppSuppressSlot**>(
+        std::realloc(g_suppress_free, newCap * sizeof(Dn2CppSuppressSlot*)));
+    if (grown == nullptr)
+        dn2cpp_fail("out of memory (suppressed-finalizer set)");
+    g_suppress_free = grown;
+    g_suppress_free_cap = newCap;
+}
+
+void dn2cpp_suppress_free_push(Dn2CppSuppressSlot* slot)
+{
+    dn2cpp_suppress_free_reserve(g_suppress_free_len + 1);
+    g_suppress_free[g_suppress_free_len++] = slot;
+}
+
+// Every read of a registered slot's value runs under Boehm's ALLOCATOR lock,
+// not just g_suppress_mtx: the collector clears such a slot with a plain write
+// while the world runs (GC_finalize), so a read anywhere else is a data race.
+// Only reads go in a callback — the public link register / unregister calls
+// take the allocator lock themselves and would self-deadlock inside one. A
+// matched slot stays valid after the callback returns: every caller
+// strong-roots obj (parameter or dequeue local), so its short link cannot be
+// collector-cleared in between.
+struct Dn2CppSuppressProbe
+{
+    Dn2CppSuppressSlot* slot;
     void* hidden;
-    void** match;
-    uint8_t* matchRestore;
-    void** freeSlot;
-    uint8_t* freeRestore;
+    bool match;
+};
+
+void* GC_CALLBACK dn2cpp_probe_suppress_slot(void* data)
+{
+    auto& probe = *static_cast<Dn2CppSuppressProbe*>(data);
+    probe.match = probe.slot->value == probe.hidden;
+    g_suppress_scans.fetch_add(1, std::memory_order_relaxed);
+    g_suppress_slots_walked.fetch_add(1, std::memory_order_relaxed);
+    return nullptr;
+}
+
+// Full sweep: counts verified-live entries and harvests collector-cleared
+// slots onto the free list, erasing their stale entries. It walks the index,
+// not the chunks — freelisted slots have no entry to visit. The caller
+// reserved free-list capacity for every live entry: nothing here may allocate
+// under the allocator lock.
+struct Dn2CppSuppressSweep
+{
     uint64_t occupied;
 };
 
-void* GC_CALLBACK dn2cpp_scan_suppress_slots(void* data)
+void* GC_CALLBACK dn2cpp_sweep_suppress_index(void* data)
 {
-    auto& scan = *static_cast<Dn2CppSuppressScan*>(data);
-    // Accumulated locally and published once: the counted quantity is the loop's
-    // trip count, and an atomic per slot would itself dominate what it measures.
+    auto& sweep = *static_cast<Dn2CppSuppressSweep*>(data);
     uint64_t walked = 0;
-    for (Dn2CppSuppressChunk* c = g_suppress_head; c != nullptr; c = c->next)
-        for (uint32_t i = 0; i < kSuppressChunkEntries; i++)
+    for (size_t i = 0; i < g_suppress_index_cap; i++)
+    {
+        Dn2CppSuppressIndexEntry& e = g_suppress_index[i];
+        if (e.slot == nullptr || e.slot == &g_suppress_index_tomb)
+            continue;
+        walked++;
+        if (e.slot->value != nullptr)
         {
-            walked++;
-            void* value = c->slots[i];
-            if (value == scan.hidden)
-            {
-                scan.match = &c->slots[i];
-                scan.matchRestore = &c->restore[i];
-            }
-            if (value == nullptr && scan.freeSlot == nullptr)
-            {
-                scan.freeSlot = &c->slots[i];
-                scan.freeRestore = &c->restore[i];
-            }
-            if (value != nullptr)
-                scan.occupied++;
+            sweep.occupied++;
+            continue;
         }
+        g_suppress_free[g_suppress_free_len++] = e.slot;
+        dn2cpp_suppress_index_erase(&e);
+    }
     g_suppress_scans.fetch_add(1, std::memory_order_relaxed);
     g_suppress_slots_walked.fetch_add(walked, std::memory_order_relaxed);
     return nullptr;
 }
 
+void dn2cpp_suppress_sweep_locked(Dn2CppSuppressSweep* sweep)
+{
+    dn2cpp_suppress_free_reserve(g_suppress_free_len + g_suppress_index_live);
+    GC_call_with_alloc_lock(dn2cpp_sweep_suppress_index, sweep);
+}
+
+Dn2CppSuppressSlot* dn2cpp_suppress_slot_acquire_locked()
+{
+    if (g_suppress_free_len == 0)
+    {
+        // Harvest collector-cleared slots first, then top the free list up to a
+        // fraction of the live set: the sweep's walk is repaid by that many O(1)
+        // acquisitions before the list can empty again. Without the top-up an
+        // add-heavy program whose entries the collector keeps clearing would
+        // sweep every chunk's worth of adds — quadratic again.
+        Dn2CppSuppressSweep sweep{0};
+        dn2cpp_suppress_sweep_locked(&sweep);
+        size_t want = g_suppress_index_live / 2 + kSuppressChunkEntries;
+        while (g_suppress_free_len < want)
+        {
+            auto* c = static_cast<Dn2CppSuppressChunk*>(
+                std::calloc(1, sizeof(Dn2CppSuppressChunk)));
+            if (c == nullptr)
+                dn2cpp_fail("out of memory (suppressed-finalizer set)");
+            c->next = g_suppress_head;
+            g_suppress_head = c;
+            g_suppress_chunks.fetch_add(1, std::memory_order_relaxed);
+            dn2cpp_suppress_free_reserve(g_suppress_free_len + kSuppressChunkEntries);
+            for (uint32_t i = 0; i < kSuppressChunkEntries; i++)
+                g_suppress_free[g_suppress_free_len++] = &c->slots[i];
+        }
+    }
+    return g_suppress_free[--g_suppress_free_len];
+}
+
 void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
 {
     void* hidden = reinterpret_cast<void*>(GC_HIDE_POINTER(obj));
-    Dn2CppSuppressScan scan{hidden, nullptr, nullptr, nullptr, nullptr, 0};
-    GC_call_with_alloc_lock(dn2cpp_scan_suppress_slots, &scan);
-    if (scan.match != nullptr)
+    Dn2CppSuppressIndexEntry* e = dn2cpp_suppress_index_find(hidden);
+    if (e != nullptr)
     {
-        // Already recorded; a repeated suppress is legal. It can only
-        // strengthen the record: a later suppress that removed a fresh
-        // re-registration owes the dequeue its re-arm.
-        if (restore)
-            *scan.matchRestore = 1;
-        return;
+        Dn2CppSuppressProbe probe{e->slot, hidden, false};
+        GC_call_with_alloc_lock(dn2cpp_probe_suppress_slot, &probe);
+        if (probe.match)
+        {
+            // Already recorded; a repeated suppress is legal. It can only
+            // strengthen the record: a later suppress that removed a fresh
+            // re-registration owes the dequeue its re-arm.
+            if (restore)
+                e->slot->restore = 1;
+            return;
+        }
+        // The entry outlived its referent — the collector cleared the slot and
+        // obj now owns the address. Reclaim, then record obj afresh.
+        dn2cpp_suppress_free_push(e->slot);
+        dn2cpp_suppress_index_erase(e);
     }
-    void** slot = scan.freeSlot;
-    uint8_t* restoreSlot = scan.freeRestore;
-    if (slot == nullptr)
-    {
-        auto* c = static_cast<Dn2CppSuppressChunk*>(
-            std::calloc(1, sizeof(Dn2CppSuppressChunk)));
-        if (c == nullptr)
-            dn2cpp_fail("out of memory (suppressed-finalizer set)");
-        c->next = g_suppress_head;
-        g_suppress_head = c;
-        g_suppress_chunks.fetch_add(1, std::memory_order_relaxed);
-        slot = &c->slots[0];
-        restoreSlot = &c->restore[0];
-    }
-    *restoreSlot = restore ? 1 : 0; // before the slot: a reused slot's byte is stale
-    *slot = hidden;
+    Dn2CppSuppressSlot* slot = dn2cpp_suppress_slot_acquire_locked();
+    slot->restore = restore ? 1 : 0; // before value: a reused slot's byte is stale
+    slot->value = hidden;
     // An unregistered link never disappears, so the slot would name this address
     // forever — and Boehm hands a dead object's address to the next allocation, so
     // an unrelated object landing there would match and lose its finalizer with
@@ -1460,12 +1629,14 @@ void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
     // is visible. Both non-success codes are reachable — GC_NO_MEMORY once the
     // default GC_oom_fn has returned null, GC_UNIMPLEMENTED under GC_FIND_LEAK,
     // where the whole disappearing-link machinery opts out.
-    int rc = GC_general_register_disappearing_link(slot, obj);
+    int rc = GC_general_register_disappearing_link(&slot->value, obj);
     if (rc != GC_SUCCESS && rc != GC_DUPLICATE)
     {
-        *slot = nullptr;
+        slot->value = nullptr;
+        dn2cpp_suppress_free_push(slot);
         return;
     }
+    dn2cpp_suppress_index_insert(hidden, slot);
     g_suppress_recorded.fetch_add(1, std::memory_order_relaxed);
     g_suppress_count.fetch_add(1, std::memory_order_release);
 }
@@ -1474,22 +1645,35 @@ void dn2cpp_suppress_set_add_locked(Dn2CppObject* obj, bool restore)
 bool dn2cpp_suppress_set_take_locked(Dn2CppObject* obj, bool* restore)
 {
     void* hidden = reinterpret_cast<void*>(GC_HIDE_POINTER(obj));
-    Dn2CppSuppressScan scan{hidden, nullptr, nullptr, nullptr, nullptr, 0};
-    GC_call_with_alloc_lock(dn2cpp_scan_suppress_slots, &scan);
-    if (scan.match != nullptr)
+    Dn2CppSuppressIndexEntry* e = dn2cpp_suppress_index_find(hidden);
+    if (e != nullptr)
     {
-        *restore = *scan.matchRestore != 0;
-        GC_unregister_disappearing_link(scan.match);
-        // Unregistered first: the collector no longer knows the slot, so this
-        // plain clear cannot race its own.
-        *scan.match = nullptr;
-        g_suppress_count.fetch_sub(1, std::memory_order_release);
-        return true;
+        Dn2CppSuppressProbe probe{e->slot, hidden, false};
+        GC_call_with_alloc_lock(dn2cpp_probe_suppress_slot, &probe);
+        if (probe.match)
+        {
+            *restore = e->slot->restore != 0;
+            GC_unregister_disappearing_link(&e->slot->value);
+            // Unregistered first: the collector no longer knows the slot, so this
+            // plain clear cannot race its own.
+            e->slot->value = nullptr;
+            dn2cpp_suppress_free_push(e->slot);
+            dn2cpp_suppress_index_erase(e);
+            g_suppress_count.fetch_sub(1, std::memory_order_release);
+            return true;
+        }
+        // Stale entry for a previous occupant of obj's address — the same miss
+        // the cleared slot always was; reclaim it on the way.
+        dn2cpp_suppress_free_push(e->slot);
+        dn2cpp_suppress_index_erase(e);
     }
-    // A full miss saw every slot, so the bound can be retightened here — and only
-    // here, which is what lets a set the collector emptied stop costing a scan.
-    // Cannot erase an in-flight suppress's +1: bump and retighten share the mutex.
-    g_suppress_count.store(scan.occupied, std::memory_order_release);
+    // A full miss swept every entry, so the bound can be retightened here — and
+    // only here, which is what lets a set the collector emptied stop costing a
+    // probe. Cannot erase an in-flight suppress's +1: bump and retighten share
+    // the mutex.
+    Dn2CppSuppressSweep sweep{0};
+    dn2cpp_suppress_sweep_locked(&sweep);
+    g_suppress_count.store(sweep.occupied, std::memory_order_release);
     return false;
 }
 

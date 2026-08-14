@@ -96,12 +96,19 @@ git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 # dn2cpp — main on the first host; on the second, the commit the first one used (below)
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
+git -C <DEV> status --porcelain --untracked-files=all    # → must be empty
 git -C <DEV> rev-parse HEAD                              # ← note it
 git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 ```
 
 - Uncommitted changes to the fork's *tracked* files die (untracked things like
   `bin/` do not count).
+- On the dn2cpp side **untracked files count too**: the toolchain bundle is
+  built from the working tree, and a stray `.cs` under `src/` is compiled into
+  it. Spell `--untracked-files=all` rather than relying on the default — a
+  `status.showUntrackedFiles=no` in your own git config answers "clean" for
+  exactly that tree, and the packagers ask for it explicitly for the same
+  reason.
 - On the dn2cpp side the remote checked is **`origin`, the public repository**.
   A commit that exists only on `archive` is unreachable from what the notes
   link to, and dies.
@@ -114,6 +121,12 @@ A release runs no gates. `--smoke` in `dist/package-editor-*.sh` runs the two
 editor-export gates and nothing else is verified. **Cut a release from a `main`
 on which `gates/pre-merge.sh` is green.**
 
+The release scripts' own refusals are the exception, and they are exercised by
+`gates/build-and-run-release-preconditions.sh` in the ordinary suite: it drives
+them over synthetic metadata and asserts the remedy text, not just the exit
+status. So a green suite says the messages in the table at the bottom of this
+file are the ones you will actually see.
+
 ### 0-C. Both hosts on the same commit
 
 - **The fork commit** is enforced by `dist/release-github.sh`: both editors'
@@ -122,10 +135,13 @@ on which `gates/pre-merge.sh` is green.**
 - **`engine_provenance`, `base_pin` and `corelib_framework`** are likewise
   forced to agree across every lane (a .NET SDK version difference surfaces as
   `corelib_framework`).
-- **The dn2cpp commit is not enforced.** Lanes may carry different values and
-  still pass; the notes then print one line per editor with both. That is a
-  known open point with a row in `docs/STATUS.md`. So **the second host checks
-  out the commit the first host used, not the tip of `main`**:
+- **The dn2cpp commit is enforced too**, and by both ends. Each editor packager
+  takes a required `--dn2cpp-commit` and refuses unless the tree *is* that
+  commit and is clean — the bundle is built from the working tree, so a stamp
+  taken off `HEAD` alone would name something that was never built.
+  `dist/release-github.sh` then demands the lanes agree on it, exactly as it
+  does for `engine_provenance`. So **the second host checks out the commit the
+  first host used, not the tip of `main`**:
 
   ```bash
   git -C <DEV> checkout "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)"
@@ -133,7 +149,7 @@ on which `gates/pre-merge.sh` is green.**
 
   The handed-over metadata is that value's only source. **Following `main`
   breaks in two ways**: if `main` moved after the first host cut its lanes, the
-  notes print two dn2cpp commits; and if the move is not pushed yet, it dies as
+  cut dies on the disagreement; and if the move is not pushed yet, it dies as
   not contained in `origin/main`.
 - **The release notes are re-rendered in full from the `dist/release-notes-template.md`
   of whichever host ran last**, and they link `docs/EDITOR-GUIDE.ja.md` at *that*
@@ -282,8 +298,14 @@ English if you parse it mechanically.**
 ```bash
 ./dist/package-web-template.sh   --version "$V"
 ./dist/package-macos-template.sh --version "$V"
-./dist/package-editor-macos.sh   --version "$V" 2>&1 | tee /tmp/pkg-editor-macos.log
+./dist/package-editor-macos.sh   --version "$V" --dn2cpp-commit "$(git rev-parse HEAD)" \
+    2>&1 | tee /tmp/pkg-editor-macos.log
 ```
+
+- **`--dn2cpp-commit` is this host naming the commit both editors are cut from.**
+  It is required, and the run refuses a tree that is not it or that carries
+  uncommitted work — including untracked files, which the compiler reads too.
+  Windows takes the value from this lane's metadata (§C-3).
 
 - **The order is enforced.** The smoke in `dist/package-editor-macos.sh` reads
   `<out>/godot-$V-web-template.zip` and its `.provenance` **as release
@@ -455,7 +477,9 @@ The shell is Git Bash / MSYS.
 
 ### C-1. Setup (the same two scripts, plus self-host and fork)
 
-Check out the dn2cpp commit the macOS side used (§0-C), not `main`.
+Check out the dn2cpp commit the macOS side used (§0-C), not `main`. C-3 refuses
+otherwise, but it refuses after `gates/setup-godot-fork.sh`, so doing it here
+costs nothing and doing it later costs that build.
 
 ```bash
 cd <DEV>
@@ -485,7 +509,9 @@ only macOS can re-bake the Web template.
 ### C-3. Package the Windows editor
 
 ```bash
-./dist/package-editor-windows.sh --version "$V" 2>&1 | tee /tmp/pkg-editor-windows.log
+./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
+    "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)" \
+    2>&1 | tee /tmp/pkg-editor-windows.log
 ```
 
 Check:
@@ -639,6 +665,9 @@ There is nothing to argue about when accounts of the state disagree.
 | `--version base X != the fork's version.py (Y)` | the fork is checked out at a different base |
 | `lanes 'A' and 'B' disagree on engine_provenance` | the two hosts have different engine trees; re-bake one |
 | `... disagree on corelib_framework` | the two hosts have different .NET SDKs |
+| `... disagree on dn2cpp_commit` | the second host packaged from another commit; re-run its editor packager with `--dn2cpp-commit` naming the first host's (§C-3) |
+| `--dn2cpp-commit names X, but this tree is at Y` | check X out. On Windows, X is the value the handoff carried in `editor-macos.metadata` |
+| `the working tree is not X — it carries changes of its own` | commit, stash or delete them. Untracked files count: they reach the bundle as surely as tracked ones |
 | `the packaged X editor was built from A, but the tag would name B` | the fork HEAD moved since packaging; re-bake, or pass `--commit A` |
 | `is not reachable from origin/...` | not pushed; push the fork or dn2cpp |
 | `HEAD (...) is not reachable from the dn2cpp origin/...` | the commit the notes would link the guide at is unpushed. Distinct from the row above, which is about a lane's `dn2cpp_commit`: this one is your working `HEAD`. `git push origin main` |

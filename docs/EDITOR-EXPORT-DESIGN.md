@@ -776,7 +776,9 @@ and a draft GitHub release, rendering `dist/release-notes-template.md` from that
 metadata. Everything it publishes is checked against the tree first — the fork
 commit the editor was built from, its ancestry on the remote branch, the same
 ancestry for the `dn2cpp_commit` the notes link a repository beside, the hashes,
-and that the assets name one engine.
+and that the assets name one engine and one dn2cpp. That last one is a demand on
+the packaging hosts rather than a discovery: each names the commit it is cutting
+from (`--dn2cpp-commit`) and refuses a tree that is not it.
 
 An editor can only be packaged on the platform it runs on, so the lane set is an
 argument (`--lane`) rather than a constant: a host cuts the lanes it can bake and

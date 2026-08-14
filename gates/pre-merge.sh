@@ -1206,7 +1206,7 @@ fi
 HEAD_SHA=$(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 HEAD_BRANCH=$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 DIRTY=""
-[ -n "$(git -C "$REPO" status --porcelain 2>/dev/null)" ] && DIRTY=" (working tree DIRTY)"
+[ -n "$(git -C "$REPO" status --porcelain --untracked-files=all 2>/dev/null)" ] && DIRTY=" (working tree DIRTY)"
 
 say "dn2cpp pre-merge gate"
 note "repo:   $REPO"
