@@ -407,7 +407,7 @@ git merge-base --is-ancestor "$DOCS_REF" "$dn2cpp_tip" || die \
          git push origin $DN2CPP_BRANCH"
 # Only the guide, not the whole worktree: unrelated work in progress is no
 # reason to refuse a cut, but an edit to the linked file is not in that sha.
-guide_dirty="$(git status --porcelain -- "$GUIDE")"
+guide_dirty="$(git status --porcelain --untracked-files=all -- "$GUIDE")"
 [ -z "$guide_dirty" ] || die "$GUIDE has uncommitted changes, and the notes would link $DOCS_REF, which does not have them:
 $guide_dirty"
 echo "-- docs ref: $(git rev-parse --short "$DOCS_REF") ($GUIDE is committed and pushed)"

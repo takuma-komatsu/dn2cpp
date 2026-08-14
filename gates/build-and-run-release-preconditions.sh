@@ -69,19 +69,35 @@ mkdir -p "$FIX/src" "$FIX/runtime" "$FIX/third_party"
 # src_tree_hash enumerates exactly these three, and a git checkout is its own
 # precondition; one file apiece is all the fixture owes it.
 for d in src runtime third_party; do printf 'x\n' > "$FIX/$d/a.txt"; done
-git -C "$FIX" init -q
-# Identity and signing are the caller's here, never the machine's: a host with
-# commit.gpgsign on would otherwise fail the fixture and not the subject.
+
+# Everything ambient that can reach a throwaway repository is neutralised here,
+# and it is the CLASS rather than the variable that last bit us: the hooks a
+# global core.hooksPath supplies, the hooks (and more) a global init.templateDir
+# would install as the repo is created, a global gitignore that could hide the
+# fixture's own files from `add -A`, and identity + signing. Each of them fails
+# the FIXTURE and would be read as a failure of the subject.
+#
+# `status.showUntrackedFiles` is deliberately NOT neutralised. The fixture must
+# see what the operator's git sees — that setting is the subject of an arm below,
+# and a fixture immune to it could not speak for the resolver at all.
+mkdir -p "$WORK/nohooks" "$WORK/notemplate"
+fixture_git() {
+    git -C "$FIX" \
+        -c core.hooksPath="$WORK/nohooks" \
+        -c core.excludesFile=/dev/null \
+        -c user.name=dn2cpp -c user.email=dn2cpp@invalid \
+        -c commit.gpgsign=false "$@"
+}
+git init -q --template="$WORK/notemplate" "$FIX"
 fixture_commit() {
-    git -C "$FIX" add -A
-    git -C "$FIX" -c user.name=dn2cpp -c user.email=dn2cpp@invalid -c commit.gpgsign=false \
-        commit -q -m "$1"
+    fixture_git add -A
+    fixture_git commit -q -m "$1"
 }
 fixture_commit one
 printf 'y\n' > "$FIX/src/b.txt"
 fixture_commit two
-FIX_HEAD="$(git -C "$FIX" rev-parse HEAD)"
-FIX_PREV="$(git -C "$FIX" rev-parse HEAD~1)"
+FIX_HEAD="$(fixture_git rev-parse HEAD)"
+FIX_PREV="$(fixture_git rev-parse HEAD~1)"
 
 # pin_try PIN — the resolver run inside the fixture. A subshell for the cd, so
 # the gate's own working directory (the repo root _common.sh moved us to) is
@@ -110,12 +126,24 @@ printf 'edited\n' >> "$FIX/src/a.txt"
 pin_try "$FIX_HEAD"
 refused "an uncommitted edit to a tracked file" "$PIN_RC" "$PIN_OUT" \
     "the working tree is not $FIX_HEAD" " M src/a.txt" "Commit or stash them"
-git -C "$FIX" checkout -q -- src/a.txt
+fixture_git checkout -q -- src/a.txt
 
 printf 'stray\n' > "$FIX/src/stray.txt"
 pin_try "$FIX_HEAD"
 refused "an untracked file the compiler would read" "$PIN_RC" "$PIN_OUT" \
     "the working tree is not $FIX_HEAD" "?? src/stray.txt"
+
+# The same file, in a repository configured to not mention untracked files. The
+# setting is the fixture's own, not the host's: a `git status --porcelain` that
+# does not say --untracked-files reads this tree as clean, and the pin would then
+# vouch for a commit whose content was never built. Nothing else here would
+# notice — the arm above stays green on a machine whose git is configured the
+# ordinary way, which is how this reached a review in the first place.
+fixture_git config status.showUntrackedFiles no
+pin_try "$FIX_HEAD"
+refused "an untracked file, in a repo configured to hide untracked files" \
+    "$PIN_RC" "$PIN_OUT" "the working tree is not $FIX_HEAD" "?? src/stray.txt"
+fixture_git config --unset status.showUntrackedFiles
 rm -f "$FIX/src/stray.txt"
 
 # ── 2/4 the pinned bundle's own CLI ──────────────────────────────────────────

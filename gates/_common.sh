@@ -652,7 +652,9 @@ dn2cpp_pin_bin_assert() {
 # Cleanliness is half the answer, not a courtesy: the packaging runs over the
 # WORKING TREE, so under an uncommitted edit the stamped commit is a name for
 # something that was never built. Untracked-but-not-ignored counts — src_tree_hash
-# fingerprints those files and the compiler reads them.
+# fingerprints those files and the compiler reads them — and it is asked for
+# EXPLICITLY, because `status.showUntrackedFiles=no` in the operator's own config
+# otherwise answers "clean" for exactly the tree this refuses to vouch for.
 dn2cpp_commit_pin_resolve() {
     local pin="$1" full head dirty
     full="$(git rev-parse --verify --quiet "$pin^{commit}")" || {
@@ -667,7 +669,7 @@ dn2cpp_commit_pin_resolve() {
         echo "         git checkout $full" >&2
         return 1
     }
-    dirty="$(git status --porcelain)"
+    dirty="$(git status --porcelain --untracked-files=all)"
     [ -z "$dirty" ] || {
         echo "error: the working tree is not $full — it carries changes of its own:" >&2
         printf '%s\n' "$dirty" | sed 's/^/       /' >&2

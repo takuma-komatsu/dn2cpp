@@ -96,16 +96,19 @@ git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 # dn2cpp — main on the first host; on the second, the commit the first one used (below)
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
-git -C <DEV> status --porcelain                          # → must be empty
+git -C <DEV> status --porcelain --untracked-files=all    # → must be empty
 git -C <DEV> rev-parse HEAD                              # ← note it
 git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 ```
 
 - Uncommitted changes to the fork's *tracked* files die (untracked things like
   `bin/` do not count).
-- On the dn2cpp side **untracked files count too**, which is why the command
-  above carries no `--untracked-files=no`: the toolchain bundle is built from
-  the working tree, and a stray `.cs` under `src/` is compiled into it.
+- On the dn2cpp side **untracked files count too**: the toolchain bundle is
+  built from the working tree, and a stray `.cs` under `src/` is compiled into
+  it. Spell `--untracked-files=all` rather than relying on the default — a
+  `status.showUntrackedFiles=no` in your own git config answers "clean" for
+  exactly that tree, and the packagers ask for it explicitly for the same
+  reason.
 - On the dn2cpp side the remote checked is **`origin`, the public repository**.
   A commit that exists only on `archive` is unreachable from what the notes
   link to, and dies.

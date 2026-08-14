@@ -95,16 +95,18 @@ git -C <FORK> merge-base --is-ancestor HEAD origin/dn2cpp/main && echo pushed
 # dn2cpp — 1 番目のホストは main、2 番目は 1 番目が使ったコミット（下記）
 git -C <DEV> fetch origin
 git -C <DEV> checkout main
-git -C <DEV> status --porcelain                          # → 空であること
+git -C <DEV> status --porcelain --untracked-files=all    # → 空であること
 git -C <DEV> rev-parse HEAD                              # ← 控える
 git -C <DEV> merge-base --is-ancestor HEAD origin/main && echo pushed
 ```
 
 - フォークの追跡ファイルに未コミット変更があると die する（`bin/` などの
   untracked は対象外）。
-- **dn2cpp 側は untracked も対象**（上のコマンドに `--untracked-files=no` を
-  付けていないのはそのため）。ツールチェーン束はワーキングツリーから作られる
-  ので、`src/` に落ちている野良 `.cs` もそのまま束に入る。
+- **dn2cpp 側は untracked も対象**。ツールチェーン束はワーキングツリーから
+  作られるので、`src/` に落ちている野良 `.cs` もそのまま束に入る。既定に頼らず
+  `--untracked-files=all` と書くこと —— 自分の git 設定に
+  `status.showUntrackedFiles=no` があると、まさにそのツリーを「clean」と
+  答えてしまう。パッケージャ側が明示しているのも同じ理由。
 - `dn2cpp` 側で確認するリモートは **`origin`（公開リポジトリ）**。`archive`
   にしか無いコミットは、ノートがリンクする先から辿れないので die する。
 - タグが古いコミットを指したまま残っていると die する。消してから fetch し直す:
