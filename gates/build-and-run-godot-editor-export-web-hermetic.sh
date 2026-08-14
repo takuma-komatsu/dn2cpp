@@ -324,8 +324,25 @@ if [ "$maxfn" -ge "$V8_MAX_FUNCTION_SIZE" ]; then
     echo "      re-bake the self-host CLI (gates/selfhost-emit.sh) if $SELFHOST_BIN is stale." >&2
     exit 1
 fi
+# Every import the drop-in makes must resolve against the page's own main module
+# plus its JS glue. This gate never starts a browser, so it is the only thing here
+# that can see an unresolved one: emscripten's dlopen hands back a valid handle and
+# dlsym resolves, and the lazy stub throws `TypeError: resolved is not a function`
+# at the instant the symbol is first CALLED, naming a wasm function index and never
+# the symbol.
+unsat="$("$STAGED_NODE" gates/_wasm_symbols.js unsatisfied "$DROPIN" "$WEBDIR/index.wasm" "$WEBDIR/index.js")"
+if [ -n "$unsat" ]; then
+    echo "FAIL: the exported main module + glue do not satisfy every drop-in import:" >&2
+    printf '%s\n' "$unsat" | LC_ALL=C sed 's/^/  /' >&2
+    echo "      A SystemNative_* name here is a .NET PAL symbol the wasm build does not" >&2
+    echo "      define — runtime/core/platform/wasm/ carries only the sliver this target" >&2
+    echo "      needs, and the POSIX translation unit is excluded from the Emscripten" >&2
+    echo "      build (runtime/CMakeLists.txt's EMSCRIPTEN arm)." >&2
+    exit 1
+fi
 echo "drop-in: $(wc -c < "$DROPIN" | tr -d ' ') bytes, exports godotsharp_game_main_init"
 echo "largest wasm function: $maxfn bytes ($maxfn_name), $((V8_MAX_FUNCTION_SIZE - maxfn)) under V8's $V8_MAX_FUNCTION_SIZE ceiling"
+echo "import closure OK: every function and GOT.mem/GOT.func import resolves against the exported page"
 
 # Tripwire: a concurrent suite re-staging the shared toolchain mid-run must
 # surface as this self-explaining FAIL, not as a cryptic include error above.

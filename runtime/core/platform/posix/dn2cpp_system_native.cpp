@@ -23,7 +23,12 @@
 // Only the members a reachable closure needs are implemented; a new gap shows
 // up as a link error naming the missing SystemNative_* symbol (loud, not silent).
 //
-// macOS / Linux / BSD. Not part of the wasm build (no P/Invoke on that target).
+// macOS / Linux / BSD. Not part of the wasm build — because the file-I/O surface this
+// file implements has no meaning against MEMFS, NOT because that target makes no
+// P/Invoke. Lowering one is target-neutral, so excluding this file excludes the
+// definitions and leaves every caller: on a side module the result is a wasm IMPORT
+// that throws only when first called. The symbols wasm still reaches are hand-added to
+// platform/wasm/dn2cpp_system_native_wasm.cpp — adding one here adds it nowhere else.
 
 #include "dn2cpp_core.h" // dn2cpp_gc_kernel_write_unsafe (the incremental-GC bounce)
 
@@ -1202,10 +1207,15 @@ uint32_t SystemNative_GetFileSystemType(intptr_t fd)
 
 // pal_time.c SystemNative_GetTimestamp / SystemNative_GetTimestampResolution:
 // monotonic timestamp used by Stopwatch on Unix. Interop.Sys.GetTimestamp is
-// called from Stopwatch.GetTimestamp; Interop.Sys.GetTimestampResolution feeds
-// Stopwatch.Frequency once. Real PAL uses clock_gettime(CLOCK_MONOTONIC) and
-// reports resolution as 1e9 (nanoseconds); we mirror that exactly so managed
-// Stopwatch.Frequency == 1_000_000_000 across transpiled binaries.
+// called from Stopwatch.GetTimestamp; the wasm twin of that one lives in
+// platform/wasm/dn2cpp_system_native_wasm.cpp. The nanosecond timestamp scale
+// matches this CoreLib's constant Stopwatch.Frequency of 1_000_000_000.
+//
+// The resolution entry point has no emitted caller on the CoreLib flavours built
+// here — Stopwatch.Frequency is a constant, and no transpile in this tree names
+// the symbol. It stays because an older or differently-flavoured CoreLib may
+// still call it and this file is the whole POSIX surface; the wasm file, which
+// carries only what its target reaches, deliberately omits it.
 uint64_t SystemNative_GetTimestamp(void)
 {
     struct timespec ts;
@@ -1219,10 +1229,10 @@ uint64_t SystemNative_GetTimestampResolution(void)
     return 1000000000ULL;
 }
 
-// pal_time.c SystemNative_GetLowResolutionTimestamp: monotonic milliseconds
-// behind Environment.TickCount64 (the real PAL reads a coarse monotonic clock;
-// CLOCK_MONOTONIC's precision is a superset of the contract). Regex's timeout
-// bookkeeping (RegexRunner.CheckTimeout) is the reach path here.
+// pal_time.c SystemNative_GetLowResolutionTimestamp. A user assembly's
+// Environment.TickCount64 MemberReference resolves to the real CoreLib getter
+// and reaches this call. In-CoreLib MethodDefinition calls can take the
+// dn2cpp_tickcount64 intrinsic instead.
 int64_t SystemNative_GetLowResolutionTimestamp(void)
 {
     struct timespec ts;

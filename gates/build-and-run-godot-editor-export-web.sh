@@ -323,8 +323,28 @@ if [ "$maxfn" -ge "$V8_MAX_FUNCTION_SIZE" ]; then
     echo "      self-host CLI (gates/selfhost-emit.sh) if $SELFHOST_BIN is stale." >&2
     exit 1
 fi
+# (f) every import the drop-in makes resolves against the page's own main module
+#     plus its JS glue. This one belongs beside (e) rather than in the browser
+#     section for (e)'s reason: section 7 degrades to gate_partial without Chrome,
+#     and an unresolved import is invisible to every exit code upstream of it.
+#     emscripten's dlopen hands back a valid handle and dlsym resolves; the lazy
+#     stub throws `TypeError: resolved is not a function` at the instant the symbol
+#     is first CALLED, naming a wasm function index and never the symbol. So a game
+#     touching a PAL symbol the wasm build lacks ships, loads, and dies in the
+#     player's browser with nothing in any log to point at.
+unsat="$(node gates/_wasm_symbols.js unsatisfied "$DROPIN" "$WEBDIR/index.wasm" "$WEBDIR/index.js")"
+if [ -n "$unsat" ]; then
+    echo "FAIL: the exported main module + glue do not satisfy every drop-in import:" >&2
+    printf '%s\n' "$unsat" | LC_ALL=C sed 's/^/  /' >&2
+    echo "      A SystemNative_* name here is a .NET PAL symbol the wasm build does not" >&2
+    echo "      define — runtime/core/platform/wasm/ carries only the sliver this target" >&2
+    echo "      needs, and the POSIX translation unit is excluded from the Emscripten" >&2
+    echo "      build (runtime/CMakeLists.txt's EMSCRIPTEN arm)." >&2
+    exit 1
+fi
 echo "drop-in: $(wc -c < "$DROPIN" | tr -d ' ') bytes, exports godotsharp_game_main_init; index.html preloads it"
 echo "largest wasm function: $maxfn bytes ($maxfn_name), $((V8_MAX_FUNCTION_SIZE - maxfn)) under V8's $V8_MAX_FUNCTION_SIZE ceiling"
+echo "import closure OK: every function and GOT.mem/GOT.func import resolves against the exported page"
 
 echo "== 7/8 Running the exported game in a real browser =="
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker
@@ -459,11 +479,12 @@ else
         "DN2CPP_EXPORT_GC finalized=True bounded=True" \
         "DN2CPP_EXPORT_INTEROP resizeOk=True sized=True" \
         "DN2CPP_EXPORT_SIGNAL awaited=True" \
+        "DN2CPP_EXPORT_CLOCK ticks=True elapsed=True" \
         "DN2CPP_EXPORT_DONE"; do
         grep -qF "$marker" "$LOG" || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
     done
     for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" \
-        "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_DONE"; do
+        "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_CLOCK" "DN2CPP_EXPORT_DONE"; do
         n="$(grep -c "$once" "$LOG" || true)"
         [ "$n" -eq 1 ] || { echo "FAIL: marker $once appeared $n times (expected exactly 1)" >&2; exit 1; }
     done
