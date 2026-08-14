@@ -557,23 +557,20 @@ internal sealed partial class Compilation
             return u switch
             {
                 // `Struct` names the INLINE-STRUCT form, so it is the no-op it claims to be
-                // exactly where that form is what the type marshals as — a value type or a
-                // [StructLayout] class alike. An enum marshals as its underlying integer and
-                // a delegate as a function pointer, so .NET refuses it on both; a shape test
-                // lets an enum through, since one is a value type with a known extent.
+                // exactly where that form is what the type marshals as. The kind row decides
+                // that; a Class-kind field it declines is one .NET refuses outright.
                 UT.Struct when t.Kind == TypeKind.Class =>
-                    t.Class is { IsEnum: false, IsDelegate: false } ? natural : MarshalExtent.Refused,
+                    MarshalDescriptorKindAllows(t, u) ? natural : MarshalExtent.Refused,
                 UT.FunctionPtr when t.Kind == TypeKind.Class && t.Class is { IsDelegate: true }
                     => MarshalExtent.Ok(ptr, ptr),
                 _ => MarshalExtent.Unknown,
             };
         if (!natural.IsKnown)
             return natural;
-        // A width descriptor asks about the KIND before the number: .NET takes one only on a
-        // primitive field, and refuses it on a nested struct, a delegate, a sequential class,
-        // GCHandle or DateTime even where it names the width that field already has. An enum
-        // is the one non-primitive that takes one, at its underlying integer's width.
-        if (t.Kind != TypeKind.Primitive && t.Class is not { IsEnum: true })
+        // The KIND comes before the number: a nested struct, a delegate, a sequential class,
+        // GCHandle or DateTime takes no width descriptor at all, even one naming the width
+        // the field already has.
+        if (!MarshalDescriptorKindAllows(t, u))
             return MarshalExtent.Refused;
         // The descriptor has to name the field's width AT BOTH POINTER WIDTHS, not just at
         // the one being walked. .NET refuses [MarshalAs(U8)] IntPtr and [MarshalAs(SysInt)]
@@ -589,6 +586,30 @@ internal sealed partial class Compilation
         return named == natural.Size && NamedUnmanagedWidth(u, other) == alt.Size
             ? natural
             : MarshalExtent.Refused;
+    }
+
+    /// <summary>Whether a field of type <paramref name="t"/> may carry the descriptor
+    /// <paramref name="u"/> AT ALL — the KIND question, and the one row both askers of a
+    /// <c>[MarshalAs]</c> reference: this file, which then asks what extent the descriptor
+    /// yields, and <see cref="CppTypes.StructFieldDescriptorSupported"/>, which then asks
+    /// whether it is a byte-image no-op the P/Invoke struct marshaller can emit. The two
+    /// remaining questions are genuinely different — <c>LPWStr</c> on a string field is
+    /// pointer-wide either way and still changes the bytes — so only the kind is shared.
+    ///
+    /// <para>Measured .NET, in both positions: a WIDTH-naming descriptor is valid on a
+    /// primitive and on an ENUM (which marshals as its underlying integer) and on nothing
+    /// else; <c>Struct</c> is valid on exactly the types whose marshalled form IS an inline
+    /// struct — a value type or a <c>[StructLayout]</c> class — so on neither an enum nor a
+    /// delegate. Every other descriptor answers true here and is decided by its asker.</para></summary>
+    internal static bool MarshalDescriptorKindAllows(TypeDesc t, UT u)
+    {
+        if (u == UT.Struct)
+            return t.Kind == TypeKind.Class && t.Class is { IsEnum: false, IsDelegate: false };
+        // The width argument only scales the answer for SysInt; whether a width is named at
+        // all is width-independent.
+        if (NamedUnmanagedWidth(u, PointerWidth.Bytes64) < 0)
+            return true;
+        return t.Kind == TypeKind.Primitive || t.Class is { IsEnum: true };
     }
 
     /// <summary>The fixed byte width an <c>UnmanagedType</c> names, or -1 when it names no

@@ -16,7 +16,9 @@
 # asserting a width-MISMATCHED [MarshalAs] on a blittable-typed field
 # ([MarshalAs(I2)] int) refuses too: it used to cross RAW through the blittable
 # fast path where real .NET raises TypeLoadException (measured), and a fourth
-# asserting that SysInt on a void* field is likewise refused.
+# asserting that SysInt on a void* field is likewise refused. A fifth (step 9) is
+# the KIND half no width can answer — [MarshalAs(Struct)] on an ENUM field — and it
+# runs real .NET itself for the verdict rather than citing a measurement.
 #
 # Also the system-libc section (PInvokeLibcSubset, folded in from its own gate):
 # [DllImport] into always-linked libc/libSystem with blittable primitives,
@@ -58,7 +60,7 @@ PROJECT=PInvokeNative
 OUT="artifacts/pinvokenative"
 LIBDIR="$PWD/$OUT/lib"
 
-echo "== 1/9 Building the native test library libdn2cpptest =="
+echo "== 1/10 Building the native test library libdn2cpptest =="
 mkdir -p "$LIBDIR"
 libtest="$LIBDIR/$(lib_name dn2cpptest)"
 if is_msvc_compiler; then
@@ -90,19 +92,19 @@ else
         samples/native/dn2cpptest/dn2cpptest.c -o "$libtest"
 fi
 
-echo "== 2/9 Locating the real CoreLib =="
+echo "== 2/10 Locating the real CoreLib =="
 corelib=$(locate_corelib)
 echo "corlib: $corelib"
 
-echo "== 3/9 Building app assembly (PInvokeRefLib rides along via ProjectReference) =="
+echo "== 3/10 Building app assembly (PInvokeRefLib rides along via ProjectReference) =="
 build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
 app="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 reflib="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/PInvokeRefLib.dll"
 
-echo "== 4/9 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
+echo "== 4/10 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
 invoke_cli "$app" -r "$corelib" -r "$reflib" --pinvoke-module dn2cpptest -o "$OUT"
 
-echo "== 5/9 Asserting the flagless transpile refuses the cross-assembly import =="
+echo "== 5/10 Asserting the flagless transpile refuses the cross-assembly import =="
 # Deliberately NOT cached, and BEFORE the cache gate (the trim-reflection
 # typo-arm doctrine): the refusal leaves no output surface to key on, and the
 # regression this arm pins — a referenced module's [DllImport] lowering without
@@ -125,7 +127,7 @@ grep -q "error: .*PInvokeRefLib.*dn2cpptest_.*no IL body and no intrinsic mappin
     || { echo "FAIL: the refusal did not name the cross-assembly import" >&2; exit 1; }
 echo "flagless refusal OK: exit 2, named the cross-assembly import"
 
-echo "== 6/9 Asserting the ByValTStr struct-field crossing refuses at transpile =="
+echo "== 6/10 Asserting the ByValTStr struct-field crossing refuses at transpile =="
 # SUBJECT: the P/Invoke STRUCT-FIELD [MarshalAs] descriptor gate
 # (CppTypes.StructFieldDescriptorSupported), not another marshalling shape. A
 # [MarshalAs(ByValTStr)] string field asks for an INLINE character buffer; the
@@ -153,7 +155,7 @@ grep -q "error: .*FixedName.*'Name' carries \[MarshalAs(UnmanagedType.ByValTStr)
     || { echo "FAIL: the refusal did not name the field and its ByValTStr descriptor" >&2; printf '%s\n' "$bvt_err" | tail -3 >&2; exit 1; }
 echo "ByValTStr crossing refusal OK: exit 2, named the field and descriptor"
 
-echo "== 7/9 Asserting the width-mismatched [MarshalAs] struct field refuses at transpile =="
+echo "== 7/10 Asserting the width-mismatched [MarshalAs] struct field refuses at transpile =="
 # SUBJECT: the SAME descriptor gate asked by IsBlittableStruct —
 # a width-MISMATCHED [MarshalAs] on a blittable-typed field ([MarshalAs(I2)] int)
 # used to leave the struct on the blittable fast path and cross RAW, where real
@@ -176,7 +178,7 @@ grep -q "error: .*MisWidth.*'X' carries \[MarshalAs(UnmanagedType.I2)\]" <<<"$wm
     || { echo "FAIL: the refusal did not name the field and its I2 descriptor" >&2; printf '%s\n' "$wm_err" | tail -3 >&2; exit 1; }
 echo "width-mismatch crossing refusal OK: exit 2, named the field and descriptor"
 
-echo "== 8/9 Asserting [MarshalAs(SysInt)] on void* refuses at transpile =="
+echo "== 8/10 Asserting [MarshalAs(SysInt)] on void* refuses at transpile =="
 # SUBJECT: SysInt is not a valid descriptor for a void* field. Numeric width agreement is
 # insufficient: real .NET raises TypeLoadException when the struct crosses a P/Invoke
 # boundary. Same non-cached, before-the-cache-gate doctrine as the other refusal arms.
@@ -195,6 +197,38 @@ grep -q "error: .*DescribedPointer.*'Value' carries \[MarshalAs(UnmanagedType.Sy
     || { echo "FAIL: the refusal did not name the field and its SysInt descriptor" >&2; printf '%s\n' "$pd_err" | tail -3 >&2; exit 1; }
 echo "pointer-descriptor crossing refusal OK: exit 2, named the field and descriptor"
 
+echo "== 9/10 Asserting [MarshalAs(Struct)] on an enum field refuses at transpile =="
+# SUBJECT: the KIND half of the same descriptor gate, which no width can answer.
+# Struct names the inline-struct form and an enum marshals as its underlying integer,
+# so real .NET refuses the struct outright — and this arm MEASURES that rather than
+# asserting it from a comment, because the same row now decides both the P/Invoke
+# classifier and the marshalled-layout model, and a drift between them is silent.
+build_proj samples/dotnet/PInvokeStructDescriptorBad/PInvokeStructDescriptorBad.csproj
+sd_app="samples/dotnet/PInvokeStructDescriptorBad/bin/$CONFIG/$TFM/PInvokeStructDescriptorBad.dll"
+# The oracle: neither entry point exists, so the exception NAMES the stage that failed.
+# TypeLoadException means the marshaller rejected the struct before it ever looked the symbol
+# up; the Ok control gets past the marshaller and dies at the lookup instead (no such symbol
+# on POSIX, no such library on Windows, where libc is not a module name). Drop the control and
+# the arm passes on any exception at all, saying nothing about the descriptor.
+sd_oracle=$(dotnet "$sd_app" 2>&1) || true
+grep -q "^struct-on-enum=TypeLoadException" <<<"$sd_oracle" \
+    || { echo "FAIL: real .NET did not refuse [MarshalAs(Struct)] on an enum field" >&2; printf '%s\n' "$sd_oracle" | tail -3 >&2; exit 1; }
+grep -qE "^struct-on-value=(EntryPointNotFoundException|DllNotFoundException)" <<<"$sd_oracle" \
+    || { echo "FAIL: the control did not get past the marshaller, so TypeLoadException proves nothing" >&2; printf '%s\n' "$sd_oracle" | tail -3 >&2; exit 1; }
+echo "oracle OK: real .NET raises TypeLoadException on the enum arm, gets past the marshaller on the control"
+SD_OUT="artifacts/pinvokenative-structdescriptor-neg"
+rm -rf "$SD_OUT"
+sd_rc=0
+sd_err=$(invoke_cli "$sd_app" -r "$corelib" -o "$SD_OUT" 2>&1) || sd_rc=$?
+if [ "$sd_rc" -ne 2 ]; then
+    echo "FAIL: the Struct-on-enum struct crossing transpiled with exit $sd_rc (want 2: the descriptor refusal)" >&2
+    printf '%s\n' "$sd_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*DescribedEnum.*'T' carries \[MarshalAs(UnmanagedType.Struct)\]" <<<"$sd_err" \
+    || { echo "FAIL: the refusal did not name the field and its Struct descriptor" >&2; printf '%s\n' "$sd_err" | tail -3 >&2; exit 1; }
+echo "Struct-on-enum crossing refusal OK: exit 2, named the field and descriptor"
+
 # The native test library's source dir is a key input beyond the transpile
 # surface: the run dlopens what step 1 built from it.
 if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
@@ -204,7 +238,7 @@ if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
     exit 0
 fi
 
-echo "== 9/9 Linking against libdn2cpptest and running (exact diff vs real .NET) =="
+echo "== 10/10 Linking against libdn2cpptest and running (exact diff vs real .NET) =="
 extra_link_flags="$(libpath_flag "$LIBDIR")"
 consumer_rpath="$(consumer_rpath_flags "$LIBDIR")"
 [ -n "$consumer_rpath" ] && extra_link_flags="$extra_link_flags $consumer_rpath"
