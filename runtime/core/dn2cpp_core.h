@@ -5837,7 +5837,11 @@ struct Dn2CppTaskCold
 
 struct Dn2CppTask : Dn2CppObject
 {
-    int32_t status;            // DN2CPP_TASK_*
+    // The publication point: a settle stores it last with release, so every read —
+    // all of them a plain `->status`, hence a seq_cst load, generated code included
+    // — acquires `result` and `exception` with it. Atomic in the struct, because a
+    // drain-only accessor would leave the generated and intrinsic readers racing.
+    std::atomic<int32_t> status; // DN2CPP_TASK_*
     int32_t id;                // Task.Id — positive, minted at alloc (fills the pad after status)
     Dn2CppObject* exception;   // managed exception object when faulted
     Dn2CppObject* exceptionAggregate; // Task.Exception cache: the AggregateException wrapper,
@@ -5848,6 +5852,13 @@ struct Dn2CppTask : Dn2CppObject
     Dn2CppObject* workerKeepAlive; // Task.Run: keeps the worker delegate GC-reachable
     Dn2CppTaskCold* cold;      // `new Task(...)` work not yet claimed by Start (else null)
 };
+
+// Generated code reads Dn2CppTask by offset: a status that is not int32_t-shaped
+// moves every field after it, and a lock-backed one puts a mutex where the id is.
+static_assert(sizeof(std::atomic<int32_t>) == sizeof(int32_t)
+                  && alignof(std::atomic<int32_t>) == alignof(int32_t)
+                  && std::atomic<int32_t>::is_always_lock_free,
+              "Dn2CppTask::status must keep the ABI of a plain int32_t");
 
 // AsyncTaskMethodBuilder / AsyncTaskMethodBuilder<T> — value type. `boxed` is the
 // heap copy of the owning state machine once it has suspended (null until then);
