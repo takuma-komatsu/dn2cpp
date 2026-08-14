@@ -514,9 +514,11 @@ internal sealed partial class Compilation
     /// <item><c>char</c> — <c>U1</c> forces 1 and <c>U2</c> forces 2, overriding the
     /// CharSet.</item>
     /// </list>
-    /// For every other type a width matching AT BOTH POINTER WIDTHS is accepted as the no-op
-    /// it is and anything else is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
-    /// <c>int</c> is <c>ArgumentException</c>). Anything this does not model answers Unknown,
+    /// For every other PRIMITIVE — and for an enum, which marshals as its underlying one — a
+    /// width matching AT BOTH POINTER WIDTHS is accepted as the no-op it is and anything else
+    /// is refused (<c>[MarshalAs(I4)] int</c> is 4; <c>I2</c> or <c>I8</c> on an
+    /// <c>int</c> is <c>ArgumentException</c>). A field of any other KIND takes no width
+    /// descriptor at all, whatever width it names. Anything this does not model answers Unknown,
     /// never a number — the permanent COM carve-outs (<c>BStr</c>, <c>SafeArray</c>,
     /// <c>Interface</c>, <c>IDispatch</c>) and <c>LPStruct</c> land there.</summary>
     private MarshalExtent MarshalDescribedExtent(TypeDesc t, UT u, MarshalExtent natural, bool unicode, int ptr)
@@ -569,15 +571,22 @@ internal sealed partial class Compilation
         if (named < 0)
             return u switch
             {
-                // A nested struct or a delegate may name its own form; both are no-ops.
-                UT.Struct when natural.IsKnown && t.Kind == TypeKind.Class
-                    && t.Class is { IsValueType: true } => natural,
+                // `Struct` names the INLINE-STRUCT form, so it is the no-op it claims to be
+                // exactly where that form is what the type marshals as. The kind row decides
+                // that; a Class-kind field it declines is one .NET refuses outright.
+                UT.Struct when t.Kind == TypeKind.Class =>
+                    MarshalDescriptorKindAllows(t, u) ? natural : MarshalExtent.Refused,
                 UT.FunctionPtr when t.Kind == TypeKind.Class && t.Class is { IsDelegate: true }
                     => MarshalExtent.Ok(ptr, ptr),
                 _ => MarshalExtent.Unknown,
             };
         if (!natural.IsKnown)
             return natural;
+        // The KIND comes before the number: a nested struct, a delegate, a sequential class,
+        // GCHandle or DateTime takes no width descriptor at all, even one naming the width
+        // the field already has.
+        if (!MarshalDescriptorKindAllows(t, u))
+            return MarshalExtent.Refused;
         // The descriptor has to name the field's width AT BOTH POINTER WIDTHS, not just at
         // the one being walked. .NET refuses [MarshalAs(U8)] IntPtr and [MarshalAs(SysInt)]
         // long on x64, where the two coincide, so a per-width comparison would measure at 64
@@ -592,6 +601,30 @@ internal sealed partial class Compilation
         return named == natural.Size && NamedUnmanagedWidth(u, other) == alt.Size
             ? natural
             : MarshalExtent.Refused;
+    }
+
+    /// <summary>Whether a field of type <paramref name="t"/> may carry the descriptor
+    /// <paramref name="u"/> AT ALL — the KIND question, and the one row both askers of a
+    /// <c>[MarshalAs]</c> reference: this file, which then asks what extent the descriptor
+    /// yields, and <see cref="CppTypes.StructFieldDescriptorSupported"/>, which then asks
+    /// whether it is a byte-image no-op the P/Invoke struct marshaller can emit. The two
+    /// remaining questions are genuinely different — <c>LPWStr</c> on a string field is
+    /// pointer-wide either way and still changes the bytes — so only the kind is shared.
+    ///
+    /// <para>Measured .NET, in both positions: a WIDTH-naming descriptor is valid on a
+    /// primitive and on an ENUM (which marshals as its underlying integer) and on nothing
+    /// else; <c>Struct</c> is valid on exactly the types whose marshalled form IS an inline
+    /// struct — a value type or a <c>[StructLayout]</c> class — so on neither an enum nor a
+    /// delegate. Every other descriptor answers true here and is decided by its asker.</para></summary>
+    internal static bool MarshalDescriptorKindAllows(TypeDesc t, UT u)
+    {
+        if (u == UT.Struct)
+            return t.Kind == TypeKind.Class && t.Class is { IsEnum: false, IsDelegate: false };
+        // The width argument only scales the answer for SysInt; whether a width is named at
+        // all is width-independent.
+        if (NamedUnmanagedWidth(u, PointerWidth.Bytes64) < 0)
+            return true;
+        return t.Kind == TypeKind.Primitive || t.Class is { IsEnum: true };
     }
 
     /// <summary>The fixed byte width an <c>UnmanagedType</c> names, or -1 when it names no

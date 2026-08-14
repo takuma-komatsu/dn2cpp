@@ -558,11 +558,14 @@ internal static class CppTypes
     /// emitter reads exactly one descriptor kind (<c>ByValArray</c>, via
     /// <see cref="IsByValArrayField"/>) and lays every other field out from its TYPE alone,
     /// so a descriptor is acceptable only when it is that implemented form or an exact
-    /// no-op — one naming the form the untouched lowering already emits (the same no-op set
-    /// <c>Compilation.MarshalDescribedExtent</c> accepts): <c>Bool</c> on a <c>bool</c> (the
-    /// 4-byte default), <c>Struct</c> on a value-struct field, <c>FunctionPtr</c> on a
-    /// function-pointer field, or a width-naming descriptor
-    /// equal to the field's natural native width (<c>[MarshalAs(U4)] uint</c>). Everything
+    /// no-op — one naming the form the untouched lowering already emits: <c>Bool</c> on a
+    /// <c>bool</c> (the 4-byte default), <c>Struct</c> on a field whose marshalled form is an
+    /// inline struct, <c>FunctionPtr</c> on a function-pointer field, or a width-naming
+    /// descriptor equal to the field's natural native width (<c>[MarshalAs(U4)] uint</c>).
+    /// Which field KINDS may carry a descriptor at all is not decided here — that is
+    /// <see cref="Compilation.MarshalDescriptorKindAllows"/>, the one row the marshalled-layout
+    /// model asks too, because a disagreement between the two is silent: one would size a
+    /// struct .NET refuses to load. Everything
     /// else — <c>ByValTStr</c> (an inline character buffer the emitter would pass as a
     /// pointer), <c>I1</c>/<c>U1</c> on a bool (a 1-byte width the emitter would pass as 4),
     /// a string encoding override against the struct CharSet, a ByValArray of non-blittable
@@ -593,8 +596,12 @@ internal static class CppTypes
         var t = f.Type;
         if (t.Kind == TypeKind.Primitive && t.Primitive == PrimitiveTypeCode.Boolean)
             return u == System.Runtime.InteropServices.UnmanagedType.Bool;
+        // The KIND question is one row, shared with the marshalled-layout model: a descriptor
+        // this declines is one real .NET refuses, so no emitted layout may honour it.
+        if (!Compilation.MarshalDescriptorKindAllows(t, u))
+            return false;
         if (u == System.Runtime.InteropServices.UnmanagedType.Struct)
-            return t.Kind == TypeKind.Class && t.Class is { IsValueType: true };
+            return true;
         int named = u switch
         {
             System.Runtime.InteropServices.UnmanagedType.I1
@@ -623,8 +630,8 @@ internal static class CppTypes
 
     /// <summary>The byte width of a blittable field type on the native ABI — the numeric
     /// twin of <see cref="NativeAbiType"/>, used only to test whether a width-naming
-    /// <c>[MarshalAs]</c> descriptor is the no-op it claims to be. -1 for anything that is
-    /// not a blittable scalar/enum.</summary>
+    /// <c>[MarshalAs]</c> descriptor is the no-op it claims to be — the kind row has already
+    /// admitted only the scalars and enums by the time it is asked. -1 otherwise.</summary>
     private static int NativeAbiWidth(TypeDesc t) => t.Kind switch
     {
         TypeKind.Primitive => PrimitiveAbiWidth(t.Primitive),
