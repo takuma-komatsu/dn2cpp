@@ -81,10 +81,12 @@ for d in src runtime third_party; do printf 'x\n' > "$FIX/$d/a.txt"; done
 # see what the operator's git sees — that setting is the subject of an arm below,
 # and a fixture immune to it could not speak for the resolver at all.
 mkdir -p "$WORK/nohooks" "$WORK/notemplate"
+# An empty file, not /dev/null: git for Windows maps that to nul and refuses it.
+: > "$WORK/noexcludes"
 fixture_git() {
     git -C "$FIX" \
         -c core.hooksPath="$WORK/nohooks" \
-        -c core.excludesFile=/dev/null \
+        -c core.excludesFile="$WORK/noexcludes" \
         -c user.name=dn2cpp -c user.email=dn2cpp@invalid \
         -c commit.gpgsign=false "$@"
 }
