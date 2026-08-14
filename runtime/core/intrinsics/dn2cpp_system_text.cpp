@@ -32,7 +32,7 @@ static void dn2cpp_sb_ensure(Dn2CppStringBuilder* sb, int32_t needed)
     auto* newBuf = static_cast<char16_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(newCap) * sizeof(char16_t)));
     if (sb->buf != nullptr && sb->length > 0)
         std::memcpy(newBuf, sb->buf, static_cast<size_t>(sb->length) * sizeof(char16_t));
-    sb->buf = newBuf;
+    dn2cpp_gc_store_ref(&sb->buf, newBuf);
     sb->capacity = newCap;
 }
 
@@ -246,7 +246,7 @@ Dn2CppStringBuilder* dn2cpp_sb_replace_str_range(Dn2CppStringBuilder* sb, Dn2Cpp
             dst[w++] = sb->buf[i++];
         }
     }
-    sb->buf = dst;
+    dn2cpp_gc_store_ref(&sb->buf, dst);
     sb->length = newLen;
     sb->capacity = newLen > 0 ? newLen : 1;
     return sb;
@@ -412,7 +412,7 @@ int32_t dn2cpp_sb_ensure_capacity(Dn2CppStringBuilder* sb, int32_t capacity)
         auto* newBuf = static_cast<char16_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(capacity) * sizeof(char16_t)));
         if (sb->buf != nullptr && sb->length > 0)
             std::memcpy(newBuf, sb->buf, static_cast<size_t>(sb->length) * sizeof(char16_t));
-        sb->buf = newBuf;
+        dn2cpp_gc_store_ref(&sb->buf, newBuf);
         sb->capacity = capacity;
     }
     return sb->capacity;

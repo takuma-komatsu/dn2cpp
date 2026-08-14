@@ -210,7 +210,7 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
     // applies real .NET's SetValue coercion (unbox to the element's stored rep, widening/exactness).
     Dn2CppArrayRef* buf = dn2cpp_newarr_ref(length);
     for (int32_t i = 0; i < length; i++)
-        buf->data[i] = dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i));
+        dn2cpp_gc_store_ref(&buf->data[i], dn2cpp_array_get_value(arr, static_cast<int64_t>(index + i)));
     Dn2CppBoxedOrderCtx ctx{ icomparable_ti, comparer, icomparer_ti, comparer_slot };
     dn2cpp_array_sort_cmp_ref(buf, 0, length, &ctx, &dn2cpp_boxed_order);
     for (int32_t i = 0; i < length; i++)

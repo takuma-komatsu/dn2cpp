@@ -3292,7 +3292,14 @@ void dn2cpp_free_pinned(void* p);
 
 // Incremental-GC write barriers. Call after publishing managed references.
 // The first form requires an address inside GC-managed storage; the second is
-// for an arbitrary byref which may instead name the stack or static data.
+// for an arbitrary byref which may instead name the stack or static data —
+// both are always rescanned as roots, so neither needs dirtying.
+//
+// Barrier every managed-reference store rather than reasoning about the
+// target's colour: a just-allocated object is not reliably white, since mark
+// bits survive a generational cycle, and whether the conservative scan
+// re-dirties an already-marked one depends on where the compiler kept the
+// pointer — and stops happening at all under GC_ALL_INTERIOR_POINTERS.
 void dn2cpp_gc_write_barrier(void* heapAddress);
 void dn2cpp_gc_write_barrier_if_heap(void* address);
 

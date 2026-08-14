@@ -693,7 +693,7 @@ void dn2cpp_type_registry_add(const char* name, const Dn2CppTypeInfo* type)
     auto* e = static_cast<Dn2CppDynTypeReg*>(dn2cpp_alloc(sizeof(Dn2CppDynTypeReg)));
     e->name = name;
     e->type = type;
-    e->next = g_dyn_type_registry;
+    dn2cpp_gc_store_ref(&e->next, g_dyn_type_registry);
     g_dyn_type_registry = e;
 }
 

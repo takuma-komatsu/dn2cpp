@@ -196,14 +196,13 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
                            : (p->row == nullptr && dn2cpp_string_equals(p->nfi.cultureName, name)))
             return &p->nfi;
     }
-    // Allocate and LINK first, then fill: once linked, the node is reachable
-    // from a scanned static slot, so every string allocated below is rooted the
-    // instant it is stored rather than resting on the conservative stack scan.
+    // Allocate and LINK first, then fill: once linked, the node is reachable from
+    // a scanned static slot rather than resting on the conservative stack scan.
     // The invariant copy keeps every field valid meanwhile.
     auto* node = static_cast<Dn2CppCultureCacheNode*>(dn2cpp_alloc(sizeof(Dn2CppCultureCacheNode)));
     node->nfi = *dn2cpp_nfi_invariant();
     node->row = row;
-    node->next = g_cultureCache;
+    dn2cpp_gc_store_ref(&node->next, g_cultureCache);
     g_cultureCache = node;
     if (row == nullptr)
     {
@@ -211,7 +210,7 @@ static const Dn2CppNumberFormatInfo* dn2cpp_culture_intern(const Dn2CppCultureRo
         // callers that key behavior on the name (e.g. RegexCaseEquivalences'
         // Turkish/NonTurkish tiering) stay faithful, and the LCID says "this
         // culture has none" rather than claiming to be the invariant one.
-        node->nfi.cultureName = name;
+        dn2cpp_gc_store_ref(&node->nfi.cultureName, name); // `name` is only stack-rooted
         node->nfi.lcid = 4096;
         return &node->nfi;
     }
@@ -474,19 +473,20 @@ Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
     auto* node = static_cast<Dn2CppNfiBoxNode*>(dn2cpp_alloc(sizeof(Dn2CppNfiBoxNode)));
     node->box.type = ti;
     node->box.nfi = n;
-    node->next = g_nfiBoxes;
+    dn2cpp_gc_store_ref(&node->next, g_nfiBoxes);
     g_nfiBoxes = node;
     return &node->box;
 }
 
-void dn2cpp_nfi_set_number_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->numberDecimal = v; }
-void dn2cpp_nfi_set_number_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->numberGroup = v; }
-void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->negativeSign = v; }
-void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->nan = v; }
-void dn2cpp_nfi_set_pos_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->posInf = v; }
-void dn2cpp_nfi_set_neg_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->negInf = v; }
-void dn2cpp_nfi_set_percent_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->percentSymbol = v; }
-void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { n->currencySymbol = v; }
+// An NFI is a field of a cache node, so each setter dirties that node's slot.
+void dn2cpp_nfi_set_number_decimal(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->numberDecimal, v); }
+void dn2cpp_nfi_set_number_group(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->numberGroup, v); }
+void dn2cpp_nfi_set_negative_sign(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->negativeSign, v); }
+void dn2cpp_nfi_set_nan(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->nan, v); }
+void dn2cpp_nfi_set_pos_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->posInf, v); }
+void dn2cpp_nfi_set_neg_inf(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->negInf, v); }
+void dn2cpp_nfi_set_percent_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->percentSymbol, v); }
+void dn2cpp_nfi_set_currency_symbol(Dn2CppNumberFormatInfo* n, Dn2CppString* v) { dn2cpp_gc_store_ref(&n->currencySymbol, v); }
 
 // NumberGroupSizes / CurrencyGroupSizes / PercentGroupSizes — the getter. A
 // fresh array per call, matching real .NET's defensive copy: two reads are not
