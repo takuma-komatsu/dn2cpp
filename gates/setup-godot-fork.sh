@@ -194,21 +194,23 @@ elif [ "$(cat "$FORK_PIN_EXPECTED")" != "$BASE_COMMIT" ]; then
     exit 1
 fi
 
-# The two interop-ABI surfaces the mono-module drop-in hard-codes assumptions
-# about, fingerprinted over the *fork* tree against the same expectation the DM
-# gates hold the pristine clone to. Same shape as _godot_dotnet.sh's tripwire.
+# The interop-ABI surfaces the mono-module drop-in hard-codes assumptions about,
+# fingerprinted over the *fork* tree against the same expectation the DM gates
+# hold the pristine clone to. Same shape as _godot_dotnet.sh's tripwire.
 abi_actual="$(
     awk '/^static const void \*unmanaged_callbacks\[\]\{/{f=1} f{print} f&&/^\};/{exit}' \
         "$FORK/modules/mono/glue/runtime_interop.cpp" \
         | shasum -a 256 | awk '{print $1"  unmanaged_callbacks"}'
     shasum -a 256 "$FORK/modules/mono/glue/GodotSharp/GodotSharp/Core/Bridge/ManagedCallbacks.cs" \
         | awk '{print $1"  ManagedCallbacks.cs"}'
+    shasum -a 256 "$FORK/modules/mono/glue/GodotSharp/GodotSharp/Core/NativeInterop/NativeFuncs.cs" \
+        | awk '{print $1"  NativeFuncs.cs"}'
 )"
 if [ "$abi_actual" != "$(cat "$ABI_EXPECTED")" ]; then
     echo "error: the fork's interop ABI fingerprints differ from $ABI_EXPECTED" >&2
     echo "expected:" >&2; cat "$ABI_EXPECTED" >&2
     echo "actual:" >&2; printf '%s\n' "$abi_actual" >&2
-    echo "       The fork must never touch unmanaged_callbacks[] or ManagedCallbacks." >&2
+    echo "       The fork must never touch unmanaged_callbacks[], ManagedCallbacks or NativeFuncs." >&2
     exit 1
 fi
 echo "interop ABI fingerprints OK (fork is drop-in compatible)"

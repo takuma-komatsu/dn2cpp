@@ -615,11 +615,13 @@ godot_fork_emcc_python_check() {
 # godot_fork_pin_abi_check — the shared pin + interop-ABI tripwire of the four
 # editor-export gates. The artifact root, the fork worktree and the gate's
 # checked-in expectations must all describe one base commit, and the fork must
-# leave the two surfaces the mono-module handshake hard-codes assumptions
+# leave the three surfaces the mono-module handshake hard-codes assumptions
 # about byte-identical to that base — the engine's interop function table
-# (order/count of unmanaged_callbacks) and the ManagedCallbacks struct — or it
-# is not a drop-in host. Sets FORK and BASE_COMMIT for the caller; exits 1 on
-# any mismatch (this runs inside a gate, where the mismatch IS the failure).
+# (order/count of unmanaged_callbacks), the ManagedCallbacks struct and the C#
+# interop declarations — or it is not a drop-in host. Sets FORK and BASE_COMMIT
+# for the caller; exits 1 on any mismatch (this runs inside a gate, where the
+# mismatch IS the failure). The twin in _godot_dotnet.sh must compute the same
+# text: they share $ABI_EXPECTED.
 godot_fork_pin_abi_check() {
     godot_fork_resolve || exit 1
 
@@ -640,6 +642,8 @@ godot_fork_pin_abi_check() {
             | shasum -a 256 | awk '{print $1"  unmanaged_callbacks"}'
         shasum -a 256 "$FORK/modules/mono/glue/GodotSharp/GodotSharp/Core/Bridge/ManagedCallbacks.cs" \
             | awk '{print $1"  ManagedCallbacks.cs"}'
+        shasum -a 256 "$FORK/modules/mono/glue/GodotSharp/GodotSharp/Core/NativeInterop/NativeFuncs.cs" \
+            | awk '{print $1"  NativeFuncs.cs"}'
     )"
     if [ "$abi_actual" != "$(cat "$ABI_EXPECTED")" ]; then
         echo "FAIL: the fork's interop ABI fingerprints differ from $ABI_EXPECTED" >&2

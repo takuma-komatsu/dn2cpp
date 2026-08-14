@@ -24,18 +24,22 @@ there because upstream never compiled the C# module for wasm32.
 
 ### ABI no-touch list (fork invariant)
 
-The drop-in lane's ABI is pinned by a fingerprint over two engine surfaces
+The drop-in lane's ABI is pinned by a fingerprint over three engine surfaces
 (`gates/expected/godot-dotnet-abi.sha256`):
 
 - `modules/mono/glue/runtime_interop.cpp` — the `unmanaged_callbacks[]` block
   (order and count; `NativeFuncs.Initialize` indexes into it).
 - `modules/mono/glue/GodotSharp/GodotSharp/Core/Bridge/ManagedCallbacks.cs` —
   the `ManagedCallbacks` struct.
+- `modules/mono/glue/GodotSharp/GodotSharp/Core/NativeInterop/NativeFuncs.cs` —
+  the interop declarations. The backend rebuilds each `calli` function-pointer
+  type from the managed signature, so a widened parameter or return type is a
+  re-audit and not a re-freeze.
 
-**The fork must never modify these two.** All fork changes live in
+**The fork must never modify these three.** All fork changes live in
 `modules/mono/editor/GodotTools/**` (C#), `modules/mono/build_scripts/**` and
-docs. Leaving both surfaces byte-identical keeps the fingerprint and keeps the
-fork drop-in compatible; the fork gates re-check the same fingerprint.
+docs. Leaving all three surfaces byte-identical keeps the fingerprint and keeps
+the fork drop-in compatible; the fork gates re-check the same fingerprint.
 
 ## 2. Fork strategy
 

@@ -315,7 +315,7 @@ eq "gates/_common.sh 'none of which builds a pipeline at all' — pipelines into
    "0" "$n_badpipe" \
    "each is: ${badpipe:-none}. Rewrite as \`grep -q P <<<\"\$(X)\"\`, \`grep -q P FILE\`, \`head -N <<<\"\$(X)\"\`, \`\${x%%\$'\''\\n'\''*}\` or \`first_line \"\$(X)\"\`; see the note beside \`set -o pipefail\` in gates/_common.sh"
 
-echo "== 7/13 docs/EDITOR-EXPORT-DESIGN.md — the release assets and the bundle layout =="
+echo "== 7/13 docs/EDITOR-EXPORT-DESIGN.md — release assets, bundle layout, ABI no-touch list =="
 # A release asset is exactly a dist/ script that writes the `<lane>.metadata`
 # dist/release-github.sh consumes; §11's table is the hand-written copy of that
 # set. Both directions matter: a lane packaged and undocumented leaves a release
@@ -339,6 +339,20 @@ tree_top=$(grep -oE '\$LAYOUT/[A-Za-z0-9_.-]+' dist/package-toolchain.sh \
            | sed 's|^\$LAYOUT/||' | grep -vE '^\.' | sort -u)
 set_eq "$EED §4 bundle contents vs the layout dist/package-toolchain.sh stages" \
        "named by §4" "$doc_top" "staged under \$LAYOUT" "$tree_top"
+
+# §1's ABI no-touch list is the hand-written copy of what the fingerprint file
+# covers, stated twice — as a word and as bullets. A surface added to the
+# tripwire and not to the list reads as one the fork is still free to edit.
+abi_lines=$(awk 'END{print NR}' gates/expected/godot-dotnet-abi.sha256)
+abi_word=$(w2n "$(LC_ALL=C sed -nE 's/^.*fingerprint over ([a-z]+) engine surfaces$/\1/p' "$EED")")
+abi_bullets=$(awk '/^### ABI no-touch list/{b = 1; next}
+                   b && /^\*\*The fork must never/{exit}
+                   b && /^- `modules\//{n++}
+                   END{print n + 0}' "$EED")
+eq "$EED §1 'N engine surfaces' vs the lines of gates/expected/godot-dotnet-abi.sha256" \
+   "$abi_word" "$abi_lines"
+eq "$EED §1 ABI no-touch bullets vs the lines of gates/expected/godot-dotnet-abi.sha256" \
+   "$abi_bullets" "$abi_lines"
 
 echo "== 8/13 dist/release-notes-template.md — bound by its renderer =="
 # The template is rendered on a packaging host at release time, and that is the
