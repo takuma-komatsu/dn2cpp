@@ -13,11 +13,14 @@
 # `gate_skip` and deliberately takes no result cache — the same reasoning as
 # gates/build-and-run-doc-claims.sh, whose shape this copies.
 #
-# Two fixtures, because the two subjects ask different questions:
+# Three fixtures, because the subjects ask different questions:
 #   * a throwaway git repository for `dn2cpp_commit_pin_resolve`, which asks
 #     about the tree it is run in. Asking it about THIS tree would mean dirtying
 #     the tree the rest of the suite is hashing, and would answer differently
 #     depending on whether the developer had uncommitted work.
+#   * a directory holding a file called `dn2cpp` and a stamp beside it, for
+#     `dn2cpp_pin_bin_assert` — which compares two arguments and reads nothing
+#     ambient, which is what lets a fixture supply both sides.
 #   * a synthetic artifacts directory of `<lane>.metadata` + empty assets for
 #     dist/release-github.sh, whose agreement checks read nothing else.
 #
@@ -59,8 +62,8 @@ refused() {
     fi
 }
 
-# ── 1/3 the pin resolver's arms ──────────────────────────────────────────────
-echo "== 1/3 dn2cpp_commit_pin_resolve — against a throwaway repository =="
+# ── 1/4 the pin resolver's arms ──────────────────────────────────────────────
+echo "== 1/4 dn2cpp_commit_pin_resolve — against a throwaway repository =="
 FIX="$WORK/pinrepo"
 mkdir -p "$FIX/src" "$FIX/runtime" "$FIX/third_party"
 # src_tree_hash enumerates exactly these three, and a git checkout is its own
@@ -115,12 +118,57 @@ refused "an untracked file the compiler would read" "$PIN_RC" "$PIN_OUT" \
     "the working tree is not $FIX_HEAD" "?? src/stray.txt"
 rm -f "$FIX/src/stray.txt"
 
-# ── 2/3 the editor packagers demand a pin at all ─────────────────────────────
+# ── 2/4 the pinned bundle's own CLI ──────────────────────────────────────────
+# The tree being the pinned commit says nothing about a binary built elsewhere,
+# and under --dn2cpp-bin the stamp beside it is the only witness. Driven against
+# a fixture rather than the real artifacts/: asking about the real one needs this
+# tree to be clean AND at the pin, which a suite run cannot promise — and an
+# assertion that runs only when it happens to be both is the fail-open shape.
+echo "== 2/4 dn2cpp_pin_bin_assert — a named binary's stamp =="
+BINFIX="$WORK/bin"
+mkdir -p "$BINFIX"
+: > "$BINFIX/dn2cpp"
+PIN_SHA=1111111111111111111111111111111111111111
+
+bin_try() {
+    BIN_OUT="$(dn2cpp_pin_bin_assert "$BINFIX/dn2cpp" "$1" "$PIN_SHA" 2>&1)" && BIN_RC=0 || BIN_RC=$?
+}
+
+printf 'abc123\n' > "$BINFIX/dn2cpp.src-hash"
+bin_try abc123
+if [ "$BIN_RC" -eq 0 ] && [ -z "$BIN_OUT" ]; then
+    ok "a binary stamped with the sources now in the tree"
+else
+    bad "a matching stamp was refused: rc=$BIN_RC out='$BIN_OUT'"
+fi
+
+bin_try def456
+refused "a binary stamped with other sources" "$BIN_RC" "$BIN_OUT" \
+    "was not built from dn2cpp $PIN_SHA" "stamped abc123 != def456" \
+    "gates/selfhost-emit.sh"
+
+rm -f "$BINFIX/dn2cpp.src-hash"
+bin_try abc123
+refused "a binary with no stamp at all (provenance unknown, not a pass)" \
+    "$BIN_RC" "$BIN_OUT" "stamped <no stamp> != abc123"
+
+# The three arms above prove the helper; this proves it is still WIRED. By name
+# and not by execution, because reaching that line for real needs this tree
+# clean and at the pin — the condition the section header refuses to depend on.
+# Deleting the call is otherwise invisible here: the arms would stay green over
+# a pinned bundle that had stopped asking about its own binary.
+if grep -q '^    dn2cpp_pin_bin_assert "\$DN2CPP_BIN"' dist/package-toolchain.sh; then
+    ok "dist/package-toolchain.sh's pinned arm still calls it"
+else
+    bad "dist/package-toolchain.sh no longer calls dn2cpp_pin_bin_assert on its --dn2cpp-bin — a pinned bundle would carry an unvouched-for CLI"
+fi
+
+# ── 3/4 the editor packagers demand a pin at all ─────────────────────────────
 # The arm that makes the rest reachable: without the flag there is no pin to
 # verify, and the metadata falls back to whatever HEAD said. Both scripts exit
 # on it before touching a fork, a host check or a file, so this costs nothing
 # and runs on either host.
-echo "== 2/3 the editor packagers' required --dn2cpp-commit =="
+echo "== 3/4 the editor packagers' required --dn2cpp-commit =="
 V=4.7.1-dn2cpp.3.1
 for lane in macos windows; do
     out="$(bash "dist/package-editor-$lane.sh" --version "$V" 2>&1)" && rc=0 || rc=$?
@@ -132,8 +180,8 @@ for lane in macos windows; do
         "--dn2cpp-commit is required" "$hint"
 done
 
-# ── 3/3 dist/release-github.sh's cross-lane agreement ────────────────────────
-echo "== 3/3 dist/release-github.sh — one value per release, across the lanes =="
+# ── 4/4 dist/release-github.sh's cross-lane agreement ────────────────────────
+echo "== 4/4 dist/release-github.sh — one value per release, across the lanes =="
 STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/gh" <<'STUBEOF'
