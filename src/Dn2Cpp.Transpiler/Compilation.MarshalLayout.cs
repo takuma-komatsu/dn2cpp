@@ -556,9 +556,13 @@ internal sealed partial class Compilation
         if (named < 0)
             return u switch
             {
-                // A nested struct or a delegate may name its own form; both are no-ops.
-                UT.Struct when natural.IsKnown && t.Kind == TypeKind.Class
-                    && t.Class is { IsValueType: true } => natural,
+                // `Struct` names the INLINE-STRUCT form, so it is the no-op it claims to be
+                // exactly where that form is what the type marshals as — a value type or a
+                // [StructLayout] class alike. An enum marshals as its underlying integer and
+                // a delegate as a function pointer, so .NET refuses it on both; a shape test
+                // lets an enum through, since one is a value type with a known extent.
+                UT.Struct when t.Kind == TypeKind.Class =>
+                    t.Class is { IsEnum: false, IsDelegate: false } ? natural : MarshalExtent.Refused,
                 UT.FunctionPtr when t.Kind == TypeKind.Class && t.Class is { IsDelegate: true }
                     => MarshalExtent.Ok(ptr, ptr),
                 _ => MarshalExtent.Unknown,

@@ -98,6 +98,15 @@ struct NestedStruct { [MarshalAs(UnmanagedType.Struct)] public InnerLong F; }
 struct EnumI1 { [MarshalAs(UnmanagedType.I1)] public EByte F; }
 struct EnumI8 { [MarshalAs(UnmanagedType.I8)] public ELong F; }
 struct EnumI2 { [MarshalAs(UnmanagedType.I2)] public EByte F; }
+// Struct names the INLINE-STRUCT form, and .NET asks the kind for it too: an enum marshals
+// as its underlying integer and a delegate as a function pointer, so neither takes it,
+// while a [StructLayout] CLASS does — its marshalled form IS an inline struct.
+struct RefField { public string S; }
+struct StructOnEnum { [MarshalAs(UnmanagedType.Struct)] public EByte F; }
+struct StructOnDelegate { [MarshalAs(UnmanagedType.Struct)] public Callback F; }
+struct StructOnAuto { [MarshalAs(UnmanagedType.Struct)] public AutoLaidOut F; }
+struct StructOnSeqClass { [MarshalAs(UnmanagedType.Struct)] public SeqClass F; }
+struct StructOnRefField { [MarshalAs(UnmanagedType.Struct)] public RefField F; }
 struct Empty { }
 class PlainClass { public int A; }
 
@@ -293,6 +302,14 @@ unsafe class Program
         Console.WriteLine("m enum-i1=" + Marshal.SizeOf(typeof(EnumI1)) + "/" + Marshal.SizeOf<EnumI1>());
         Console.WriteLine("m enum-i8=" + Marshal.SizeOf(typeof(EnumI8)) + "/" + Marshal.SizeOf<EnumI8>());
         Console.WriteLine("m enum-i2=" + Verdict(() => Marshal.SizeOf(typeof(EnumI2))) + "/" + Verdict(() => Marshal.SizeOf<EnumI2>()));
+        // Struct asks the kind as well: an enum, a delegate and an auto-layout struct are all
+        // refused, where a [StructLayout] class and a value struct holding a reference field
+        // both name the inline form they already marshal as and answer.
+        Console.WriteLine("m struct-on-enum=" + Verdict(() => Marshal.SizeOf(typeof(StructOnEnum))) + "/" + Verdict(() => Marshal.SizeOf<StructOnEnum>()));
+        Console.WriteLine("m struct-on-delegate=" + Verdict(() => Marshal.SizeOf(typeof(StructOnDelegate))) + "/" + Verdict(() => Marshal.SizeOf<StructOnDelegate>()));
+        Console.WriteLine("m struct-on-auto=" + Verdict(() => Marshal.SizeOf(typeof(StructOnAuto))) + "/" + Verdict(() => Marshal.SizeOf<StructOnAuto>()));
+        Console.WriteLine("m struct-on-seqclass=" + Marshal.SizeOf(typeof(StructOnSeqClass)) + "/" + Marshal.SizeOf<StructOnSeqClass>());
+        Console.WriteLine("m struct-on-reffield=" + Marshal.SizeOf(typeof(StructOnRefField)) + "/" + Marshal.SizeOf<StructOnRefField>());
         // The verdict split — SizeOf answers for a non-blittable struct while
         // PtrToStructure still refuses it — is a DECLARED divergence (.NET copies happily),
         // so it cannot live in a live diff. It is asserted in ReflectTypes'
