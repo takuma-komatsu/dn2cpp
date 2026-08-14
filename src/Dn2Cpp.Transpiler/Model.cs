@@ -204,7 +204,12 @@ internal sealed class TypeDesc
         TypeKind.SZArray or TypeKind.MDArray => true,
         TypeKind.ByRef => true,   // a by-ref field is a managed reference
         TypeKind.Pointer => false, // unmanaged pointer
-        TypeKind.External => ExternalName is "System.String" or "System.Object",
+        // Derived from the same cascade that renders the C++ storage type: a name
+        // CppTypes maps to a GC-managed pointer (Exception, Type, the reflection
+        // infos, …) contains a reference, so every write-barrier gate keyed on this
+        // predicate agrees with the emitted field/element type. A name with no
+        // mapping cannot be stored anywhere and stays "no references".
+        TypeKind.External => CppTypes.IsGcRefCppType(CppTypes.ExternalCppName(ExternalName)),
         TypeKind.ExternalGeneric => true, // a base-image generic reference type
         TypeKind.Class when Class!.IsEnum => false,
         TypeKind.Class when Class!.IsValueType =>

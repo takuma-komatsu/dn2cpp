@@ -669,9 +669,9 @@ Dn2CppObject* dn2cpp_threadlocal_get(Dn2CppObject* o)
         return n->value;
     auto* node = static_cast<Dn2CppThreadLocalNode*>(dn2cpp_alloc(sizeof(Dn2CppThreadLocalNode)));
     node->threadId = id;
-    node->value = initial;
-    node->next = h->head;
-    h->head = node;
+    dn2cpp_gc_store_ref(&node->value, initial);
+    dn2cpp_gc_store_ref(&node->next, h->head);
+    dn2cpp_gc_store_ref(&h->head, node);
     return initial;
 }
 
@@ -682,14 +682,14 @@ void dn2cpp_threadlocal_set(Dn2CppObject* o, Dn2CppObject* boxedOrRef)
     std::lock_guard<std::mutex> lk(g_threadlocal_mtx);
     if (Dn2CppThreadLocalNode* n = dn2cpp_threadlocal_find(h, id))
     {
-        n->value = boxedOrRef;
+        dn2cpp_gc_store_ref(&n->value, boxedOrRef);
         return;
     }
     auto* node = static_cast<Dn2CppThreadLocalNode*>(dn2cpp_alloc(sizeof(Dn2CppThreadLocalNode)));
     node->threadId = id;
-    node->value = boxedOrRef;
-    node->next = h->head;
-    h->head = node;
+    dn2cpp_gc_store_ref(&node->value, boxedOrRef);
+    dn2cpp_gc_store_ref(&node->next, h->head);
+    dn2cpp_gc_store_ref(&h->head, node);
 }
 
 int32_t dn2cpp_threadlocal_is_created(Dn2CppObject* o)

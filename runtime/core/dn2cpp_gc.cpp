@@ -747,7 +747,7 @@ static void dn2cpp_cctor_unlink(Dn2CppCctorRun* node, Dn2CppCctorFailure* failur
     {
         // Failure: record, and leave the flag at 0 so no fast path ever reads this
         // type as initialized. A thread parked in the wait below re-tests the record.
-        failure->next = g_cctor_failed;
+        dn2cpp_gc_store_ref(&failure->next, g_cctor_failed);
         g_cctor_failed = failure;
     }
     else
@@ -2203,6 +2203,7 @@ Dn2CppDependentHandle dn2cpp_dependenthandle_alloc(Dn2CppObject* target, Dn2CppO
     auto* cell = static_cast<Dn2CppDependentCell*>(dn2cpp_alloc(sizeof(Dn2CppDependentCell)));
     cell->targetWeak = dn2cpp_gchandle_internal_alloc(target, 0); // 0 = Weak (short link)
     cell->dependent = dependent;
+    dn2cpp_gc_write_barrier(cell); // one barrier covers both plain stores above
     return Dn2CppDependentHandle{cell};
 }
 
@@ -2361,7 +2362,12 @@ Dn2CppGCHandle dn2cpp_gchandle_alloc(Dn2CppObject* target, void* dataAddr, int32
     if (cell == nullptr) // uncollectable + zero-filled (see dn2cpp_alloc_pinned)
         cell = static_cast<Dn2CppGCHandleCell*>(dn2cpp_alloc_pinned(sizeof(Dn2CppGCHandleCell)));
     if (handleType <= 1) // Weak or WeakTrackResurrection: no strong ref in the cell
+    {
+        // An uncollectable cell is marked from birth, so it is black by
+        // definition: this store is only ever seen through the barrier.
         cell->weakCell = dn2cpp_gchandle_internal_alloc(target, handleType);
+        dn2cpp_gc_write_barrier(&cell->weakCell);
+    }
     else // Normal or Pinned: a strong pointer + (Pinned) the pinned data address
     {
         dn2cpp_gc_store_ref(&cell->target, target);

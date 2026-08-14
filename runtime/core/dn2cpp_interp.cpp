@@ -1586,7 +1586,8 @@ void build_patch_itf_map(const Dn2CppInterpImage* img, Dn2CppTypeInfo* ti,
             continue;
         entries[n++] = base->interfaces[bi];
     }
-    ti->interfaces = entries;
+    dn2cpp_gc_write_barrier(entries); // the loops above filled it with plain stores
+    dn2cpp_gc_store_ref(&ti->interfaces, static_cast<const Dn2CppInterfaceEntry*>(entries));
     ti->interfaceCount = static_cast<int32_t>(n);
 }
 
@@ -1816,8 +1817,8 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
     // them), then members.
     if (img->importCount > 0)
     {
-        img->bindings = static_cast<ImportBinding*>(
-            dn2cpp_alloc(img->importCount * sizeof(ImportBinding)));
+        dn2cpp_gc_store_ref(&img->bindings, static_cast<ImportBinding*>(
+            dn2cpp_alloc(img->importCount * sizeof(ImportBinding))));
         for (uint32_t i = 0; i < img->importCount; i++)
         {
             if (img->imports[i].kind != DN2CPP_BPI_IMPORT_TYPE)
@@ -1869,7 +1870,8 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             interp_fail("BPI: static slot index out of bounds");
     }
     if (staticCount > 0)
-        img->statics = static_cast<Slot*>(dn2cpp_alloc(staticCount * sizeof(Slot)));
+        dn2cpp_gc_store_ref(&img->statics,
+            static_cast<Slot*>(dn2cpp_alloc(staticCount * sizeof(Slot))));
     img->staticCount = staticCount;
 
     // Per-type lazy-cctor guard flags plus the per-type failure slots (the
@@ -1878,10 +1880,11 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
     // flagged type's .cctor is the first entry of its own MethodTable run.
     if (img->typeCount > 0)
     {
-        img->cctorStarted = static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->typeCount));
+        dn2cpp_gc_store_ref(&img->cctorStarted,
+            static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->typeCount)));
         std::memset(img->cctorStarted, 0, img->typeCount);
-        img->cctorFailed = static_cast<Dn2CppObject**>(
-            dn2cpp_alloc(img->typeCount * sizeof(Dn2CppObject*)));
+        dn2cpp_gc_store_ref(&img->cctorFailed, static_cast<Dn2CppObject**>(
+            dn2cpp_alloc(img->typeCount * sizeof(Dn2CppObject*))));
         for (uint32_t t = 0; t < img->typeCount; t++)
         {
             if ((img->types[t].flags & DN2CPP_BPI_TF_HAS_CCTOR) == 0)
@@ -1914,14 +1917,15 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         interp_fail("BPI: a field table with no type table");
     if (img->typeCount > 0)
     {
-        img->patchTypes = static_cast<const Dn2CppTypeInfo**>(
-            dn2cpp_alloc(img->typeCount * sizeof(const Dn2CppTypeInfo*)));
+        dn2cpp_gc_store_ref(&img->patchTypes, static_cast<const Dn2CppTypeInfo**>(
+            dn2cpp_alloc(img->typeCount * sizeof(const Dn2CppTypeInfo*))));
         if (img->fieldCount > 0)
         {
-            img->instFieldOffsets = static_cast<uint32_t*>(
-                dn2cpp_alloc_atomic(img->fieldCount * sizeof(uint32_t)));
+            dn2cpp_gc_store_ref(&img->instFieldOffsets, static_cast<uint32_t*>(
+                dn2cpp_alloc_atomic(img->fieldCount * sizeof(uint32_t))));
             std::memset(img->instFieldOffsets, 0, img->fieldCount * sizeof(uint32_t));
-            img->instFieldKinds = static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->fieldCount));
+            dn2cpp_gc_store_ref(&img->instFieldKinds,
+                static_cast<uint8_t*>(dn2cpp_alloc_atomic(img->fieldCount)));
             std::memset(img->instFieldKinds, 0, img->fieldCount);
         }
         for (uint32_t t = 0; t < img->typeCount; t++)
@@ -2013,10 +2017,11 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             ti->gethashcode = base->gethashcode;
             ti->equals = base->equals;
             ti->finalize = base->finalize;
-            // Wire the interned Type before the ti is published (loader is
-            // single-threaded), so GetType()/typeof on patch types take the
-            // same lock-free typeObject path as AOT types.
-            ti->typeObject = dn2cpp_get_type_from_handle_slow(ti);
+            // Wire the interned Type so GetType()/typeof on patch types take the
+            // same lock-free typeObject path as AOT types. The call interns `ti`
+            // itself, so this store lands on an already-published type-info.
+            dn2cpp_gc_store_ref(&ti->typeObject,
+                static_cast<const Dn2CppType*>(dn2cpp_get_type_from_handle_slow(ti)));
             if (bt.vtableDescOff != DN2CPP_BPI_REF_NONE)
             {
                 // Vtable overrides: copy the base vtable at the converter-baked
@@ -2058,7 +2063,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
                                     "(signature shape outside the bridged surface)");
                     vt[slot] = fn;
                 }
-                ti->vtable = vt;
+                dn2cpp_gc_store_ref(&ti->vtable, vt);
             }
             // Interface implementations: a type with an ItfDesc run gets an
             // extended interface-dispatch map (base entries plus its own
@@ -2068,7 +2073,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             // sharing the base's interface map.
             if (bt.itfDescOff != DN2CPP_BPI_REF_NONE)
                 build_patch_itf_map(img, ti, base, bt.itfDescOff);
-            img->patchTypes[t] = ti;
+            dn2cpp_gc_store_ref(&img->patchTypes[t], static_cast<const Dn2CppTypeInfo*>(ti));
         }
     }
 
@@ -2143,8 +2148,10 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
         ti->flags = DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED;
         ti->elementType = el;
         ti->arrayRank = 1;
-        ti->typeObject = dn2cpp_get_type_from_handle_slow(ti);
-        img->bindings[i].type = ti;
+        // The intern inside the call publishes `ti`; both stores land after it.
+        dn2cpp_gc_store_ref(&ti->typeObject,
+            static_cast<const Dn2CppType*>(dn2cpp_get_type_from_handle_slow(ti)));
+        dn2cpp_gc_store_ref(&img->bindings[i].type, static_cast<const Dn2CppTypeInfo*>(ti));
     }
 
     // A register-format image gets one linear verification scan per method
@@ -2181,9 +2188,9 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             buf[typeLen] = '.';
             std::memcpy(buf + typeLen + 1, name, nameLen);
             std::memcpy(buf + typeLen + 1 + nameLen, "()", 3);
-            names[i] = buf;
+            dn2cpp_gc_store_ref(&names[i], static_cast<const char*>(buf));
         }
-        img->frameNames = names;
+        dn2cpp_gc_store_ref(&img->frameNames, static_cast<const char* const*>(names));
     }
 
     if (img->typeCount > 0)
@@ -2201,7 +2208,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             dn2cpp_type_registry_add(img->patchTypes[t]->name, img->patchTypes[t]);
     }
 
-    img->nextLoaded = g_loadedImages;
+    dn2cpp_gc_store_ref(&img->nextLoaded, g_loadedImages);
     g_loadedImages = img;
     return img;
 }
@@ -2363,9 +2370,10 @@ static void exc_seed_and_run_base_ctor(const ImportBinding& b, Dn2CppObject* sel
 {
     auto* e = reinterpret_cast<Dn2CppExceptionObject*>(self);
     if (b.excMsgArg >= 0)
-        e->message = reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]);
+        dn2cpp_gc_store_ref(&e->message,
+            reinterpret_cast<Dn2CppString*>(callArgs[b.excMsgArg]));
     if (b.excInnerArg >= 0)
-        e->inner = callArgs[b.excInnerArg];
+        dn2cpp_gc_store_ref(&e->inner, callArgs[b.excInnerArg]);
     // Seed the base COR_E_EXCEPTION default before the base body runs, matching the
     // AOT newobj intercept: a derived ctor's own set_HResult (above this in the
     // chain) then overwrites it with the per-type value. The general newobj that
@@ -3565,7 +3573,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     // that cannot answer degrades.
                                     check_patch_delegate_null_this(img, c->methodIdx, dti,
                                         static_cast<Dn2CppObject*>(targetSlot.ref));
-                                    c->boundThis = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(&c->boundThis, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
@@ -4782,7 +4790,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     // that cannot answer degrades.
                                     check_patch_delegate_null_this(img, c->methodIdx, dti,
                                         static_cast<Dn2CppObject*>(targetSlot.ref));
-                                    c->boundThis = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(&c->boundThis, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
@@ -5729,7 +5737,7 @@ int32_t dn2cpp_hotupdate_load_dir(Dn2CppString* dirPath)
         {
             cap *= 2;
             auto* grown = static_cast<Candidate*>(dn2cpp_alloc(cap * sizeof(Candidate)));
-            std::memcpy(grown, cands, count * sizeof(Candidate));
+            dn2cpp_gc_memmove_refs(grown, cands, count * sizeof(Candidate)); // entries carry GC name pointers
             cands = grown;
         }
         char* nameCopy = static_cast<char*>(dn2cpp_alloc_atomic(nameLen + 1));
@@ -5738,6 +5746,7 @@ int32_t dn2cpp_hotupdate_load_dir(Dn2CppString* dirPath)
         cands[count].len = len;
         cands[count].version = reinterpret_cast<const Dn2CppBpiHeader*>(blob)->patchVersion;
         cands[count].name = nameCopy;
+        dn2cpp_gc_write_barrier(&cands[count]); // `name` above is a plain store
         count++;
     }
     closedir(dp);

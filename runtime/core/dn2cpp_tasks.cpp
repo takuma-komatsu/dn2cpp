@@ -324,7 +324,7 @@ static void dn2cpp_pending_cont_link(Dn2CppCont* c)
 {
     std::lock_guard<std::mutex> lk(g_sched_pending_mtx);
     c->gcprev = nullptr;
-    c->gcnext = g_pending_conts;
+    dn2cpp_gc_store_ref(&c->gcnext, g_pending_conts);
     if (g_pending_conts != nullptr)
         dn2cpp_gc_store_ref(&g_pending_conts->gcprev, c);
     g_pending_conts = c;
@@ -462,7 +462,7 @@ static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* s
     std::lock_guard<std::mutex> lk(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING)
         return false;
-    c->next = t->continuations;
+    dn2cpp_gc_store_ref(&c->next, t->continuations);
     dn2cpp_gc_store_ref(&t->continuations, c);
     return true;
 }
@@ -556,7 +556,7 @@ static void dn2cpp_pending_timer_link(Dn2CppTimer* e)
 {
     std::lock_guard<std::mutex> lk(g_sched_pending_mtx);
     e->gcprev = nullptr;
-    e->gcnext = g_pending_timers;
+    dn2cpp_gc_store_ref(&e->gcnext, g_pending_timers);
     if (g_pending_timers != nullptr)
         dn2cpp_gc_store_ref(&g_pending_timers->gcprev, e);
     g_pending_timers = e;
@@ -805,12 +805,12 @@ static Dn2CppTask* dn2cpp_task_when_all_impl(Dn2CppArrayRef* tasks, int32_t kind
             dn2cpp_throw_argument();
     }
     auto* s = static_cast<Dn2CppWhenAllState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAllState)));
-    s->result = dn2cpp_task_alloc();
-    s->tasks = tasks;
+    dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
+    dn2cpp_gc_store_ref(&s->tasks, tasks);
     s->remaining = tasks->length;
     s->kind = kind;
     s->elemSize = elemSize;
-    s->arrTi = arrTi;
+    dn2cpp_gc_store_ref(&s->arrTi, arrTi);
     if (tasks->length == 0)
     {
         dn2cpp_when_all_finish(s); // no inputs: already done (empty array)
@@ -889,7 +889,7 @@ Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks)
             dn2cpp_throw_argument_null();
     }
     auto* s = static_cast<Dn2CppWhenAnyState*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyState)));
-    s->result = dn2cpp_task_alloc();
+    dn2cpp_gc_store_ref(&s->result, dn2cpp_task_alloc());
     s->done = 0;
     for (int32_t i = 0; i < tasks->length; i++)
     {
@@ -1021,8 +1021,8 @@ static Dn2CppObject* dn2cpp_make_canceled_exception_of(const Dn2CppTypeInfo* ti,
     o->type = ti;
     // The default message real .NET's parameterless ctor bakes in — observable
     // through Message and through the AggregateException a blocking wait wraps.
-    reinterpret_cast<Dn2CppExceptionObject*>(o)->message =
-        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg)));
+    dn2cpp_gc_store_ref(&reinterpret_cast<Dn2CppExceptionObject*>(o)->message,
+        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))));
     return o;
 }
 
@@ -1059,7 +1059,7 @@ static void dn2cpp_task_set_canceled(Dn2CppTask* t)
 Dn2CppTask* dn2cpp_task_from_canceled()
 {
     auto* t = dn2cpp_task_alloc();
-    t->exception = dn2cpp_make_task_canceled_exception();
+    dn2cpp_gc_store_ref(&t->exception, dn2cpp_make_task_canceled_exception());
     t->status = DN2CPP_TASK_CANCELED;
     return t;
 }
@@ -1260,7 +1260,7 @@ static void dn2cpp_cts_link_one(Dn2CppCancelSource* child, Dn2CppCancelSource* p
         std::lock_guard<std::mutex> lk(g_cts_mtx);
         if (!parent->canceled)
         {
-            r->next = parent->regs;
+            dn2cpp_gc_store_ref(&r->next, parent->regs);
             dn2cpp_gc_store_ref(&parent->regs, r);
             return;
         }
@@ -1349,7 +1349,7 @@ Dn2CppCancelReg* dn2cpp_cts_register(Dn2CppCancelSource* src, Dn2CppObject* call
         std::lock_guard<std::mutex> lk(g_cts_mtx);
         if (!src->canceled)
         {
-            r->next = src->regs;
+            dn2cpp_gc_store_ref(&r->next, src->regs);
             dn2cpp_gc_store_ref(&src->regs, r);
             return r;
         }
@@ -1382,7 +1382,7 @@ Dn2CppCancelReg* dn2cpp_cts_register_state(Dn2CppCancelSource* src, Dn2CppObject
         std::lock_guard<std::mutex> lk(g_cts_mtx);
         if (!src->canceled)
         {
-            r->next = src->regs;
+            dn2cpp_gc_store_ref(&r->next, src->regs);
             dn2cpp_gc_store_ref(&src->regs, r);
             return r;
         }
@@ -1431,7 +1431,7 @@ Dn2CppCancelReg* dn2cpp_cts_register_state_token(Dn2CppCancelSource* src, Dn2Cpp
         std::lock_guard<std::mutex> lk(g_cts_mtx);
         if (!src->canceled)
         {
-            r->next = src->regs;
+            dn2cpp_gc_store_ref(&r->next, src->regs);
             dn2cpp_gc_store_ref(&src->regs, r);
             return r;
         }
@@ -1697,7 +1697,7 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
             raced = src->canceled != 0;  // a Cancel() between the check above and here
             if (!raced)
             {
-                r->next = src->regs;
+                dn2cpp_gc_store_ref(&r->next, src->regs);
                 dn2cpp_gc_store_ref(&src->regs, r);
             }
         }
@@ -2195,7 +2195,7 @@ void dn2cpp_thread_start(Dn2CppThread* t)
 
 void dn2cpp_thread_start_param(Dn2CppThread* t, Dn2CppObject* arg)
 {
-    t->arg = arg;
+    dn2cpp_gc_store_ref(&t->arg, arg);
     t->sync = new Dn2CppThreadSync();
     dn2cpp_thread_spawn(t, true);
 }
@@ -2278,7 +2278,7 @@ static void dn2cpp_thread_materialize_current(int32_t managedId)
     node->t = t;
     {
         std::lock_guard<std::mutex> lk(g_materialized_mtx);
-        node->next = g_materialized_threads;
+        dn2cpp_gc_store_ref(&node->next, g_materialized_threads);
         g_materialized_threads = node;
     }
     g_current_thread = t;
@@ -2368,7 +2368,7 @@ static DN2CPP_GC_STATIC_ROOT Dn2CppPoolNode* g_pool_pending = nullptr; // static
 // graph is rooted before any worker can pop it.
 static void dn2cpp_pool_link(Dn2CppPoolNode* node)
 {
-    node->next = g_pool_pending;
+    dn2cpp_gc_store_ref(&node->next, g_pool_pending);
     g_pool_pending = node;
 }
 
@@ -2379,6 +2379,7 @@ static void dn2cpp_pool_unlink_locked(Dn2CppPoolNode* node)
         if (*pp == node)
         {
             *pp = node->next;
+            dn2cpp_gc_write_barrier_if_heap(pp); // pp may name the always-rescanned static head
             node->next = nullptr;
             break;
         }
@@ -3057,7 +3058,7 @@ Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src)
                 raced = src->canceled != 0;  // a Cancel() between the poll above and here
                 if (!raced)
                 {
-                    r->next = src->regs;
+                    dn2cpp_gc_store_ref(&r->next, src->regs);
                     dn2cpp_gc_store_ref(&src->regs, r);
                 }
             }
@@ -3270,7 +3271,7 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     auto* b = static_cast<Dn2CppVtsBridge*>(dn2cpp_alloc(sizeof(Dn2CppVtsBridge)));
     b->header.type = &dn2cpp_vts_bridge_type;
     b->vts = vts;
-    b->task = dn2cpp_task_alloc();
+    dn2cpp_gc_store_ref(&b->task, dn2cpp_task_alloc());
     b->getResultFn = getResultFn;
     b->version = version;
     b->resultKind = resultKind;

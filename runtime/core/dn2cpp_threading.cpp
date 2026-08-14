@@ -325,8 +325,9 @@ static void dn2cpp_parallel_run(int64_t count, void* ctx, void (*fn)(void*, int6
                 ExcNode** pp = &excHead;
                 while (*pp != nullptr && (*pp)->index < i)
                     pp = &(*pp)->next;
-                node->next = *pp;
+                dn2cpp_gc_store_ref(&node->next, *pp);
                 *pp = node;
+                dn2cpp_gc_write_barrier_if_heap(pp); // pp names a heap node or the stack head
                 excCount++;
             }
         }
@@ -938,10 +939,12 @@ int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
 }
 
 // ===== CountdownEvent / Barrier =============================================
-// Counter-based synchronization primitives, modeled like the semaphore/event above:
-// native-allocated (so the std::mutex/condition_variable get real ctors) with a managed
-// type header, built at newobj (the real handle-allocating ctors are skipped). They live
-// for the program (a small, bounded leak, like monitors).
+// Counter-based synchronization primitives, modeled like the semaphore/event above,
+// with a managed type header, built at newobj (the real handle-allocating ctors are
+// skipped). They live for the program (a small, bounded leak, like monitors).
+// CountdownEvent holds only ints, so it is native-allocated; Barrier holds a managed
+// reference (postPhase), so it must be GC-allocated like Timer — the collector never
+// scans native-heap words — with placement new constructing the mutex/cv in place.
 // Both are non-const and externally visible for the same reason dn2cpp_timer_type is:
 // the generated init prologue installs their IDisposable dispatch row, whose
 // entry names program-specific emitted type-info the runtime cannot spell.
@@ -1083,12 +1086,13 @@ struct Dn2CppBarrier : Dn2CppObject
 
 Dn2CppObject* dn2cpp_barrier_new(int32_t participantCount, Dn2CppObject* postPhaseAction)
 {
-    auto* b = new Dn2CppBarrier();
+    auto* raw = dn2cpp_alloc(sizeof(Dn2CppBarrier)); // GC-allocated: postPhase must be scanned
+    auto* b = new (raw) Dn2CppBarrier();
     b->type = &dn2cpp_barrier_type;
     b->total = participantCount;
     b->waiting = 0;
     b->phase = 0;
-    b->postPhase = postPhaseAction;
+    dn2cpp_gc_store_ref(&b->postPhase, postPhaseAction);
     return b;
 }
 

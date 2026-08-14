@@ -68,13 +68,14 @@ static void dn2cpp_blockingcoll_enqueue_locked(Dn2CppBlockingCollection* c, Dn2C
 {
     auto* node = static_cast<Dn2CppBlockingNode*>(dn2cpp_alloc(sizeof(Dn2CppBlockingNode)));
     node->type = &dn2cpp_blockingnode_type;
-    node->value = boxedOrRef;
+    dn2cpp_gc_store_ref(&node->value, boxedOrRef);
     node->next = nullptr;
+    // Three separate objects hold the links, so each store dirties its own.
     if (c->tail != nullptr)
-        c->tail->next = node;
+        dn2cpp_gc_store_ref(&c->tail->next, node);
     else
-        c->head = node;
-    c->tail = node;
+        dn2cpp_gc_store_ref(&c->head, node);
+    dn2cpp_gc_store_ref(&c->tail, node);
     c->ctl->count++;
 }
 

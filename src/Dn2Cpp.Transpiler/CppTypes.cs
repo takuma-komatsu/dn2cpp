@@ -57,70 +57,8 @@ internal static class CppTypes
                 ? "int64_t" : "int32_t")
             : t.Class!.IsValueType ? t.Class!.CppStructName
             : t.Class!.CppStructPtrName,
-        TypeKind.External => t.ExternalName switch
-        {
-            // The special-type table shared with the Class arm above
-            // (CoreIntrinsics.SpecialTypeCppName — the entries' rationale lives at
-            // the table). Every arm below is External-arm-scoped: a loaded Class of
-            // the same name would answer differently (see the table's doc comment).
-            _ when CoreIntrinsics.SpecialTypeCppName(t.ExternalName) is { } stn => stn,
-            // A Class-kind System.Object/System.Type never takes these shapes (an
-            // `object`/typeof slot decodes as Primitive/intrinsic; a loaded TypeDef
-            // of the name would fall through to the transpiled t_* pointer), so the
-            // mapping is scoped to the unresolved-TypeRef form.
-            "System.Object" => "Dn2CppObject*",
-            "System.Type" => "Dn2CppType*",
-            // The runtime-raised exception types referenced without the CoreLib
-            // IL (typed catch locals, throw temps): the same managed object
-            // reference — their shared runtime handles carry the type identity.
-            // (A LOADED exception class transpiles normally — Class-arm fallback —
-            // which is why this predicate arm is not in the shared table.)
-            _ when CoreIntrinsics.RuntimeExceptionTypeInfo(t.ExternalName) is not null
-                => "Dn2CppObject*",
-            // Any other unloaded BCL exception name (System.SystemException, …): the same
-            // managed object reference. Reached when a corelib-less app exception derives
-            // from one and a signature names the base. No shared runtime handle exists for
-            // these, so a typed catch/isinst of one still fails loudly at token mapping;
-            // only the REFERENCE shape is answered here.
-            _ when t.ExternalName is { } exn && CoreIntrinsics.IsExternalBclExceptionName(exn)
-                => "Dn2CppObject*",
-            // ParallelOptions lives in the System.Threading.Tasks.Parallel.dll facade
-            // (like ParallelLoopResult in the shared table), so when only CoreLib is
-            // referenced its TypeRef resolves to External rather than a loaded Class.
-            // It is a runtime object (newobj-intercepted, like Timer/SemaphoreSlim),
-            // so the same opaque "Dn2CppObject*" reference shape as those. External-
-            // scoped: unlike ParallelLoopResult it has NO IntrinsicCppName, so a
-            // loaded Class of the name would render as its transpiled t_* pointer.
-            "System.Threading.Tasks.ParallelOptions" => "Dn2CppObject*",
-            // ParallelLoopState — the Break/Stop object the runtime passes into the
-            // Action<T, ParallelLoopState> body overloads. Same facade-assembly split
-            // and same External-only scoping as ParallelOptions above; it has no
-            // public constructor (only the runtime ever creates one), so it is never
-            // newobj-intercepted — every member is dispatched through runtime helper
-            // calls instead of direct field access, hence the same opaque
-            // "Dn2CppObject*" shape as ParallelOptions.
-            "System.Threading.Tasks.ParallelLoopState" => "Dn2CppObject*",
-            // The synchronization primitives that live in the System.Threading.dll facade
-            // rather than in CoreLib, for exactly the ParallelOptions reason above: with
-            // only CoreLib referenced their TypeRef resolves to External, and they are
-            // newobj-intercepted runtime objects (dn2cpp_countdown_new / _barrier_new /
-            // _rwlock_new), so the opaque managed reference is the right shape.
-            //
-            // Only a REAL IL local of the type asks for a rendering — a `new CountdownEvent(2)`
-            // consumed inline never materializes one — so without these arms the transpile
-            // fails with "External type ... is not supported yet" over code whose ctor
-            // intercept, members and IDisposable row all already work.
-            "System.Threading.CountdownEvent" => "Dn2CppObject*",
-            "System.Threading.Barrier" => "Dn2CppObject*",
-            "System.Threading.ReaderWriterLockSlim" => "Dn2CppObject*",
-            // Dynamic-code-generation surface types (DynamicMethod, CallSite, ...)
-            // referenced without their assembly loaded: every constructor/member is
-            // intercepted to a runtime PlatformNotSupportedException throw, so an
-            // instance can never exist — the reference shape is a plain opaque
-            // object pointer.
-            _ when CoreIntrinsics.IsDynamicCodegenType(t.ExternalName ?? "") => "Dn2CppObject*",
-            _ => throw new NotSupportedException($"External type {t.ExternalName} is not supported yet"),
-        },
+        TypeKind.External => ExternalCppName(t.ExternalName)
+            ?? throw new NotSupportedException($"External type {t.ExternalName} is not supported yet"),
         TypeKind.SZArray => ArrayCppType(t.Element!),
         TypeKind.MDArray => "Dn2CppMDArray*",
         // A managed pointer (`ref T`) must stride by T's real storage width, not the
@@ -147,6 +85,89 @@ internal static class CppTypes
             + "should have been used); this is a reachability/decode bug, not an input one"),
         _ => throw new NotSupportedException(t.ToString()),
     };
+
+    /// <summary>The C++ rendering for an unresolved-TypeRef (External) name, or null when
+    /// the name has no mapping. The single source for the External arm of <see cref="Of"/>
+    /// (which turns null into its not-supported throw) AND for
+    /// <see cref="TypeDesc.ContainsGcReferences"/> via <see cref="IsGcRefCppType"/> —
+    /// deriving both from one cascade is what keeps the GC write-barrier gates closed for
+    /// every name this maps to a managed pointer.</summary>
+    public static string? ExternalCppName(string? name) => name switch
+    {
+        // The special-type table shared with the Class arm of Of
+        // (CoreIntrinsics.SpecialTypeCppName — the entries' rationale lives at
+        // the table). Every arm below is External-arm-scoped: a loaded Class of
+        // the same name would answer differently (see the table's doc comment).
+        _ when CoreIntrinsics.SpecialTypeCppName(name) is { } stn => stn,
+        // A Class-kind System.Object/System.Type never takes these shapes (an
+        // `object`/typeof slot decodes as Primitive/intrinsic; a loaded TypeDef
+        // of the name would fall through to the transpiled t_* pointer), so the
+        // mapping is scoped to the unresolved-TypeRef form.
+        "System.Object" => "Dn2CppObject*",
+        "System.Type" => "Dn2CppType*",
+        // The runtime-raised exception types referenced without the CoreLib
+        // IL (typed catch locals, throw temps): the same managed object
+        // reference — their shared runtime handles carry the type identity.
+        // (A LOADED exception class transpiles normally — Class-arm fallback —
+        // which is why this predicate arm is not in the shared table.)
+        _ when CoreIntrinsics.RuntimeExceptionTypeInfo(name) is not null
+            => "Dn2CppObject*",
+        // Any other unloaded BCL exception name (System.SystemException, …): the same
+        // managed object reference. Reached when a corelib-less app exception derives
+        // from one and a signature names the base. No shared runtime handle exists for
+        // these, so a typed catch/isinst of one still fails loudly at token mapping;
+        // only the REFERENCE shape is answered here.
+        _ when name is { } exn && CoreIntrinsics.IsExternalBclExceptionName(exn)
+            => "Dn2CppObject*",
+        // ParallelOptions lives in the System.Threading.Tasks.Parallel.dll facade
+        // (like ParallelLoopResult in the shared table), so when only CoreLib is
+        // referenced its TypeRef resolves to External rather than a loaded Class.
+        // It is a runtime object (newobj-intercepted, like Timer/SemaphoreSlim),
+        // so the same opaque "Dn2CppObject*" reference shape as those. External-
+        // scoped: unlike ParallelLoopResult it has NO IntrinsicCppName, so a
+        // loaded Class of the name would render as its transpiled t_* pointer.
+        "System.Threading.Tasks.ParallelOptions" => "Dn2CppObject*",
+        // ParallelLoopState — the Break/Stop object the runtime passes into the
+        // Action<T, ParallelLoopState> body overloads. Same facade-assembly split
+        // and same External-only scoping as ParallelOptions above; it has no
+        // public constructor (only the runtime ever creates one), so it is never
+        // newobj-intercepted — every member is dispatched through runtime helper
+        // calls instead of direct field access, hence the same opaque
+        // "Dn2CppObject*" shape as ParallelOptions.
+        "System.Threading.Tasks.ParallelLoopState" => "Dn2CppObject*",
+        // The synchronization primitives that live in the System.Threading.dll facade
+        // rather than in CoreLib, for exactly the ParallelOptions reason above: with
+        // only CoreLib referenced their TypeRef resolves to External, and they are
+        // newobj-intercepted runtime objects (dn2cpp_countdown_new / _barrier_new /
+        // _rwlock_new), so the opaque managed reference is the right shape.
+        //
+        // Only a REAL IL local of the type asks for a rendering — a `new CountdownEvent(2)`
+        // consumed inline never materializes one — so without these arms the transpile
+        // fails with "External type ... is not supported yet" over code whose ctor
+        // intercept, members and IDisposable row all already work.
+        "System.Threading.CountdownEvent" => "Dn2CppObject*",
+        "System.Threading.Barrier" => "Dn2CppObject*",
+        "System.Threading.ReaderWriterLockSlim" => "Dn2CppObject*",
+        // Dynamic-code-generation surface types (DynamicMethod, CallSite, ...)
+        // referenced without their assembly loaded: every constructor/member is
+        // intercepted to a runtime PlatformNotSupportedException throw, so an
+        // instance can never exist — the reference shape is a plain opaque
+        // object pointer.
+        _ when CoreIntrinsics.IsDynamicCodegenType(name ?? "") => "Dn2CppObject*",
+        _ => null,
+    };
+
+    /// <summary>Whether a C++ rendering is a pointer to a GC-managed object. Judged from
+    /// the rendering itself rather than a per-name list so the write-barrier gates
+    /// (<see cref="TypeDesc.ContainsGcReferences"/>) close automatically for every name
+    /// <see cref="ExternalCppName"/> maps to a managed pointer. A <c>const</c>-qualified
+    /// pointer names runtime/static data (assembly names, type-info tables), never GC
+    /// storage.</summary>
+    public static bool IsGcRefCppType(string? cpp) =>
+        cpp is not null
+        && cpp.EndsWith("*", StringComparison.Ordinal)
+        && !cpp.StartsWith("const ", StringComparison.Ordinal)
+        && cpp != "void*";
 
     /// <summary>The precise native-ABI C++ type for a P/Invoke parameter/return that
     /// is **blittable** — an integer/floating primitive, <c>IntPtr</c>/<c>UIntPtr</c>,
