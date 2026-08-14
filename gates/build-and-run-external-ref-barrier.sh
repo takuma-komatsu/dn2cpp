@@ -91,9 +91,9 @@ incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
 set -e
 _gate_scratch_cleanup
 
-assert_output "$(strip_cr_win "$stw")" "$expected"
+assert_output "$stw" "$expected"
 assert_exit_code "$stw_code" "$expected_code"
-assert_output "$(strip_cr_win "$incremental")" "$expected"
+assert_output "$incremental" "$expected"
 assert_exit_code "$incremental_code" "$expected_code"
 
 if [ "$(grep -cF 'external reference stores:' <<<"$incremental")" -ne 1 ]; then
