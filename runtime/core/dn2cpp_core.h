@@ -2389,6 +2389,12 @@ int32_t dn2cpp_gc_collection_count();
 int64_t dn2cpp_gc_heap_size_bytes();
 int64_t dn2cpp_gc_free_bytes();
 
+// GC.GetAllocatedBytesForCurrentThread / GC.GetTotalAllocatedBytes(precise): cumulative
+// allocation counters, never decreasing. The per-thread one counts REQUESTED bytes (no
+// granule rounding); pinned blocks are included, so both sit slightly above real .NET.
+int64_t dn2cpp_gc_allocated_bytes_current_thread();
+int64_t dn2cpp_gc_total_allocated_bytes();
+
 [[noreturn]] void dn2cpp_fail(const char* message);
 
 // What an EMPTY virtual slot holds. A null pointer there would jump to address 0 when

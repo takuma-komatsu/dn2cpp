@@ -1054,9 +1054,13 @@ internal static partial class CoreIntrinsics
         // kind) -> the Boehm heap-accounting fill of the GCMemoryInfoData the public
         // GetGCMemoryInfo news up. Both real bodies are bodyless FCalls into native GC
         // accounting dn2cpp answers from bdwgc instead.
+        // GetAllocatedBytesForCurrentThread (a bodyless InternalCall) and
+        // GetTotalAllocatedBytes (whose body branches to two bodyless InternalCalls)
+        // -> the dn2cpp_gc allocation counters.
         "System.GC" => name is "SuppressFinalize" or "ReRegisterForFinalize" or "Collect"
             or "WaitForPendingFinalizers" or "GetTotalMemory" or "KeepAlive"
-            or "_CollectionCount" or "GetMemoryInfo",
+            or "_CollectionCount" or "GetMemoryInfo"
+            or "GetAllocatedBytesForCurrentThread" or "GetTotalAllocatedBytes",
         // SpanHelpers.Memmove -> std::memmove. Cutting the managed entry makes both its
         // hand-unrolled Unsafe.* loop and the SpanHelpers::memmove InternalCall fallback
         // (MemmoveNative) unreachable.

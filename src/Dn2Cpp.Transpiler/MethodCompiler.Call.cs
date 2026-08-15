@@ -138,6 +138,15 @@ internal sealed partial class MethodCompiler
                         Push(StackKind.I8, "int64_t", $"dn2cpp_gc_get_total_memory((int32_t)({force.Expr}))");
                         return true;
                     }
+                    case "GetAllocatedBytesForCurrentThread":
+                        Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
+                        return true;
+                    case "GetTotalAllocatedBytes":
+                        // Boehm keeps one lifetime total; precise/approximate is a
+                        // distinction its accounting does not make, so drop the flag.
+                        Pop();
+                        Push(StackKind.I8, "int64_t", "dn2cpp_gc_total_allocated_bytes()");
+                        return true;
                     case "KeepAlive":
                     {
                         var o = Pop();
@@ -731,7 +740,8 @@ internal sealed partial class MethodCompiler
                     return;
                 // The System.GC surface -> dn2cpp_gc_* helpers. The cut family
                 // (SuppressFinalize / ReRegisterForFinalize / Collect /
-                // WaitForPendingFinalizers / GetTotalMemory, shape-gated) shares its
+                // WaitForPendingFinalizers / GetTotalMemory / GetAllocatedBytesFor-
+                // CurrentThread / GetTotalAllocatedBytes, shape-gated) shares its
                 // predicate with the reachability cut; KeepAlive is EMIT-ONLY
                 // (route-without-cut — an empty transpiled body is inlinable and -O2 erases
                 // the liveness barrier), so it is a distinct row the resolver never
