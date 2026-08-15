@@ -457,10 +457,13 @@ else
         "DN2CPP_EXPORT_GDPRINT engine logger path ok" \
         "DN2CPP_EXPORT_PROCESS class=Node inTree=True deltaOk=True" \
         "DN2CPP_EXPORT_GC finalized=True bounded=True" \
+        "DN2CPP_EXPORT_INTEROP resizeOk=True sized=True" \
+        "DN2CPP_EXPORT_SIGNAL awaited=True" \
         "DN2CPP_EXPORT_DONE"; do
         grep -qF "$marker" "$LOG" || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
     done
-    for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" "DN2CPP_EXPORT_DONE"; do
+    for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" \
+        "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_DONE"; do
         n="$(grep -c "$once" "$LOG" || true)"
         [ "$n" -eq 1 ] || { echo "FAIL: marker $once appeared $n times (expected exactly 1)" >&2; exit 1; }
     done
@@ -477,7 +480,7 @@ else
         "Failed to load hostfxr" \
         "Unable to find the .NET assemblies directory" \
         "HARNESS_FAILED" \
-        "null function or function signature mismatch" \
+        "function signature mismatch" \
         "__PAGE_EXCEPTION" \
         "SCRIPT ERROR"; do
         if grep -q "$bad" "$LOG"; then

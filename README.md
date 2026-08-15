@@ -427,7 +427,7 @@ flowchart TB
 - `IEmitBackend` (`src/Dn2Cpp.Transpiler/IEmitBackend.cs`) —
   `RuntimeHeader`, `CallIntrinsics`, `EmitEpilogue(...)`,
   `ShouldSkipMethodBody(ClassInfo, MethodInfo)`, `WantsSyntheticBody`,
-  `HasPlaceholderBody`.
+  `HasPlaceholderBody`, `CalliAbiType`.
 - `ICallIntrinsics` (`src/Dn2Cpp.Transpiler/ICallIntrinsics.cs`) —
   `TryEmitCall(mc, callee, isCallvirt)`, `TryEmitNewobj(mc, ctor)`.
 

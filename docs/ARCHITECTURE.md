@@ -78,6 +78,9 @@ Optional, with the invariant each exists for:
   vtable/interface slot `(receiver, <params>)`. Wrong is invisible on a flat
   native ABI and traps on wasm, where `call_indirect` carries a type immediate.
   See `MethodCompiler.FtnStubShape`.
+- `CalliAbiType` — overrides a `calli` return's C++ ABI type when a target's
+  native declaration is narrower than its managed signature. The default keeps
+  the declared type; DotnetModule uses it for GodotSharp's core-enum returns.
 
 ### `ICallIntrinsics` (`src/Dn2Cpp.Transpiler/ICallIntrinsics.cs`)
 
