@@ -2851,6 +2851,82 @@ run_bounded() {
     run_with_watchdog "${DN2CPP_RUN_WATCHDOG_SECS:-600}" "$@"
 }
 
+# ── Run diagnostics ───────────────────────────────────────────────────────────
+# A gate that redirects a run's stderr to a temp dir and deletes that dir on EXIT
+# throws away the only account of a binary that died before writing a byte — the
+# failing assert then reports an empty actual and no cause. These print the
+# account before the dir goes, so use them wherever a run's stderr is captured.
+
+# _gate_run_termination CODE STDERR_FILE — one line classifying how a run ended.
+_gate_run_termination() {
+    local code="$1" stderr_file="$2" signal_no signal_name
+    if [ -z "$code" ]; then
+        echo "termination: not run" >&2
+    elif [ -f "$stderr_file" ] && \
+            grep -qF 'WATCHDOG: no exit after ' "$stderr_file"; then
+        echo "termination: watchdog" >&2
+    elif [ "$code" -ge 128 ] && [ "$code" -le 255 ]; then
+        signal_no=$((code - 128))
+        signal_name=$(kill -l "$signal_no" 2>/dev/null || true)
+        echo "termination: signal $signal_no${signal_name:+ ($signal_name)}" >&2
+    elif [ "$code" -eq 0 ]; then
+        echo "termination: normal exit" >&2
+    else
+        echo "termination: nonzero exit" >&2
+    fi
+}
+
+# gate_run_diag LABEL CODE STDOUT STDERR_FILE — one run arm's full account.
+gate_run_diag() {
+    local label="$1" code="$2" stdout="$3" stderr_file="$4"
+
+    echo "---- $label diagnostics ----" >&2
+    echo "exit code: ${code:-<not run>}" >&2
+    _gate_run_termination "$code" "$stderr_file"
+    if [ -n "$stdout" ]; then
+        echo "stdout:" >&2
+        printf '%s\n' "$stdout" >&2
+    else
+        echo "stdout: <empty>" >&2
+    fi
+    if [ -s "$stderr_file" ]; then
+        echo "stderr:" >&2
+        cat "$stderr_file" >&2
+    else
+        echo "stderr: <empty>" >&2
+    fi
+}
+
+# gate_run_diag_once — call the sourcing gate's optional gate_run_diagnostics
+# hook, at most once: the assert path and the EXIT path both reach for it.
+_GATE_RUN_DIAG_DONE=0
+gate_run_diag_once() {
+    [ "$_GATE_RUN_DIAG_DONE" -eq 0 ] || return 0
+    _GATE_RUN_DIAG_DONE=1
+    if declare -F gate_run_diagnostics >/dev/null; then
+        gate_run_diagnostics
+    fi
+}
+
+# gate_run_logs_init SLUG LABEL — mint the run-stderr dir as _GATE_RUN_LOG_DIR
+# and arm its cleanup. A hook, not a bare trap: the gate may hold a lock.
+gate_run_logs_init() {
+    _GATE_RUN_LOG_DIR=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_$1.XXXXXX")
+    _GATE_RUN_LOG_LABEL="$2"
+    gate_add_exit_hook gate_run_logs_cleanup
+}
+
+# gate_run_logs_cleanup — drop the logs on success, keep and explain them on
+# failure. Reads the exit status through _GATE_EXIT_RC: a hook cannot see `$?`.
+gate_run_logs_cleanup() {
+    if [ "${_GATE_EXIT_RC:-0}" -eq 0 ]; then
+        rm -rf "$_GATE_RUN_LOG_DIR"
+        return
+    fi
+    gate_run_diag_once
+    echo "$_GATE_RUN_LOG_LABEL stderr logs preserved in $_GATE_RUN_LOG_DIR" >&2
+}
+
 # wait_ready_line NAME PID OUT ERR [SECONDS] — echo the first COMPLETE line the
 # background server PID writes to OUT, or print the evidence and return 1.
 # A pid that already exited fails at once: waiting the deadline out for a dead
@@ -3146,6 +3222,9 @@ gate_add_exit_hook() {
 }
 _gate_run_exit_hooks() {
     local rc=$? i
+    # A hook runs under `|| true` and sees the previous hook's status, never the
+    # script's, so the status a hook needs is published here.
+    _GATE_EXIT_RC="$rc"
     for (( i = ${#_gate_exit_hooks[@]} - 1; i >= 0; i-- )); do
         eval "${_gate_exit_hooks[i]}" || true
     done
