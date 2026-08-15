@@ -48,8 +48,18 @@ _cmake_step "$out/dn2cpp-build.log" "building the write-barrier probe" \
     "$CMAKE" --build "$out"
 
 echo "== 3/3 Running the probe (STW + incremental) =="
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_gcbarrier.XXXXXX")
-trap 'rm -rf "$log_dir"' EXIT
+gate_run_logs_init gcbarrier "write-barrier probe"
+log_dir="$_GATE_RUN_LOG_DIR"
+stw=
+stw_code=
+incremental=
+incremental_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "write-barrier probe STW" "$stw_code" "$stw" "$log_dir/stw.log"
+    gate_run_diag "write-barrier probe incremental" "$incremental_code" \
+        "$incremental" "$log_dir/incremental.log"
+}
 
 set +e
 stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
@@ -74,13 +84,14 @@ fi
 # Stop-the-world has no window at all, so every subject survives — including the
 # unbarriered ones, which is the control on the incremental arm below. No window
 # to report either, which is why the arms differ by that line.
+assertions_failed=0
 assert_output "$(strip_cr_win "$stw")" "incremental mode: off
 plain store: lost 0 of 64
 barriered store: lost 0 of 64
 plain memmove: lost 0 of 64
 dn2cpp_gc_memmove_refs: lost 0 of 64
-unpublished control: lost 0 of 64"
-assert_exit_code "$stw_code" 0
+unpublished control: lost 0 of 64" || assertions_failed=1
+assert_exit_code "$stw_code" 0 || assertions_failed=1
 
 # Incremental: an unbarriered store is lost at every increment count (the payload
 # is allocated white inside the cycle and the block stored into is clean-marked,
@@ -95,7 +106,11 @@ barriered store: lost 0 of 64
 plain memmove: lost 64 of 64
 dn2cpp_gc_memmove_refs: lost 0 of 64
 unpublished control: lost 64 of 64
-window held: 64 of 64"
-assert_exit_code "$incremental_code" 0
+window held: 64 of 64" || assertions_failed=1
+assert_exit_code "$incremental_code" 0 || assertions_failed=1
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
+    exit 1
+fi
 
 gate_cache_commit

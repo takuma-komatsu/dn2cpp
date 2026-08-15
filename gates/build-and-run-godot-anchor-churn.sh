@@ -48,8 +48,18 @@ _cmake_step "$out/dn2cpp-build.log" "building the anchor-churn probe" \
     "$CMAKE" --build "$out"
 
 echo "== 3/3 Running the probe (STW + incremental) =="
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_anchorchurn.XXXXXX")
-trap 'rm -rf "$log_dir"' EXIT
+gate_run_logs_init anchorchurn "anchor-churn probe"
+log_dir="$_GATE_RUN_LOG_DIR"
+stw=
+stw_code=
+incremental=
+incremental_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "anchor-churn probe STW" "$stw_code" "$stw" "$log_dir/stw.log"
+    gate_run_diag "anchor-churn probe incremental" "$incremental_code" \
+        "$incremental" "$log_dir/incremental.log"
+}
 
 set +e
 stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
@@ -73,10 +83,11 @@ fi
 
 # Stop-the-world has no window at all, so this arm is the control on the probe
 # itself: full churn, every shim survives, every teardown reclaims.
+assertions_failed=0
 assert_output "$(strip_cr_win "$stw")" "incremental mode: off
 kept shims lost: 0 of 6144
-reclaimed at teardown: 6144 of 6144"
-assert_exit_code "$stw_code" 0
+reclaimed at teardown: 6144 of 6144" || assertions_failed=1
+assert_exit_code "$stw_code" 0 || assertions_failed=1
 
 # Incremental: every trial's compaction ran inside an observed split of the
 # table's scan (the probe exits non-zero naming the trial otherwise), so the
@@ -84,7 +95,11 @@ assert_exit_code "$stw_code" 0
 assert_output "$(strip_cr_win "$incremental")" "incremental mode: on
 kept shims lost: 0 of 6144
 reclaimed at teardown: 6144 of 6144
-window held: 16 of 16"
-assert_exit_code "$incremental_code" 0
+window held: 16 of 16" || assertions_failed=1
+assert_exit_code "$incremental_code" 0 || assertions_failed=1
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
+    exit 1
+fi
 
 gate_cache_commit

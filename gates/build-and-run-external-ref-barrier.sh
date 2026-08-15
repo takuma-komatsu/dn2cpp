@@ -79,8 +79,18 @@ fi
 echo "== 4/4 Compiling C++ and running (STW + incremental; exact diff vs real .NET) =="
 compile_console "$OUT" "$project"
 
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_extrefbarrier.XXXXXX")
-trap 'rm -rf "$log_dir"' EXIT
+gate_run_logs_init extrefbarrier "$project"
+log_dir="$_GATE_RUN_LOG_DIR"
+stw=
+stw_code=
+incremental=
+incremental_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "$project STW" "$stw_code" "$stw" "$log_dir/stw.log"
+    gate_run_diag "$project incremental" "$incremental_code" "$incremental" \
+        "$log_dir/incremental.log"
+}
 
 set +e
 expected=$(run_bounded dotnet "$app"); expected_code=$?
@@ -91,10 +101,15 @@ incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
 set -e
 _gate_scratch_cleanup
 
-assert_output "$stw" "$expected"
-assert_exit_code "$stw_code" "$expected_code"
-assert_output "$incremental" "$expected"
-assert_exit_code "$incremental_code" "$expected_code"
+assertions_failed=0
+assert_output "$stw" "$expected" || assertions_failed=1
+assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
+assert_output "$incremental" "$expected" || assertions_failed=1
+assert_exit_code "$incremental_code" "$expected_code" || assertions_failed=1
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
+    exit 1
+fi
 
 if [ "$(grep -cF 'external reference stores:' <<<"$incremental")" -ne 1 ]; then
     echo "FAIL: the external-reference section did not run exactly once" >&2

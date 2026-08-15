@@ -29,66 +29,18 @@ fi
 echo "== 4/4 Compiling C++ (upstream GC backend) and running (STW + incremental; exact diff vs real .NET) =="
 compile_console "$out" "$project"
 
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_gcupstream.XXXXXX")
+gate_run_logs_init gcupstream GC-upstream
+log_dir="$_GATE_RUN_LOG_DIR"
 stw=
 stw_code=
 incremental=
 incremental_code=
-diagnostics_printed=0
 
-print_arm_diagnostics() {
-    local label="$1" code="$2" stdout="$3" stderr_file="$4"
-    local signal_no signal_name
-
-    echo "---- GC-upstream $label diagnostics ----" >&2
-    echo "exit code: ${code:-<not run>}" >&2
-    if [ -z "$code" ]; then
-        echo "termination: not run" >&2
-    elif [ -f "$stderr_file" ] && \
-            grep -qF 'WATCHDOG: no exit after ' "$stderr_file"; then
-        echo "termination: watchdog" >&2
-    elif [ "$code" -ge 128 ] && [ "$code" -le 255 ]; then
-        signal_no=$((code - 128))
-        signal_name=$(kill -l "$signal_no" 2>/dev/null || true)
-        echo "termination: signal $signal_no${signal_name:+ ($signal_name)}" >&2
-    elif [ "$code" -eq 0 ]; then
-        echo "termination: normal exit" >&2
-    else
-        echo "termination: nonzero exit" >&2
-    fi
-    if [ -n "$stdout" ]; then
-        echo "stdout:" >&2
-        printf '%s\n' "$stdout" >&2
-    else
-        echo "stdout: <empty>" >&2
-    fi
-    if [ -s "$stderr_file" ]; then
-        echo "stderr:" >&2
-        cat "$stderr_file" >&2
-    else
-        echo "stderr: <empty>" >&2
-    fi
-}
-
-print_run_diagnostics() {
-    print_arm_diagnostics "STW" "$stw_code" "$stw" "$log_dir/stw.log"
-    print_arm_diagnostics "incremental" "$incremental_code" "$incremental" \
+gate_run_diagnostics() {
+    gate_run_diag "GC-upstream STW" "$stw_code" "$stw" "$log_dir/stw.log"
+    gate_run_diag "GC-upstream incremental" "$incremental_code" "$incremental" \
         "$log_dir/incremental.log"
-    diagnostics_printed=1
 }
-
-cleanup_run_logs() {
-    local code=$?
-    if [ "$code" -eq 0 ]; then
-        rm -rf "$log_dir"
-        return
-    fi
-    if [ "$diagnostics_printed" -eq 0 ]; then
-        print_run_diagnostics
-    fi
-    echo "GC-upstream stderr logs preserved in $log_dir" >&2
-}
-trap cleanup_run_logs EXIT
 
 set +e
 _gate_run_argv
@@ -111,7 +63,7 @@ assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
 assert_output "$incremental" "$expected" || assertions_failed=1
 assert_exit_code "$incremental_code" "$expected_code" || assertions_failed=1
 if [ "$assertions_failed" -ne 0 ]; then
-    print_run_diagnostics
+    gate_run_diag_once
     exit 1
 fi
 
