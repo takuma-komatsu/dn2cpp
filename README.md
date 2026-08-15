@@ -41,70 +41,78 @@ the BCL supplied as transpiled IL. Bringing an equivalent capability
 within reach of Godot — and of .NET at large — is the point; rivalling or
 diminishing IL2CPP's achievement is not.
 
-The same core drives five delivery targets:
+[fork]: https://github.com/takuma-komatsu/godot-dn2cpp
 
-- **Console** — a native executable per platform; with the `Dn2Cpp.Build`
-  MSBuild package, a plain `dotnet publish` away.
-- **Godot .NET (mono-module drop-in)** — substitutes for the C# game in
-  Godot's `modules/mono` load path exactly where a NativeAOT export would
-  sit, so the engine and its export template stay unmodified; transpiles
-  the real `GodotSharp.dll` end to end. An existing `Godot.NET.Sdk`
-  project needs no source changes. The interop ABI is pinned to
-  `godotengine/godot a13da4feb8` (4.7.1-stable). A [forked editor][fork]
-  turns it into a one-click export (`dotnet/export_backend = dn2cpp`).
-- **GDExtension** — Godot 4.7 shared library, loadable by a stock engine
-  with no .NET support compiled in. The C# compiles against dn2cpp's
-  generated GodotSharp shim rather than the real one, so standard
-  `Node`/`_Ready`/`GD.Print`/`[Export]`/`[Signal]` source transpiles
-  unmodified (verified E2E in a real engine), but an existing Godot .NET
-  project has to be re-targeted onto the shim.
-- **Hot update (HybridCLR-style)** — build-time-baked Baked Patch Image
-  (BPI) + register-based bytecode interpreter (`--hotupdate-base` +
-  `--emit-patch`); patches inherit from and override AOT types without
-  runtime code generation, so they work in JIT-prohibited environments
-  (iOS, consoles).
-- **Cross-platform** — the same core runs headless on **Windows, macOS,
-  Linux, WASM (Emscripten), iOS (simulator E2E, engine-exported),
-  Android (NDK)** through a shared PAL (`runtime/core/platform/`) and a
-  CMake build backend.
+## What you get
+
+One core, four ways to ship it:
+
+- **Console** — a native executable per platform, from any IL assembly.
+- **Godot .NET (mono-module drop-in)** — the lane for an existing
+  `Godot.NET.Sdk` game: the built library lands where a NativeAOT export
+  would, so the engine and its export template stay stock and your source
+  and scenes stay as they are. A [forked editor][fork] makes it one click.
+  It indexes the engine's interop table by hard-coded position with no
+  runtime handshake, so it is **4.7.1-stable or nothing** — see the ABI pin
+  under Backends before shipping.
+- **GDExtension** — a shared library a stock engine with no .NET support
+  compiled in can load. The price is that the C# targets dn2cpp's
+  generated GodotSharp shim, so an existing Godot .NET project has to be
+  re-targeted.
+- **Hot update (HybridCLR-style)** — a build-time-baked patch image run by
+  a bytecode interpreter, so patches work where runtime code generation is
+  prohibited (iOS, consoles).
+
+Targets: **Windows, macOS, Linux, iOS (simulator), Android (NDK), WASM
+(Emscripten)** — one PAL (`runtime/core/platform/`) and one CMake build
+backend. macOS is the Tier-1 host; Windows and Linux run the full suite
+green too, the Linux Godot lanes against a real engine included.
 
 Everything is guarded by a regression suite (`./gates/run-all-gates.sh`)
 that diffs native output against real .NET.
 
-[fork]: https://github.com/takuma-komatsu/godot-dn2cpp
+## For C# developers
 
-## At a glance
+**What dn2cpp reads is IL, so the C# language version is your SDK's
+business, not dn2cpp's.** What it transpiles *alongside* your assembly is
+always the real **.NET 10** `System.Private.CoreLib` and its
+shared-framework closure — `--auto-ref` resolves that from the running
+framework. Your project's own target framework is its own affair: the
+Godot .NET samples under `samples/godot-dotnet/` are `net8.0` (what
+`Godot.NET.Sdk` picks) and transpile against the net10 closure just the
+same.
 
-| Delivery target | CLI flag | Load path | Verification gate | Windows | macOS | Linux | iOS | Android | WASM |
-|----|----|----|----|:-:|:-:|:-:|:-:|:-:|:-:|
-| Console | *(default)* | Native executable | `gates/build-and-run-sample.sh` | ✅ | ✅ | ✅ | ✅ sim | ✅ NDK build | ✅ (full GC) |
-| Godot .NET (mono-module drop-in) | `--dotnet-module` | Godot `modules/mono` | `gates/build-and-run-godot-dotnet-sample.sh`, `gates/build-and-run-godot-editor-export.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | ✅ browser E2E |
-| GDExtension | `--gdextension` | Godot loads `.dylib`/`.so`/`.dll` | `gates/build-and-run-godot-sample.sh` | ✅ | ✅ | ✅ | ✅ sim E2E | ✅ NDK build | — |
-| Hot update (BPI) | `--hotupdate-base` + `--emit-patch` | `HotUpdate.LoadDirectory("<dir>")` | `gates/build-and-run-hotupdate-subset.sh`, `gates/build-and-run-hotupdate-godot.sh` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Bindings generation | `--generate-bindings extension_api.json` | Build step | (runs inside every Godot-lane gate) | ✅ | ✅ | ✅ | — | — | — |
+**What works out of the box.** The real CoreLib collections and strings,
+LINQ, `System.Text.Json` through source-gen, `Regex` (both engines),
+`System.IO.Compression`, `HttpClient` over HTTPS, file I/O, `decimal`, and
+culture-aware numeric formatting. `async`/`await` on real state machines,
+real OS threads and synchronization primitives, a real GC with finalizers
+and true `WeakReference`, and reflection at Unity-IL2CPP parity. An
+existing `Godot.NET.Sdk` project needs no source changes on the drop-in
+lane.
 
-Legend: ✅ verified in a gate · 🚧 not yet verified (see notes) · — not applicable.
+**What does not, and will not.** Read these before you plan around them —
+each is settled, and each refuses out loud rather than answering wrong:
 
-**Note (Godot .NET drop-in).** Its E2E gates need a mono-enabled Godot
-editor + export template. `gates/setup-godot-dotnet.sh` takes them from
-an official install on any host, downloads that install itself on Linux,
-and builds them with scons on macOS; `gates/setup-godot-fork.sh` builds
-the forked editor for macOS, Windows and Linux.
-The Android cell is the NDK cross-build of the same drop-in, and the
-forked editor's Android export runs an unmodified C# demo on a physical
-device against the *official* mono export template. The WASM cell is a
-full browser export — Godot 4 supports C# on the Web nowhere else.
-Separately, the emitted library indexes the engine's interop table **by
-hard-coded position with no runtime handshake**, so it is 4.7.1-stable or
-nothing: a different engine build mis-dispatches silently instead of
-failing.
+- No `System.Reflection.Emit`, `dynamic`/DLR, or expression-tree
+  `Compile()`: there is no JIT to emit into.
+- `MakeGenericType`/`MakeGenericMethod` reach only instantiations already
+  in the AOT image; anything else throws.
+- String comparison and collation are **ordinal only**, and named time
+  zones, per-culture *date* formatting and localized display names are
+  out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
+- 64-bit only. No COM interop.
+- `FileStream.IsAsync` answers `false` — async file I/O runs the
+  deterministic sync-over-async route.
+- An unsupported IL or BCL shape is a transpile-time error or a catchable
+  exception naming the type and the remedy, never a silently wrong answer.
 
-**Note (Linux).** The full suite runs green on Linux — the Godot desktop
-GDExtension lane, the mono-module drop-in, and the forked editor's own
-desktop export, all against a real engine; every skip is cross-toolchain
-(Xcode, Android NDK), not a Linux support gap. The packaged export
-toolchain is cut and accepted here too: `dist/smoke-test.sh` round-trips a
-game into a drop-in and into a wasm side module out of the tarball alone.
+**On the Web there is more:** no threads (`Task.Run`, `Thread` and `Timer`
+throw), no HTTP transport (a browser has no socket layer), no real
+`FileStream` (the intercepted `File.*` subset works on MEMFS), and the GC
+is stop-the-world.
+
+The full list, with the reasoning, is under *Permanent non-goals* below.
 
 ## Quick start
 
@@ -113,102 +121,78 @@ game into a drop-in and into a wasm side module out of the tarball alone.
 - .NET SDK **net10.0** (`dotnet --list-sdks` should list a `10.0.x`)
 - `clang++` (C++17) — or real MSVC `cl.exe` on Windows
 - `cmake` ≥ **3.20** + `ninja`
-- Godot **4.7** on `PATH` (or `GODOT=/path/to/godot`) — required only for
-  the Godot-lane gates
+- Godot **4.7** on `PATH` (or `GODOT=/path/to/godot`) — only for the
+  Godot-lane gates
 - `extension_api.json` at the repository root — generate on a fresh clone
   with `godot --headless --dump-extension-api`
 
-macOS (Apple silicon or x86_64) is the Tier-1 host; Windows (real MSVC
-`cl.exe`) and Linux both run the suite green too.
+These are the prerequisites of **this repository**, which builds through
+the host's own tools. They are not the prerequisites of the distributable
+editor: it carries a pinned cmake, ninja, node and Emscripten SDK of its
+own and asks its user for none of them. The fork editor-export gates are
+the one exception — they assert the export ran through the bundle's own
+cmake and ninja, so unpack those (`gates/setup-buildtools.sh`) before
+`gates/setup-godot-fork.sh` packages a bundle.
 
-These are the prerequisites of **this repository** and of the dotnet tool below,
-both of which build through the host's own tools. They are not the prerequisites
-of the distributable editor, which carries a pinned cmake and ninja of its own
-(`gates/expected/buildtools-pin.txt`) and asks its user for neither. The node
-that every `emcc` link runs sits in the same position — pinned by
-`gates/expected/node-pin.txt`, carried inside the editor's Emscripten SDK, and
-so absent from the list above. The fork editor-export gates are the one
-exception — they assert the export ran through that pinned pair, so unpack it
-(`gates/setup-buildtools.sh`) before `gates/setup-godot-fork.sh` packages a
-bundle.
+### Getting the tool
 
-### Install as a dotnet tool (no clone)
+> **Not on nuget.org yet.** Publishing `dn2cpp` as a dotnet tool and
+> `Dn2Cpp.Build` as an MSBuild package is planned, and the packaging is
+> built and proven locally (`dist/nuget-smoke-test.sh` packs, installs
+> from a local feed, transpiles, builds and diffs) — but neither package
+> is on nuget.org today. Until they are, use a clone, or the [forked
+> editor][fork]'s releases for the Godot lanes.
 
-The CLI ships as a NuGet **dotnet tool** that carries the C++ runtime and the
-vendored third-party sources inside the package — transpile and native-build
-without a repository checkout (only `clang++`/`cmake`/`ninja` needed):
+From a clone, the console lane end to end:
 
 ```bash
-dotnet tool install -g dn2cpp
+git clone https://github.com/takuma-komatsu/dn2cpp.git
+cd dn2cpp
+dotnet build src/Dn2Cpp.Cli -c Release
 
-dn2cpp MyApp.dll -o out --auto-ref     # IL → C++ (BCL from the live framework)
-cmake -S "$(dn2cpp --print-runtime-dir)" -B out/build -G Ninja \
+dotnet run --project src/Dn2Cpp.Cli -- MyApp.dll --auto-ref -o out
+cmake -S runtime -B out/build -G Ninja \
       -DDN2CPP_APP_DIR="$PWD/out" -DDN2CPP_APP_NAME=MyApp
 cmake --build out/build
 ./out/build/MyApp
 ```
 
 `--auto-ref` with no `-r` defaults the CoreLib to the running shared
-framework's copy; `--print-runtime-dir` answers with the packaged `runtime/`
-(the sibling `third_party/` tree comes with it). The Godot lanes work from the
-tool too.
+framework's copy and resolves the rest of the closure beside it.
 
-For one-command console publishing there is also **`Dn2Cpp.Build`**, a
-targets-only MSBuild package (`src/Dn2Cpp.Build/`): add the PackageReference
-and `dotnet publish` runs the installed tool + CMake and drops the native
-binary into the publish dir:
-
-```bash
-dotnet add package Dn2Cpp.Build
-dotnet publish -c Release          # → bin/Release/net10.0/publish/MyApp (native)
-```
-
-Both packages are proven end to end by `dist/nuget-smoke-test.sh` (pack →
-local-feed install → transpile → CMake build → run → diff, then the same
-through a `Dn2Cpp.Build` consumer).
+Once published, the same thing without a checkout will read
+`dotnet tool install -g dn2cpp`, then `dn2cpp MyApp.dll -o out --auto-ref`
+with `cmake -S "$(dn2cpp --print-runtime-dir)"`; and `Dn2Cpp.Build`
+(`src/Dn2Cpp.Build/`) will make `dotnet publish` do the whole thing in one
+command.
 
 ### 60-second smoke test
 
 ```bash
-git clone https://github.com/takuma-komatsu/dn2cpp.git
-cd dn2cpp
 godot --headless --dump-extension-api     # only on a fresh clone
 ./gates/build-and-run-sample.sh           # console: C# → IL → C++ → native → run
 ```
 
 The script compiles `samples/dotnet/HelloWorld/`, transpiles it against
-the tree-shaken real CoreLib, links it against the mini-runtime, and
-diffs the output against `dotnet run` byte-for-byte.
+the tree-shaken real CoreLib, links it against the mini-runtime, and diffs
+the output against `dotnet run` byte-for-byte.
 
-### Three-lane sanity check, then the full gate
-
-```bash
-./gates/build-and-run-sample.sh          # console
-./gates/build-and-run-multiassembly.sh   # multi-assembly -r
-./gates/build-and-run-godot-sample.sh    # Godot 4.7 GDExtension (real engine)
-
-./gates/run-all-gates.sh                 # the whole suite in parallel
-SKIP_GODOT=1 ./gates/run-all-gates.sh    # fast smoke without Godot
-JOBS=8 ./gates/run-all-gates.sh          # cap parallelism
-```
-
-Gates whose toolchain is missing (Godot, `em++`, Xcode, NDK) skip, and are
-reported separately from the passes — a skip is never counted as a pass. A
-failing gate is listed in `$LOGDIR/_failures.txt` with its log.
+The whole regression suite is `./gates/run-all-gates.sh` (`SKIP_GODOT=1`
+for a fast pass without an engine, `JOBS=N` to cap parallelism). A gate
+whose toolchain is missing skips and is reported separately from the
+passes — a skip is never a pass. `AGENTS.md` is the authoritative contract
+for the suite and the merge gate.
 
 ## Backends
 
 ### Console
 
-- **What.** Emits `generated.{h,cpp[,cpp,...]}` (bodies past ~1MB split
-  for parallel compile) plus links the `runtime/core/` TUs, producing a
-  native executable.
+- **What.** Emits `generated.{h,cpp[,cpp,...]}` (large bodies split across
+  translation units for parallel compile) and links the `runtime/core/`
+  TUs into a native executable.
 - **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> -o <outdir>`
   (add `-r <ref.dll>` for extra assemblies, `--auto-ref` to pull the
   shared-framework closure).
-- **Gate.** `gates/build-and-run-sample.sh`,
-  `gates/build-and-run-multiassembly.sh`. Output is diffed byte-for-byte
-  against `dotnet run`.
 - **GC mode.** Classic stop-the-world by default; override with
   `DN2CPP_GC_INCREMENTAL=1` / `DN2CPP_GC_TIME_LIMIT_MS`.
 
@@ -220,33 +204,13 @@ no changes to the engine or its export template.**
 - **What.** A dn2cpp-built shared library substitutes for the C# game in
   Godot's `modules/mono` load path — it lands where a NativeAOT export
   would, so the engine picks it up through the `try_load_native_aot_library`
-  path it already has. The real `GodotSharp.dll` (from a pinned engine
-  clone's `modules/mono/glue` + Godot.NET.Sdk source generators) is
-  transpiled BCL-as-IL; all engine access goes through the `godotsharp_*`
-  function-pointer array via `calli` and the `ManagedCallbacks` table. No
-  `extension_api.json` intrinsics are needed. Script semantics survive:
-  `res://Player.cs` attached to a node resolves through the managed script
-  bridge, so existing scenes bind as they are.
+  path it already has. The real `GodotSharp.dll` is transpiled BCL-as-IL and
+  every engine call goes through the `godotsharp_*` function-pointer array
+  via `calli`, so no `extension_api.json` intrinsics are involved. Script
+  semantics survive: `res://Player.cs` attached to a node resolves through
+  the managed script bridge, so existing scenes bind as they are.
 - **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --dotnet-module -o <outdir>`.
   Runtime backend: `runtime/dotnetmodule/`, CMake `DN2CPP_DOTNET_MODULE`.
-- **Editor integration.** A [forked Godot editor][fork] adds
-  `dotnet/export_backend = dn2cpp` as an export option: one
-  `--export-release` publishes the game IL, transpiles it, builds the C++
-  and stages the library — no manual step. The fork's changes live in
-  `GodotTools` (C#) and `build_assemblies.py`, never in the engine runtime
-  or the ABI surfaces. Design, fork strategy, packaging layout and re-pin
-  procedure: `docs/EDITOR-EXPORT-DESIGN.md`. The fork's Releases carry a
-  built macOS editor `.app` and a Windows `x86_64` editor, plus the two
-  export templates upstream cannot supply — the Web one, and a macOS
-  `arm64` one, since the backend never cross-compiles and upstream's
-  macOS archive is universal-only. The `.app` is ad-hoc signed and not
-  notarized, so clear its quarantine attribute
-  (`xattr -dr com.apple.quarantine`) before the first launch; the Windows
-  editor is unsigned, and building a **Windows game** from it needs the
-  Visual Studio C++ workload *installed* — but no particular shell: the
-  editor locates MSVC itself and overlays it onto the build children, so
-  an Explorer launch is enough. Web and Android need neither, each
-  bringing its own compiler.
 - **ABI pin — read this before shipping.** `godotengine/godot a13da4feb8`
   (4.7.1-stable). The emitted library indexes the interop table **by
   hard-coded position, with no runtime handshake**, so a mismatched engine
@@ -256,22 +220,35 @@ no changes to the engine or its export template.**
   block and `ManagedCallbacks.cs`, frozen in
   `gates/expected/godot-dotnet-abi.sha256`; re-pin = re-run
   `gates/setup-godot-dotnet.sh` and re-freeze the fingerprint.
-- **Gate.** `gates/build-and-run-godot-dotnet-sample.sh` — verified E2E in
-  the real engine: all virtuals, input, `[Export]`, `[Signal]`,
-  `ToSignal`, `RefCounted` lifetime stress, and **async interop** (`Task`
-  continuations marshal back to the main thread via a non-blocking
-  run-queue pump driven by the host frame callback).
-  `gates/build-and-run-godot-editor-export.sh` and its `-ios` / `-android` /
-  `-web` siblings drive the whole fork pipeline from one headless export — to
-  a playable macOS `.app`, to an xcframework booted on an iPhone simulator,
-  to an APK the stock Android mono template loads, and to a wasm side module
-  running in a real browser. Godot's upstream mono `squash_the_creeps` demo
-  goes through this lane unmodified.
-- **Carve-outs.** Editor F5 (export-run only; TOOLS builds use the
-  hostfxr 6-argument path), editor hot-reload state (`Callable` /
-  delegate serialization reports "unserializable", which the engine
-  already handles), GDScript→C# `CallStatic`, `Delegate.Method` (returns
-  null), async void signal handlers, managed stack traces (an exception's
+- **Editor integration.** A [forked Godot editor][fork] adds
+  `dotnet/export_backend = dn2cpp` as an export option: one
+  `--export-release` publishes the game IL, transpiles it, builds the C++
+  and stages the library. The fork's changes live in `GodotTools` (C#) and
+  `build_assemblies.py`, never in the engine runtime or the ABI surfaces;
+  design, fork strategy and re-pin procedure are in
+  `docs/EDITOR-EXPORT-DESIGN.md`. Its Releases carry a macOS editor `.app`
+  and a Windows `x86_64` editor, plus the two export templates upstream
+  cannot supply — the Web one, and a macOS `arm64` one, since the backend
+  never cross-compiles and upstream's macOS archive is universal-only. The
+  `.app` is ad-hoc signed and not notarized, so clear its quarantine
+  attribute (`xattr -dr com.apple.quarantine`) before the first launch; the
+  Windows editor is unsigned, and building a **Windows game** from it needs
+  the Visual Studio C++ workload *installed* — but no particular shell, as
+  the editor locates MSVC itself. Web and Android need neither, each
+  bringing its own compiler.
+- **Verified.** In the real engine, end to end: all virtuals, input,
+  `[Export]`, `[Signal]`, `ToSignal`, `RefCounted` lifetime stress, and
+  **async interop** (`Task` continuations marshal back to the main thread
+  via a non-blocking run-queue pump driven by the host frame callback). One
+  headless export drives the fork pipeline to a playable macOS `.app`, an
+  xcframework on an iPhone simulator, an APK the stock Android mono template
+  loads, and a wasm side module in a real browser. Godot's upstream mono
+  `squash_the_creeps` demo goes through this lane unmodified.
+- **Carve-outs.** Editor F5 (export-run only; TOOLS builds use the hostfxr
+  6-argument path), editor hot-reload state (`Callable` / delegate
+  serialization reports "unserializable", which the engine already
+  handles), GDScript→C# `CallStatic`, `Delegate.Method` (returns null),
+  async void signal handlers, managed stack traces (an exception's
   `GD.PushError` text is real, but its file is null and line 0), and
   `Variant` → `GodotObject[]` conversion.
 
@@ -288,26 +265,22 @@ GDExtension classes rather than as C# scripts.
   fixed rather than derived from the app, so a shipped artifact carries no
   product name; `DN2CPP_APP_NAME` names only the CMake target here. On
   Windows it is spelled like the managed CLI assembly, which is a different
-  file — the two never share a directory. Public C# static and
-  instance methods and properties are callable from GDScript;
-  **`Godot.Node`-derived C# classes are placeable in scenes** and receive
-  engine virtual callbacks (`_Ready`, `_Process`, `_Notification`, and
-  every `_*` whose signature the codec models — reverse-dispatch
-  trampolines are generated per class from the API dump, not just the
-  lifecycle/input set).
+  file — the two never share a directory. Public C# static and instance
+  methods and properties are callable from GDScript; **`Godot.Node`-derived
+  C# classes are placeable in scenes** and receive engine virtual callbacks
+  (`_Ready`, `_Process`, `_Notification`, and every `_*` whose signature the
+  codec models — reverse-dispatch trampolines are generated per class from
+  the API dump, not just the lifecycle/input set).
 - **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --gdextension -o <outdir>`,
   then compile as a shared library. Ship `dn2cpp.gdextension` next to it —
   copy `samples/godot/godot-project/dn2cpp.gdextension`, whose `[libraries]`
   already name the fixed library. Because both that name and `entry_symbol`
   are fixed, one project carries at most one dn2cpp GDExtension.
-- **Gate.** `gates/build-and-run-godot-sample.sh` (real headless Godot
-  4.7), `gates/build-and-run-sdk-sample.sh` (a Godot.NET.Sdk API-surface
-  project).
 - **`Godot.NET.Sdk` source compatibility.** Standard-form C# using
   `Node2D`/`GD.Print`/`_Ready`/`[Export]`/`[Signal]`/`[Tool]` compiles
   against `src/GodotSharpShim/` (generated from `extension_api.json`) and
-  transpiles unmodified — the *source* is portable, the project reference
-  is not. All builtin value types round-trip; `Callable` (including
+  transpiles unmodified — the *source* is portable, the project reference is
+  not. All builtin value types round-trip; `Callable` (including
   delegate-backed), `Signal`, engine-backed
   `Godot.Collections.Array`/`Dictionary`, and typed arrays all cross the
   boundary.
@@ -327,27 +300,23 @@ GDExtension classes rather than as C# scripts.
   register-based bytecode by default, or the stack encoding
   `--patch-stackcode` selects — that a base image built with
   `--hotupdate-base` loads at runtime and executes via
-  `runtime/core/dn2cpp_interp.cpp`.
-  Patches inherit from and override AOT types (dynamic vtable patch, N2M
-  trampolines, patch-derived `Node` instances) **without any runtime code
-  generation** — so it works on iOS and consoles.
+  `runtime/core/dn2cpp_interp.cpp`. Patches inherit from and override AOT
+  types (dynamic vtable patch, N2M trampolines, patch-derived `Node`
+  instances) **without any runtime code generation** — so it works on iOS
+  and consoles.
 - **Invoke** (base): `dn2cpp <input.dll> --hotupdate-base [--hotupdate-refs <roots.txt>]`.
   **Invoke** (patch): `dn2cpp --emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version N]`.
 - **Deploy.** `Dn2Cpp.Runtime.HotUpdate.LoadDirectory("<dir>")` applies
-  BPIs in `(patchVersion, filename)` order; header-stale BPIs are logged
-  to stderr and skipped. Base-ABI drift is detected mechanically via
+  BPIs in `(patchVersion, filename)` order; header-stale BPIs are logged to
+  stderr and skipped. Base-ABI drift is detected mechanically via
   `baseImageAbiHash` (FNV-1a over the symbolic contract in
   `docs/BPI-FORMAT.md`), so a stale patch is a loud diagnostic at load
   rather than a mis-bind.
-- **Gate.** `gates/build-and-run-hotupdate-subset.sh` (console; both
-  bytecode formats), `gates/build-and-run-hotupdate-godot.sh` (in-engine
-  deployment, engine-driven `_Process` reaches interpreted overrides),
-  `gates/measure-interp.sh` (register vs stack A/B).
-- **Isolation.** Everything sits behind `--hotupdate-base` /
-  `--emit-patch` / `runtime/core/dn2cpp_interp.cpp` (unlinked unless
-  called). Normal builds are byte-identical.
-- **Known limits.** Generic instantiations absent from the AOT image
-  throw `NotSupportedException` unless pre-referenced (`hotupdate-refs.txt`,
+- **Isolation.** Everything sits behind `--hotupdate-base` / `--emit-patch`
+  / `runtime/core/dn2cpp_interp.cpp` (unlinked unless called). Normal builds
+  are byte-identical.
+- **Known limits.** Generic instantiations absent from the AOT image throw
+  `NotSupportedException` unless pre-referenced (`hotupdate-refs.txt`,
   HybridCLR's `AOTGenericReferences` equivalent). Patch generic
   types/methods, filter clauses inside a patch, and value-type
   `Synchronized` methods stay fenced (loud bake-time rejection).
@@ -355,27 +324,23 @@ GDExtension classes rather than as C# scripts.
 ### Cross-platform (Windows / macOS / Linux / iOS / Android / WASM)
 
 The core is platform-agnostic. Divergence is absorbed by a **Platform
-Abstraction Layer** (`runtime/core/platform/`, `dn2cpp_pal_*` seams:
-file-system metadata and mutation, console output and its flush, the
-environment block, the ANSI/system-code-page transforms, the executable
-path, the process-wide memory barrier, local time, malloc-usable-size, and
-the native backtrace) with per-platform implementations (`posix/`, `wasm/`,
-`windows/`, plus a complete portable-C++17 `reference/` implementation of
-the whole seam).
+Abstraction Layer** (`runtime/core/platform/`, the `dn2cpp_pal_*` seams)
+with per-platform implementations (`posix/`, `wasm/`, `windows/`, plus a
+complete portable-C++17 `reference/` implementation of the whole seam).
 **CMake** (`runtime/CMakeLists.txt`, Ninja) is the sole build backend; the
 gate scripts are thin wrappers. **`docs/PORTING.md` is the guide for
-bringing dn2cpp up on a new target** — the seam inventory, the CMake
-edits, the gate/skip protocol, and the recorded porting hazards.
+bringing dn2cpp up on a new target** — the seam inventory, the CMake edits,
+the gate/skip protocol, and the recorded porting hazards.
 
-| Platform | Console | GDExtension | Notes | Gate |
-|----|:-:|:-:|----|----|
-| **Windows** | ✅ | ✅ | Win32 I/O, `_msize`, `localtime_s`, `\` and drive-letter rooted paths, real MSVC `cl.exe` (clang-cl not pursued) | full suite via `CMAKE_CXX_COMPILER=cl ./gates/run-all-gates.sh` |
-| **macOS** (Tier-1) | ✅ | ✅ | Full Boehm GC | every gate |
-| **Linux** | ✅ | ✅ | Shares the POSIX PAL with macOS; OpenSSL `CryptoNative_Evp*` crypto-digest PAL, membarrier, GC thread-deregistration. Full suite green, Godot desktop GDExtension included | full suite via `./gates/run-all-gates.sh` |
-| **iOS simulator** | ✅ | ✅ E2E | Full Boehm GC; `GD.Print` goes to the platform logger — use `Console` for E2E markers | `gates/build-and-run-ios-sim-console.sh`, `gates/build-and-run-godot-ios-sim.sh` |
-| **iOS device** | ⏳ | ⏳ | Provisioning required; the build path is verified headlessly | `gates/build-and-run-godot-ios-export.sh` |
-| **Android** (NDK) | ✅ build | ✅ `.so` build | `arm64-v8a`, API 24; the `--dotnet-module` drop-in cross-builds too. Real-device runs confirmed on a Pixel 7a, including an unmodified C# demo exported by the forked editor onto the official mono template | `gates/build-and-run-android-gdext.sh`, `gates/build-and-run-godot-dotnet-lib.sh` |
-| **WASM** (Emscripten) | ✅ | — | Full Boehm GC (Binaryen SpillPointers + a `dn2cpp_roots` section), MEMFS, single-threaded; P/Invoke against emcc-built static archives; the Godot drop-in exports to a real browser | `gates/build-and-run-wasm-console.sh`, `gates/build-and-run-pinvoke-wasm.sh`, `gates/build-and-run-godot-editor-export-web.sh` |
+| Platform | Console | GDExtension | Notes |
+|----|:-:|:-:|----|
+| **Windows** | ✅ | ✅ | Win32 I/O, `_msize`, `localtime_s`, `\` and drive-letter rooted paths, real MSVC `cl.exe` (clang-cl not pursued) |
+| **macOS** (Tier-1) | ✅ | ✅ | Full Boehm GC |
+| **Linux** | ✅ | ✅ | Shares the POSIX PAL with macOS; OpenSSL `CryptoNative_Evp*` crypto-digest PAL, membarrier, GC thread-deregistration. Full suite green, Godot desktop GDExtension included |
+| **iOS simulator** | ✅ | ✅ E2E | Full Boehm GC; `GD.Print` goes to the platform logger — use `Console` for E2E markers |
+| **iOS device** | ⏳ | ⏳ | Provisioning required; the build path is verified headlessly |
+| **Android** (NDK) | ✅ build | ✅ `.so` build | `arm64-v8a`, API 24; the `--dotnet-module` drop-in cross-builds too. Real-device runs confirmed on a Pixel 7a, including an unmodified C# demo exported by the forked editor onto the official mono template |
+| **WASM** (Emscripten) | ✅ | — | Full Boehm GC (Binaryen SpillPointers + a `dn2cpp_roots` section), MEMFS, single-threaded; P/Invoke against emcc-built static archives; the Godot drop-in exports to a real browser — where Godot 4 supports C# nowhere else |
 
 ## Architecture
 
@@ -460,24 +425,14 @@ Full ECMA-335 IL coverage. What that means concretely:
 - **Delegates / lambdas** — `ldftn`/`ldvirtftn`, Roslyn display classes
   and cached lambdas, multicast `+=`/`-=`, static function pointers
   (`calli`/`delegate*<...>`).
-- **Generics — canonical shared bodies (IL2CPP-style, on by default).**
-  Instantiations whose C++ layout coincides collapse to placeholders:
-  enum and sub-8-byte integer arguments to width-preserving placeholders,
-  every reference argument to one `CnRef`. So `Dictionary<int,string>`
-  and `Dictionary<SomeEnum,object>` share every non-ctor body, and
-  generic *method* instantiations share too. Instantiation-dependent
-  values (typeof, statics, `newarr`, `Comparer<T>.Default`) come from a
-  per-instantiation RGCTX table, with a per-method monomorphic fallback
-  for bodies that would bake exact identity. `--no-shared-generics`
-  restores full monomorphization byte-identically.
+- **Generics** — canonically shared bodies by default, in the IL2CPP
+  manner; see *Optimization* below.
 - **`MethodImplOptions` honored** — `Synchronized` (RAII monitor guard,
   static sharing the monitor with `lock(typeof(X))`),
   `AggressiveInlining`, `NoInlining`.
-- **Whole-program shaping** — reachability tree-shake from roots, so
-  large assemblies import without transpiling unreached or unsupported
-  code; multi-assembly input (`-r`) resolving TypeRef/MemberRef across
-  modules; generated C++ split into translation units for parallel
-  compilation.
+- **Whole-program shaping** — reachability tree-shake from roots, so large
+  assemblies import without transpiling unreached or unsupported code, and
+  multi-assembly input (`-r`) resolving TypeRef/MemberRef across modules.
 
 ### BCL (System.*) over the real CoreLib
 
@@ -516,24 +471,20 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 
 - **Boehm-Demers-Weiser GC** (vendored from Unity Technologies' fork under
   `third_party/bdwgc/`, compiled with the runtime, thread-aware).
-  Reference-free arrays allocate through the unscanned allocator;
-  `ArrayPool<T>.Shared` is a real size-bucketed
-  pool. Modes: classic stop-the-world (console default) and Boehm
-  incremental (Godot default, bounded frame pauses), with
-  `DN2CPP_GC_INCREMENTAL` / `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS`
-  overrides; `DN2CPP_NO_GC=1` opts out to a calloc fallback.
-  `-DDN2CPP_GC_BACKEND=upstream` swaps in vendored upstream bdwgc 8.2.8
-  (`third_party/bdwgc-upstream/`) instead of the fork — a dev-only
-  cross-check, not shipped; covered by `gates/build-and-run-gc-upstream.sh`.
+  `ArrayPool<T>.Shared` is a real size-bucketed pool. Modes: classic
+  stop-the-world (console default) and Boehm incremental (Godot default,
+  bounded frame pauses), with `DN2CPP_GC_INCREMENTAL` /
+  `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS` overrides; `DN2CPP_NO_GC=1`
+  opts out to a calloc fallback. `-DDN2CPP_GC_BACKEND=upstream` swaps in
+  vendored upstream bdwgc (`third_party/bdwgc-upstream/`) instead of the
+  fork — a dev-only cross-check, not shipped.
 - **Finalizers** — `Finalize` overrides detected at build time and
   registered at allocation *before* the ctor runs, matching .NET's
   partially-constructed-object semantics; a dedicated finalizer thread
-  drains the queue. `GC.SuppressFinalize`/`ReRegisterForFinalize` do real
-  (de)registration.
-- **True `WeakReference`/`WeakReference<T>`** on Boehm disappearing links
-  (short) and long links (`trackResurrection: true`), matching .NET
-  resurrection semantics; **`GCHandle`** with all four `GCHandleType`
-  values on a shared-cell model.
+  drains the queue, and `GC.SuppressFinalize`/`ReRegisterForFinalize` do
+  real (de)registration. **`WeakReference`/`WeakReference<T>`** are real,
+  on Boehm disappearing and long links, with .NET resurrection semantics;
+  **`GCHandle`** supports all four `GCHandleType` values.
 - **Real OS threads** — `Thread`, `Task.Run`, `ThreadPool`,
   `Parallel.For`/`ForEach`/`Invoke` over `std::thread` and a real worker
   pool. **Real synchronization** — `Interlocked` → `__atomic_*`;
@@ -548,46 +499,40 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
   `Activator.CreateInstance`, `MakeGenericType` over AOT-instantiated
   types. `Type` objects are interned one per type-info handle, so
   `typeof(X)` and `GetType()` are reference-identical; retrieval is
-  lock-free for statically-emitted types. `--trim-reflection` drops the
-  member tables of types the program cannot plausibly reflect over, and a
-  stripped type **throws** rather than answering empty.
+  lock-free for statically-emitted types.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
   `[MarshalAs(ByValArray)]`. The supported marshalling surface is
   enumerated one feature per row in `docs/PINVOKE-MARSHALLING.md`.
-- **Stack traces** — captured at throw and rendered against the
-  reflection method tables; the opt-in `--shadow-stack` adds
-  emitter-baked frame names that survive `-O2` inlining and exist on
-  WASM, and makes the current-stack APIs real.
+- **Stack traces** — captured at throw and rendered against the reflection
+  method tables; the opt-in `--shadow-stack` adds emitter-baked frame names
+  that survive `-O2` inlining and exist on WASM, and makes the
+  current-stack APIs real.
 
 ### Godot integration
 
-- **Godot .NET drop-in** — `--dotnet-module` substitutes for the C# game
-  in Godot's `modules/mono` load path: the real `GodotSharp.dll` is
-  transpiled, existing `Godot.NET.Sdk` projects and their `res://*.cs`
-  scene bindings work unchanged, and the engine and export template are
-  untouched. A [forked editor][fork] adds one-click export, including to
-  the Web — where Godot 4 supports C# nowhere else.
-- **GDExtension bridge** — `--gdextension` emits a registration table and
-  the table-driven bridge in `runtime/godot/` registers C#-derived
-  classes with ClassDB; public statics, instance methods and properties
-  are callable from GDScript via both Variant call and ptrcall.
+What the two Godot lanes have underneath them (the lanes themselves are
+under *Backends* above):
+
 - **Engine calls from C#** go through a registry of method binds built
   from `extension_api.json` and a generic ptrcall path. All builtin value
-  types round-trip; the shim lane reaches essentially the whole
-  non-vararg instance-method surface plus the static and virtual
-  populations — enums and bitfields, math PODs + RID, packed arrays ↔
-  managed arrays, a tagged `Variant`, engine-backed
-  `Godot.Collections.Array`/`Dictionary` and typed arrays, `Callable`
-  (including delegate-backed) and `Signal`, varargs and statics.
+  types round-trip; the shim lane reaches essentially the whole non-vararg
+  instance-method surface plus the static and virtual populations — enums
+  and bitfields, math PODs + RID, packed arrays ↔ managed arrays, a tagged
+  `Variant`, engine-backed `Godot.Collections.Array`/`Dictionary` and typed
+  arrays, `Callable` (including delegate-backed) and `Signal`, varargs and
+  statics.
 - **Scene-tree integration** — `Godot.Node`-derived C# classes are
   placeable in scenes and every `_*` virtual whose signature the codec
-  models is overridable (reverse-dispatch trampolines generated per
-  class), not just the lifecycle/input set. **`Godot.RefCounted`**
-  lifetimes, including C#-`new`-created ones, survive engine hand-off.
+  models is overridable (reverse-dispatch trampolines generated per class),
+  not just the lifecycle/input set. **`Godot.RefCounted`** lifetimes,
+  including C#-`new`-created ones, survive engine hand-off.
 - **Bindings generation** — `dn2cpp --generate-bindings extension_api.json`
   regenerates `src/GodotSharpShim/` and the transpiler's engine-call map
   from the same source of truth, implicitly inside every Godot-lane gate.
+  Engine bindings are generated, never hand-listed: widening the supported
+  marshalling shapes in `src/Dn2Cpp.Godot/GodotApi.cs` is how a filtered-out
+  method starts working.
 
 ### Tooling
 
@@ -597,17 +542,51 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
   `gates/selfhost-emit-console.sh`) — a whole-program stress test of the
   core at real-application scale, with no .NET runtime dependency.
 - **Gap-inventory measurement** (`--measure`) records a body's compile
-  failure as a gap row instead of aborting the run, so it can drain a
-  whole real-world assembly and report what would not emit.
-- **Bounded resource use.** Monomorphization is capped on nesting depth
-  and total count and fails loudly naming what drove it; emission streams
-  its translation units to disk rather than holding the program's text;
-  and a specialization, a method signature or a field type nothing asks
-  about is never decoded. `--max-heap-mb` is an opt-in managed-heap
-  ceiling that fails naming the phase.
-- **Highway SIMD backend by default** (CMake `DN2CPP_USE_HIGHWAY`);
-  `-DDN2CPP_USE_HIGHWAY=OFF` opts back into the scalar emulation, which
-  keeps the SIMD-fold behavior byte-identically.
+  failure as a gap row instead of aborting the run, so it can drain a whole
+  real-world assembly and report what would not emit.
+
+## Optimization
+
+Each of these carries an opt-out, because the opt-out is what proves the
+optimization changed no results. All are on by default except
+`--trim-reflection`.
+
+- **Canonically shared generics** (IL2CPP-style). Instantiations whose C++
+  layout coincides collapse to placeholders: enum and sub-8-byte integer
+  arguments to width-preserving placeholders, every reference argument to
+  one `CnRef`. So `Dictionary<int,string>` and `Dictionary<SomeEnum,object>`
+  share every non-ctor body, and generic *method* instantiations share too.
+  Instantiation-dependent values (typeof, statics, `newarr`,
+  `Comparer<T>.Default`) come from a per-instantiation RGCTX table, with a
+  per-method monomorphic fallback for bodies that would bake exact identity.
+  `--no-shared-generics` restores full monomorphization byte-identically.
+- **Reachability tree-shake** from roots — an unreached method is never
+  transpiled, which is what lets a large assembly import at all.
+- **Translation-unit splitting** — generated C++ is cut into TUs the native
+  build compiles in parallel.
+- **Highway SIMD backend** (CMake `DN2CPP_USE_HIGHWAY`) behind the
+  portable-SIMD surface; `-DDN2CPP_USE_HIGHWAY=OFF` returns to the scalar
+  emulation, byte-identically in behavior. dn2cpp never emits hardware
+  intrinsics itself — see *Permanent non-goals*.
+- **`--trim-reflection`** drops the member tables of types the program
+  cannot plausibly reflect over (the Godot Web export turns it on). The
+  analysis is unsound by nature, so a stripped type **throws** rather than
+  answering empty, and `--reflection-root` is the escape hatch.
+- **GC modes and unscanned allocation** — stop-the-world or incremental
+  (bounded frame pauses); arrays with no reference fields allocate through
+  the unscanned allocator, so the collector never traces them.
+- **`MethodImplOptions` respected** — `AggressiveInlining` / `NoInlining`
+  reach the generated C++.
+- **The transpiler's own resource use is bounded.** Monomorphization is
+  capped on nesting depth and on total count and fails loudly naming what
+  drove it; emission streams its translation units to disk rather than
+  holding the program's text; a specialization, a method signature or a
+  field type nothing asks about is never decoded. `--max-heap-mb` is an
+  opt-in managed-heap ceiling that fails naming the phase.
+
+Planned: devirtualization and inlining hints, unused-method elimination
+via ILLink integration, incremental transpilation (per-method differential
+C++ generation), and `#line` debug info mapping generated C++ back to C#.
 
 ## Repository layout
 
@@ -649,24 +628,6 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
   error or a catchable exception naming the type and the remedy — never a
   silently wrong answer.
 
-## Verification
-
-The regression gate is the `gates/build-and-run-*.sh` suite run in
-parallel (`./gates/run-all-gates.sh`); each script transpiles a themed
-multi-section program against the tree-shaken real CoreLib and **diffs
-native output against real .NET** (`dotnet` as the oracle), falling back
-to frozen snapshots only where divergence is intentional. Gates cache
-their green results keyed on the transpile output plus every other input,
-so a rerun after a localized fix takes minutes.
-
-`gates/pre-merge.sh` is the merge gate: it runs the Release suite and then
-the Debug suite, each under `DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0`, so
-every gate genuinely runs and asserts. Two harnesses sit beside the suite:
-`gates/verify-culture-invariance.sh` (no bucket's green may be a fact
-about the developer's locale) and `gates/verify-locks.sh` (the advisory
-locks that serialize the machine-wide engine and simulator). `AGENTS.md`
-is the authoritative contract for all of it.
-
 ## Non-goals & known issues
 
 ### Permanent non-goals
@@ -702,15 +663,14 @@ it does not come back as a ticket.
   `ByValTStr`, `ByValArray` over non-blittable elements and asynchronous
   callbacks are not, and a `[MarshalAs]` the struct marshaller does not
   implement **refuses the crossing at transpile time**, naming the field.
-- **Windows 32-bit P/Invoke ABI details** (stdcall decoration, 32-bit
-  layout). dn2cpp is 64-bit-only.
+  **Windows 32-bit P/Invoke ABI details** (stdcall decoration, 32-bit
+  layout) go with it: dn2cpp is 64-bit-only.
 - **Named/historical time zones, per-culture *date* formatting, and
-  localized culture/time-zone names.** The real IL depends on ICU + TZif.
+  localized culture/time-zone names.** The real IL depends on ICU + TZif,
+  and faithful name data is not one table but cultures × UI languages — a
+  partial one would answer right in English and silently wrong in German.
   Culture-aware **numeric** formatting is fully supported and follows the
-  host locale; the name data (`DisplayName`, `TimeZoneInfo`'s names) stays
-  constant, because faithful data there is not one table but cultures × UI
-  languages — a partial one would answer right in English and silently
-  wrong in German.
+  host locale.
 - **String comparison / collation is ordinal only.** No culture-sensitive
   comparison; `RegexOptions.Compiled` likewise degrades to the interpreter
   by design (same results, NativeAOT posture).
@@ -738,25 +698,23 @@ it does not come back as a ticket.
   a half-suspended state machine would have to migrate its owner-only
   timer queue and virtual clock — exactly what makes single-threaded async
   deterministic and byte-identical.
-- **The base `Stream.ReadAsync`/`WriteAsync` slots run synchronously**,
-  dispatching through the subclass's own `Read`/`Write` and handing back a
-  completed `Task`; only a subclass overriding *neither* async overload
-  takes this path. Related: **`FileOptions.Asynchronous` is masked off
-  every file open**, so `FileStream.IsAsync` answers `false`. There is no
-  IOCP implementation and none is planned — async file I/O takes the same
-  deterministic sync-over-async route everywhere. Results are unaffected;
-  what is lost is the *reported* asynchrony.
+- **Async file I/O runs sync-over-async.** `FileOptions.Asynchronous` is
+  masked off every open, so `FileStream.IsAsync` answers `false`, and the
+  base `Stream.ReadAsync`/`WriteAsync` slots dispatch through the
+  subclass's own `Read`/`Write` and hand back a completed `Task` (only a
+  subclass overriding *neither* async overload takes that path). There is
+  no IOCP implementation and none is planned. Results are unaffected; what
+  is lost is the *reported* asynchrony.
 - **A real `FileStream` does not link on WASM** — deliberately and
   loudly, at link time, naming the missing symbol. The intercepted
   `File.*` subset still works against MEMFS.
 - **A user `[DllImport]` whose native side fills an `[Out] byte[]` with a
-  syscall** is unsafe only when the incremental collector (the Godot lane's
-  default) write-protects heap pages to recover dirty bits — which the
-  vendored fork's MANUAL_VDB build never does: managed arrays cross unpinned
-  and uncopied by design, and a kernel store into a write-protected page would
-  return `EFAULT` rather than faulting into the GC's handler. Ask
-  `dn2cpp_gc_kernel_write_unsafe(p)` and stage through your own buffer, as the
-  PAL's own syscalls do, should that ever change.
+  syscall** would be unsafe under a collector that write-protects heap pages
+  to recover dirty bits — a kernel store into such a page returns `EFAULT`
+  rather than faulting into the GC's handler. The vendored fork's MANUAL_VDB
+  build never does that, so managed arrays cross unpinned and uncopied by
+  design; ask `dn2cpp_gc_kernel_write_unsafe(p)` and stage through your own
+  buffer, as the PAL's own syscalls do, should that ever change.
 - **Hand-written runtime types refuse `MemberwiseClone`** (`Thread`,
   `SemaphoreSlim`, `CountdownEvent`, `Barrier`, `ReaderWriterLockSlim`,
   `Timer`, `ManualResetEventSlim`, and `WaitHandle` with the event handles
@@ -783,16 +741,17 @@ headlessly.
 
 ## Roadmap
 
+- **Publish the packages** — `dn2cpp` as a dotnet tool and `Dn2Cpp.Build`
+  as an MSBuild package, so neither the tool nor a console publish needs a
+  clone.
 - **Notarize the distributable editor** — the packaged `.app` is ad-hoc
   signed today; notarizing it means auditing the hardened-runtime
   entitlements an editor needs to spawn a host `clang++` from outside the
   bundle and its own cmake, ninja, node and Emscripten clang from inside
   it.
 - **Re-pin the fork** to the next upstream Godot stable.
-- **Optimization** — devirtualization and inlining hints, unused-method
-  elimination (ILLink integration), incremental transpilation (per-method
-  differential C++ generation), and `#line` debug info mapping generated
-  C++ back to C# source.
+- **Optimization** — the planned items are listed at the end of
+  *Optimization* above.
 - **2D game showcase** — prove the pipeline on a real game scene rather
   than on feature samples.
 - **Cross-platform expansion** — extend the PAL + CMake foundation toward
