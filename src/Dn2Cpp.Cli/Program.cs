@@ -7,6 +7,7 @@ bool checkWasmImports = false;
 string checkWasmSide = "";
 string checkWasmMain = "";
 string? checkWasmGlue = null;
+var checkWasmPeers = new List<string>();
 bool printRuntimeDir = false;
 string extensionApiPath = "";
 string input = "";
@@ -50,8 +51,8 @@ for (int i = 0; i < args.Length; i++)
         // import neither MAIN nor its JS glue can satisfy, before emscripten's
         // lazy stub turns it into an unnamed TypeError at first call. Exit 0 =
         // closed; 3 = unsatisfied symbols found (one per line on stdout, in
-        // import-section order); 2 = unreadable input or a glue lacking
-        // wasmImports (an `error:` line on stderr).
+        // import-section order); 2 = malformed input or a glue lacking
+        // wasmImports (an `error:` line on stderr — the check could not run).
         checkWasmImports = true;
         if (i + 2 >= args.Length)
         {
@@ -60,8 +61,16 @@ for (int i = 0; i < args.Length; i++)
         }
         checkWasmSide = args[++i];
         checkWasmMain = args[++i];
-        if (i + 1 < args.Length)
+        if (i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
             checkWasmGlue = args[++i];
+    }
+    else if (args[i] == "--peer-module" && i + 1 < args.Length)
+    {
+        // Another side module staged on the same page: its exports join the
+        // provided sets (the loader pools every global library's exports), its
+        // own imports are the caller's separate --check-wasm-imports run. Only
+        // meaningful with --check-wasm-imports; repeatable.
+        checkWasmPeers.Add(args[++i]);
     }
     else if (args[i] == "-o" && i + 1 < args.Length)
     {
@@ -393,11 +402,16 @@ if (printRuntimeDir)
     return 1;
 }
 
+if (checkWasmPeers.Count > 0 && !checkWasmImports)
+{
+    Console.Error.WriteLine("error: --peer-module is only meaningful with --check-wasm-imports");
+    return 1;
+}
 if (checkWasmImports)
 {
     try
     {
-        return WasmSymbols.PrintUnsatisfied(checkWasmSide, checkWasmMain, checkWasmGlue) == 0 ? 0 : 3;
+        return WasmSymbols.PrintUnsatisfied(checkWasmSide, checkWasmMain, checkWasmGlue, checkWasmPeers) == 0 ? 0 : 3;
     }
     catch (Exception ex)
     {
@@ -439,7 +453,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>]] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 

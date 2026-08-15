@@ -6,7 +6,8 @@
 // left at 0 the same way. This converts both into a named failure at build time, from
 // the shipped toolchain, with no node dependency. Behavior-equivalent port of
 // `gates/_wasm_symbols.js unsatisfied` (the gate-side oracle; a differential gate
-// diffs the two outputs literally, so ordering and line format must match it).
+// diffs the two outputs literally, so ordering and line format must match it) — plus
+// --peer-module, which the oracle deliberately lacks.
 
 using System.Text;
 
@@ -44,13 +45,24 @@ public static class WasmSymbols
     /// and unlike a function a tag gets no lazy stub — an unresolved one is a
     /// LinkError at instantiation. GOT.mem/GOT.func entries resolve against the
     /// GLOBAL symbol table — every module's exports pooled, the SIDE module's own
-    /// included, of any kind. Throws <see cref="NotSupportedException"/> on a
-    /// malformed wasm binary or a glue file with no wasmImports object.</summary>
-    public static int PrintUnsatisfied(string sidePath, string mainPath, string? gluePath)
+    /// included, of any kind. A PEER is another side module staged on the same page:
+    /// mergeLibSymbols folds a globally loaded library's exports into wasmImports and
+    /// updateGOT folds them into the GOT, so a peer's exports join all three provided
+    /// sets; its own imports are the caller's separate question. Throws
+    /// <see cref="NotSupportedException"/> on a malformed wasm binary or a glue file
+    /// with no wasmImports object.</summary>
+    public static int PrintUnsatisfied(string sidePath, string mainPath, string? gluePath,
+        List<string>? peerPaths = null)
     {
         WasmModuleInfo side = Parse(sidePath);
         WasmModuleInfo main = Parse(mainPath);
         HashSet<string> glueFuncs = gluePath is null ? new HashSet<string>() : GlueWasmImports(gluePath);
+
+        var peerExports = new HashSet<string>();
+        if (peerPaths is not null)
+            foreach (string peerPath in peerPaths)
+                foreach (WasmExport e in Parse(peerPath).Exports)
+                    peerExports.Add(e.Name);
 
         var providedFuncs = new HashSet<string>(glueFuncs);
         foreach (WasmExport e in main.Exports)
@@ -59,12 +71,14 @@ public static class WasmSymbols
         foreach (WasmImport im in main.Imports)
             if (im.Kind == 0 && im.Mod == "env")
                 providedFuncs.Add(im.Field);
+        providedFuncs.UnionWith(peerExports);
 
         // Tags ride the same wasmImports pool as functions, which holds MAIN's
         // exports of every kind (mergeLibSymbols copies them all).
         var providedTags = new HashSet<string>(glueFuncs);
         foreach (WasmExport e in main.Exports)
             providedTags.Add(e.Name);
+        providedTags.UnionWith(peerExports);
 
         // A glue-supplied JS function is given a table slot on demand, so it too can
         // satisfy a GOT.func entry.
@@ -73,6 +87,7 @@ public static class WasmSymbols
             globalSymbols.Add(e.Name);
         foreach (WasmExport e in side.Exports)
             globalSymbols.Add(e.Name);
+        globalSymbols.UnionWith(peerExports);
 
         int unsatisfied = 0;
         foreach (WasmImport im in side.Imports)
