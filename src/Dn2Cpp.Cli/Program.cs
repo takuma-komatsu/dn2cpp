@@ -3,6 +3,10 @@ using Dn2Cpp.DotnetModule;
 using Dn2Cpp.Godot;
 
 bool generateBindings = false;
+bool checkWasmImports = false;
+string checkWasmSide = "";
+string checkWasmMain = "";
+string? checkWasmGlue = null;
 bool printRuntimeDir = false;
 string extensionApiPath = "";
 string input = "";
@@ -39,6 +43,25 @@ for (int i = 0; i < args.Length; i++)
     {
         generateBindings = true;
         extensionApiPath = args[++i];
+    }
+    else if (args[i] == "--check-wasm-imports")
+    {
+        // Wasm side-module import-closure check (WasmSymbols): report every SIDE
+        // import neither MAIN nor its JS glue can satisfy, before emscripten's
+        // lazy stub turns it into an unnamed TypeError at first call. Exit 0 =
+        // closed; 3 = unsatisfied symbols found (one per line on stdout, in
+        // import-section order); 2 = unreadable input or a glue lacking
+        // wasmImports (an `error:` line on stderr).
+        checkWasmImports = true;
+        if (i + 2 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --check-wasm-imports expects <side.wasm> <main.wasm> [<main.js>]");
+            return 2;
+        }
+        checkWasmSide = args[++i];
+        checkWasmMain = args[++i];
+        if (i + 1 < args.Length)
+            checkWasmGlue = args[++i];
     }
     else if (args[i] == "-o" && i + 1 < args.Length)
     {
@@ -370,6 +393,19 @@ if (printRuntimeDir)
     return 1;
 }
 
+if (checkWasmImports)
+{
+    try
+    {
+        return WasmSymbols.PrintUnsatisfied(checkWasmSide, checkWasmMain, checkWasmGlue) == 0 ? 0 : 3;
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"error: {ex.Message}");
+        return 2;
+    }
+}
+
 // --generate-bindings already takes the API dump as its own argument, so a
 // --godot-api riding along has nothing to name — and this block returns before
 // the transpile-path checks below, so without this guard the flag would be
@@ -403,7 +439,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>]] [--print-runtime-dir]");
     return 1;
 }
 
