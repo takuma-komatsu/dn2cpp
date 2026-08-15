@@ -124,6 +124,7 @@ if gate_cache_check "$OUT" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
+    gates/_wasm_symbols.js \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi

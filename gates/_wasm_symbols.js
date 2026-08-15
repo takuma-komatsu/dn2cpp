@@ -12,9 +12,9 @@
 //   imports FILE            — one "kind module.name" per line
 //   unsatisfied SIDE MAIN [MAINJS]
 //                           — the SIDE module's imports that nothing can satisfy:
-//                             env function imports the MAIN module cannot provide,
-//                             plus GOT.mem/GOT.func entries no module exports, one
-//                             per line (see below). MAINJS is the main module's JS
+//                             env function and env tag imports the MAIN module
+//                             cannot provide, plus GOT.mem/GOT.func entries no
+//                             module exports, one per line (see below). MAINJS is the main module's JS
 //                             glue; when given, the JS-library functions it defines
 //                             count as provided (see below).
 //   maxfunc FILE            — "SIZE NAME" of the largest function body in the code
@@ -118,23 +118,171 @@ function parse(file) {
 // module must keep them, side modules resolve by name. No `wasmImports` object at
 // all means the file is not a main-module glue, and that must fail loudly rather
 // than silently weaken the provided set.
+//
+// Both locating the object and scanning its keys run over a lexed view of the
+// file (lexJs): comments, string/template-literal contents and regex bodies are
+// not code, so a `}` inside a value's template literal cannot close the object
+// early, and a commented-out `wasmImports = {...}` cannot be taken for the real
+// one — each was a measured failure of the raw character walk.
+
+const isWordChar = c => /[A-Za-z0-9_]/.test(c);
+
+// After ')', ']', a word char or a closed literal a slash is division;
+// elsewhere (start, operators, '{', '}', ';') it opens a regex. Safe for
+// glue-shaped input — `({}/x)` or `i++/n` would misread — not a full JS lexer.
+const regexCanFollow = last => last === '' || '(,=:[!&|?{};+-*%~^<>}'.includes(last);
+
+// From the opening slash past the closing one and its flags; a newline ends an
+// unterminated body (a real regex cannot contain one).
+function skipRegex(js, i) {
+    i++;
+    let inClass = false;
+    while (i < js.length) {
+        const c = js[i];
+        if (c === '\\') { i += 2; continue; }
+        if (c === '[') { inClass = true; }
+        else if (c === ']') { inClass = false; }
+        else if (c === '/' && !inClass) { i++; break; }
+        else if (c === '\n') { break; }
+        i++;
+    }
+    while (i < js.length && isWordChar(js[i])) i++;
+    return i;
+}
+
+// From the opening backtick past the closing one; `${}` interpolations may nest
+// braces, strings, comments, regexes and further templates.
+function skipTemplate(js, i) {
+    i++;
+    while (i < js.length) {
+        const c = js[i];
+        if (c === '\\') { i += 2; continue; }
+        if (c === '`') { return i + 1; }
+        if (c === '$' && i + 1 < js.length && js[i + 1] === '{') { i = skipInterp(js, i + 2); continue; }
+        i++;
+    }
+    return i;
+}
+
+// From just past `${` past the matching `}`.
+function skipInterp(js, i) {
+    let depth = 0, last = '';
+    while (i < js.length) {
+        const c = js[i];
+        if (c === '/' && i + 1 < js.length && js[i + 1] === '/') {
+            i += 2;
+            while (i < js.length && js[i] !== '\n') i++;
+            continue;
+        }
+        if (c === '/' && i + 1 < js.length && js[i + 1] === '*') {
+            i += 2;
+            while (i + 1 < js.length && !(js[i] === '*' && js[i + 1] === '/')) i++;
+            i = Math.min(i + 2, js.length);
+            continue;
+        }
+        if (c === '"' || c === "'") {
+            i++;
+            let esc = false;
+            while (i < js.length) {
+                if (esc) { esc = false; } else if (js[i] === '\\') { esc = true; }
+                else if (js[i] === c) { i++; break; }
+                i++;
+            }
+            last = c;
+            continue;
+        }
+        if (c === '`') { i = skipTemplate(js, i); last = '`'; continue; }
+        if (c === '/' && regexCanFollow(last)) { i = skipRegex(js, i); last = '/'; continue; }
+        if (c === '{') { depth++; }
+        else if (c === '}') { if (depth === 0) { return i + 1; } depth--; }
+        if (!/\s/.test(c)) { last = c; }
+        i++;
+    }
+    return i;
+}
+
+// One entry per lexed character. kind: 'c' code, 'o'/'e' string open/close quote,
+// 's' string content (needed for quoted keys). Comments, template literals and
+// regex bodies yield nothing.
+function lexJs(js) {
+    const toks = [];
+    let i = 0, last = '';
+    while (i < js.length) {
+        const ch = js[i];
+        if (ch === '/' && i + 1 < js.length && js[i + 1] === '/') {
+            i += 2;
+            while (i < js.length && js[i] !== '\n') i++;
+            continue;
+        }
+        if (ch === '/' && i + 1 < js.length && js[i + 1] === '*') {
+            i += 2;
+            while (i + 1 < js.length && !(js[i] === '*' && js[i + 1] === '/')) i++;
+            i = Math.min(i + 2, js.length);
+            continue;
+        }
+        if (ch === '"' || ch === "'") {
+            toks.push({ ch, kind: 'o', idx: i });
+            i++;
+            let esc = false;
+            while (i < js.length) {
+                const c = js[i];
+                if (esc) { esc = false; } else if (c === '\\') { esc = true; }
+                else if (c === ch) { break; }
+                else { toks.push({ ch: c, kind: 's', idx: i }); }
+                i++;
+            }
+            if (i < js.length) { toks.push({ ch, kind: 'e', idx: i }); i++; }
+            last = ch;
+            continue;
+        }
+        if (ch === '`') { i = skipTemplate(js, i); last = '`'; continue; }
+        if (ch === '/' && regexCanFollow(last)) { i = skipRegex(js, i); last = '/'; continue; }
+        toks.push({ ch, kind: 'c', idx: i });
+        if (!/\s/.test(ch)) { last = ch; }
+        i++;
+    }
+    return toks;
+}
+
+// `wasmImports` spelled by raw-contiguous code characters, preceded by a
+// non-word char, then \s* = \s* { — the token index of the `{`, or -1.
+function findWasmImportsBrace(toks) {
+    const target = 'wasmImports';
+    for (let k = 0; k + target.length <= toks.length; k++) {
+        let hit = true;
+        for (let j = 0; j < target.length; j++) {
+            const t = toks[k + j];
+            if (t.kind !== 'c' || t.ch !== target[j] || t.idx !== toks[k].idx + j) { hit = false; break; }
+        }
+        if (!hit) continue;
+        if (k > 0 && toks[k - 1].kind === 'c' && toks[k - 1].idx === toks[k].idx - 1 && isWordChar(toks[k - 1].ch)) continue;
+        let m = k + target.length;
+        while (m < toks.length && toks[m].kind === 'c' && /\s/.test(toks[m].ch)) m++;
+        if (m >= toks.length || toks[m].kind !== 'c' || toks[m].ch !== '=') continue;
+        m++;
+        while (m < toks.length && toks[m].kind === 'c' && /\s/.test(toks[m].ch)) m++;
+        if (m < toks.length && toks[m].kind === 'c' && toks[m].ch === '{') return m;
+    }
+    return -1;
+}
+
 function glueWasmImports(file) {
     const js = fs.readFileSync(file, 'utf8');
-    const at = js.search(/\bwasmImports\s*=\s*\{/);
-    if (at < 0) {
+    const toks = lexJs(js);
+    const brace = findWasmImportsBrace(toks);
+    if (brace < 0) {
         console.error(`error: ${file} has no "wasmImports = {...}" — not an emscripten main-module JS glue?`);
         process.exit(2);
     }
     const names = new Set();
-    let depth = 0, inStr = null, esc = false, inValue = false, token = '';
-    for (let i = js.indexOf('{', at); i < js.length; i++) {
-        const ch = js[i];
-        if (inStr) {
-            if (esc) { esc = false; } else if (ch === '\\') { esc = true; }
-            else if (ch === inStr) { inStr = null; } else if (!inValue && depth === 1) { token += ch; }
+    let depth = 0, inValue = false, token = '';
+    for (let k = brace; k < toks.length; k++) {
+        const { ch, kind } = toks[k];
+        if (kind === 'o' || kind === 'e') { continue; }
+        if (kind === 's') {
+            if (!inValue && depth === 1) { token += ch; } // quoted key
             continue;
         }
-        if (ch === '"' || ch === "'") { inStr = ch; continue; }
         if (ch === '{') { depth++; continue; }
         if (ch === '}') { if (--depth === 0) { break; } continue; }
         if (depth !== 1) { continue; }
@@ -163,6 +311,13 @@ if (cmd === 'exports') {
         ...main.imports.filter(i => i.mod === 'env' && i.kind === 'func').map(i => i.field),
         ...glueFuncs,
     ]);
+    // Tags (__cpp_exception / __c_longjmp) ride the same wasmImports pool as
+    // functions, which holds MAIN's exports of every kind (mergeLibSymbols copies
+    // them all) — and unlike a function a tag gets no lazy stub, so an unresolved
+    // one is a LinkError at instantiation. env global/table/memory imports
+    // (__memory_base, __stack_pointer, memory, ...) are supplied by the JS loader
+    // itself, not by any export — checking them would fail every healthy page.
+    const providedTags = new Set([...main.exports.map(e => e.name), ...glueFuncs]);
     // GOT entries resolve against the GLOBAL symbol table — every module's exports,
     // the side module's own included — so an entry is satisfied by either module's
     // exports, of any kind (a GOT.mem symbol is data, a GOT.func symbol is code; a
@@ -187,6 +342,9 @@ if (cmd === 'exports') {
         if (i.kind === 'func' && i.mod === 'env') {
             if (providedFuncs.has(i.field)) continue;
             if (benignTlsInit(i.field)) continue;
+            console.log(i.field);
+        } else if (i.kind === 'tag' && i.mod === 'env') {
+            if (providedTags.has(i.field)) continue;
             console.log(i.field);
         } else if (i.mod === 'GOT.mem' || i.mod === 'GOT.func') {
             if (globalSymbols.has(i.field)) continue;

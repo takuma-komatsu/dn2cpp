@@ -27,6 +27,11 @@
 # ways: the file is beside index.html, the HTML names it, and it exports the
 # entry symbol.
 #
+# Section 6 is also the differential gate for `dn2cpp --check-wasm-imports`, the
+# shipped no-node port of gates/_wasm_symbols.js `unsatisfied`: the self-hosted
+# binary and the node oracle are diffed on this page's own artifacts, including
+# a control pairing whose unsatisfied set is non-empty by construction.
+#
 # Requires the artifacts of gates/setup-godot-fork.sh AND gates/setup-godot-fork-web.sh
 # (the Web template: upstream ships no C#-capable one), plus emcc, node, a python
 # new enough for emcc to launch, and a headless Chrome. Skips (exit 77) when any
@@ -144,12 +149,21 @@ godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
 # staging recipe). The drop-in is compiled through that SDK and `emcc=` names the
 # one that baked the TEMPLATE, so nothing else here moves when a re-packaged
 # bundle brings a different SDK to the half of the link this gate builds.
+#
+# The checker differential in section 6 diffs two tools, so BOTH are material:
+# gates/_wasm_symbols.js (the oracle), and WasmSymbols.cs plus the CLI arg
+# parsing in Program.cs directly — the C# side reaches the run through
+# $SELFHOST_BIN, but a source edit must move the key even before the re-bake
+# refreshes that binary.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
     "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
+    gates/_wasm_symbols.js \
+    src/Dn2Cpp.Transpiler/WasmSymbols.cs \
+    src/Dn2Cpp.Cli/Program.cs \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -298,9 +312,9 @@ grep -q "\"gdextensionLibs\":\[\"$PROJECT_NAME.so\"\]" "$WEBDIR/index.html" || {
 #
 # This is the assert that makes the gate an oracle for the trim, and it must be on
 # the ARTIFACT, never on an exit code. The exporter passes --trim-reflection to the
-# transpiler; src/Dn2Cpp.Cli/Program.cs's argument loop has no unknown-argument
-# branch, so a transpiler predating the flag ACCEPTS it, exits 0, and emits fully
-# untrimmed output. Every exit code in this gate stays green, the export log keeps
+# transpiler; a transpiler old enough to predate both the flag and the argument
+# loop's unknown-option rejection ACCEPTS it, exits 0, and emits fully untrimmed
+# output. Every exit code in this gate stays green, the export log keeps
 # all three dn2cpp markers, the .so is produced, it exports the entry point, and
 # index.html preloads it -- (a) through (d) above all pass -- and the module is
 # simply one no browser can instantiate. That is a stale toolchain, and the only
@@ -345,6 +359,159 @@ fi
 echo "drop-in: $(wc -c < "$DROPIN" | tr -d ' ') bytes, exports godotsharp_game_main_init; index.html preloads it"
 echo "largest wasm function: $maxfn bytes ($maxfn_name), $((V8_MAX_FUNCTION_SIZE - maxfn)) under V8's $V8_MAX_FUNCTION_SIZE ceiling"
 echo "import closure OK: every function and GOT.mem/GOT.func import resolves against the exported page"
+# (g) the shipped checker agrees with the gate oracle. The toolchain bundle runs
+#     `dn2cpp --check-wasm-imports` — the no-node C# port of _wasm_symbols.js
+#     `unsatisfied` — and the exporter branches on its exit code, so a divergence
+#     ships a checker that greenlights what (f) fails. On the drop-in both
+#     outputs are empty, which asserts nothing beyond the exit code; the control
+#     pairs the ENGINE's own side module against the page's main module, where
+#     the unsatisfied set is non-empty by construction (without the glue, the
+#     whole JS-library surface is missing). An EMPTY control means the
+#     differential stopped testing anything — that is a failure, not a pass.
+#     The glue arm is the only one that proves the C# glue scanner's key set
+#     equivalent, and its set shrinking below the no-glue arm's is what proves
+#     the scanner contributed at all (that stays assertable even if a future
+#     template closes the glue arm's set to zero).
+WDIFF="$OUT/wasm-import-differential"
+rm -rf "$WDIFF"
+mkdir -p "$WDIFF"
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$DROPIN" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/cs-dropin.txt" || cs_rc=$?
+if [ "$cs_rc" -ne 0 ] || [ -s "$WDIFF/cs-dropin.txt" ]; then
+    echo "FAIL: --check-wasm-imports disagrees with (f) on the drop-in: exit $cs_rc (expected 0)" >&2
+    LC_ALL=C sed 's/^/  /' "$WDIFF/cs-dropin.txt" >&2
+    exit 1
+fi
+node gates/_wasm_symbols.js unsatisfied "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" \
+    > "$WDIFF/js-noglue.txt"
+node gates/_wasm_symbols.js unsatisfied "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/js-glue.txt"
+if [ ! -s "$WDIFF/js-noglue.txt" ]; then
+    echo "FAIL: the no-glue control's unsatisfied set is EMPTY — the differential below" >&2
+    echo "      would compare nothing to nothing and prove nothing; find a new control" >&2
+    echo "      pairing before trusting --check-wasm-imports again." >&2
+    exit 1
+fi
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" \
+    > "$WDIFF/cs-noglue.txt" || cs_rc=$?
+if [ "$cs_rc" -ne 3 ]; then
+    echo "FAIL: --check-wasm-imports exited $cs_rc on the non-empty no-glue control (expected 3)" >&2
+    exit 1
+fi
+diff -u "$WDIFF/js-noglue.txt" "$WDIFF/cs-noglue.txt" || {
+    echo "FAIL: --check-wasm-imports and gates/_wasm_symbols.js diverge on the no-glue control" >&2
+    echo "      (order included — the C# port's contract is a literal match)" >&2
+    exit 1
+}
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/cs-glue.txt" || cs_rc=$?
+diff -u "$WDIFF/js-glue.txt" "$WDIFF/cs-glue.txt" || {
+    echo "FAIL: --check-wasm-imports and gates/_wasm_symbols.js diverge on the glue control" >&2
+    echo "      (the C# glue scanner's wasmImports key set is not equivalent)" >&2
+    exit 1
+}
+if [ -s "$WDIFF/js-glue.txt" ]; then
+    [ "$cs_rc" -eq 3 ] || {
+        echo "FAIL: --check-wasm-imports exited $cs_rc on the non-empty glue control (expected 3)" >&2
+        exit 1; }
+else
+    [ "$cs_rc" -eq 0 ] || {
+        echo "FAIL: --check-wasm-imports exited $cs_rc on the empty glue control (expected 0)" >&2
+        exit 1; }
+fi
+noglue_n="$(wc -l < "$WDIFF/js-noglue.txt" | tr -d ' ')"
+glue_n="$(wc -l < "$WDIFF/js-glue.txt" | tr -d ' ')"
+if [ "$glue_n" -ge "$noglue_n" ]; then
+    echo "FAIL: the glue control satisfied nothing the no-glue control missed ($glue_n >= $noglue_n)" >&2
+    echo "      — the glue scanner found no wasmImports keys, and the glue arm proved nothing" >&2
+    exit 1
+fi
+echo "checker differential OK: --check-wasm-imports matches _wasm_symbols.js on the drop-in (exit 0)"
+echo "  and on the engine-side control: $noglue_n unsatisfied without glue, $glue_n with (exit 3), byte-identical"
+# (h) synthetic fixtures, asserted ABSOLUTELY, not merely tool-against-tool: the
+#     differential above cannot see a defect both tools share, which is exactly
+#     how the glue scanner once mis-lexed template literals and comments in both
+#     at once. The fixture glue plants every lexical trap; the fixture wasms pin
+#     the tag check, --peer-module, and the malformed-input exit-2 contract.
+FIX="$WDIFF/fixtures"
+mkdir -p "$FIX"
+node - "$FIX" <<'EOF'
+// Minimal wasm binaries carrying only import/export sections — enough for the
+// two symbol readers, which never instantiate them.
+const fs = require('fs');
+const leb = n => { const out = []; do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; out.push(b); } while (n); return Buffer.from(out); };
+const name = s => Buffer.concat([leb(s.length), Buffer.from(s, 'utf8')]);
+const sec = (id, body) => Buffer.concat([Buffer.from([id]), leb(body.length), body]);
+const header = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+const impFunc = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x00]), leb(0)]);
+const impTag = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x04, 0x00]), leb(0)]);
+const impGlobal = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x03, 0x7f, 0x00])]);
+const expo = (n, kind, idx) => Buffer.concat([name(n), Buffer.from([kind]), leb(idx)]);
+const importSec = e => sec(2, Buffer.concat([leb(e.length), ...e]));
+const exportSec = e => sec(7, Buffer.concat([leb(e.length), ...e]));
+const dir = process.argv[2];
+fs.writeFileSync(`${dir}/side.wasm`, Buffer.concat([header, importSec([
+    impFunc('env', 'provided_by_glue'),
+    impFunc('env', 'lost_after_template'),
+    impFunc('env', 'phantom_only'),
+    impFunc('env', 'peer_fn'),
+    impTag('env', '__cpp_exception'),
+    impTag('env', '__missing_tag'),
+    impGlobal('GOT.mem', 'main_data'),
+])]));
+fs.writeFileSync(`${dir}/main.wasm`, Buffer.concat([header, exportSec([
+    expo('main_fn', 0, 0), expo('__cpp_exception', 4, 0), expo('main_data', 3, 0),
+])]));
+fs.writeFileSync(`${dir}/peer.wasm`, Buffer.concat([header, exportSec([expo('peer_fn', 0, 0)])]));
+// import section declares more bytes than the file holds
+fs.writeFileSync(`${dir}/truncated.wasm`, Buffer.concat([header, Buffer.from([0x02, 100, 0x00])]));
+const badver = Buffer.from(header); badver[4] = 0x02;
+fs.writeFileSync(`${dir}/badversion.wasm`, badver);
+EOF
+cat > "$FIX/glue.js" <<'EOF'
+// var wasmImports = { phantom_only: 1 };
+var s = "wasmImports = { phantom_str: 1 }";
+/* wasmImports = { phantom_block: 1 } */
+var wasmImports = {
+  provided_by_glue: () => 0,
+  wrapped: function () { return `}`; },
+  tmpl: `${ { a: 1 } } trailing`,
+  re: "x".replace(/[}]/g, "y"),
+  lost_after_template: () => 0
+};
+EOF
+# phantom_only: only a commented-out wasmImports provides it (a scanner that
+# reads comments fails open here). peer_fn: only the peer exports it.
+# __missing_tag: no module exports the tag. provided_by_glue / lost_after_template
+# must NOT appear — losing them is the template-literal false positive.
+printf 'phantom_only\npeer_fn\n__missing_tag\n' > "$FIX/expected.txt"
+node gates/_wasm_symbols.js unsatisfied "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" > "$FIX/js.txt"
+diff -u "$FIX/expected.txt" "$FIX/js.txt" || {
+    echo "FAIL: _wasm_symbols.js mis-answers the lexical/tag fixture" >&2; exit 1; }
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" > "$FIX/cs.txt" || cs_rc=$?
+[ "$cs_rc" -eq 3 ] || { echo "FAIL: --check-wasm-imports exited $cs_rc on the fixture (expected 3)" >&2; exit 1; }
+diff -u "$FIX/expected.txt" "$FIX/cs.txt" || {
+    echo "FAIL: --check-wasm-imports mis-answers the lexical/tag fixture" >&2; exit 1; }
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" \
+    --peer-module "$FIX/peer.wasm" > "$FIX/cs-peer.txt" || cs_rc=$?
+[ "$cs_rc" -eq 3 ] || { echo "FAIL: --check-wasm-imports exited $cs_rc with a peer (expected 3)" >&2; exit 1; }
+printf 'phantom_only\n__missing_tag\n' | diff -u - "$FIX/cs-peer.txt" || {
+    echo "FAIL: --peer-module did not satisfy exactly the peer's export" >&2; exit 1; }
+for bad in truncated badversion; do
+    cs_rc=0
+    "$SELFHOST_BIN" --check-wasm-imports "$FIX/$bad.wasm" "$FIX/main.wasm" \
+        > "$FIX/$bad.out" 2> "$FIX/$bad.err" || cs_rc=$?
+    [ "$cs_rc" -eq 2 ] && grep -q "^error:" "$FIX/$bad.err" || {
+        echo "FAIL: a $bad wasm must exit 2 with an error: line (got $cs_rc) — a malformed" >&2
+        echo "      module reading as 'no imports found' is the fail-open this pins" >&2
+        cat "$FIX/$bad.err" >&2; exit 1; }
+done
+echo "checker fixtures OK: lexical glue traps, env tag, --peer-module, malformed-input exit 2"
 
 echo "== 7/8 Running the exported game in a real browser =="
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker
