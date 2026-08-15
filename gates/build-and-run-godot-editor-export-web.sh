@@ -151,9 +151,10 @@ godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
 # bundle brings a different SDK to the half of the link this gate builds.
 #
 # The checker differential in section 6 diffs two tools, so BOTH are material:
-# gates/_wasm_symbols.js (the oracle), and WasmSymbols.cs directly — the C# side
-# reaches the run through $SELFHOST_BIN, but a source edit must move the key
-# even before the re-bake refreshes that binary.
+# gates/_wasm_symbols.js (the oracle), and WasmSymbols.cs plus the CLI arg
+# parsing in Program.cs directly — the C# side reaches the run through
+# $SELFHOST_BIN, but a source edit must move the key even before the re-bake
+# refreshes that binary.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
     "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
@@ -162,6 +163,7 @@ if gate_cache_check "$OUT" \
     "$SAMPLE" \
     gates/_wasm_symbols.js \
     src/Dn2Cpp.Transpiler/WasmSymbols.cs \
+    src/Dn2Cpp.Cli/Program.cs \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -429,6 +431,87 @@ if [ "$glue_n" -ge "$noglue_n" ]; then
 fi
 echo "checker differential OK: --check-wasm-imports matches _wasm_symbols.js on the drop-in (exit 0)"
 echo "  and on the engine-side control: $noglue_n unsatisfied without glue, $glue_n with (exit 3), byte-identical"
+# (h) synthetic fixtures, asserted ABSOLUTELY, not merely tool-against-tool: the
+#     differential above cannot see a defect both tools share, which is exactly
+#     how the glue scanner once mis-lexed template literals and comments in both
+#     at once. The fixture glue plants every lexical trap; the fixture wasms pin
+#     the tag check, --peer-module, and the malformed-input exit-2 contract.
+FIX="$WDIFF/fixtures"
+mkdir -p "$FIX"
+node - "$FIX" <<'EOF'
+// Minimal wasm binaries carrying only import/export sections — enough for the
+// two symbol readers, which never instantiate them.
+const fs = require('fs');
+const leb = n => { const out = []; do { let b = n & 0x7f; n >>>= 7; if (n) b |= 0x80; out.push(b); } while (n); return Buffer.from(out); };
+const name = s => Buffer.concat([leb(s.length), Buffer.from(s, 'utf8')]);
+const sec = (id, body) => Buffer.concat([Buffer.from([id]), leb(body.length), body]);
+const header = Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+const impFunc = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x00]), leb(0)]);
+const impTag = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x04, 0x00]), leb(0)]);
+const impGlobal = (m, f) => Buffer.concat([name(m), name(f), Buffer.from([0x03, 0x7f, 0x00])]);
+const expo = (n, kind, idx) => Buffer.concat([name(n), Buffer.from([kind]), leb(idx)]);
+const importSec = e => sec(2, Buffer.concat([leb(e.length), ...e]));
+const exportSec = e => sec(7, Buffer.concat([leb(e.length), ...e]));
+const dir = process.argv[2];
+fs.writeFileSync(`${dir}/side.wasm`, Buffer.concat([header, importSec([
+    impFunc('env', 'provided_by_glue'),
+    impFunc('env', 'lost_after_template'),
+    impFunc('env', 'phantom_only'),
+    impFunc('env', 'peer_fn'),
+    impTag('env', '__cpp_exception'),
+    impTag('env', '__missing_tag'),
+    impGlobal('GOT.mem', 'main_data'),
+])]));
+fs.writeFileSync(`${dir}/main.wasm`, Buffer.concat([header, exportSec([
+    expo('main_fn', 0, 0), expo('__cpp_exception', 4, 0), expo('main_data', 3, 0),
+])]));
+fs.writeFileSync(`${dir}/peer.wasm`, Buffer.concat([header, exportSec([expo('peer_fn', 0, 0)])]));
+// import section declares more bytes than the file holds
+fs.writeFileSync(`${dir}/truncated.wasm`, Buffer.concat([header, Buffer.from([0x02, 100, 0x00])]));
+const badver = Buffer.from(header); badver[4] = 0x02;
+fs.writeFileSync(`${dir}/badversion.wasm`, badver);
+EOF
+cat > "$FIX/glue.js" <<'EOF'
+// var wasmImports = { phantom_only: 1 };
+var s = "wasmImports = { phantom_str: 1 }";
+/* wasmImports = { phantom_block: 1 } */
+var wasmImports = {
+  provided_by_glue: () => 0,
+  wrapped: function () { return `}`; },
+  tmpl: `${ { a: 1 } } trailing`,
+  re: "x".replace(/[}]/g, "y"),
+  lost_after_template: () => 0
+};
+EOF
+# phantom_only: only a commented-out wasmImports provides it (a scanner that
+# reads comments fails open here). peer_fn: only the peer exports it.
+# __missing_tag: no module exports the tag. provided_by_glue / lost_after_template
+# must NOT appear — losing them is the template-literal false positive.
+printf 'phantom_only\npeer_fn\n__missing_tag\n' > "$FIX/expected.txt"
+node gates/_wasm_symbols.js unsatisfied "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" > "$FIX/js.txt"
+diff -u "$FIX/expected.txt" "$FIX/js.txt" || {
+    echo "FAIL: _wasm_symbols.js mis-answers the lexical/tag fixture" >&2; exit 1; }
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" > "$FIX/cs.txt" || cs_rc=$?
+[ "$cs_rc" -eq 3 ] || { echo "FAIL: --check-wasm-imports exited $cs_rc on the fixture (expected 3)" >&2; exit 1; }
+diff -u "$FIX/expected.txt" "$FIX/cs.txt" || {
+    echo "FAIL: --check-wasm-imports mis-answers the lexical/tag fixture" >&2; exit 1; }
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$FIX/side.wasm" "$FIX/main.wasm" "$FIX/glue.js" \
+    --peer-module "$FIX/peer.wasm" > "$FIX/cs-peer.txt" || cs_rc=$?
+[ "$cs_rc" -eq 3 ] || { echo "FAIL: --check-wasm-imports exited $cs_rc with a peer (expected 3)" >&2; exit 1; }
+printf 'phantom_only\n__missing_tag\n' | diff -u - "$FIX/cs-peer.txt" || {
+    echo "FAIL: --peer-module did not satisfy exactly the peer's export" >&2; exit 1; }
+for bad in truncated badversion; do
+    cs_rc=0
+    "$SELFHOST_BIN" --check-wasm-imports "$FIX/$bad.wasm" "$FIX/main.wasm" \
+        > "$FIX/$bad.out" 2> "$FIX/$bad.err" || cs_rc=$?
+    [ "$cs_rc" -eq 2 ] && grep -q "^error:" "$FIX/$bad.err" || {
+        echo "FAIL: a $bad wasm must exit 2 with an error: line (got $cs_rc) — a malformed" >&2
+        echo "      module reading as 'no imports found' is the fail-open this pins" >&2
+        cat "$FIX/$bad.err" >&2; exit 1; }
+done
+echo "checker fixtures OK: lexical glue traps, env tag, --peer-module, malformed-input exit 2"
 
 echo "== 7/8 Running the exported game in a real browser =="
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker

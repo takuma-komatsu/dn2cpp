@@ -116,7 +116,7 @@ if grep -Eq 'restab_assembly[0-9]+\[\]' "$OUT"/generated*.cpp; then
 fi
 echo "manifest OK: the Godot closure lowers no manifest-resource read, so none is carried"
 
-if gate_cache_check "$OUT" "godot-dotnet-wasm|trim|$CORELIB|$GODOT_DOTNET_GODOTSHARP" "$APP" "$HOST_SRC"; then
+if gate_cache_check "$OUT" "godot-dotnet-wasm|trim|$CORELIB|$GODOT_DOTNET_GODOTSHARP" "$APP" "$HOST_SRC" gates/_wasm_symbols.js; then
     gate_cache_hit_msg
     exit 0
 fi
