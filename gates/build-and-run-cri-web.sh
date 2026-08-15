@@ -480,8 +480,8 @@ if ! godot_export_step 3600 "$OUT/export.log" "$WEBDIR/index.html" \
     cat "$OUT/export.log" >&2
     exit 1
 fi
-# The export exit code is untrustworthy (an export plugin's error downgrades to
-# "completed with warnings") — the assertions below are the oracle.
+# An export plugin's Error fails the export, so godot_export_step above already
+# asserted the exit code. This grep pins the MESSAGE: which plugin objected.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2
