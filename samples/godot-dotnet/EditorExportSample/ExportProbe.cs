@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -24,6 +25,15 @@ public partial class ExportProbe : Node
     private bool _gcReported;
     private bool _signalResumed;
 
+    // Read at _Ready and again frames later. Both public MemberReferences resolve to real
+    // CoreLib bodies and reach separate libSystem.Native monotonic-clock P/Invokes. A wasm
+    // side module turns a missing PAL symbol into an import that fails only on the first
+    // CALL, so both clocks have to be CALLED here. `System.` is not optional:
+    // Godot.Environment is the WorldEnvironment resource, so under `using Godot` the bare
+    // name is ambiguous and game code has to qualify it.
+    private long _tickAtReady;
+    private long _stampAtReady;
+
     public override void _Ready()
     {
         // The markers go through plain stdout: on iOS GD.Print reaches only the
@@ -32,6 +42,8 @@ public partial class ExportProbe : Node
         // One engine-logger line stays behind so the macOS gate still proves the
         // GD.Print path end to end.
         GD.Print("DN2CPP_EXPORT_GDPRINT engine logger path ok");
+        _tickAtReady = System.Environment.TickCount64;
+        _stampAtReady = Stopwatch.GetTimestamp();
 
         ProbeInterop();
         _ = ProbeSignalAsync();
@@ -97,6 +109,12 @@ public partial class ExportProbe : Node
         long thrownAwayBytes = (long)GcAllocFrames * GcArraysPerFrame * 1024 * 1024;
         bool bounded = GC.GetTotalMemory(true) < thrownAwayBytes / 4;
         Console.WriteLine($"DN2CPP_EXPORT_GC finalized={finalized} bounded={bounded}");
+
+        // Booleans, never the readings: the values are non-deterministic and the
+        // frequency is the host's (1e9 on the POSIX PAL, the QPC rate on Windows).
+        bool ticks = System.Environment.TickCount64 >= _tickAtReady;
+        bool elapsed = Stopwatch.GetTimestamp() >= _stampAtReady && Stopwatch.Frequency > 0;
+        Console.WriteLine($"DN2CPP_EXPORT_CLOCK ticks={ticks} elapsed={elapsed}");
 
         Console.WriteLine("DN2CPP_EXPORT_DONE");
         GetTree().Quit();

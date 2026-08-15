@@ -9,7 +9,7 @@
 # static roots registered via the dn2cpp_roots section. Emscripten's MEMFS
 # backs the filesystem.
 #
-# Five sections, four of them diffed against real .NET. StringCore covers the
+# Six sections, five of them diffed against real .NET. StringCore covers the
 # string/formatting core, and
 # NestedFinallySubset proves the -fwasm-exceptions EH pipeline — a throw
 # (dn2cpp_throw -> C++ `throw Dn2CppException`) unwinding through nested
@@ -39,6 +39,16 @@
 # so it passes on BOTH axes. It still earns its place: it proves the weak-ref
 # code path compiles and runs green under the wasm Boehm GC.
 #
+# MonotonicClock is the wasm PAL's CLOCK, and it is here because this axis links
+# an EXECUTABLE: Stopwatch.GetTimestamp and the user assembly's
+# Environment.TickCount64 MemberReference reach libSystem.Native through real BCL
+# bodies. Lowering a P/Invoke is target-neutral, so a PAL that omits either
+# definition still emits the call and wasm-ld names it. The side-module lane
+# cannot say that — there an undefined symbol is a silent wasm IMPORT that throws
+# `TypeError: resolved is not a function` at the first call, naming a function index.
+# So this section is the cheap oracle for platform/wasm/dn2cpp_system_native_wasm.cpp,
+# and the export gates' import-closure assert is the backstop for the shipped drop-in.
+#
 # Machines without the Emscripten toolchain (or node) skip: the suite stays
 # usable without emscripten, but the runner reports the gate as SKIPPED rather
 # than passed (gate_skip in _common.sh).
@@ -58,8 +68,29 @@ wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers
 gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
 wasm_corelib_diff_gate WeakReferences
+wasm_corelib_diff_gate MonotonicClock
 
-# ── 5th section: the Web lane's HTTP carve-out ────────────────────────────────
+# The section's booleans prove clocks ran; they do not prove they were THESE two.
+# A new intrinsic could leave the section green with a PAL entry no longer linked,
+# and the undefined-symbol failure would never come back.
+#
+# _CG_OUT, never a re-derived path: gates/_common.sh's _corelib_gate_core spells out
+# that _corelib_gate_out gives the DEFAULT directory, so on this axis a literal path
+# reads the NATIVE build's output and the assert passes on the wrong artifact.
+for thunk in \
+    dn2cpp_pinvoke_SystemNative_GetTimestamp \
+    dn2cpp_pinvoke_SystemNative_GetLowResolutionTimestamp; do
+    if ! grep -qF "$thunk" "$_CG_OUT"/generated*; then
+        echo "FAIL: MonotonicClock no longer emits $thunk" >&2
+        echo "      The section still passes, but it stopped reaching this wasm PAL" >&2
+        echo "      entry, so a regression in it would be invisible. If the lowering" >&2
+        echo "      moved on purpose, move this assert with it." >&2
+        exit 1
+    fi
+done
+echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
+
+# ── 6th section: the Web lane's HTTP carve-out ────────────────────────────────
 # The one section here that is NOT a diff against real .NET, and it cannot be:
 # real .NET has a transport, so the oracle would perform the very request this
 # section exists to prove impossible. A browser has no TCP socket layer

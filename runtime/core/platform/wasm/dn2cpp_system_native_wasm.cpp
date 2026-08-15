@@ -3,12 +3,20 @@
 //
 // The bulk of that surface (platform/posix/dn2cpp_system_native.cpp) is the
 // file-I/O P/Invoke closure, and it is deliberately NOT part of the wasm build.
-// But one of its symbols has a caller that is not a P/Invoke at all and IS
-// compiled on wasm: intrinsics/dn2cpp_openssl_crypto_digest.cpp's
-// CryptoNative_GetRandomBytes forwards straight to
-// SystemNative_GetCryptographicallySecureRandomBytes. So the symbol went missing
-// on this target while the POSIX TU that defines it was excluded for a reason
-// that does not cover it.
+// Three things it also defines are not file I/O, and each is here for its own
+// reason — the exclusion was written for the closure and covers none of them.
+//
+//   * The CSPRNG has a caller that is not a P/Invoke at all and IS compiled on
+//     wasm: intrinsics/dn2cpp_openssl_crypto_digest.cpp's
+//     CryptoNative_GetRandomBytes forwards straight to it.
+//   * The two monotonic clocks are what Stopwatch.GetTimestamp and an ordinary
+//     user MemberReference to Environment.TickCount64 reach through their real
+//     BCL bodies. In-CoreLib MethodDefinition calls to TickCount64 can instead
+//     lower to dn2cpp_tickcount64. The engine's Time API is a separate surface.
+//
+// Only what a call site actually reaches is defined here. Stopwatch.Frequency is
+// a constant on this CoreLib, so the POSIX twin's timestamp-resolution entry does
+// not belong here.
 //
 // It stayed invisible because of the shape of the two link models, not because
 // nothing reached it. In an EXECUTABLE link wasm-ld dead-strips the unreferenced
@@ -19,9 +27,11 @@
 // valid handle and dlsym resolves) — it throws `TypeError: resolved is not a
 // function` out of the JS glue at the instant the function is first CALLED,
 // naming a wasm function index rather than the symbol. A real game reaches this
-// on Guid.NewGuid(), RandomNumberGenerator, or hash seeding.
+// on Guid.NewGuid(), RandomNumberGenerator, hash seeding, Stopwatch, or
+// Environment.TickCount64.
 
 #include <cstdint>
+#include <ctime>    // clock_gettime
 #include <unistd.h> // getentropy
 
 extern "C" {
@@ -63,6 +73,25 @@ int32_t SystemNative_GetCryptographicallySecureRandomBytes(uint8_t* buffer, int3
         remaining -= chunk;
     }
     return 0;
+}
+
+// pal_time.c's monotonic clocks, the POSIX twins' bodies verbatim. Emscripten's
+// musl supplies clock_gettime, and a side module resolves it from the main module
+// the same way it resolves the rest of libc.
+uint64_t SystemNative_GetTimestamp(void)
+{
+    struct timespec ts;
+    if (::clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+int64_t SystemNative_GetLowResolutionTimestamp(void)
+{
+    struct timespec ts;
+    if (::clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+        return 0;
+    return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
 }
 
 } // extern "C"

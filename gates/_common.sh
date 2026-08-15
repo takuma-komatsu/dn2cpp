@@ -2323,15 +2323,19 @@ _corelib_gate_out() {
 
 # _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME...] — steps 1/4–3/4; extras are
 # BCL simple names beside CoreLib (absent = hard error). Sets _CG_CORELIB, _CG_APP,
-# _CG_OUT. Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir,
-# so on a non-default axis the asserts read another build and pass.
+# _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
+# Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
+# non-default axis the asserts read another build and pass.
 _corelib_gate_core() {
     local project="$1" out="$2"; shift 2
     _CG_OUT="$out"
 
     echo "== 1/4 Locating the real CoreLib =="
     local bcl
-    _CG_CORELIB=$(locate_corelib)
+    # _CG_CORELIB_IN is the caller's flavour override, declared local at the
+    # call site so it cannot survive the return; _CG_CORELIB is this
+    # function's output and must never be reused as the input.
+    _CG_CORELIB=${_CG_CORELIB_IN:-$(locate_corelib)}
     bcl=$(dirname "$_CG_CORELIB")
     echo "corlib: $_CG_CORELIB"
 
@@ -2493,6 +2497,12 @@ wasm_corelib_diff_gate() {
     local project="$1"; shift
     local out
     out="$(_corelib_gate_out "$project")-wasm"
+
+    # The wasm axis cross-targets Emscripten, so the CoreLib flavour follows the
+    # TARGET, not the host (docs/PORTING.md H6). `local` keeps the override off a
+    # native wrapper called later in the same shell.
+    local _CG_CORELIB_IN
+    _CG_CORELIB_IN=$(locate_corelib_cross_posix net10)
 
     _corelib_gate_core "$project" "$out" "$@"
     if gate_cache_check "$out" "wasm_corelib_diff_gate|$project|$*|$_CG_CORELIB" \

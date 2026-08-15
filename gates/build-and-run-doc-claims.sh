@@ -234,6 +234,28 @@ porting_must=$(w2n "$(sed -nE '1s/\*\*([A-Za-z]+) of.*/\1/p' \
 eq "docs/PORTING.md §2.1 'N of the M must answer truly'" \
    "$porting_must" "$((pal_decls - $(printf '%s\n' "$pal_degrade" | grep -c .)))"
 
+# §2.2's wasm bullet states a count, and this is the count that rots: the POSIX
+# translation unit is excluded from that build, so every SystemNative_* the target
+# still reaches has to be hand-added to the wasm file. Even a public MemberReference
+# may reach a real BCL body that an in-CoreLib MethodDefinition intrinsic bypasses.
+wasm_pal=runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp
+wasm_defs=$(grep -oE '^[a-z_0-9]+[a-z_0-9 *]* SystemNative_[A-Za-z_0-9]+\(' "$wasm_pal" \
+            | grep -oE 'SystemNative_[A-Za-z_0-9]+' | sort -u | grep -c .)
+porting_wasm=$(w2n "$(sed -nE '1s/.*wasm defines ([a-z]+).*/\1/p' \
+    <<<"$(grep -oE '\*\*wasm defines [a-z]+\.\*\*' docs/PORTING.md)")")
+eq "docs/PORTING.md §2.2 'wasm defines N SystemNative_*'" "$porting_wasm" "$wasm_defs"
+
+# The editor guide tells a player what Stopwatch.Frequency reads on the Web, and that
+# number is a value contract, not prose: the MonotonicClock section asserts the same
+# constant in its non-Windows arm. Bind the two, so the guide cannot drift from
+# the gate that makes it true. Both are read with their digit separators stripped.
+guide_freq=$(sed -nE '1s/.*Frequency` は ([0-9,]+) です.*/\1/p' \
+    <<<"$(grep -oE '`Stopwatch\.Frequency` は [0-9,]+ です' docs/EDITOR-GUIDE.ja.md)" | tr -d ',')
+sample_freq=$(sed -nE '1s/.*Frequency == ([0-9_]+).*/\1/p' \
+    <<<"$(grep -oE 'Stopwatch\.Frequency == [0-9_]+' samples/dotnet/MonotonicClock/MonotonicClockCore.cs)" | tr -d '_')
+eq "docs/EDITOR-GUIDE.ja.md Web Stopwatch.Frequency vs the MonotonicClock assert" \
+   "$guide_freq" "$sample_freq"
+
 # Every platform/*/ implementation defines the whole seam. The pal-reference gate
 # asserts this too, and the duplication is deliberate: that gate builds a runtime
 # and this one runs in milliseconds with no toolchain, so on a machine where the

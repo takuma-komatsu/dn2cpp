@@ -12,5 +12,13 @@
 # value-returning body, re-entrant nesting and a throwing body that must still
 # release.
 # Former gates: lock-subset, locktype-subset.
+#
+# MonotonicClock is here for its SURFACE, not for this gate's theme:
+# Stopwatch.GetTimestamp and the user assembly's Environment.TickCount64
+# MemberReference reach separate libSystem.Native clocks through their real BCL
+# bodies. This is the native axis's only diff of that contract against real .NET;
+# its wasm twin also proves both PAL symbols link. Do not prune it by reading the
+# gate's name.
 source "$(dirname "$0")/_common.sh"
 corelib_diff_gate ThreadingPrimitives
+corelib_diff_gate MonotonicClock

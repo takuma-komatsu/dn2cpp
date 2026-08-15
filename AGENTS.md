@@ -428,6 +428,13 @@ engine-side changes are in `docs/EDITOR-EXPORT-DESIGN.md`. Carve-outs:
   `DN2CPP_USE_CURL` is forced off; `HttpClient` links and fails every call with
   an `HttpRequestException` naming the platform.
 - **`FileStream` does not link**; the intercepted `File.*` subset works on MEMFS.
+- **The `libSystem.Native` surface is hand-picked per target**
+  (`runtime/core/platform/wasm/`), and an omission here does NOT fail like the
+  rows above: lowering a P/Invoke is target-neutral, so the call is still emitted
+  and a side module turns the missing definition into an import that throws only
+  when first called. Add a symbol there, never to the POSIX file, and prove it
+  from `gates/build-and-run-wasm-console.sh` — that axis links an executable,
+  where the same gap is a named wasm-ld failure.
 - **The GC is real** — the same vendored Boehm, single threaded — but with no
   page-protection VDB, so collection is stop-the-world and finalizers drain
   manually.
