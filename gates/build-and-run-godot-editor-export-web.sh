@@ -310,9 +310,9 @@ grep -q "\"gdextensionLibs\":\[\"$PROJECT_NAME.so\"\]" "$WEBDIR/index.html" || {
 #
 # This is the assert that makes the gate an oracle for the trim, and it must be on
 # the ARTIFACT, never on an exit code. The exporter passes --trim-reflection to the
-# transpiler; src/Dn2Cpp.Cli/Program.cs's argument loop has no unknown-argument
-# branch, so a transpiler predating the flag ACCEPTS it, exits 0, and emits fully
-# untrimmed output. Every exit code in this gate stays green, the export log keeps
+# transpiler; a transpiler old enough to predate both the flag and the argument
+# loop's unknown-option rejection ACCEPTS it, exits 0, and emits fully untrimmed
+# output. Every exit code in this gate stays green, the export log keeps
 # all three dn2cpp markers, the .so is produced, it exports the entry point, and
 # index.html preloads it -- (a) through (d) above all pass -- and the module is
 # simply one no browser can instantiate. That is a stale toolchain, and the only
