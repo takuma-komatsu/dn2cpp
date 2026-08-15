@@ -19,8 +19,19 @@ _corelib_gate_core "$project" "$out"
 echo "== 2/2 Compiling C++ and running (exact diff vs real .NET + suppress-set walk cost) =="
 compile_console "$out" "$project"
 
-log_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_suppresscost.XXXXXX")
-trap 'rm -rf "$log_dir"' EXIT
+gate_run_logs_init suppresscost suppress-scan
+log_dir="$_GATE_RUN_LOG_DIR"
+native=
+native_code=
+expected=
+expected_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "suppress-scan native" "$native_code" "$native" \
+        "$log_dir/native.log"
+    gate_run_diag "suppress-scan oracle" "$expected_code" "$expected" \
+        "$log_dir/oracle.log"
+}
 
 set +e
 _gate_run_argv
@@ -32,8 +43,13 @@ expected=$(run_bounded dotnet "$_CG_APP" \
 set -e
 _gate_scratch_cleanup
 
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+assertions_failed=0
+assert_output "$native" "$expected" || assertions_failed=1
+assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
+    exit 1
+fi
 
 # A native Windows binary writes CRLF, which every number below would carry.
 stats=$(LC_ALL=C tr -d '\r' <"$log_dir/native.log")
