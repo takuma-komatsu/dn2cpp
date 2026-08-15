@@ -135,11 +135,13 @@ through `PublishProjectBlocking`.
 
 **Error surfacing.** stdout/stderr tee to
 `{ProjectBaseOutputPath}/dn2cpp/logs/export-<ts>.log`; the tail and log path go
-through `GetExportPlatform().AddMessage(Error, …)`. Upstream caveat: that
-wrapper *swallows* the exception and `EditorNode` downgrades an export-plugin
-error to "completed with warnings" and exits 0, so a failed backend leaves a
-plausible-looking bundle. The E2E gates therefore assert the dn2cpp progress
-markers and the staged artifact, never the exit code.
+through `GetExportPlatform().AddMessage(Error, …)`. The fork fails the export on
+an Error-class plugin message — `ERROR: Project export for preset "X" failed.`
+and a non-zero exit from a headless `--export-release`, where upstream printed
+"completed with warnings" and exited 0. The E2E gates assert the exit code, the
+dn2cpp progress markers and the staged artifact, and the Web gate's
+transpile-failure section proves the exit code moves: an artifact alone cannot
+say a transpile failed, because the exported page comes from the template.
 
 **Platform matrix.** macOS host-arch and **Windows** are the two host-compiled
 desktop targets. Windows differs only in the output name, and that is the
