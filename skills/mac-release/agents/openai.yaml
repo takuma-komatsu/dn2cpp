@@ -1,0 +1,4 @@
+interface:
+  display_name: "Mac Release Workflow"
+  short_description: "Package and hand off Mac releases safely"
+  default_prompt: "Use $mac-release to run and verify the dn2cpp macOS release handoff."
