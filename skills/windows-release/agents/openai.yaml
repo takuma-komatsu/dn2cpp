@@ -1,0 +1,4 @@
+interface:
+  display_name: "Windows Release Workflow"
+  short_description: "Package and publish Windows releases safely"
+  default_prompt: "Use $windows-release to finish and verify the dn2cpp Windows release handoff."
