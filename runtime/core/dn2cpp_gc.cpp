@@ -854,6 +854,23 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type)
     }
 }
 
+// GC.GetAllocatedBytesForCurrentThread accounting: per-thread cumulative REQUESTED
+// bytes (no granule rounding), pinned blocks included — slightly above real .NET.
+static thread_local uint64_t t_gc_bytes_allocated;
+#ifndef DN2CPP_USE_BOEHM_GC
+// Process total for GC.GetTotalAllocatedBytes when Boehm's own lifetime counter
+// (GC_get_total_bytes) is not there to answer.
+static std::atomic<uint64_t> g_gc_total_bytes_fallback;
+#endif
+
+static inline void gc_account_alloc(size_t size)
+{
+    t_gc_bytes_allocated += size;
+#ifndef DN2CPP_USE_BOEHM_GC
+    g_gc_total_bytes_fallback.fetch_add(size, std::memory_order_relaxed);
+#endif
+}
+
 void* dn2cpp_alloc(size_t size)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
@@ -865,6 +882,7 @@ void* dn2cpp_alloc(size_t size)
 #endif
     if (p == nullptr)
         dn2cpp_fail("OutOfMemoryException");
+    gc_account_alloc(size);
     return p;
 }
 
@@ -882,6 +900,7 @@ void* dn2cpp_alloc_atomic(size_t size)
 #endif
     if (p == nullptr)
         dn2cpp_fail("OutOfMemoryException");
+    gc_account_alloc(size);
     return p;
 }
 
@@ -952,6 +971,7 @@ void* dn2cpp_alloc_pinned(size_t size)
 #endif
     if (p == nullptr)
         dn2cpp_fail("OutOfMemoryException");
+    gc_account_alloc(size);
     return p;
 }
 
@@ -2190,6 +2210,23 @@ int64_t dn2cpp_gc_get_total_memory(int32_t forceFullCollection)
 #else
     (void)forceFullCollection;
     return 0; // heap usage is not modeled under the calloc fallback
+#endif
+}
+
+int64_t dn2cpp_gc_allocated_bytes_current_thread()
+{
+    return static_cast<int64_t>(t_gc_bytes_allocated);
+}
+
+int64_t dn2cpp_gc_total_allocated_bytes()
+{
+#ifdef DN2CPP_USE_BOEHM_GC
+    // GC_get_total_bytes is unsynchronized; take its value under Boehm's lock.
+    GC_word total = 0;
+    GC_get_heap_usage_safe(nullptr, nullptr, nullptr, nullptr, &total);
+    return static_cast<int64_t>(total);
+#else
+    return static_cast<int64_t>(g_gc_total_bytes_fallback.load(std::memory_order_relaxed));
 #endif
 }
 

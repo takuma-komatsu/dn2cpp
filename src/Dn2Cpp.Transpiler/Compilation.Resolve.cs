@@ -430,7 +430,8 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.MrMarshalInterop.Matches(mrParent, mrName, Sig))
                     return null;
                 // The System.GC CUT family (shape-gated: SuppressFinalize / ReRegisterForFinalize
-                // / GetTotalMemory take one arg, Collect / WaitForPendingFinalizers none). The
+                // / GetTotalMemory / GetTotalAllocatedBytes take one arg, Collect /
+                // WaitForPendingFinalizers / GetAllocatedBytesForCurrentThread none). The
                 // predicate is shared with the emit route, so the two cannot disagree about
                 // which overloads are lowered. KeepAlive is EMIT-ONLY (route-without-cut), so
                 // the resolver deliberately does NOT reference MrGcKeepAlive — its real body

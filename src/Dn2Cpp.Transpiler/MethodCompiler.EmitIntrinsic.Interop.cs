@@ -548,6 +548,19 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I8, "int64_t", $"dn2cpp_gc_get_total_memory((int32_t)({force.Expr}))");
                 return true;
             }
+            case ("System.GC", "GetAllocatedBytesForCurrentThread")
+                when callee.Signature.ParameterTypes.Length == 0 && callee.IsStatic:
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_allocated_bytes_current_thread()");
+                return true;
+            case ("System.GC", "GetTotalAllocatedBytes")
+                when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
+            {
+                // Boehm keeps one lifetime total; precise/approximate is a distinction
+                // its accounting does not make, so drop the flag.
+                Pop();
+                Push(StackKind.I8, "int64_t", "dn2cpp_gc_total_allocated_bytes()");
+                return true;
+            }
             case ("System.GC", "KeepAlive")
                 when callee.Signature.ParameterTypes.Length == 1 && callee.IsStatic:
             {

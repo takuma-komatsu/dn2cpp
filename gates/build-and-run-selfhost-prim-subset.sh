@@ -48,6 +48,20 @@
 #     It is driven LAST, after the sections above: it forces a GC.Collect() and prints
 #     process-wide GC facts, so nothing else may inherit its collection.
 #
+#  GcAllocatedBytesSubset — GC.GetAllocatedBytesForCurrentThread and
+#     GC.GetTotalAllocatedBytes(bool), lowered to the runtime's thread_local
+#     accounting at the three dn2cpp_alloc entry points. Raw counts differ
+#     (dn2cpp counts requested bytes, pinned included), so the section asserts
+#     invariants: the per-thread counter is non-negative, monotone, covers a
+#     1 MiB allocation, stays flat across a quiet window and across 8 MiB
+#     allocated on another Thread — the line that separates per-thread
+#     accounting from a process-wide approximation. The approximate total is
+#     asserted non-negative and monotone ONLY: real .NET's figure reads stale
+#     per-thread buffers and a fresh 1 MiB may not appear. It is also read while
+#     a worker allocates, covering the synchronized Boehm statistics path. The
+#     precise total has no such carve-out and must cover the 1 MiB. It sits in
+#     this bucket because it starts a Thread: this gate is the bucket's sole
+#     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"

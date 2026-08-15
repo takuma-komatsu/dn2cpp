@@ -55,5 +55,6 @@ internal static class Program
 
         // Driven last so nothing it does can perturb the sections above.
         MiscIntrinsicSubset.Program.__GateEntry();
+        GcAllocatedBytesSubset.Program.__GateEntry();
     }
 }

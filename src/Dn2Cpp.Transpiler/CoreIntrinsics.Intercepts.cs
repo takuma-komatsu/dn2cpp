@@ -193,7 +193,8 @@ internal enum InterceptEmitArm
     /// <summary>The System.GC surface lowered inline to the dn2cpp_gc_* /
     /// dn2cpp_keep_alive helpers — the arm dispatches by member name+shape over
     /// the whole family (SuppressFinalize / ReRegisterForFinalize / Collect /
-    /// WaitForPendingFinalizers / GetTotalMemory / KeepAlive). Shared by the cut
+    /// WaitForPendingFinalizers / GetTotalMemory / GetAllocatedBytesForCurrentThread /
+    /// GetTotalAllocatedBytes / KeepAlive). Shared by the cut
     /// row (<see cref="CoreIntrinsics.MrGc"/>) and the emit-only KeepAlive row
     /// (<see cref="CoreIntrinsics.MrGcKeepAlive"/> — route-without-cut).</summary>
     GcFamily,
@@ -886,20 +887,23 @@ internal static partial class CoreIntrinsics
         extra: static (_, _, sig) => sig().GenericParameterCount == 0);
 
     /// <summary>The System.GC CUT family (shape-gated): SuppressFinalize /
-    /// ReRegisterForFinalize / GetTotalMemory take one argument, Collect /
-    /// WaitForPendingFinalizers take none. KeepAlive is deliberately NOT here —
+    /// ReRegisterForFinalize / GetTotalMemory / GetTotalAllocatedBytes take one
+    /// argument, Collect / WaitForPendingFinalizers /
+    /// GetAllocatedBytesForCurrentThread take none. KeepAlive is deliberately NOT here —
     /// it is route-without-cut (<see cref="MrGcKeepAlive"/>), because an empty
     /// transpiled body is inlinable and -O2 would erase the liveness barrier it
     /// exists to provide. The shape gate lives inside the predicate; sig() is
-    /// touched only for the five named members, never for KeepAlive or an
+    /// touched only for the named members, never for KeepAlive or an
     /// unrelated GC member.</summary>
     public static readonly MemberRefIntercept MrGc = new(
         InterceptCutKind.Cut, InterceptEmitArm.GcFamily,
         typeGate: "System.GC",
         extra: static (_, n, sig) => n switch
         {
-            "SuppressFinalize" or "ReRegisterForFinalize" or "GetTotalMemory" => sig().ParameterTypes.Length == 1,
-            "Collect" or "WaitForPendingFinalizers" => sig().ParameterTypes.Length == 0,
+            "SuppressFinalize" or "ReRegisterForFinalize" or "GetTotalMemory"
+                or "GetTotalAllocatedBytes" => sig().ParameterTypes.Length == 1,
+            "Collect" or "WaitForPendingFinalizers"
+                or "GetAllocatedBytesForCurrentThread" => sig().ParameterTypes.Length == 0,
             _ => false,
         });
 
