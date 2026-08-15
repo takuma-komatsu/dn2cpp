@@ -16,6 +16,9 @@ internal static class Program
     private static byte[] s_keep;
     private static byte[] s_keepOther;
     private static long s_sink;
+    private static int s_totalReaderStart;
+    private static int s_totalAllocatorReady;
+    private static int s_totalAllocatorDone;
 
     // Allocation-free by construction; the dn2cpp side's quiet delta is exactly 0.
     private static long Spin()
@@ -64,6 +67,34 @@ internal static class Program
         long t1 = GC.GetTotalAllocatedBytes(false);
         Console.WriteLine($"total-allocated-nonneg={t0 >= 0}");
         Console.WriteLine($"total-allocated-monotone={t1 >= t0}");
+
+        // Read the process total while another thread repeatedly allocates. This
+        // keeps the query on Boehm's synchronized statistics path, not its
+        // lock-free getter, under the concurrent workload callers use.
+        var totalAllocator = new Thread(() =>
+        {
+            while (Volatile.Read(ref s_totalReaderStart) == 0)
+                Thread.Yield();
+            for (int i = 0; i < 32; i++)
+            {
+                s_keepOther = new byte[1 << 20];
+                Volatile.Write(ref s_totalAllocatorReady, 1);
+                Thread.Yield();
+            }
+            Volatile.Write(ref s_totalAllocatorDone, 1);
+        });
+        totalAllocator.Start();
+        Volatile.Write(ref s_totalReaderStart, 1);
+        while (Volatile.Read(ref s_totalAllocatorReady) == 0)
+            Thread.Yield();
+        int totalReads = 0;
+        do
+        {
+            _ = GC.GetTotalAllocatedBytes(false);
+            totalReads++;
+        } while (Volatile.Read(ref s_totalAllocatorDone) == 0);
+        totalAllocator.Join();
+        Console.WriteLine($"total-allocated-concurrent-read={totalReads > 0}");
 
         // Precise total has no staleness carve-out: a 1 MiB allocation must be
         // covered on both runtimes.

@@ -2221,8 +2221,10 @@ int64_t dn2cpp_gc_allocated_bytes_current_thread()
 int64_t dn2cpp_gc_total_allocated_bytes()
 {
 #ifdef DN2CPP_USE_BOEHM_GC
-    // Boehm's own lifetime total across all threads (granule-rounded).
-    return static_cast<int64_t>(GC_get_total_bytes());
+    // GC_get_total_bytes is unsynchronized; take its value under Boehm's lock.
+    GC_word total = 0;
+    GC_get_heap_usage_safe(nullptr, nullptr, nullptr, nullptr, &total);
+    return static_cast<int64_t>(total);
 #else
     return static_cast<int64_t>(g_gc_total_bytes_fallback.load(std::memory_order_relaxed));
 #endif

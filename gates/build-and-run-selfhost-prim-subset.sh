@@ -57,10 +57,11 @@
 #     allocated on another Thread — the line that separates per-thread
 #     accounting from a process-wide approximation. The approximate total is
 #     asserted non-negative and monotone ONLY: real .NET's figure reads stale
-#     per-thread buffers and a fresh 1 MiB may not appear. The precise total
-#     has no such carve-out and must cover the 1 MiB. It sits in this bucket
-#     because it starts a Thread: this gate is the bucket's sole driver, so no
-#     wasm axis reaches the section.
+#     per-thread buffers and a fresh 1 MiB may not appear. It is also read while
+#     a worker allocates, covering the synchronized Boehm statistics path. The
+#     precise total has no such carve-out and must cover the 1 MiB. It sits in
+#     this bucket because it starts a Thread: this gate is the bucket's sole
+#     driver, so no wasm axis reaches the section.
 # Driven by the real System.Private.CoreLib (passed with -r) -> cross-assembly resolve
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
