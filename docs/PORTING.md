@@ -400,6 +400,10 @@ implies it.
   `#if`, or is written to be structurally self-guarding — one symbol forwarding to a
   portable entry point, forward-declared rather than including an SDK header — so it
   merely dead-strips elsewhere.
+- **On a Windows host `wasm_corelib_diff_gate` transpiles the linux-x64 runtime
+  pack's CoreLib**, resolved through `locate_corelib_cross_posix`, so the axis
+  sees the POSIX `SystemNative_*` surface the wasm PAL implements instead of the
+  host's kernel32 imports.
 
 ### H7. The collector's assumptions are per-target, and they fail silently
 
