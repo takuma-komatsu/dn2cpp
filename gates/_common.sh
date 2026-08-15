@@ -1918,11 +1918,19 @@ _dump_obj_symbols_nix() {
 }
 
 # assert_output ACTUAL EXPECTED — print ACTUAL; if it differs from EXPECTED, echo
-# the expectation to stderr and fail; otherwise print "OK".
+# both sides to stderr and fail; otherwise print "OK". ACTUAL is labelled on the
+# failure path too: unlabelled, a run that printed nothing reads as a missing
+# expectation rather than as an empty actual.
 assert_output() {
     local actual="$1" expected="$2"
     echo "$actual"
     if [ "$actual" != "$expected" ]; then
+        if [ -n "$actual" ]; then
+            echo "FAIL: actual:" >&2
+            echo "$actual" >&2
+        else
+            echo "FAIL: actual: <empty>" >&2
+        fi
         echo "FAIL: expected:" >&2
         echo "$expected" >&2
         return 1
