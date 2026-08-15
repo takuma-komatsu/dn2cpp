@@ -27,6 +27,11 @@
 # ways: the file is beside index.html, the HTML names it, and it exports the
 # entry symbol.
 #
+# Section 6 is also the differential gate for `dn2cpp --check-wasm-imports`, the
+# shipped no-node port of gates/_wasm_symbols.js `unsatisfied`: the self-hosted
+# binary and the node oracle are diffed on this page's own artifacts, including
+# a control pairing whose unsatisfied set is non-empty by construction.
+#
 # Requires the artifacts of gates/setup-godot-fork.sh AND gates/setup-godot-fork-web.sh
 # (the Web template: upstream ships no C#-capable one), plus emcc, node, a python
 # new enough for emcc to launch, and a headless Chrome. Skips (exit 77) when any
@@ -144,12 +149,19 @@ godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
 # staging recipe). The drop-in is compiled through that SDK and `emcc=` names the
 # one that baked the TEMPLATE, so nothing else here moves when a re-packaged
 # bundle brings a different SDK to the half of the link this gate builds.
+#
+# The checker differential in section 6 diffs two tools, so BOTH are material:
+# gates/_wasm_symbols.js (the oracle), and WasmSymbols.cs directly — the C# side
+# reaches the run through $SELFHOST_BIN, but a source edit must move the key
+# even before the re-bake refreshes that binary.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
     "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
+    gates/_wasm_symbols.js \
+    src/Dn2Cpp.Transpiler/WasmSymbols.cs \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -345,6 +357,78 @@ fi
 echo "drop-in: $(wc -c < "$DROPIN" | tr -d ' ') bytes, exports godotsharp_game_main_init; index.html preloads it"
 echo "largest wasm function: $maxfn bytes ($maxfn_name), $((V8_MAX_FUNCTION_SIZE - maxfn)) under V8's $V8_MAX_FUNCTION_SIZE ceiling"
 echo "import closure OK: every function and GOT.mem/GOT.func import resolves against the exported page"
+# (g) the shipped checker agrees with the gate oracle. The toolchain bundle runs
+#     `dn2cpp --check-wasm-imports` — the no-node C# port of _wasm_symbols.js
+#     `unsatisfied` — and the exporter branches on its exit code, so a divergence
+#     ships a checker that greenlights what (f) fails. On the drop-in both
+#     outputs are empty, which asserts nothing beyond the exit code; the control
+#     pairs the ENGINE's own side module against the page's main module, where
+#     the unsatisfied set is non-empty by construction (without the glue, the
+#     whole JS-library surface is missing). An EMPTY control means the
+#     differential stopped testing anything — that is a failure, not a pass.
+#     The glue arm is the only one that proves the C# glue scanner's key set
+#     equivalent, and its set shrinking below the no-glue arm's is what proves
+#     the scanner contributed at all (that stays assertable even if a future
+#     template closes the glue arm's set to zero).
+WDIFF="$OUT/wasm-import-differential"
+rm -rf "$WDIFF"
+mkdir -p "$WDIFF"
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$DROPIN" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/cs-dropin.txt" || cs_rc=$?
+if [ "$cs_rc" -ne 0 ] || [ -s "$WDIFF/cs-dropin.txt" ]; then
+    echo "FAIL: --check-wasm-imports disagrees with (f) on the drop-in: exit $cs_rc (expected 0)" >&2
+    LC_ALL=C sed 's/^/  /' "$WDIFF/cs-dropin.txt" >&2
+    exit 1
+fi
+node gates/_wasm_symbols.js unsatisfied "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" \
+    > "$WDIFF/js-noglue.txt"
+node gates/_wasm_symbols.js unsatisfied "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/js-glue.txt"
+if [ ! -s "$WDIFF/js-noglue.txt" ]; then
+    echo "FAIL: the no-glue control's unsatisfied set is EMPTY — the differential below" >&2
+    echo "      would compare nothing to nothing and prove nothing; find a new control" >&2
+    echo "      pairing before trusting --check-wasm-imports again." >&2
+    exit 1
+fi
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" \
+    > "$WDIFF/cs-noglue.txt" || cs_rc=$?
+if [ "$cs_rc" -ne 3 ]; then
+    echo "FAIL: --check-wasm-imports exited $cs_rc on the non-empty no-glue control (expected 3)" >&2
+    exit 1
+fi
+diff -u "$WDIFF/js-noglue.txt" "$WDIFF/cs-noglue.txt" || {
+    echo "FAIL: --check-wasm-imports and gates/_wasm_symbols.js diverge on the no-glue control" >&2
+    echo "      (order included — the C# port's contract is a literal match)" >&2
+    exit 1
+}
+cs_rc=0
+"$SELFHOST_BIN" --check-wasm-imports "$WEBDIR/index.side.wasm" "$WEBDIR/index.wasm" "$WEBDIR/index.js" \
+    > "$WDIFF/cs-glue.txt" || cs_rc=$?
+diff -u "$WDIFF/js-glue.txt" "$WDIFF/cs-glue.txt" || {
+    echo "FAIL: --check-wasm-imports and gates/_wasm_symbols.js diverge on the glue control" >&2
+    echo "      (the C# glue scanner's wasmImports key set is not equivalent)" >&2
+    exit 1
+}
+if [ -s "$WDIFF/js-glue.txt" ]; then
+    [ "$cs_rc" -eq 3 ] || {
+        echo "FAIL: --check-wasm-imports exited $cs_rc on the non-empty glue control (expected 3)" >&2
+        exit 1; }
+else
+    [ "$cs_rc" -eq 0 ] || {
+        echo "FAIL: --check-wasm-imports exited $cs_rc on the empty glue control (expected 0)" >&2
+        exit 1; }
+fi
+noglue_n="$(wc -l < "$WDIFF/js-noglue.txt" | tr -d ' ')"
+glue_n="$(wc -l < "$WDIFF/js-glue.txt" | tr -d ' ')"
+if [ "$glue_n" -ge "$noglue_n" ]; then
+    echo "FAIL: the glue control satisfied nothing the no-glue control missed ($glue_n >= $noglue_n)" >&2
+    echo "      — the glue scanner found no wasmImports keys, and the glue arm proved nothing" >&2
+    exit 1
+fi
+echo "checker differential OK: --check-wasm-imports matches _wasm_symbols.js on the drop-in (exit 0)"
+echo "  and on the engine-side control: $noglue_n unsatisfied without glue, $glue_n with (exit 3), byte-identical"
 
 echo "== 7/8 Running the exported game in a real browser =="
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker
