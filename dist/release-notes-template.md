@@ -8,12 +8,13 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- `--dotnet-module` ドロップインが Linux でも動作するようになりました（従来は macOS / Windows のみ）
-- Godot エディタ本体（フォーク）に Linux をエクスポート先として追加
-- `SuppressFinalize` の窓の中でファイナライザが再度 arm されてしまう問題を修正
-- ファイナライザキューのリング drain 後、ファイナライザスレッドのスタックが以前の実行の残骸を保持していた問題を修正
+- インクリメンタル GC の write barrier を、managed reference の保存・`Unsafe` のメモリ操作・Godot のアンカー掃引まで拡張し、外部型を含む保存もネイティブゲートで検証するようになりました
+- P/Invoke のマーシャリング記述子が `delegate*` 関数ポインター、構造体のオフセット、`[MarshalAs]` の種別を検証し、対象外の組み合わせを変換時に明確に拒否するようになりました
+- Web エクスポートで `Stopwatch` と `Environment.TickCount64` の単調時計を提供し、ブラウザ側の未解決 import を実行時に検出する検証を追加しました
+- Godot .NET のインターオプ ABI について、enum / `Error` の戻り幅と `calli` の ABI 型を静的に照合するようになりました
+- ファイナライザ抑制集合、`Task` の完了状態と遅延例外キャッシュを整理し、競合時の公開順序と反復コストを改善しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/0e74c5faddef0dcdda017137dea6c0e92557e26c...7de20c4a84d4637186c69b6c3d7aef2c684f500b> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/7de20c4a84d4637186c69b6c3d7aef2c684f500b...41e8edcb09ae28ab9dcf76ba209f86b26577762e> を参照してください。
 
 ## アセット
 
