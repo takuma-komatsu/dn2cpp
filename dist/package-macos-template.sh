@@ -78,6 +78,11 @@ $(printf '%s\n' "$binary_delta" | sed 's/^/         /')
        Bake the template from the fork instead of thinning upstream's."
 untracked_engine="$(git -C "$FORK" ls-files --others --exclude-standard \
     -- "${MACOS_ENGINE_INPUTS[@]}")"
+# SCons reads this ignored root configuration input before building the template.
+if { [ -f "$FORK/custom.py" ] || [ -L "$FORK/custom.py" ]; } \
+    && ! git -C "$FORK" ls-files --error-unmatch -- custom.py >/dev/null 2>&1; then
+    untracked_engine+="${untracked_engine:+$'\n'}custom.py"
+fi
 [ -z "$untracked_engine" ] || die "the fork has untracked engine inputs outside platform/web/ and editor/**:
 $(printf '%s\n' "$untracked_engine" | sed 's/^/         /')
        Bake the template from the fork instead of thinning upstream's."
