@@ -61,7 +61,8 @@ through CMake (`runtime/CMakeLists.txt`, Ninja generator) — the sole build
 backend; the gate scripts are thin wrappers around it.
 
 The regression gate is the whole `gates/build-and-run-*.sh` suite, run through
-the parallel runner. **It must exit 0 before you commit:**
+the parallel runner. Run the builds and gates relevant to a change before you
+commit; coding agents may use the `SKIP_GODOT=1` smoke suite when appropriate:
 
 ```bash
 ./gates/run-all-gates.sh                      # pre-builds once, runs all gates in parallel
@@ -69,11 +70,13 @@ SKIP_GODOT=1 ./gates/run-all-gates.sh         # skip the Godot gates (faster smo
 JOBS=8 ./gates/run-all-gates.sh               # override parallel job count (default: nCPU)
 DN2CPP_GATE_CACHE=0 ./gates/run-all-gates.sh  # force every gate to actually run
 DN2CPP_REQUIRE_ALL=1 ./gates/run-all-gates.sh # every gate must RUN — a skip is a failure
-./gates/pre-merge.sh                          # THE MERGE GATE
 ```
 
-**Before a merge, run `./gates/pre-merge.sh`.** It runs the Release suite then
-the Debug suite, each under `DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0`, with
+**Before a merge, a human must run `./gates/pre-merge.sh`; coding agents must
+not run it.** An agent finishes the relevant builds and gates, creates the PR,
+then explicitly hands it off once the human pre-merge run is the only remaining
+step. The script runs the Release suite then the Debug suite, each under
+`DN2CPP_REQUIRE_ALL=1 DN2CPP_GATE_CACHE=0`, with
 `gates/verify-culture-invariance.sh` ahead of both and, ahead of the suites, a
 self-host rebuild (`gates/selfhost-emit.sh`) whenever the binary's stamp no
 longer matches the source tree — the fork lane's gates require that binary, so
