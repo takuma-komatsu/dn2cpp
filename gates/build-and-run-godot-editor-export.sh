@@ -280,13 +280,9 @@ if ! godot_export_step 2400 "$OUT/export.log" "$APP" \
     cat "$OUT/export.log" >&2
     exit 1
 fi
-# `--export-release` exits 0 even when an export plugin reported an error:
-# EditorNode only fails the run when export_project() itself returns non-OK, and
-# ExportPlugin._ExportBegin catches everything _ExportBeginImpl throws and turns
-# it into an AddMessage(Error, …), which downgrades to "completed with warnings"
-# (editor/editor_node.cpp:1407-1422). So a broken dn2cpp export produces a
-# plausible-looking artifact and a zero exit code — these two assertions, not the
-# exit code, are what makes this gate an oracle.
+# An export plugin's Error fails the export, so godot_export_step above already
+# asserted the exit code. This grep pins the MESSAGE: which plugin objected, and
+# in a run whose exit code the teardown race made unreadable.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2
@@ -391,8 +387,9 @@ assert_export_artifact_and_run() {
 }
 
 # assert_export_succeeded LOG — the success half of 5/13, for the two re-exports
-# below: the export plugin reported no error and the three dn2cpp stages ran. The
-# exit code says nothing on its own (see 5/13).
+# below: the export plugin reported no error and the three dn2cpp stages ran.
+# Each caller runs the export through godot_export_step, which asserts the exit
+# code; this is the assertion on the message.
 assert_export_succeeded() {
     local log="$1" what="$2" marker
     if grep -q "ERROR: Export .NET Project" "$log"; then
@@ -680,17 +677,22 @@ fi
 # staged, so putting them ahead of it keeps them independent of it.
 #
 # The export target of each gets its own subdirectory. A refused export still
-# runs the platform exporter's own packaging afterwards (a plugin's error is a
-# warning to the editor — see 5/13), and the good artifact plus its data dir sit
-# in $OUT: sharing a directory would let one of these overwrite what 6/13 just
-# asserted, or let a stale copy answer for a fresh one.
+# runs the platform exporter's own packaging afterwards, and the good artifact
+# plus its data dir sit in $OUT: sharing a directory would let one of these
+# overwrite what 6/13 just asserted, or let a stale copy answer for a fresh one.
 #
-# godot_export_refused LOG WHAT — the half every refusal assert shares: the C#
-# export plugin reported an error, and reported it before the publish. The
-# caller then greps for the sentence identifying WHICH refusal fired, because
-# all four of them look identical here.
+# godot_export_refused RC LOG WHAT — the half every refusal assert shares: the
+# export failed (non-zero exit and the editor's own verdict), the C# export
+# plugin is what refused it, and it refused before the publish. The caller then
+# greps for the sentence identifying WHICH refusal fired, because all four of
+# them look identical here.
 godot_export_refused() {
-    local log="$1" what="$2"
+    local rc="$1" log="$2" what="$3"
+    [ "$rc" -ne 0 ] \
+        || { echo "FAIL: the export was refused but exited 0 ($what)" >&2; cat "$log" >&2; exit 1; }
+    grep -qE "Project export for preset .* failed\." "$log" \
+        || { echo "FAIL: the editor did not report the refused export as failed ($what)" >&2
+             cat "$log" >&2; exit 1; }
     grep -q "ERROR: Export .NET Project" "$log" \
         || { echo "FAIL: the export plugin accepted $what" >&2; cat "$log" >&2; exit 1; }
     if grep -qF "dn2cpp: transpiling" "$log"; then
@@ -767,11 +769,13 @@ FOREIGN_OS_DIR="$PWD/$OUT/refuse-host-os"
 FOREIGN_OS_LOG="$OUT/export-host-os.log"
 rm -rf "$FOREIGN_OS_DIR"
 mkdir -p "$FOREIGN_OS_DIR"
+foreign_os_rc=0
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
     --path "$PWD/$PROJ" --export-release "$FOREIGN_PRESET" \
-    "$FOREIGN_OS_DIR/$PROJECT_NAME.$FOREIGN_OS_EXT" >"$FOREIGN_OS_LOG" 2>&1 || true
+    "$FOREIGN_OS_DIR/$PROJECT_NAME.$FOREIGN_OS_EXT" >"$FOREIGN_OS_LOG" 2>&1 || foreign_os_rc=$?
 
-godot_export_refused "$FOREIGN_OS_LOG" "a $FOREIGN_TARGET_OS target on a $DN2CPP_OS host"
+godot_export_refused "$foreign_os_rc" "$FOREIGN_OS_LOG" \
+    "a $FOREIGN_TARGET_OS target on a $DN2CPP_OS host"
 grep -qF "export to $FOREIGN_TARGET_OS has to run on $FOREIGN_TARGET_OS" "$FOREIGN_OS_LOG" \
     || { echo "FAIL: the export failed, but not on the host-OS guard" >&2
          cat "$FOREIGN_OS_LOG" >&2; exit 1; }
@@ -820,11 +824,12 @@ if [ "$DN2CPP_OS" = windows ]; then
     NO_VS="$(cygpath -w "$NOCXX_DIR/no-program-files")"
     NOCXX_ENV+=("ProgramFiles(x86)=$NO_VS" "ProgramFiles=$NO_VS" INCLUDE= LIB= LIBPATH=)
 fi
+nocxx_rc=0
 run_with_watchdog 600 env "${NOCXX_ENV[@]}" "$FORK_EDITOR" --headless \
     --path "$PWD/$PROJ" --export-release "$PRESET" \
-    "$NOCXX_DIR/$(basename "$EXPORT_TARGET")" >"$NOCXX_LOG" 2>&1 || true
+    "$NOCXX_DIR/$(basename "$EXPORT_TARGET")" >"$NOCXX_LOG" 2>&1 || nocxx_rc=$?
 
-godot_export_refused "$NOCXX_LOG" "a host with no C++ compiler to be found"
+godot_export_refused "$nocxx_rc" "$NOCXX_LOG" "a host with no C++ compiler to be found"
 grep -qF "missing tools it cannot build without" "$NOCXX_LOG" \
     || { echo "FAIL: the export failed, but not on the C++ toolchain guard" >&2
          cat "$NOCXX_LOG" >&2; exit 1; }
@@ -921,16 +926,18 @@ else
     # the hook stays registered after the explicit call below.
     gate_add_exit_hook restore_ref_posix
     mv "$REF_POSIX" "$REF_POSIX_HIDDEN"
+    noposix_rc=0
     (
         export PATH="$NOPOSIX_DIR/stub-emsdk:$PATH"
         run_with_watchdog 600 "$FORK_EDITOR" --headless \
             --path "$PWD/$PROJ" --export-release dn2cpp-web "$NOPOSIX_DIR/index.html"
-    ) >"$NOPOSIX_LOG" 2>&1 || true
+    ) >"$NOPOSIX_LOG" 2>&1 || noposix_rc=$?
     restore_ref_posix
     [ -f "$REF_POSIX/System.Private.CoreLib.dll" ] \
         || { echo "FAIL: could not restore $REF_POSIX" >&2; exit 1; }
 
-    godot_export_refused "$NOPOSIX_LOG" "a cross-target export against a bundle with no POSIX framework"
+    godot_export_refused "$noposix_rc" "$NOPOSIX_LOG" \
+        "a cross-target export against a bundle with no POSIX framework"
     for needle in "carries no POSIX framework" "ref-posix" "dist/package-toolchain.sh"; do
         grep -qF "$needle" "$NOPOSIX_LOG" \
             || { echo "FAIL: the export failed, but not on the POSIX-framework guard (no \"$needle\")" >&2
@@ -978,22 +985,16 @@ mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -q "custom_features=\"$FOREIGN_ARCH\"" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_features into the preset" >&2; exit 1; }
 
-# Exit code ignored on purpose, as in 5/13: an export plugin's error is a warning
-# to the editor. A regression here does the whole publish and native build before
-# it can go wrong, so the watchdog doubles as the budget for "refused early".
+# A regression here does the whole publish and native build before it can go
+# wrong, so the watchdog doubles as the budget for "refused early".
+bad_arch_rc=0
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
-    --path "$PWD/$PROJ" --export-release "$PRESET" "$BAD_APP" >"$BAD_LOG" 2>&1 || true
+    --path "$PWD/$PROJ" --export-release "$PRESET" "$BAD_APP" >"$BAD_LOG" 2>&1 || bad_arch_rc=$?
 
-grep -q "ERROR: Export .NET Project" "$BAD_LOG" \
-    || { echo "FAIL: the export plugin accepted a $FOREIGN_ARCH target on $ARCH" >&2
-         cat "$BAD_LOG" >&2; exit 1; }
+godot_export_refused "$bad_arch_rc" "$BAD_LOG" "a $FOREIGN_ARCH target on $ARCH"
 grep -qF "cannot cross-compile" "$BAD_LOG" \
     || { echo "FAIL: the export failed, but not on the architecture guard" >&2
          cat "$BAD_LOG" >&2; exit 1; }
-if grep -qF "dn2cpp: transpiling" "$BAD_LOG"; then
-    echo "FAIL: the architecture guard fired only after the publish had run" >&2
-    exit 1
-fi
 # The smuggled-in arch's data dir must not have been packaged (its path was
 # resolved, and any stale copy wiped, above the export).
 if [ -e "$BAD_ARCH_DATA_DIR" ]; then

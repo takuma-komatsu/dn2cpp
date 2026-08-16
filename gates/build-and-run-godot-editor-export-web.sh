@@ -108,7 +108,7 @@ while i < len(b):
 PY
 }
 
-echo "== 1/8 Fork pin + interop-ABI tripwire =="
+echo "== 1/9 Fork pin + interop-ABI tripwire =="
 # This lane is the first to change engine C++ at all, so the ABI surfaces the
 # mono-module handshake hard-codes assumptions about matter MORE here, not less:
 # they must still be byte-identical to the pinned base, or the fork has stopped
@@ -168,13 +168,13 @@ if gate_cache_check "$OUT" \
     { gate_cache_hit_msg; exit 0; }
 fi
 
-echo "== 2/8 Installing the working tree's toolchain into the fork editor =="
+echo "== 2/9 Installing the working tree's toolchain into the fork editor =="
 # Packaging runs every run (keeps a dn2cpp-side regression visible here); the
 # install is content-idempotent and atomic — see stage_editor_toolchain in
 # gates/_common.sh.
 stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
 
-echo "== 3/8 Staging the sample project =="
+echo "== 3/9 Staging the sample project =="
 # Staged fresh every run. The exporter deliberately persists its CMake build dir
 # under .godot/mono/dn2cpp/build to compile the runtime once, and CMake never
 # resets an already-cached variable to its default — so a build dir a PRIOR
@@ -224,11 +224,11 @@ mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$WEB_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the Web preset" >&2; exit 1; }
 
-echo "== 4/8 Importing the project (fork editor, headless) =="
+echo "== 4/9 Importing the project (fork editor, headless) =="
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
     --path "$PWD/$PROJ" --import >"$OUT/import.log" 2>&1 || true
 
-echo "== 5/8 Exporting with dotnet/export_backend = dn2cpp =="
+echo "== 5/9 Exporting with dotnet/export_backend = dn2cpp =="
 WEBDIR="$PWD/$OUT/web"
 rm -rf "$WEBDIR"
 mkdir -p "$WEBDIR"
@@ -239,11 +239,9 @@ if ! godot_export_step 2400 "$OUT/export.log" "$WEBDIR/index.html" \
     cat "$OUT/export.log" >&2
     exit 1
 fi
-# `--export-release` exits 0 even when an export plugin reported an error: the C#
-# plugin catches everything and turns it into AddMessage(Error, …), which the
-# editor downgrades to "completed with warnings". So a broken export produces a
-# plausible-looking directory and a zero exit code, and these assertions -- not
-# the exit code -- are what makes this gate an oracle.
+# An export plugin's Error fails the export, so godot_export_step above already
+# asserted the exit code. This grep pins the MESSAGE: which plugin objected, and
+# in a run whose exit code the teardown race made unreadable.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2
@@ -289,7 +287,7 @@ STAGED_EMSDK="$FORK_GODOTSHARP/Dn2Cpp/emsdk"
     echo "      staged: $STAGED_EMSDK" >&2
     exit 1; }
 
-echo "== 6/8 Asserting the artifacts =="
+echo "== 6/9 Asserting the artifacts =="
 DROPIN="$WEBDIR/$PROJECT_NAME.so"
 # (a) the drop-in is beside the HTML, under the exact name the engine will dlopen
 [ -f "$DROPIN" ] || {
@@ -513,7 +511,7 @@ for bad in truncated badversion; do
 done
 echo "checker fixtures OK: lexical glue traps, env tag, --peer-module, malformed-input exit 2"
 
-echo "== 7/8 Running the exported game in a real browser =="
+echo "== 7/9 Running the exported game in a real browser =="
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker
 # and needs a DOM), so this runs in a real Chrome — see gates/_run_in_chrome.js for
 # why that browser is not headless and rasterizes through SwiftShader.
@@ -688,7 +686,65 @@ else
     fi
 fi
 
-echo "== 8/8 Refusing a preset the engine could not load the drop-in from =="
+echo "== 8/9 Failing the export when the transpile fails =="
+# A failed transpile must fail the EXIT CODE of the export, because the exported
+# page cannot be read for it: index.html, index.wasm and index.side.wasm all come
+# out of the template, so a run that produced no drop-in still looks complete.
+FAILPROJ="$OUT/project-transpile-fail"
+rm -rf "$FAILPROJ"
+mkdir -p "$FAILPROJ"
+cp -R "$PROJ/." "$FAILPROJ/"
+# extra_transpile_args reaches the transpiler verbatim, and dn2cpp rejects an
+# unrecognized option with an `error:` line and exit 1 — the shortest path to a
+# transpile that fails for a reason nothing else in the export can absorb.
+# Godot's ConfigFile merges repeated section headers, so appending re-opens the
+# sample's own [dotnet] section.
+cat >> "$FAILPROJ/project.godot" <<'EOF'
+
+[dotnet]
+
+dn2cpp/extra_transpile_args=PackedStringArray("--not-a-real-flag")
+EOF
+
+FAILWEB="$PWD/$OUT/web-transpile-fail"
+FAIL_LOG="$OUT/export-transpile-fail.log"
+rm -rf "$FAILWEB"
+mkdir -p "$FAILWEB"
+fail_rc=0
+run_with_watchdog 900 "$FORK_EDITOR" --headless \
+    --path "$PWD/$FAILPROJ" --export-release dn2cpp-web "$FAILWEB/index.html" \
+    >"$FAIL_LOG" 2>&1 || fail_rc=$?
+# The sabotage landed: without this the section could pass on any other failure.
+grep -qF "dn2cpp: extra transpile args (project setting): --not-a-real-flag" "$FAIL_LOG" \
+    || { echo "FAIL: the export never read the extra_transpile_args project setting" >&2
+         cat "$FAIL_LOG" >&2; exit 1; }
+[ "$fail_rc" -ne 0 ] \
+    || { echo "FAIL: a failed transpile still exited 0" >&2; cat "$FAIL_LOG" >&2; exit 1; }
+for needle in "ERROR: Export .NET Project" \
+              "dn2cpp export failed while transpiling the game assembly"; do
+    grep -qF "$needle" "$FAIL_LOG" \
+        || { echo "FAIL: the export log lacks \"$needle\"" >&2; cat "$FAIL_LOG" >&2; exit 1; }
+done
+grep -qE "Project export for preset .* failed\." "$FAIL_LOG" \
+    || { echo "FAIL: the editor did not report the export as failed" >&2
+         cat "$FAIL_LOG" >&2; exit 1; }
+if grep -qF "completed with warnings" "$FAIL_LOG"; then
+    echo "FAIL: an export-plugin error was downgraded to a warning" >&2
+    cat "$FAIL_LOG" >&2
+    exit 1
+fi
+if grep -qF "dn2cpp: compiling the drop-in library" "$FAIL_LOG"; then
+    echo "FAIL: the export compiled a drop-in after the transpile had failed" >&2
+    cat "$FAIL_LOG" >&2
+    exit 1
+fi
+if [ -f "$FAILWEB/$PROJECT_NAME.so" ]; then
+    echo "FAIL: a failed transpile still shipped a drop-in at $FAILWEB/$PROJECT_NAME.so" >&2
+    exit 1
+fi
+echo "a failed transpile fails the export (exit $fail_rc), and ships no drop-in"
+
+echo "== 9/9 Refusing a preset the engine could not load the drop-in from =="
 # Without Extensions Support the template is not a dlink build, so its dlopen is
 # an Emscripten stub that returns NULL: the drop-in would be built, staged,
 # shipped, and then silently fail to load in the player's browser. The backend
@@ -707,9 +763,17 @@ grep -q '^variant/extensions_support=false' "$BADPROJ/export_presets.cfg" \
 BADWEB="$PWD/$OUT/web-nodlink"
 rm -rf "$BADWEB"
 mkdir -p "$BADWEB"
+nodlink_rc=0
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
     --path "$PWD/$BADPROJ" --export-release dn2cpp-web "$BADWEB/index.html" \
-    >"$OUT/export-nodlink.log" 2>&1 || true
+    >"$OUT/export-nodlink.log" 2>&1 || nodlink_rc=$?
+# The refusal is an AddMessage(Error), so it fails the export like any other.
+[ "$nodlink_rc" -ne 0 ] \
+    || { echo "FAIL: a non-dlink preset was refused but the export exited 0" >&2
+         cat "$OUT/export-nodlink.log" >&2; exit 1; }
+grep -qE "Project export for preset .* failed\." "$OUT/export-nodlink.log" \
+    || { echo "FAIL: the editor did not report the refused export as failed" >&2
+         cat "$OUT/export-nodlink.log" >&2; exit 1; }
 if grep -qF "dn2cpp: transpiling" "$OUT/export-nodlink.log"; then
     echo "FAIL: a non-dlink preset got as far as transpiling — the refusal is too late" >&2
     cat "$OUT/export-nodlink.log" >&2

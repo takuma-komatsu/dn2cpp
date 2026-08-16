@@ -225,9 +225,8 @@ fi
 echo "the bundled SDK and build tools were read-only across the export and nothing under them was written"
 
 echo "== 6/6 Asserting the export =="
-# `--export-release` exits 0 even when an export plugin reported an error: the C#
-# plugin turns everything into AddMessage(Error, …), which the editor downgrades
-# to "completed with warnings". These assertions, not the exit code, are the oracle.
+# An export plugin's Error fails the export, so the export step already asserted
+# the exit code. This grep pins the MESSAGE: which plugin objected.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2
