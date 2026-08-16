@@ -13,7 +13,7 @@
 - `GC.GetAllocatedBytesForCurrentThread` と `GC.GetTotalAllocatedBytes` をランタイムの割当カウンターへ接続し、スレッド単位とプロセス全体の計測を検証するようになりました
 - delegate の基底型を反映の到達可能性へ戻し、delegate 型階層をリフレクションで取得できるようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...93653c2a> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...fa4029418941ffad1779c6ea51821d8bc2233add> を参照してください。
 
 ## アセット
 
