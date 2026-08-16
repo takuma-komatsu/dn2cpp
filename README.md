@@ -16,14 +16,15 @@ game engine: it takes an IL assembly and produces a native executable —
 `dotnet publish` a console app straight to a native binary, the same job
 NativeAOT does, reached by a different route that goes through C++.
 
-Two Godot backends sit on that same core. The primary one targets **Godot
-.NET as it is actually used**: a stock `Godot.NET.Sdk` project — the real
-`GodotSharp`, the real source generators, `res://Player.cs` attached to a
-node in the scene — transpiles whole and drops into the engine's
-`modules/mono` load path in place of the C# game, which is the move
-IL2CPP makes on Unity's mono. The second emits a **GDExtension** library
-instead, which a stock engine with no .NET support at all can load.
-Either way, Godot is one of dn2cpp's outputs, not its premise.
+Godot's primary route is `--dotnet-module`: a stock `Godot.NET.Sdk`
+project — the real `GodotSharp`, the real source generators,
+`res://Player.cs` attached to a node in the scene — transpiles whole and
+drops into the engine's `modules/mono` load path in place of the C# game,
+the same move IL2CPP makes on Unity's mono. The [forked editor][fork]
+packages that mono-module drop-in as a one-click export; it does not use
+GDExtension. The separate `--gdextension` lane emits a library that a
+stock engine with no .NET support can load. Godot is an output, not a
+premise.
 
 What goes in is real .NET IL — the actual `System.Private.CoreLib`, the
 real `System.Linq`, the real `System.Text.Json` through source-gen — and
@@ -34,12 +35,10 @@ parity. The transpiler **self-hosts**: a native `dn2cpp` re-transpiles
 its own IL byte-identically — a fixpoint over tens of thousands of lines
 of ordinary managed C#.
 
-dn2cpp is deeply inspired by — and has nothing but respect for — Unity's
-IL2CPP. The shape of the thing is IL2CPP's idea: explicit vtables instead
-of C++ `virtual`, canonically shared generic bodies, a small runtime with
-the BCL supplied as transpiled IL. Bringing an equivalent capability
-within reach of Godot — and of .NET at large — is the point; rivalling or
-diminishing IL2CPP's achievement is not.
+dn2cpp follows Unity IL2CPP's architecture: explicit vtables instead of
+C++ `virtual`, canonically shared generic bodies, and a small runtime with
+the BCL supplied as transpiled IL. It aims to bring that capability to
+Godot and .NET at large, with full respect for IL2CPP's achievement.
 
 [fork]: https://github.com/takuma-komatsu/godot-dn2cpp
 
@@ -48,17 +47,18 @@ diminishing IL2CPP's achievement is not.
 One core, four ways to ship it:
 
 - **Console** — a native executable per platform, from any IL assembly.
-- **Godot .NET (mono-module drop-in)** — the lane for an existing
-  `Godot.NET.Sdk` game: the built library lands where a NativeAOT export
-  would, so the engine and its export template stay stock and your source
-  and scenes stay as they are. A [forked editor][fork] makes it one click.
+- **Godot .NET (mono-module drop-in)** — the primary Godot lane, selected
+  by `--dotnet-module`, for an existing `Godot.NET.Sdk` game. The built
+  library lands where a NativeAOT export would, so the engine and export
+  template stay stock and the source and scenes stay as they are. A
+  [forked editor][fork] makes this flow one click.
   It indexes the engine's interop table by hard-coded position with no
   runtime handshake, so it is **4.7.1-stable or nothing** — see the ABI pin
   under Backends before shipping.
-- **GDExtension** — a shared library a stock engine with no .NET support
-  compiled in can load. The price is that the C# targets dn2cpp's
-  generated GodotSharp shim, so an existing Godot .NET project has to be
-  re-targeted.
+- **GDExtension** — a distinct lane that emits a shared library for a
+  stock engine with no .NET support compiled in. It does not use the
+  forked-editor export flow. The C# targets dn2cpp's generated GodotSharp
+  shim, so an existing Godot .NET project has to be re-targeted.
 - **Hot update (HybridCLR-style)** — a build-time-baked patch image run by
   a bytecode interpreter, so patches work where runtime code generation is
   prohibited (iOS, consoles).
@@ -141,7 +141,7 @@ cmake and ninja, so unpack those (`gates/setup-buildtools.sh`) before
 > built and proven locally (`dist/nuget-smoke-test.sh` packs, installs
 > from a local feed, transpiles, builds and diffs) — but neither package
 > is on nuget.org today. Until they are, use a clone, or the [forked
-> editor][fork]'s releases for the Godot lanes.
+> editor][fork]'s releases for one-click `--dotnet-module` Godot exports.
 
 From a clone, the console lane end to end:
 
@@ -198,8 +198,9 @@ for the suite and the merge gate.
 
 ### Godot .NET — mono-module drop-in
 
-The lane for an existing Godot C# game. **No GDExtension involvement, and
-no changes to the engine or its export template.**
+The primary lane for an existing Godot C# game. **No GDExtension is
+involved: the exported game uses the stock engine runtime and export
+template; the fork changes editor tooling only.**
 
 - **What.** A dn2cpp-built shared library substitutes for the C# game in
   Godot's `modules/mono` load path — it lands where a NativeAOT export
@@ -222,8 +223,9 @@ no changes to the engine or its export template.**
   `gates/setup-godot-dotnet.sh` and re-freeze the fingerprint.
 - **Editor integration.** A [forked Godot editor][fork] adds
   `dotnet/export_backend = dn2cpp` as an export option: one
-  `--export-release` publishes the game IL, transpiles it, builds the C++
-  and stages the library. The fork's changes live in `GodotTools` (C#) and
+  `--export-release` drives the `--dotnet-module` backend: it publishes
+  the game IL, transpiles it, builds the C++ and stages the mono-module
+  drop-in library. The fork's changes live in `GodotTools` (C#) and
   `build_assemblies.py`, never in the engine runtime or the ABI surfaces;
   design, fork strategy and re-pin procedure are in
   `docs/EDITOR-EXPORT-DESIGN.md`. Its Releases carry a macOS editor `.app`
@@ -254,11 +256,11 @@ no changes to the engine or its export template.**
 
 ### GDExtension
 
-The lane for a stock engine. Runs on a Godot build with no .NET support
-compiled in at all — the price is that the C# targets dn2cpp's generated
-GodotSharp shim rather than the real one, so an existing Godot .NET
-project has to be re-targeted, and its classes register in ClassDB as
-GDExtension classes rather than as C# scripts.
+The separate stock-engine lane. It runs on a Godot build with no .NET
+support compiled in and is not part of the forked-editor flow. The C#
+targets dn2cpp's generated GodotSharp shim rather than the real one, so an
+existing Godot .NET project has to be re-targeted, and its classes
+register in ClassDB as GDExtension classes rather than as C# scripts.
 
 - **What.** Emits `libdn2cpp.dylib`/`libdn2cpp.so`/`dn2cpp.dll` that Godot
   loads at runtime, with transpiled C# registered in ClassDB. The name is
@@ -332,15 +334,18 @@ gate scripts are thin wrappers. **`docs/PORTING.md` is the guide for
 bringing dn2cpp up on a new target** — the seam inventory, the CMake edits,
 the gate/skip protocol, and the recorded porting hazards.
 
-| Platform | Console | GDExtension | Notes |
-|----|:-:|:-:|----|
-| **Windows** | ✅ | ✅ | Win32 I/O, `_msize`, `localtime_s`, `\` and drive-letter rooted paths, real MSVC `cl.exe` (clang-cl not pursued) |
-| **macOS** (Tier-1) | ✅ | ✅ | Full Boehm GC |
-| **Linux** | ✅ | ✅ | Shares the POSIX PAL with macOS; OpenSSL `CryptoNative_Evp*` crypto-digest PAL, membarrier, GC thread-deregistration. Full suite green, Godot desktop GDExtension included |
-| **iOS simulator** | ✅ | ✅ E2E | Full Boehm GC; `GD.Print` goes to the platform logger — use `Console` for E2E markers |
-| **iOS device** | ⏳ | ⏳ | Provisioning required; the build path is verified headlessly |
-| **Android** (NDK) | ✅ build | ✅ `.so` build | `arm64-v8a`, API 24; the `--dotnet-module` drop-in cross-builds too. Real-device runs confirmed on a Pixel 7a, including an unmodified C# demo exported by the forked editor onto the official mono template |
-| **WASM** (Emscripten) | ✅ | — | Full Boehm GC (Binaryen SpillPointers + a `dn2cpp_roots` section), MEMFS, single-threaded; P/Invoke against emcc-built static archives; the Godot drop-in exports to a real browser — where Godot 4 supports C# nowhere else |
+The forked-editor route is the **mono-module drop-in** column;
+GDExtension is the distinct stock non-.NET-engine lane.
+
+| Platform | Console | Mono-module drop-in | GDExtension | Notes |
+|----|:-:|:-:|:-:|----|
+| **Windows** | ✅ | ✅ | ✅ | Win32 I/O, `_msize`, `localtime_s`, `\` and drive-letter rooted paths, real MSVC `cl.exe` (clang-cl not pursued) |
+| **macOS** (Tier-1) | ✅ | ✅ E2E | ✅ | Full Boehm GC |
+| **Linux** | ✅ | ✅ | ✅ | Shares the POSIX PAL with macOS; OpenSSL `CryptoNative_Evp*` crypto-digest PAL, membarrier, GC thread-deregistration. Full suite green, both Godot lanes against a real engine included |
+| **iOS simulator** | ✅ | ✅ E2E | ✅ E2E | Full Boehm GC; `GD.Print` goes to the platform logger — use `Console` for E2E markers |
+| **iOS device** | ⏳ | ⏳ | ⏳ | Provisioning required; the build path is verified headlessly |
+| **Android** (NDK) | ✅ build | ✅ device | ✅ `.so` build | `arm64-v8a`, API 24; the drop-in cross-builds and runs on a Pixel 7a, including an unmodified C# demo exported by the forked editor onto the official mono template |
+| **WASM** (Emscripten) | ✅ | ✅ browser | — | Full Boehm GC (Binaryen SpillPointers + a `dn2cpp_roots` section), MEMFS, single-threaded; P/Invoke against emcc-built static archives; the Godot drop-in exports to a real browser — where Godot 4 supports C# nowhere else |
 
 ## Architecture
 
@@ -511,10 +516,16 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 
 ### Godot integration
 
-What the two Godot lanes have underneath them (the lanes themselves are
+The Godot lanes use different bridges (the full lane descriptions are
 under *Backends* above):
 
-- **Engine calls from C#** go through a registry of method binds built
+- **Mono-module drop-in.** A real `Godot.NET.Sdk` game and the real
+  `GodotSharp.dll` transpile together. Engine calls use the
+  `godotsharp_*` function-pointer array through `calli`; the managed script
+  bridge preserves existing C# script attachments. No
+  `extension_api.json` intrinsics or GDExtension registration are involved.
+
+- **GDExtension engine calls** go through a registry of method binds built
   from `extension_api.json` and a generic ptrcall path. All builtin value
   types round-trip; the shim lane reaches essentially the whole non-vararg
   instance-method surface plus the static and virtual populations — enums
@@ -522,14 +533,15 @@ under *Backends* above):
   `Variant`, engine-backed `Godot.Collections.Array`/`Dictionary` and typed
   arrays, `Callable` (including delegate-backed) and `Signal`, varargs and
   statics.
-- **Scene-tree integration** — `Godot.Node`-derived C# classes are
+- **GDExtension scene-tree integration** — `Godot.Node`-derived C# classes are
   placeable in scenes and every `_*` virtual whose signature the codec
   models is overridable (reverse-dispatch trampolines generated per class),
   not just the lifecycle/input set. **`Godot.RefCounted`** lifetimes,
   including C#-`new`-created ones, survive engine hand-off.
-- **Bindings generation** — `dn2cpp --generate-bindings extension_api.json`
+- **GDExtension bindings generation** — `dn2cpp --generate-bindings extension_api.json`
   regenerates `src/GodotSharpShim/` and the transpiler's engine-call map
-  from the same source of truth, implicitly inside every Godot-lane gate.
+  from the same source of truth, implicitly inside every Godot-lane gate
+  that exercises this bridge.
   Engine bindings are generated, never hand-listed: widening the supported
   marshalling shapes in `src/Dn2Cpp.Godot/GodotApi.cs` is how a filtered-out
   method starts working.
