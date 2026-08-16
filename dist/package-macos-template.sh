@@ -9,10 +9,10 @@
 # the exact name `godot_macos_<cfg>.<architecture>` with no lipo fallback. So
 # `universal` is refused by the backend and `arm64` finds no template binary.
 #
-# The official template is the right source because the fork's engine delta
-# outside platform/web/ and editor/ is inert in the export template — and that is CHECKED here, not
-# assumed (step 2), as is the identity of the template itself (step 5): a
-# template is trusted on its filename by everything downstream.
+# The official template is the right source because the fork's non-Web,
+# non-editor engine delta is inert in an export template — and that is CHECKED
+# here, not assumed (step 2), as is the identity of the template itself (step
+# 5): a template is trusted on its filename by everything downstream.
 #
 # Usage:
 #   dist/package-macos-template.sh --version V [options]
@@ -55,15 +55,34 @@ BASE_COMMIT="$(godot_fork_base_commit)"
 echo "fork:  $FORK"
 echo "base:  $BASE_COMMIT"
 
-# ── 2. The fork's engine delta is inert on macOS ──────────────────────────────
-# What makes an UPSTREAM binary this fork's template. Every added or removed
-# engine line outside platform/web/ or editor/ (which no export template compiles) is
-# normalized by deleting its WEB_ENABLED operand; the additions must then cancel
-# the removals exactly — i.e. with WEB_ENABLED undefined, these sources are
-# upstream's. An engine change that survives normalization means the fork now
-# builds a different macOS binary and this asset would ship the wrong engine.
+# ── 2. The fork's non-Web/non-editor engine delta is inert on macOS ──────────
+# What makes an UPSTREAM binary this fork's template. Export templates compile
+# neither platform/web/ nor editor/**. Before normalizing text, reject binary
+# deltas and untracked inputs in every remaining engine path: awk cannot prove
+# either inert. Every remaining added or removed engine line is normalized by
+# deleting its WEB_ENABLED operand; the additions must then cancel the removals
+# exactly — i.e. with WEB_ENABLED undefined, these sources are upstream's. A
+# text change that survives normalization means the fork now builds a different
+# macOS binary and this asset would ship the wrong engine.
+MACOS_ENGINE_INPUTS=(
+    "${FORK_OWNED[@]}"
+    ':(exclude,glob)platform/web/**'
+    ':(exclude,glob)editor/**'
+)
+binary_delta="$(git -C "$FORK" diff --no-ext-diff --no-textconv --no-color --no-renames \
+    --numstat "$BASE_COMMIT" -- "${MACOS_ENGINE_INPUTS[@]}" \
+    | awk '$1 == "-" && $2 == "-" { print }')"
+[ -z "$binary_delta" ] || die "the fork has tracked binary changes outside platform/web/ and editor/**,
+       which this macOS export-template check cannot normalize:
+$(printf '%s\n' "$binary_delta" | sed 's/^/         /')
+       Bake the template from the fork instead of thinning upstream's."
+untracked_engine="$(git -C "$FORK" ls-files --others --exclude-standard \
+    -- "${MACOS_ENGINE_INPUTS[@]}")"
+[ -z "$untracked_engine" ] || die "the fork has untracked engine inputs outside platform/web/ and editor/**:
+$(printf '%s\n' "$untracked_engine" | sed 's/^/         /')
+       Bake the template from the fork instead of thinning upstream's."
 engine_delta="$(git -C "$FORK" diff --no-ext-diff --no-textconv --no-color --no-renames \
-    "$BASE_COMMIT" -- "${FORK_OWNED[@]}" ':(exclude)platform/web' ':(exclude)editor/**')"
+    "$BASE_COMMIT" -- "${MACOS_ENGINE_INPUTS[@]}")"
 residue="$(awk '
     /^diff / { inhunk = 0 }
     /^@@/    { inhunk = 1; next }
@@ -80,11 +99,11 @@ residue="$(awk '
     }
     END { for (s in n) if (n[s] != 0) printf "%+d %s\n", n[s], s }
 ' <<<"$engine_delta" | sort)"
-[ -z "$residue" ] || die "the fork's engine sources differ from $BASE_COMMIT in a way a macOS
-       build would see, so an upstream template is no longer this fork's:
+[ -z "$residue" ] || die "the fork's non-Web/non-editor engine sources differ from $BASE_COMMIT in a way a
+       macOS export template would see, so an upstream template is no longer this fork's:
 $(printf '%s\n' "$residue" | sed 's/^/         /')
        Bake the template from the fork instead of thinning upstream's."
-echo "delta: inert on macOS (every non-Web engine change reduces to $BASE_COMMIT)"
+echo "delta: inert on macOS (every non-Web/non-editor engine text change reduces to $BASE_COMMIT)"
 
 # ── 3. The upstream template ──────────────────────────────────────────────────
 # Named, never downloaded: the release host installs export templates through
