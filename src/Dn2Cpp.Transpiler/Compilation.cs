@@ -1679,7 +1679,11 @@ internal sealed partial class Compilation
                 else if (baseNs == "System" && baseName == "Enum")
                     cls.IsEnum = true;
                 else if (baseNs == "System" && baseName is "MulticastDelegate" or "Delegate")
+                {
                     cls.IsDelegate = true;
+                    if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is { Kind: TypeKind.Class } bt)
+                        cls.BaseClass = bt.Class;
+                }
                 else if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is { Kind: TypeKind.Class } bt)
                     cls.BaseClass = bt.Class; // cross-assembly base
                 else if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is null

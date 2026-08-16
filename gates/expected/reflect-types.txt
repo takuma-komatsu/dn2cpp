@@ -1388,3 +1388,6 @@ regname System.Diagnostics.StackTrace found=True same=True
 regname System.Threading.WaitHandle found=True same=True
 regname System.Threading.ManualResetEventSlim found=True same=True
 regname System.AggregateException found=True same=True
+== app delegate base types ==
+nested base=System.MulticastDelegate basebase=System.Delegate isDelegate=True isMulticast=True castDelegate=True castMulticast=True
+nested-generic base=System.MulticastDelegate basebase=System.Delegate isDelegate=True isMulticast=True castDelegate=True castMulticast=True

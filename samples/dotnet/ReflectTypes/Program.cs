@@ -76,6 +76,7 @@ namespace ReflectTypes
             BoundHandleResidueSubset.Program.Run();
             IntrinsicTypeNameSubset.Program.Run();
             TypeRegistryMouthsSubset.Program.Run();
+            DelegateBaseTypeSubset.Program.Run();
         }
     }
 }
