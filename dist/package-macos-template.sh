@@ -10,7 +10,7 @@
 # `universal` is refused by the backend and `arm64` finds no template binary.
 #
 # The official template is the right source because the fork's engine delta
-# outside platform/web/ is inert on macOS — and that is CHECKED here, not
+# outside platform/web/ and editor/ is inert in the export template — and that is CHECKED here, not
 # assumed (step 2), as is the identity of the template itself (step 5): a
 # template is trusted on its filename by everything downstream.
 #
@@ -57,13 +57,13 @@ echo "base:  $BASE_COMMIT"
 
 # ── 2. The fork's engine delta is inert on macOS ──────────────────────────────
 # What makes an UPSTREAM binary this fork's template. Every added or removed
-# engine line outside platform/web/ (which no macOS build compiles) is
+# engine line outside platform/web/ or editor/ (which no export template compiles) is
 # normalized by deleting its WEB_ENABLED operand; the additions must then cancel
 # the removals exactly — i.e. with WEB_ENABLED undefined, these sources are
 # upstream's. An engine change that survives normalization means the fork now
 # builds a different macOS binary and this asset would ship the wrong engine.
 engine_delta="$(git -C "$FORK" diff --no-ext-diff --no-textconv --no-color --no-renames \
-    "$BASE_COMMIT" -- "${FORK_OWNED[@]}" ':(exclude)platform/web')"
+    "$BASE_COMMIT" -- "${FORK_OWNED[@]}" ':(exclude)platform/web' ':(exclude)editor/**')"
 residue="$(awk '
     /^diff / { inhunk = 0 }
     /^@@/    { inhunk = 1; next }

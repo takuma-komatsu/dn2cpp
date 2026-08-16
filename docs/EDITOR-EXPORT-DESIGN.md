@@ -805,10 +805,11 @@ metadata value by value against the notes already published: once the file is on
 another machine those two are the only witnesses left for a hash, a `--version`
 string or a toolchain content hash.
 
-- **The macOS export template is upstream's binary, not a fork build.** With
-  `WEB_ENABLED` undefined the fork's engine sources reduce to the pinned base, so
-  a macOS template compiled from either is the same program — and the packaging
-  script *checks* that reduction, plus the template's own
+- **The macOS export template is upstream's binary, not a fork build.** Export
+  templates do not compile `editor/`, and with `WEB_ENABLED` undefined the
+  remaining fork engine sources reduce to the pinned base, so a macOS template
+  compiled from either is the same program — and the packaging script *checks*
+  that reduction, plus the template's own
   `<base>.stable.mono.official.<commit>` self-report, rather than resting on it.
   The gates keep baking their own, because a fork-baked template is what
   `godot_fork_template_check`'s provenance stamp can speak for.
