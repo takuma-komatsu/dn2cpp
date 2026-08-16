@@ -3579,7 +3579,12 @@ internal sealed partial class Compilation
                 string bns = reader.GetString(baseRef.Namespace);
                 if (bns == "System" && bn == "ValueType") spec.IsValueType = true;
                 else if (bns == "System" && bn == "Enum") spec.IsEnum = true;
-                else if (bns == "System" && bn is "MulticastDelegate" or "Delegate") spec.IsDelegate = true;
+                else if (bns == "System" && bn is "MulticastDelegate" or "Delegate")
+                {
+                    spec.IsDelegate = true;
+                    if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is { Kind: TypeKind.Class } cbt)
+                        spec.BaseClass = cbt.Class;
+                }
                 else if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is { Kind: TypeKind.Class } cbt)
                     spec.BaseClass = cbt.Class;
                 else if (ResolveTypeRef(module, (TypeReferenceHandle)td.BaseType) is null

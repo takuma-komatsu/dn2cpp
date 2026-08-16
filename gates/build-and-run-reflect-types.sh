@@ -6,7 +6,9 @@
 # the originals. Covers:
 #   Type metadata (names/namespace/FullName, enum/interface/abstract/array,
 #   BaseType, IsAssignableFrom, IsInstanceOfType, GetType), array element types
-#   & rank, enum underlying type / GetNames / GetName / IsDefined / Parse,
+#   & rank, app-declared nested delegate inheritance/casts through
+#   MulticastDelegate and Delegate, enum underlying type / GetNames / GetName /
+#   IsDefined / Parse,
 #   generic type definitions & arguments, nested types, Nullable<T> metadata,
 #   fields / properties / methods / constructors enumeration with binding flags
 #   and inheritance, custom attributes (type/field/prop/method/param/ctor,
