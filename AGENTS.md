@@ -34,6 +34,7 @@ GitHub issues are the intake, not a second backlog, and the reference is
 one-directional: a row may cite an issue number, which is permanent and
 resolvable, while nothing cites a row — the row is deleted when the ticket
 lands. An issue taken as work becomes one row, and is closed saying so.
+When a related GitHub issue is written in Japanese, write the PR body in Japanese.
 
 ## A ticket id lives in `docs/STATUS.md` and nowhere else
 
