@@ -15,6 +15,9 @@ namespace Dn2Cpp;
 
 public static class WasmSymbols
 {
+    private static void WriteLfLine(string value) =>
+        Console.Write(value + "\n");
+
     private sealed class WasmImport
     {
         public string Mod = "";
@@ -96,21 +99,21 @@ public static class WasmSymbols
             {
                 if (providedFuncs.Contains(im.Field) || IsBenignTlsInit(im.Field))
                     continue;
-                Console.WriteLine(im.Field);
+                WriteLfLine(im.Field);
                 unsatisfied++;
             }
             else if (im.Kind == 4 && im.Mod == "env")
             {
                 if (providedTags.Contains(im.Field))
                     continue;
-                Console.WriteLine(im.Field);
+                WriteLfLine(im.Field);
                 unsatisfied++;
             }
             else if (im.Mod == "GOT.mem" || im.Mod == "GOT.func")
             {
                 if (globalSymbols.Contains(im.Field) || IsBenignTlsInit(im.Field))
                     continue;
-                Console.WriteLine($"{im.Mod}.{im.Field}");
+                WriteLfLine($"{im.Mod}.{im.Field}");
                 unsatisfied++;
             }
             // env global/table/memory imports (__memory_base, __table_base,
