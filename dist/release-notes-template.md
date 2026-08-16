@@ -9,11 +9,12 @@
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
 - Web エクスポートの wasm side module と main module・JavaScript glue の import 閉包を事前検査し、ブラウザ実行時まで潜んでいた未解決 import を名前付きで検出するようになりました
+- Web checker の診断出力を LF 固定にし、Windows と POSIX の checker differential が同じ結果になるようになりました
 - Godot のヘッドレスエクスポートでエクスポートプラグインのエラーを失敗として扱うようになり、トランスパイル失敗が終了コード 0 や見かけ上の成果物として通過しなくなりました
 - `GC.GetAllocatedBytesForCurrentThread` と `GC.GetTotalAllocatedBytes` をランタイムの割当カウンターへ接続し、スレッド単位とプロセス全体の計測を検証するようになりました
 - delegate の基底型を反映の到達可能性へ戻し、delegate 型階層をリフレクションで取得できるようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...9f6a29afa6bb2f3922899d78a4823372dcfcb603> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...c4d441be3a7fbc0a18cdbc37d1ee6ca6cd3aa8d6> を参照してください。
 
 ## アセット
 
