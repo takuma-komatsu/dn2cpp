@@ -8,13 +8,12 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- インクリメンタル GC の write barrier を、managed reference の保存・`Unsafe` のメモリ操作・Godot のアンカー掃引まで拡張し、外部型を含む保存もネイティブゲートで検証するようになりました
-- P/Invoke のマーシャリング記述子が `delegate*` 関数ポインター、構造体のオフセット、`[MarshalAs]` の種別を検証し、対象外の組み合わせを変換時に明確に拒否するようになりました
-- Web エクスポートで `Stopwatch` と `Environment.TickCount64` の単調時計を提供し、ブラウザ側の未解決 import を実行時に検出する検証を追加しました
-- Godot .NET のインターオプ ABI について、enum / `Error` の戻り幅と `calli` の ABI 型を静的に照合するようになりました
-- ファイナライザ抑制集合、`Task` の完了状態と遅延例外キャッシュを整理し、競合時の公開順序と反復コストを改善しました
+- Web エクスポートの wasm side module と main module・JavaScript glue の import 閉包を事前検査し、ブラウザ実行時まで潜んでいた未解決 import を名前付きで検出するようになりました
+- Godot のヘッドレスエクスポートでエクスポートプラグインのエラーを失敗として扱うようになり、トランスパイル失敗が終了コード 0 や見かけ上の成果物として通過しなくなりました
+- `GC.GetAllocatedBytesForCurrentThread` と `GC.GetTotalAllocatedBytes` をランタイムの割当カウンターへ接続し、スレッド単位とプロセス全体の計測を検証するようになりました
+- delegate の基底型を反映の到達可能性へ戻し、delegate 型階層をリフレクションで取得できるようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/7de20c4a84d4637186c69b6c3d7aef2c684f500b...41e8edcb09ae28ab9dcf76ba209f86b26577762e> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...76233647ac0b9ca37a1a831652f98256787940c1> を参照してください。
 
 ## アセット
 
