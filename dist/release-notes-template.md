@@ -8,13 +8,10 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Web エクスポートの wasm side module と main module・JavaScript glue の import 閉包を事前検査し、ブラウザ実行時まで潜んでいた未解決 import を名前付きで検出するようになりました
-- Web checker の診断出力を LF 固定にし、Windows と POSIX の checker differential が同じ結果になるようになりました
-- Godot のヘッドレスエクスポートでエクスポートプラグインのエラーを失敗として扱うようになり、トランスパイル失敗が終了コード 0 や見かけ上の成果物として通過しなくなりました
-- `GC.GetAllocatedBytesForCurrentThread` と `GC.GetTotalAllocatedBytes` をランタイムの割当カウンターへ接続し、スレッド単位とプロセス全体の計測を検証するようになりました
-- delegate の基底型を反映の到達可能性へ戻し、delegate 型階層をリフレクションで取得できるようになりました
+- `Debugger.IsLogging` と `Debugger.Log` を NativeAOT と同じく扱い、実行時 VM のない AOT バイナリでも Debugger logging が未実装の QCall に到達せず、安全な no-op になるようになりました
+- `Trace` / `Debug` の出力を `Interop.Sys.SysLog` へ接続し、POSIX 系ではホストの syslog、Web では標準エラー出力（ブラウザのコンソール）へ送るようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/58f3657776de93846a7bdc2c0475039b2b32d762...c4d441be3a7fbc0a18cdbc37d1ee6ca6cd3aa8d6> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6a17ce6367f90b393cbf7016a45c4284c56d5312...f341b8a6073e505619f1f4f4f53a1bf02eb89090> を参照してください。
 
 ## アセット
 
