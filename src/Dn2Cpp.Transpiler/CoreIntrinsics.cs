@@ -743,6 +743,11 @@ internal static partial class CoreIntrinsics
         // present. Neither is a degrade.
         [("System.Diagnostics.Debugger", "IsManagedDebuggerAttached")] = BoundedVerdict.Silent,
         [("System.Diagnostics.Debugger", "BreakInternal")] = BoundedVerdict.Silent,
+        // The public Debugger.Log calls LogInternal unconditionally (no IsLogging guard),
+        // so app code reaching Log directly does not benefit from the IsLogging fold.
+        // Bound at the LibraryImport WRAPPER, never at its `<LogInternal>g____PInvoke|N_0`
+        // stub — that ordinal is a Roslyn artifact and moves with a CoreLib update.
+        [("System.Diagnostics.Debugger", "LogInternal")] = BoundedVerdict.Silent,
         // ComWrappers' COM-vftbl builders — three bodyless QCall externs reached only
         // through ComWrappers..cctor, which TypeDescriptor.GetConverter drags in. With no
         // COM RCW ever created, TryGetComInstance answers false (a true answer: no COM
@@ -1935,7 +1940,13 @@ internal static partial class CoreIntrinsics
     /// value feeds the BranchLiveness verdict: the
     /// `if (!TryEnsure...) CallOnEmptyStack(...)` re-dispatch arm (Regex's
     /// deep-recursion escape hatch) is pruned, keeping StackHelper's
-    /// Task.Run/ContinueWith plumbing out of the tree.</summary>
+    /// Task.Run/ContinueWith plumbing out of the tree.
+    ///
+    /// Debugger.IsLogging: constant-false, NativeAOT's hard-coded answer — a
+    /// transpiled binary has no VM to log into. BranchLiveness prunes
+    /// DebugProvider.WriteToDebugger's then-arm (Debugger.Log, whose leaf is the
+    /// bodyless QCall LogInternal) and leaves Interop.Sys.SysLog the live sink,
+    /// where NativeAOT's Trace/Debug output goes on Unix.</summary>
     private static readonly Dictionary<(string Type, string Method), bool> s_constFoldedGetters = new()
     {
         [("System.Globalization.GlobalizationMode", "get_Invariant")] = true,
@@ -1944,6 +1955,7 @@ internal static partial class CoreIntrinsics
         [("System.Runtime.CompilerServices.RuntimeFeature", "get_IsDynamicCodeCompiled")] = false,
         [("System.Runtime.CompilerServices.RuntimeHelpers", "TryEnsureSufficientExecutionStack")] = true,
         [("System.Threading.StackHelper", "TryEnsureSufficientExecutionStack")] = true,
+        [("System.Diagnostics.Debugger", "IsLogging")] = false,
     };
 
     /// <summary>Method names appearing in <see cref="s_constFoldedGetters"/> —

@@ -3,7 +3,7 @@
 //
 // The bulk of that surface (platform/posix/dn2cpp_system_native.cpp) is the
 // file-I/O P/Invoke closure, and it is deliberately NOT part of the wasm build.
-// Three things it also defines are not file I/O, and each is here for its own
+// Four things it also defines are not file I/O, and each is here for its own
 // reason — the exclusion was written for the closure and covers none of them.
 //
 //   * The CSPRNG has a caller that is not a P/Invoke at all and IS compiled on
@@ -13,6 +13,8 @@
 //     user MemberReference to Environment.TickCount64 reach through their real
 //     BCL bodies. In-CoreLib MethodDefinition calls to TickCount64 can instead
 //     lower to dn2cpp_tickcount64. The engine's Time API is a separate surface.
+//   * SysLog is the Trace/Debug sink DebugProvider falls to, reached by any game
+//     that logs; it is a console entry point, not a file one.
 //
 // Only what a call site actually reaches is defined here. Stopwatch.Frequency is
 // a constant on this CoreLib, so the POSIX twin's timestamp-resolution entry does
@@ -31,6 +33,7 @@
 // Environment.TickCount64.
 
 #include <cstdint>
+#include <cstdio>   // fprintf — the SysLog stand-in
 #include <ctime>    // clock_gettime
 #include <unistd.h> // getentropy
 
@@ -92,6 +95,25 @@ int64_t SystemNative_GetLowResolutionTimestamp(void)
     if (::clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
         return 0;
     return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
+}
+
+// pal_io.c SystemNative_SysLog, the sink DebugProvider.WriteToDebugger falls to
+// once Debugger.IsLogging const-folds false — a Trace/Debug write reaches it from
+// any game that logs, and on a side module an undefined one throws at the first
+// call. A browser has no syslog, so this writes stderr (the browser console);
+// `message` is the format ("%s") and `arg1` its argument, as on the POSIX twin.
+void SystemNative_SysLog(int32_t priority, const char* message, const char* arg1)
+{
+    (void)priority;
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+    ::fprintf(stderr, message, arg1);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+    ::fputc('\n', stderr);
 }
 
 } // extern "C"
