@@ -489,8 +489,7 @@ if ! godot_export_step 3600 "$OUT/export.log" "$APK" \
     cat "$OUT/export.log" >&2
     exit 1
 fi
-# An export plugin's Error fails the export, so godot_export_step above already
-# asserted the exit code. This grep pins the MESSAGE: which plugin objected.
+# The plugin reports errors as warnings, so the log is the export's failure signal.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2

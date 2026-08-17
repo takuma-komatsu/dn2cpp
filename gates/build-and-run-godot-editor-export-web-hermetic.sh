@@ -225,8 +225,8 @@ fi
 echo "the bundled SDK and build tools were read-only across the export and nothing under them was written"
 
 echo "== 6/6 Asserting the export =="
-# An export plugin's Error fails the export, so the export step already asserted
-# the exit code. This grep pins the MESSAGE: which plugin objected.
+# The plugin reports errors as warnings, so the log is the export's failure
+# signal; a headless editor may still exit 0.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     echo "FAIL: the C# export plugin reported an error (see below)" >&2
     cat "$OUT/export.log" >&2
