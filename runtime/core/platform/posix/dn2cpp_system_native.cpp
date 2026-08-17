@@ -49,6 +49,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
+#include <syslog.h>
 #include <unistd.h>
 
 #if defined(__APPLE__)
@@ -447,6 +448,23 @@ int32_t SystemNative_Write(intptr_t fd, const void* buffer, int32_t bufferSize)
     {
     }
     return (int32_t)n;
+}
+
+// pal_io.c SystemNative_SysLog: the sink DebugProvider.WriteToDebugger falls to
+// once Debugger.IsLogging const-folds false, i.e. where Trace/Debug output goes on
+// this lane — syslog, not stdout, exactly as under NativeAOT. `message` is the
+// format ("%s") and `arg1` its argument; the PAL passes both through unchanged, and
+// the managed SysLogPriority values are the host's LOG_* already.
+void SystemNative_SysLog(int32_t priority, const char* message, const char* arg1)
+{
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#endif
+    ::syslog(priority, message, arg1);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 }
 
 int32_t SystemNative_PRead(intptr_t fd, void* buffer, int32_t bufferSize, int64_t fileOffset)

@@ -131,10 +131,12 @@ user identity, and the low-level monitor.
   already-blittable shapes, so those calls direct-link once the modules are
   admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port is a line in
   the transpiler and a `target_link_libraries` row.
-- **wasm defines three.**
+- **wasm defines four.**
   `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp` supplies
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
-  P/Invoke at all, plus the `pal_time.c` clocks behind
+  P/Invoke at all, `SystemNative_SysLog` — the Trace/Debug sink `DebugProvider`
+  falls to once `Debugger.IsLogging` const-folds false, hence reached by any game
+  that logs — plus the `pal_time.c` clocks behind
   `Stopwatch.GetTimestamp` and `Environment.TickCount64`. Both user calls resolve
   from MemberReferences to real CoreLib bodies and reach P/Invokes. An in-CoreLib
   MethodDefinition call to `TickCount64` can instead take the
