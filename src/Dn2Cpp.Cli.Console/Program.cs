@@ -7,8 +7,8 @@ using Dn2Cpp;
 // BindingGenerator.Run subtree that the full CLI statically roots but never
 // executes on the console path (=, out of console-self-host scope).
 //
-// Supports only the console transpile arguments — input assembly, -o <dir>,
-// -r <ref.dll>, --measure. There is no --gdextension / --generate-bindings here;
+// Supports only the console transpile arguments, including the shared
+// preservation controls. There is no --gdextension / --generate-bindings here;
 // the GDExtension path lives in the full `dn2cpp` CLI. The transpile pipeline
 // itself is the shared backend-agnostic Dn2Cpp.TranspileDriver, so this CLI's
 // console output is byte-identical to the full CLI's ConsoleBackend path.
@@ -22,6 +22,8 @@ bool sharedGenerics = true;
 bool shadowStack = false;
 var references = new List<string>();
 var noDefaultRefs = new List<string>();
+var projectRoots = new List<string>();
+var linkFeatures = new List<string>();
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -63,6 +65,20 @@ for (int i = 0; i < args.Length; i++)
         // transitive dependency. Opt-in while drift is being measured.
         autoRef = true;
     }
+    else if (args[i] == "--project-root" && i + 1 < args.Length)
+    {
+        projectRoots.Add(args[++i]);
+    }
+    else if (args[i] == "--link-feature" && i + 1 < args.Length)
+    {
+        string feature = args[++i];
+        if (feature != "com" && feature != "sre" && feature != "remoting")
+        {
+            Console.Error.WriteLine($"error: --link-feature expects com, sre, or remoting, got '{feature}'");
+            return 1;
+        }
+        linkFeatures.Add(feature);
+    }
     else if (args[i] == "--no-shared-generics")
     {
         // Escape hatch: compile every generic instantiation monomorphically
@@ -95,7 +111,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
     return 1;
 }
 
@@ -110,4 +126,6 @@ return TranspileDriver.RunConsole(new TranspileOptions
     AutoRef = autoRef,
     SharedGenerics = sharedGenerics,
     ShadowStack = shadowStack,
+    ProjectRoots = projectRoots,
+    LinkFeatures = linkFeatures,
 });

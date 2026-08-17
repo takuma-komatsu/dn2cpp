@@ -24,7 +24,7 @@
       <_Dn2CppBuildDir>$([MSBuild]::NormalizeDirectory('$(_Dn2CppGenDir)', 'build'))</_Dn2CppBuildDir>
     </PropertyGroup>
 
-    <Exec Command="$(Dn2CppTool) &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDir)&quot; $(Dn2CppExtraArgs)" />
+    <Exec Command="$(Dn2CppTool) &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDir)&quot; --project-root &quot;$(MSBuildProjectDirectory)&quot; $(Dn2CppExtraArgs)" />
 
     <Exec Command="$(Dn2CppCMake) -S &quot;$(_Dn2CppRuntimeDir)&quot; -B &quot;$(_Dn2CppBuildDir)&quot; -G &quot;$(Dn2CppGenerator)&quot; -DDN2CPP_APP_DIR=&quot;$(_Dn2CppGenDir.TrimEnd('/'))&quot; -DDN2CPP_APP_NAME=&quot;$(AssemblyName)&quot; $(Dn2CppCMakeArgs)" />
     <Exec Command="$(Dn2CppCMake) --build &quot;$(_Dn2CppBuildDir)&quot;" />

@@ -464,6 +464,8 @@ internal sealed partial class Compilation
         _cliCutMethods = (options.CutMethods ?? Array.Empty<string>()).Select(ParseCutSpec).ToHashSet();
         _trimReflection = options.TrimReflection;
         _reflectionRoots = new HashSet<string>(options.ReflectionRoots ?? Array.Empty<string>(), StringComparer.Ordinal);
+        _projectRoots = options.ProjectRoots;
+        _linkFeatures = new HashSet<string>(options.LinkFeatures, StringComparer.Ordinal);
         _noManifestResources = new HashSet<string>(
             options.NoManifestResources ?? Array.Empty<string>(), StringComparer.Ordinal);
         _manifestResourceRoots = new HashSet<string>(
@@ -1078,6 +1080,8 @@ internal sealed partial class Compilation
                 keep.Add(cls);
                 rootsHit.Add(hit);
             }
+            if (_explicitReflectionKeep.Contains(cls))
+                keep.Add(cls);
         }
         // A root matching no loaded type is a hard error: a typo silently becoming a no-op
         // root would surface as a PlatformNotSupportedException in a shipped game, which is
@@ -1824,6 +1828,8 @@ internal sealed partial class Compilation
         // to nothing is a hard error), before reachability — the first consumer
         // of the cut set — runs.
         ValidateCutMethods();
+
+        DiscoverPreservationPolicies();
 
         // Pass 2.5: populate MethodImpls for all non-generic classes
         foreach (var cls in Classes.ToList())
@@ -3597,6 +3603,8 @@ internal sealed partial class Compilation
     {
         _toScan = new Queue<MethodInfo>();
 
+        SeedPreservedMembers();
+
         // Seed with the program roots. Only the app module is rooted; reference
         // assemblies (e.g. a real CoreLib passed with -r) are pulled in solely
         // through reachability edges, so tree-shaking can keep all but the
@@ -3719,7 +3727,6 @@ internal sealed partial class Compilation
                 SeedGenericRoot(root);
 
         DrainReachability();
-
         // Reflection-invoke reachability route: if the program calls
         // MethodInfo.Invoke, make every app-module (non-ctor) method body invokable by
         // reaching it — its invoker thunk + arg/return box/unbox then emit. Bounded to
@@ -4801,6 +4808,8 @@ internal sealed partial class Compilation
                     { ReachabilityDiagnostics.Add((m, ex)); }
                 progress = true;
             }
+            if (ActivateConditionalPreservationPolicies())
+                progress = true;
         }
     }
 
