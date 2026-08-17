@@ -237,6 +237,12 @@ arm decides it:
   **An unmodeled shape throws, always.** Cut by NAME, lower by SHAPE, end the
   table in a throw.
 
+**The debugger-logging surface is NativeAOT's**: `Debugger.IsLogging` const-folds
+false and `Debugger.LogInternal` is `Bounded` `Silent`, so `DebugProvider` keeps
+only its `Interop.Sys.SysLog` arm and a `Trace`/`Debug` write goes to syslog
+(stderr on wasm), never to stdout — asserted by the misc-intrinsics section of
+`gates/build-and-run-selfhost-prim-subset.sh`.
+
 The sub-word integers sit in both arms and take the loud side in both: their
 `ToString`/`Parse`/`TryParse`/`TryFormat` reach the number-formatting cascade, so
 falling through trades a loud failure for silent bloat. .NET gives all eight

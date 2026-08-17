@@ -60,6 +60,14 @@ internal static class Program
         // oracle runs under `dotnet` with none attached.
         Console.WriteLine($"dbg={System.Diagnostics.Debugger.IsAttached}");
 
+        // Debugger.IsLogging const-folds false (NativeAOT parity), so a Trace/Debug
+        // write lands in SystemNative_SysLog and a direct Debugger.Log is a bound
+        // no-op. Neither may reach stdout — the oracle agrees, hence the marker line
+        // below: a section whose subject prints nothing cannot prove it ran.
+        System.Diagnostics.Trace.WriteLine("must not reach stdout");
+        System.Diagnostics.Debugger.Log(0, null, "must not reach stdout");
+        Console.WriteLine($"dbg_log={System.Diagnostics.Debugger.IsAttached}|done");
+
         // GC statistics bind to the vendored Boehm GC. Raw counts are nondeterministic,
         // so assert only what holds identically on real .NET: non-negative and monotone.
         int cc0 = GC.CollectionCount(0);

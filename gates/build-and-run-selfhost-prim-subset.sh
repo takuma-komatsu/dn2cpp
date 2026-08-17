@@ -37,7 +37,14 @@
 #       * System.Numerics.BitOperations.{TrailingZeroCount, LeadingZeroCount, PopCount,
 #         Log2} over int/uint/long/ulong, lowered to the ctz/clz/popcount clang builtins
 #         at the argument's width (the nint/nuint overloads stay BCL-as-IL);
-#       * Debugger.IsAttached, the GC.CollectionCount / GetGCMemoryInfo bindings over
+#       * Debugger.IsAttached, and the Trace/Debug write path: Debugger.IsLogging
+#         const-folds false (NativeAOT parity), which prunes DebugProvider's
+#         Debugger.Log arm and leaves the transpiled Interop.Sys.SysLog leaf — so a
+#         Trace.WriteLine links the SystemNative_SysLog PAL entry and, like a direct
+#         Debugger.Log, prints nothing. Trace puts System.Diagnostics.TraceSource on
+#         the -r set below, and TraceListener.Attributes pulls
+#         System.Collections.Specialized in behind it;
+#       * the GC.CollectionCount / GetGCMemoryInfo bindings over
 #         the vendored Boehm GC, and AssemblyLoadContext.LoadFromAssemblyPath's trap;
 #       * the Thrive startup shape AppDomain.CurrentDomain.GetAssemblies().Where(...)
 #         .Count() — the degraded set must carry the DECLARED Assembly[] runtime
@@ -66,4 +73,5 @@
 # + tree-shake -> native binary -> run, asserting the output diffs exact vs real .NET.
 source "$(dirname "$0")/_common.sh"
 
-corelib_diff_gate SelfHostPrimSubset System.Linq
+corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
+    System.Collections.Specialized
