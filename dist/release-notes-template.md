@@ -11,7 +11,7 @@
 - `Debugger.IsLogging` と `Debugger.Log` を NativeAOT と同じく扱い、実行時 VM のない AOT バイナリでも Debugger logging が未実装の QCall に到達せず、安全な no-op になるようになりました
 - `Trace` / `Debug` の出力を `Interop.Sys.SysLog` へ接続し、POSIX 系ではホストの syslog、Web では標準エラー出力（ブラウザのコンソール）へ送るようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6a17ce6367f90b393cbf7016a45c4284c56d5312...d15d680b5918b0b318f3c2e6070e0513939ba931> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6a17ce6367f90b393cbf7016a45c4284c56d5312...f341b8a6073e505619f1f4f4f53a1bf02eb89090> を参照してください。
 
 ## アセット
 
