@@ -29,6 +29,7 @@ namespace AsyncCore
             AsyncPendingRoot.Program.__GateEntry();
             ThreadAwaitTeardown.Program.__GateEntry();
             TaskInspectSubset.Program.__GateEntry();
+            TaskSchedulerSyncContextSubset.Program.__GateEntry();
         }
     }
 }

@@ -15,8 +15,10 @@
 # cold-task-deadlock section waits on tasks no principal can ever settle, which
 # real .NET answers by blocking forever (it has no deadlock detector) — there is
 # no oracle to diff a hang against, so the snapshot pins dn2cpp's catchable
-# report instead. The snapshot is the transpiler's deterministic output; every
-# other section matches real .NET.
+# report instead; and the task-scheduler-sync-context section's installed-context
+# arm throws NotSupportedException because dn2cpp cannot wrap it as a scheduler,
+# where real .NET creates one. Its null-context InvalidOperationException arm and
+# every other section match real .NET. The snapshot is deterministic native output.
 # Former gates: async, async-suspend, async-yield, async-catch, value-task,
 # struct-task, task-state.
 source "$(dirname "$0")/_common.sh"
