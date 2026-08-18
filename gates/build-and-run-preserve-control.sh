@@ -91,7 +91,8 @@ malformed_code=$?
 set -e
 [ "$feature_code" -ne 0 ] && grep -q "com, sre, or remoting" <<<"$feature_err" \
     || { echo "FAIL: invalid --link-feature was not rejected clearly" >&2; exit 1; }
-[ "$malformed_code" -ne 0 ] && grep -q "PreserveControlMalformed/link.xml" <<<"$malformed_err" \
+[ "$malformed_code" -ne 0 ] \
+    && grep -q "PreserveControlMalformed/link.xml" <<<"$(tr '\\' / <<<"$malformed_err")" \
     || { echo "FAIL: malformed link.xml did not fail naming its path" >&2; exit 1; }
 
 CONSOLE_CLI="src/Dn2Cpp.Cli.Console/bin/$CONFIG/$TFM/dn2cpp-console.dll"
@@ -110,7 +111,8 @@ for fixture in PreserveControlUnknownElement PreserveControlUnknownPreserve \
         --project-root "samples/dotnet/$fixture" -o "artifacts/$fixture" 2>&1)
     schema_code=$?
     set -e
-    [ "$schema_code" -ne 0 ] && grep -q "$fixture/link.xml" <<<"$schema_err" \
+    [ "$schema_code" -ne 0 ] \
+        && grep -q "$fixture/link.xml" <<<"$(tr '\\' / <<<"$schema_err")" \
         || { echo "FAIL: $fixture did not hard-fail naming its descriptor" >&2; exit 1; }
 done
 
