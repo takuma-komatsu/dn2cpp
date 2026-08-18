@@ -3641,6 +3641,7 @@ internal sealed partial class Compilation
             if (it.Kind == TypeKind.Class)
                 spec.Interfaces.Add(it.Class!);
         }
+        ApplyPreservationAfterShape(spec);
     }
 
     /// <summary>Populates what a specialization can <em>do</em>: its methods, the vtable
@@ -3716,6 +3717,8 @@ internal sealed partial class Compilation
         // compare. This is the first moment it can be checked — so check it here rather
         // than force every specialization to decode just to be compared.
         VerifyCanonicalLink(spec);
+        if (_preservationSeedingActive)
+            ApplyPreservation(spec);
     }
 
     private void BuildVtableForSpecialization(ClassInfo spec)

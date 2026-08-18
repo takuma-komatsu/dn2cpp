@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="PreserveControlLib">
+    <type fullname="PreserveControlLib.Outer/Nested`1" preserve="methods" />
+  </assembly>
+</linker>

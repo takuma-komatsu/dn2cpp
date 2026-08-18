@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<!-- Root descriptor: member selectors, preserve modes and feature gates. -->
+<linker>
+  <assembly fullname="PreserveControl&#76;ib">
+    <type fullname="PreserveControlLib.XmlMembers" preserve="nothing">
+      <method name="XmlMethod" />
+      <method signature="System.Void XmlOverload(System.Int32)" />
+      <method name="NoSuch&amp;Member" />
+      <property name="XmlProperty" accessors="get" />
+      <event name="XmlEvent" />
+    </type>
+    <type fullname="PreserveControlLib.FeatureMembers" preserve="nothing">
+      <method name="ComMethod" feature="com" />
+      <method name="SreMethod" feature="sre" />
+    </type>
+    <type fullname="PreserveControlLib.NoSuch&#84;ype" required="0" />
+    <type fullname="PreserveControlLib.ConditionalUsed" preserve="methods" required="0" />
+    <type fullname="PreserveControlLib.ConditionalUnused" preserve="methods" required="0" />
+    <type fullname="PreserveControlLib.SignatureMembers" preserve="nothing">
+      <field signature="PreserveControlLib.FieldSignatureType SignatureField" />
+      <property signature="System.Int32 SignatureProperty" accessors="get" />
+      <event signature="System.Action SignatureEvent" />
+    </type>
+    <type fullname="PreserveControlLib.Wildcard*" preserve="nothing">
+      <method name="Wildcard*" />
+    </type>
+    <type fullname="PreserveControlLib.FieldsMode" preserve="fields" />
+  </assembly>
+  <assembly fullname="PreserveControlLib" feature="remoting" />
+  <assembly fullname="PreserveAssemblyLib" preserve="all"
+            ignoreIfUnreferenced="1" windowsruntime="true" />
+  <assembly fullname="NoSuchAssembly" ignoreIfMissing="1" />
+</linker>

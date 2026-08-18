@@ -33,6 +33,8 @@ var reflectionRoots = new List<string>();
 var noManifestResources = new List<string>();
 var manifestResourceRoots = new List<string>();
 var pinvokeModules = new List<string>();
+var projectRoots = new List<string>();
+var linkFeatures = new List<string>();
 bool trimGodotClasses = false;
 var godotClassRoots = new List<string>();
 bool shadowStack = false;
@@ -204,6 +206,20 @@ for (int i = 0; i < args.Length; i++)
         // resolve, instead of requiring every transitive dependency via explicit -r.
         // Opt-in while drift vs. the explicit-ref output is being measured.
         autoRef = true;
+    }
+    else if (args[i] == "--project-root" && i + 1 < args.Length)
+    {
+        projectRoots.Add(args[++i]);
+    }
+    else if (args[i] == "--link-feature" && i + 1 < args.Length)
+    {
+        string feature = args[++i];
+        if (feature != "com" && feature != "sre" && feature != "remoting")
+        {
+            Console.Error.WriteLine($"error: --link-feature expects com, sre, or remoting, got '{feature}'");
+            return 1;
+        }
+        linkFeatures.Add(feature);
     }
     else if (args[i] == "--no-adopt-async" && i + 1 < args.Length)
     {
@@ -453,7 +469,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
@@ -532,5 +548,7 @@ return TranspileDriver.Run(new TranspileOptions
     NoManifestResources = noManifestResources,
     ManifestResourceRoots = manifestResourceRoots,
     PInvokeModules = pinvokeModules,
+    ProjectRoots = projectRoots,
+    LinkFeatures = linkFeatures,
     ShadowStack = shadowStack,
 });

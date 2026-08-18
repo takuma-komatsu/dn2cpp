@@ -1,0 +1,13 @@
+preserve control
+Outer_Nested_Int32
+ConditionalUsed
+built-in
+assembly-aware-derived
+preserved-field=17
+property-set
+property-get
+preserved-property=23
+dropped-method=True
+delegate-invoke=True
+initialized-field=41
+non-derived-dropped=True

@@ -76,6 +76,14 @@ public sealed record TranspileOptions
     /// matching no loaded type is a hard error.</summary>
     public IReadOnlyList<string>? ReflectionRoots { get; init; }
 
+    /// <summary>Project directories recursively searched for files named exactly
+    /// <c>link.xml</c>. Direct CLI use performs no search unless a root is supplied.</summary>
+    public IReadOnlyList<string> ProjectRoots { get; init; } = Array.Empty<string>();
+
+    /// <summary>Unity linker feature names enabled for conditional
+    /// <c>feature=</c> directives in <c>link.xml</c>.</summary>
+    public IReadOnlyList<string> LinkFeatures { get; init; } = Array.Empty<string>();
+
     /// <summary>Assembly simple names (<c>--no-manifest-resources</c>, repeatable)
     /// whose embedded manifest resources are DROPPED from the image: the assembly's
     /// registry row carries the <c>resourcesDropped</c> bit instead of a resource

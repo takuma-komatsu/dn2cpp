@@ -112,6 +112,57 @@ throw), no HTTP transport (a browser has no socket layer), no real
 `FileStream` (the intercepted `File.*` subset works on MEMFS), and the GC
 is stop-the-world.
 
+### Preserving code from stripping
+
+dn2cpp recognizes Unity-compatible explicit preservation. Apply
+`[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,
+property, field, event, or delegate, or define your own attribute whose type or
+base type has the exact simple name `PreserveAttribute`. The latter avoids a
+managed dependency and is recognized regardless of namespace or assembly.
+
+The built-in attribute is in `Dn2Cpp.Runtime.dll`. Reference the copy produced
+by this checkout under `src/Dn2Cpp.Runtime/bin/<configuration>/<framework>/`,
+or the copy under `bin/` in a dn2cpp toolchain or editor bundle. There is no
+separate NuGet package for it.
+
+From a repository checkout, add a project reference:
+
+```xml
+<ItemGroup>
+  <ProjectReference Include="../dn2cpp/src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
+</ItemGroup>
+```
+
+For a toolchain or editor bundle, reference its existing assembly instead:
+
+```xml
+<ItemGroup>
+  <Reference Include="Dn2Cpp.Runtime">
+    <HintPath>path/to/Dn2Cpp/bin/Dn2Cpp.Runtime.dll</HintPath>
+    <Private>false</Private>
+  </Reference>
+</ItemGroup>
+```
+
+Adjust the relative checkout path or bundle path to the project location. The
+assembly contains no platform-specific managed code, so a project may compile
+against either matching target-framework build.
+
+Unity-format `link.xml` files are also supported. Pass a project directory with
+the repeatable `--project-root <dir>` option; dn2cpp recursively finds files
+named exactly `link.xml` anywhere below each root, excluding `bin`, `obj`,
+`.godot`, and `.git` directories. `Dn2Cpp.Build` supplies the
+MSBuild project directory automatically, and the forked editor supplies the C#
+project directory during export. Direct CLI use without `--project-root` does
+not search for XML files. A descriptor cannot add an assembly to the load set;
+the assembly must already be the input, an explicit or automatic reference, or
+a conditional default reference.
+
+Descriptors guarded by `feature="com"`, `feature="sre"`, or
+`feature="remoting"` apply only when the matching repeatable
+`--link-feature <name>` option is present. The editor enables `com` for Windows
+exports; all other feature values remain disabled unless explicitly requested.
+
 The full list, with the reasoning, is under *Permanent non-goals* below.
 
 ## Quick start

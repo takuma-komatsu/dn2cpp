@@ -706,6 +706,7 @@ internal sealed partial class Compilation
         _methodInstanceCount++;
         _methodInstanceOrder.Add(mi);
         declClass.Methods.Add(mi); // emitted (and scanned) alongside the declaring class
+        ApplyPreservationToInstantiatedMethod(mi);
         return mi;
     }
 

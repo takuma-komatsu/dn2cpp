@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="Missing" ignoreIfMissing="1">
+    <unknown />
+  </assembly>
+</linker>

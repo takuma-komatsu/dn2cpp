@@ -27,6 +27,10 @@ and `ninja`.
 | `Dn2CppCMake` / `Dn2CppGenerator` | `cmake` / `Ninja` | Native build front end |
 | `Dn2CppCMakeArgs` | (empty) | Extra cmake configure args |
 
+The publish target always passes `$(MSBuildProjectDirectory)` as a
+`--project-root`, so Unity-format `link.xml` files below the project directory
+participate in stripping without extra configuration.
+
 Console apps only; the Godot lanes (GDExtension / mono-module drop-in) have
 their own export paths — see the
 [repository](https://github.com/takuma-komatsu/dn2cpp).
