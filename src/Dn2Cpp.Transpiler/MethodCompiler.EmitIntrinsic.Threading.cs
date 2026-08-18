@@ -176,6 +176,21 @@ internal sealed partial class MethodCompiler
                 EmitVolatileWrite(elem, loc, value);
                 return true;
             }
+            // Thread.VolatileRead/VolatileWrite — the legacy pre-Volatile spellings
+            // (every overload is ref X -> X / ref X, X); same semantics, same arms.
+            case ("System.Threading.Thread", "VolatileRead"):
+            {
+                var loc = Pop(); // ref X
+                EmitVolatileRead(sig.ParameterTypes[0].Element!, loc);
+                return true;
+            }
+            case ("System.Threading.Thread", "VolatileWrite"):
+            {
+                var value = Pop();
+                var loc = Pop(); // ref X
+                EmitVolatileWrite(sig.ParameterTypes[0].Element!, loc, value);
+                return true;
+            }
             // ---- System.Threading.Thread (real OS threads) ----
             // The receiver may arrive as Dn2CppObject* (e.g. loaded from a Thread[]),
             // so cast it to Dn2CppThread* for each helper call.
