@@ -11,19 +11,20 @@ internal sealed partial class MethodCompiler
     /// key standing in for it. Only affects the miss diagnostic, which would otherwise name
     /// the BCL stand-in rather than the type the program actually calls.</param>
     private void EmitIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig,
-                               string? adoptedFrom = null)
+                               (string Name, string Assembly)? adoptedFrom = null)
     {
         if (TryEmitIntrinsic(declType, name, sig))
             return;
         throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: call to "
-            + (adoptedFrom is null
+            + (adoptedFrom is not { } af
                 ? $"{declType}::{name}{SigArgs(sig)} has no intrinsic mapping yet"
-                : $"{adoptedFrom}::{name}{SigArgs(sig)} has no intrinsic mapping yet — {adoptedFrom} is a custom "
+                : $"{af.Name}::{name}{SigArgs(sig)} has no intrinsic mapping yet — {af.Name} is a custom "
                   + $"async task type, which dn2cpp models by adopting it into its intrinsic Task "
                   + $"family (as {declType}) rather than transpiling the library's own scheduler and "
                   + $"object-pool machinery. Only the members the C# compiler and the await pattern "
-                  + $"require are mapped; this one has no BCL counterpart")
+                  + $"require are mapped; this one has no BCL counterpart. Remedy: --no-adopt-async "
+                  + $"{af.Assembly}, so the library's real IL transpiles instead")
             + $" [chain: {Comp.ReachChain(Method)}]");
     }
 
@@ -35,10 +36,12 @@ internal sealed partial class MethodCompiler
         "(" + string.Join(", ", sig.ParameterTypes.Select(p => p.ToString())) + ")";
 
     /// <summary>The name to report a miss against for an adopted custom async task-family
-    /// type — its real CLR name, not the BCL key it is dispatched under — or null for an
-    /// ordinary intrinsic type.</summary>
-    private string? AdoptedFrom(ClassInfo cls) =>
-        Comp.AdoptedAsyncKey(cls) is null ? null : Comp.GenericDefFullName(cls);
+    /// type — its real CLR name, not the BCL key it is dispatched under — plus its assembly
+    /// for the --no-adopt-async remedy; null for an ordinary intrinsic type.</summary>
+    private (string Name, string Assembly)? AdoptedFrom(ClassInfo cls) =>
+        Comp.AdoptedAsyncKey(cls) is null
+            ? null
+            : (Comp.GenericDefFullName(cls), cls.Module.AssemblyName);
 
     /// <summary>One arm of the intrinsic funnel. Static (the compiler instance arrives
     /// as an argument) so the whole dispatch table is a shared static structure built
