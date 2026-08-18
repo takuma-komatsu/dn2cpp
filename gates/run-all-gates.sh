@@ -383,6 +383,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/PInvokeNative/PInvokeNative.csproj"
     "samples/dotnet/CustomAsyncTaskLib/CustomAsyncTaskLib.csproj"
     "samples/dotnet/CustomAsyncTaskType/CustomAsyncTaskType.csproj"
+    "samples/dotnet/CustomAsyncTaskTypeExceed/CustomAsyncTaskTypeExceed.csproj"
     "samples/dotnet/HotUpdateBase/HotUpdateBase.csproj"
     "samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj"
     "samples/dotnet/HotUpdateRecvPatch/HotUpdateRecvPatch.csproj"
