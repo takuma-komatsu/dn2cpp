@@ -11,7 +11,7 @@ internal sealed partial class MethodCompiler
         var mr = Reader.GetMemberReference(handle);
         string name = Reader.GetString(mr.Name);
         string declType = "?";
-        string? adoptedFrom = null;
+        (string Name, string Assembly)? adoptedFrom = null;
         if (mr.Parent.Kind == HandleKind.TypeReference)
         {
             var tr = Reader.GetTypeReference((TypeReferenceHandle)mr.Parent);

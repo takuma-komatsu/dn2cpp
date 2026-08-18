@@ -268,16 +268,27 @@ intrinsic-mapped, and it is automatic — nothing to add per library. A type
 carrying `[AsyncMethodBuilder(typeof(B))]` is registered with its builder and the
 awaiter its `GetAwaiter()` returns, and the three lower to the same runtime
 structs the BCL Task family does; the member names are the BCL's by mandate, so
-every existing Task/ValueTask intrinsic case fires unchanged and a member outside
-that contract fails loud at emit. A struct task is modeled on ValueTask and a
-reference one on Task, and the kind drives the task/builder/awaiter keys
-together. Discovery never throws: `-r`-ing an assembly must not fail on a task
-type the program never touches.
+every existing Task/ValueTask intrinsic case fires unchanged. A struct task is
+modeled on ValueTask and a reference one on Task, and the kind drives the
+task/builder/awaiter keys together. Discovery never throws: `-r`-ing an assembly
+must not fail on a task type the program never touches.
 
-`--no-adopt-async <assembly-simple-name>` (repeatable) declines adoption, so the
-library's real IL transpiles through the general pipeline instead. Per assembly,
+Adoption applies only while every cross-assembly reference stays inside the
+mapped member-name and signature-shape contract: a metadata-only MemberRef pre-scan
+(`Compilation.DeclineOutOfContractAdoptions`) declines the adoption of any
+assembly whose task/builder/awaiter is referenced outside it (`UniTask.Yield()`'s
+shape), so that library's real IL transpiles through the general pipeline — no
+flag, one stderr notice naming the member.
+`gates/build-and-run-custom-async-task.sh` asserts both directions. The scan
+cannot see a same-assembly call (a MethodDef has no MemberRef row), so that one
+still fails loud at emit, naming the adoption and the manual override.
+
+`--no-adopt-async <assembly-simple-name>` (repeatable) is that override: it
+declines adoption by hand, for exactly the same real-IL route. Per assembly,
 not per type — sibling task types' promises interlock — and an unmatched name is
-a hard error; `gates/build-and-run-gdtask.sh` proves both modes.
+a hard error. `gates/build-and-run-gdtask.sh` proves the automatic decline on
+the real GDTask end to end; `gates/build-and-run-unitask.sh` proves it on the
+real NuGet UniTask, console lane.
 `--cut "DeclType::Method"` (same hard-error rule and bounded semantics as
 `AdditionalBoundedMethods`) is the carve-out lever for a genuinely untranspilable
 corner, with its regression test in

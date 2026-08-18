@@ -104,3 +104,6 @@ dispose: ok
 faulted: hasExc=True inner=boom innerStable=True
 nonfaulted: fromresult=True canceled=True
 id: aPos=True bPos=True distinct=True stable=True
+== task scheduler sync context ==
+null: InvalidOperationException: The current SynchronizationContext may not be used as a TaskScheduler.
+installed: NotSupportedException: TaskScheduler.FromCurrentSynchronizationContext: dn2cpp treats a TaskScheduler as a scheduling hint only and cannot wrap the installed SynchronizationContext.

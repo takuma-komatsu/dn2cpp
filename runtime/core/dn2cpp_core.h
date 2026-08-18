@@ -5952,6 +5952,10 @@ void dn2cpp_task_throw_if_faulted(Dn2CppTask* t);
 // unhandled exception on the worker pool (crashing the process, as .NET does). The
 // SynchronizationContext is not honored.
 void dn2cpp_task_throw_async(Dn2CppObject* exc, Dn2CppObject* syncCtx);
+// TaskScheduler.FromCurrentSynchronizationContext: always throws — .NET's own
+// InvalidOperationException with no installed context, NotSupportedException with
+// one (a hint-only TaskScheduler cannot honor a context-wrapping scheduler).
+[[noreturn]] Dn2CppObject* dn2cpp_taskscheduler_from_sync_ctx();
 // Task.get_Exception: non-null for FAULTED only — the fault wrapped in an
 // AggregateException, minted on first access and cached (identity-stable across
 // reads). CANCELED answers null, matching real .NET. The bare `->exception` is
