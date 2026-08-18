@@ -6,12 +6,17 @@
 # §4-B). Tier 1 ADOPTS a custom async task type into dn2cpp's intrinsic Task
 # family, which is cheap but only covers what the await pattern itself requires:
 # the library's own combinators (WhenAll/WhenAny), its player-loop scheduler, its
-# object pool, its cancellation model are all unmapped. Tier 2 (--no-adopt-async)
-# declines to adopt and transpiles the library's real machinery instead. This
-# gate is the proof that tier 2 works on a library nobody wrote for dn2cpp.
+# object pool, its cancellation model are all unmapped. Tier 2 declines to adopt
+# and transpiles the library's real machinery instead — and it engages ITSELF:
+# the sample's cross-assembly calls to those unmapped members are MemberRefs the
+# adoption contract pre-scan sees, so the decline is automatic, with no flag.
+# This gate is the proof that tier 2 works on a library nobody wrote for dn2cpp,
+# reached the way a user reaches it: by just transpiling. (--no-adopt-async
+# remains the manual override; build-and-run-custom-async-task.sh covers it.)
 #
-# ZERO CUTS. The engineering cost of tier 2 on this library is now nothing at all:
-# no --cut, no --no-adopt-async carve-out beyond declining the adoption itself.
+# ZERO CUTS, ZERO FLAGS. The engineering cost of tier 2 on this library is now
+# nothing at all: no --cut, no --no-adopt-async, nothing per-library on the
+# command line.
 #
 # It used to be one. `--cut GodotTask.TaskTracker::TrackActiveTask` was needed
 # because that method opens with `new StackTrace()`, whose capture is an
@@ -127,11 +132,12 @@ CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 CORELIB="$(resolve_net10_corelib)"
 REFS=(-r "$CORELIB" -r "$GODOT_DOTNET_GODOTSHARP" -r "$GDTASK")
 rm -rf "$OUT"
-# No --cut. That IS the assertion: this command line is the whole engineering cost
-# of running the real GDTask through dn2cpp, and if it ever needs a carve-out again,
-# this line fails first.
-invoke_cli "$APP" --dotnet-module "${REFS[@]}" --auto-ref \
-    --no-adopt-async GDTask -o "$OUT"
+# No --cut and no --no-adopt-async. That IS the assertion: this command line is the
+# whole engineering cost of running the real GDTask through dn2cpp — the adoption
+# pre-scan sees the sample's out-of-contract MemberRefs (DelayFrame, WaitForEndOfFrame,
+# ...) and declines GDTask's adoption on its own. If the automatic decline regresses,
+# adoption re-fires and this line fails first, at emit, naming the adoption.
+invoke_cli "$APP" --dotnet-module "${REFS[@]}" --auto-ref -o "$OUT"
 
 # Everything past this point — the gap measurement, the native build, the engine run
 # and the oracle diff — is a pure function of the transpile surface in $OUT, the CLI
@@ -155,7 +161,7 @@ echo "== 4/7 ASSERT: ZERO gaps, ZERO cuts =="
 # silent miscompile, and step 3 above would have caught it by failing.
 rm -rf "$MEASURE"
 invoke_cli "$APP" --dotnet-module "${REFS[@]}" --auto-ref \
-    --no-adopt-async GDTask --measure -o "$MEASURE" >/dev/null 2>&1 || true
+    --measure -o "$MEASURE" >/dev/null 2>&1 || true
 # A MISSING report is not zero gaps, it is a measure run that died — and this
 # gate's headline claim rides on the count. TranspileDriver writes the TSV
 # unconditionally (zero rows on a clean corpus), so absence means the harness
