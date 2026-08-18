@@ -27,10 +27,24 @@ APP="$ROOT/bin/$CONFIG/$TFM/$PROJECT.dll"
 LIBDLL="$LIBPROJECT/bin/$CONFIG/$TFM/PreserveControlLib.dll"
 ASSEMBLYDLL="$ASSEMBLYPROJECT/bin/$CONFIG/$TFM/PreserveAssemblyLib.dll"
 OUT=artifacts/preserve-control
+mkdir -p artifacts
+STALE_ROOT=$(mktemp -d "$PWD/artifacts/preserve-control-stale.XXXXXX")
+cleanup_stale_root() {
+    case "$STALE_ROOT" in
+        "$PWD"/artifacts/preserve-control-stale.*) rm -rf -- "$STALE_ROOT" ;;
+        *) echo "FAIL: refusing to clean unexpected temporary root $STALE_ROOT" >&2 ;;
+    esac
+}
+trap cleanup_stale_root EXIT
+for ignored_dir in bin obj .godot .git; do
+    mkdir -p "$STALE_ROOT/$ignored_dir"
+    printf '<stale-invalid-descriptor' > "$STALE_ROOT/$ignored_dir/link.xml"
+done
 
 echo "== Transpiling with recursive project roots and the com feature =="
 transpile=$(invoke_cli "$APP" -r "$LIBDLL" -r "$ASSEMBLYDLL" --auto-ref --trim-reflection \
-    --project-root "$ROOT" --project-root "$ROOT/./" --link-feature com -o "$OUT" 2>&1)
+    --project-root "$ROOT" --project-root "$ROOT/./" --project-root "$STALE_ROOT" \
+    --link-feature com -o "$OUT" 2>&1)
 printf '%s\n' "$transpile"
 grep -q "NoSuchType" <<<"$transpile" \
     || { echo "FAIL: a missing type did not produce a warning naming the target" >&2; exit 1; }
@@ -41,12 +55,12 @@ if grep -q "NoSuchAssembly" <<<"$transpile"; then
     exit 1
 fi
 
-for symbol in BuiltInMethod SameNameMethod DerivedMethod get_PreservedProperty \
+for symbol in BuiltInMethod SameNameMethod DerivedMethod AssemblyAwareDerivedMethod get_PreservedProperty \
         set_PreservedProperty add_PreservedEvent remove_PreservedEvent XmlMethod \
         SignatureIntMarker get_XmlProperty add_XmlEvent remove_XmlEvent ComMethod GenericMethod \
         ConditionalUsedMarker FieldSignatureType SignaturePropertyGetMarker \
         SignatureEventAddMarker SignatureEventRemoveMarker AssemblyOnlyTarget__ctor AttributeMembers__ctor \
-        PreservedField dginvoke_PreserveControlLib_PreservedDelegate \
+        PreservedField InitializedField dginvoke_PreserveControlLib_PreservedDelegate \
         methtab_PreserveControlLib_PreservedDelegate SelectedChainLeaf FieldsModePayload \
         ConditionalChainLeaf; do
     grep -q "$symbol" "$OUT"/generated* \
@@ -54,7 +68,7 @@ for symbol in BuiltInMethod SameNameMethod DerivedMethod get_PreservedProperty \
 done
 for symbol in DroppedMethod NotKeptByTypeAttribute SignatureNoArgMarker set_XmlProperty \
         SreMethod ConditionalUnusedMarker SignaturePropertySetMarker \
-        AssemblyMethodNotKept ConditionalUnusedChainLeaf \
+        AssemblyMethodNotKept NonDerivedMethod ConditionalUnusedChainLeaf \
         NotSelected FieldsModeMethodDrop IgnoreIfUnreferencedMethod; do
     if grep -Fq "_${symbol}_" "$OUT"/generated*; then
         echo "FAIL: unselected body $symbol survived stripping" >&2

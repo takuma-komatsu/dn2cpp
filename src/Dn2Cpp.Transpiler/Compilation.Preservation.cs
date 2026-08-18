@@ -34,7 +34,7 @@ internal sealed partial class Compilation
     private readonly Dictionary<(int Module, TypeDefinitionHandle Type), PreservePolicy> _preservePolicies = new();
     private readonly HashSet<ClassInfo> _explicitReflectionKeep = new();
     private readonly HashSet<ClassInfo> _activatedConditionalPolicies = new();
-    private readonly Dictionary<string, bool> _preserveAttributeTypes = new(StringComparer.Ordinal);
+    private readonly Dictionary<(int Module, TypeDefinitionHandle Type), bool> _preserveAttributeTypes = new();
     private bool _preservationSeedingActive;
 
     private PreservePolicy Policy(Module module, TypeDefinitionHandle type)
@@ -125,28 +125,25 @@ internal sealed partial class Compilation
     {
         foreach (var handle in attributes)
         {
-            string? name = AttributeTypeName(module.Reader, module.Reader.GetCustomAttribute(handle));
+            var attribute = module.Reader.GetCustomAttribute(handle);
+            string? name = AttributeTypeName(module.Reader, attribute);
             if (name is null)
                 continue;
             string simple = name.Substring(name.LastIndexOfAny(new[] { '.', '+' }) + 1);
             if (simple == "PreserveAttribute")
                 return true;
-            if (IsRawPreserveAttributeType(name)) return true;
+            if (RawAttributeTypeDefinition(module, attribute) is { } type
+                && IsRawPreserveAttributeType(type.Module, type.Handle)) return true;
         }
         return false;
     }
 
-    private bool IsRawPreserveAttributeType(string fullName)
+    private bool IsRawPreserveAttributeType(Module module, TypeDefinitionHandle handle)
     {
-        if (_preserveAttributeTypes.TryGetValue(fullName, out bool cached)) return cached;
+        var key = (module.Index, handle);
+        if (_preserveAttributeTypes.TryGetValue(key, out bool cached)) return cached;
         var seen = new HashSet<(int, TypeDefinitionHandle)>();
-        foreach (var module in Modules)
-            foreach (var handle in module.Reader.TypeDefinitions)
-                if (RawReflectionTypeName(module.Reader, handle) == fullName
-                    && RawBaseIsPreserve(module, handle, seen))
-                    return _preserveAttributeTypes[fullName] = true;
-        _preserveAttributeTypes[fullName] = false;
-        return false;
+        return _preserveAttributeTypes[key] = RawBaseIsPreserve(module, handle, seen);
     }
 
     private bool RawBaseIsPreserve(Module module, TypeDefinitionHandle handle,
@@ -163,11 +160,64 @@ internal sealed partial class Compilation
             (TypeReferenceHandle)td.BaseType);
         if (baseName.Substring(baseName.LastIndexOfAny(new[] { '.', '+' }) + 1) == "PreserveAttribute")
             return true;
-        foreach (var candidateModule in Modules)
-            foreach (var candidate in candidateModule.Reader.TypeDefinitions)
-                if (RawReflectionTypeName(candidateModule.Reader, candidate) == baseName
-                    && RawBaseIsPreserve(candidateModule, candidate, seen)) return true;
-        return false;
+        return RawTypeReferenceDefinition(module, (TypeReferenceHandle)td.BaseType) is { } type
+            && RawBaseIsPreserve(type.Module, type.Handle, seen);
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? RawAttributeTypeDefinition(
+        Module module, CustomAttribute attribute)
+    {
+        EntityHandle parent = attribute.Constructor.Kind switch
+        {
+            HandleKind.MethodDefinition => module.Reader.GetMethodDefinition(
+                (MethodDefinitionHandle)attribute.Constructor).GetDeclaringType(),
+            HandleKind.MemberReference => module.Reader.GetMemberReference(
+                (MemberReferenceHandle)attribute.Constructor).Parent,
+            _ => default,
+        };
+        return parent.Kind switch
+        {
+            HandleKind.TypeDefinition => (module, (TypeDefinitionHandle)parent),
+            HandleKind.TypeReference => RawTypeReferenceDefinition(module, (TypeReferenceHandle)parent),
+            _ => null,
+        };
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? RawTypeReferenceDefinition(
+        Module module, TypeReferenceHandle handle)
+    {
+        var tr = module.Reader.GetTypeReference(handle);
+        string name = module.Reader.GetString(tr.Name);
+        string ns = module.Reader.GetString(tr.Namespace);
+        if (!TypeIndex().TryGetValue((ns, name), out var candidates))
+            return null;
+        if (tr.ResolutionScope.Kind == HandleKind.TypeReference)
+        {
+            if (RawTypeReferenceDefinition(module, (TypeReferenceHandle)tr.ResolutionScope)
+                is not { } declaring)
+                return null;
+            foreach (var (candidateModule, candidate) in candidates)
+                if (candidateModule == declaring.Module
+                    && candidateModule.Reader.GetTypeDefinition(candidate).GetDeclaringType() == declaring.Handle)
+                    return (candidateModule, candidate);
+            return null;
+        }
+
+        Module? target = tr.ResolutionScope.Kind switch
+        {
+            HandleKind.AssemblyReference => Modules.FirstOrDefault(m => m.AssemblyName
+                == module.Reader.GetString(module.Reader.GetAssemblyReference(
+                    (AssemblyReferenceHandle)tr.ResolutionScope).Name)),
+            HandleKind.ModuleDefinition => module,
+            _ => null,
+        };
+        if (target is null)
+            return null;
+        foreach (var (candidateModule, candidate) in candidates)
+            if (candidateModule == target
+                && target.Reader.GetTypeDefinition(candidate).GetDeclaringType().IsNil)
+                return (target, candidate);
+        return null;
     }
 
     private IReadOnlyList<string> FindLinkFiles()
@@ -178,10 +228,8 @@ internal sealed partial class Compilation
             string root = Path.GetFullPath(rootValue);
             if (!Directory.Exists(root))
                 throw new NotSupportedException($"--project-root {rootValue}: directory does not exist");
-            foreach (string path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            foreach (string path in EnumerateLinkFiles(root))
             {
-                if (!string.Equals(Path.GetFileName(path), "link.xml", StringComparison.Ordinal))
-                    continue;
                 string full = Path.GetFullPath(path);
                 string relative = Path.GetRelativePath(root, full).Replace(Path.DirectorySeparatorChar, '/');
                 if (!paths.TryGetValue(full, out var have)
@@ -198,6 +246,26 @@ internal sealed partial class Compilation
         var result = new List<string>(rows.Count);
         foreach (var row in rows) result.Add(row.Full);
         return result;
+    }
+
+    private static IEnumerable<string> EnumerateLinkFiles(string root)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.Count > 0)
+        {
+            string directory = pending.Pop();
+            foreach (string path in Directory.EnumerateFiles(directory))
+                if (string.Equals(Path.GetFileName(path), "link.xml", StringComparison.Ordinal))
+                    yield return path;
+            foreach (string child in Directory.EnumerateDirectories(directory))
+            {
+                string name = Path.GetFileName(child);
+                if (name is "bin" or "obj" or ".godot" or ".git")
+                    continue;
+                pending.Push(child);
+            }
+        }
     }
 
     private void ApplyLinkDocument(string path, LinkNode root)
@@ -793,6 +861,7 @@ internal sealed partial class Compilation
     {
         NoteForceEmit(field.DeclaringClass);
         NotePreservedType(field.Type);
+        ReachCctor(field.DeclaringClass);
     }
 
     private void PreserveMethod(MethodInfo method)

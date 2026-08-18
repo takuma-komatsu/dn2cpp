@@ -30,6 +30,9 @@ public sealed class AttributeMembers
     [DerivedPreserve]
     private static void DerivedMethod() => Console.WriteLine("derived");
 
+    [PreserveCollision.Duplicate]
+    private static void AssemblyAwareDerivedMethod() => Console.WriteLine("assembly-aware-derived");
+
     [Preserve]
     private static int PreservedField;
 

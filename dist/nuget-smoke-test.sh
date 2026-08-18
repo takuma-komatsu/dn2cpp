@@ -15,10 +15,11 @@
 #   6. run the binary and byte-diff its output against `dotnet`,
 # then prove the Dn2Cpp.Build MSBuild package on top:
 #   7. pack Dn2Cpp.Build into the same feed and generate a scratch console app
-#      that references it from the local feed,
+#      that references it from the local feed; its project-local link.xml keeps
+#      one otherwise-unreachable method in the generated C++,
 #   8. `dotnet publish` the scratch app with the installed tool on PATH — the
-#      packaged targets must transpile + cmake-build it — and byte-diff the
-#      produced native binary against `dotnet run`.
+#      packaged targets must apply link.xml, transpile + cmake-build it — then
+#      byte-diff the produced native binary against `dotnet run`.
 #
 # NOT a regression gate: the filename is deliberately outside the
 # build-and-run-*.sh glob (like the sibling smoke-test.sh), so
@@ -161,9 +162,33 @@ cat > "$MSAPP/MsBuildSmoke.csproj" <<EOF
 </Project>
 EOF
 cat > "$MSAPP/Program.cs" <<'EOF'
-System.Console.WriteLine("hello from the Dn2Cpp.Build native publish");
-for (int i = 1; i <= 3; i++)
-    System.Console.WriteLine($"square({i}) = {i * i}");
+using System;
+
+namespace MsBuildSmoke;
+
+internal static class Program
+{
+    private static void Main()
+    {
+        Console.WriteLine("hello from the Dn2Cpp.Build native publish");
+        for (int i = 1; i <= 3; i++)
+            Console.WriteLine($"square({i}) = {i * i}");
+    }
+
+    private static void PreservedOnly()
+    {
+        Console.WriteLine("project link.xml preserved this method");
+    }
+}
+EOF
+cat > "$MSAPP/link.xml" <<'EOF'
+<linker>
+  <assembly fullname="MsBuildSmoke">
+    <type fullname="MsBuildSmoke.Program" preserve="nothing">
+      <method name="PreservedOnly" />
+    </type>
+  </assembly>
+</linker>
 EOF
 
 echo "== 8/8 dotnet publish must produce a working native binary =="
@@ -173,6 +198,18 @@ NUGET_PACKAGES="$PWD/$WORK/nuget-cache" PATH="$PWD/$TOOLS:$PATH" \
     dotnet publish "$MSAPP/MsBuildSmoke.csproj" -c "$CONFIG"
 NATIVE="$MSAPP/bin/$CONFIG/$TFM/publish/MsBuildSmoke"
 [ -x "$NATIVE" ] || { echo "error: publish produced no native binary: $NATIVE" >&2; exit 1; }
+MSGEN="$MSAPP/obj/$CONFIG/$TFM/dn2cpp"
+awk '
+    /^\/\/ MsBuildSmoke.Program::PreservedOnly$/ {
+        getline
+        if ($0 ~ /^inline void m_MsBuildSmoke_Program_PreservedOnly_[0-9]+\(\)$/)
+            found = 1
+    }
+    END { exit !found }
+' "$MSGEN/generated.h" || {
+    echo "error: Dn2Cpp.Build did not apply the project-local link.xml" >&2
+    exit 1
+}
 "$NATIVE" > "$WORK/msbuild-native.txt"
 dotnet "$MSAPP/bin/$CONFIG/$TFM/publish/MsBuildSmoke.dll" > "$WORK/msbuild-managed.txt"
 diff -u "$WORK/msbuild-managed.txt" "$WORK/msbuild-native.txt"

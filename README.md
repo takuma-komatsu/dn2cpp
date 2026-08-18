@@ -150,7 +150,8 @@ against either matching target-framework build.
 
 Unity-format `link.xml` files are also supported. Pass a project directory with
 the repeatable `--project-root <dir>` option; dn2cpp recursively finds files
-named exactly `link.xml` anywhere below each root. `Dn2Cpp.Build` supplies the
+named exactly `link.xml` anywhere below each root, excluding `bin`, `obj`,
+`.godot`, and `.git` directories. `Dn2Cpp.Build` supplies the
 MSBuild project directory automatically, and the forked editor supplies the C#
 project directory during export. Direct CLI use without `--project-root` does
 not search for XML files. A descriptor cannot add an assembly to the load set;
