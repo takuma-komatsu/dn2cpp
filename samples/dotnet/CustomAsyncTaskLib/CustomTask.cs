@@ -50,6 +50,12 @@ public readonly struct CustomTask
 
     public Awaiter GetAwaiter() => new Awaiter(this);
 
+    /// <summary>UniTask.Yield's shape: a static member on the TASK TYPE returning a
+    /// hand-rolled awaitable with no BCL counterpart. A cross-assembly caller is a MemberRef
+    /// outside the mapped contract, so awaiting this from another assembly is what makes the
+    /// adoption pre-scan decline this library and transpile its real IL.</summary>
+    public static YieldAwaitable Yield() => new YieldAwaitable();
+
     /// <summary>Nested, like <c>GDTask&lt;T&gt;.Awaiter</c>: its decoded FullName is the bare
     /// simple name "Awaiter", which is why the adoption registry cannot be keyed on a name.</summary>
     public readonly struct Awaiter : ICriticalNotifyCompletion
@@ -74,6 +80,27 @@ public readonly struct CustomTask
             }
             _task._source.OnCompleted(static s => ((Action)s)(), continuation, _task._token);
         }
+    }
+}
+
+/// <summary>What <see cref="CustomTask.Yield"/> returns: a hand-rolled awaitable that always
+/// suspends and reposts the continuation through the same <c>Task.Yield()</c> the library's
+/// own cores suspend on. Not task-like (no [AsyncMethodBuilder]), so it is never an adoption
+/// candidate itself — it is plain IL either way.</summary>
+public readonly struct YieldAwaitable
+{
+    public Awaiter GetAwaiter() => new Awaiter();
+
+    public readonly struct Awaiter : ICriticalNotifyCompletion
+    {
+        public bool IsCompleted => false;
+
+        public void GetResult() { }
+
+        public void OnCompleted(Action continuation) => UnsafeOnCompleted(continuation);
+
+        public void UnsafeOnCompleted(Action continuation) =>
+            System.Threading.Tasks.Task.Yield().GetAwaiter().UnsafeOnCompleted(continuation);
     }
 }
 
