@@ -8,6 +8,7 @@
 #   DN2CPP_CLI_DLL     — pre-built dn2cpp.dll; gates `dotnet exec` it, no MSBuild.
 #   DN2CPP_CORELIB     — pre-resolved CoreLib path; locate_corelib returns it.
 #   DN2CPP_SKIP_BUILD  — build_proj() is a no-op (orchestrator pre-built all).
+#                         build_gate_proj() still builds a project the gate owns.
 
 set -euo pipefail
 
@@ -272,6 +273,28 @@ invoke_cli() {
 build_proj() {
     [ -n "${DN2CPP_SKIP_BUILD:-}" ] && return 0
     dotnet build "$1" -c "$CONFIG" --nologo -v q
+}
+
+# build_gate_proj CSPROJ — build a project whose restore/build is part of the
+# gate's subject. The suite excludes these projects from its prebuild, so this
+# deliberately ignores DN2CPP_SKIP_BUILD.
+build_gate_proj() {
+    dotnet build "$1" -c "$CONFIG" --nologo -v q
+}
+
+# nuget_global_packages_root — the effective NuGet global package cache. Asking
+# NuGet itself preserves NUGET_PACKAGES and globalPackagesFolder precedence.
+nuget_global_packages_root() {
+    local listing root
+    listing="$(dotnet nuget locals global-packages --list)"
+    root="${listing#*:}"
+    root="${root#${root%%[![:space:]]*}}"
+    root="${root%$'\r'}"
+    [ -n "$root" ] || {
+        echo "error: dotnet nuget locals returned no global packages path" >&2
+        return 1
+    }
+    printf '%s\n' "$root"
 }
 
 # ── Opting out: the skip protocol ─────────────────────────────────────────────

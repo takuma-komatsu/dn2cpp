@@ -50,6 +50,10 @@ public readonly struct CustomTask
 
     public Awaiter GetAwaiter() => new Awaiter(this);
 
+    /// <summary>A same-name non-await-pattern overload. Adoption must not route it as the
+    /// parameterless <see cref="GetAwaiter()"/> intrinsic.</summary>
+    public Awaiter GetAwaiter(int marker) => marker == 0 ? new Awaiter(this) : default;
+
     /// <summary>UniTask.Yield's shape: a static member on the TASK TYPE returning a
     /// hand-rolled awaitable with no BCL counterpart. A cross-assembly caller is a MemberRef
     /// outside the mapped contract, so awaiting this from another assembly is what makes the
@@ -70,6 +74,8 @@ public readonly struct CustomTask
         public void GetResult() => _task._source?.GetResult(_task._token);
 
         public void OnCompleted(Action continuation) => UnsafeOnCompleted(continuation);
+
+        public int Probe() => IsCompleted ? 1 : 0;
 
         public void UnsafeOnCompleted(Action continuation)
         {

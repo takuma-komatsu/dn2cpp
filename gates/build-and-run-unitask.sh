@@ -61,11 +61,14 @@ echo "corelib: $corelib"
 echo "== 2/7 Building the driver against the real NuGet UniTask =="
 # The restore needs nuget.org exactly once per machine; with the package neither
 # cached nor reachable the prerequisite is absent, which is a SKIP, not a pass.
-if [ ! -d "$HOME/.nuget/packages/unitask/2.5.11" ] \
+nuget_packages="$(nuget_global_packages_root)"
+if [ ! -d "$nuget_packages/unitask/2.5.11" ] \
     && ! curl -fsI --max-time 15 https://api.nuget.org/v3/index.json >/dev/null 2>&1; then
     gate_skip "UniTask 2.5.11 is not in the NuGet cache and nuget.org is unreachable"
 fi
-build_proj "samples/dotnet/$project/$project.csproj"
+# Package acquisition is part of this gate's subject. run-all-gates excludes the
+# project from its prebuild, so this build must run under DN2CPP_SKIP_BUILD too.
+build_gate_proj "samples/dotnet/$project/$project.csproj"
 app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
 unitask="samples/dotnet/$project/bin/$CONFIG/$TFM/UniTask.dll"
 [ -f "$app" ]     || { echo "FAIL: not built: $app" >&2; exit 1; }

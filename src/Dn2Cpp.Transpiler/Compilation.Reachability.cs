@@ -2732,14 +2732,12 @@ internal sealed partial class Compilation
     // Task family, and for exactly the reason its comment there gives — and their members
     // are served from the intrinsic tables rather than their IL.
     //
-    // The mapping is by member NAME, and that is sound rather than lucky: the C# compiler
-    // REQUIRES a builder to expose Create / Start<TSM> / SetStateMachine / SetResult /
-    // SetException / get_Task / AwaitOnCompleted / AwaitUnsafeOnCompleted, and the await
-    // pattern requires GetAwaiter / get_IsCompleted / GetResult / OnCompleted — the BCL's
-    // own names. An adopted type therefore answers to a BCL dispatch key and every
-    // existing Task/ValueTask intrinsic case fires unchanged. A member OUTSIDE that
-    // contract (GDTask.DelayFrame, .Forget(), .Status) has no BCL counterpart, so a
-    // program that reaches one cannot run adopted at all. A MemberRef pre-scan therefore
+    // The mapping follows the BCL member names and exact signature shapes required by
+    // the async method and await patterns. An adopted type therefore answers to a BCL
+    // dispatch key and every existing Task/ValueTask intrinsic case fires unchanged.
+    // A member OUTSIDE that contract (GDTask.DelayFrame, .Forget(), .Status) has no BCL
+    // counterpart, so a program that reaches one cannot run adopted at all. A MemberRef
+    // pre-scan therefore
     // DECLINES the adoption of any assembly whose task/builder/awaiter is referenced
     // cross-assembly outside the mapped contract, and its real IL transpiles through the
     // general pipeline instead — the same route --no-adopt-async takes by hand. The scan
@@ -2818,8 +2816,29 @@ internal sealed partial class Compilation
         // Decline granularity is the ASSEMBLY, matching --no-adopt-async, and for the same
         // reason: sibling task types' promises interlock, so half-adopting one is unsound.
         public required string AssemblyName;
+        public required bool IsStruct;
+        public required int TaskArity;
+        public required string TaskSignature;
+        public required string BuilderSignature;
+        public string? AwaiterSignature;
         public required List<(Module Module, TypeDefinitionHandle Handle,
             (string Cpp, string Key) Mapping, AdoptedRole Role)> Rows;
+    }
+
+    private static string OpenTypeSignature(MetadataReader reader, TypeDefinitionHandle handle)
+    {
+        string name = RawSignatureProvider.TypeDefinitionName(reader, handle);
+        int arity = reader.GetTypeDefinition(handle).GetGenericParameters().Count;
+        if (arity == 0)
+            return name;
+        string result = name + "<";
+        for (int i = 0; i < arity; i++)
+        {
+            if (i != 0)
+                result += ",";
+            result += $"!{i}";
+        }
+        return result + ">";
     }
 
     /// <summary>Collects one task-like type, its builder and its awaiter as an adoption
@@ -2874,7 +2893,15 @@ internal sealed partial class Compilation
                 ? "System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder"
                 : "System.Runtime.CompilerServices.AsyncTaskMethodBuilder"), AdoptedRole.Builder),
         };
-        var candidate = new AsyncAdoptionCandidate { AssemblyName = module.AssemblyName, Rows = rows };
+        var candidate = new AsyncAdoptionCandidate
+        {
+            AssemblyName = module.AssemblyName,
+            IsStruct = isStruct,
+            TaskArity = td.GetGenericParameters().Count,
+            TaskSignature = OpenTypeSignature(reader, tdh),
+            BuilderSignature = OpenTypeSignature(b.Module.Reader, b.Handle),
+            Rows = rows,
+        };
 
         // The awaiter, discovered structurally: what GetAwaiter() returns. Optional — a
         // fire-and-forget task type has none — and skipped when it is an interface, which
@@ -2884,6 +2911,7 @@ internal sealed partial class Compilation
         var atd = a.Module.Reader.GetTypeDefinition(a.Handle);
         if ((atd.Attributes & TypeAttributes.ClassSemanticsMask) == TypeAttributes.Interface)
             return candidate;
+        candidate.AwaiterSignature = OpenTypeSignature(a.Module.Reader, a.Handle);
         rows.Add((a.Module, a.Handle, ("Dn2CppTaskAwaiter", isStruct
             ? "System.Runtime.CompilerServices.ValueTaskAwaiter"
             : "System.Runtime.CompilerServices.TaskAwaiter"), AdoptedRole.Awaiter));
@@ -2896,50 +2924,149 @@ internal sealed partial class Compilation
     private static readonly string[] s_builderShape =
         { "Create", "Start", "SetStateMachine", "SetResult", "SetException", "get_Task" };
 
-    // The pre-scan's member contracts, one per role: what the intrinsic arms actually
-    // answer for an adopted type. Drift is fail-safe both ways — too narrow only declines
-    // more (the real IL transpiles), too wide is backstopped by the emit-time fail-loud.
-
-    /// <summary>Task-type methods the ValueTask/Task intrinsic arms answer for an adopted
-    /// type (MethodCompiler.EmitIntrinsic.AwaitersTasks.cs / .BuildersTasks.cs). `.ctor` is
-    /// deliberately absent: constructing the task is machinery use, not await plumbing.</summary>
-    private static readonly HashSet<string> s_adoptedTaskContract = new()
-    {
-        "GetAwaiter", "ConfigureAwait", "get_IsCompleted", "get_Result",
-        "get_IsCompletedSuccessfully", "AsTask", "get_CompletedTask",
-        "FromCanceled", "FromException",
-    };
-
     /// <summary>The one task-type FIELD an adopted type models: the pre-completed constant
     /// (MethodCompiler.TryIntrinsicStaticField). Builders and awaiters model no field.</summary>
     private const string AdoptedTaskFieldContract = "CompletedTask";
 
-    /// <summary>Builder methods the intrinsic switches answer: <see cref="s_builderShape"/>
-    /// plus the generic awaits routed through TranslateAsyncGenericIntrinsic.</summary>
-    private static readonly HashSet<string> s_adoptedBuilderContract =
-        new(s_builderShape) { "AwaitOnCompleted", "AwaitUnsafeOnCompleted" };
+    /// <summary>A raw metadata signature shape. Decoding through
+    /// <see cref="RawSignatureProvider"/> never resolves a <see cref="TypeDesc"/> or grows
+    /// <see cref="Classes"/>.</summary>
+    private readonly record struct AsyncMemberShape(bool IsField, bool IsInstance,
+        int GenericArity, string ReturnType, ImmutableArray<string> Parameters);
 
-    /// <summary>Awaiter methods the TaskAwaiter/ValueTaskAwaiter intrinsic arms answer
-    /// (MethodCompiler.EmitIntrinsic.AwaitersTasks.cs).</summary>
-    private static readonly HashSet<string> s_adoptedAwaiterContract = new()
-        { "GetAwaiter", "get_IsCompleted", "GetResult", "OnCompleted", "UnsafeOnCompleted" };
+    private static bool IsAdoptedMember(
+        AsyncAdoptionCandidate candidate, AdoptedRole role, string name, AsyncMemberShape s)
+    {
+        if (s.IsField)
+            return role == AdoptedRole.TaskType && name == AdoptedTaskFieldContract
+                && !s.IsInstance && s.ReturnType == candidate.TaskSignature;
+        bool Method(bool instance, int arity, int parameters) =>
+            s.IsInstance == instance && s.GenericArity == arity && s.Parameters.Length == parameters;
+        bool Returns(string type) => s.ReturnType == type;
+        bool Parameter(int index, string type) => s.Parameters[index] == type;
+        string configured = candidate.IsStruct
+            ? "System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable"
+            : "System.Runtime.CompilerServices.ConfiguredTaskAwaitable";
+        if (candidate.TaskArity != 0)
+            configured += "`1<!0>";
+        string task = candidate.TaskArity == 0
+            ? "System.Threading.Tasks.Task"
+            : "System.Threading.Tasks.Task`1<!0>";
+
+        return role switch
+        {
+            AdoptedRole.TaskType => name switch
+            {
+                "GetAwaiter" => Method(true, 0, 0)
+                    && candidate.AwaiterSignature is { } awaiter && Returns(awaiter),
+                "get_Result" => candidate.TaskArity == 1 && Method(true, 0, 0) && Returns("!0"),
+                "AsTask" => Method(true, 0, 0) && Returns(task),
+                "ConfigureAwait" => Method(true, 0, 1) && Parameter(0, "System.Boolean")
+                    && Returns(configured),
+                "get_IsCompleted" or "get_IsCompletedSuccessfully" =>
+                    Method(true, 0, 0) && Returns("System.Boolean"),
+                "get_CompletedTask" => Method(false, 0, 0) && Returns(candidate.TaskSignature),
+                "FromCanceled" => Method(false, 0, 1)
+                    && Parameter(0, "System.Threading.CancellationToken")
+                    && Returns(candidate.TaskSignature),
+                "FromException" => Method(false, 0, 1)
+                    && Parameter(0, "System.Exception") && Returns(candidate.TaskSignature),
+                _ => false,
+            },
+            AdoptedRole.Builder => name switch
+            {
+                "Create" => Method(false, 0, 0) && Returns(candidate.BuilderSignature),
+                "Start" => Method(true, 1, 1) && Parameter(0, "!!0&")
+                    && Returns("System.Void"),
+                "SetStateMachine" => Method(true, 0, 1)
+                    && Parameter(0, "System.Runtime.CompilerServices.IAsyncStateMachine")
+                    && Returns("System.Void"),
+                "SetResult" => Returns("System.Void") && (candidate.TaskArity == 0
+                    ? Method(true, 0, 0)
+                    : Method(true, 0, 1) && Parameter(0, "!0")),
+                "SetException" => Method(true, 0, 1) && Parameter(0, "System.Exception")
+                    && Returns("System.Void"),
+                "get_Task" => Method(true, 0, 0) && Returns(candidate.TaskSignature),
+                "AwaitOnCompleted" or "AwaitUnsafeOnCompleted" => Method(true, 2, 2)
+                    && Parameter(0, "!!0&") && Parameter(1, "!!1&")
+                    && Returns("System.Void"),
+                _ => false,
+            },
+            _ => name switch
+            {
+                "GetAwaiter" => Method(true, 0, 0)
+                    && candidate.AwaiterSignature is { } awaiter && Returns(awaiter),
+                "GetResult" => Method(true, 0, 0)
+                    && Returns(candidate.TaskArity == 0 ? "System.Void" : "!0"),
+                "get_IsCompleted" => Method(true, 0, 0) && Returns("System.Boolean"),
+                "OnCompleted" or "UnsafeOnCompleted" => Method(true, 0, 1)
+                    && Parameter(0, "System.Action") && Returns("System.Void"),
+                _ => false,
+            },
+        };
+    }
+
+    private static AsyncMemberShape? ReadAsyncMemberShape(MetadataReader reader, MemberReference mr,
+        Module targetModule, TypeDefinitionHandle targetHandle)
+    {
+        try
+        {
+            var header = reader.GetBlobReader(mr.Signature).ReadSignatureHeader();
+            if (header.Kind == SignatureKind.Field)
+            {
+                string fieldType = mr.DecodeFieldSignature(RawSignatureProvider.Instance, null);
+                var targetReader = targetModule.Reader;
+                string member = reader.GetString(mr.Name);
+                foreach (var fieldHandle in targetReader.GetTypeDefinition(targetHandle).GetFields())
+                {
+                    var field = targetReader.GetFieldDefinition(fieldHandle);
+                    if (targetReader.GetString(field.Name) != member
+                        || field.DecodeSignature(RawSignatureProvider.Instance, null) != fieldType)
+                        continue;
+                    bool isInstance = (field.Attributes & FieldAttributes.Static) == 0;
+                    return new AsyncMemberShape(true, isInstance, 0, fieldType, []);
+                }
+                return null;
+            }
+            if (header.Kind != SignatureKind.Method)
+                return null;
+            var signature = mr.DecodeMethodSignature(RawSignatureProvider.Instance, null);
+            return new AsyncMemberShape(false, header.IsInstance,
+                signature.GenericParameterCount, signature.ReturnType, signature.ParameterTypes);
+        }
+        catch (BadImageFormatException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The adoption pre-scan: walks every module's MemberReference table for a
     /// cross-assembly reference to a candidate's task/builder/awaiter outside that role's
     /// contract, and returns the assembly simple names to decline (their real IL then
-    /// transpiles, exactly as --no-adopt-async would arrange). Reads are name handles and
-    /// one signature-header byte only — never a signature decode, which would grow
-    /// <see cref="Classes"/> here in Pass 1.5. Over-detection (a dead MemberRef declining a
+    /// transpiles, exactly as --no-adopt-async would arrange). Signature shapes decode
+    /// through raw metadata only and cannot grow <see cref="Classes"/> in Pass 1.5.
+    /// Over-detection (a dead MemberRef declining a
     /// live adoption) is safe: declined IL is merely transpiled for real. A same-module
     /// reference is skipped — same-assembly out-of-contract calls are MethodDefs or
     /// same-module MemberRefs and stay the emitter's fail-loud hole.</summary>
     private HashSet<string> DeclineOutOfContractAdoptions(List<AsyncAdoptionCandidate> candidates)
     {
-        // First claim per handle wins, mirroring the commit loop's TryAdd order.
-        var byHandle = new Dictionary<(int, TypeDefinitionHandle), (AdoptedRole Role, string AssemblyName)>();
+        // The role/mapping still follows first-claim wins. Ownership does not: one shared
+        // builder or awaiter makes every task assembly depend on the same contract.
+        var byHandle = new Dictionary<(int, TypeDefinitionHandle),
+            (AdoptedRole Role, List<AsyncAdoptionCandidate> Candidates)>();
         foreach (var cand in candidates)
             foreach (var row in cand.Rows)
-                byHandle.TryAdd((row.Module.Index, row.Handle), (row.Role, cand.AssemblyName));
+            {
+                var key = (row.Module.Index, row.Handle);
+                if (!byHandle.TryGetValue(key, out var target))
+                {
+                    target = (row.Role, new List<AsyncAdoptionCandidate>());
+                    byHandle.Add(key, target);
+                }
+                if (!target.Candidates.Contains(cand))
+                    target.Candidates.Add(cand);
+            }
         // Candidate (namespace, name) pairs: the allocation-free prefilter a TypeReference
         // parent must pass before the (allocating) full resolve is paid for.
         var names = new List<(string Ns, string Name)>();
@@ -3001,33 +3128,28 @@ internal sealed partial class Compilation
                 if (m is null || m.Index == module.Index
                     || !byHandle.TryGetValue((m.Index, h), out var target))
                     continue;
-                bool isField;
-                try
-                {
-                    isField = reader.GetBlobReader(mr.Signature).ReadSignatureHeader().Kind
-                        == SignatureKind.Field;
-                }
-                catch (BadImageFormatException)
-                {
-                    continue;
-                }
                 string member = reader.GetString(mr.Name);
-                bool inContract = target.Role switch
-                {
-                    AdoptedRole.TaskType => isField
-                        ? member == AdoptedTaskFieldContract
-                        : s_adoptedTaskContract.Contains(member),
-                    AdoptedRole.Builder => !isField && s_adoptedBuilderContract.Contains(member),
-                    _ => !isField && s_adoptedAwaiterContract.Contains(member),
-                };
+                var shape = ReadAsyncMemberShape(reader, mr, m, h);
+                bool inContract = shape is not null;
+                if (shape is { } memberShape)
+                    foreach (var candidate in target.Candidates)
+                        if (!IsAdoptedMember(candidate, target.Role, member, memberShape))
+                        {
+                            inContract = false;
+                            break;
+                        }
                 if (inContract)
                     continue;
                 // stderr only: the notice must not perturb the generated bytes.
-                if (declined.Add(target.AssemblyName))
-                    Console.Error.WriteLine(
-                        $"dn2cpp: adoption declined: {DefFullName(m.Reader, m.Reader.GetTypeDefinition(h))}"
-                        + $"::{member} is outside the mapped contract; transpiling "
-                        + $"{target.AssemblyName}'s real IL");
+                foreach (var candidate in target.Candidates)
+                {
+                    string assemblyName = candidate.AssemblyName;
+                    if (declined.Add(assemblyName))
+                        Console.Error.WriteLine(
+                            $"dn2cpp: adoption declined: {DefFullName(m.Reader, m.Reader.GetTypeDefinition(h))}"
+                            + $"::{member} is outside the mapped contract; transpiling "
+                            + $"{assemblyName}'s real IL");
+                }
             }
         }
         return declined;

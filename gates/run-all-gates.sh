@@ -12,8 +12,10 @@
 #            them. This is what makes the parallel build phase race-free — MSBuild
 #            has no robust cross-process lock, so two processes must never build
 #            the same project (or a shared ProjectReference) at once.
-#   Phase 3  Build every remaining (dependency-free) C# sample in parallel.
-#   Phase 4  Export DN2CPP_SKIP_BUILD (everything is now built) and run the
+#   Phase 3  Build every remaining (dependency-free) C# sample in parallel,
+#            except projects whose acquisition/build is owned by their gate.
+#   Phase 4  Export DN2CPP_SKIP_BUILD (every suite-owned project is now built)
+#            and run the
 #            non-Godot gates in parallel (xargs -P). With the build skipped, a
 #            gate is just transpile + CMake build + run, so nothing rebuilds a
 #            shared project concurrently. Each gate logs to $LOGDIR/<name>.log;
@@ -384,6 +386,8 @@ ORDERED_PROJECTS=(
     "samples/dotnet/CustomAsyncTaskLib/CustomAsyncTaskLib.csproj"
     "samples/dotnet/CustomAsyncTaskType/CustomAsyncTaskType.csproj"
     "samples/dotnet/CustomAsyncTaskTypeExceed/CustomAsyncTaskTypeExceed.csproj"
+    "samples/dotnet/CustomAsyncTaskTypeShapeExceed/CustomAsyncTaskTypeShapeExceed.csproj"
+    "samples/dotnet/CustomAsyncTaskTypeSharedExceed/CustomAsyncTaskTypeSharedExceed.csproj"
     "samples/dotnet/HotUpdateBase/HotUpdateBase.csproj"
     "samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj"
     "samples/dotnet/HotUpdateRecvPatch/HotUpdateRecvPatch.csproj"
@@ -426,6 +430,18 @@ ORDERED_PROJECTS=(
     "internal/DnHttp/src/DnHttp/DnHttp.csproj"
 )
 
+# Projects whose restore/build is part of the gate's asserted acquisition path.
+# Their gates call build_gate_proj even under DN2CPP_SKIP_BUILD; prebuilding one
+# here would turn a missing optional prerequisite into a Phase-3 failure before
+# the gate can report the sanctioned skip.
+GATE_OWNED_PROJECTS=(
+    "samples/dotnet/UniTaskSample/UniTaskSample.csproj"
+)
+
+for proj in "${GATE_OWNED_PROJECTS[@]}"; do
+    [ -f "$proj" ] || { echo "error: missing gate-owned project $proj" >&2; exit 1; }
+done
+
 for proj in "${ORDERED_PROJECTS[@]}"; do
     [ -f "$proj" ] || { echo "error: missing project $proj" >&2; exit 1; }
     dotnet build "$proj" -c "$CONFIG" --nologo -v q
@@ -448,6 +464,7 @@ T_PHASE=$(now)
 MISSING_ORDERED=""
 while IFS= read -r csproj; do
     in_list "$csproj" "${ORDERED_PROJECTS[@]}" && continue
+    in_list "$csproj" "${GATE_OWNED_PROJECTS[@]}" && continue
     case "$csproj" in samples/godot-dotnet/*) continue ;; esac
     grep -q '<ProjectReference' "$csproj" || continue
     MISSING_ORDERED="$MISSING_ORDERED $csproj"
@@ -466,6 +483,7 @@ fi
 PARALLEL_CSPROJS=()
 while IFS= read -r csproj; do
     in_list "$csproj" "${ORDERED_PROJECTS[@]}" && continue
+    in_list "$csproj" "${GATE_OWNED_PROJECTS[@]}" && continue
     # samples/godot-dotnet/ is never pre-built here. Those projects resolve
     # Godot.NET.Sdk (and, for GDTaskSample, GDTask) through a nuget.config their
     # own gate generates — it carries machine-specific absolute feed paths, so it
@@ -495,7 +513,7 @@ if ! printf '%s\n' "${PARALLEL_CSPROJS[@]}" | \
     echo "error: one or more sample builds failed — see $LOGDIR/_build_*.log" >&2
     exit 1
 fi
-ok "All samples built (${#PARALLEL_CSPROJS[@]} parallel + ${#ORDERED_PROJECTS[@]} serial)"
+ok "Suite-owned samples built (${#PARALLEL_CSPROJS[@]} parallel + ${#ORDERED_PROJECTS[@]} serial; ${#GATE_OWNED_PROJECTS[@]} gate-owned)"
 ok "Phase 3 elapsed: $(( $(now) - T_PHASE ))s"
 
 # Everything is built; gates may now skip their per-invocation dotnet build.

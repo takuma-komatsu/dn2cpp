@@ -274,7 +274,7 @@ task/builder/awaiter keys together. Discovery never throws: `-r`-ing an assembly
 must not fail on a task type the program never touches.
 
 Adoption applies only while every cross-assembly reference stays inside the
-mapped contract: a MemberRef pre-scan
+mapped member-name and signature-shape contract: a metadata-only MemberRef pre-scan
 (`Compilation.DeclineOutOfContractAdoptions`) declines the adoption of any
 assembly whose task/builder/awaiter is referenced outside it (`UniTask.Yield()`'s
 shape), so that library's real IL transpiles through the general pipeline — no
