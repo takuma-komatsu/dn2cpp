@@ -65,5 +65,6 @@ static class Program
         FfSettler.Program.__GateEntry();
         TimerSettler.Program.__GateEntry();
         FastSettler.Program.__GateEntry();
+        WorkerLocalFairness.Program.__GateEntry();
     }
 }

@@ -57,5 +57,12 @@
 # drain that reads the empty count as a deadlock verdict without re-probing its own queue
 # dies here with a false deadlock; the section loops the shape because the window is a
 # few instructions wide.
+#
+# The WorkerLocalFairness section covers worker-owned continuations left by async-void
+# callbacks. More self-rescheduling delay loops than Environment.ProcessorCount run
+# ahead of a sentinel Task.Run: draining any one loop to emptiness starves the global
+# queue forever, while a fair worker pump reaches the sentinel and lets every loop exit.
+# Keep the final run under a short watchdog so that starvation is a named gate failure.
 source "$(dirname "$0")/_common.sh"
+export DN2CPP_RUN_WATCHDOG_SECS=60
 corelib_diff_gate ThreadPoolQueue System.Threading

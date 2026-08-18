@@ -140,6 +140,11 @@ struct Dn2CppScheduler
     // remainder carried in pump_last so it is never lost to rounding.
     std::chrono::steady_clock::time_point pump_last{};
     bool pump_has_last = false;
+    // Pool workers alternate this scheduler's owner-only work with the global
+    // pool queue. The flag is also the scheduler's single settler principal:
+    // an arbitrary number of queued resumptions/timers costs one count.
+    bool pool_worker = false;                 // fixed before the worker runs managed code
+    std::atomic<bool> pool_local_principal{false}; // transitions under mtx; read by pool wait
     std::mutex mtx;                      // guards head/tail (cross-thread push)
     std::condition_variable cv;          // task_block waits here
 };
@@ -199,11 +204,11 @@ static void dn2cpp_sched_wake_all()
     }
 }
 
-// Number of real-thread tasks (Task.Run / pool work) that may still complete a Task
-// some cooperative thread is blocked on. ++ at dispatch, -- at completion. When it is
-// >0 a blocked task_block sleeps on its cv instead of concluding anything. It is only
-// ONE of the inputs to dn2cpp_task_settler_exists below: on its own it cannot see a
-// user-space executor, which then looks like a deadlock.
+// Number of pool principals that may still complete a Task some cooperative thread is
+// blocked on. Each global item contributes one from dispatch through completion; each
+// pool worker with owner-local continuations/timers contributes one until both queues
+// empty. When it is >0 task_block sleeps instead of concluding anything. It is only ONE
+// input to dn2cpp_task_settler_exists: it cannot see a user-space executor.
 std::atomic<int> g_inflight_async_tasks{0};
 
 // The SECOND principal a blocked wait must account for: threads the program started
@@ -250,8 +255,8 @@ static std::atomic<int> g_live_timer_threads{0};
 static thread_local bool t_on_timer_thread = false;
 
 // True when some principal other than this thread could still settle a pending task:
-// pool work in flight (Task items and fire-and-forget items alike), another live user
-// thread, or an armed timer (a runtime timer thread with a fire pending or a
+// pool work in flight (global items and worker-local resumptions/timers alike), another
+// live user thread, or an armed timer (a runtime timer thread with a fire pending or a
 // TimerCallback in flight).
 static bool dn2cpp_task_settler_exists()
 {
@@ -342,6 +347,10 @@ static void dn2cpp_pending_cont_unlink(Dn2CppCont* c)
     dn2cpp_gc_store_ref(&c->gcnext, static_cast<Dn2CppCont*>(nullptr));
 }
 
+// Defined beside the pool condition variable. A continuation may be posted before
+// its owner reaches the pool wait, so notification needs no lock or handshake.
+static void dn2cpp_pool_wake_for_scheduler();
+
 // Append `c` (already populated, incl. its owner) onto scheduler `s`'s run queue and
 // wake a waiter. Safe to call from any thread, and safe after the owning thread has
 // exited — the scheduler is never freed. Nothing then pumps that queue, so the
@@ -351,14 +360,28 @@ static void dn2cpp_pending_cont_unlink(Dn2CppCont* c)
 static void dn2cpp_sched_enqueue(Dn2CppScheduler* s, Dn2CppCont* c)
 {
     dn2cpp_pending_cont_link(c); // rooted before the queue makes it poppable
-    std::lock_guard<std::mutex> lk(s->mtx);
-    dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
-    if (s->tail != nullptr)
-        dn2cpp_gc_store_ref(&s->tail->next, c);
-    else
-        s->head = c;
-    s->tail = c;
-    s->cv.notify_one();
+    bool wakePool;
+    {
+        std::lock_guard<std::mutex> lk(s->mtx);
+        wakePool = s->pool_worker;
+        if (wakePool && !s->pool_local_principal.load(std::memory_order_relaxed))
+        {
+            // Join before publishing the continuation. The completing principal
+            // may leave immediately after enqueue, so a zero-count window here
+            // would let a blocked waiter declare deadlock on runnable pool work.
+            s->pool_local_principal.store(true, std::memory_order_release);
+            g_inflight_async_tasks.fetch_add(1, std::memory_order_acq_rel);
+        }
+        dn2cpp_gc_store_ref(&c->next, static_cast<Dn2CppCont*>(nullptr));
+        if (s->tail != nullptr)
+            dn2cpp_gc_store_ref(&s->tail->next, c);
+        else
+            s->head = c;
+        s->tail = c;
+        s->cv.notify_one();
+    }
+    if (wakePool)
+        dn2cpp_pool_wake_for_scheduler();
 }
 
 // Post a fresh resumption onto scheduler `s` (owner = `s`).
@@ -1741,8 +1764,8 @@ static void dn2cpp_report_defeated_wait()
 
 // Drive THIS thread's cooperative scheduler until `t` settles, WITHOUT re-raising a
 // fault — the caller decides what to do with the settled status. Returns false if the
-// wait is unsatisfiable: nothing runnable here, no pool work in flight (Task items and
-// fire-and-forget items alike), no other live user thread and no armed timer,
+// wait is unsatisfiable: nothing runnable here, no pool work in flight (global items or
+// worker-local scheduler work), no other live user thread and no armed timer,
 // so no principal can ever settle `t`. Shared by the public blocking
 // get (dn2cpp_task_block, which throws) and the Task.Run(Func<Task>) unwrap worker
 // (which aborts — see dn2cpp_task_drain). The unwrap worker keeps its outer task counted
@@ -2321,7 +2344,7 @@ void dn2cpp_thread_set_name(Dn2CppThread* t, Dn2CppString* n)
 // routes the awaiting state machine's continuation back to the
 // scheduler that registered the await (so `await Task.Run(...)` resumes on the awaiting
 // thread). g_inflight_async_tasks keeps a blocked task_block sleeping (rather than
-// deadlock-failing) while a worker can still complete its task.
+// deadlock-failing) while a global item or worker-local continuation can still settle it.
 // A GC-allocated holder rooting one queued work item's managed pieces from enqueue
 // until the worker is done with them. The work queue itself is a malloc-backed deque
 // the collector never scans, so while an item waits for a worker NOTHING else is
@@ -2367,6 +2390,11 @@ static bool g_pool_stop = false;    // guarded by g_pool_mtx; workers leave thei
 static unsigned g_pool_live = 0;    // guarded by g_pool_mtx; workers still inside their loop
 static DN2CPP_GC_STATIC_ROOT Dn2CppPoolNode* g_pool_pending = nullptr; // static => a GC root that keeps queued items reachable
 
+static void dn2cpp_pool_wake_for_scheduler()
+{
+    g_pool_cv.notify_all();
+}
+
 // Link a fresh holder under g_pool_mtx, BEFORE its work item is pushed, so the item's
 // graph is rooted before any worker can pop it.
 static void dn2cpp_pool_link(Dn2CppPoolNode* node)
@@ -2407,38 +2435,118 @@ static Dn2CppPoolNode* dn2cpp_pool_node_new(Dn2CppTask* task, Dn2CppObject* del,
     return node;
 }
 
-// Drain THIS worker's own scheduler — posted continuations and Task.Delay timers —
-// until both are empty. Both are owner-only, so work a pool item leaves behind (a
-// fire-and-forget callback that arms a Delay and returns, real .NET's UniTask-style
-// resume-on-pool shape) is drivable by no other thread: without this drain the worker
-// re-enters the pool wait, its virtual clock never advances, and the blocked awaiter —
-// seeing no armed timer of its own and no pool work in flight — declares deadlock.
-// Runs before the item leaves the principal count, so an awaiter sleeps through it.
-static void dn2cpp_sched_drain_local()
+// Transfer a worker item's settler claim to owner-local work before the item leaves
+// its own principal count, and release it once both local queues are empty. Queue
+// publication and the false transition share s->mtx, so a cross-thread post can never
+// land between the emptiness check and the departure.
+static void dn2cpp_sched_sync_pool_principal(Dn2CppScheduler* s)
 {
-    for (;;)
+    bool left = false;
     {
-        if (dn2cpp_sched_run_one())
-            continue;
-        if (dn2cpp_sched_advance_timers(INT64_MAX))
-            continue;
-        break;
+        std::lock_guard<std::mutex> lk(s->mtx);
+        bool pending = s->head != nullptr || s->timers != nullptr;
+        bool principal = s->pool_local_principal.load(std::memory_order_relaxed);
+        if (pending && !principal)
+        {
+            s->pool_local_principal.store(true, std::memory_order_release);
+            g_inflight_async_tasks.fetch_add(1, std::memory_order_acq_rel);
+        }
+        else if (!pending && principal)
+        {
+            s->pool_local_principal.store(false, std::memory_order_release);
+            left = true;
+        }
     }
+    if (left)
+        dn2cpp_principal_left(g_inflight_async_tasks);
+}
+
+// Shutdown discards scheduler-owned work just like it discards queued pool items.
+// Detach under the scheduler lock, then unlink from the static GC roots outside it:
+// enqueue takes those locks in the opposite order.
+static void dn2cpp_sched_abandon_pool_local(Dn2CppScheduler* s)
+{
+    Dn2CppCont* conts;
+    Dn2CppTimer* timers;
+    bool left;
+    {
+        std::lock_guard<std::mutex> lk(s->mtx);
+        s->pool_worker = false;
+        conts = s->head;
+        timers = s->timers;
+        s->head = nullptr;
+        s->tail = nullptr;
+        s->timers = nullptr;
+        s->timers_tail = nullptr;
+        left = s->pool_local_principal.exchange(false, std::memory_order_acq_rel);
+    }
+    while (conts != nullptr)
+    {
+        Dn2CppCont* next = conts->next;
+        dn2cpp_pending_cont_unlink(conts);
+        dn2cpp_gc_store_ref(&conts->next, static_cast<Dn2CppCont*>(nullptr));
+        conts = next;
+    }
+    while (timers != nullptr)
+    {
+        Dn2CppTimer* next = timers->next;
+        dn2cpp_pending_timer_unlink(timers);
+        dn2cpp_gc_store_ref(&timers->next, static_cast<Dn2CppTimer*>(nullptr));
+        timers = next;
+    }
+    if (left)
+        dn2cpp_principal_left(g_inflight_async_tasks);
 }
 
 static void dn2cpp_pool_worker()
 {
     Dn2CppGCThread guard; // workers allocate managed objects -> must be GC-registered
+    Dn2CppScheduler* scheduler = dn2cpp_sched_self();
+    {
+        std::lock_guard<std::mutex> lk(scheduler->mtx);
+        scheduler->pool_worker = true;
+    }
+    bool preferLocal = false;
     for (;;)
     {
         Dn2CppWorkItem it;
+        bool runLocal = false;
         {
             std::unique_lock<std::mutex> lk(g_pool_mtx);
-            g_pool_cv.wait(lk, [] { return g_pool_stop || !g_pool_q.empty(); });
+            g_pool_cv.wait(lk, [&] {
+                return g_pool_stop || !g_pool_q.empty()
+                    || scheduler->pool_local_principal.load(std::memory_order_acquire);
+            });
             if (g_pool_stop)
                 break; // quiesce: the queue was already dropped, leave at once
-            it = g_pool_q.front();
-            g_pool_q.pop_front();
+            bool localReady = scheduler->pool_local_principal.load(std::memory_order_acquire);
+            if (!g_pool_q.empty() && (!localReady || !preferLocal))
+            {
+                it = g_pool_q.front();
+                g_pool_q.pop_front();
+                preferLocal = true;
+            }
+            else
+            {
+                runLocal = true;
+                preferLocal = false;
+            }
+        }
+        if (runLocal)
+        {
+            try
+            {
+                // One turn only. A self-rescheduling await loop retains its
+                // principal but cannot monopolize the worker over global items.
+                if (!dn2cpp_sched_run_one())
+                    dn2cpp_sched_advance_timers(INT64_MAX);
+            }
+            catch (const Dn2CppException&)
+            {
+                dn2cpp_fail("threadpool: unhandled managed exception in a local continuation");
+            }
+            dn2cpp_sched_sync_pool_principal(scheduler);
+            continue;
         }
         if (it.ff)
         {
@@ -2458,14 +2566,7 @@ static void dn2cpp_pool_worker()
             {
                 dn2cpp_fail("threadpool: unhandled managed exception");
             }
-            try
-            {
-                dn2cpp_sched_drain_local();
-            }
-            catch (const Dn2CppException&)
-            {
-                dn2cpp_fail("threadpool: unhandled managed exception");
-            }
+            dn2cpp_sched_sync_pool_principal(scheduler);
             dn2cpp_pool_unlink(it.node);
             dn2cpp_principal_left(g_inflight_async_tasks);
             continue;
@@ -2542,21 +2643,13 @@ static void dn2cpp_pool_worker()
             dn2cpp_task_set_exception(it.task, e.obj); // rooted via the task before the pop
             dn2cpp_exc_inflight_pop(e.obj);
         }
-        // The item may have left owner-only work behind (see dn2cpp_sched_drain_local);
-        // a continuation resumed here must not unwind the worker, same as the nested arm.
-        try
-        {
-            dn2cpp_sched_drain_local();
-        }
-        catch (const Dn2CppException&)
-        {
-            dn2cpp_fail("threadpool: unhandled managed exception while draining after a pool item");
-        }
+        dn2cpp_sched_sync_pool_principal(scheduler);
         // Work done: allow the delegate to be collected.
         dn2cpp_gc_store_ref(&it.task->workerKeepAlive, static_cast<Dn2CppObject*>(nullptr));
         dn2cpp_pool_unlink(it.node);        // the task has settled; drop the queue root
         dn2cpp_principal_left(g_inflight_async_tasks);
     }
+    dn2cpp_sched_abandon_pool_local(scheduler);
     {
         std::lock_guard<std::mutex> lk(g_pool_mtx);
         g_pool_live--;
@@ -3346,4 +3439,3 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
         const_cast<void*>(onCompletedFn))(vts, del, &b->header, version, 0);
     return b->task;
 }
-
