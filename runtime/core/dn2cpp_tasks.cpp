@@ -3200,6 +3200,20 @@ void dn2cpp_task_throw_async(Dn2CppObject* exc, Dn2CppObject* /*syncCtx*/)
     dn2cpp_threadpool_queue(del, nullptr);
 }
 
+// TaskScheduler.FromCurrentSynchronizationContext: with no installed context this
+// throws exactly what real .NET throws (its message included). With one installed
+// it must still throw — dn2cpp's TaskScheduler is an ignored scheduling hint, so a
+// context-wrapping scheduler would silently run continuations off-context.
+Dn2CppObject* dn2cpp_taskscheduler_from_sync_ctx()
+{
+    if (dn2cpp_sync_ctx_get() == nullptr)
+        dn2cpp_throw_invalid_operation_msg(
+            "The current SynchronizationContext may not be used as a TaskScheduler.");
+    dn2cpp_throw_not_supported_msg(
+        "TaskScheduler.FromCurrentSynchronizationContext: dn2cpp treats a TaskScheduler as "
+        "a scheduling hint only and cannot wrap the installed SynchronizationContext.");
+}
+
 // ===== IValueTaskSource-backed ValueTask bridge ==============================
 // `new ValueTask(<T>)(IValueTaskSource(<T>) source, short token)` — the shape
 // RandomAccess' ThreadPoolValueTaskSource read/write scheduler returns. The

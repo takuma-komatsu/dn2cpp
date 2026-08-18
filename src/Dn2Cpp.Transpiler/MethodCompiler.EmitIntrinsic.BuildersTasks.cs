@@ -999,6 +999,12 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.TaskScheduler", "get_Current"):
                 Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
                 return true;
+            // TaskScheduler.FromCurrentSynchronizationContext — always throws: .NET's
+            // own InvalidOperationException with no installed context, NotSupported
+            // with one (the hint-only sentinel cannot honor a context scheduler).
+            case ("System.Threading.Tasks.TaskScheduler", "FromCurrentSynchronizationContext"):
+                Push(StackKind.Ref, "Dn2CppObject*", "dn2cpp_taskscheduler_from_sync_ctx()");
+                return true;
             // TaskFactory.StartNew(Action[, ...]) / StartNew(Action<object?>, object?
             // state[, ...]) -> Task on the same worker pool as Task.Run. The trailing
             // CancellationToken / TaskCreationOptions / TaskScheduler arguments are
