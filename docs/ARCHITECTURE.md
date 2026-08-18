@@ -287,7 +287,8 @@ still fails loud at emit, naming the adoption and the manual override.
 declines adoption by hand, for exactly the same real-IL route. Per assembly,
 not per type — sibling task types' promises interlock — and an unmatched name is
 a hard error. `gates/build-and-run-gdtask.sh` proves the automatic decline on
-the real GDTask end to end.
+the real GDTask end to end; `gates/build-and-run-unitask.sh` proves it on the
+real NuGet UniTask, console lane.
 `--cut "DeclType::Method"` (same hard-error rule and bounded semantics as
 `AdditionalBoundedMethods`) is the carve-out lever for a genuinely untranspilable
 corner, with its regression test in
