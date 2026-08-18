@@ -2407,6 +2407,25 @@ static Dn2CppPoolNode* dn2cpp_pool_node_new(Dn2CppTask* task, Dn2CppObject* del,
     return node;
 }
 
+// Drain THIS worker's own scheduler — posted continuations and Task.Delay timers —
+// until both are empty. Both are owner-only, so work a pool item leaves behind (a
+// fire-and-forget callback that arms a Delay and returns, real .NET's UniTask-style
+// resume-on-pool shape) is drivable by no other thread: without this drain the worker
+// re-enters the pool wait, its virtual clock never advances, and the blocked awaiter —
+// seeing no armed timer of its own and no pool work in flight — declares deadlock.
+// Runs before the item leaves the principal count, so an awaiter sleeps through it.
+static void dn2cpp_sched_drain_local()
+{
+    for (;;)
+    {
+        if (dn2cpp_sched_run_one())
+            continue;
+        if (dn2cpp_sched_advance_timers(INT64_MAX))
+            continue;
+        break;
+    }
+}
+
 static void dn2cpp_pool_worker()
 {
     Dn2CppGCThread guard; // workers allocate managed objects -> must be GC-registered
@@ -2434,6 +2453,14 @@ static void dn2cpp_pool_worker()
             try
             {
                 dn2cpp_paramthread_invoke(it.node->del, it.node->state);
+            }
+            catch (const Dn2CppException&)
+            {
+                dn2cpp_fail("threadpool: unhandled managed exception");
+            }
+            try
+            {
+                dn2cpp_sched_drain_local();
             }
             catch (const Dn2CppException&)
             {
@@ -2514,6 +2541,16 @@ static void dn2cpp_pool_worker()
         {
             dn2cpp_task_set_exception(it.task, e.obj); // rooted via the task before the pop
             dn2cpp_exc_inflight_pop(e.obj);
+        }
+        // The item may have left owner-only work behind (see dn2cpp_sched_drain_local);
+        // a continuation resumed here must not unwind the worker, same as the nested arm.
+        try
+        {
+            dn2cpp_sched_drain_local();
+        }
+        catch (const Dn2CppException&)
+        {
+            dn2cpp_fail("threadpool: unhandled managed exception while draining after a pool item");
         }
         // Work done: allow the delegate to be collected.
         dn2cpp_gc_store_ref(&it.task->workerKeepAlive, static_cast<Dn2CppObject*>(nullptr));
