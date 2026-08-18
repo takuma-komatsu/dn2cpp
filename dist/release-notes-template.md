@@ -8,10 +8,11 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- `Debugger.IsLogging` と `Debugger.Log` を NativeAOT と同じく扱い、実行時 VM のない AOT バイナリでも Debugger logging が未実装の QCall に到達せず、安全な no-op になるようになりました
-- `Trace` / `Debug` の出力を `Interop.Sys.SysLog` へ接続し、POSIX 系ではホストの syslog、Web では標準エラー出力（ブラウザのコンソール）へ送るようになりました
+- Unity 互換の `PreserveAttribute` と `link.xml` による保持指定に対応し、ストリッピングされる型・メンバーをプロジェクト単位で明示的に残せるようになりました
+- `TaskScheduler`、ワーカーローカルなスケジューリング、`Thread.VolatileRead` / `VolatileWrite` を拡充し、async 継続の実行経路を安定させました
+- カスタム async task 型と実際の NuGet UniTask をサポートし、採用契約外の参照は自動的に通常の IL トランスパイルへ戻すようになりました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6a17ce6367f90b393cbf7016a45c4284c56d5312...f341b8a6073e505619f1f4f4f53a1bf02eb89090> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/2d956f24be63a537c49c8e5b011f4139657c486f...e93a1865afcc2f8686f577a5b6047bad761ca54b> を参照してください。
 
 ## アセット
 
