@@ -417,7 +417,8 @@ internal sealed partial class MethodCompiler
         // Encoding.GetString. TryEmitEncodingGetString raises its OWN throw for an unmodeled
         // shape, so it never returns false.
         if (callee.DeclaringClass.FullName
-                is "System.Text.Encoding" or "System.Text.UTF8Encoding" or "System.Text.UnicodeEncoding"
+                is "System.Text.Encoding" or "System.Text.ASCIIEncoding"
+                    or "System.Text.UTF8Encoding" or "System.Text.UnicodeEncoding"
             && TryEmitEncodingGetString(callee.DeclaringClass.FullName, callee.Signature))
             return;
         throw new NotSupportedException(

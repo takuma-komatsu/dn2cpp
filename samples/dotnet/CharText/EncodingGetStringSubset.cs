@@ -2,7 +2,7 @@
 using System;
 using System.Text;
 
-// App-module code calls Encoding.GetString on the UTF8 / Unicode (UTF-16LE)
+// App-module code calls Encoding.GetString on the UTF8 / Unicode (UTF-16LE) / ASCII
 // encodings, covering valid, empty, and malformed byte runs. dn2cpp's own PEReader
 // reads PE section names via
 // Encoding.UTF8.GetString(byte[], int, int); the real GetString body reaches
@@ -60,6 +60,39 @@ class Program
     static void U8Span(string label, byte[] bytes, int start, int len)
     {
         Console.WriteLine(label + ": " + Dump(Encoding.UTF8.GetString(new ReadOnlySpan<byte>(bytes, start, len))));
+    }
+
+    static void Ascii(string label, byte[] bytes)
+    {
+        Console.WriteLine(label + ": " + Dump(Encoding.ASCII.GetString(bytes)));
+    }
+    static void AsciiR(string label, byte[] bytes, int index, int count)
+    {
+        Console.WriteLine(label + ": " + Dump(Encoding.ASCII.GetString(bytes, index, count)));
+    }
+    static void AsciiSpan(string label, byte[] bytes, int start, int len)
+    {
+        Console.WriteLine(label + ": " + Dump(Encoding.ASCII.GetString(new ReadOnlySpan<byte>(bytes, start, len))));
+    }
+    static unsafe void AsciiPtr(string label, byte[] bytes, int count)
+    {
+        fixed (byte* p = bytes)
+        {
+            Console.WriteLine(label + ": " + Dump(Encoding.ASCII.GetString(p, count)));
+        }
+    }
+
+    static unsafe void AsciiDirectPtr()
+    {
+        byte[] bytes = new byte[] { 0x41, 0x80, 0x42 };
+        fixed (byte* p = bytes)
+        {
+            Console.WriteLine("ascii direct ptr: " + Dump(new ASCIIEncoding().GetString(p, bytes.Length)));
+            try { new ASCIIEncoding().GetString((byte*)null, 0); Console.WriteLine("ascii-direct-ptr-null: ok"); }
+            catch (ArgumentNullException) { Console.WriteLine("ascii-direct-ptr-null: ArgumentNull"); }
+            try { new ASCIIEncoding().GetString(p, -1); Console.WriteLine("ascii-direct-ptr-neg: ok"); }
+            catch (ArgumentOutOfRangeException) { Console.WriteLine("ascii-direct-ptr-neg: ArgumentOutOfRange"); }
+        }
     }
 
     internal static void __GateEntry()
@@ -140,5 +173,24 @@ class Program
         catch (ArgumentOutOfRangeException) { Console.WriteLine("over-cnt: ArgumentOutOfRange"); }
         try { Encoding.Unicode.GetString((byte[])null); Console.WriteLine("u16-null: ok"); }
         catch (ArgumentNullException) { Console.WriteLine("u16-null: ArgumentNull"); }
+
+        // ---- ASCII GetString overloads and replacement fallback ----
+        byte[] ascii = Encoding.ASCII.GetBytes("hi");
+        Ascii("ascii whole", ascii);
+        Ascii("ascii empty", new byte[0]);
+        byte[] asciiEdges = new byte[] { 0x58, 0x7F, 0x80, 0xFF, 0x59 };
+        Ascii("ascii edges", asciiEdges);
+        AsciiR("ascii range", asciiEdges, 1, 3);
+        AsciiSpan("ascii span", asciiEdges, 1, 3);
+        AsciiPtr("ascii ptr", asciiEdges, 4);
+        Console.WriteLine("ascii direct: "
+            + Dump(new ASCIIEncoding().GetString(new byte[] { 0x41, 0x80, 0x42 })));
+        try { Encoding.ASCII.GetString((byte[])null); Console.WriteLine("ascii-null: ok"); }
+        catch (ArgumentNullException) { Console.WriteLine("ascii-null: ArgumentNull"); }
+        try { Encoding.ASCII.GetString(asciiEdges, -1, 1); Console.WriteLine("ascii-neg-idx: ok"); }
+        catch (ArgumentOutOfRangeException) { Console.WriteLine("ascii-neg-idx: ArgumentOutOfRange"); }
+        try { Encoding.ASCII.GetString(asciiEdges, 2, 4); Console.WriteLine("ascii-over-cnt: ok"); }
+        catch (ArgumentOutOfRangeException) { Console.WriteLine("ascii-over-cnt: ArgumentOutOfRange"); }
+        AsciiDirectPtr();
     }
 }

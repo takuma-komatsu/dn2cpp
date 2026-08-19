@@ -415,6 +415,22 @@ int32_t dn2cpp_utf8_transcode_to_utf8(const char16_t* pIn, int32_t inLen,
 
 // ---- Encoding.GetString ----------------------------------
 //
+// ASCIIEncoding maps each byte independently. Its default decoder replacement
+// fallback turns every non-ASCII byte into '?'.
+Dn2CppString* dn2cpp_string_decode_ascii(const char* bytes, int32_t count)
+{
+    char16_t* buf;
+    Dn2CppString* s = dn2cpp_string_alloc(&buf, count < 0 ? 0 : count);
+    for (int32_t i = 0; i < count; i++)
+    {
+        unsigned char b = static_cast<unsigned char>(bytes[i]);
+        buf[i] = b <= 0x7Fu ? static_cast<char16_t>(b) : u'?';
+    }
+    buf[count < 0 ? 0 : count] = u'\0';
+    s->length = count < 0 ? 0 : count;
+    return s;
+}
+
 // .NET-exact UTF-8 decode with the Unicode "maximal subpart" replacement.
 // Each maximal well-formed prefix of an ill-formed sequence yields ONE U+FFFD,
 // and the byte that broke the sequence (unless it is a continuation byte, which
@@ -600,16 +616,16 @@ Dn2CppString* dn2cpp_encoding_get_string(Dn2CppObject* encoding, Dn2CppArrayN* b
 {
     // Dispatch on the receiver's runtime type by walking its type-info base chain
     // (the static type is the base System.Text.Encoding at the virtual call site).
-    // Encoding.UTF8 actually returns an internal UTF8Encoding.UTF8EncodingSealed
-    // subclass (and Encoding.Unicode a UnicodeEncoding subclass), so a name match
-    // on the concrete type is not enough — match any ancestor named
-    // System.Text.UTF8Encoding -> UTF-8 / System.Text.UnicodeEncoding -> UTF-16LE.
+    // The Encoding properties return internal sealed subclasses, so match the
+    // supported public encoding type anywhere in the base chain.
     // Anything else is unsupported (no silent carve-out).
     for (const Dn2CppTypeInfo* t = (encoding != nullptr) ? encoding->type : nullptr;
          t != nullptr; t = t->base)
     {
         if (t->name == nullptr)
             continue;
+        if (std::strcmp(t->name, "System.Text.ASCIIEncoding") == 0)
+            return dn2cpp_encoding_decode_range(bytes, index, count, dn2cpp_string_decode_ascii);
         if (std::strcmp(t->name, "System.Text.UTF8Encoding") == 0)
             return dn2cpp_encoding_decode_range(bytes, index, count, dn2cpp_string_decode_utf8);
         if (std::strcmp(t->name, "System.Text.UnicodeEncoding") == 0)
@@ -635,6 +651,8 @@ Dn2CppString* dn2cpp_encoding_get_string_ptr(Dn2CppObject* encoding, const char*
     {
         if (t->name == nullptr)
             continue;
+        if (std::strcmp(t->name, "System.Text.ASCIIEncoding") == 0)
+            return dn2cpp_string_decode_ascii(bytes, count);
         if (std::strcmp(t->name, "System.Text.UTF8Encoding") == 0)
             return dn2cpp_string_decode_utf8(bytes, count);
         if (std::strcmp(t->name, "System.Text.UnicodeEncoding") == 0)

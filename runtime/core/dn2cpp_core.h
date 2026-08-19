@@ -3560,9 +3560,12 @@ int32_t dn2cpp_utf8_transcode_to_utf8(const char16_t* pIn, int32_t inLen,
 // SIMD UTF-8 transcode subtree (Ascii.WidenAsciiToUtf16 / Vector128<byte>) dn2cpp never
 // transpiles; these helpers replace that whole subtree with a portable, .NET-exact
 // decode, and the matching ResolveCallTarget cut makes the real bodies unreachable.
-// Includes the DecoderReplacementFallback (U+FFFD) on malformed input — see the
-// per-helper notes for the exact replacement rule.
+// Includes each encoding's default DecoderReplacementFallback — see the per-helper
+// notes for the exact replacement rule.
 //
+// _decode_ascii: maps bytes 0x00..0x7F directly and replaces each byte 0x80..0xFF
+//   with '?' (ASCIIEncoding's default decoder replacement fallback).
+Dn2CppString* dn2cpp_string_decode_ascii(const char* bytes, int32_t count);
 // _decode_utf8: decodes a UTF-8 byte run, applying the Unicode "maximal subpart
 //   of an ill-formed subsequence" replacement (Encoding.UTF8 / W3C best practice:
 //   each maximal valid prefix of an ill-formed sequence yields ONE U+FFFD, and a
@@ -3582,8 +3585,9 @@ Dn2CppString* dn2cpp_string_decode_utf32le(const char* bytes, int32_t count);
 // _encoding_get_string: the runtime entry the transpiler emits for a virtual
 //   `Encoding::GetString(byte[], int, int)` call whose static receiver type is the
 //   base System.Text.Encoding. Dispatches on the receiver's runtime type-info name:
-//   System.Text.UTF8Encoding -> _decode_utf8, System.Text.UnicodeEncoding ->
-//   _decode_utf16le, System.Text.UTF32Encoding -> _decode_utf32le.
+//   System.Text.ASCIIEncoding -> _decode_ascii, System.Text.UTF8Encoding ->
+//   _decode_utf8, System.Text.UnicodeEncoding -> _decode_utf16le,
+//   System.Text.UTF32Encoding -> _decode_utf32le.
 //   Any other encoding raises NotSupportedException (no silent
 //   carve-out). `index`/`count` slice the byte[] (validated like .NET: null array ->
 //   ArgumentNullException, out-of-range -> ArgumentOutOfRangeException). When the
@@ -3601,8 +3605,8 @@ Dn2CppString* dn2cpp_encoding_decode_range(Dn2CppArrayN* bytes, int32_t index,
 // metadata string decode (MetadataStringDecoder.GetString / MemoryBlock.PeekUtf8),
 // which always uses the UTF-8 decoder. Dispatches on the receiver type-info name like
 // dn2cpp_encoding_get_string. A negative count throws ArgumentOutOfRangeException; a
-// null pointer is only valid with count 0 (ArgumentNullException otherwise), matching
-// real .NET. The byte* is the raw buffer (no array header).
+// null pointer throws ArgumentNullException even when count is zero, matching real
+// .NET. The byte* is the raw buffer (no array header).
 Dn2CppString* dn2cpp_encoding_get_string_ptr(Dn2CppObject* encoding, const char* bytes,
                                              int32_t count);
 
