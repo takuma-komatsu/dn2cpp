@@ -2818,17 +2818,27 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // typeof(Regex) from a user assembly). Runtime-raised exception
                 // types stay External and keep their shared runtime handle.
                 var target = ResolveCastTarget(insn.Token);
-                // Shared-body candidate: typeof over a placeholder-bearing type is
-                // instantiation-dependent only when the Type VALUE is consumed at
-                // runtime — the pervasive typeof(T).IsValueType / GetTypeCode
-                // folds read the static token alone, and for an enum vs its
-                // underlying placeholder those folds agree. Push a null handle
-                // (dead once folded, a loud null deref if a missed consumer runs
-                // it) with the token riding along; the runtime-consuming Type
-                // intrinsics taint on a poisoned token instead.
+                // Shared-body candidate: typeof over a placeholder-bearing type
+                // loads the real per-instantiation handle out of an rgctx slot
+                // keyed on this token (the box/castclass mechanism), so the Type
+                // value a shared body passes onward — a call argument, a
+                // GetTypeFromHandle chain — is real rather than poisoned; the
+                // pervasive token-only folds (IsValueType / GetTypeCode) still
+                // read the static token riding along, and the runtime-consuming
+                // Type intrinsics still taint on the placeholder token. An MD
+                // array / pointer / byref target keeps the poisoned null handle:
+                // its rgctx entry has no resolvable type-info, and the folds
+                // that apply to it are token-only anyway.
                 if (SharedTrial && Compilation.ContainsCanonPlaceholder(target))
                 {
-                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", "nullptr", target);
+                    string? slotTi = target.Kind switch
+                    {
+                        TypeKind.SZArray => "(const Dn2CppTypeInfo*)"
+                            + RgctxSlotAccess(RgctxSlotKind.ArrayTypeInfo, insn.Token, "typeinfo", target),
+                        TypeKind.Class or TypeKind.Primitive => TypeInfoExpr(target, insn.Token),
+                        _ => null,
+                    };
+                    Push(StackKind.Ptr, "const Dn2CppTypeInfo*", slotTi ?? "nullptr", target);
                     break;
                 }
                 // typeof(value type) names its ti_ even when the struct is never used as a
