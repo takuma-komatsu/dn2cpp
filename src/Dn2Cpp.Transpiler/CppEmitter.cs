@@ -5261,6 +5261,8 @@ internal sealed partial class CppEmitter
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
     {
+        (ModeledSize Size, ModeledSize Align)? opaqueLayout =
+            IsOpaque(cls) && cls.IsValueType ? TryModeledStructLayout(cls) : null;
         // [StructLayout(Pack = N)] caps every field's alignment at N bytes; the
         // pragma makes the C++ compiler apply the same cap so the layout matches the
         // CLR's packed layout (value types only — a class's Pack has no emitted
@@ -5268,9 +5270,12 @@ internal sealed partial class CppEmitter
         bool packed = !IsOpaque(cls) && cls.IsValueType && cls.LayoutPack > 0;
         if (packed)
             sb.AppendLine($"#pragma pack(push, {cls.LayoutPack})");
+        string align = "";
+        if (opaqueLayout is { } ol && ol.Align.Text != "1")
+            align = $" alignas({ol.Align.Text})";
         sb.AppendLine(baseName is null
-            ? $"struct {cls.CppStructName}"
-            : $"struct {cls.CppStructName} : {baseName}");
+            ? $"struct{align} {cls.CppStructName}"
+            : $"struct{align} {cls.CppStructName} : {baseName}");
         sb.AppendLine("{");
         ModeledSize? explicitSize = null;
         // An opaque VALUE type is field-less, but its type-info still stamps instanceSize
@@ -5288,11 +5293,10 @@ internal sealed partial class CppEmitter
         // it today. A one-byte extent cannot: it holds no pointer, so both readings exist.
         if (IsOpaque(cls) && cls.IsValueType)
         {
-            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz
-                && PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size) is { Guarded: false } m)
+            if (opaqueLayout is { } modeled)
             {
-                if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{m.Text}];");
+                if (modeled.Size.Text != "1")
+                    sb.AppendLine($"    uint8_t __opaque_pad[{modeled.Size.Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
@@ -5723,6 +5727,18 @@ internal sealed partial class CppEmitter
         }
         _structExtents[(cls, ptr)] = r;
         return r;
+    }
+
+    /// <summary>The target-independent size and alignment an opaque value shell can
+    /// preserve. A missing narrow reading cannot be baked into shared generated text.</summary>
+    private (ModeledSize Size, ModeledSize Align)? TryModeledStructLayout(ClassInfo cls)
+    {
+        if (TryStructExtent(cls, PointerWidth.Bytes64) is not { } wide)
+            return null;
+        var narrow = TryStructExtent(cls, PointerWidth.Bytes32);
+        var size = PointerWidth.Model(wide.Size, narrow?.Size);
+        var align = PointerWidth.Model(wide.Align, narrow?.Align);
+        return size.Guarded || align.Guarded ? null : (size, align);
     }
 
     private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr)
@@ -6272,15 +6288,17 @@ internal sealed partial class CppEmitter
     {
         // An opaque shell for a by-value field type IS the owner's layout, so a shell of
         // unknown extent would silently shrink the owner rather than only itself.
-        bool Stub(ClassInfo owner, FieldInfo f, ClassInfo t)
+        bool Stub(ClassInfo owner, FieldInfo f, ClassInfo t, bool directByValue)
         {
-            if (!EmitAdd(t))
-                return false;
-            if (t.IsValueType && TryStructExtent(t, PointerWidth.Bytes64) is null)
-                throw new InvalidOperationException(
+            bool added = EmitAdd(t);
+            if (directByValue && (added || _opaque.Contains(t))
+                && TryModeledStructLayout(t) is null)
+                throw new NotSupportedException(
                     $"{owner.FullName}.{f.Name}: by-value field type {t.FullName} is reached "
-                    + "only by the struct ordering and its layout extent is unknown, so no "
-                    + "stub can carry its size");
+                    + "only by the struct ordering, and its size or alignment cannot be "
+                    + "modeled at both pointer widths, so no opaque stub can preserve its layout");
+            if (!added)
+                return false;
             _opaque.Add(t);
             return true;
         }
@@ -6296,17 +6314,21 @@ internal sealed partial class CppEmitter
                 if (_emit.Contains(c) || _opaque.Contains(c)
                     || c.IsEnum || c.IsDelegate || c.SharedOwner is not null)
                     continue;
-                _c.EnsureCompleted(c);
+                if (!c.ShapeReady)
+                    throw new InvalidOperationException(
+                        $"emit protocol: topo-only layout owner {c.FullName} has incomplete shape");
                 foreach (var f in c.Fields)
                 {
                     if (f.IsStatic)
                         continue;
                     var t = f.Type;
+                    bool directByValue = t is
+                        { Kind: TypeKind.Class, Class: { IsValueType: true } };
                     while (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } el })
                         t = el;
                     if (t is not { Kind: TypeKind.Class, Class: { IntrinsicCppName: null, IsEnum: false } ft })
                         continue;
-                    grew |= Stub(c, f, ft);
+                    grew |= Stub(c, f, ft, directByValue);
                     // Mirrors the referenced-only path: a stub's own struct name may
                     // redirect to a canonical owner, and its bases back isinst.
                     if (ft.SharedOwner is { } owner && EmitAdd(owner))

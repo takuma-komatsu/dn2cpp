@@ -226,13 +226,9 @@ namespace MultiAssembly
                 + " target " + (string)targetProp.GetValue(oneRef)
                 + " version " + changelog.Version + "/" + changelog.RefCount);
 
-            // A library type named as a TYPE TOKEN and nothing else: never
-            // allocated, no member called. It is emitted opaquely, and so is its
-            // base LayoutBase<LayoutCtx> — but that base is a grouped
-            // specialization, so the struct ordering pulls its canonical owner
-            // LayoutBase<__Canon> in and emits its FULL field layout. The owner
-            // never passes the field-type closure, so its field types have to be
-            // closed for layout explicitly or the header spells undeclared t_ names.
+            // Keep LayoutMid reachable only as a type token: its grouped base's
+            // canonical owner enters struct ordering without passing through the
+            // ordinary field-type closure.
             Type lm = typeof(MiniBcl.LayoutMid);
             Console.WriteLine("lib layout token: " + lm.Name);
             return 0;

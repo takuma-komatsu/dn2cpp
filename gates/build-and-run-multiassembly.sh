@@ -10,13 +10,8 @@
 # app's Main asserts it did and exits non-zero if not: this gate has no stdout oracle,
 # so the assertion has to live in the program.
 #
-# Also pins the layout closure of a canonical shared-generics owner reachable ONLY
-# through a referenced-only type's base chain: MiniBcl.LayoutMid is named as a type
-# token and nothing else, so it and its base LayoutBase<LayoutCtx> are emitted
-# opaquely while the struct ordering still pulls the group's canonical owner
-# LayoutBase<__Canon> in — and that owner gets a FULL field layout. Its field types
-# pass no other closure, so they must be declared here or generated.h spells
-# undeclared t_ names and the C++ compile fails on them.
+# Also pins field closure for the full canonical-owner layout floated by an opaque
+# referenced-only base chain. Its by-value field requires both size and alignment.
 source "$(dirname "$0")/_common.sh"
 
 xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm
@@ -28,12 +23,16 @@ if ! grep -qw "struct t_MiniBcl_LayoutBase__CnRef : Dn2CppObject" "$hdr"; then
     echo "t_MiniBcl_LayoutBase__CnRef in $hdr (the assertions below assert nothing)" >&2
     exit 1
 fi
-for t in t_MiniBcl_LayoutBeh__CnRef t_MiniBcl_LayoutLeaf; do
+for t in t_MiniBcl_LayoutBeh__CnRef t_MiniBcl_LayoutLeaf t_MiniBcl_LayoutAligned; do
     if ! grep -qw "struct $t" "$hdr"; then
         echo "FAIL: $hdr spells $t in a layout but never declares it" >&2
         exit 1
     fi
 done
+grep -qw "t_MiniBcl_LayoutAligned f__aligned" "$hdr" \
+    || { echo "FAIL: canonical owner does not carry the aligned field by value" >&2; exit 1; }
+grep -qw "struct alignas(8) t_MiniBcl_LayoutAligned" "$hdr" \
+    || { echo "FAIL: opaque aligned field shell lost its 8-byte alignment" >&2; exit 1; }
 
 # The Dn2Cpp.Runtime.dll auto-reference dedupes by FILE NAME, not full
 # path — so `-r` pointing at a COPY of the shim under a different path must not
