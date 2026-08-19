@@ -3818,10 +3818,12 @@ internal sealed partial class Compilation
             {
                 int seenSpecArgs = -1, seenOpened = -1;
                 while (seenSpecArgs != _appMethodSpecTypeArgs.Count
-                    || seenOpened != _userReflSurface.Count + _userReflConstructed.Count)
+                    || seenOpened != _userReflSurface.Count + _userReflConstructed.Count
+                        + _typeofNamedLibraryClasses.Count)
                 {
                     seenSpecArgs = _appMethodSpecTypeArgs.Count;
-                    seenOpened = _userReflSurface.Count + _userReflConstructed.Count;
+                    seenOpened = _userReflSurface.Count + _userReflConstructed.Count
+                        + _typeofNamedLibraryClasses.Count;
                     ReachUserSurfaceNamedSpecializationCtors();
                     DrainReachability();
                 }
@@ -4155,6 +4157,14 @@ internal sealed partial class Compilation
             foreach (var f in cls.Fields)
                 if (!f.IsLiteral)
                     named.Add((f.Type, libSurface, false));
+            // The generic BASE instantiations' type arguments are surface too: a
+            // framework base takes the derived class's collaborator types as type
+            // parameters (`GlobalPage : PageBase<..., GlobalWindow>`) and its shared
+            // body late-binds `new TWindow()` — a construction site of the ARGUMENT,
+            // visible in no field, property or ctor-parameter signature.
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+                foreach (var a in b.Context.TypeArgs)
+                    named.Add((a, libSurface, false));
             try
             {
                 var reader = cls.Module.Reader;
@@ -4204,6 +4214,17 @@ internal sealed partial class Compilation
         // by bodies the force-reach loop queued are picked up on the next round.
         foreach (var t in _appMethodSpecTypeArgs)
             named.Add((t, false, false));
+
+        // A typeof-named LIBRARY class contributes its base-chain instantiation
+        // arguments even though its member types stay closed: the class reaches
+        // reflection only through its typeof registration, and its framework base
+        // takes its collaborator types as type parameters and late-binds
+        // `new TArg()` in a shared body — a construction site of the argument
+        // that no field, property or ctor-parameter signature shows.
+        foreach (var cls in _typeofNamedLibraryClasses)
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+                foreach (var a in b.Context.TypeArgs)
+                    named.Add((a, true, false));
 
         // Expand the named surface — nested generic arguments and array/byref
         // elements — into the closed non-app specializations it names. Dedupe into
