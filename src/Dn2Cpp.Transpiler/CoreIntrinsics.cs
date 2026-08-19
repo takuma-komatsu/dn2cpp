@@ -1148,8 +1148,8 @@ internal static partial class CoreIntrinsics
         // `_Vector`/`_Intrinsified` paths over the generic ISimdVector abstraction, which dn2cpp
         // does not transpile); Utf8Utility.TranscodeToUtf8 is the DWORD/SIMD pointer-stepped
         // UTF-16 -> UTF-8 workhorse both Utf8.FromUtf16 and UTF8Encoding.GetBytes forward to.
-        "System.Text.Encoding" or "System.Text.UTF8Encoding" or "System.Text.UnicodeEncoding" =>
-            name == "GetString",
+        "System.Text.Encoding" or "System.Text.ASCIIEncoding" or "System.Text.UTF8Encoding"
+            or "System.Text.UnicodeEncoding" => name == "GetString",
         "System.Text.Ascii" => name is "WidenAsciiToUtf16" or "NarrowUtf16ToAscii",
         "System.Text.Unicode.Utf8Utility" => name == "TranscodeToUtf8",
         // The compiled-Regex classes: the WHOLE of each, name ignored. Regex.Compile folds to

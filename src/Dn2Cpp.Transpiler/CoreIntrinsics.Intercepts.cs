@@ -950,7 +950,7 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Buffer",
         extra: static (_, n, _) => n is "BlockCopy" or "ByteLength" or "GetByte" or "SetByte");
 
-    /// <summary>Encoding.GetString (Encoding / UTF8Encoding / UnicodeEncoding) —
+    /// <summary>Encoding.GetString (Encoding / ASCIIEncoding / UTF8Encoding / UnicodeEncoding) —
     /// the core of the UTF-8-decode + SIMD cascade collapse. Symmetric and sound:
     /// reach = name cut, emit = name gate + shape-total-throw
     /// (<c>TryEmitEncodingGetString</c> has no false path). Name-only predicate;
@@ -959,7 +959,8 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.EncodingGetString,
         nameGate: "GetString",
         extra: static (dt, _, _) =>
-            dt is "System.Text.Encoding" or "System.Text.UTF8Encoding" or "System.Text.UnicodeEncoding");
+            dt is "System.Text.Encoding" or "System.Text.ASCIIEncoding"
+                or "System.Text.UTF8Encoding" or "System.Text.UnicodeEncoding");
 
     /// <summary>AppContext.BaseDirectory → the running executable's directory.
     /// Only this member; the type's switch/data accessors transpile as real

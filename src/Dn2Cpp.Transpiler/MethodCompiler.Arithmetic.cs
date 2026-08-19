@@ -439,19 +439,17 @@ internal sealed partial class MethodCompiler
     /// section names via <c>Encoding.UTF8.GetString(byte[], int, int)</c>; the real
     /// GetString body reaches <c>String.CreateStringFromEncoding</c> -&gt; the SIMD
     /// UTF-8 transcode subtree (<c>Ascii.WidenAsciiToUtf16</c> / <c>Vector128&lt;byte&gt;</c>)
-    /// we never transpile. The decode helpers (<c>dn2cpp_string_decode_utf8</c> /
-    /// <c>_decode_utf16le</c>) reproduce Encoding.UTF8 / Encoding.Unicode byte-for-byte,
-    /// including the U+FFFD replacement fallback on malformed input. The matching
-    /// ResolveCallTarget cut makes the real GetString bodies unreachable, collapsing the
-    /// whole cascade.
+    /// we never transpile. The decode helpers (<c>dn2cpp_string_decode_ascii</c> /
+    /// <c>_decode_utf8</c> / <c>_decode_utf16le</c>) reproduce Encoding.ASCII /
+    /// Encoding.UTF8 / Encoding.Unicode byte-for-byte, including their replacement
+    /// fallback. The matching ResolveCallTarget cut makes the real GetString bodies
+    /// unreachable, collapsing the whole cascade.
     ///
-    /// When the static receiver type is concretely UTF8Encoding / UnicodeEncoding the
-    /// decoder is chosen at emit time; for the base System.Text.Encoding (the virtual
-    /// call in ReadNullPaddedUTF8) the receiver's runtime type-info picks it
-    /// (<c>dn2cpp_encoding_get_string</c>). Only the reached overloads —
-    /// <c>GetString(byte[])</c> and <c>GetString(byte[], int, int)</c> — are intercepted;
-    /// any other shape (byte* / ReadOnlySpan&lt;byte&gt) or unsupported encoding raises
-    /// NotSupportedException (no silent carve-out).</summary>
+    /// When the static receiver type is concretely ASCIIEncoding / UTF8Encoding /
+    /// UnicodeEncoding the decoder is chosen at emit time; for the base
+    /// System.Text.Encoding the receiver's runtime type-info picks it. The array,
+    /// range, pointer and span overloads are intercepted; any other shape or encoding
+    /// raises NotSupportedException.</summary>
     private bool TryEmitEncodingGetString(string parentType, MethodSignature<TypeDesc> sig)
     {
         // Match the reached/supported overloads: GetString(byte[]),
@@ -485,6 +483,8 @@ internal sealed partial class MethodCompiler
             string sv = SpanValue(span, spanCt);
             string spanCall = parentType switch
             {
+                "System.Text.ASCIIEncoding" =>
+                    $"dn2cpp_string_decode_ascii((const char*){sv}.f__reference, {sv}.f__length)",
                 "System.Text.UTF8Encoding" =>
                     $"dn2cpp_string_decode_utf8((const char*){sv}.f__reference, {sv}.f__length)",
                 "System.Text.UnicodeEncoding" =>
@@ -536,6 +536,8 @@ internal sealed partial class MethodCompiler
         string call = parentType switch
         {
             // Static receiver type is known: pick the decoder at emit time.
+            "System.Text.ASCIIEncoding" =>
+                $"dn2cpp_encoding_decode_range({byteArr}, {index}, {count}, dn2cpp_string_decode_ascii)",
             "System.Text.UTF8Encoding" =>
                 $"dn2cpp_encoding_decode_range({byteArr}, {index}, {count}, dn2cpp_string_decode_utf8)",
             "System.Text.UnicodeEncoding" =>
