@@ -587,6 +587,8 @@ internal sealed partial class CppEmitter
                     }
             _c.CompletePendingSpecializations();
         }
+        if (ClassInfo.ShareStructLayout)
+            CloseTopoOnlyLayouts();
 
         // A `static Main(string[] args)` entry point's epilogue builds the args
         // array tagged with the precise ti_arr_string handle. That per-element array
@@ -6227,6 +6229,75 @@ internal sealed partial class CppEmitter
         sb.AppendLine();
     }
 
+
+    /// <summary>Closes the field types of a class the STRUCT ORDERING reaches and
+    /// nothing else does. TopoOrder visits a SharedOwner unconditionally, so a canonical
+    /// owner pulled in through an opaque referenced-only type's base chain lands in
+    /// neither <see cref="_emit"/> nor <see cref="_opaque"/> — and EmitStructs still
+    /// writes its FULL layout, spelling every field type by name while the only field
+    /// closure (ComputeEmitted's walk) never saw it. Those names must be declared.
+    ///
+    /// <para>The owner itself stays non-opaque: a grouped alias's type-info stamps
+    /// <c>sizeof(t_owner)</c> as its instance size, so shelling the owner instead would
+    /// silently shrink every member of its group.</para></summary>
+    private void CloseTopoOnlyLayouts()
+    {
+        // An opaque shell for a by-value field type IS the owner's layout, so a shell of
+        // unknown extent would silently shrink the owner rather than only itself.
+        bool Stub(ClassInfo owner, FieldInfo f, ClassInfo t)
+        {
+            if (!EmitAdd(t))
+                return false;
+            if (t.IsValueType && TryStructExtent(t, PointerWidth.Bytes64) is null)
+                throw new InvalidOperationException(
+                    $"{owner.FullName}.{f.Name}: by-value field type {t.FullName} is reached "
+                    + "only by the struct ordering and its layout extent is unknown, so no "
+                    + "stub can carry its size");
+            _opaque.Add(t);
+            return true;
+        }
+
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            // A stub can float a further SharedOwner into the order, so this iterates
+            // to a fixpoint over fresh snapshots.
+            foreach (var c in TopoOrder().ToList())
+            {
+                if (_emit.Contains(c) || _opaque.Contains(c)
+                    || c.IsEnum || c.IsDelegate || c.SharedOwner is not null)
+                    continue;
+                _c.EnsureCompleted(c);
+                foreach (var f in c.Fields)
+                {
+                    if (f.IsStatic)
+                        continue;
+                    var t = f.Type;
+                    while (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } el })
+                        t = el;
+                    if (t is not { Kind: TypeKind.Class, Class: { IntrinsicCppName: null, IsEnum: false } ft })
+                        continue;
+                    grew |= Stub(c, f, ft);
+                    // Mirrors the referenced-only path: a stub's own struct name may
+                    // redirect to a canonical owner, and its bases back isinst.
+                    if (ft.SharedOwner is { } owner && EmitAdd(owner))
+                    {
+                        _opaque.Add(owner);
+                        grew = true;
+                    }
+                    for (var bc = ft.BaseClass; bc is { IntrinsicCppName: null, IsEnum: false }; bc = bc.BaseClass)
+                        if (EmitAdd(bc))
+                        {
+                            _opaque.Add(bc);
+                            grew = true;
+                        }
+                }
+            }
+        }
+        if (_c.SharedGenericsEnabled)
+            _c.CompletePendingSpecializations();
+    }
 
     private IEnumerable<ClassInfo> TopoOrder()
     {
