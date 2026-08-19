@@ -217,6 +217,28 @@ internal sealed class CanonicalGenerics
         return changed ? TypeDesc.MakeClassUnshared(_c.Instantiate(cls.Module, cls.Handle, canon)) : t;
     }
 
+    /// <summary>The per-index ANY placeholder ($CnAny0, $CnAny1, …) a
+    /// runtime-instantiation template's type arguments are built from. Unlike
+    /// CnRef it stands for value and reference arguments alike, which is sound
+    /// only for a definition whose bodies never use T in a value position — the
+    /// template pass establishes that by trial. Per-INDEX identity (not one
+    /// shared instance) is what lets the emitted rgctx slot descriptor resolve a
+    /// slot back to "type argument n". Interned, like the other placeholders.</summary>
+    public TypeDesc AnyPlaceholder(int index)
+    {
+        while (_anyPlaceholders.Count <= index)
+            _anyPlaceholders.Add(new TypeDesc
+            {
+                Kind = TypeKind.Primitive,
+                Primitive = PrimitiveTypeCode.Object,
+                IsCanonPlaceholder = true,
+                CanonAnyIndex = _anyPlaceholders.Count,
+            });
+        return _anyPlaceholders[index];
+    }
+
+    private readonly List<TypeDesc> _anyPlaceholders = new();
+
     private TypeDesc EnumPlaceholder(PrimitiveTypeCode underlying)
     {
         if (!_enumPlaceholders.TryGetValue(underlying, out var p))

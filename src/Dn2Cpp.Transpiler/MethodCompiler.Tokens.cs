@@ -230,7 +230,7 @@ internal sealed partial class MethodCompiler
     /// <summary>The CLR backtick full name of the top-level open generic definition at
     /// <paramref name="handle"/> in <paramref name="m"/> (e.g. "MyNs.Box`1"), or null for a
     /// nested one — the same shape and carve-out as <c>CppEmitter.GenericDefInfo</c>.</summary>
-    private static string? OpenDefBacktickName(Module m, TypeDefinitionHandle handle)
+    internal static string? OpenDefBacktickName(Module m, TypeDefinitionHandle handle)
     {
         var reader = m.Reader;
         var td = reader.GetTypeDefinition(handle);

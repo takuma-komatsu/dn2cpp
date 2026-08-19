@@ -1386,6 +1386,21 @@ internal sealed partial class Compilation
     /// Template for one, so <c>typeof(Vector128&lt;&gt;)</c> decodes to an External name.
     /// A nested name (carrying '+') resolves to nothing and degrades, which is where the
     /// gendef mouths carve nested definitions out anyway.</para></summary>
+    /// <summary>The CLR backtick full name of <paramref name="t"/> when it is an
+    /// OPEN generic definition in one of the three shapes a <c>typeof(D&lt;&gt;)</c>
+    /// ldtoken decodes to (the <c>OpenGenericDefTypeInfoExpr</c> shapes), else
+    /// null. Nested definitions answer null, matching the gendef carve-out.</summary>
+    internal static string? OpenGenericDefBacktickNameOf(TypeDesc t) => t switch
+    {
+        { Kind: TypeKind.External, ExternalName: { } en }
+            when en.Contains('`') && !en.Contains('+') => en,
+        { Kind: TypeKind.Template, TemplateModule: { } tm } =>
+            MethodCompiler.OpenDefBacktickName(tm, t.TemplateHandle),
+        { Kind: TypeKind.Class, Class: { GenericArity: > 0 } c } when c.Context.TypeArgs.Length == 0
+            => MethodCompiler.OpenDefBacktickName(c.Module, c.Handle),
+        _ => null,
+    };
+
     public (string? Name, GenericDefKind Kind, string? ParamNames) OpenGenericDefFactsByName(string defName)
     {
         int cut = defName.LastIndexOf('.');
@@ -2343,7 +2358,8 @@ internal sealed partial class Compilation
                 // never appear in a sanitized class/external mangle or a primitive
                 // name, so a canonical instantiation key (Dictionary<$CnInt32,…>) can
                 // never collide with a genuine one (Dictionary<Int32,…>).
-                { IsCanonPlaceholder: true } => t.IsObject ? "$CnRef" : "$Cn" + t.Primitive,
+                { IsCanonPlaceholder: true } => t.CanonAnyIndex >= 0 ? "$CnAny" + t.CanonAnyIndex
+                    : t.IsObject ? "$CnRef" : "$Cn" + t.Primitive,
                 { Kind: TypeKind.Primitive } => t.Primitive.ToString(),
                 // A NAMED type's fragment goes through CppNaming.MangleFragment, which
                 // escapes it out of the other spellings' token spaces — a
@@ -3495,6 +3511,22 @@ internal sealed partial class Compilation
     // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
     // Activator.CreateInstance(Type). Triggers the reflection-ctor route.
     private bool _reflectionCtorUsed;
+
+    // One arm of the runtime-instantiation trigger: a reached body calls
+    // Type.MakeGenericType through the MemberRef mouth (a user-module call
+    // site; a CoreLib-internal MethodDef call is deliberately not a trigger —
+    // the templates serve program code that mints closed types by hand).
+    private bool _makeGenericTypeUsed;
+
+    // The other arm: the CLR backtick full names of every OPEN generic
+    // definition a reached body ldtokens (typeof(D<>)), in first-seen order.
+    // Recorded unconditionally, not behind _makeGenericTypeUsed — the flag can
+    // be set by a body scanned after the ldtoken site, and gating the record on
+    // it would make the set scan-order-dependent (the _appMethodSpecTypeArgs
+    // argument). Consumed once, after the scan closes, by the
+    // runtime-instantiation template pass.
+    private readonly List<string> _typeofOpenGenericDefNames = new();
+    private readonly HashSet<string> _typeofOpenGenericDefSeen = new(StringComparer.Ordinal);
 
     // The generic-METHOD half of the reflection-ctor surface: the type arguments
     // of every MethodSpec an app-module body instantiates, recorded by

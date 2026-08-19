@@ -273,12 +273,27 @@ internal sealed partial class Compilation
     internal static bool ContainsCanonPlaceholder(ClassInfo c) =>
         c.Context.TypeArgs.Any(ContainsCanonPlaceholder);
 
+    /// <summary>Whether the type is, or transitively contains, a per-index ANY
+    /// placeholder ($CnAnyN) — i.e. belongs to a runtime-instantiation TEMPLATE.
+    /// A $CnAny token folds nothing (it stands for value and reference arguments
+    /// alike), so its consumers strip the token and run the runtime read.</summary>
+    internal static bool ContainsCanonAny(TypeDesc t) => t.CanonAnyIndex >= 0 || t.Kind switch
+    {
+        TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
+            ContainsCanonAny(t.Element!),
+        TypeKind.Class => t.Class!.Context.TypeArgs.Any(ContainsCanonAny),
+        _ => false,
+    };
+
     /// <summary>Whether the type transitively carries the REFERENCE placeholder
     /// (CnRef) specifically — the fold-agreement rules for a poisoned typeof are
     /// stricter for it than for the enum-width placeholders (see
     /// <c>MethodCompiler.IsPlaceholderAgnosticFold</c>).</summary>
     internal static bool ContainsRefPlaceholder(TypeDesc t) =>
-        (t.IsCanonPlaceholder && t.IsObject) || t.Kind switch
+        // A $CnAny is Primitive-Object-shaped but is NOT the reference
+        // placeholder: it stands for value arguments too, so no CnRef fold
+        // agreement holds for it.
+        (t.IsCanonPlaceholder && t.IsObject && t.CanonAnyIndex < 0) || t.Kind switch
         {
             TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
                 ContainsRefPlaceholder(t.Element!),
@@ -1038,6 +1053,118 @@ internal sealed partial class Compilation
     /// planning-pass fill failed for some real instantiation).</summary>
     internal bool RgctxMethodSlotKnownBad(MethodInfo owner, RgctxSlotKind kind, int token) =>
         Rgctx.Methods.SlotKnownBad(owner, kind, token);
+
+    /// <summary>The shape-eligible runtime-instantiation templates, in trigger
+    /// (first-typeof) order: (definition backtick name, $CnAny instantiation).
+    /// Grown once by <see cref="BuildRuntimeInstantiationTemplates"/>; the
+    /// emitter narrows it to the definitions whose every reachable body shared
+    /// and whose rgctx slots all resolved to bare type arguments.</summary>
+    internal readonly List<(string DefName, ClassInfo Template)> RuntimeInstantiationTemplates = new();
+
+    /// <summary>Builds the runtime-instantiation TEMPLATES: for each open generic
+    /// definition the program both typeofs (<c>ldtoken D&lt;&gt;</c>) and could hand
+    /// to <c>Type.MakeGenericType</c>, instantiate the definition over the
+    /// per-index $CnAny placeholders and root it like an allocated type, so the
+    /// planning pass trial-compiles its bodies. The template is NEVER anyone's
+    /// SharedOwner — real instantiations keep their ordinary grouping — so this
+    /// pass composes with the existing machinery instead of re-linking it. The
+    /// whole pass is a no-op unless the program calls MakeGenericType AND typeofs
+    /// an open definition: a corpus without the pattern is byte-identical with the
+    /// pass compiled out. A shape-ineligible definition is skipped here; a body
+    /// that fails the $CnAny trial merely taints, leaving an unused canonical
+    /// world and no emitted template.</summary>
+    internal void BuildRuntimeInstantiationTemplates()
+    {
+        if (!SharedGenericsEnabled || !_makeGenericTypeUsed)
+            return;
+        foreach (var defName in _typeofOpenGenericDefNames)
+        {
+            int cut = defName.LastIndexOf('.');
+            var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
+            if (!TypeIndex().TryGetValue(key, out var cands) || cands.Count == 0)
+                continue;
+            var (module, handle) = cands[0];
+            ClassInfo tmpl;
+            try
+            {
+                int arity = module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
+                if (arity == 0)
+                    continue;
+                var args = new TypeDesc[arity];
+                for (int i = 0; i < arity; i++)
+                    args[i] = Canon.AnyPlaceholder(i);
+                tmpl = Instantiate(module, handle, args);
+            }
+            catch (Exception e) when (!IsMustEscape(e))
+            {
+                // A definition that does not instantiate (unresolvable signature,
+                // bound overflow would escape) is simply not a template; the
+                // runtime diagnostic still names the missing instantiation.
+                continue;
+            }
+            if (!RuntimeTemplateShapeEligible(tmpl))
+                continue;
+            RuntimeInstantiationTemplates.Add((defName, tmpl));
+            // Root it like an allocated type: arms the used-slot × allocated-type
+            // cross product, so every virtual override a base-typed caller can
+            // dispatch into is trial-compiled; instance ctors are what the
+            // reflection-ctor path (Activator over the synthesized Type) invokes.
+            ReachAllocatedType(tmpl);
+            foreach (var m in tmpl.Methods)
+                if (m.Name == ".ctor" && !m.IsStatic && m.Rva != 0)
+                    Reach(m);
+        }
+    }
+
+    /// <summary>The v1 shape bound for a runtime-instantiation template: a
+    /// concrete top-level reference definition whose placeholder-bearing chain
+    /// levels carry no per-instantiation storage (no statics, no cctor), no
+    /// field or directly-implemented interface naming a type parameter, and an
+    /// identity base projection (<c>D2&lt;T&gt; : D1&lt;T&gt;</c>, same order) —
+    /// each restriction is exactly a thing the runtime clone cannot synthesize
+    /// (AOT storage symbols, per-argument layout, a permuted argument map). The
+    /// non-placeholder tail of the chain is ordinary emitted code and is not
+    /// restricted.</summary>
+    private bool RuntimeTemplateShapeEligible(ClassInfo tmpl)
+    {
+        if (tmpl.IsValueType || tmpl.IsInterface || tmpl.IsAbstract)
+            return false;
+        try
+        {
+            for (ClassInfo? lv = tmpl; lv is not null; lv = lv.BaseClass)
+            {
+                if (!ContainsCanonPlaceholder(lv))
+                    break;
+                if (lv.IsValueType || RgctxAnchorSym(lv) is null)
+                    return false;
+                lv.EnsureMembers();
+                if (lv.StaticCctor is not null)
+                    return false;
+                foreach (var f in lv.Fields)
+                {
+                    if (f.IsLiteral)
+                        continue;
+                    if (f.IsStatic || ContainsCanonPlaceholder(f.Type))
+                        return false;
+                }
+                foreach (var itf in lv.Interfaces)
+                    if (ContainsCanonPlaceholder(itf))
+                        return false;
+                if (lv.BaseClass is { } b && ContainsCanonPlaceholder(b))
+                {
+                    var ba = b.Context.TypeArgs;
+                    for (int j = 0; j < ba.Length; j++)
+                        if (!ReferenceEquals(ba[j], Canon.AnyPlaceholder(j)))
+                            return false;
+                }
+            }
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return false;
+        }
+        return true;
+    }
 
     /// <summary>Whether a context-using shared body of <paramref name="m"/>'s
     /// shape receives the context as the hidden trailing parameter (no

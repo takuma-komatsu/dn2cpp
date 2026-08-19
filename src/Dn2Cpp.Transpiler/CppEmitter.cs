@@ -453,6 +453,11 @@ internal sealed partial class CppEmitter
             ComputeEmitted();
             Timing.Mark("layout-closure");
             _c.EnterPhase(EmitPhase.Planning);
+            // Runtime-instantiation templates root here — after the scan and the
+            // layout closure (their trigger set is final), before the planning
+            // compile (their bodies must be trial-compiled like any canonical
+            // owner's).
+            _c.BuildRuntimeInstantiationTemplates();
             CompileReachableBodies(new LiteralPool(), null, new List<MethodInfo>(),
                 diagnostics: null);
             Timing.Mark("plan-bodies");
