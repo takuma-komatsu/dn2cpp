@@ -3888,6 +3888,8 @@ internal sealed partial class Compilation
                             // reflectively invokable either.
                         }
                     }
+                    if (!cls.IsAbstract)
+                        ReachUserInterfaceImpls(cls);
                 }
                 doneNamed = end;
                 DrainReachability();
@@ -4095,6 +4097,38 @@ internal sealed partial class Compilation
     /// per input: the route fires off the program's own IL) and are the very reads
     /// the emit set's layout closure performs later, so the model grows nothing it
     /// would not have grown — only earlier, inside the drain that shapes it.</para></summary>
+    /// <summary>Reaches <paramref name="cls"/>'s implementations of USER-module
+    /// interface methods — the surface a reflection helper dispatches after
+    /// discovering the interface on an instance (GetInterfaces → GetMethod → Invoke,
+    /// the DI-container injection shape). Parameterized impls included: the interface
+    /// contract is what lets the helper synthesize the arguments a bare parameterized
+    /// method denies it. Framework interfaces stay out for the reason the typeof-named
+    /// loop's niladic bound exists — IEnumerable/IComparable impls over every opened
+    /// class would force-reach subtrees nothing invokes.</summary>
+    private void ReachUserInterfaceImpls(ClassInfo cls)
+    {
+        for (var c = cls; c is not null; c = c.BaseClass)
+            foreach (var itf in c.Interfaces)
+            {
+                if (!IsUserModule(itf.Module))
+                    continue;
+                foreach (var im in itf.EnsureMembers().Methods)
+                {
+                    try
+                    {
+                        if (im.Signature.GenericParameterCount == 0
+                            && ResolveItfImplOrNull(cls, im) is { Rva: not 0 } impl
+                            && _backend?.ShouldSkipMethodBody(impl.DeclaringClass, impl) != true)
+                            Reach(impl);
+                    }
+                    catch (Exception e) when (!IsMustEscape(e))
+                    {
+                        // An undecodable signature is not reflectively invokable.
+                    }
+                }
+            }
+    }
+
     private void ReachUserSurfaceNamedSpecializationCtors()
     {
         // Collect the declared member-type surface: the app module, plus every
@@ -4326,6 +4360,11 @@ internal sealed partial class Compilation
                         Reach(m);
                 if (!cls.IsValueType)
                     ReachAllocatedType(cls);
+                // The reflection helper that constructed the instance dispatches its
+                // user-interface surface next (a DI container's GetInterfaces →
+                // GetMethod → Invoke injection pass), so those impls are part of the
+                // opened surface.
+                ReachUserInterfaceImpls(cls);
             }
             for (var b = cls; b is not null && IsUserModule(b.Module); b = b.BaseClass)
             {

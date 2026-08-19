@@ -2424,8 +2424,12 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
         return obj;
     }
     // No (visible) parameterless ctor — real .NET's MissingMethodException. This
-    // also covers a ctor stripped from the image (an honest AOT miss).
-    dn2cpp_throw_missing_method("No parameterless constructor defined for this type");
+    // also covers a ctor stripped from the image (an honest AOT miss), so the type
+    // name must ride in the message: it is the only lead the log gives.
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "No parameterless constructor defined for type '%s'.",
+                  ti->name != nullptr ? ti->name : "?");
+    dn2cpp_throw_missing_method(buf);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)

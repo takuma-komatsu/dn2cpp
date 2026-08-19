@@ -777,10 +777,17 @@ internal sealed partial class Compilation
         // instance then dispatches through vtable and interface slots, so the
         // class must cross the used-slot × allocated-type product. Reaching the
         // ctor alone leaves every slot of the minted instance a trap stub (on
-        // wasm that trap is an unnamed call_indirect signature mismatch).
+        // wasm that trap is an unnamed call_indirect signature mismatch). The
+        // constructor's caller dispatches the instance's USER-interface surface
+        // next (a DI container's GetInterfaces → GetMethod → Invoke injection
+        // pass), and that dispatch never records a used slot — it is a runtime
+        // interface-table walk — so those impls are reached with it.
         if (ctorPreserved && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface
             && !cls.IsDelegate)
+        {
             ReachAllocatedType(cls);
+            ReachUserInterfaceImpls(cls);
+        }
         foreach (var ph in policy.Properties)
             PreservePropertyType(cls, ph);
         foreach (var eh in policy.Events)
