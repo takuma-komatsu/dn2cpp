@@ -52,7 +52,7 @@
 // The vtable twin of dn2cpp_slot_missing_report in dn2cpp_casts.cpp, and an abort for
 // the same reason: reaching here means the reachability closure and the emitted vtable
 // disagree — a build defect no caller could have avoided or can handle.
-[[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self)
+[[noreturn]] static void dn2cpp_vcall_report(Dn2CppObject* self, const void* trap)
 {
     char buf[512];
     const Dn2CppTypeInfo* t = self != nullptr ? self->type : nullptr;
@@ -69,7 +69,7 @@
             for (int32_t i = 0; i < b->methodCount; i++)
             {
                 const Dn2CppMethodInfo& m = b->methods[i];
-                if (m.vtableSlot < 0 || t->vtable[m.vtableSlot] != reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
+                if (m.vtableSlot < 0 || t->vtable[m.vtableSlot] != trap)
                     continue;
                 n += std::snprintf(buf + n, sizeof(buf) - static_cast<size_t>(n), "%s%s.%s",
                     sep, b->name != nullptr ? b->name : "?", m.name != nullptr ? m.name : "?");
@@ -80,6 +80,43 @@
         }
     }
     dn2cpp_fail(buf);
+}
+
+[[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self)
+{
+    dn2cpp_vcall_report(self, reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented));
+}
+
+// Entered through a per-signature trap thunk (declaration comment in dn2cpp.h): the
+// thunk hands over its own address, so the scan above matches exactly the slots
+// holding it — the same-signature subset, usually one.
+[[noreturn]] void dn2cpp_vcall_unimplemented_at(Dn2CppObject* self, const void* slotFn)
+{
+    dn2cpp_vcall_report(self, slotFn);
+}
+
+// One image, one registration (the generated init prologue), matching the other
+// image-scoped installs (dn2cpp_string_set_interfaces et al.).
+static const void* const* g_vcall_trap_fns;
+static int32_t g_vcall_trap_count;
+
+void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count)
+{
+    g_vcall_trap_fns = fns;
+    g_vcall_trap_count = count;
+}
+
+// Whether `fn` is a vtable dispatch trap — the shared symbol or one of the image's
+// registered per-signature thunks. For probes that must not CALL a trapped slot to
+// find out (the trap aborts). Linear over a small set, on already-cold paths.
+static bool dn2cpp_is_vcall_trap(const void* fn)
+{
+    if (fn == reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
+        return true;
+    for (int32_t i = 0; i < g_vcall_trap_count; i++)
+        if (g_vcall_trap_fns[i] == fn)
+            return true;
+    return false;
 }
 
 [[noreturn]] void dn2cpp_fail(const char* message)
@@ -655,10 +692,10 @@ Dn2CppString* dn2cpp_exception_message_stored(Dn2CppObject* ex)
 // ex is statically System.Exception. A derived type may OVERRIDE get_Message
 // (ArgumentException appends "(Parameter 'x')", FileNotFoundException builds its text
 // lazily); when the receiver's vtable carries a real override in the get_Message slot,
-// call it. Otherwise — no override, so the slot holds the shared trap
-// (&dn2cpp_vcall_unimplemented; get_Message returns a pointer, hence a scalar-return slot,
-// so the per-slot struct-return stub is never installed here) or nullptr — fall back to
-// the stored message. dn2cpp_exception_get_message_slot is a generated program constant
+// call it. Otherwise — no override, so the slot holds a dispatch trap (the shared
+// symbol or a registered per-signature thunk; get_Message returns a pointer, so the
+// per-slot struct-return stub is never installed here) or nullptr — fall back to the
+// stored message. dn2cpp_exception_get_message_slot is a generated program constant
 // (the base declaration's slot; every override shares it).
 Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
 {
@@ -668,7 +705,7 @@ Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
     if (slot >= 0 && ex->type != nullptr && ex->type->vtable != nullptr)
     {
         const void* fn = ex->type->vtable[slot];
-        if (fn != nullptr && fn != reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
+        if (fn != nullptr && !dn2cpp_is_vcall_trap(fn))
             return reinterpret_cast<Dn2CppString* (*)(Dn2CppObject*)>(const_cast<void*>(fn))(ex);
     }
     return dn2cpp_exception_message_stored(ex);

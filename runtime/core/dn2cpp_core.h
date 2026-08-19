@@ -2441,6 +2441,19 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // reading `self`. The receiver-scanning form stays the default, being more precise.
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self);
 [[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc);
+// The receiver-scanning form entered through a per-signature trap thunk. The emitter
+// gives each trapped slot a thunk carrying the slot's exact C++ signature — a wasm
+// call_indirect checks the callee's type immediate, so the shared symbol above dies
+// there as an anonymous "function signature mismatch" before it can report — and with
+// the signature exact, `self` is the receiver at the C++ level for EVERY return shape
+// (the compiler owns any hidden struct-return buffer below it). `slotFn` is the thunk's
+// own address: the candidate scan matches slots holding it, so the report stays as
+// precise as the shared form's.
+[[noreturn]] void dn2cpp_vcall_unimplemented_at(Dn2CppObject* self, const void* slotFn);
+// The per-signature vtable trap thunks of the image, registered by the generated init
+// prologue. For the callers that must recognise a trapped slot WITHOUT calling it
+// (dn2cpp_exception_message's override probe); one image, one registration.
+void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
@@ -3454,13 +3467,13 @@ const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeI
 const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 // The traps an interface / vtable slot with no implementing body is filled with (see the
 // definitions). A call through 0x0 would say nothing. dn2cpp_itf_slot_missing reads the
-// receiver out of argument 0 and names its type — the emitter installs it ONLY in slots
-// whose return type is void, a scalar or a pointer, because an indirect struct return
-// spends that register on the caller's hidden result buffer instead. For those indirect
-// struct returns the emitter avoids the nameless _anon form: it emits a tiny
-// per-slot stub that calls _named with the (class, interface, method) descriptor baked in,
-// so the abort names the slot without reading the receiver. _anon is kept for the rare
-// slot the emitter has no descriptor for.
+// receiver out of argument 0 and names its type — the emitter enters it through a
+// per-signature thunk carrying the slot's exact C++ signature (a wasm call_indirect
+// checks the callee's type immediate, and with the signature exact `self` really is the
+// receiver at the C++ level). For an indirect struct return the emitter prefers a tiny
+// per-slot stub that calls _named with the (class, interface, method) descriptor baked
+// in — exact even on a metadata-stripped image. _anon is kept for the rare slot the
+// emitter has neither a signature nor a descriptor for.
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self);
 [[noreturn]] void dn2cpp_itf_slot_missing_anon();
 [[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc);

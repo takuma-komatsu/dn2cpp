@@ -395,6 +395,9 @@ internal sealed partial class CppEmitter
         // input assembly's IL length), so nothing has to be seen twice — and the whole
         // program's body text never sits on the heap between the two.
         var o = new CppOutput(splitBytes, writeChunk);
+        // The per-signature dispatch-trap thunks are defined inline in the header
+        // (SlotTrapThunk), minted lazily wherever a table needs one.
+        _trapThunkHeader = o.Header;
         // Inline-promoted bodies close the header, so they alone are buffered. They are
         // bounded by construction: only bodies of at most 128 IL bytes are promoted.
         var inlineBodies = new StringBuilder();
@@ -2189,6 +2192,14 @@ internal sealed partial class CppEmitter
     internal void EmitInitCalls(StringBuilder sb, IReadOnlyList<MethodInfo> cctors)
     {
         sb.AppendLine("    dn2cpp_runtime_init();");
+        // The image's per-signature vtable trap thunks, so dn2cpp_exception_message can
+        // recognise a trapped get_Message slot without calling it. Before any managed
+        // code, like every install below.
+        if (_vcallTrapThunks.Count > 0)
+        {
+            sb.AppendLine($"    static const void* const vtrapfns[] = {{ {string.Join(", ", _vcallTrapThunks.Select(t => $"(const void*)&{t}"))} }};");
+            sb.AppendLine($"    dn2cpp_register_vcall_traps(vtrapfns, {_vcallTrapThunks.Count});");
+        }
         // A --shadow-stack image tells the flag-independent runtime that AOT bodies
         // carry frame guards (the hot-update interpreter's reader); gated, so
         // flag-off output stays byte-identical.
@@ -2414,13 +2425,12 @@ internal sealed partial class CppEmitter
         // struct (argument 0 may be the caller's hidden result buffer — same split as
         // the class itables); pooled per emission, all rows live in this one TU.
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
-        string SlotMissStub(string desc)
+        string SlotMissStub(string desc, MethodInfo decl)
         {
             if (!stubs.TryGetValue(desc, out var name))
             {
                 name = $"mdarrslotmiss_{stubs.Count}";
-                string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                sb.AppendLine($"[[maybe_unused]] static void {name}() {{ dn2cpp_itf_slot_missing_named(\"{lit}\"); }}");
+                sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
                 stubs[desc] = name;
             }
             return name;
@@ -2444,8 +2454,8 @@ internal sealed partial class CppEmitter
                 if (!_c.Reachable.Contains(impl))
                 {
                     slots[decl.VtableSlot] = ReceiverIsFirstArg(decl.Signature.ReturnType)
-                        ? "(const void*)&dn2cpp_itf_slot_missing"
-                        : $"(const void*)&{SlotMissStub($"(rank>=2 array)::{disp.Itf.FullName}.{decl.Name}")}";
+                        ? $"(const void*)&{SlotTrapThunk(decl, vcall: false) ?? "dn2cpp_itf_slot_missing"}"
+                        : $"(const void*)&{SlotMissStub($"(rank>=2 array)::{disp.Itf.FullName}.{decl.Name}", decl)}";
                     continue;
                 }
                 string retCpp = CppTypes.Of(decl.Signature.ReturnType);
@@ -2561,13 +2571,12 @@ internal sealed partial class CppEmitter
         // struct (argument 0 may be the caller's hidden result buffer — same split as
         // the class itables); pooled per emission, all rows live in this one TU.
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
-        string SlotMissStub(string desc)
+        string SlotMissStub(string desc, MethodInfo decl)
         {
             if (!stubs.TryGetValue(desc, out var name))
             {
                 name = $"enumslotmiss_{stubs.Count}";
-                string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                sb.AppendLine($"[[maybe_unused]] static void {name}() {{ dn2cpp_itf_slot_missing_named(\"{lit}\"); }}");
+                sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
                 stubs[desc] = name;
             }
             return name;
@@ -2600,8 +2609,8 @@ internal sealed partial class CppEmitter
                 if (!_c.Reachable.Contains(impl))
                 {
                     slots[decl.VtableSlot] = ReceiverIsFirstArg(decl.Signature.ReturnType)
-                        ? "(const void*)&dn2cpp_itf_slot_missing"
-                        : $"(const void*)&{SlotMissStub($"System.Enum::{disp.Itf.FullName}.{decl.Name}")}";
+                        ? $"(const void*)&{SlotTrapThunk(decl, vcall: false) ?? "dn2cpp_itf_slot_missing"}"
+                        : $"(const void*)&{SlotMissStub($"System.Enum::{disp.Itf.FullName}.{decl.Name}", decl)}";
                     continue;
                 }
                 slots[decl.VtableSlot] = $"(const void*)&{impl.Emittable.CppName}";
@@ -2774,13 +2783,12 @@ internal sealed partial class CppEmitter
         // (array, interface, method) descriptor baked in. Same shape as
         // TypeMetadataEmitter.SlotMissStub, but pooled per EmitArrayTypeInfos run —
         // these tables all live in the one metadata section that calls this.
-        string SlotMissStub(string desc)
+        string SlotMissStub(string desc, MethodInfo decl)
         {
             if (!arrSlotStubs.TryGetValue(desc, out var name))
             {
                 name = $"arrslotmiss_{arrSlotStubs.Count}";
-                string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                sb.AppendLine($"[[maybe_unused]] static void {name}() {{ dn2cpp_itf_slot_missing_named(\"{lit}\"); }}");
+                sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
                 arrSlotStubs[desc] = name;
             }
             return name;
@@ -2806,13 +2814,12 @@ internal sealed partial class CppEmitter
                 if (!_c.Reachable.Contains(impl))
                 {
                     // Same receiver-readable / struct-return split as the class itables
-                    // (TypeMetadataEmitter): a slot whose first argument is the receiver
-                    // may use the shared trap that names the receiver's type; a
-                    // struct-returning slot's argument 0 may be the hidden result
-                    // buffer, so bake the descriptor into a named stub instead.
+                    // (TypeMetadataEmitter): a receiver-readable slot enters the shared
+                    // receiver-naming trap through a per-signature thunk; a
+                    // struct-returning slot's descriptor is baked into a named stub.
                     slots[decl.VtableSlot] = ReceiverIsFirstArg(decl.Signature.ReturnType)
-                        ? "(const void*)&dn2cpp_itf_slot_missing"
-                        : $"(const void*)&{SlotMissStub($"{arrClr}::{disp.Itf.FullName}.{decl.Name}")}";
+                        ? $"(const void*)&{SlotTrapThunk(decl, vcall: false) ?? "dn2cpp_itf_slot_missing"}"
+                        : $"(const void*)&{SlotMissStub($"{arrClr}::{disp.Itf.FullName}.{decl.Name}", decl)}";
                     continue;
                 }
                 string retCpp = CppTypes.Of(decl.Signature.ReturnType);
@@ -4821,6 +4828,127 @@ internal sealed partial class CppEmitter
     {
         string c = ret.IsVoid ? "void" : CppTypes.Of(ret);
         return c.EndsWith("*", System.StringComparison.Ordinal) || ScalarReturns.Contains(c);
+    }
+
+    // ---- per-signature dispatch-trap thunks -------------------------------------
+    //
+    // A trap in a dispatch slot must carry the slot's exact C++ signature: a wasm
+    // call_indirect checks the callee's type immediate before entering it, so the shared
+    // void()-shaped trap symbols die there as an anonymous "function signature mismatch"
+    // where the same miss natively reaches the named abort. Each thunk enters through
+    // the slot's own signature and forwards the receiver — argument 0 at the C++ level
+    // for every return shape, the compiler owning any hidden struct-return buffer — to
+    // the receiver-reading reporter. Deduplicated on ABI shape across the whole emission
+    // (pointers collapse to void*, value types stay exact — the invoker-thunk
+    // classification) and defined inline in generated.h, so every TU shares one
+    // definition and one address. A vtable thunk passes its own address for the
+    // candidate scan, and the set is registered at init (EmitInitCalls) so
+    // dn2cpp_exception_message can recognise a trap without calling it.
+    private readonly HashSet<string> _slotTrapThunks = new(StringComparer.Ordinal);
+    private readonly List<string> _vcallTrapThunks = new();
+    private StringBuilder? _trapThunkHeader;
+    private HashSet<string>? _declaredStructNames;
+    private IReadOnlySet<string> DeclaredStructNames =>
+        _declaredStructNames ??= EmittedClasses.Select(c => c.CppStructName)
+            .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The dispatch signature of the slot <paramref name="decl"/> declares,
+    /// rendered for a trap: the shape key that dedups it, the return type, and the
+    /// parameter types with the receiver as leading <c>void*</c>. Null when the slot
+    /// cannot carry an exact-signature trap — a static (no receiver), a shape
+    /// <see cref="CppTypes"/> cannot render, or a by-value type this image never
+    /// declared — and the caller degrades to the signature-less historical form.</summary>
+    private (string Key, string Ret, List<string> ParamTypes)? SlotTrapShape(MethodInfo decl)
+    {
+        if (decl.IsStatic)
+            return null;
+        try
+        {
+            var key = new StringBuilder();
+            var ps = new List<string> { "void*" };
+            foreach (var p in decl.Signature.ParameterTypes)
+            {
+                string cpp = CppTypes.Of(p);
+                if (cpp.EndsWith("*", StringComparison.Ordinal))
+                {
+                    key.Append("_P");
+                    ps.Add("void*");
+                }
+                else
+                {
+                    if (!StructDeclared(cpp, DeclaredStructNames))
+                        return null;
+                    key.Append('_').Append(CppNaming.Sanitize(cpp));
+                    ps.Add(cpp);
+                }
+            }
+            string ret;
+            var rt = decl.Signature.ReturnType;
+            if (rt.IsVoid)
+            {
+                ret = "void";
+                key.Append("__r_v");
+            }
+            else
+            {
+                string cpp = CppTypes.Of(rt);
+                if (cpp.EndsWith("*", StringComparison.Ordinal))
+                {
+                    ret = "void*";
+                    key.Append("__r_P");
+                }
+                else
+                {
+                    if (!StructDeclared(cpp, DeclaredStructNames))
+                        return null;
+                    ret = cpp;
+                    key.Append("__r_").Append(CppNaming.Sanitize(cpp));
+                }
+            }
+            return (key.ToString(), ret, ps);
+        }
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The per-signature trap thunk for the unreached dispatch slot
+    /// <paramref name="decl"/> declares — <c>itftrap_*</c> for an interface slot,
+    /// <c>vtrap_*</c> for a vtable slot — or null when the shape cannot be rendered
+    /// (see <see cref="SlotTrapShape"/>). The thunk body never returns: the reporter
+    /// aborts, so a non-void return type needs no value.</summary>
+    internal string? SlotTrapThunk(MethodInfo decl, bool vcall)
+    {
+        if (SlotTrapShape(decl) is not { } shape)
+            return null;
+        string name = (vcall ? "vtrap" : "itftrap") + shape.Key;
+        if (_slotTrapThunks.Add(name))
+        {
+            var ps = new List<string> { "void* self" };
+            ps.AddRange(shape.ParamTypes.Skip(1));
+            string body = vcall
+                ? $"dn2cpp_vcall_unimplemented_at((Dn2CppObject*)self, (const void*)&{name});"
+                : "dn2cpp_itf_slot_missing(self);";
+            _trapThunkHeader!.AppendLine($"inline {shape.Ret} {name}({string.Join(", ", ps)}) {{ {body} }}");
+            if (vcall)
+                _vcallTrapThunks.Add(name);
+        }
+        return name;
+    }
+
+    /// <summary>Renders the definition of the named trap stub <paramref name="name"/>
+    /// for an unreached dispatch slot: <paramref name="reporter"/> (a <c>*_named</c>
+    /// runtime abort) with <paramref name="desc"/> baked in. Carries the slot's exact
+    /// C++ signature when it renders — the wasm type-immediate rule above — and
+    /// degrades to the historical <c>void()</c> form when it cannot.</summary>
+    internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
+    {
+        string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        string sig = SlotTrapShape(decl) is { } s
+            ? $"{s.Ret} {name}({string.Join(", ", s.ParamTypes)})"
+            : $"void {name}()";
+        return $"[[maybe_unused]] static {sig} {{ {reporter}(\"{lit}\"); }}";
     }
 
     private static void EmitUnboxingThunk(StringBuilder sb, string thunk, ClassInfo cls, MethodInfo im, MethodInfo impl)
