@@ -706,8 +706,10 @@ condition so an unstamped or differently stamped zip is relinked.
   platform, surfacing as a catchable `HttpRequestException`, so one feature
   degrades instead of the export being unbuildable. The thread carve-out is hit
   first for an async send, so a Web build uses the synchronous `Send`.
-- **`FileStream` does not link** (the pre-existing wasm carve-out). The
-  intercepted `File.*` subset works against MEMFS.
+- **The filesystem is MEMFS, so files are ephemeral.** `FileStream`,
+  `SafeFileHandle` and the `File.*` surface all work, but what a page writes
+  lives in that page's memory and is gone when it unloads. Persistence on the
+  Web is the engine's job (`user://` through `FileAccess`), not `System.IO`'s.
 - **The `libSystem.Native` surface this target defines is hand-picked**, and the
   omissions do not behave like the two above. Lowering a P/Invoke is
   target-neutral, so an omitted PAL symbol is still called; on a side module that

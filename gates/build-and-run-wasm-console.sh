@@ -53,7 +53,10 @@
 # paths the intercepts leave alone: Marshal.StringToBSTR/FreeBSTR run the real CoreLib
 # bodies down to Interop.Sys.{Malloc,Free}, and a Debug write reaches
 # DebugProvider.WriteCore's stderr arm, Interop.Sys.Write, beside the SysLog arm — with
-# the errno accessors behind the stderr arm's retry loop.
+# the errno accessors behind the stderr arm's retry loop. Its third section is the
+# MEMFS file-I/O closure (FileStream, File.*, the error trio), which a game reaches
+# without asking for it: Trace with a DefaultTraceListener log file goes
+# File.AppendAllText -> SafeFileHandle -> all of it.
 #
 # Machines without the Emscripten toolchain (or node) skip: the suite stays
 # usable without emscripten, but the runner reports the gate as SKIPPED rather
@@ -99,13 +102,34 @@ echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
 wasm_corelib_diff_gate PalSurface
 
 # Same reason as the clock assert above: the section's output is identical whether or
-# not it still reaches these three, so only the emitted call set can say it does.
+# not it still reaches these, so only the emitted call set can say it does. The
+# file-I/O half is the whole MEMFS closure — a BCL refactor that routed one operation
+# through a different PAL entry would leave the section green with the entry unlinked.
 for thunk in \
     dn2cpp_pinvoke_SystemNative_Malloc \
     dn2cpp_pinvoke_SystemNative_Free \
     dn2cpp_pinvoke_SystemNative_Write \
     dn2cpp_pinvoke_SystemNative_GetErrNo \
-    dn2cpp_pinvoke_SystemNative_SetErrNo; do
+    dn2cpp_pinvoke_SystemNative_SetErrNo \
+    dn2cpp_pinvoke_SystemNative_Open \
+    dn2cpp_pinvoke_SystemNative_Close \
+    dn2cpp_pinvoke_SystemNative_Read \
+    dn2cpp_pinvoke_SystemNative_PRead \
+    dn2cpp_pinvoke_SystemNative_PWrite \
+    dn2cpp_pinvoke_SystemNative_LSeek \
+    dn2cpp_pinvoke_SystemNative_FSync \
+    dn2cpp_pinvoke_SystemNative_FStat \
+    dn2cpp_pinvoke_SystemNative_Stat \
+    dn2cpp_pinvoke_SystemNative_Unlink \
+    dn2cpp_pinvoke_SystemNative_FLock \
+    dn2cpp_pinvoke_SystemNative_FTruncate \
+    dn2cpp_pinvoke_SystemNative_FAllocate \
+    dn2cpp_pinvoke_SystemNative_PosixFAdvise \
+    dn2cpp_pinvoke_SystemNative_GetCwd \
+    dn2cpp_pinvoke_SystemNative_GetFileSystemType \
+    dn2cpp_pinvoke_SystemNative_ConvertErrorPalToPlatform \
+    dn2cpp_pinvoke_SystemNative_ConvertErrorPlatformToPal \
+    dn2cpp_pinvoke_SystemNative_StrErrorR; do
     if ! grep -qF "$thunk" "$_CG_OUT"/generated*; then
         echo "FAIL: PalSurface no longer emits $thunk" >&2
         echo "      The section still passes, but it stopped reaching this wasm PAL" >&2
@@ -114,7 +138,7 @@ for thunk in \
         exit 1
     fi
 done
-echo "PAL reach OK: PalSurface still lowers the C heap and the stderr write to libSystem.Native"
+echo "PAL reach OK: PalSurface still lowers the C heap, the stderr write and the MEMFS file closure to libSystem.Native"
 
 # ── 6th section: the Web lane's HTTP carve-out ────────────────────────────────
 # The one section here that is NOT a diff against real .NET, and it cannot be:

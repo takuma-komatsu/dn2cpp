@@ -58,8 +58,13 @@ set_eq() {
 }
 
 # w2n WORD — the docs spell small counts as English words, which is good prose
-# and still a claim. Unknown word yields '?', which can never equal a number.
+# and still a claim. Past the words prose gives up and writes the digits, so those
+# pass through. Unknown word yields '?', which can never equal a number.
 w2n() {
+    case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+        *[!0-9]* | '') ;;
+        *) echo "$1"; return ;;
+    esac
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         one) echo 1 ;;      two) echo 2 ;;       three) echo 3 ;;
         four) echo 4 ;;     five) echo 5 ;;      six) echo 6 ;;
@@ -241,8 +246,8 @@ eq "docs/PORTING.md §2.1 'N of the M must answer truly'" \
 wasm_pal=runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp
 wasm_defs=$(grep -oE '^[a-z_0-9]+[a-z_0-9 *]* SystemNative_[A-Za-z_0-9]+\(' "$wasm_pal" \
             | grep -oE 'SystemNative_[A-Za-z_0-9]+' | sort -u | grep -c .)
-porting_wasm=$(w2n "$(sed -nE '1s/.*wasm defines ([a-z]+).*/\1/p' \
-    <<<"$(grep -oE '\*\*wasm defines [a-z]+\.\*\*' docs/PORTING.md)")")
+porting_wasm=$(w2n "$(sed -nE '1s/.*wasm defines ([a-z0-9]+).*/\1/p' \
+    <<<"$(grep -oE '\*\*wasm defines [a-z0-9]+\.\*\*' docs/PORTING.md)")")
 eq "docs/PORTING.md §2.2 'wasm defines N SystemNative_*'" "$porting_wasm" "$wasm_defs"
 
 # The editor guide tells a player what Stopwatch.Frequency reads on the Web, and that

@@ -14,6 +14,7 @@ namespace PalSurface
 
             NativeHeapPalSubset.Program.__GateEntry();
             StderrWritePalSubset.Program.__GateEntry();
+            FileStreamPalSubset.Program.__GateEntry();
         }
     }
 }

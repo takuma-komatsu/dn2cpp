@@ -768,9 +768,9 @@ it does not come back as a ticket.
   subclass overriding *neither* async overload takes that path). There is
   no IOCP implementation and none is planned. Results are unaffected; what
   is lost is the *reported* asynchrony.
-- **A real `FileStream` does not link on WASM** — deliberately and
-  loudly, at link time, naming the missing symbol. The intercepted
-  `File.*` subset still works against MEMFS.
+- **On WASM the filesystem is MEMFS, so files are ephemeral.**
+  `FileStream` and the `File.*` surface work, but what a page writes lives
+  in that page's memory and is gone when it unloads.
 - **A user `[DllImport]` whose native side fills an `[Out] byte[]` with a
   syscall** would be unsafe under a collector that write-protects heap pages
   to recover dirty bits — a kernel store into such a page returns `EFAULT`
