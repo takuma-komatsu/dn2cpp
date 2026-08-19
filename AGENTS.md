@@ -430,7 +430,8 @@ engine-side changes are in `docs/EDITOR-EXPORT-DESIGN.md`. Carve-outs:
 - **No HTTP transport** — a browser has no TCP socket layer, so
   `DN2CPP_USE_CURL` is forced off; `HttpClient` links and fails every call with
   an `HttpRequestException` naming the platform.
-- **`FileStream` does not link**; the intercepted `File.*` subset works on MEMFS.
+- **`FileStream` and the `File.*` surface work on MEMFS**, and the files are
+  ephemeral: they live in the page's memory and are gone when it unloads.
 - **The `libSystem.Native` surface is hand-picked per target**
   (`runtime/core/platform/wasm/`), and an omission here does NOT fail like the
   rows above: lowering a P/Invoke is target-neutral, so the call is still emitted

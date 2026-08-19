@@ -131,24 +131,44 @@ user identity, and the low-level monitor.
   already-blittable shapes, so those calls direct-link once the modules are
   admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port is a line in
   the transpiler and a `target_link_libraries` row.
-- **wasm defines four.**
-  `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp` supplies
+- **wasm defines 28.** They live in
+  `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in three groups.
+  The **non-file** entries are there each for their own reason:
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
-  P/Invoke at all, `SystemNative_SysLog` — the Trace/Debug sink `DebugProvider`
-  falls to once `Debugger.IsLogging` const-folds false, hence reached by any game
-  that logs — plus the `pal_time.c` clocks behind
+  P/Invoke at all; `SystemNative_SysLog` and `SystemNative_Write`, the two sinks
+  of `DebugProvider.WriteCore`, hence reached by any game that logs;
+  `SystemNative_Malloc` and `SystemNative_Free`, which the intercepted
+  `Marshal`/`NativeMemory` surface never reaches but the BSTR allocators and the
+  in-CoreLib marshaller stubs do; and the `pal_time.c` clocks behind
   `Stopwatch.GetTimestamp` and `Environment.TickCount64`. Both user calls resolve
   from MemberReferences to real CoreLib bodies and reach P/Invokes. An in-CoreLib
   MethodDefinition call to `TickCount64` can instead take the
-  `dn2cpp_tickcount64` intrinsic. Lowering a P/Invoke is
-  target-neutral, so excluding the POSIX file excludes the definition and leaves
-  its caller. The timestamp-resolution entry has no counterpart here because
-  `Stopwatch.Frequency` is a constant on this CoreLib. The rest is deliberately
-  absent: `FileStream` does not link on wasm, and the intercepted `File.*` subset
-  works against MEMFS. Absent means something weaker here than in an executable
-  link: on a side module an undefined symbol is a wasm IMPORT that throws only
-  when first called, which is why the export gates assert the drop-in's whole
-  import closure rather than trusting the link.
+  `dn2cpp_tickcount64` intrinsic. The timestamp-resolution entry has no
+  counterpart here because `Stopwatch.Frequency` is a constant on this CoreLib.
+
+  The **error** entries — the `errno` accessors and the two PAL/platform code
+  converters — ride in behind any of the others and behind every PAL failure the
+  BCL turns into an exception, with `SystemNative_StrErrorR` formatting it.
+
+  The **file-I/O closure** runs against Emscripten's MEMFS: `FileStream`,
+  `SafeFileHandle` and the `File.*` surface all work, and the files are ephemeral
+  — they live in the page's memory and are gone when it unloads. It is not
+  optional coverage, because a game does not opt into it: `Trace` with a
+  `DefaultTraceListener` log file goes `File.AppendAllText` → `SafeFileHandle` →
+  the whole closure. Two entries degrade rather than fail, both where .NET treats
+  the call as a hint: `SystemNative_PosixFAdvise` is advisory, and
+  `SystemNative_FAllocate` does nothing and reports success because MEMFS has no
+  size-preserving preallocation primitive — and a preallocation that changed the
+  file's LENGTH would make it read back as zeros nobody wrote.
+
+  What is still absent is absent for the ordinary reason — nothing here calls it.
+  Lowering a P/Invoke is target-neutral, so excluding the POSIX file excludes the
+  definition and leaves its caller; and absence means something weaker here than
+  in an executable link, because on a side module an undefined symbol is a wasm
+  IMPORT that throws only when first called. That is why the export gates assert
+  the drop-in's whole import closure rather than trusting the link, and why
+  `gates/build-and-run-wasm-console.sh`'s `PalSurface` bucket must keep REACHING
+  every entry this file defines.
 
 So the first question of a port is not "how do I write these functions" but
 **"which CoreLib flavour will this target's programs be transpiled from, and what

@@ -225,6 +225,12 @@ namespace MultiAssembly
                 + " item " + refItem.Name
                 + " target " + (string)targetProp.GetValue(oneRef)
                 + " version " + changelog.Version + "/" + changelog.RefCount);
+
+            // Keep LayoutMid reachable only as a type token: its grouped base's
+            // canonical owner enters struct ordering without passing through the
+            // ordinary field-type closure.
+            Type lm = typeof(MiniBcl.LayoutMid);
+            Console.WriteLine("lib layout token: " + lm.Name);
             return 0;
         }
 

@@ -49,6 +49,12 @@ internal sealed partial class CppEmitter
     /// question the stamp asks.</para></summary>
     private readonly HashSet<string> _layoutUnknown = new(StringComparer.Ordinal);
 
+    /// <summary>Every struct name the layout emission actually RENDERED — each field's
+    /// storage type and each struct header's base — checked at the end of
+    /// <see cref="EmitStructs"/> against the names it declared. A layout that spells an
+    /// undeclared <c>t_</c> name is otherwise a C++ error with no cause attached.</summary>
+    private readonly List<(ClassInfo Cls, string Member, string Cpp)> _renderedStructRefs = new();
+
     /// <summary>Whether <paramref name="cls"/>'s type-info must carry
     /// <c>DN2CPP_TF_LAYOUT_UNKNOWN</c> — see <see cref="_layoutUnknown"/>.</summary>
     internal bool HasUnknownLayoutExtent(ClassInfo cls) => _layoutUnknown.Contains(cls.CppStructName);
@@ -587,6 +593,8 @@ internal sealed partial class CppEmitter
                     }
             _c.CompletePendingSpecializations();
         }
+        if (ClassInfo.ShareStructLayout)
+            CloseTopoOnlyLayouts();
 
         // A `static Main(string[] args)` entry point's epilogue builds the args
         // array tagged with the precise ti_arr_string handle. That per-element array
@@ -5125,6 +5133,7 @@ internal sealed partial class CppEmitter
     private void EmitStructs(StringBuilder sb)
     {
         sb.AppendLine("// ---- managed type layouts ----");
+        _renderedStructRefs.Clear();
         // A grouped specialization's layout IS its canonical owner's
         // (CppStructName redirects), so the alias defines no struct of its own —
         // the owner's single definition serves the whole group.
@@ -5224,13 +5233,36 @@ internal sealed partial class CppEmitter
                 baseName = "Dn2CppExceptionObject";
             else
                 baseName = "Dn2CppObject";
+            _renderedStructRefs.Add((cls, "<base>", baseName));
             EmitOneStruct(sb, cls, baseName);
         }
         sb.AppendLine();
+
+        // Every t_ name a layout spelled must be one this emission declared. The C++
+        // compiler catches the miss too, but only as "unknown type name" with nothing
+        // saying which class, which field, or why the type never reached the emit set.
+        var declared = new HashSet<string>(fwdDeclared, System.StringComparer.Ordinal);
+        declared.UnionWith(emitted);
+        foreach (var (cls, member, cpp) in _renderedStructRefs)
+            if (!StructDeclared(cpp, declared))
+                throw new InvalidOperationException(
+                    $"{cls.FullName}.{member} is laid out as {cpp}, which no emitted struct "
+                    + "declares — the type was never closed into the emit set");
+    }
+
+    /// <summary>A field's rendered storage type, recorded for the declared-name check at
+    /// the end of <see cref="EmitStructs"/>.</summary>
+    private string FieldStorage(ClassInfo cls, FieldInfo f)
+    {
+        string t = CppTypes.FieldOf(f);
+        _renderedStructRefs.Add((cls, f.Name, t));
+        return t;
     }
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
     {
+        (ModeledSize Size, ModeledSize Align)? opaqueLayout =
+            IsOpaque(cls) && cls.IsValueType ? TryModeledStructLayout(cls) : null;
         // [StructLayout(Pack = N)] caps every field's alignment at N bytes; the
         // pragma makes the C++ compiler apply the same cap so the layout matches the
         // CLR's packed layout (value types only — a class's Pack has no emitted
@@ -5238,9 +5270,12 @@ internal sealed partial class CppEmitter
         bool packed = !IsOpaque(cls) && cls.IsValueType && cls.LayoutPack > 0;
         if (packed)
             sb.AppendLine($"#pragma pack(push, {cls.LayoutPack})");
+        string align = "";
+        if (opaqueLayout is { } ol && ol.Align.Text != "1")
+            align = $" alignas({ol.Align.Text})";
         sb.AppendLine(baseName is null
-            ? $"struct {cls.CppStructName}"
-            : $"struct {cls.CppStructName} : {baseName}");
+            ? $"struct{align} {cls.CppStructName}"
+            : $"struct{align} {cls.CppStructName} : {baseName}");
         sb.AppendLine("{");
         ModeledSize? explicitSize = null;
         // An opaque VALUE type is field-less, but its type-info still stamps instanceSize
@@ -5258,11 +5293,10 @@ internal sealed partial class CppEmitter
         // it today. A one-byte extent cannot: it holds no pointer, so both readings exist.
         if (IsOpaque(cls) && cls.IsValueType)
         {
-            if (TryStructExtent(cls, PointerWidth.Bytes64) is { } osz
-                && PointerWidth.Model(osz.Size, TryStructExtent(cls, PointerWidth.Bytes32)?.Size) is { Guarded: false } m)
+            if (opaqueLayout is { } modeled)
             {
-                if (osz.Size > 1)
-                    sb.AppendLine($"    uint8_t __opaque_pad[{m.Text}];");
+                if (modeled.Size.Text != "1")
+                    sb.AppendLine($"    uint8_t __opaque_pad[{modeled.Size.Text}];");
             }
             else if (!cls.IsEnum)
                 _layoutUnknown.Add(cls.CppStructName);
@@ -5280,7 +5314,7 @@ internal sealed partial class CppEmitter
                 // Storage-width elements (FieldOf; InlineArray owners are
                 // exact-layout) — span windows over the buffer use the element's
                 // real stride.
-                sb.AppendLine($"    {CppTypes.FieldOf(instanceFields[0])} {instanceFields[0].CppName}[{cls.InlineArrayLength}];");
+                sb.AppendLine($"    {FieldStorage(cls, instanceFields[0])} {instanceFields[0].CppName}[{cls.InlineArrayLength}];");
             else if (cls.IsExplicitLayout
                      && (instanceFields.Count > 0 || cls.LayoutSize > 0))
                 // Both value types and reference types: a class's explicit region
@@ -5306,7 +5340,7 @@ internal sealed partial class CppEmitter
                     sb.AppendLine("        struct");
                     sb.AppendLine("        {");
                     foreach (var f in instanceFields)
-                        sb.AppendLine($"            {CppTypes.FieldOf(f)} {f.CppName};");
+                        sb.AppendLine($"            {FieldStorage(cls, f)} {f.CppName};");
                     sb.AppendLine("        };");
                     sb.AppendLine("    };");
                 }
@@ -5314,7 +5348,7 @@ internal sealed partial class CppEmitter
             else
             {
                 foreach (var f in instanceFields)
-                    sb.AppendLine($"    {CppTypes.FieldOf(f)} {f.CppName};");
+                    sb.AppendLine($"    {FieldStorage(cls, f)} {f.CppName};");
                 // A C# `fixed E buf[N]` lowers to a compiler-generated <buf>e__FixedBuffer
                 // value type with a single element field of type E and an explicit
                 // ClassLayout size of N*sizeof(E). The buffer is addressed as
@@ -5396,7 +5430,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"        uint8_t __explicit_pad[{size.Text}];");
         foreach (var f in fields)
         {
-            string t = CppTypes.FieldOf(f);
+            string t = FieldStorage(cls, f);
             sb.AppendLine(f.ExplicitOffset == 0
                 ? $"        {t} {f.CppName};"
                 : $"        struct {{ uint8_t __pad_{f.CppName}[{f.ExplicitOffset}]; {t} {f.CppName}; }};");
@@ -5693,6 +5727,18 @@ internal sealed partial class CppEmitter
         }
         _structExtents[(cls, ptr)] = r;
         return r;
+    }
+
+    /// <summary>The target-independent size and alignment an opaque value shell can
+    /// preserve. A missing narrow reading cannot be baked into shared generated text.</summary>
+    private (ModeledSize Size, ModeledSize Align)? TryModeledStructLayout(ClassInfo cls)
+    {
+        if (TryStructExtent(cls, PointerWidth.Bytes64) is not { } wide)
+            return null;
+        var narrow = TryStructExtent(cls, PointerWidth.Bytes32);
+        var size = PointerWidth.Model(wide.Size, narrow?.Size);
+        var align = PointerWidth.Model(wide.Align, narrow?.Align);
+        return size.Guarded || align.Guarded ? null : (size, align);
     }
 
     private (int Size, int Align)? ComputeStructExtent(ClassInfo cls, int ptr)
@@ -6227,6 +6273,81 @@ internal sealed partial class CppEmitter
         sb.AppendLine();
     }
 
+
+    /// <summary>Closes the field types of a class the STRUCT ORDERING reaches and
+    /// nothing else does. TopoOrder visits a SharedOwner unconditionally, so a canonical
+    /// owner pulled in through an opaque referenced-only type's base chain lands in
+    /// neither <see cref="_emit"/> nor <see cref="_opaque"/> — and EmitStructs still
+    /// writes its FULL layout, spelling every field type by name while the only field
+    /// closure (ComputeEmitted's walk) never saw it. Those names must be declared.
+    ///
+    /// <para>The owner itself stays non-opaque: a grouped alias's type-info stamps
+    /// <c>sizeof(t_owner)</c> as its instance size, so shelling the owner instead would
+    /// silently shrink every member of its group.</para></summary>
+    private void CloseTopoOnlyLayouts()
+    {
+        // An opaque shell for a by-value field type IS the owner's layout, so a shell of
+        // unknown extent would silently shrink the owner rather than only itself.
+        bool Stub(ClassInfo owner, FieldInfo f, ClassInfo t, bool directByValue)
+        {
+            bool added = EmitAdd(t);
+            if (directByValue && (added || _opaque.Contains(t))
+                && TryModeledStructLayout(t) is null)
+                throw new NotSupportedException(
+                    $"{owner.FullName}.{f.Name}: by-value field type {t.FullName} is reached "
+                    + "only by the struct ordering, and its size or alignment cannot be "
+                    + "modeled at both pointer widths, so no opaque stub can preserve its layout");
+            if (!added)
+                return false;
+            _opaque.Add(t);
+            return true;
+        }
+
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            // A stub can float a further SharedOwner into the order, so this iterates
+            // to a fixpoint over fresh snapshots.
+            foreach (var c in TopoOrder().ToList())
+            {
+                if (_emit.Contains(c) || _opaque.Contains(c)
+                    || c.IsEnum || c.IsDelegate || c.SharedOwner is not null)
+                    continue;
+                if (!c.ShapeReady)
+                    throw new InvalidOperationException(
+                        $"emit protocol: topo-only layout owner {c.FullName} has incomplete shape");
+                foreach (var f in c.Fields)
+                {
+                    if (f.IsStatic)
+                        continue;
+                    var t = f.Type;
+                    bool directByValue = t is
+                        { Kind: TypeKind.Class, Class: { IsValueType: true } };
+                    while (t is { Kind: TypeKind.ByRef or TypeKind.Pointer, Element: { } el })
+                        t = el;
+                    if (t is not { Kind: TypeKind.Class, Class: { IntrinsicCppName: null, IsEnum: false } ft })
+                        continue;
+                    grew |= Stub(c, f, ft, directByValue);
+                    // Mirrors the referenced-only path: a stub's own struct name may
+                    // redirect to a canonical owner, and its bases back isinst.
+                    if (ft.SharedOwner is { } owner && EmitAdd(owner))
+                    {
+                        _opaque.Add(owner);
+                        grew = true;
+                    }
+                    for (var bc = ft.BaseClass; bc is { IntrinsicCppName: null, IsEnum: false }; bc = bc.BaseClass)
+                        if (EmitAdd(bc))
+                        {
+                            _opaque.Add(bc);
+                            grew = true;
+                        }
+                }
+            }
+        }
+        if (_c.SharedGenericsEnabled)
+            _c.CompletePendingSpecializations();
+    }
 
     private IEnumerable<ClassInfo> TopoOrder()
     {
