@@ -759,6 +759,7 @@ internal sealed partial class Compilation
             foreach (var field in cls.Fields)
                 if (policy.Fields.Contains(field.Handle)
                     || conditional && policy.ConditionalFields.Contains(field.Handle)) PreserveField(field);
+        bool ctorPreserved = false;
         foreach (var method in cls.Methods)
         {
             bool keep = delegateAll || (kind & PreserveKind.Methods) != 0
@@ -766,8 +767,20 @@ internal sealed partial class Compilation
                 || conditional && policy.ConditionalMethods.Contains(method.Handle)
                 || (kind & PreserveKind.DefaultConstructor) != 0
                     && method.Name == ".ctor" && method.Signature.ParameterTypes.Length == 0;
-            if (keep) PreserveMethod(method);
+            if (keep)
+            {
+                PreserveMethod(method);
+                ctorPreserved |= method.Name == ".ctor" && !method.IsStatic && method.Rva != 0;
+            }
         }
+        // A preserved instance ctor declares "reflection constructs this" — the
+        // instance then dispatches through vtable and interface slots, so the
+        // class must cross the used-slot × allocated-type product. Reaching the
+        // ctor alone leaves every slot of the minted instance a trap stub (on
+        // wasm that trap is an unnamed call_indirect signature mismatch).
+        if (ctorPreserved && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface
+            && !cls.IsDelegate)
+            ReachAllocatedType(cls);
         foreach (var ph in policy.Properties)
             PreservePropertyType(cls, ph);
         foreach (var eh in policy.Events)
@@ -854,7 +867,16 @@ internal sealed partial class Compilation
         PreserveKind kind = policy.Kind | (conditional ? policy.ConditionalKind : PreserveKind.None);
         if ((kind & PreserveKind.Methods) != 0 || policy.Methods.Contains(method.Handle)
             || conditional && policy.ConditionalMethods.Contains(method.Handle))
+        {
             PreserveMethod(method);
+            // Same allocation rule as ApplyPreservation: a preserved instance
+            // ctor of a concrete reference instantiation is a late-bound
+            // construction site.
+            var cls = method.DeclaringClass;
+            if (method.Name == ".ctor" && !method.IsStatic && method.Rva != 0
+                && !cls.IsValueType && !cls.IsAbstract && !cls.IsInterface && !cls.IsDelegate)
+                ReachAllocatedType(cls);
+        }
     }
 
     private void PreserveField(FieldInfo field)

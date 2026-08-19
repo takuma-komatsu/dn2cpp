@@ -15,6 +15,17 @@ internal static class Program
         Console.WriteLine(typeof(PreserveControlLib.ConditionalUsed).Name);
         PreservedReflection();
         ReferencedAssemblyReflection();
+        LateBoundConstruction();
+    }
+
+    private static void LateBoundConstruction()
+    {
+        // The [Preserve]'d library class is constructed ONLY late-bound: a
+        // preserved instance ctor implies allocation, so interface dispatch on
+        // the minted instance resolves the base's explicit implementation
+        // (and its virtual hook) instead of landing on a slot-miss trap.
+        object instance = Activator.CreateInstance(typeof(PreserveControlLib.LateInitService));
+        Console.WriteLine("late-bound=" + ((PreserveControlLib.ILateInit)instance).InitializeAll());
     }
 
     private static void PreservedReflection()
