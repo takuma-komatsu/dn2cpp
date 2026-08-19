@@ -3,7 +3,7 @@
 //
 // The bulk of that surface (platform/posix/dn2cpp_system_native.cpp) is the
 // file-I/O P/Invoke closure, and it is deliberately NOT part of the wasm build.
-// Four things it also defines are not file I/O, and each is here for its own
+// Several things it also defines are not file I/O, and each is here for its own
 // reason — the exclusion was written for the closure and covers none of them.
 //
 //   * The CSPRNG has a caller that is not a P/Invoke at all and IS compiled on
@@ -13,8 +13,15 @@
 //     user MemberReference to Environment.TickCount64 reach through their real
 //     BCL bodies. In-CoreLib MethodDefinition calls to TickCount64 can instead
 //     lower to dn2cpp_tickcount64. The engine's Time API is a separate surface.
-//   * SysLog is the Trace/Debug sink DebugProvider falls to, reached by any game
-//     that logs; it is a console entry point, not a file one.
+//   * SysLog and Write are DebugProvider.WriteCore's two sinks — the debugger arm
+//     and the stderr arm — so any game that logs reaches both. Write takes an fd,
+//     not a path: it is not part of the file-I/O closure.
+//   * Malloc/Free are the C heap. Marshal.{AllocHGlobal,FreeHGlobal} and the
+//     NativeMemory family are intercepted and never reach them, but the BSTR
+//     allocators and every marshaller stub that calls NativeMemory as an
+//     in-CoreLib MethodDefinition run the real body down to these two.
+//   * The errno accessors ride in behind any of them: a managed retry loop over a
+//     failing PAL call reads errno, and that read is a P/Invoke of its own.
 //
 // Only what a call site actually reaches is defined here. Stopwatch.Frequency is
 // a constant on this CoreLib, so the POSIX twin's timestamp-resolution entry does
@@ -34,8 +41,10 @@
 
 #include <cstdint>
 #include <cstdio>   // fprintf — the SysLog stand-in
+#include <cstdlib>  // malloc / free
 #include <ctime>    // clock_gettime
-#include <unistd.h> // getentropy
+#include <cerrno>   // EINTR
+#include <unistd.h> // getentropy, write
 
 extern "C" {
 
@@ -114,6 +123,48 @@ void SystemNative_SysLog(int32_t priority, const char* message, const char* arg1
 #pragma clang diagnostic pop
 #endif
     ::fputc('\n', stderr);
+}
+
+// pal_io.c SystemNative_Write, the other half of DebugProvider.WriteCore. Takes an
+// already-open fd, so it needs nothing from the file-I/O closure: under Emscripten
+// 1 and 2 reach the JS console and any other fd is MEMFS. Contract is the POSIX
+// twin's — bytes written, or -1 with errno set.
+//
+// No GC bounce buffer here, for the same reason the CSPRNG needs none: nothing
+// mprotects the heap on this axis.
+int32_t SystemNative_Write(intptr_t fd, const void* buffer, int32_t bufferSize)
+{
+    ssize_t n;
+    while ((n = ::write((int)fd, buffer, (size_t)bufferSize)) < 0 && errno == EINTR)
+    {
+    }
+    return (int32_t)n;
+}
+
+// The PAL's C-heap pair, the POSIX twins verbatim. Emscripten's dlmalloc backs it.
+// This is not the GC heap: a block from here is invisible to the collector and must
+// be freed through Free.
+void* SystemNative_Malloc(uintptr_t size)
+{
+    return std::malloc(size == 0 ? 1 : size); // malloc(0) may return NULL; .NET expects a pointer
+}
+
+void SystemNative_Free(void* ptr)
+{
+    std::free(ptr);
+}
+
+// The errno slot, reached by every managed retry loop over a PAL call that can fail —
+// DebugProvider's stderr loop is the one here. Emscripten's musl gives each of them a
+// real errno; the managed side maps the value itself.
+int32_t SystemNative_GetErrNo(void)
+{
+    return errno;
+}
+
+void SystemNative_SetErrNo(int32_t error)
+{
+    errno = error;
 }
 
 } // extern "C"
