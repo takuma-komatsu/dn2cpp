@@ -49,6 +49,12 @@ internal sealed partial class CppEmitter
     /// question the stamp asks.</para></summary>
     private readonly HashSet<string> _layoutUnknown = new(StringComparer.Ordinal);
 
+    /// <summary>Every struct name the layout emission actually RENDERED — each field's
+    /// storage type and each struct header's base — checked at the end of
+    /// <see cref="EmitStructs"/> against the names it declared. A layout that spells an
+    /// undeclared <c>t_</c> name is otherwise a C++ error with no cause attached.</summary>
+    private readonly List<(ClassInfo Cls, string Member, string Cpp)> _renderedStructRefs = new();
+
     /// <summary>Whether <paramref name="cls"/>'s type-info must carry
     /// <c>DN2CPP_TF_LAYOUT_UNKNOWN</c> — see <see cref="_layoutUnknown"/>.</summary>
     internal bool HasUnknownLayoutExtent(ClassInfo cls) => _layoutUnknown.Contains(cls.CppStructName);
@@ -5127,6 +5133,7 @@ internal sealed partial class CppEmitter
     private void EmitStructs(StringBuilder sb)
     {
         sb.AppendLine("// ---- managed type layouts ----");
+        _renderedStructRefs.Clear();
         // A grouped specialization's layout IS its canonical owner's
         // (CppStructName redirects), so the alias defines no struct of its own —
         // the owner's single definition serves the whole group.
@@ -5226,9 +5233,30 @@ internal sealed partial class CppEmitter
                 baseName = "Dn2CppExceptionObject";
             else
                 baseName = "Dn2CppObject";
+            _renderedStructRefs.Add((cls, "<base>", baseName));
             EmitOneStruct(sb, cls, baseName);
         }
         sb.AppendLine();
+
+        // Every t_ name a layout spelled must be one this emission declared. The C++
+        // compiler catches the miss too, but only as "unknown type name" with nothing
+        // saying which class, which field, or why the type never reached the emit set.
+        var declared = new HashSet<string>(fwdDeclared, System.StringComparer.Ordinal);
+        declared.UnionWith(emitted);
+        foreach (var (cls, member, cpp) in _renderedStructRefs)
+            if (!StructDeclared(cpp, declared))
+                throw new InvalidOperationException(
+                    $"{cls.FullName}.{member} is laid out as {cpp}, which no emitted struct "
+                    + "declares — the type was never closed into the emit set");
+    }
+
+    /// <summary>A field's rendered storage type, recorded for the declared-name check at
+    /// the end of <see cref="EmitStructs"/>.</summary>
+    private string FieldStorage(ClassInfo cls, FieldInfo f)
+    {
+        string t = CppTypes.FieldOf(f);
+        _renderedStructRefs.Add((cls, f.Name, t));
+        return t;
     }
 
     private void EmitOneStruct(StringBuilder sb, ClassInfo cls, string? baseName)
@@ -5282,7 +5310,7 @@ internal sealed partial class CppEmitter
                 // Storage-width elements (FieldOf; InlineArray owners are
                 // exact-layout) — span windows over the buffer use the element's
                 // real stride.
-                sb.AppendLine($"    {CppTypes.FieldOf(instanceFields[0])} {instanceFields[0].CppName}[{cls.InlineArrayLength}];");
+                sb.AppendLine($"    {FieldStorage(cls, instanceFields[0])} {instanceFields[0].CppName}[{cls.InlineArrayLength}];");
             else if (cls.IsExplicitLayout
                      && (instanceFields.Count > 0 || cls.LayoutSize > 0))
                 // Both value types and reference types: a class's explicit region
@@ -5308,7 +5336,7 @@ internal sealed partial class CppEmitter
                     sb.AppendLine("        struct");
                     sb.AppendLine("        {");
                     foreach (var f in instanceFields)
-                        sb.AppendLine($"            {CppTypes.FieldOf(f)} {f.CppName};");
+                        sb.AppendLine($"            {FieldStorage(cls, f)} {f.CppName};");
                     sb.AppendLine("        };");
                     sb.AppendLine("    };");
                 }
@@ -5316,7 +5344,7 @@ internal sealed partial class CppEmitter
             else
             {
                 foreach (var f in instanceFields)
-                    sb.AppendLine($"    {CppTypes.FieldOf(f)} {f.CppName};");
+                    sb.AppendLine($"    {FieldStorage(cls, f)} {f.CppName};");
                 // A C# `fixed E buf[N]` lowers to a compiler-generated <buf>e__FixedBuffer
                 // value type with a single element field of type E and an explicit
                 // ClassLayout size of N*sizeof(E). The buffer is addressed as
@@ -5398,7 +5426,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"        uint8_t __explicit_pad[{size.Text}];");
         foreach (var f in fields)
         {
-            string t = CppTypes.FieldOf(f);
+            string t = FieldStorage(cls, f);
             sb.AppendLine(f.ExplicitOffset == 0
                 ? $"        {t} {f.CppName};"
                 : $"        struct {{ uint8_t __pad_{f.CppName}[{f.ExplicitOffset}]; {t} {f.CppName}; }};");
