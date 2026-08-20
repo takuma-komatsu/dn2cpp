@@ -1222,7 +1222,8 @@ i.e. `+=`/`-=`) is a conversion-time rejection.
    (append-only, no unloading). `GetType()`/`isinst`/`castclass`/catch matching
    need no registration — they read object headers and walk base chains.
    Enumerating surfaces (`Assembly.GetTypes`, the `MakeGenericType` scan) stay
-   static-table-only.
+   static-table-only — the runtime-instantiation-template fallback behind that
+   scan interns on its own chain and never reads a patch table.
 7. Return the `Dn2CppInterpImage*`. **Execution proceeds directly from the
    blob** — instructions from `CodeSection`, strings from `UserStringPool`,
    type/method references via `EntityRef` → (PatchEntity = patch tables /
