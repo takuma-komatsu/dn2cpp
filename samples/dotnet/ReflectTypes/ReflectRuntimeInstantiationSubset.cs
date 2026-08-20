@@ -14,8 +14,12 @@ using System;
 // GetGenericTypeDefinition and Type.GetType(FullName) round-trips (the latter is
 // the dn2cpp_resolve_type_name fallback — the synthesized name must resolve back
 // to the same handle), a non-public ctor through
-// Activator.CreateInstance(Type, nonPublic), and base-chain synthesis (Sub<T> :
-// Tag<T>, identity projection). The negative stays the AOT boundary: a
+// Activator.CreateInstance(Type, nonPublic), base-chain synthesis (Sub<T> :
+// Tag<T>, identity projection), and that chain's AOT seam (the synthesized
+// Twig<int>'s base is an instantiation the image already carries, so it must
+// intern onto the AOT Anchor<int> type-info — BaseType identity,
+// IsAssignableFrom and isinst all compare pointers). The negative stays the AOT
+// boundary: a
 // definition with a T-typed field is shape-ineligible, so real .NET constructs
 // Holder<int> while dn2cpp throws the catchable NotSupportedException naming the
 // missing instantiation — the frozen snapshot asserts that message.
@@ -58,6 +62,18 @@ namespace ReflectRuntimeInstantiationSubset
     {
         private Quiet() { }
         public override string Who() => "quiet:" + typeof(T).Name;
+    }
+
+    // The AOT/synthesized seam: Anchor<int> exists AOT (constructed in Run), so
+    // the synthesized Twig<int>'s base must BE that type-info — a duplicate would
+    // fail every pointer-comparing walk (is, cast, IsAssignableFrom, BaseType).
+    class Anchor<T> : TagBase
+    {
+        public override string Who() => "anchor:" + typeof(T).Name;
+    }
+
+    class Twig<T> : Anchor<T>
+    {
     }
 
     // Shape-ineligible: a T-typed field means a per-argument layout no runtime
@@ -110,6 +126,15 @@ namespace ReflectRuntimeInstantiationSubset
             {
                 Console.WriteLine("holder<int>: NotSupportedException: " + e.Message);
             }
+
+            Anchor<int> anchored = new Anchor<int>();
+            Type twig = typeof(Twig<>).MakeGenericType(typeof(int));
+            TagBase tw = (TagBase)Activator.CreateInstance(twig);
+            Console.WriteLine("seam: " + tw.Who()
+                + " baseIsAot=" + (twig.BaseType == typeof(Anchor<int>))
+                + " assignable=" + typeof(Anchor<int>).IsAssignableFrom(twig)
+                + " isinst=" + (tw is Anchor<int>)
+                + " aot=" + anchored.Who());
         }
     }
 }

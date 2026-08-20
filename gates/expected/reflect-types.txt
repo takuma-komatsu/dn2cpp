@@ -1403,3 +1403,4 @@ resolve=True
 nonpublic: quiet:Int32
 sub: tag:Int32 base=Int32
 holder<int>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation ReflectRuntimeInstantiationSubset.Holder`1[System.Int32]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+seam: anchor:Int32 baseIsAot=True assignable=True isinst=True aot=anchor:Int32

@@ -440,18 +440,6 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_generic_params(Dn2CppTypeInfo ti, const 
     return ti;
 }
 
-// The runtime-generic-context table of the base-chain level whose generic
-// definition matches `genericDef` — a shared canonical body derives its context
-// from the receiver's dynamic type at the DECLARING class's level (the receiver
-// may be a derived type whose own rgctx belongs to a different definition).
-// Small and inlinable: shared-body prologues run it once per call.
-static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
-{
-    while (t != nullptr && t->genericDef != genericDef)
-        t = t->base;
-    return t != nullptr ? t->rgctx : nullptr;
-}
-
 // Dn2CppTypeInfo::flags bits. The Godot/value-type intrinsics and most
 // hand-written type-infos leave flags 0 (all false); CppEmitter sets them for the
 // emitted user types, and the array type-infos carry DN2CPP_TF_ARRAY.
@@ -616,6 +604,39 @@ static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2
 // bits, stamps the real argument vector and fills the rgctx table the shared
 // bodies read through the receiver's type-info.
 #define DN2CPP_TF_RUNTIME_TEMPLATE 0x1000000
+// A runtime-SYNTHESIZED instantiation: a clone dn2cpp_type_make_generic minted
+// from a template row. Its base chain interns onto the AOT type-info wherever
+// the image carries that instantiation (pointer-comparing walks demand the one
+// type-info), so the chain cannot anchor the clone's shared bodies: an AOT base
+// is monomorphic (rgctx null) or a shared world whose slot order is its own.
+// dn2cpp_rgctx routes a flagged receiver to the clone's per-level tables.
+#define DN2CPP_TF_RUNTIME_SYNTH 0x2000000
+
+// The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
+// (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
+// below the placeholder chain.
+const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef);
+
+// The runtime-generic-context table of the base-chain level whose generic
+// definition matches `genericDef` — a shared canonical body derives its context
+// from the receiver's dynamic type at the DECLARING class's level (the receiver
+// may be a derived type whose own rgctx belongs to a different definition).
+// Small and inlinable: shared-body prologues run it once per call.
+static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
+{
+    if (t == nullptr)
+        return nullptr;
+    // Receiver's own level: one compare — a synthesized clone's own table sits
+    // in its type-info too, so only BASE levels take the side lookup.
+    if (t->genericDef == genericDef)
+        return t->rgctx;
+    if ((t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0)
+        return dn2cpp_rgctx_synth(t, genericDef);
+    for (t = t->base; t != nullptr; t = t->base)
+        if (t->genericDef == genericDef)
+            return t->rgctx;
+    return nullptr;
+}
 
 // Every managed object starts with a type pointer (dispatch goes
 // header -> type -> vtable; no C++ virtual functions in managed layouts).
