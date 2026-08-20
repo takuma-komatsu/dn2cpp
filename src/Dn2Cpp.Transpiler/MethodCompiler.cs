@@ -191,6 +191,18 @@ internal sealed partial class MethodCompiler : IEvalStack
             ThrowSharedTaint(kind, c.FullName);
     }
 
+    /// <summary>Trial-compile guard for the $CnAny template world: a site that
+    /// gives the type VALUE semantics — its size, its copy, its box layout, its
+    /// constrained dispatch — cannot run over the any-placeholder, which (unlike
+    /// CnRef) stands for value and reference arguments alike, so no single
+    /// spelling is correct. The typeof-only surface a template exists for never
+    /// hits these; a definition that does fails template eligibility here.</summary>
+    private void TaintIfCanonAnyValue(TypeDesc t, string site)
+    {
+        if (SharedTrial && Compilation.ContainsCanonAny(t))
+            ThrowSharedTaint("canonany-value", site);
+    }
+
     // ---- runtime generic context (rgctx) in shared bodies ----
 
     /// <summary>Allocates (or reuses) an rgctx slot for the compiled canonical
@@ -1346,6 +1358,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // union). Intrinsic/primitive value types are filtered by
                 // ComputeEmitted.Add (IntrinsicCppName) and enums emit separately.
                 NoteLocalValueLayout(types[li]);
+                // A local of (or containing) the any-placeholder would reserve
+                // storage whose width depends on the real argument.
+                TaintIfCanonAnyValue(types[li], "local");
                 _locals.Add(($"loc{li}", CppTypes.Of(types[li]), CppTypes.KindOf(types[li]), types[li]));
             }
         }
@@ -2686,7 +2701,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             // ReadOnlySpan<char>.get_Item's ref into the string buffer).
             case ILOpCode.Initobj:
             {
-                string mt = CppTypes.StorageOf(ResolveTypeToken(insn.Token));
+                var iot = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(iot, "initobj");
+                string mt = CppTypes.StorageOf(iot);
                 var p = Pop();
                 string zero = CppTypes.ZeroInitExpr(mt);
                 Emit($"*(({mt}*)({p.Expr})) = {zero};");
@@ -2695,6 +2712,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldobj:
             {
                 var t = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(t, "ldobj");
                 string ct = CppTypes.Of(t);
                 string mt = CppTypes.StorageOf(t);
                 var p = Pop();
@@ -2705,6 +2723,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Stobj:
             {
                 var t = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(t, "stobj");
                 string ct = CppTypes.Of(t);
                 string mt = CppTypes.StorageOf(t);
                 var val = Pop();
@@ -2783,7 +2802,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // stack width) so it stays consistent with packed sub-word arrays /
                 // Span<T> pointer arithmetic. StorageOf == Of for every
                 // non-sub-word type, so other sizes are unchanged.
-                string ct = CppTypes.StorageOf(ResolveTypeToken(insn.Token));
+                var szt = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(szt, "sizeof");
+                string ct = CppTypes.StorageOf(szt);
                 Push(StackKind.I4, "int32_t", $"(int32_t)sizeof({ct})");
                 break;
             }
@@ -3051,6 +3072,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Box:
             {
                 var target = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(target, "box");
                 if (CppTypes.KindOf(target) == StackKind.Ref)
                     break; // boxing a reference type is a no-op
                 // Nullable<T>: the CLR's `box` yields the boxed *underlying* value when
@@ -3104,6 +3126,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // struct — and that is the body of nearly every hand-written
                 // `Equals(object)` on a value type.
                 var ubTarget = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(ubTarget, "unbox");
                 var ubObj = Pop();
                 string ubTi = TypeInfoExpr(ubTarget, insn.Token)
                     ?? throw new NotSupportedException(
@@ -3116,6 +3139,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Unbox_any:
             {
                 var target = ResolveTypeToken(insn.Token);
+                TaintIfCanonAnyValue(target, "unbox.any");
                 var obj = Pop();
                 if (CppTypes.KindOf(target) == StackKind.Ref)
                 {
@@ -3366,6 +3390,9 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             case ILOpCode.Constrained:
                 _constrained = ResolveTypeToken(insn.Token);
+                // A constrained dispatch takes the receiver by ADDRESS and may
+                // box it — value semantics the any-placeholder cannot carry.
+                TaintIfCanonAnyValue(_constrained, "constrained");
                 break;
 
             // volatile. — a real seq_cst fence before the following load/store (the

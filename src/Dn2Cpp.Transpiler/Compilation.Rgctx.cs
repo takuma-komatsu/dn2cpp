@@ -942,11 +942,19 @@ internal sealed partial class Compilation
             }
         }
 
+        // 2c. Runtime-instantiation template verdicts: a template whose every
+        // reachable chain-level body shared and whose every rgctx slot is a
+        // bare-type-argument TypeInfo read survives to emission; its bodies join
+        // the retention seed below (a template has no users to donate to, so
+        // nothing else would keep them).
+        var templateSeeds = JudgeRuntimeTemplates(backendSkips);
+
         // 3. Retention: assigned bodies + their direct-call closure. All of the
         // closure is shareable by construction (step 1 removed any caller of an
         // unshareable callee).
         var retained = new HashSet<MethodInfo>();
-        var work = new Stack<MethodInfo>(shared.Select(m => m.SharedImpl!).Distinct());
+        var work = new Stack<MethodInfo>(
+            shared.Select(m => m.SharedImpl!).Concat(templateSeeds).Distinct());
         while (work.Count > 0)
         {
             var m = work.Pop();
@@ -973,6 +981,151 @@ internal sealed partial class Compilation
         DelegateAdapters.AddRange(adapters);
 
         SharedStats = (instantiations, groups.Count, shared.Count, eligible.Count);
+    }
+
+    /// <summary>The eligible runtime-instantiation templates, in trigger order:
+    /// (definition backtick name, template, its placeholder-bearing chain levels
+    /// derived-first). The emitter gives each level full metadata and each entry
+    /// a runtime-templates row; empty means the feature emits nothing. Filled by
+    /// <see cref="FinalizeSharedGenerics"/>.</summary>
+    internal readonly List<(string DefName, ClassInfo Template, List<ClassInfo> Levels)>
+        EligibleRuntimeTemplates = new();
+
+    /// <summary>The union of the eligible templates' chain levels — the one
+    /// canonical-world class kind that DOES emit metadata. The emitter's
+    /// canonical-exclusion predicates carve these out.</summary>
+    internal readonly HashSet<ClassInfo> EligibleRuntimeTemplateLevels = new();
+
+    /// <summary>The emitted rgctx slot descriptor of a template chain level:
+    /// entry i is the type-argument index whose type-info the runtime fill
+    /// stamps into slot i. The verdict already established every slot is a
+    /// bare-type-argument TypeInfo read off the PLANNING registry; the emission
+    /// registry holds the retained subset, so a violation here is a transpiler
+    /// bug and crashes raw.</summary>
+    internal int[] RuntimeTemplateSlotDescriptor(ClassInfo level)
+    {
+        var slots = Rgctx.Classes.SlotsOf(level);
+        if (slots is null || slots.Count == 0)
+            return Array.Empty<int>();
+        var desc = new int[slots.Count];
+        for (int i = 0; i < slots.Count; i++)
+        {
+            var slot = slots[i];
+            if (slot.Kind != RgctxSlotKind.TypeInfo)
+                throw new InvalidOperationException(
+                    $"runtime template {level.FullName}: emission slot {i} is {slot.Kind}, "
+                    + "which the eligibility verdict should have rejected");
+            var t = RgctxResolveTypeToken(level.Module, SRME.EntityHandle(slot.Token),
+                new GenericContext(level.Context.TypeArgs, Array.Empty<TypeDesc>()));
+            if (t.CanonAnyIndex < 0)
+                throw new InvalidOperationException(
+                    $"runtime template {level.FullName}: emission slot {i} resolves to {t}, "
+                    + "not a bare type argument");
+            desc[i] = t.CanonAnyIndex;
+        }
+        return desc;
+    }
+
+    /// <summary>Judges each rooted template (see
+    /// <see cref="BuildRuntimeInstantiationTemplates"/>) against what a runtime
+    /// clone can actually run: every reachable method of every placeholder-bearing
+    /// chain level must be an instance, non-generic body that trial-compiled
+    /// shareable, and every rgctx slot its level accumulated must be a TypeInfo
+    /// read whose token re-resolves (under the template's own context) to a bare
+    /// per-index placeholder — the one entry a MakeGenericType fill can synthesize
+    /// from its argument array. Anything else fails the WHOLE template: its
+    /// bodies stay undonated and are dropped like any other canonical world's,
+    /// and the runtime diagnostic keeps naming the missing instantiation.
+    /// Returns the eligible templates' bodies as retention seeds.</summary>
+    private List<MethodInfo> JudgeRuntimeTemplates(Func<ClassInfo, MethodInfo, bool> backendSkips)
+    {
+        var seeds = new List<MethodInfo>();
+        if (RuntimeInstantiationTemplates.Count == 0)
+            return seeds;
+        // Reachable generic-METHOD instantiations by declaring class, collected
+        // once: a template level that owns one is ineligible (the runtime clone
+        // cannot mint per-method tables), and the class's own Methods list does
+        // not enumerate instantiations.
+        var genericInstanceOwners = new HashSet<ClassInfo>();
+        foreach (var gm in _methodInstanceOrder)
+            if (Reachable.Contains(gm))
+                genericInstanceOwners.Add(gm.DeclaringClass);
+        foreach (var (defName, tmpl) in RuntimeInstantiationTemplates)
+        {
+            var levels = new List<ClassInfo>();
+            for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+                levels.Add(lv);
+            bool ok = levels.Count > 0;
+            var bodies = new List<MethodInfo>();
+            foreach (var lv in levels)
+            {
+                if (!ok)
+                    break;
+                if (!lv.MembersReady || genericInstanceOwners.Contains(lv))
+                {
+                    ok = false;
+                    break;
+                }
+                foreach (var m in lv.Methods)
+                {
+                    if (m.Rva == 0 || m.Name == ".cctor" || !Reachable.Contains(m)
+                        || backendSkips(lv, m))
+                        continue;
+                    if (m.IsStatic || m.NameSuffix != ""
+                        || !SharedTrialCompiled.Contains(m) || SharedTaint.ContainsKey(m))
+                    {
+                        ok = false;
+                        break;
+                    }
+                    // A signature naming a type parameter moves T VALUES across the
+                    // call boundary — the body trial cannot see that (the body just
+                    // uses its argument), so the boundary is checked here.
+                    bool sigAny = ContainsCanonAny(m.Signature.ReturnType);
+                    foreach (var pt in m.Signature.ParameterTypes)
+                        sigAny |= ContainsCanonAny(pt);
+                    if (sigAny)
+                    {
+                        ok = false;
+                        break;
+                    }
+                    bodies.Add(m);
+                }
+                if (!ok)
+                    break;
+                if (Rgctx.Classes.SlotsOf(lv) is { } slots)
+                    foreach (var slot in slots)
+                    {
+                        if (slot.Kind != RgctxSlotKind.TypeInfo)
+                        {
+                            ok = false;
+                            break;
+                        }
+                        try
+                        {
+                            var t = RgctxResolveTypeToken(lv.Module,
+                                SRME.EntityHandle(slot.Token),
+                                new GenericContext(lv.Context.TypeArgs, Array.Empty<TypeDesc>()));
+                            if (t.CanonAnyIndex < 0)
+                            {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        catch (Exception e) when (!IsMustEscape(e))
+                        {
+                            ok = false;
+                            break;
+                        }
+                    }
+            }
+            if (!ok)
+                continue;
+            EligibleRuntimeTemplates.Add((defName, tmpl, levels));
+            foreach (var lv in levels)
+                EligibleRuntimeTemplateLevels.Add(lv);
+            seeds.AddRange(bodies);
+        }
+        return seeds;
     }
 
     // ---- runtime generic context (rgctx): slot registries and table fill ----
@@ -1102,6 +1255,9 @@ internal sealed partial class Compilation
                 // runtime diagnostic still names the missing instantiation.
                 continue;
             }
+            // A fresh specialization's IsValueType/IsAbstract land in CompleteShape,
+            // so the shape check reads garbage until the pending queue drains.
+            CompletePendingSpecializations();
             if (!RuntimeTemplateShapeEligible(tmpl))
                 continue;
             RuntimeInstantiationTemplates.Add((defName, tmpl));

@@ -141,14 +141,27 @@ internal sealed partial class CppEmitter
     /// reflection tables and registry rows are as unreachable as any other
     /// canonical metadata (see <see cref="IsCanonicalWorld"/>).</summary>
     private bool SkipsCanonicalMetadata(ClassInfo c) =>
-        _c.SharedGenericsEnabled && !c.IsInterface && Compilation.ContainsCanonPlaceholder(c);
+        _c.SharedGenericsEnabled && !c.IsInterface && Compilation.ContainsCanonPlaceholder(c)
+        && !IsRuntimeTemplateLevel(c);
 
     /// <summary>Any canonical-owner-world class, interface or not: reflection
     /// member/field/property tables, generic-definition handles and type-name
     /// registry rows never emit for these (no runtime Type ever exposes
     /// them).</summary>
     private bool IsCanonicalWorld(ClassInfo c) =>
-        _c.SharedGenericsEnabled && Compilation.ContainsCanonPlaceholder(c);
+        _c.SharedGenericsEnabled && Compilation.ContainsCanonPlaceholder(c)
+        && !IsRuntimeTemplateLevel(c);
+
+    /// <summary>An eligible runtime-instantiation template chain level (see
+    /// <c>Compilation.JudgeRuntimeTemplates</c>): the one canonical-world class
+    /// kind that emits full metadata — ti_, vtable, member tables, flagged
+    /// SHARED_CANON|RUNTIME_TEMPLATE — because a runtime MakeGenericType clones
+    /// it. It still stays out of the static type registry, the hot-update ABI
+    /// manifests and the GVM dispatchers: what runtime code observes is a
+    /// synthesized clone, never the template itself. Empty until
+    /// FinalizeSharedGenerics runs, which is before any metadata renders.</summary>
+    private bool IsRuntimeTemplateLevel(ClassInfo c) =>
+        _c.EligibleRuntimeTemplateLevels.Count > 0 && _c.EligibleRuntimeTemplateLevels.Contains(c);
 
     /// <summary>Hot-update base build (<c>--hotupdate-base</c>): emit the
     /// ABI-contract hash constant into the Data TU and hand the base-abi.json
@@ -691,7 +704,7 @@ internal sealed partial class CppEmitter
             // trampoline/bridge table entry; the per-real group members do.
             var vtableClasses = EmittedClasses.Where(c =>
                 !c.IsValueType && !c.IsEnum && !c.IsInterface && !c.IsDelegate && !IsOpaque(c)
-                && !IsCanonicalWorld(c)).ToList();
+                && !IsCanonicalWorld(c) && !IsRuntimeTemplateLevel(c)).ToList();
             var itfClasses = EmittedClasses.Where(c => c.IsInterface && !IsOpaque(c)
                 && !IsCanonicalWorld(c)).ToList();
             var delegateClasses = EmittedClasses.Where(c => c.IsDelegate && !IsOpaque(c)
@@ -711,7 +724,8 @@ internal sealed partial class CppEmitter
             // converter can bind a base-image generic type it never loaded.
             var genericInstantiations = EmittedClasses
                 .Where(c => c.GenericArity > 0 && c.Context.TypeArgs.Length > 0
-                    && !c.IsValueType && !c.IsEnum && !IsOpaque(c) && !IsCanonicalWorld(c))
+                    && !c.IsValueType && !c.IsEnum && !IsOpaque(c) && !IsCanonicalWorld(c)
+                    && !IsRuntimeTemplateLevel(c))
                 .Select(c => (Key: AbiContract.InstantiationKey(_c.GenericDefFullName(c), c.Context.TypeArgs),
                     Mangled: c.FullName));
             // The conditional default-reference verdicts ride along as a build-input
@@ -3824,7 +3838,11 @@ internal sealed partial class CppEmitter
         // load, and eh_catch_matches aborts the process the first time it is tested.
         foreach (var (n, h) in CoreIntrinsics.RuntimeTypeInfoRows())
             Add(n, h);
-        foreach (var cls in EmittedClasses.Where(c => !c.IsEnum && !IsCanonicalWorld(c)))
+        // A runtime-template level's ti_ exists but is NOT a CLR type — the
+        // synthesized clones register their closed names on the dynamic
+        // side-chain at MakeGenericType time.
+        foreach (var cls in EmittedClasses.Where(c => !c.IsEnum && !IsCanonicalWorld(c)
+                     && !IsRuntimeTemplateLevel(c)))
             Add(Compilation.ReflectionTypeName(cls), TypeInfoRef(cls, "type-name registry row"));
         foreach (var en in _c.ReferencedTypes.Where(c => c.IsEnum))
             Add(Compilation.ReflectionTypeName(en), TypeInfoRef(en, "type-name registry row (enum)"));
@@ -3851,6 +3869,52 @@ internal sealed partial class CppEmitter
             Add(name, handle);
         sb.AppendLine($"const Dn2CppTypeRegEntry dn2cpp_type_registry[] = {{ {string.Join(", ", rows)} }};");
         sb.AppendLine($"const int32_t dn2cpp_type_registry_count = {rows.Count};");
+        sb.AppendLine();
+        EmitRuntimeTemplates(sb);
+    }
+
+    /// <summary>Runtime-instantiation template rows: one per eligible template
+    /// chain level, keyed by the level's open-definition handle so
+    /// <c>dn2cpp_type_make_generic</c> can clone the level's emitted metadata for
+    /// an instantiation the AOT image lacks (base levels are looked up by their
+    /// template ti when the clone synthesizes its base chain). The two symbols
+    /// define unconditionally — the runtime references them in every build.</summary>
+    private void EmitRuntimeTemplates(StringBuilder sb)
+    {
+        var rows = new List<string>();
+        var seen = new HashSet<ClassInfo>();
+        foreach (var (defName, _, levels) in _c.EligibleRuntimeTemplates)
+            foreach (var lv in levels)
+            {
+                if (!seen.Add(lv))
+                    continue;
+                string levelDef = GenericDefInfo(lv) is { } gdi
+                        && _genericDefSyms.TryGetValue(gdi.DefName, out var sym)
+                    ? "&" + sym
+                    : throw new InvalidOperationException(
+                        $"runtime template {lv.FullName}: no gendef symbol (def {defName})");
+                var desc = _c.RuntimeTemplateSlotDescriptor(lv);
+                string descExpr = "nullptr";
+                if (desc.Length > 0)
+                {
+                    string descSym = "rgctxdesc_" + lv.CppName;
+                    sb.AppendLine($"static const int32_t {descSym}[] = {{ {string.Join(", ", desc)} }};");
+                    descExpr = descSym;
+                }
+                rows.Add($"{{ {levelDef}, {TypeInfoRef(lv, "runtime template row")}, {descExpr}, "
+                    + $"{desc.Length}, {lv.Context.TypeArgs.Length} }}");
+            }
+        sb.AppendLine("// ---- runtime-instantiation templates (MakeGenericType clone sources) ----");
+        if (rows.Count == 0)
+        {
+            sb.AppendLine("const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates = nullptr;");
+        }
+        else
+        {
+            sb.AppendLine($"static const Dn2CppRuntimeTemplate dn2cpp_runtime_template_rows[] = {{ {string.Join(", ", rows)} }};");
+            sb.AppendLine("const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates = dn2cpp_runtime_template_rows;");
+        }
+        sb.AppendLine($"const int32_t dn2cpp_runtime_template_count = {rows.Count};");
         sb.AppendLine();
     }
 
@@ -4705,7 +4769,7 @@ internal sealed partial class CppEmitter
                 // A canonical group owner is allocated but has no type-info and can never
                 // BE a receiver's type-info (see this method's doc): drop the dead branch
                 // rather than name a symbol nothing defines.
-                if (SkipsCanonicalMetadata(type))
+                if (SkipsCanonicalMetadata(type) || IsRuntimeTemplateLevel(type))
                     continue;
                 o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
             }

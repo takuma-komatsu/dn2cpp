@@ -1908,6 +1908,15 @@ internal sealed partial class CppEmitter
             // drop it while the dispatch and type-test walks keep it.
             if (_e.IsCanonicalWorld(cls))
                 flagBits.Add("DN2CPP_TF_SHARED_CANON");
+            // A runtime-instantiation template level: canonical (not a CLR type,
+            // never handed outward) yet fully rendered, plus the bit the runtime
+            // MakeGenericType fallback keys its clone sources on. The clone strips
+            // both bits.
+            else if (_e.IsRuntimeTemplateLevel(cls))
+            {
+                flagBits.Add("DN2CPP_TF_SHARED_CANON");
+                flagBits.Add("DN2CPP_TF_RUNTIME_TEMPLATE");
+            }
             string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
             var (fieldsExpr, fieldCount) = _fieldTabs.TryGetValue(cls, out var ftv) ? (ftv.Expr, ftv.Count) : ("nullptr", 0);
             var (methodsExpr, methodCount) = _methodTabs.TryGetValue(cls, out var mtv) ? (mtv.Expr, mtv.Count) : ("nullptr", 0);
@@ -1934,8 +1943,14 @@ internal sealed partial class CppEmitter
                 && _e.GenericDefInfo(cls) is { } gdi && _e._genericDefSyms.TryGetValue(gdi.DefName, out var defSym))
             {
                 genDefExpr = "&" + defSym;
-                genArgsExpr = GenericArgVector(cls);
-                genArgCount = cls.Context.TypeArgs.Length;
+                // A template's placeholder arguments have no handles to list; the
+                // runtime clone stamps the real argument vector (the genericDef is
+                // still wired — the receiver-derived rgctx walk anchors on it).
+                if (!_e.IsRuntimeTemplateLevel(cls))
+                {
+                    genArgsExpr = GenericArgVector(cls);
+                    genArgCount = cls.Context.TypeArgs.Length;
+                }
             }
             // Nested-type table: the type's public nested types. The enum metadata
             // members (24-26) are 0 for a class — spelled out so the nested fields land in

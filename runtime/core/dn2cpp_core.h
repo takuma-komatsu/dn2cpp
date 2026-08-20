@@ -609,6 +609,13 @@ static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2
 // stamp, and not a freshly constructed primitive: .NET's shallow copy SHARES the
 // original's internal lock object.
 #define DN2CPP_TF_NO_SHALLOW_CLONE 0x800000
+// A runtime-instantiation TEMPLATE: a canonical instantiation (SHARED_CANON is
+// also set) whose metadata IS emitted — vtable, member tables, interface rows —
+// because dn2cpp_type_make_generic clones it for an instantiation the AOT image
+// lacks (see Dn2CppRuntimeTemplate). Still not a CLR type: the clone strips both
+// bits, stamps the real argument vector and fills the rgctx table the shared
+// bodies read through the receiver's type-info.
+#define DN2CPP_TF_RUNTIME_TEMPLATE 0x1000000
 
 // Every managed object starts with a type pointer (dispatch goes
 // header -> type -> vtable; no C++ virtual functions in managed layouts).
@@ -1365,6 +1372,27 @@ struct Dn2CppTypeRegEntry { const char* name; const Dn2CppTypeInfo* type; };
 extern const Dn2CppTypeRegEntry dn2cpp_type_registry[];
 extern const int32_t dn2cpp_type_registry_count;
 Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
+
+// Runtime-instantiation templates: the clone sources dn2cpp_type_make_generic
+// falls back to when the registry scan finds no AOT-generated instantiation of
+// `def`. One row per eligible template chain level (the emitter proves the
+// definition's bodies never give a type argument value semantics — typeof-only):
+// the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
+// two template bits, synthesizes its base the same way when the template's base
+// is itself a row (looked up by templateTi), and fills a fresh rgctx table with
+// rgctx[i] = args[rgctxDesc[i]]'s type-info. Synthesized instantiations intern
+// on (def, args) — same arguments, same pointer — and register their closed
+// name on the registry's dynamic side-chain.
+struct Dn2CppRuntimeTemplate
+{
+    const Dn2CppTypeInfo* def;        // the open-definition handle (gendef_*)
+    const Dn2CppTypeInfo* templateTi; // the level's emitted template type-info
+    const int32_t* rgctxDesc;         // slot i -> type-argument index
+    int32_t rgctxDescCount;
+    int32_t argCount;
+};
+extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
+extern const int32_t dn2cpp_runtime_template_count;
 
 // Startup type-info binds: the generated metadata for a type whose HANDLE the runtime
 // owns (the runtime-raised exception types further down) — `target` is that handle,
