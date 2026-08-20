@@ -346,7 +346,8 @@ dotnet "$srv" --cert "$tlsdir/srv.pem" --key "$tlsdir/srv.key" \
     > "$tlsdir/ready.out" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
-tlsready=$(wait_ready_line "TLS oracle server" "$tlspid" "$tlsdir/ready.out" "$tlsdir/server.err") || exit 1
+# Hosted macOS runners can take longer to schedule Kestrel's TLS startup.
+tlsready=$(wait_ready_line "TLS oracle server" "$tlspid" "$tlsdir/ready.out" "$tlsdir/server.err" 120) || exit 1
 read -r tag _ _ tlsport <<<"$tlsready"
 [ "$tag" = "READY" ] && [ -n "${tlsport:-}" ] || {
     echo "FAIL: could not parse the TLS oracle's READY line (expected 3 ports): $tlsready" >&2; exit 1; }
