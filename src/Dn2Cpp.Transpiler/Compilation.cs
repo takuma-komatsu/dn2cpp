@@ -4131,6 +4131,46 @@ internal sealed partial class Compilation
             }
     }
 
+    // A reflection-constructed instance is also a lifecycle-dispatch target: a
+    // Unity-style invoker calls GetMethod(name, Instance | Public | NonPublic)
+    // then Invoke(target, null) for well-known niladic messages (a generated
+    // view initializer, Awake/OnEnable/Update) — private methods included, and
+    // an unreached method has no metadata row, so GetMethod answers null where
+    // real .NET answers the row and the binding silently never happens. Reach
+    // the non-generic niladic VOID instance methods along the user-module base
+    // chain (GetMethod on the concrete type sees inherited non-private rows;
+    // private ones only on the type itself, but reaching those too costs
+    // nothing new — a niladic body names no argument type). A lifecycle message
+    // is fire-and-forget, so the void bound is what keeps a value-returning
+    // niladic like GDTask's AsValueTask — whose body trips the transpiler's
+    // IValueTaskSource result-kind bound — out of the speculative set.
+    // Parameterized and value-returning methods stay the deliberate residue,
+    // exactly as in the typeof-named loop's bound. NOT
+    // called from the preservation ctor arm: [Preserve] on a type keeps the
+    // type and its ctors only (Unity linker parity, asserted by the
+    // preserve-control gate's stripped-member list).
+    private void ReachUserNiladicInstanceMethods(ClassInfo cls)
+    {
+        for (var c = cls; c is not null && IsUserModule(c.Module); c = c.BaseClass)
+            foreach (var m in c.EnsureMembers().Methods)
+            {
+                if (m.Rva == 0 || m.IsStatic || m.Name == ".ctor"
+                    || _backend?.ShouldSkipMethodBody(c, m) == true)
+                    continue;
+                try
+                {
+                    if (m.Signature.GenericParameterCount == 0
+                        && m.Signature.ParameterTypes.Length == 0
+                        && m.Signature.ReturnType.IsVoid)
+                        Reach(m);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    // An undecodable signature is not reflectively invokable.
+                }
+            }
+    }
+
     private void ReachUserSurfaceNamedSpecializationCtors()
     {
         // Collect the declared member-type surface: the app module, plus every
@@ -4384,8 +4424,10 @@ internal sealed partial class Compilation
                 // The reflection helper that constructed the instance dispatches its
                 // user-interface surface next (a DI container's GetInterfaces →
                 // GetMethod → Invoke injection pass), so those impls are part of the
-                // opened surface.
+                // opened surface — as are the niladic lifecycle messages a
+                // Unity-style invoker GetMethod-invokes on the fresh instance.
                 ReachUserInterfaceImpls(cls);
+                ReachUserNiladicInstanceMethods(cls);
             }
             for (var b = cls; b is not null && IsUserModule(b.Module); b = b.BaseClass)
             {
