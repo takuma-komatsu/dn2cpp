@@ -66,9 +66,29 @@ internal sealed partial class MethodCompiler
         {
             int probe = System.Math.Min(sig.ParameterTypes.Length + 1, StackDepth);
             for (int i = 1; i <= probe; i++)
-                if (Peek(i).TypeToken is { } tk && Compilation.ContainsCanonPlaceholder(tk)
-                    && !IsPlaceholderAgnosticFold(name, Compilation.ContainsRefPlaceholder(tk)))
+            {
+                if (Peek(i).TypeToken is not { } tk || !Compilation.ContainsCanonPlaceholder(tk))
+                    continue;
+                // A $CnAny token folds NOTHING (it stands for value and reference
+                // arguments alike, so no static answer agrees across the group) and
+                // taints nothing either: the Ldtoken case materialized a real
+                // runtime-filled handle for it, so stripping the token routes every
+                // member below to its runtime-read arm. A member with no runtime arm
+                // falls through to the ordinary call path like any non-typeof Type
+                // value would.
+                if (Compilation.ContainsCanonAny(tk))
+                {
+                    // The shapes whose Ldtoken arm kept the poisoned null (no
+                    // resolvable rgctx entry) must still taint — running a runtime
+                    // arm on them would deref the null.
+                    if (tk.Kind is TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer)
+                        ThrowSharedTaint("type-identity", $"{declType}.{name} on {tk}");
+                    _stack[^i] = _stack[^i] with { TypeToken = null };
+                    continue;
+                }
+                if (!IsPlaceholderAgnosticFold(name, Compilation.ContainsRefPlaceholder(tk)))
                     ThrowSharedTaint("type-identity", $"{declType}.{name} on {tk}");
+            }
         }
         switch (declType, name)
         {

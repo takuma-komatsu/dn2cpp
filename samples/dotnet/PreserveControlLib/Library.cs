@@ -157,3 +157,23 @@ public static class Outer
         private static void GenericMethod() => Console.WriteLine("generic-method");
     }
 }
+
+public interface ILateInit
+{
+    string InitializeAll();
+}
+
+// The DI-container shape: the concrete service below exists only through
+// late-bound construction, and its interface implementation is an explicit one
+// on an abstract base with a virtual hook.
+public abstract class LateInitBase : ILateInit
+{
+    string ILateInit.InitializeAll() => "base:" + OnInit();
+    protected virtual string OnInit() => "default";
+}
+
+[Dn2Cpp.Scripting.Preserve]
+public sealed class LateInitService : LateInitBase
+{
+    protected override string OnInit() => "service";
+}

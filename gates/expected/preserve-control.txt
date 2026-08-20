@@ -11,3 +11,4 @@ dropped-method=True
 delegate-invoke=True
 initialized-field=41
 non-derived-dropped=True
+late-bound=base:service

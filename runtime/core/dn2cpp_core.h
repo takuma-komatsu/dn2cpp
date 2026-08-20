@@ -440,18 +440,6 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_generic_params(Dn2CppTypeInfo ti, const 
     return ti;
 }
 
-// The runtime-generic-context table of the base-chain level whose generic
-// definition matches `genericDef` — a shared canonical body derives its context
-// from the receiver's dynamic type at the DECLARING class's level (the receiver
-// may be a derived type whose own rgctx belongs to a different definition).
-// Small and inlinable: shared-body prologues run it once per call.
-static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
-{
-    while (t != nullptr && t->genericDef != genericDef)
-        t = t->base;
-    return t != nullptr ? t->rgctx : nullptr;
-}
-
 // Dn2CppTypeInfo::flags bits. The Godot/value-type intrinsics and most
 // hand-written type-infos leave flags 0 (all false); CppEmitter sets them for the
 // emitted user types, and the array type-infos carry DN2CPP_TF_ARRAY.
@@ -609,6 +597,46 @@ static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2
 // stamp, and not a freshly constructed primitive: .NET's shallow copy SHARES the
 // original's internal lock object.
 #define DN2CPP_TF_NO_SHALLOW_CLONE 0x800000
+// A runtime-instantiation TEMPLATE: a canonical instantiation (SHARED_CANON is
+// also set) whose metadata IS emitted — vtable, member tables, interface rows —
+// because dn2cpp_type_make_generic clones it for an instantiation the AOT image
+// lacks (see Dn2CppRuntimeTemplate). Still not a CLR type: the clone strips both
+// bits, stamps the real argument vector and fills the rgctx table the shared
+// bodies read through the receiver's type-info.
+#define DN2CPP_TF_RUNTIME_TEMPLATE 0x1000000
+// A runtime-SYNTHESIZED instantiation: a clone dn2cpp_type_make_generic minted
+// from a template row. Its base chain interns onto the AOT type-info wherever
+// the image carries that instantiation (pointer-comparing walks demand the one
+// type-info), so the chain cannot anchor the clone's shared bodies: an AOT base
+// is monomorphic (rgctx null) or a shared world whose slot order is its own.
+// dn2cpp_rgctx routes a flagged receiver to the clone's per-level tables.
+#define DN2CPP_TF_RUNTIME_SYNTH 0x2000000
+
+// The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
+// (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
+// below the placeholder chain.
+const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef);
+
+// The runtime-generic-context table of the base-chain level whose generic
+// definition matches `genericDef` — a shared canonical body derives its context
+// from the receiver's dynamic type at the DECLARING class's level (the receiver
+// may be a derived type whose own rgctx belongs to a different definition).
+// Small and inlinable: shared-body prologues run it once per call.
+static inline const void* const* dn2cpp_rgctx(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
+{
+    if (t == nullptr)
+        return nullptr;
+    // Receiver's own level: one compare — a synthesized clone's own table sits
+    // in its type-info too, so only BASE levels take the side lookup.
+    if (t->genericDef == genericDef)
+        return t->rgctx;
+    if ((t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0)
+        return dn2cpp_rgctx_synth(t, genericDef);
+    for (t = t->base; t != nullptr; t = t->base)
+        if (t->genericDef == genericDef)
+            return t->rgctx;
+    return nullptr;
+}
 
 // Every managed object starts with a type pointer (dispatch goes
 // header -> type -> vtable; no C++ virtual functions in managed layouts).
@@ -1365,6 +1393,27 @@ struct Dn2CppTypeRegEntry { const char* name; const Dn2CppTypeInfo* type; };
 extern const Dn2CppTypeRegEntry dn2cpp_type_registry[];
 extern const int32_t dn2cpp_type_registry_count;
 Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
+
+// Runtime-instantiation templates: the clone sources dn2cpp_type_make_generic
+// falls back to when the registry scan finds no AOT-generated instantiation of
+// `def`. One row per eligible template chain level (the emitter proves the
+// definition's bodies never give a type argument value semantics — typeof-only):
+// the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
+// two template bits, synthesizes its base the same way when the template's base
+// is itself a row (looked up by templateTi), and fills a fresh rgctx table with
+// rgctx[i] = args[rgctxDesc[i]]'s type-info. Synthesized instantiations intern
+// on (def, args) — same arguments, same pointer — and register their closed
+// name on the registry's dynamic side-chain.
+struct Dn2CppRuntimeTemplate
+{
+    const Dn2CppTypeInfo* def;        // the open-definition handle (gendef_*)
+    const Dn2CppTypeInfo* templateTi; // the level's emitted template type-info
+    const int32_t* rgctxDesc;         // slot i -> type-argument index
+    int32_t rgctxDescCount;
+    int32_t argCount;
+};
+extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
+extern const int32_t dn2cpp_runtime_template_count;
 
 // Startup type-info binds: the generated metadata for a type whose HANDLE the runtime
 // owns (the runtime-raised exception types further down) — `target` is that handle,
@@ -2413,6 +2462,19 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // reading `self`. The receiver-scanning form stays the default, being more precise.
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self);
 [[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc);
+// The receiver-scanning form entered through a per-signature trap thunk. The emitter
+// gives each trapped slot a thunk carrying the slot's exact C++ signature — a wasm
+// call_indirect checks the callee's type immediate, so the shared symbol above dies
+// there as an anonymous "function signature mismatch" before it can report — and with
+// the signature exact, `self` is the receiver at the C++ level for EVERY return shape
+// (the compiler owns any hidden struct-return buffer below it). `slotFn` is the thunk's
+// own address: the candidate scan matches slots holding it, so the report stays as
+// precise as the shared form's.
+[[noreturn]] void dn2cpp_vcall_unimplemented_at(Dn2CppObject* self, const void* slotFn);
+// The per-signature vtable trap thunks of the image, registered by the generated init
+// prologue. For the callers that must recognise a trapped slot WITHOUT calling it
+// (dn2cpp_exception_message's override probe); one image, one registration.
+void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
@@ -3426,13 +3488,13 @@ const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeI
 const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf);
 // The traps an interface / vtable slot with no implementing body is filled with (see the
 // definitions). A call through 0x0 would say nothing. dn2cpp_itf_slot_missing reads the
-// receiver out of argument 0 and names its type — the emitter installs it ONLY in slots
-// whose return type is void, a scalar or a pointer, because an indirect struct return
-// spends that register on the caller's hidden result buffer instead. For those indirect
-// struct returns the emitter avoids the nameless _anon form: it emits a tiny
-// per-slot stub that calls _named with the (class, interface, method) descriptor baked in,
-// so the abort names the slot without reading the receiver. _anon is kept for the rare
-// slot the emitter has no descriptor for.
+// receiver out of argument 0 and names its type — the emitter enters it through a
+// per-signature thunk carrying the slot's exact C++ signature (a wasm call_indirect
+// checks the callee's type immediate, and with the signature exact `self` really is the
+// receiver at the C++ level). For an indirect struct return the emitter prefers a tiny
+// per-slot stub that calls _named with the (class, interface, method) descriptor baked
+// in — exact even on a metadata-stripped image. _anon is kept for the rare slot the
+// emitter has neither a signature nor a descriptor for.
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self);
 [[noreturn]] void dn2cpp_itf_slot_missing_anon();
 [[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc);

@@ -1386,6 +1386,21 @@ internal sealed partial class Compilation
     /// Template for one, so <c>typeof(Vector128&lt;&gt;)</c> decodes to an External name.
     /// A nested name (carrying '+') resolves to nothing and degrades, which is where the
     /// gendef mouths carve nested definitions out anyway.</para></summary>
+    /// <summary>The CLR backtick full name of <paramref name="t"/> when it is an
+    /// OPEN generic definition in one of the three shapes a <c>typeof(D&lt;&gt;)</c>
+    /// ldtoken decodes to (the <c>OpenGenericDefTypeInfoExpr</c> shapes), else
+    /// null. Nested definitions answer null, matching the gendef carve-out.</summary>
+    internal static string? OpenGenericDefBacktickNameOf(TypeDesc t) => t switch
+    {
+        { Kind: TypeKind.External, ExternalName: { } en }
+            when en.Contains('`') && !en.Contains('+') => en,
+        { Kind: TypeKind.Template, TemplateModule: { } tm } =>
+            MethodCompiler.OpenDefBacktickName(tm, t.TemplateHandle),
+        { Kind: TypeKind.Class, Class: { GenericArity: > 0 } c } when c.Context.TypeArgs.Length == 0
+            => MethodCompiler.OpenDefBacktickName(c.Module, c.Handle),
+        _ => null,
+    };
+
     public (string? Name, GenericDefKind Kind, string? ParamNames) OpenGenericDefFactsByName(string defName)
     {
         int cut = defName.LastIndexOf('.');
@@ -2343,7 +2358,8 @@ internal sealed partial class Compilation
                 // never appear in a sanitized class/external mangle or a primitive
                 // name, so a canonical instantiation key (Dictionary<$CnInt32,…>) can
                 // never collide with a genuine one (Dictionary<Int32,…>).
-                { IsCanonPlaceholder: true } => t.IsObject ? "$CnRef" : "$Cn" + t.Primitive,
+                { IsCanonPlaceholder: true } => t.CanonAnyIndex >= 0 ? "$CnAny" + t.CanonAnyIndex
+                    : t.IsObject ? "$CnRef" : "$Cn" + t.Primitive,
                 { Kind: TypeKind.Primitive } => t.Primitive.ToString(),
                 // A NAMED type's fragment goes through CppNaming.MangleFragment, which
                 // escapes it out of the other spellings' token spaces — a
@@ -3496,6 +3512,22 @@ internal sealed partial class Compilation
     // Activator.CreateInstance(Type). Triggers the reflection-ctor route.
     private bool _reflectionCtorUsed;
 
+    // One arm of the runtime-instantiation trigger: a reached body calls
+    // Type.MakeGenericType through the MemberRef mouth (a user-module call
+    // site; a CoreLib-internal MethodDef call is deliberately not a trigger —
+    // the templates serve program code that mints closed types by hand).
+    private bool _makeGenericTypeUsed;
+
+    // The other arm: the CLR backtick full names of every OPEN generic
+    // definition a reached body ldtokens (typeof(D<>)), in first-seen order.
+    // Recorded unconditionally, not behind _makeGenericTypeUsed — the flag can
+    // be set by a body scanned after the ldtoken site, and gating the record on
+    // it would make the set scan-order-dependent (the _appMethodSpecTypeArgs
+    // argument). Consumed once, after the scan closes, by the
+    // runtime-instantiation template pass.
+    private readonly List<string> _typeofOpenGenericDefNames = new();
+    private readonly HashSet<string> _typeofOpenGenericDefSeen = new(StringComparer.Ordinal);
+
     // The generic-METHOD half of the reflection-ctor surface: the type arguments
     // of every MethodSpec an app-module body instantiates, recorded by
     // ScanBodyForGenerics off the resolved target's Context (already-closed
@@ -3786,10 +3818,12 @@ internal sealed partial class Compilation
             {
                 int seenSpecArgs = -1, seenOpened = -1;
                 while (seenSpecArgs != _appMethodSpecTypeArgs.Count
-                    || seenOpened != _userReflSurface.Count + _userReflConstructed.Count)
+                    || seenOpened != _userReflSurface.Count + _userReflConstructed.Count
+                        + _typeofNamedLibraryClasses.Count)
                 {
                     seenSpecArgs = _appMethodSpecTypeArgs.Count;
-                    seenOpened = _userReflSurface.Count + _userReflConstructed.Count;
+                    seenOpened = _userReflSurface.Count + _userReflConstructed.Count
+                        + _typeofNamedLibraryClasses.Count;
                     ReachUserSurfaceNamedSpecializationCtors();
                     DrainReachability();
                 }
@@ -3856,6 +3890,8 @@ internal sealed partial class Compilation
                             // reflectively invokable either.
                         }
                     }
+                    if (!cls.IsAbstract)
+                        ReachUserInterfaceImpls(cls);
                 }
                 doneNamed = end;
                 DrainReachability();
@@ -4063,6 +4099,78 @@ internal sealed partial class Compilation
     /// per input: the route fires off the program's own IL) and are the very reads
     /// the emit set's layout closure performs later, so the model grows nothing it
     /// would not have grown — only earlier, inside the drain that shapes it.</para></summary>
+    /// <summary>Reaches <paramref name="cls"/>'s implementations of USER-module
+    /// interface methods — the surface a reflection helper dispatches after
+    /// discovering the interface on an instance (GetInterfaces → GetMethod → Invoke,
+    /// the DI-container injection shape). Parameterized impls included: the interface
+    /// contract is what lets the helper synthesize the arguments a bare parameterized
+    /// method denies it. Framework interfaces stay out for the reason the typeof-named
+    /// loop's niladic bound exists — IEnumerable/IComparable impls over every opened
+    /// class would force-reach subtrees nothing invokes.</summary>
+    private void ReachUserInterfaceImpls(ClassInfo cls)
+    {
+        for (var c = cls; c is not null; c = c.BaseClass)
+            foreach (var itf in c.Interfaces)
+            {
+                if (!IsUserModule(itf.Module))
+                    continue;
+                foreach (var im in itf.EnsureMembers().Methods)
+                {
+                    try
+                    {
+                        if (im.Signature.GenericParameterCount == 0
+                            && ResolveItfImplOrNull(cls, im) is { Rva: not 0 } impl
+                            && _backend?.ShouldSkipMethodBody(impl.DeclaringClass, impl) != true)
+                            Reach(impl);
+                    }
+                    catch (Exception e) when (!IsMustEscape(e))
+                    {
+                        // An undecodable signature is not reflectively invokable.
+                    }
+                }
+            }
+    }
+
+    // A reflection-constructed instance is also a lifecycle-dispatch target: a
+    // Unity-style invoker calls GetMethod(name, Instance | Public | NonPublic)
+    // then Invoke(target, null) for well-known niladic messages (a generated
+    // view initializer, Awake/OnEnable/Update) — private methods included, and
+    // an unreached method has no metadata row, so GetMethod answers null where
+    // real .NET answers the row and the binding silently never happens. Reach
+    // the non-generic niladic VOID instance methods along the user-module base
+    // chain (GetMethod on the concrete type sees inherited non-private rows;
+    // private ones only on the type itself, but reaching those too costs
+    // nothing new — a niladic body names no argument type). A lifecycle message
+    // is fire-and-forget, so the void bound is what keeps a value-returning
+    // niladic like GDTask's AsValueTask — whose body trips the transpiler's
+    // IValueTaskSource result-kind bound — out of the speculative set.
+    // Parameterized and value-returning methods stay the deliberate residue,
+    // exactly as in the typeof-named loop's bound. NOT
+    // called from the preservation ctor arm: [Preserve] on a type keeps the
+    // type and its ctors only (Unity linker parity, asserted by the
+    // preserve-control gate's stripped-member list).
+    private void ReachUserNiladicInstanceMethods(ClassInfo cls)
+    {
+        for (var c = cls; c is not null && IsUserModule(c.Module); c = c.BaseClass)
+            foreach (var m in c.EnsureMembers().Methods)
+            {
+                if (m.Rva == 0 || m.IsStatic || m.Name == ".ctor"
+                    || _backend?.ShouldSkipMethodBody(c, m) == true)
+                    continue;
+                try
+                {
+                    if (m.Signature.GenericParameterCount == 0
+                        && m.Signature.ParameterTypes.Length == 0
+                        && m.Signature.ReturnType.IsVoid)
+                        Reach(m);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    // An undecodable signature is not reflectively invokable.
+                }
+            }
+    }
+
     private void ReachUserSurfaceNamedSpecializationCtors()
     {
         // Collect the declared member-type surface: the app module, plus every
@@ -4089,6 +4197,14 @@ internal sealed partial class Compilation
             foreach (var f in cls.Fields)
                 if (!f.IsLiteral)
                     named.Add((f.Type, libSurface, false));
+            // The generic BASE instantiations' type arguments are surface too: a
+            // framework base takes the derived class's collaborator types as type
+            // parameters (`GlobalPage : PageBase<..., GlobalWindow>`) and its shared
+            // body late-binds `new TWindow()` — a construction site of the ARGUMENT,
+            // visible in no field, property or ctor-parameter signature.
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+                foreach (var a in b.Context.TypeArgs)
+                    named.Add((a, libSurface, false));
             try
             {
                 var reader = cls.Module.Reader;
@@ -4138,6 +4254,17 @@ internal sealed partial class Compilation
         // by bodies the force-reach loop queued are picked up on the next round.
         foreach (var t in _appMethodSpecTypeArgs)
             named.Add((t, false, false));
+
+        // A typeof-named LIBRARY class contributes its base-chain instantiation
+        // arguments even though its member types stay closed: the class reaches
+        // reflection only through its typeof registration, and its framework base
+        // takes its collaborator types as type parameters and late-binds
+        // `new TArg()` in a shared body — a construction site of the argument
+        // that no field, property or ctor-parameter signature shows.
+        foreach (var cls in _typeofNamedLibraryClasses)
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+                foreach (var a in b.Context.TypeArgs)
+                    named.Add((a, true, false));
 
         // Expand the named surface — nested generic arguments and array/byref
         // elements — into the closed non-app specializations it names. Dedupe into
@@ -4294,6 +4421,13 @@ internal sealed partial class Compilation
                         Reach(m);
                 if (!cls.IsValueType)
                     ReachAllocatedType(cls);
+                // The reflection helper that constructed the instance dispatches its
+                // user-interface surface next (a DI container's GetInterfaces →
+                // GetMethod → Invoke injection pass), so those impls are part of the
+                // opened surface — as are the niladic lifecycle messages a
+                // Unity-style invoker GetMethod-invokes on the fresh instance.
+                ReachUserInterfaceImpls(cls);
+                ReachUserNiladicInstanceMethods(cls);
             }
             for (var b = cls; b is not null && IsUserModule(b.Module); b = b.BaseClass)
             {

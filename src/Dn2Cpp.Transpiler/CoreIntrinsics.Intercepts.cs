@@ -1422,8 +1422,9 @@ internal static partial class CoreIntrinsics
     /// (<see cref="ScCultureCompareInfo"/>); plus</para>
     /// <para>(b) the hand-written residue: the names that drive the REFLECTION-USAGE
     /// marks — Invoke, GetValue, SetValue, CreateInstance, GetCustomAttributes,
-    /// GetCustomAttribute, IsDefined. Those set <c>_reflectionInvokeUsed</c> /
-    /// <c>_reflectionCtorUsed</c> / <c>_reflectionAttrUsed</c>, which are not intercepts
+    /// GetCustomAttribute, IsDefined, MakeGenericType. Those set
+    /// <c>_reflectionInvokeUsed</c> / <c>_reflectionCtorUsed</c> /
+    /// <c>_reflectionAttrUsed</c> / <c>_makeGenericTypeUsed</c>, which are not intercepts
     /// at all — they do not cut an edge or route a call, they OPEN a reachability route
     /// (reach every app-module method body / ctor / attribute ctor so a reflected member
     /// is invokable). No descriptor row will ever carry them.</para>
@@ -1446,6 +1447,7 @@ internal static partial class CoreIntrinsics
         // (b) the reflection-usage marks — NOT intercepts, never registry rows.
         or "Invoke" or "GetValue" or "SetValue" or "CreateInstance"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
+        or "MakeGenericType"
         // (c) the MemberRef mouth of the RunClassConstructor reach effect.
         or "RunClassConstructor";
 

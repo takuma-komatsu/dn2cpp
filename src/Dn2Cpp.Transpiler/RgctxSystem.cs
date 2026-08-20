@@ -86,6 +86,12 @@ internal sealed class RgctxDimension<TOwner> where TOwner : class
     /// <summary>Whether the recorded (owner, slot) key failed its planning fill.</summary>
     internal bool SlotKnownBad((TOwner Owner, RgctxSlot Slot) key) => _badSlots.Contains(key);
 
+    /// <summary>The owner's registry slots in index order, or null when no body
+    /// allocated one — read by the runtime-instantiation template verdict (a
+    /// template has no group members, so no fill ever visits its registry).</summary>
+    internal IReadOnlyList<RgctxSlot>? SlotsOf(TOwner owner) =>
+        _registries.TryGetValue(owner, out var reg) ? reg.Slots : null;
+
     /// <summary>Records that a live table's forwarding entry references
     /// <paramref name="user"/>'s table, so it must fill and emit even when the
     /// user is otherwise unreachable (the shared callee runs under its identity

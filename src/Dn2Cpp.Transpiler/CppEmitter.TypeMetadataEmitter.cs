@@ -802,19 +802,19 @@ internal sealed partial class CppEmitter
             c.Module is { AssemblyName: { Length: > 0 } an } ? $"\"{an}\"" : "nullptr";
 
         // Emit (once per chunk) a stub that aborts with `desc` baked in and return its
-        // symbol, for a slot the emitter cannot enter through the receiver. `reporter` is
+        // symbol, for a slot whose receiver the shared traps cannot read. `reporter` is
         // the runtime entry point (dn2cpp_itf_slot_missing_named / _vcall_unimplemented_named).
-        // The stub's C++ signature is irrelevant — it is entered through a mismatched cast
-        // and never returns — so it is declared void() and taken as (const void*), exactly
-        // like the shared _anon / _vcall traps it stands in for.
-        private string SlotMissStub(string reporter, string desc)
+        // The stub carries the slot's exact C++ signature where it renders
+        // (CppEmitter.NamedSlotMissStubDef): a wasm call_indirect checks the callee's
+        // type immediate, so the historical void() form dies there as an anonymous
+        // signature-mismatch trap before the named abort can run.
+        private string SlotMissStub(string reporter, string desc, MethodInfo decl)
         {
             string key = reporter + "\0" + desc;
             if (!_slotStubs.TryGetValue(key, out var name))
             {
                 name = $"slotmiss_{_slotStubSeq++}";
-                string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-                _sb.AppendLine($"[[maybe_unused]] static void {name}() {{ {reporter}(\"{lit}\"); }}");
+                _sb.AppendLine(_e.NamedSlotMissStubDef(name, reporter, desc, decl));
                 _slotStubs[key] = name;
             }
             return name;
@@ -857,18 +857,25 @@ internal sealed partial class CppEmitter
             // A slot with no reached body is a slot nothing dispatches, but it holds a TRAP
             // rather than a null pointer: reaching one means the reachability model was
             // wrong about the slot and has to say which type and method it was wrong about,
-            // where a null slot is a call through address 0 naming nothing. The shared trap
-            // recovers the name at run time from the receiver's method table, so vtable
-            // initializers stay internable. A struct-returning virtual is the exception —
-            // the caller's hidden result buffer occupies `self`, so neither type nor method
-            // is readable; when the emitter knows the method, bake its descriptor into a
-            // per-slot stub instead.
-            var entries = cls.Vtable.Select(m =>
+            // where a null slot is a call through address 0 naming nothing. A trap must
+            // also carry the slot's exact C++ signature or wasm's call_indirect type check
+            // kills it anonymously before it can report (SlotTrapThunk). The thunk recovers
+            // the name at run time from the receiver's method table, and one inline thunk
+            // per ABI shape keeps vtable initializers internable. A struct-returning
+            // virtual instead bakes its descriptor into a per-slot stub — exact even on a
+            // metadata-stripped image, where the thunk's scan finds no method rows.
+            var owners = cls.SlotOwners;
+            var entries = cls.Vtable.Select((m, i) =>
             {
                 if (m is not null && _c.Reachable.Contains(m))
                     return $"(const void*)&{m.Emittable.CppName}";
-                if (m is not null && !ReceiverIsFirstArg(m.Signature.ReturnType))
-                    return $"(const void*)&{SlotMissStub("dn2cpp_vcall_unimplemented_named", $"{cls.FullName}.{m.Name}")}";
+                // An abstract slot has a null impl but its OWNER still declares the
+                // signature — the trap must carry it either way.
+                var decl = m ?? (i < owners.Count ? owners[i] : null);
+                if (decl is not null && !ReceiverIsFirstArg(decl.Signature.ReturnType))
+                    return $"(const void*)&{SlotMissStub("dn2cpp_vcall_unimplemented_named", $"{cls.FullName}.{decl.Name}", decl)}";
+                if (decl is not null && _e.SlotTrapThunk(decl, vcall: true) is { } trap)
+                    return $"(const void*)&{trap}";
                 return "(const void*)&dn2cpp_vcall_unimplemented";
             }).ToList();
             if (entries.Count == 0)
@@ -972,13 +979,15 @@ internal sealed partial class CppEmitter
                     // tables intern unchanged.
                     if (impl is null || !_c.Reachable.Contains(impl))
                     {
-                        // Receiver-readable slot: the shared trap reads its type out of
-                        // argument 0. Struct-returning slot: argument 0 may be the hidden
-                        // result buffer, so bake the (class, interface, method) descriptor
-                        // into a per-slot stub instead of losing the name to _anon.
+                        // Receiver-readable slot: a per-signature thunk (SlotTrapThunk)
+                        // enters the shared receiver-reading trap through the slot's own
+                        // C++ signature — wasm's call_indirect rejects a mismatched one
+                        // before it can report. Struct-returning slot: bake the (class,
+                        // interface, method) descriptor into a per-slot stub instead —
+                        // exact even where the receiver's metadata is stripped.
                         slots.Add(ReceiverIsFirstArg(im.Signature.ReturnType)
-                            ? "(const void*)&dn2cpp_itf_slot_missing"
-                            : $"(const void*)&{SlotMissStub("dn2cpp_itf_slot_missing_named", $"{cls.FullName}::{itf.FullName}.{im.Name}")}");
+                            ? $"(const void*)&{_e.SlotTrapThunk(im, vcall: false) ?? "dn2cpp_itf_slot_missing"}"
+                            : $"(const void*)&{SlotMissStub("dn2cpp_itf_slot_missing_named", $"{cls.FullName}::{itf.FullName}.{im.Name}", im)}");
                         continue;
                     }
                     // A reference-type impl receives the object pointer directly as
@@ -1908,6 +1917,15 @@ internal sealed partial class CppEmitter
             // drop it while the dispatch and type-test walks keep it.
             if (_e.IsCanonicalWorld(cls))
                 flagBits.Add("DN2CPP_TF_SHARED_CANON");
+            // A runtime-instantiation template level: canonical (not a CLR type,
+            // never handed outward) yet fully rendered, plus the bit the runtime
+            // MakeGenericType fallback keys its clone sources on. The clone strips
+            // both bits.
+            else if (_e.IsRuntimeTemplateLevel(cls))
+            {
+                flagBits.Add("DN2CPP_TF_SHARED_CANON");
+                flagBits.Add("DN2CPP_TF_RUNTIME_TEMPLATE");
+            }
             string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
             var (fieldsExpr, fieldCount) = _fieldTabs.TryGetValue(cls, out var ftv) ? (ftv.Expr, ftv.Count) : ("nullptr", 0);
             var (methodsExpr, methodCount) = _methodTabs.TryGetValue(cls, out var mtv) ? (mtv.Expr, mtv.Count) : ("nullptr", 0);
@@ -1934,8 +1952,14 @@ internal sealed partial class CppEmitter
                 && _e.GenericDefInfo(cls) is { } gdi && _e._genericDefSyms.TryGetValue(gdi.DefName, out var defSym))
             {
                 genDefExpr = "&" + defSym;
-                genArgsExpr = GenericArgVector(cls);
-                genArgCount = cls.Context.TypeArgs.Length;
+                // A template's placeholder arguments have no handles to list; the
+                // runtime clone stamps the real argument vector (the genericDef is
+                // still wired — the receiver-derived rgctx walk anchors on it).
+                if (!_e.IsRuntimeTemplateLevel(cls))
+                {
+                    genArgsExpr = GenericArgVector(cls);
+                    genArgCount = cls.Context.TypeArgs.Length;
+                }
             }
             // Nested-type table: the type's public nested types. The enum metadata
             // members (24-26) are 0 for a class — spelled out so the nested fields land in

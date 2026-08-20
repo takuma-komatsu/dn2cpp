@@ -88,13 +88,13 @@ if ! godot_dotnet_root_ok; then
     gate_skip "godot-dotnet artifacts absent/incomplete at $GODOT_DOTNET_ROOT — run gates/setup-godot-dotnet.sh (or set DN2CPP_GODOT_DOTNET_ROOT)"
 fi
 
-echo "== 1/6 Building the sample game assembly (real Godot.NET.Sdk) =="
+echo "== 1/7 Building the sample game assembly (real Godot.NET.Sdk) =="
 godot_dotnet_nuget_config "$GODOT_DOTNET_SAMPLE_DIR"
 dotnet build "$GODOT_DOTNET_SAMPLE_DIR/DotnetSample.csproj" -c ExportRelease --nologo -v q
 APP="$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll"
 [ -f "$APP" ] || { echo "error: not built: $APP" >&2; exit 1; }
 
-echo "== 2/6 Transpiling (--dotnet-module --trim-reflection, real GodotSharp + net10 CoreLib) =="
+echo "== 2/7 Transpiling (--dotnet-module --trim-reflection, real GodotSharp + net10 CoreLib) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 CORELIB=$(resolve_net10_corelib)
 rm -rf "$OUT"
@@ -116,24 +116,24 @@ if grep -Eq 'restab_assembly[0-9]+\[\]' "$OUT"/generated*.cpp; then
 fi
 echo "manifest OK: the Godot closure lowers no manifest-resource read, so none is carried"
 
-if gate_cache_check "$OUT" "godot-dotnet-wasm|trim|$CORELIB|$GODOT_DOTNET_GODOTSHARP" "$APP" "$HOST_SRC" gates/_wasm_symbols.js; then
+if gate_cache_check "$OUT" "godot-dotnet-wasm|trim|$CORELIB|$GODOT_DOTNET_GODOTSHARP" "$APP" "$HOST_SRC" gates/_wasm_symbols.js gates/_wasm_split_selftest.js runtime/cmake/dn2cpp_split_apply_data_relocs.mjs; then
     gate_cache_hit_msg
     exit 0
 fi
 
-echo "== 3/6 Linking the Emscripten side module =="
+echo "== 3/7 Linking the Emscripten side module =="
 compile_dotnet_module_wasm "$OUT" "$SO"
 bytes=$(wc -c < "$SO" | tr -d ' ')
 printf '%s: %s bytes\n' "$SO" "$bytes"
 
-echo "== 4/6 Building the MAIN_MODULE host (the engine's role, without the engine) =="
+echo "== 4/7 Building the MAIN_MODULE host (the engine's role, without the engine) =="
 # -fwasm-exceptions on the HOST too: the side module imports its __cpp_exception tag and
 # its __cxa_* runtime from here, so a main module without EH gives it nothing to unwind
 # through. NODERAWFS lets dlopen name the .so by its real path instead of a preloaded FS.
 em++ -std=c++17 -O2 -fwasm-exceptions -sMAIN_MODULE=1 -sNODERAWFS=1 -sALLOW_MEMORY_GROWTH=1 \
     "$HOST_SRC" -o "$OUT/dm_wasm_host.js"
 
-echo "== 5/6 Asserting the export surface =="
+echo "== 5/7 Asserting the export surface =="
 exports=$(node gates/_wasm_symbols.js exports "$SO")
 printf '%s\n' "$exports" | LC_ALL=C sed 's/^/  /'
 for want in godotsharp_game_main_init dn2cpp_dm_interop_size; do
@@ -155,7 +155,7 @@ if [ "$n_exports" -gt 16 ]; then
 fi
 echo "export OK: $n_exports exports (entry + probe + the loader's own)"
 
-echo "== 6/6 Asserting the import closure, the size, and the load =="
+echo "== 6/7 Asserting the import closure, the size, and the load =="
 missing=$(node gates/_wasm_symbols.js unsatisfied "$SO" "$OUT/dm_wasm_host.wasm")
 if [ -n "$missing" ]; then
     echo "FAIL: $SO imports symbols no main module can provide:" >&2
@@ -243,6 +243,14 @@ if grep -q "host: init OK" <<<"$runB"; then
 else
     gate_expected_partial "the standalone wasm host structurally cannot complete godotsharp_game_main_init: past 'managed callbacks written' the entry registers the game's script classes, whose static constructors call BACK into the engine (StringName construction) through the interop table — and this host is the engine's role with no engine in it, so it hands a ZEROED table and that cctor call is a null indirect call. Permanent, not environmental: completing it would mean stubbing ~180 godotsharp_* functions at correct signatures (a wrong one is a wasm trap too), an engine-stub layer that is a declared non-goal of this gate. The load, the entry, the managed-exception unwind across the dlink boundary (Run A) and every artifact assertion above DID run and hold. The uncovered init tail IS asserted for real elsewhere: gates/build-and-run-godot-editor-export-web.sh runs the same wasm drop-in to a completed init in a real browser against the real engine fork, and gates/build-and-run-godot-dotnet-trim.sh runs the same trimmed drop-in's full init natively in the real engine against the real GodotSharp."
 fi
+
+echo "== 7/7 The apply-data-relocs splitter's split arm (this drop-in only exercises its no-op arm) =="
+# The CMake side-module arms run runtime/cmake/dn2cpp_split_apply_data_relocs.mjs
+# post-link, so section 3 already proved the no-op arm. A drop-in big enough to
+# NEED the split (a full game past V8's per-function cap) is too heavy for the
+# suite, so the split arm is proved on a synthesized oversized module instead:
+# V8 refuses it, the splitter rewrites it, V8 runs it, the stores land.
+node gates/_wasm_split_selftest.js runtime/cmake/dn2cpp_split_apply_data_relocs.mjs "$OUT"
 
 gate_cache_commit
 echo "OK"

@@ -1056,6 +1056,25 @@ if(DN2CPP_APP_DIR)
             COMPILE_OPTIONS "${_hot_fast_opts}")
     endif()
 
+    # V8 caps a wasm function body at ~7.6 MB, and a side module's synthesized
+    # __wasm_apply_data_relocs grows with every pointer in static data — past
+    # the cap Chrome refuses the whole module at WebAssembly.instantiate,
+    # before a byte of it runs. wasm-ld has no split of its own
+    # (llvm/llvm-project#58780), so every Emscripten side-module arm rewrites
+    # the function into sub-limit chunks post-link. The script is a no-op
+    # while the body is under the limit.
+    function(_dn2cpp_split_side_module_relocs target)
+        if(NOT CMAKE_CROSSCOMPILING_EMULATOR)
+            message(FATAL_ERROR "dn2cpp: Emscripten side module without CMAKE_CROSSCOMPILING_EMULATOR "
+                "(node) — cannot run dn2cpp_split_apply_data_relocs.mjs; configure through emcmake")
+        endif()
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_CROSSCOMPILING_EMULATOR}
+                "${DN2CPP_ROOT}/runtime/cmake/dn2cpp_split_apply_data_relocs.mjs"
+                "$<TARGET_FILE:${target}>"
+            VERBATIM)
+    endfunction()
+
     if(DN2CPP_GDEXTENSION)
         add_library(${DN2CPP_APP_NAME} SHARED ${DN2CPP_APP_SRCS})
         # The shipped name is fixed in this lane, so a distributed artifact never
@@ -1096,6 +1115,7 @@ if(DN2CPP_APP_DIR)
             # Pin the artifact name (see the .NET-module arm: under emcmake the
             # ".so" suffix is otherwise an accident of package load order).
             set_target_properties(${DN2CPP_APP_NAME} PROPERTIES PREFIX "lib" SUFFIX ".so")
+            _dn2cpp_split_side_module_relocs(${DN2CPP_APP_NAME})
         endif()
     elseif(DN2CPP_DOTNET_MODULE)
         # Godot mono-module shared library (NativeAOT drop-in style: the engine
@@ -1146,6 +1166,7 @@ if(DN2CPP_APP_DIR)
             # dlopens <Assembly>.so — so being born with the name it will die with
             # removes a whole class of confusion.
             set_target_properties(${DN2CPP_APP_NAME} PROPERTIES PREFIX "lib" SUFFIX ".so")
+            _dn2cpp_split_side_module_relocs(${DN2CPP_APP_NAME})
         endif()
     else()
         add_executable(${DN2CPP_APP_NAME} ${DN2CPP_APP_SRCS})

@@ -7,6 +7,7 @@
 // Behavior matches real .NET for the modeled surface.
 #include "dn2cpp_core.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 // ---- generic reflection ----
 
@@ -66,11 +68,210 @@ Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t)
     return arr;
 }
 
+// ---- runtime-instantiation templates (the MakeGenericType synthesis fallback) ----
+
+static const Dn2CppRuntimeTemplate* dn2cpp_runtime_template_by_def(const Dn2CppTypeInfo* def)
+{
+    for (int32_t i = 0; i < dn2cpp_runtime_template_count; i++)
+        if (dn2cpp_runtime_templates[i].def == def)
+            return &dn2cpp_runtime_templates[i];
+    return nullptr;
+}
+
+static const Dn2CppRuntimeTemplate* dn2cpp_runtime_template_by_ti(const Dn2CppTypeInfo* ti)
+{
+    for (int32_t i = 0; i < dn2cpp_runtime_template_count; i++)
+        if (dn2cpp_runtime_templates[i].templateTi == ti)
+            return &dn2cpp_runtime_templates[i];
+    return nullptr;
+}
+
+// Synthesized instantiations intern on (def, args): one managed type is exactly
+// one Dn2CppTypeInfo* (the invariant every pointer-comparing walk rests on), so a
+// second MakeGenericType with the same arguments must return the first pointer.
+// Plain new, never freed — a type-info is immortal, like the emitted ones.
+struct Dn2CppSynthInst
+{
+    const Dn2CppTypeInfo* def;
+    const Dn2CppTypeInfo* ti;
+    Dn2CppSynthInst* next;
+};
+static Dn2CppSynthInst* g_synth_insts = nullptr;
+static std::mutex g_synth_mtx;
+
+// The rgctx anchor tables of the synthesized instantiations, one node per
+// placeholder chain level, keyed (clone type-info, level definition). A clone's
+// base interns onto the AOT type-info when the image carries that instantiation,
+// and an AOT base cannot anchor the clone's shared bodies (see
+// DN2CPP_TF_RUNTIME_SYNTH) — only a table shaped by the TEMPLATE's descriptor
+// matches the slot indices compiled into those bodies. Written under g_synth_mtx
+// before the clone escapes; read lock-free in shared-body prologues, so the head
+// publishes release/acquire and nodes are immutable once linked.
+struct Dn2CppSynthAnchor
+{
+    const Dn2CppTypeInfo* ti;
+    const Dn2CppTypeInfo* def;
+    const void* const* table;
+    Dn2CppSynthAnchor* next;
+};
+static std::atomic<Dn2CppSynthAnchor*> g_synth_anchors{ nullptr };
+
+const void* const* dn2cpp_rgctx_synth(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* genericDef)
+{
+    for (Dn2CppSynthAnchor* n = g_synth_anchors.load(std::memory_order_acquire);
+         n != nullptr; n = n->next)
+        if (n->ti == t && n->def == genericDef)
+            return n->table;
+    // A level below the placeholder chain (a concrete generic base the template
+    // shape bound allows above it): the ordinary base-chain anchor.
+    while (t != nullptr && t->genericDef != genericDef)
+        t = t->base;
+    return t != nullptr ? t->rgctx : nullptr;
+}
+
+// The AOT image's own (definition, args) instantiation, if it emitted one. Every
+// synthesis entry point — top-level MakeGenericType AND the clone's base-chain
+// recursion — must consult this first: a synthesized duplicate of an emitted
+// type-info breaks every pointer-comparing walk (isinst, cast, IsAssignableFrom,
+// BaseType identity). A null argument matches nothing; the caller keeps its own
+// miss behavior.
+static const Dn2CppTypeInfo* dn2cpp_find_aot_instantiation(
+    const Dn2CppTypeInfo* def, const Dn2CppTypeInfo* const* args, int32_t argc)
+{
+    for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
+    {
+        const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
+        if (cand->genericDef != def || (cand->flags & DN2CPP_TF_GENERICDEF) != 0)
+            continue;
+        if (cand->genericArgCount != argc)
+            continue;
+        bool match = true;
+        for (int32_t i = 0; i < argc; i++)
+            if (args[i] == nullptr || cand->genericArgs[i] != args[i]) { match = false; break; }
+        if (match)
+            return cand;
+    }
+    return nullptr;
+}
+
+// Clones `row`'s template for the given argument vector (caller holds g_synth_mtx;
+// argument count already checked against row->argCount). Recursive for the base
+// chain: a template base is itself a row, and its identity argument projection
+// (established by the emitter's eligibility shape bound) means it takes the same
+// leading arguments.
+static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
+    const Dn2CppRuntimeTemplate* row, const Dn2CppTypeInfo* const* args)
+{
+    for (Dn2CppSynthInst* n = g_synth_insts; n != nullptr; n = n->next)
+    {
+        if (n->def != row->def)
+            continue;
+        bool same = true;
+        for (int32_t i = 0; i < row->argCount; i++)
+            if (n->ti->genericArgs[i] != args[i]) { same = false; break; }
+        if (same)
+            return n->ti;
+    }
+    if (const Dn2CppTypeInfo* aot = dn2cpp_find_aot_instantiation(row->def, args, row->argCount))
+        return aot;
+    Dn2CppTypeInfo* ti = new Dn2CppTypeInfo(*row->templateTi);
+    ti->flags = (ti->flags & ~(DN2CPP_TF_SHARED_CANON | DN2CPP_TF_RUNTIME_TEMPLATE))
+        | DN2CPP_TF_RUNTIME_SYNTH;
+    auto** argv = new const Dn2CppTypeInfo*[row->argCount];
+    for (int32_t i = 0; i < row->argCount; i++)
+        argv[i] = args[i];
+    ti->genericArgs = argv;
+    ti->genericArgCount = row->argCount;
+    ti->genericDef = row->def;
+    ti->typeObject = nullptr;   // interned lazily by dn2cpp_get_type_from_handle_slow
+    // dn2cpp_ctor_invoke_argv allocates from mi->declaringType, so a shared ctor
+    // row would stamp the TEMPLATE (whose rgctx is null) onto the new instance.
+    if (ti->ctorCount > 0)
+    {
+        auto* ctors = new Dn2CppMethodInfo[ti->ctorCount];
+        for (int32_t i = 0; i < ti->ctorCount; i++)
+        {
+            ctors[i] = row->templateTi->ctors[i];
+            ctors[i].declaringType = ti;
+        }
+        ti->ctors = ctors;
+    }
+    if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
+    {
+        const Dn2CppRuntimeTemplate* brow = dn2cpp_runtime_template_by_ti(ti->base);
+        if (brow == nullptr || brow->argCount > row->argCount)
+            dn2cpp_throw_invalid_operation();
+        // Interns onto the AOT instantiation when the image carries it (the
+        // pointer-comparing walks demand the one type-info); such a base's
+        // rgctx never serves the clone — the anchor loop below does.
+        ti->base = dn2cpp_synthesize_instantiation(brow, args);
+    }
+    // Every placeholder level's rgctx table lives on the CLONE, keyed by the
+    // level's definition: the clone's $CnAny bodies index with the template's
+    // slot layout, which the interned base chain cannot provide.
+    for (const Dn2CppRuntimeTemplate* r = row; r != nullptr; )
+    {
+        if (r->rgctxDescCount > 0)
+        {
+            auto** table = new const void*[r->rgctxDescCount];
+            for (int32_t i = 0; i < r->rgctxDescCount; i++)
+                table[i] = args[r->rgctxDesc[i]];
+            if (r == row)
+                ti->rgctx = table;
+            auto* an = new Dn2CppSynthAnchor{ ti, r->def, table,
+                g_synth_anchors.load(std::memory_order_relaxed) };
+            g_synth_anchors.store(an, std::memory_order_release);
+        }
+        const Dn2CppTypeInfo* bt = r->templateTi->base;
+        r = bt != nullptr && (bt->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0
+            ? dn2cpp_runtime_template_by_ti(bt)
+            : nullptr;
+    }
+    // The ToString spelling (Def`N[arg,arg]); FullName composes structurally off
+    // genericDef/genericArgs and never reads this. Registered on the dynamic
+    // side-chain so GetType round-trips resolve directly.
+    std::string nm = row->def->name != nullptr ? row->def->name : "?";
+    nm += '[';
+    for (int32_t i = 0; i < row->argCount; i++)
+    {
+        if (i > 0)
+            nm += ',';
+        nm += args[i] != nullptr && args[i]->name != nullptr ? args[i]->name : "?";
+    }
+    nm += ']';
+    char* name = new char[nm.size() + 1];
+    std::memcpy(name, nm.c_str(), nm.size() + 1);
+    ti->name = name;
+    auto* node = new Dn2CppSynthInst{ row->def, ti, g_synth_insts };
+    g_synth_insts = node;
+    dn2cpp_type_registry_add(ti->name, ti);
+    return ti;
+}
+
+// The synthesis fallback both resolvers (MakeGenericType and the composed-name
+// resolution) share: null when the definition has no template row or the shape
+// does not fit — the caller keeps its own miss behavior.
+static const Dn2CppTypeInfo* dn2cpp_try_synthesize_generic(
+    const Dn2CppTypeInfo* defTi, const Dn2CppTypeInfo* const* args, int32_t argc)
+{
+    const Dn2CppRuntimeTemplate* row = dn2cpp_runtime_template_by_def(defTi);
+    if (row == nullptr || row->argCount != argc)
+        return nullptr;
+    for (int32_t i = 0; i < argc; i++)
+        if (args[i] == nullptr)
+            return nullptr;
+    std::lock_guard<std::mutex> lock(g_synth_mtx);
+    return dn2cpp_synthesize_instantiation(row, args);
+}
+
 // Type.MakeGenericType(args): resolve the (definition, args) instantiation against the
 // program's reachability-generated closed types (scanned via the type registry). Like
 // IL2CPP, an instantiation that AOT never generated is not built at runtime — it throws
-// NotSupportedException. `def` may be an open definition or any handle whose genericDef
-// matches (calling MakeGenericType on a closed type reuses its definition).
+// NotSupportedException, UNLESS the definition is typeof-only and the emitter shipped a
+// runtime-instantiation template for it (see Dn2CppRuntimeTemplate), in which case the
+// instantiation is synthesized by cloning that template. `def` may be an open definition
+// or any handle whose genericDef matches (calling MakeGenericType on a closed type
+// reuses its definition).
 Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
 {
     const Dn2CppTypeInfo* defTi = dn2cpp_type_require(def);
@@ -78,22 +279,23 @@ Dn2CppType* dn2cpp_type_make_generic(Dn2CppType* def, Dn2CppArrayRef* args)
     if (defTi->genericDef != nullptr && (defTi->flags & DN2CPP_TF_GENERICDEF) == 0)
         defTi = defTi->genericDef;
     int32_t argc = args == nullptr ? 0 : args->length;
-    for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
+    // Type-info view of the argument array; a null slot stays null (it matches
+    // nothing and disables synthesis), so the miss path below still names it.
+    std::vector<const Dn2CppTypeInfo*> argv(static_cast<size_t>(argc), nullptr);
+    bool haveArgs = true;
+    for (int32_t i = 0; i < argc; i++)
     {
-        const Dn2CppTypeInfo* cand = dn2cpp_type_registry[k].type;
-        if (cand->genericDef != defTi || (cand->flags & DN2CPP_TF_GENERICDEF) != 0)
-            continue;
-        if (cand->genericArgCount != argc)
-            continue;
-        bool match = true;
-        for (int32_t i = 0; i < argc; i++)
-        {
-            auto* a = reinterpret_cast<Dn2CppType*>(args->data[i]);
-            if (a == nullptr || a->typeInfo != cand->genericArgs[i]) { match = false; break; }
-        }
-        if (match)
-            return dn2cpp_get_type_from_handle(cand);
+        auto* a = reinterpret_cast<Dn2CppType*>(args->data[i]);
+        if (a == nullptr || a->typeInfo == nullptr) { haveArgs = false; continue; }
+        argv[i] = a->typeInfo;
     }
+    if (const Dn2CppTypeInfo* cand = dn2cpp_find_aot_instantiation(defTi, argv.data(), argc))
+        return dn2cpp_get_type_from_handle(cand);
+    // No AOT-generated candidate: the typeof-only template fallback, when the
+    // emitter shipped one for this definition.
+    if (haveArgs)
+        if (const Dn2CppTypeInfo* made = dn2cpp_try_synthesize_generic(defTi, argv.data(), argc))
+            return dn2cpp_get_type_from_handle(made);
     // No AOT-generated candidate. The catch site (a deserializer's contract
     // resolver, typically) is far from the cause, so the message names WHICH
     // instantiation is missing and what would make it exist.
@@ -874,7 +1076,10 @@ static const Dn2CppTypeInfo* dn2cpp_resolve_type_name(const char* s, size_t len,
         if (match)
             return cand;
     }
-    return nullptr;
+    // The typeof-only template fallback — the same relation MakeGenericType
+    // resolves on, so a GetType(t.FullName) round-trip over a synthesized
+    // instantiation answers the same pointer.
+    return dn2cpp_try_synthesize_generic(def, args, argc);
 }
 
 // Narrows a managed name to ASCII bytes and resolves it. Candidate names are ASCII
@@ -2279,8 +2484,12 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
         return obj;
     }
     // No (visible) parameterless ctor — real .NET's MissingMethodException. This
-    // also covers a ctor stripped from the image (an honest AOT miss).
-    dn2cpp_throw_missing_method("No parameterless constructor defined for this type");
+    // also covers a ctor stripped from the image (an honest AOT miss), so the type
+    // name must ride in the message: it is the only lead the log gives.
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "No parameterless constructor defined for type '%s'.",
+                  ti->name != nullptr ? ti->name : "?");
+    dn2cpp_throw_missing_method(buf);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)

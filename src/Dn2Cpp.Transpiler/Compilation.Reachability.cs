@@ -4204,6 +4204,15 @@ internal sealed partial class Compilation
                             // names the wrapper (and a generic token's arguments).
                             if (trimUserSite)
                                 TrimNoteNamedType(lastLdtokenType);
+                            // Runtime-instantiation trigger record: typeof over an
+                            // OPEN generic definition is the only static mouth that
+                            // hands MakeGenericType a definition handle, so its
+                            // presence in reachable IL is what scopes the $CnAny
+                            // template pass to definitions the program can name.
+                            if (lastLdtokenType is { } lot
+                                && OpenGenericDefBacktickNameOf(lot) is { } odn
+                                && _typeofOpenGenericDefSeen.Add(odn))
+                                _typeofOpenGenericDefNames.Add(odn);
                         }
                         continue;
                     case ILOpCode.Castclass:
@@ -4267,6 +4276,11 @@ internal sealed partial class Compilation
                             else if ((mrName == "Invoke" && mrParent == "System.Reflection.ConstructorInfo")
                                 || (mrName == "CreateInstance" && mrParent == "System.Activator"))
                                 _reflectionCtorUsed = true;
+                            // Type.MakeGenericType -> arm the runtime-instantiation
+                            // template pass (paired with the typeof(D<>) record in
+                            // the Ldtoken case above).
+                            else if (mrName == "MakeGenericType" && mrParent == "System.Type")
+                                _makeGenericTypeUsed = true;
                             // MemberInfo/ParameterInfo/Assembly.GetCustomAttributes /
                             // IsDefined -> reach attribute ctors + named setters.
                             else if (mrName is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"

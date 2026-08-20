@@ -1391,3 +1391,16 @@ regname System.AggregateException found=True same=True
 == app delegate base types ==
 nested base=System.MulticastDelegate basebase=System.Delegate isDelegate=True isMulticast=True castDelegate=True castMulticast=True
 nested-generic base=System.MulticastDelegate basebase=System.Delegate isDelegate=True isMulticast=True castDelegate=True castMulticast=True
+mint Boolean: tag:Boolean constructed=True
+mint Int32: tag:Int32 constructed=True
+mint Decimal: tag:Decimal constructed=True
+mint Hue: tag:Hue constructed=True
+mint Pair: tag:Pair constructed=True
+mint String: tag:String constructed=True
+mint TagBase: tag:TagBase constructed=True
+interned=True defRoundTrip=True arg=Boolean
+resolve=True
+nonpublic: quiet:Int32
+sub: tag:Int32 base=Int32
+holder<int>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation ReflectRuntimeInstantiationSubset.Holder`1[System.Int32]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
+seam: anchor:Int32 baseIsAot=True assignable=True isinst=True aot=anchor:Int32

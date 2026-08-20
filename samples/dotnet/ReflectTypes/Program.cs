@@ -77,6 +77,7 @@ namespace ReflectTypes
             IntrinsicTypeNameSubset.Program.Run();
             TypeRegistryMouthsSubset.Program.Run();
             DelegateBaseTypeSubset.Program.Run();
+            ReflectRuntimeInstantiationSubset.Program.Run();
         }
     }
 }

@@ -97,7 +97,11 @@ each is settled, and each refuses out loud rather than answering wrong:
 - No `System.Reflection.Emit`, `dynamic`/DLR, or expression-tree
   `Compile()`: there is no JIT to emit into.
 - `MakeGenericType`/`MakeGenericMethod` reach only instantiations already
-  in the AOT image; anything else throws.
+  in the AOT image; anything else throws. The one carve-in: a generic
+  definition the program typeofs whose bodies only ever `typeof(T)` ships
+  a runtime-instantiation template, and `MakeGenericType` over it succeeds
+  for any argument (asserted by `gates/build-and-run-reflect-types.sh`,
+  section `ReflectRuntimeInstantiationSubset`).
 - String comparison and collation are **ordinal only**, and named time
   zones, per-culture *date* formatting and localized display names are
   out (they need ICU + TZif). Culture-aware **numeric** formatting is in.
@@ -553,7 +557,8 @@ the vendored brotli's own exports) and `--no-default-ref DnZlib` /
   `MethodInfo.Invoke`, `FieldInfo`/`PropertyInfo` get/set,
   `GetCustomAttributes`, `Type.GetType(string)`,
   `Activator.CreateInstance`, `MakeGenericType` over AOT-instantiated
-  types. `Type` objects are interned one per type-info handle, so
+  types (plus the typeof-only runtime-instantiation templates — see the
+  boundary list above). `Type` objects are interned one per type-info handle, so
   `typeof(X)` and `GetType()` are reference-identical; retrieval is
   lock-free for statically-emitted types.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
@@ -708,6 +713,10 @@ it does not come back as a ticket.
   cannot be created; the call throws a catchable
   `PlatformNotSupportedException`. `System.Text.Json` avoids the boundary
   through source-gen; reflection-based `Deserialize<T>` stays carved out.
+  The one class-side carve-in is the typeof-only runtime-instantiation
+  template (a definition whose bodies never give a type argument value
+  semantics — asserted by `gates/build-and-run-reflect-types.sh`, section
+  `ReflectRuntimeInstantiationSubset`); everything else stays the boundary.
 - **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
   signatures. IL2CPP does not support them either.
 - **Real SIMD code generation.** The transpiler never emits hardware

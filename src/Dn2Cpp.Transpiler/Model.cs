@@ -43,6 +43,12 @@ internal sealed class TypeDesc
     /// prints distinctly so canonical instantiation keys never collide with
     /// genuine instantiations over the same primitive.</summary>
     public bool IsCanonPlaceholder;
+    /// <summary>For a canonical placeholder: the type-parameter index it stands for
+    /// in a runtime-instantiation TEMPLATE (printed CnAny0, CnAny1, …), or -1 for
+    /// the ordinary width/reference placeholders. Per-index identity is what lets
+    /// the emitted rgctx slot descriptor say "slot i = type argument n"; the
+    /// runtime MakeGenericType fill then stamps the real argument's handle.</summary>
+    public int CanonAnyIndex = -1;
     public TypeDesc[]? GenericArgs; // ExternalGeneric: the closed type arguments
                                     // (kept so a member reference on the instance
                                     // can substitute the declaring type's !n params)
@@ -247,7 +253,8 @@ internal sealed class TypeDesc
     {
         // Placeholders print distinctly so signature keys (virtual-override
         // matching) never merge a placeholder with the genuine primitive.
-        TypeKind.Primitive when IsCanonPlaceholder => IsObject ? "CnRef" : "Cn" + Primitive,
+        TypeKind.Primitive when IsCanonPlaceholder =>
+            CanonAnyIndex >= 0 ? "CnAny" + CanonAnyIndex : IsObject ? "CnRef" : "Cn" + Primitive,
         TypeKind.Primitive => Primitive.ToString(),
         TypeKind.Class => Class!.FullName,
         TypeKind.External or TypeKind.ExternalGeneric => ExternalName!,
