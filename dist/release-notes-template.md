@@ -8,11 +8,11 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Unity 互換の `PreserveAttribute` と `link.xml` による保持指定に対応し、ストリッピングされる型・メンバーをプロジェクト単位で明示的に残せるようになりました
-- `TaskScheduler`、ワーカーローカルなスケジューリング、`Thread.VolatileRead` / `VolatileWrite` を拡充し、async 継続の実行経路を安定させました
-- カスタム async task 型と実際の NuGet UniTask をサポートし、採用契約外の参照は自動的に通常の IL トランスパイルへ戻すようになりました
+- [PR #52](https://github.com/takuma-komatsu/dn2cpp/pull/52) で、typeof されたオープンジェネリック型のランタイム型生成テンプレートと `MakeGenericType` を追加し、共有ジェネリックとリフレクションの経路を拡張しました
+- [PR #51](https://github.com/takuma-komatsu/dn2cpp/pull/51) で ASCII エンコーディングのデコードを追加しました
+- [PR #49](https://github.com/takuma-komatsu/dn2cpp/pull/49) でトポロジー専用レイアウトの型閉包・アラインメント検証を強化し、Wasm MEMFS の `FileStream` / PAL を拡充しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/2d956f24be63a537c49c8e5b011f4139657c486f...e93a1865afcc2f8686f577a5b6047bad761ca54b> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/c4a1dd7ed734fae8ceee2dca1f404797ec45e8ba...138fe12c71a91ec0c1b5614a8532789abced399a> を参照してください。
 
 ## アセット
 
