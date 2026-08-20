@@ -4,6 +4,37 @@
 
 上から順に実行すれば、macOS と Windows の 2 ホストで 1 本のリリースが完成する。
 
+同じ手順を 1 コマンドずつの形でまとめるなら、事前条件が揃った後に
+
+```bash
+cd <DEV>
+./dist/release-run.sh macos   --version "$V" --prev-version "$PREV" [--repo "$REPO"] [--out "$OUT"]
+./dist/release-run.sh windows --version "$V" --prev-version "$PREV" [--repo "$REPO"] [--out "$OUT"]
+```
+
+`--dry-run-only` でも setup・build・package と `release-github --dry-run` までは
+通常どおり実行するが、リモートのリリースは変更しない。macOS では draft 作成と
+handoff upload、Windows では handoff removal と publish をスキップする。
+macOS レーンだけを検証する場合は単独で実行する:
+
+```bash
+./dist/release-run.sh macos --version "$V" --prev-version "$PREV" --dry-run-only
+```
+
+Windows 版は macOS の通常フローが作成した draft と handoff が既にあることが前提。
+macOS の dry-only 版に続けて実行する手順ではない:
+
+```bash
+./dist/release-run.sh windows --version "$V" --prev-version "$PREV" --dry-run-only
+```
+
+handoff を残すため、Windows の dry-only 版は `release-github` に `--publish` を
+渡さない。このため C-5 の publish 専用検査である「アクティブレーン外のアセットが
+無いこと」は検査しない。通常フローでは handoff を落とした後の dry-run で検査する。
+
+`release-run` はこの文書の順序をそのまま反映したラッパーです。まずは Phase 0 の
+前提を満たしておくこと。
+
 **この文書は手順書であり、設計の説明ではない。**なぜこの形なのかは
 `docs/EDITOR-EXPORT-DESIGN.md` §11 にある。ここでは繰り返さない。
 

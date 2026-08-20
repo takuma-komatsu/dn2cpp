@@ -4,6 +4,37 @@ A Japanese translation of this file is `docs/RELEASE.ja.md`; this file is the or
 
 Run it top to bottom and two hosts — macOS and Windows — produce one release.
 
+Or use the wrapper for the same flow:
+
+```bash
+cd <DEV>
+./dist/release-run.sh macos   --version "$V" --prev-version "$PREV" [--repo "$REPO"] [--out "$OUT"]
+./dist/release-run.sh windows --version "$V" --prev-version "$PREV" [--repo "$REPO"] [--out "$OUT"]
+```
+
+`--dry-run-only` still runs setup, build, packaging, and
+`release-github --dry-run`, but makes no remote release mutation: macOS skips
+draft creation and handoff upload; Windows skips handoff removal and publish.
+Run the macOS form by itself to validate the macOS lanes:
+
+```bash
+./dist/release-run.sh macos --version "$V" --prev-version "$PREV" --dry-run-only
+```
+
+The Windows form requires the draft and handoff produced by a normal macOS run;
+it is not the next step after the macOS dry-only form:
+
+```bash
+./dist/release-run.sh windows --version "$V" --prev-version "$PREV" --dry-run-only
+```
+
+To preserve the handoff, Windows dry-only does not pass `--publish` to
+`release-github`. It therefore omits C-5's publish-only check for assets outside
+the active lanes; the normal flow runs that check after dropping the handoff.
+
+The wrapper still follows this document's order. Use it after the preconditions in
+Phase 0 are met.
+
 **This is a procedure, not a design document.** Why the pieces are shaped this
 way is `docs/EDITOR-EXPORT-DESIGN.md` §11 and is not repeated here.
 
