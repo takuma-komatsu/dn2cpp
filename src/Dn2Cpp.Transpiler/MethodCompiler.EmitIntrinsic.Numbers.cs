@@ -670,18 +670,6 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "const Dn2CppNumberFormatInfo*", $"dn2cpp_culture_by_name({nm})");
                 return true;
             }
-            // CultureInfo.VerifyCultureName(string|CultureInfo, bool throwException) — every
-            // name dn2cpp's culture table answers is well-formed, so the check always passes.
-            // Both overloads are (something, bool); the shape is matched so an overload change
-            // reaches the loud miss instead of popping the wrong number of operands.
-            case ("System.Globalization.CultureInfo", "VerifyCultureName")
-                when sig.ParameterTypes is [_, { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
-            {
-                Pop(); // bool throwException
-                Pop(); // string cultureName / CultureInfo culture
-                Push(StackKind.I4, "int32_t", "1");
-                return true;
-            }
             // CultureInfo.GetCultureInfo(int lcid) — the reverse lookup over the same
             // culture table the name overload uses: 127 is the invariant culture, a
             // modeled culture's real LCID is its own, and anything else is rejected.
