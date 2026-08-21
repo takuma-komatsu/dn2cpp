@@ -1847,6 +1847,24 @@ internal sealed partial class CppEmitter
                     compiledMethods.Add(m);
                     continue;
                 }
+                // An address-taken member whose CALLS an intercept row cut (ldftn /
+                // delegate method group over e.g. ExecutionContext.Run): reachability
+                // deleted the edge to the real body, so replay that row's own emit arm
+                // at the body position — cut ⟹ route holds through the body too. Behind
+                // the Comparer.Compare arm above: that row already owns its own body, and
+                // an address taken of it must keep getting that one.
+                if (_c.InterceptFtnTargets.Contains(m))
+                {
+                    var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                            .CompileInterceptWrapper()
+                        ?? throw new NotSupportedException(
+                            $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
+                            "(delegate method group / function pointer): the intercept that " +
+                            "lowers its calls cannot be replayed as a function body");
+                    emitBody?.Invoke(m, wrapper);
+                    compiledMethods.Add(m);
+                    continue;
+                }
                 // A synthesized GenericComparer<T>.Compare over a VALUE TYPE real .NET's
                 // default comparer cannot order (see
                 // Compilation.IsUnorderableComparerCompareBody): its real IL boxes the value

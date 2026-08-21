@@ -3156,6 +3156,25 @@ internal sealed partial class Compilation
             Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
     }
 
+    /// <summary>ldftn/delegate targets whose call sites an intercept descriptor row CUT
+    /// (<see cref="CoreIntrinsics.TryFindCutRow"/>) — a method group over
+    /// <c>ExecutionContext.Run</c> and its kind. Reachability deleted the edge to the real
+    /// body, but the delegate adapter (or the raw address) NAMES the method's own symbol,
+    /// so cut ⟹ route holds only if the body exists: CppEmitter synthesizes it by
+    /// replaying that row's own emit arm
+    /// (<see cref="MethodCompiler.CompileInterceptWrapper"/>), which is the same lowering
+    /// a direct call gets. The method joins <see cref="Reachable"/> scan-less — following
+    /// its IL is exactly what the cut forbids — the same protocol as
+    /// <see cref="IntrinsicFtnTargets"/>, whose rows are the intrinsic-mapped TYPES this
+    /// one's are not.</summary>
+    internal HashSet<MethodInfo> InterceptFtnTargets { get; } = new();
+
+    public void NoteInterceptFtnTarget(MethodInfo m)
+    {
+        if (InterceptFtnTargets.Add(m))
+            Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
+    }
+
     /// <summary>Whether <paramref name="itf"/> is one of the interfaces String
     /// implements in the CLR and dispatches through its runtime map. The static-only
     /// parse interfaces (<c>IParsable</c>/<c>ISpanParsable</c>) are excluded — they

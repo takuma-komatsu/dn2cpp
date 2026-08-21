@@ -727,6 +727,23 @@ internal static partial class CoreIntrinsics
         return -1;
     }
 
+    /// <summary>The Cut row answering an ALREADY-RESOLVED method — the ldftn arm, which
+    /// resolves its token before asking, so a MethodDefinition row answers a
+    /// cross-assembly token too. Taking the address of a cut member needs the row's emit
+    /// arm replayed as the body (<see cref="Compilation.NoteInterceptFtnTarget"/>): a
+    /// None / BodyReplace row keeps a symbol either way and must not be answered here.</summary>
+    public static bool TryFindCutRow(MethodInfo mi, out MethodDefIntercept row)
+    {
+        int i = FirstMethodDefMatch(MethodDefIntercepts, mi);
+        if (i >= 0 && MethodDefIntercepts[i].CutKind == InterceptCutKind.Cut)
+        {
+            row = MethodDefIntercepts[i];
+            return true;
+        }
+        row = default;
+        return false;
+    }
+
     // ---- MemberReference-arm rows ----
 
     /// <summary>MemoryExtensions.ToUpperInvariant/ToLowerInvariant over char

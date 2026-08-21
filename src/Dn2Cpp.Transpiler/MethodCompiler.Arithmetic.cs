@@ -1886,6 +1886,20 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
+    /// <summary>Every ldftn / ldvirtftn arm that names a target's own symbol — the
+    /// delegate adapters and the two raw-address arms — asks this, because a symbol
+    /// named is a body required and reachability transpiles no body for a member whose
+    /// calls are intercepted. Two disjoint reasons, one question: an intrinsic-mapped
+    /// TYPE, whose whole surface is lowered inline, and a single member an intercept row
+    /// CUT. Silent when neither answers: the real IL is transpiled as usual.</summary>
+    private void NoteFtnTargetBody(MethodInfo target)
+    {
+        if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+            _c.NoteIntrinsicFtnTarget(target);
+        else if (CoreIntrinsics.TryFindCutRow(target, out _))
+            _c.NoteInterceptFtnTarget(target);
+    }
+
     /// <summary>The namespace-qualified name of a delegate parameter type (External
     /// TypeRef or a transpiled Class), for distinguishing Task.Run(Action) from
     /// Task.Run(Func&lt;Task&gt;). Empty for shapes we don't name.</summary>
