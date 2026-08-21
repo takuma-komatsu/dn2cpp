@@ -435,8 +435,11 @@ ORDERED_PROJECTS=(
 # here would turn a missing optional prerequisite into a Phase-3 failure before
 # the gate can report the sanctioned skip.
 GATE_OWNED_PROJECTS=(
+    "samples/dotnet/MessagePipeSample/MessagePipeSample.csproj"
     "samples/dotnet/R3Sample/R3Sample.csproj"
     "samples/dotnet/UniTaskSample/UniTaskSample.csproj"
+    "samples/dotnet/ZLinqSample/ZLinqSample.csproj"
+    "samples/dotnet/ZStringSample/ZStringSample.csproj"
 )
 
 for proj in "${GATE_OWNED_PROJECTS[@]}"; do

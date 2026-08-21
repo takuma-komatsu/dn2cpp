@@ -1404,3 +1404,16 @@ nonpublic: quiet:Int32
 sub: tag:Int32 base=Int32
 holder<int>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation ReflectRuntimeInstantiationSubset.Holder`1[System.Int32]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
 seam: anchor:Int32 baseIsAot=True assignable=True isinst=True aot=anchor:Int32
+== generic-definition assignability ==
+marker<-box  : True
+ngbase<-der  : True
+marker2<-leaf: True
+ienum<-list  : True
+object<-list : True
+ienumT<-listI: False
+ienumT<-listT: False
+marker<-boxI : False
+listT<-listT : True
+listT inst   : False
+box<> itfs   : 1
+der<> base   : GenericDefAssignabilitySubset.NgBase

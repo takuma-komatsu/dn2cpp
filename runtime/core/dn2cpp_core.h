@@ -2524,6 +2524,9 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 [[noreturn]] void dn2cpp_throw_index_out_of_range();
 [[noreturn]] void dn2cpp_throw_argument_out_of_range();
 [[noreturn]] void dn2cpp_throw_argument_null();
+// The same with the " (Parameter 'x')" tail ArgumentException.Message appends, for the
+// entry points whose rejection real .NET attributes to a named parameter.
+[[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName);
 [[noreturn]] void dn2cpp_throw_argument();
 [[noreturn]] void dn2cpp_throw_argument_msg(const char* message);
 [[noreturn]] void dn2cpp_throw_invalid_operation();
@@ -3549,6 +3552,7 @@ Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length);
 // ISpanFormattable write of a formatted string into a char span (the .NET TryFormat
 // contract): fits -> copy + *written = length + 1; too short -> untouched + *written = 0 + 0.
 int32_t dn2cpp_string_try_copy_to_span(Dn2CppString* s, char16_t* dest, int32_t destLen, int32_t* written);
+int32_t dn2cpp_string_try_copy_to_utf8_span(Dn2CppString* s, uint8_t* dest, int32_t destLen, int32_t* written);
 // `new string(char* value)` — NUL-terminated; a null pointer yields Empty (the
 // real BCL's documented behavior for this extern/VM-implemented ctor overload).
 Dn2CppString* dn2cpp_string_from_wcs(const char16_t* value);
@@ -4495,6 +4499,11 @@ Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del);
 // dn2cpp_task_run_void but the worker invokes the 1-arg delegate with `state`
 // (the base Stream.FlushAsync shape). Both are GC-rooted while queued/running.
 Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state);
+Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state);
 
 // ---- cold tasks: `new Task(...)` / `new Task<T>(...)` + Start / RunSynchronously ----
 // A cold (unstarted) task holds its delegate and result-kind thunk until Start()
@@ -6848,6 +6857,10 @@ int32_t dn2cpp_datetime_second(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_millisecond(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_dayofweek(Dn2CppDateTime a);   // 0=Sunday .. 6=Saturday
 int32_t dn2cpp_datetime_dayofyear(Dn2CppDateTime a);   // 1-based
+void dn2cpp_datetime_get_date(Dn2CppDateTime a, int32_t* year, int32_t* month, int32_t* day);
+void dn2cpp_datetime_get_time(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second);
+void dn2cpp_datetime_get_time_ms(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* millisecond);
+void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* tick);
 // AddTicks is exact; Add*(double) truncates value*ticksPerUnit toward zero (no
 // millisecond rounding); AddMonths/AddYears clamp the day to the target month.
 Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks);

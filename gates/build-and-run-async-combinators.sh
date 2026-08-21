@@ -27,6 +27,11 @@
 # cancellation alongside a fault contributes nothing — and that the three mouths that
 # mint an AggregateException over a task (Task.Exception, the blocking wait, and
 # Task.WaitAll) agree on that set while the awaiter raises its first element unwrapped.
+# TaskDelegateContractSubset.cs asserts the delegate contract of the RESULT-returning
+# Task.Run / Task.Factory.StartNew overloads (stateless and the Func<object,TResult> +
+# state form): a null delegate is rejected synchronously at the entry with .NET's
+# ArgumentNullException text, and a COMBINED delegate runs every handler front-to-back
+# with the task's result taken from the last one.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

@@ -2845,12 +2845,14 @@ internal sealed partial class MethodCompiler
             // A GENERIC state machine (`async GDTask<T> Foo<T>()` -> `<Foo>d__0<T>`)
             // arrives as a still-uncompleted specialization whose Methods are empty,
             // and this path — unlike StateMachineMoveNext / CustomAwaiterOnCompleted —
-            // never completed it: ConstrainedValueTypeImpl then found nothing and the
+            // never completed it: the resolution then found nothing and the
             // fallback below emitted a run-time trap for a call that MUST bind
             // (an earlier "no lowering" diagnosis misread this — the lowering exists,
             // the receiver was a shell). Same guard those two reach paths already carry.
             _c.EnsureCompleted(c.Class);
-            var impl = ConstrainedValueTypeImpl(c.Class, callee);
+            // ONE resolution, shared with the reachability cut (ReachConstrainedImpl):
+            // a private copy here would call a body nothing transpiled.
+            var impl = _c.ConstrainedImplOf(c.Class, callee);
             if (impl is null)
             {
                 // `constrained.<T> callvirt IDisposable::Dispose` with no resolvable
@@ -3076,6 +3078,8 @@ internal sealed partial class MethodCompiler
 
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
+        if (keyType.IsCanonPlaceholder && !keyType.IsObject)
+            return $"(int32_t)({Cast(key, "int32_t")})";
         if (keyType.IsString)
             return $"dn2cpp_string_hashcode({Cast(key, "Dn2CppString*")})";
         if (keyType.Kind == TypeKind.Primitive && !keyType.IsObject)
@@ -3100,18 +3104,19 @@ internal sealed partial class MethodCompiler
         // key value directly — no boxing. The override is reached at the comparer-
         // dispatch site in the reachability scan (use-site gated). A struct with NO
         // override hashes by the synthesized field walk, which is the same function the
-        // boxed path reaches through the type-info slot: a key hashed here and the same
-        // key hashed through a box land in one bucket because they are one function.
-        if (keyType is { Kind: TypeKind.Class, Class: { IsValueType: true, IntrinsicCppName: null } sc }
-            && (Compilation.EffectiveGetHashCode(sc) ?? SynthesizedValueHash(sc)) is { } gh)
+        // type-info slot's box fallback calls.
+        if (EqualityStructArm(keyType) is { } sc
+            && (Compilation.EffectiveGetHashCode(sc) ?? _c.ReachedSynthesizedValueHash(sc)) is { } gh)
         {
+            // This is the non-lvalue entry point (a caller may hand it a raw Pop()), and the
+            // typed GetHashCode wants an address — spill, exactly as EqualityEqualsExpr does.
             string ct = CppTypes.Of(keyType);
             string tmp = NewTemp(ct);
             Emit($"{tmp} = {Cast(key, ct)};");
             return $"{DirectCallSym(gh)}({ArgsWithRgctx($"&{tmp}", gh)})";
         }
         throw new NotSupportedException(
-            $"{_method.DeclaringClass.FullName}.{_method.Name}: GetHashCode for key type {keyType} is not supported yet");
+            $"{_method.DeclaringClass.FullName}.{_method.Name}: element type {keyType} has no hash mapping yet");
     }
 
     /// <summary>The reached synthesized structural hash of a struct that overrides
@@ -3133,22 +3138,17 @@ internal sealed partial class MethodCompiler
         return _c.ReachedSynthesizedValueEquals(sc);
     }
 
-    /// <summary>True when a (closed) key type is a reference type — a user
-    /// class/record, an external reference type (System.Type/System.Object),
-    /// an array (SZArray/MDArray — reference types whose default comparer is
-    /// reference equality / identity hash, matching .NET's ObjectEqualityComparer
-    /// for a T[] that overrides neither Equals nor GetHashCode), or bare object.
-    /// Its GetHashCode/Equals route to the dn2cpp_object_* helpers, which
-    /// dispatch a wired override or fall back to identity/reference. Strings are
-    /// excluded (content-hashed/compared by their own path).</summary>
+    /// <summary>Whether <paramref name="t"/> represents a reference-type key
+    /// (class/record/array/interface) for <see cref="TryEqualityEqualsLValue"/> and
+    /// <see cref="EqualityHashExpr"/> — the object-dispatch arm (dn2cpp_object_equals /
+    /// dn2cpp_object_gethashcode).</summary>
     internal static bool IsReferenceKeyType(TypeDesc t) => !t.IsString && t switch
     {
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Object } => true,
-        // System.Enum itself is NOT an enum (IsEnum=false) and, though its metadata base IS
-        // System.ValueType, the model calls it a reference type exactly as the CLR does
-        // (Compilation.cs's base-type scan) — a System.Enum-typed value is a BOXED reference,
-        // CppTypes.Of maps it to Dn2CppObject*. So the plain reference test below answers it,
-        // and its default equality/hash route to the dn2cpp_object_* helpers (whose boxed-enum
+        // System.Enum is a reference class in metadata (IsValueType false), but its runtime
+        // instances are boxed primitive values; routing it to object-equals/hash would pass a
+        // box pointer that dn2cpp_object_equals's value-unboxing arm dereferences as Object
+        // rather than the underlying scalar. Exclude it here so the enum branch (or primitive
         // arm reads the underlying at width) rather than to the value-struct arm. Model it as
         // a value type again and EqualityComparer<System.Enum>.Default / List<System.Enum> /
         // HashSet<System.Enum> emit Enum::Equals(&box, …) — a value-type `this` against a
@@ -3191,7 +3191,8 @@ internal sealed partial class MethodCompiler
     /// holding stack values whether it must spill them to addressable temps first,
     /// and what tells one already holding lvalues that it need not.</summary>
     private static ClassInfo? EqualityStructArm(TypeDesc t) =>
-        t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false, IntrinsicCppName: null } c }
+        t is { Kind: TypeKind.Class, IsCanonPlaceholder: false, Class: { IsValueType: true, IsEnum: false, IntrinsicCppName: null } c }
+        && !Compilation.ContainsCanonPlaceholder(c)
         && IntrinsicValueTypeFn(t) is null
             ? c
             : null;
@@ -3220,6 +3221,7 @@ internal sealed partial class MethodCompiler
     private bool CanEqualityEquals(TypeDesc t) =>
         t.IsString
         || (t.Kind == TypeKind.Primitive && !t.IsObject)
+        || t.IsCanonPlaceholder
         || t is { Kind: TypeKind.Class, Class.IsEnum: true }
         || IsReferenceKeyType(t)
         || IntrinsicValueTypeFn(t) is not null
@@ -3239,6 +3241,11 @@ internal sealed partial class MethodCompiler
     /// NotSupported belongs to the caller, which knows what it was scanning.</summary>
     private string? TryEqualityEqualsLValue(TypeDesc keyType, StackEntry a, StackEntry b)
     {
+        if (keyType.IsCanonPlaceholder && !keyType.IsObject)
+        {
+            string ct = CppTypes.Of(keyType);
+            return $"(({Cast(a, ct)}) == ({Cast(b, ct)}) ? 1 : 0)";
+        }
         if (keyType.IsString)
             return $"dn2cpp_string_equals({Cast(a, "Dn2CppString*")}, {Cast(b, "Dn2CppString*")})";
         if (keyType.Kind == TypeKind.Primitive && !keyType.IsObject)
@@ -3614,8 +3621,9 @@ internal sealed partial class MethodCompiler
         // CoreIntrinsics.CvIntegerTryFormat). The eight-width set has exactly one
         // spelling; a hand-written copy here would fail at C++ LINK time, not here.
         if (c.Kind == TypeKind.Primitive
-            && CoreIntrinsics.PrimitiveIntegerFullName(c.Primitive) is { } intName
-            && CoreIntrinsics.LoweredIntegerTryFormat(intName, name))
+            && (CoreIntrinsics.PrimitiveIntegerFullName(c.Primitive)
+                ?? (c.Primitive == PrimitiveTypeCode.Double ? "System.Double" : c.Primitive == PrimitiveTypeCode.Single ? "System.Single" : null)) is { } intName
+            && (CoreIntrinsics.LoweredIntegerTryFormat(intName, name) || name == "TryFormat"))
         {
             // A placeholder receiver stands for a whole width-preserving group, which
             // mixes integer primitives with same-underlying ENUMS — and an enum's
@@ -3626,7 +3634,7 @@ internal sealed partial class MethodCompiler
             // Mirrors the enum ToString primitive arm's TaintIfCanonical.
             TaintIfCanonical(c, "enum-tryformat");
             var csig = ConstrainedCalleeSig(handle);
-            // Only the integer-primitive 4-arg (Span<char|byte>, out int, ReadOnlySpan
+            // Only the primitive 4-arg (Span<char|byte>, out int, ReadOnlySpan
             // <char>, IFormatProvider) shape is lowered (EmitIntrinsic discriminates the
             // destination element type).
             if (csig.ParameterTypes is [_, { Kind: TypeKind.ByRef }, _, _])
@@ -4062,51 +4070,6 @@ internal sealed partial class MethodCompiler
         return parent is { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
             && pi.Context.TypeArgs.Length == 1
             && _c.GenericDefFullName(pi) == itfName;
-    }
-
-    /// <summary>Resolves the value-type body a <c>constrained.&lt;C&gt; callvirt</c>
-    /// devirtualizes to. For <c>IEquatable&lt;T&gt;::Equals(!0)</c> /
-    /// <c>IComparable&lt;T&gt;::CompareTo(!0)</c> the erased <c>!0</c> makes the
-    /// SigKey walk match the struct's <c>Equals(object)</c> override instead of the
-    /// typed <c>Equals(T)</c> the interface dispatch must reach (the IL argument is
-    /// an unboxed T — e.g. SRM's Symbolic.BitVector, which has both); prefer the
-    /// typed overload there. The non-generic <c>System.IComparable</c> (zero type
-    /// args, boxed object argument) keeps the SigKey path.</summary>
-    private MethodInfo? ConstrainedValueTypeImpl(ClassInfo cls, MethodInfo callee)
-    {
-        if (callee.DeclaringClass is { IsInterface: true } itf
-            && itf.Context.TypeArgs.Length == 1
-            && callee.Signature.ParameterTypes.Length == 1)
-        {
-            switch (_c.GenericDefFullName(itf))
-            {
-                case "System.IEquatable" when callee.Name == "Equals"
-                    && Compilation.EffectiveTypedEquals(cls) is { } teq:
-                    return teq;
-                case "System.IComparable" when callee.Name == "CompareTo"
-                    && Compilation.EffectiveTypedCompareTo(cls) is { } tct:
-                    return tct;
-            }
-        }
-        return FindImpl(cls, callee);
-    }
-
-    private MethodInfo? FindImpl(ClassInfo cls, MethodInfo target)
-    {
-        for (var c = cls; c is not null; c = c.BaseClass)
-        {
-            // An explicit interface implementation carries the dotted metadata
-            // name (`IAsyncStateMachine.SetStateMachine`), so the SigKey scan
-            // below can never match it — the .override row is the binding, and
-            // it takes precedence over an implicit same-signature method.
-            if (c.ExplicitInterfaceImpls.TryGetValue(target, out var em))
-                return em;
-            var m = c.Methods.FirstOrDefault(x => !x.IsStatic && x.Rva != 0
-                && x.Name == target.Name && x.SigKey == target.SigKey);
-            if (m is not null)
-                return m;
-        }
-        return null;
     }
 
     /// <summary>Constant-folds a direct call whose callee body is exactly

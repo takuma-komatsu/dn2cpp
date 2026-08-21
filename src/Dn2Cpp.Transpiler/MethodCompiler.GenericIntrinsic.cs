@@ -1914,38 +1914,58 @@ internal sealed partial class MethodCompiler
         {
             var tres = methodArgs[0];
             var fsig = DecodeGenericCallSignature(msh, methodArgs);
-            if (fsig.ParameterTypes[0] is not { Kind: TypeKind.Class, Class.Context.TypeArgs.Length: 1 })
+            // The pop count below is derived from the delegate's arity, so an unmodelled
+            // delegate shape must throw rather than be read as the stateless one.
+            if (fsig.ParameterTypes[0] is not { Kind: TypeKind.Class, Class: { } dcl }
+                || dcl.Context.TypeArgs.Length is not (1 or 2))
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew<{tres}> " +
-                    "with a state argument (Func<object?, TResult>) is not supported yet");
-            for (int i = fsig.ParameterTypes.Length - 1; i >= 1; i--)
+                    $"delegate {fsig.ParameterTypes[0]} is not Func<TResult> or Func<object?, TResult>");
+            bool hasState = dcl.Context.TypeArgs.Length == 2;
+            int kept = hasState ? 2 : 1; // delegate [+ state]
+            for (int i = fsig.ParameterTypes.Length - 1; i >= kept; i--)
                 Pop(); // CancellationToken / TaskCreationOptions / TaskScheduler hints
-            var fdel = Pop(); // Func<TResult>
+            StackEntry? state = null;
+            if (hasState)
+                state = Pop();
+            var fdel = Pop(); // Func<TResult> or Func<object?, TResult>
             Pop();            // receiver — the Task.Factory nullptr sentinel
             if (DelegateReturnsTask(fsig.ParameterTypes[0]))
             {
+                if (hasState)
+                    throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew with state and Task-returning delegate is not supported yet");
                 Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_run_nested((Dn2CppObject*)({fdel.Expr}))");
                 return;
             }
             // A value-type result rides the same boxing trampoline as Task.Run<TStruct>.
             if (CppTypes.KindOf(tres) == StackKind.Struct)
             {
+                if (hasState)
+                    throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew<{tres}> with state and struct result is not supported yet");
                 Push(StackKind.Ref, "Dn2CppTask*",
                     $"dn2cpp_task_run_struct((Dn2CppObject*)({fdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))})");
                 return;
             }
-            string ffn = CppTypes.KindOf(tres) switch
+            string ffn = (CppTypes.KindOf(tres), hasState) switch
             {
-                StackKind.I8 => "dn2cpp_task_run_i8",
-                StackKind.R8 => tres is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }
+                (StackKind.I8, false) => "dn2cpp_task_run_i8",
+                (StackKind.I8, true) => "dn2cpp_task_run_i8_state",
+                (StackKind.R8, false) => tres is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }
                     ? "dn2cpp_task_run_r4" : "dn2cpp_task_run_r8",
-                StackKind.I4 => "dn2cpp_task_run_i4",
-                StackKind.Ref => "dn2cpp_task_run_ref",
+                (StackKind.R8, true) => tres is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }
+                    ? "dn2cpp_task_run_r4_state" : "dn2cpp_task_run_r8_state",
+                (StackKind.I4, false) => "dn2cpp_task_run_i4",
+                (StackKind.I4, true) => "dn2cpp_task_run_i4_state",
+                (StackKind.Ref, false) => "dn2cpp_task_run_ref",
+                (StackKind.Ref, true) => "dn2cpp_task_run_ref_state",
                 _ => throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: TaskFactory.StartNew<{tres}> " +
                     "result kind not supported yet (int/long/float/double/reference only)"),
             };
-            Push(StackKind.Ref, "Dn2CppTask*", $"{ffn}((Dn2CppObject*)({fdel.Expr}))");
+            if (hasState && state is not null)
+                Push(StackKind.Ref, "Dn2CppTask*", $"{ffn}((Dn2CppObject*)({fdel.Expr}), {Cast(state, "Dn2CppObject*")})");
+            else
+                Push(StackKind.Ref, "Dn2CppTask*", $"{ffn}((Dn2CppObject*)({fdel.Expr}))");
             return;
         }
 
@@ -2089,50 +2109,83 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // NumberFormatInfo's generic span accessors (NegativeSignTChar<TChar>() and
-        // siblings) — the numeric-formatting subtree's TChar forms of the string
-        // properties (reached from the transpiled Number.FormatFloat behind
-        // Half.ToString). Only the TChar=char instantiation is modeled (the string
-        // formatting path); the Utf8Char one stays a loud failure. Each returns a
-        // ReadOnlySpan<char> over the runtime NFI model's string (PositiveSign and
-        // PerMilleSymbol are not carried in the model — every modeled culture keeps
-        // the invariant "+" / "‰").
-        if (declType == "System.Globalization.NumberFormatInfo"
+        // NumberFormatInfo / DateTimeFormatInfo generic span accessors
+        // (NegativeSignTChar<TChar>() and siblings) — the TChar forms of the string
+        // properties, reached from the transpiled formatting subtrees (Number.FormatFloat
+        // behind Half.ToString for char, the Utf8Formatter path for byte). BOTH widths read
+        // the SAME modeled culture: the byte arm transcodes the very string the char arm
+        // spans, so a non-invariant provider prints its own separators in UTF-8 too.
+        // PositiveSign and PerMilleSymbol are not carried in the model — every modeled
+        // culture keeps the invariant "+" / "‰" — and the DateTimeFormatInfo model is
+        // invariant-only, matching its property intercepts.
+        if ((declType is "System.Globalization.NumberFormatInfo" or "System.Globalization.DateTimeFormatInfo")
             && name.EndsWith("TChar", StringComparison.Ordinal))
         {
-            if (methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }])
+            bool isByte = methodArgs is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Byte }];
+            if (methodArgs is not [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }] && !isByte)
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name}" +
-                    $"<{methodArgs[0]}> is only supported for TChar=char");
-            var nfiRecv = Pop();
-            string nfiPtr = $"({Cast(nfiRecv, "const Dn2CppNumberFormatInfo*")})";
-            string strExpr = name switch
-            {
-                "NumberDecimalSeparatorTChar" => $"{nfiPtr}->numberDecimal",
-                "NumberGroupSeparatorTChar" => $"{nfiPtr}->numberGroup",
-                "NegativeSignTChar" => $"{nfiPtr}->negativeSign",
-                "NaNSymbolTChar" => $"{nfiPtr}->nan",
-                "PositiveInfinitySymbolTChar" => $"{nfiPtr}->posInf",
-                "NegativeInfinitySymbolTChar" => $"{nfiPtr}->negInf",
-                "PercentSymbolTChar" => $"{nfiPtr}->percentSymbol",
-                "PercentDecimalSeparatorTChar" => $"{nfiPtr}->percentDecimal",
-                "PercentGroupSeparatorTChar" => $"{nfiPtr}->percentGroup",
-                "CurrencySymbolTChar" => $"{nfiPtr}->currencySymbol",
-                "CurrencyDecimalSeparatorTChar" => $"{nfiPtr}->currencyDecimal",
-                "CurrencyGroupSeparatorTChar" => $"{nfiPtr}->currencyGroup",
-                "PositiveSignTChar" => Literals.GetOrAdd("+"),
-                "PerMilleSymbolTChar" => Literals.GetOrAdd("‰"),
-                _ => throw new NotSupportedException(
-                    $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} " +
-                    "has no runtime NFI field mapping yet"),
-            };
+                    $"<{methodArgs[0]}> is only supported for TChar=char or TChar=byte");
+
+            var recv = Pop();
             var nfiSig = MethodSpecSig(msh, methodArgs);
             string spanCt = CppTypes.Of(nfiSig.ReturnType);
-            string symStr = NewTemp("Dn2CppString*");
-            Emit($"{symStr} = {strExpr};");
             string symSpan = NewTemp(spanCt);
-            Emit($"{symSpan}.f__reference = {symStr} ? (char16_t*){symStr}->chars : nullptr;");
-            Emit($"{symSpan}.f__length = {symStr} ? {symStr}->length : 0;");
+            string strExpr;
+            if (declType == "System.Globalization.DateTimeFormatInfo")
+                strExpr = Literals.GetOrAdd(name switch
+                {
+                    "DecimalSeparatorTChar" => ".",
+                    "DateSeparatorTChar" => "/",
+                    "TimeSeparatorTChar" => ":",
+                    "AMDesignatorTChar" => "AM",
+                    "PMDesignatorTChar" => "PM",
+                    _ => throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} has no mapping yet"),
+                });
+            else
+            {
+                string nfiPtr = $"({Cast(recv, "const Dn2CppNumberFormatInfo*")})";
+                strExpr = name switch
+                {
+                    "NumberDecimalSeparatorTChar" => $"{nfiPtr}->numberDecimal",
+                    "NumberGroupSeparatorTChar" => $"{nfiPtr}->numberGroup",
+                    "NegativeSignTChar" => $"{nfiPtr}->negativeSign",
+                    "NaNSymbolTChar" => $"{nfiPtr}->nan",
+                    "PositiveInfinitySymbolTChar" => $"{nfiPtr}->posInf",
+                    "NegativeInfinitySymbolTChar" => $"{nfiPtr}->negInf",
+                    "PercentSymbolTChar" => $"{nfiPtr}->percentSymbol",
+                    "PercentDecimalSeparatorTChar" => $"{nfiPtr}->percentDecimal",
+                    "PercentGroupSeparatorTChar" => $"{nfiPtr}->percentGroup",
+                    "CurrencySymbolTChar" => $"{nfiPtr}->currencySymbol",
+                    "CurrencyDecimalSeparatorTChar" => $"{nfiPtr}->currencyDecimal",
+                    "CurrencyGroupSeparatorTChar" => $"{nfiPtr}->currencyGroup",
+                    "PositiveSignTChar" => Literals.GetOrAdd("+"),
+                    "PerMilleSymbolTChar" => Literals.GetOrAdd("‰"),
+                    _ => throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} " +
+                        "has no runtime NFI field mapping yet"),
+                };
+            }
+            string sStr = NewTemp("Dn2CppString*");
+            Emit($"{sStr} = {strExpr};");
+            if (isByte)
+            {
+                // The returned span outlives this call, so the transcode lands in a GC
+                // buffer, never a frame temp. Atomic: the bytes hold no references.
+                string n = NewTemp("int32_t");
+                string buf = NewTemp("uint8_t*");
+                Emit($"{n} = {sStr} ? dn2cpp_string_to_utf8({sStr}, nullptr, 0) : 0;");
+                Emit($"{buf} = (uint8_t*)dn2cpp_alloc_atomic((size_t)({n} + 1));");
+                Emit($"if ({n} > 0) dn2cpp_string_to_utf8({sStr}, (char*){buf}, {n});");
+                Emit($"{symSpan}.f__reference = {buf};");
+                Emit($"{symSpan}.f__length = {n};");
+            }
+            else
+            {
+                Emit($"{symSpan}.f__reference = {sStr} ? (char16_t*){sStr}->chars : nullptr;");
+                Emit($"{symSpan}.f__length = {sStr} ? {sStr}->length : 0;");
+            }
             Push(StackKind.Struct, spanCt, symSpan);
             return;
         }

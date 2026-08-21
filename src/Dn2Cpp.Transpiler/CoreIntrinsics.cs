@@ -169,6 +169,7 @@ internal static partial class CoreIntrinsics
         // the same pointer so a CultureInfo/NumberFormatInfo flows as the provider.
         "System.Globalization.CultureInfo",
         "System.Globalization.NumberFormatInfo",
+        "System.Globalization.DateTimeFormatInfo",
         "System.IFormatProvider",
         // TextInfo — only its ListSeparator is reached (a throw helper joins the
         // missing required-property names with CurrentUICulture.TextInfo.ListSeparator).

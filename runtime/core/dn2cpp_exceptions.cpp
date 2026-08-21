@@ -496,6 +496,23 @@ void dn2cpp_overflow()
     dn2cpp_throw_aoor(key, nullptr, 0, paramName, nullptr);
 }
 
+// ArgumentNullException as real .NET assembles it: the resource's sentence plus the
+// " (Parameter 'x')" tail ArgumentException.Message appends. ParamName itself stays null
+// for the same reason it does on every runtime-raised trap (see dn2cpp_exception_new).
+[[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName)
+{
+    const char* head = dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL);
+    std::string one[1] = { std::string(paramName) };
+    Dn2CppString* tail = dn2cpp_sr_format(DN2CPP_SR_PARAM_NAME, one, 1);
+    if (head == nullptr || tail == nullptr)
+        dn2cpp_throw_argument_null();
+    std::string s = head;
+    s += ' ';
+    s += dn2cpp_sr_arg(tail);
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_null_exception_type,
+        dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size())), nullptr));
+}
+
 void dn2cpp_throw_index_out_of_range() { dn2cpp_throw_of(&dn2cpp_index_out_of_range_exception_type); }
 void dn2cpp_throw_argument_out_of_range() { dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type); }
 void dn2cpp_throw_argument_null() { dn2cpp_throw_of(&dn2cpp_argument_null_exception_type); }

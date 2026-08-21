@@ -183,6 +183,37 @@ int32_t dn2cpp_datetime_second(Dn2CppDateTime a) { return (int32_t)((a.ticks() /
 int32_t dn2cpp_datetime_millisecond(Dn2CppDateTime a) { return (int32_t)((a.ticks() / DN2CPP_TPMS) % 1000); }
 int32_t dn2cpp_datetime_dayofweek(Dn2CppDateTime a) { return (int32_t)((a.ticks() / DN2CPP_TPD + 1) % 7); }
 int32_t dn2cpp_datetime_dayofyear(Dn2CppDateTime a) { int doy; dn2cpp_dt_datepart(a.ticks(), nullptr, nullptr, nullptr, &doy); return doy; }
+void dn2cpp_datetime_get_date(Dn2CppDateTime a, int32_t* year, int32_t* month, int32_t* day)
+{
+    int y, m, d;
+    dn2cpp_dt_datepart(a.ticks(), &y, &m, &d, nullptr);
+    if (year) *year = y;
+    if (month) *month = m;
+    if (day) *day = d;
+}
+void dn2cpp_datetime_get_time(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second)
+{
+    int64_t ticks = a.ticks();
+    if (hour) *hour = (int32_t)((ticks / DN2CPP_TPH) % 24);
+    if (minute) *minute = (int32_t)((ticks / DN2CPP_TPM) % 60);
+    if (second) *second = (int32_t)((ticks / DN2CPP_TPS) % 60);
+}
+void dn2cpp_datetime_get_time_ms(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* millisecond)
+{
+    int64_t ticks = a.ticks();
+    if (hour) *hour = (int32_t)((ticks / DN2CPP_TPH) % 24);
+    if (minute) *minute = (int32_t)((ticks / DN2CPP_TPM) % 60);
+    if (second) *second = (int32_t)((ticks / DN2CPP_TPS) % 60);
+    if (millisecond) *millisecond = (int32_t)((ticks / DN2CPP_TPMS) % 1000);
+}
+void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* tick)
+{
+    int64_t ticks = a.ticks();
+    if (hour) *hour = (int32_t)((ticks / DN2CPP_TPH) % 24);
+    if (minute) *minute = (int32_t)((ticks / DN2CPP_TPM) % 60);
+    if (second) *second = (int32_t)((ticks / DN2CPP_TPS) % 60);
+    if (tick) *tick = (int32_t)(ticks % DN2CPP_TPS);
+}
 Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks) { return dn2cpp_datetime_pack(a.ticks() + ticks, a.kind()); }
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit)
 { return dn2cpp_datetime_pack(a.ticks() + (int64_t)(value * (double)ticksPerUnit), a.kind()); }
@@ -424,6 +455,29 @@ int32_t dn2cpp_string_try_copy_to_span(Dn2CppString* s, char16_t* dest, int32_t 
     for (int32_t i = 0; i < n; i++)
         dest[i] = s->chars[i];
     if (written != nullptr) *written = n;
+    return 1;
+}
+
+// The IUtf8SpanFormattable sibling of the above: the same TryFormat contract over a
+// UTF-8 destination. Transcoding goes through dn2cpp_utf16_to_utf8 — sized first, then
+// written — because a per-code-unit encode would emit a surrogate PAIR as two 3-byte
+// sequences (CESU-8, not UTF-8) and would also over-estimate the size, refusing spans
+// .NET fills. That helper folds a lone surrogate to U+FFFD, as Encoding.UTF8 does.
+int32_t dn2cpp_string_try_copy_to_utf8_span(Dn2CppString* s, uint8_t* dest, int32_t destLen, int32_t* written)
+{
+    if (s == nullptr)
+    {
+        if (written != nullptr) *written = 0;
+        return 1;
+    }
+    int32_t utf8Len = dn2cpp_utf16_to_utf8(s->chars, s->length, nullptr, 0);
+    if (utf8Len > destLen)
+    {
+        if (written != nullptr) *written = 0;
+        return 0;
+    }
+    dn2cpp_utf16_to_utf8(s->chars, s->length, reinterpret_cast<char*>(dest), utf8Len);
+    if (written != nullptr) *written = utf8Len;
     return 1;
 }
 

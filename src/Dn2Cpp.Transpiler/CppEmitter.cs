@@ -5022,7 +5022,7 @@ internal sealed partial class CppEmitter
         var decl = new List<string> { $"{im.DeclaringClass.CppStructName}* o" };
         for (int k = 0; k < ps.Length; k++)
             decl.Add($"{CppTypes.Of(ps[k])} a{k}");
-        var implPs = impl.Signature.ParameterTypes;
+        var implPs = impl.Emittable.Signature.ParameterTypes;
         // A static-abstract interface member (generic-math/SIMD operators like
         // IAdditionOperators.op_Addition, INumber.Min/Max, ISimdVector.get_Zero) is
         // implemented by a *static* method with no receiver, so the unboxed `this`
@@ -5030,7 +5030,7 @@ internal sealed partial class CppEmitter
         // slot stays populated (index alignment is preserved) but the boxed receiver
         // `o` is ignored, which is correct: a static member never reads the instance.
         var callArgs = new List<string>();
-        if (!impl.IsStatic)
+        if (!impl.Emittable.IsStatic)
             callArgs.Add($"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
         for (int k = 0; k < ps.Length; k++)
             callArgs.Add(NfiSlotArg(implPs[k], $"a{k}"));

@@ -403,13 +403,14 @@ internal sealed partial class MethodCompiler
                     throw new InvalidOperationException(
                         "EqualityComparer<T>.Default has no closed element type");
                 var elem = comparerClass.Context.TypeArgs[0];
-                if (Comp.IEqualityComparerInterfaceFor(elem) is not { } comparerInterface)
-                    throw new InvalidOperationException(
+                var comparerInterface = Comp.IEqualityComparerInterfaceFor(elem)
+                    ?? throw new InvalidOperationException(
                         "EqualityComparer<T>.Default could not resolve its closed IEqualityComparer<T>");
-                if (Comp.NonGenericEqualityComparerInterface() is not { } nongenericInterface)
-                    throw new InvalidOperationException(
+                var nongenericInterface = Comp.NonGenericEqualityComparerInterface()
+                    ?? throw new InvalidOperationException(
                         "EqualityComparer<T>.Default could not resolve System.Collections.IEqualityComparer");
-                NoteReferencedType(comparerInterface);
+                if (!Compilation.ContainsCanonPlaceholder(comparerInterface))
+                    NoteReferencedType(comparerInterface);
                 NoteReferencedType(nongenericInterface);
                 string comparerType, interfaceType;
                 if (SharedTrial && Compilation.ContainsCanonPlaceholder(elem))

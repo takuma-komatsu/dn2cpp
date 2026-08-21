@@ -1091,11 +1091,17 @@ internal sealed partial class Compilation
             _ => null,
         };
 
-    /// <summary>Reaches a value type's implementation of a <c>constrained.</c>
-    /// callvirt target by signature. Needed for Object/ValueType-rooted virtuals
-    /// (ToString/Equals/GetHashCode), whose declaring type is intrinsic so the
-    /// normal call edge is cut — yet a constrained call on a struct emits a direct
-    /// call to the struct's override, which must therefore be transpiled.</summary>
+    /// <summary>Reaches a value type's implementation of a <c>constrained.</c> callvirt
+    /// target — an interface slot, or an Object/ValueType-rooted virtual whose declaring
+    /// type is intrinsic so the normal call edge is cut. Either way the emit side lowers
+    /// the call to a DIRECT call on the struct's body, which must therefore be transpiled.
+    ///
+    /// <para>The order below mirrors the emit side's decision order: the typed
+    /// IEquatable/IComparable devirtualization, then the cuts and boxed-dispatch wiring
+    /// <c>TryEmitValueConstrained</c> claims, then the resolution
+    /// <c>EmitConstrainedCall</c> makes. A step that ran early here and returned would
+    /// reach a body emit never calls while leaving the one it does call
+    /// untranspiled.</para></summary>
     private void ReachConstrainedImpl(Module module, EntityHandle calleeHandle, TypeDesc constrained, GenericContext ctx)
     {
         // A `constrained. System.Object callvirt IComparable<object>::CompareTo` — the
@@ -1111,17 +1117,28 @@ internal sealed partial class Compilation
             return;
         string name;
         MethodSignature<TypeDesc> sig;
+        // The resolved callee, when the token yields one: what the shared resolution below
+        // (ConstrainedImplOf) needs, and the only thing that can see an .override row or a
+        // variance-compatible interface slot. A token that resolves to nothing keeps the
+        // name+shape walk at the bottom.
+        MethodInfo? resolvedCallee = null;
         switch (calleeHandle.Kind)
         {
             case HandleKind.MemberReference:
                 var mr = module.Reader.GetMemberReference((MemberReferenceHandle)calleeHandle);
                 name = module.Reader.GetString(mr.Name);
                 sig = mr.DecodeMethodSignature(SigProvider, ctx);
+                // An unresolvable member ref is not an error here — the name+shape walk at
+                // the bottom still answers. The filter is what keeps InstantiationBound
+                // (a NotSupportedException subclass) escaping.
+                try { resolvedCallee = ResolveMemberRefMethod(module, (MemberReferenceHandle)calleeHandle, ctx); }
+                catch (NotSupportedException e) when (!IsMustEscape(e)) { }
                 // The typed IEquatable<T>::Equals(!0) / IComparable<T>::CompareTo(!0)
-                // devirtualizes to the struct's typed overload (the emit side's
-                // ConstrainedValueTypeImpl); under an erased caller context the SigKey
-                // walk below would decode !0 to object and reach the Equals(object)
-                // override instead, so reach the typed body explicitly.
+                // devirtualizes to the struct's typed overload; under an erased caller
+                // context the SigKey walk below would decode !0 to object and reach the
+                // Equals(object) override instead, so reach the typed body explicitly. Kept
+                // here rather than deferred to ConstrainedImplOf: that asks the RESOLVED
+                // callee, and this token may not resolve to one.
                 if (mr.Parent.Kind == HandleKind.TypeSpecification
                     && ResolveTypeTokenForScan(module, mr.Parent, ctx) is
                         { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
@@ -1191,19 +1208,32 @@ internal sealed partial class Compilation
             ReachSynthesizedValueEquality(c,
                 includeHash: name == "GetHashCode", includeEquals: name == "Equals");
         }
+        // Past the cuts, the emitted call is a direct call to the body ConstrainedImplOf
+        // picks (MethodCompiler.EmitConstrainedCall asks the same function), so reach that
+        // one. INVARIANT: no canon-placeholder guard here — the emit side's value-type path
+        // has none either, so a shared canonical body's `constrained.<Wrap<!T>> callvirt`
+        // emits a direct call that only this edge reaches.
+        if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } bound)
+        {
+            Reach(bound);
+            return;
+        }
+        // No resolved callee (or none bound): fall back to the name+shape walk, which can
+        // still answer a MethodDefinition token or an unresolvable MemberRef.
+        //
         // The same renderer the key itself is built from (MethodInfo.SigKey), rather than a
         // second copy of its format — the two have to agree exactly or every scan below misses.
         string key = name + AbiContract.SigShape(sig);
         for (var b = c; b is not null; b = b.BaseClass)
         {
-            // The emit side (MethodCompiler.FindImpl) binds an explicit interface
-            // implementation first — its dotted metadata name means the SigKey scan
-            // below can never see it. Mirror that here or the bound body is never
-            // reached and the emitted call dangles (Regex.ValueMatchEnumerator's
-            // `IDisposable.Dispose`). Matching by the DECLARATION's SigKey is a
-            // superset of the emit side's exact-method probe (two interfaces can
-            // declare the same name+shape), so reach every match: over-reaching is
-            // safe, a dangling symbol is not.
+            EnsureCompleted(b);
+            // The emit side binds an explicit interface implementation first — its dotted
+            // metadata name means the SigKey scan below can never see it. Mirror that here
+            // or the bound body is never reached and the emitted call dangles
+            // (Regex.ValueMatchEnumerator's `IDisposable.Dispose`). Matching by the
+            // DECLARATION's SigKey is a superset of the emit side's exact-method probe (two
+            // interfaces can declare the same name+shape), so reach every match:
+            // over-reaching is safe, a dangling symbol is not.
             bool matched = false;
             foreach (var kv in b.ExplicitInterfaceImpls)
                 if (kv.Key.Name == name && kv.Key.SigKey == key)
@@ -3342,6 +3372,148 @@ internal sealed partial class Compilation
         }
     }
 
+    /// <summary>The ARGUMENT-FREE ancestry of the open generic definition at
+    /// <paramref name="handle"/>: its nearest NON-GENERIC ancestor class, and every
+    /// non-generic interface in its transitive closure.
+    ///
+    /// <para>Substitution cannot touch a type that names no type parameter, so this set is
+    /// identical for the definition and for every closed instantiation of it. That identity
+    /// is what lets a <c>gendef_</c> shell carry the rows and answer
+    /// <c>Type.IsAssignableFrom</c> with no instantiation emitted at all; a relation with a
+    /// generic end (<c>IEnumerable&lt;&gt;</c> ← <c>List&lt;&gt;</c>) is spelled in
+    /// parameters no caller can name, and stays False because no row can name one.</para>
+    ///
+    /// <para>Everything ABOVE the nearest non-generic ancestor is left out: it becomes the
+    /// shell's base pointer and the runtime's own base walk reaches the rest from there.
+    /// Metadata order throughout — interface list order, then base-chain order — so the
+    /// emitted row order is a pure function of the input.</para></summary>
+    internal (ClassInfo? Base, List<ClassInfo> Interfaces) OpenGenericDefAncestry(Module m, TypeDefinitionHandle handle)
+    {
+        var itfs = new List<ClassInfo>();
+        var seen = new HashSet<(int, TypeDefinitionHandle)>();
+        ClassInfo? nearest = null;
+        Module? node = m;
+        var nodeHandle = handle;
+        while (node is { } nm)
+        {
+            CollectArgumentFreeInterfaces(nm, nodeHandle, itfs, seen);
+            var (bm, bh) = ResolveTypeDefRefSpec(nm, BaseTypeHandleOf(nm, nodeHandle));
+            if (bm is null)
+                break;
+            if (GenericArityOf(bm, bh) == 0)
+            {
+                bm.ClassMap.TryGetValue(bh, out nearest);
+                break;
+            }
+            node = bm;
+            nodeHandle = bh;
+        }
+        return (nearest, itfs);
+    }
+
+    /// <summary>The by-NAME entry to <see cref="OpenGenericDefAncestry"/>, for a definition
+    /// reached as a bare <c>typeof(D&lt;&gt;)</c> (no ClassInfo, only the backtick name).
+    /// A name no loaded module declares yields an empty ancestry — the same degrade
+    /// <see cref="OpenGenericDefFactsByName"/> makes.</summary>
+    internal (ClassInfo? Base, List<ClassInfo> Interfaces) OpenGenericDefAncestryByName(string defName) =>
+        OpenGenericDefHandleByName(defName) is { } d
+            ? OpenGenericDefAncestry(d.Module, d.Handle)
+            : (null, new List<ClassInfo>());
+
+    /// <summary>Appends every NON-GENERIC interface reachable from <paramref name="handle"/>'s
+    /// own interface list, recursing THROUGH the generic ones — a generic interface's closure
+    /// can still hold argument-free members (<c>IEnumerable&lt;T&gt;</c> is an
+    /// <c>IEnumerable</c>).</summary>
+    private void CollectArgumentFreeInterfaces(Module m, TypeDefinitionHandle handle,
+        List<ClassInfo> itfs, HashSet<(int, TypeDefinitionHandle)> seen)
+    {
+        if (!seen.Add((m.Index, handle)))
+            return;
+        var reader = m.Reader;
+        InterfaceImplementationHandleCollection impls;
+        try
+        {
+            impls = reader.GetTypeDefinition(handle).GetInterfaceImplementations();
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return;
+        }
+        foreach (var iih in impls)
+        {
+            var (im, ih) = ResolveTypeDefRefSpec(m, reader.GetInterfaceImplementation(iih).Interface);
+            if (im is null)
+                continue;
+            if (GenericArityOf(im, ih) != 0)
+                CollectArgumentFreeInterfaces(im, ih, itfs, seen);
+            else if (im.ClassMap.TryGetValue(ih, out var itf) && !itfs.Contains(itf))
+                itfs.Add(itf);
+        }
+    }
+
+    private static EntityHandle BaseTypeHandleOf(Module m, TypeDefinitionHandle handle)
+    {
+        try
+        {
+            return m.Reader.GetTypeDefinition(handle).BaseType;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return default;
+        }
+    }
+
+    private static int GenericArityOf(Module m, TypeDefinitionHandle handle)
+    {
+        try
+        {
+            return m.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>A TypeDefOrRefOrSpec resolved to the (module, TypeDef) of its DEFINITION.
+    /// A TypeSpec is read off the signature BLOB rather than decoded: its GENERICINST names
+    /// the open template, which is exactly what an argument-free walk wants, and decoding it
+    /// would instantiate a specialization the load set never asked for. Null module when the
+    /// load set does not carry the target.</summary>
+    private (Module?, TypeDefinitionHandle) ResolveTypeDefRefSpec(Module m, EntityHandle h)
+    {
+        switch (h.IsNil ? HandleKind.Blob : h.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                return (m, (TypeDefinitionHandle)h);
+            case HandleKind.TypeReference:
+                return TemplateOrClassDef(ResolveTypeRef(m, (TypeReferenceHandle)h));
+            case HandleKind.TypeSpecification:
+                try
+                {
+                    var blob = m.Reader.GetBlobReader(
+                        m.Reader.GetTypeSpecification((TypeSpecificationHandle)h).Signature);
+                    var tc = blob.ReadSignatureTypeCode();
+                    if (tc == SignatureTypeCode.GenericTypeInstance)
+                        tc = blob.ReadSignatureTypeCode();
+                    if (tc != SignatureTypeCode.TypeHandle)
+                        return (null, default);
+                    var inner = blob.ReadTypeHandle();
+                    // A GENERICINST names a TypeDef or TypeRef; anything else is not a
+                    // shape this walk can open, and re-entering would not terminate.
+                    return inner.Kind == HandleKind.TypeSpecification
+                        ? (null, default)
+                        : ResolveTypeDefRefSpec(m, inner);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    return (null, default);
+                }
+            default:
+                return (null, default);
+        }
+    }
+
     private static bool HasMethodNamed(MetadataReader reader, TypeDefinition td, string name)
     {
         foreach (var mdh in td.GetMethods())
@@ -4743,10 +4915,9 @@ internal sealed partial class Compilation
                         // other type, so this only pays a name compare per call site.
                         if (insn.OpCode == ILOpCode.Call && IsCtorToken(module, handle))
                             ReachValueTaskSourceBridge(module, handle, m.Context);
-                        // A constrained callvirt on a value type whose target is an
-                        // Object/ValueType virtual (intrinsic decl, so the edge
-                        // above is null) still emits a direct call to the struct's
-                        // override — reach it by signature so it is transpiled.
+                        // A constrained call/callvirt on a value type whose target is an
+                        // interface or Object/ValueType virtual emits a direct call to the
+                        // struct's implementation — reach it so it is transpiled.
                         if (insn.OpCode == ILOpCode.Callvirt && constrained is { } cn)
                             ReachConstrainedImpl(module, handle, cn, m.Context);
                         // The `call` (not callvirt) analogue: a static-abstract interface

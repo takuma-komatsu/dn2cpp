@@ -44,12 +44,16 @@
 # The swallowed startup failure must also be REPORTED, naming the failed type (the
 # same contract the --dotnet-module boundary report holds): the multi-arg run's stderr is
 # asserted to carry the boundary report for FailedCctorSubset.Broken with the original
-# exception. On this console lane the report is the sinkless stderr fallback of the
-# shared host-boundary reporter (dn2cpp_report_boundary_exception); the GDExtension
-# lane routes the SAME call through its print_error sink, so this assert covers the
-# funnel both lanes share. It is a deliberate stdout/stderr split — the report is
-# dn2cpp's own diagnostic, real .NET prints nothing there, so it must never leak into
-# the exact stdout diff above.
+# exception. The prologue itself is silent — .NET is silent about an initializer it never
+# runs, and the pass runs initializers .NET never would — so the report is emitted at the
+# FIRST TOUCH of the type, once, alongside the re-raise. That this section touches
+# Broken at all is therefore what makes the report observable here; a bucket that never
+# touches its failed type must see an empty stderr. On this console lane the report is
+# the sinkless stderr fallback of the shared host-boundary reporter
+# (dn2cpp_report_boundary_exception); the GDExtension lane routes the SAME call through
+# its print_error sink, so this assert covers the funnel both lanes share. It is a
+# deliberate stdout/stderr split — the report is dn2cpp's own diagnostic, real .NET
+# prints nothing there, so it must never leak into the exact stdout diff above.
 source "$(dirname "$0")/_common.sh"
 
 project=ArgsEntrypointSubset

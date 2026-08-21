@@ -78,6 +78,7 @@ namespace ReflectTypes
             TypeRegistryMouthsSubset.Program.Run();
             DelegateBaseTypeSubset.Program.Run();
             ReflectRuntimeInstantiationSubset.Program.Run();
+            GenericDefAssignabilitySubset.Program.Run();
         }
     }
 }

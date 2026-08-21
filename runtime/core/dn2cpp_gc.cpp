@@ -700,16 +700,24 @@ struct Dn2CppCctorFailure
 {
     std::atomic<int8_t>* flag; // identity of the type whose initializer failed
     Dn2CppObject* exc;         // the managed exception it threw (null: a non-managed failure)
+    const char* type;          // named only by the eager startup pass; null => never reported
+    bool reported;             // its first-use report has been made (guarded by g_cctor_mtx)
     Dn2CppCctorFailure* next;
 };
 // static => a GC root, so the recorded exception graph outlives the throw (the
 // DN2CPP_GC_STATIC_ROOT / dn2cpp_alloc'd-node discipline of the in-flight list).
 static DN2CPP_GC_STATIC_ROOT Dn2CppCctorFailure* g_cctor_failed = nullptr; // guarded by g_cctor_mtx
 
+// The eager pass hands the type it is about to initialize down to the run_once beneath
+// it, and marks its whole extent as not-a-real-use: a cctor the pass runs may first-use
+// another failed type, and that touch is the pass's, not the program's.
+static thread_local const char* t_startup_cctor_type = nullptr;
+static thread_local int t_startup_cctor_depth = 0;
+
 // Caller holds g_cctor_mtx.
-static const Dn2CppCctorFailure* dn2cpp_cctor_find_failure(const std::atomic<int8_t>* flag)
+static Dn2CppCctorFailure* dn2cpp_cctor_find_failure(const std::atomic<int8_t>* flag)
 {
-    for (const Dn2CppCctorFailure* f = g_cctor_failed; f != nullptr; f = f->next)
+    for (Dn2CppCctorFailure* f = g_cctor_failed; f != nullptr; f = f->next)
     {
         if (f->flag == flag)
             return f;
@@ -764,13 +772,33 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
     {
         if (flag->load(std::memory_order_acquire))
             return; // completed while we contended for the lock / waited
-        if (const Dn2CppCctorFailure* f = dn2cpp_cctor_find_failure(flag))
+        if (Dn2CppCctorFailure* f = dn2cpp_cctor_find_failure(flag))
         {
-            // Initialization already failed: re-raise, never re-run. Outside the
-            // lock — the replay allocates (the in-flight root node) and runs
-            // arbitrary unwinding from here.
+            // Initialization already failed: re-raise, never re-run. This is also
+            // where a failure the eager pass swallowed becomes loud — the first real
+            // use is the only place .NET would have raised it, so it is the only
+            // place worth reporting it. Once: a caller that catches and retries must
+            // not turn one broken type into a stream. The flag is flipped under the
+            // lock we hold, which is what serializes racing first uses.
             Dn2CppObject* exc = f->exc;
+            // The pass reaching a type that already failed underneath another cctor is
+            // the one chance to name that record — it is the only caller that knows the
+            // name, and it is here rather than in its own frame because only run_once
+            // maps a flag to a record.
+            if (f->type == nullptr && t_startup_cctor_type != nullptr)
+                f->type = t_startup_cctor_type;
+            const char* report = nullptr;
+            if (f->type != nullptr && !f->reported && t_startup_cctor_depth == 0)
+            {
+                f->reported = true;
+                report = f->type;
+            }
+            // Outside the lock — the report and the replay both allocate (the
+            // in-flight root node, the message) and run arbitrary unwinding.
             lk.unlock();
+            if (report != nullptr)
+                dn2cpp_report_boundary_exception(
+                    exc, "the startup static constructor of %s", report);
             dn2cpp_cctor_replay_failure(exc);
         }
         Dn2CppCctorRun* r = g_cctor_running;
@@ -785,6 +813,11 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
     Dn2CppCctorRun node{ flag, std::this_thread::get_id(), g_cctor_running };
     g_cctor_running = &node;
     lk.unlock();
+    // Consume the eager pass's name here, where the type running is known to be the one
+    // it named: a first-use this body triggers reaches run_once again, and that type is
+    // a different one the pass has not named.
+    const char* startup_type = t_startup_cctor_type;
+    t_startup_cctor_type = nullptr;
     // The failure record is allocated in the handler — ordinary execution context,
     // the exception already caught — never while unwinding, the same safety class as
     // the in-flight node push. Re-entrancy is unaffected: the record is published only
@@ -800,6 +833,8 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
         auto* f = static_cast<Dn2CppCctorFailure*>(dn2cpp_alloc(sizeof(Dn2CppCctorFailure)));
         f->flag = flag;
         f->exc = e.obj;
+        f->type = startup_type;
+        f->reported = false;
         dn2cpp_cctor_unlink(&node, f);
         throw;
     }
@@ -808,6 +843,8 @@ void dn2cpp_cctor_run_once(std::atomic<int8_t>* flag, void (*body)())
         auto* f = static_cast<Dn2CppCctorFailure*>(dn2cpp_alloc(sizeof(Dn2CppCctorFailure)));
         f->flag = flag;
         f->exc = nullptr;
+        f->type = startup_type;
+        f->reported = false;
         dn2cpp_cctor_unlink(&node, f);
         throw;
     }
@@ -821,36 +858,46 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type)
     // in it must therefore not be the process's problem: letting the exception leave
     // `main`'s init prologue (which sits ahead of the entry point's own handler)
     // terminates via std::terminate — killing a program whose .NET twin runs fine
-    // because it never touches the type. Swallow it here; dn2cpp_cctor_run_once has
-    // recorded the failure and the first real USE of the type re-raises it, which is
-    // when .NET would have raised it too.
+    // because it never touches the type.
     //
-    // Swallowed, but never silently: the failure is reported through the
-    // shared host-boundary reporter, naming the type — the GDExtension lane's sink
-    // (installed before dn2cpp_godot_init_managed runs this pass) delivers it to the
-    // engine's print_error, and a console binary's sinkless fallback puts it on
-    // stderr. Without the report, a type whose statics are only ever read through
-    // guarded use sites that some caller catches — or whose failure surfaces three
-    // frames away as "that feature does nothing" — has no first cause anywhere.
+    // INVARIANT: the pass is SILENT, because .NET is. A type nothing touches runs no
+    // initializer there and prints nothing, so a report here would be a diagnostic
+    // about dn2cpp's schedule rather than about the program — and a monomorphized
+    // instantiation the program can never reach (EnumUtil<non-enum> and its kind) makes
+    // that a standing false alarm. dn2cpp_cctor_run_once has recorded the failure
+    // against the type; the first real USE re-raises it AND reports it, naming the type,
+    // which is both where .NET raises and the one place the failure is about the
+    // program. That report is what keeps a use site whose caller catches the throw —
+    // or whose symptom is "that feature does nothing" three frames away — from having
+    // no first cause anywhere.
     //
-    // The --dotnet-module lane exempts one class of failure from the report; that
-    // exemption does not carry over, and no cctor the core lanes run qualifies for
-    // one. A class may only be exempted if its failure is structural (fires on every
-    // run of a correct program), is an artefact of running cctors eagerly rather than
-    // a fact about the program, and still reaches the developer from the first-use
-    // re-raise.
+    // The name is handed down rather than passed: only run_once knows which record a
+    // throw belongs to. The depth marks the pass's whole extent, so a first-use of an
+    // already-failed type from inside a cctor the pass is running stays silent too.
     //
-    // The reporter pops the in-flight root — the discipline every runtime site that
+    // Swallowing pops the in-flight root — the discipline every runtime site that
     // swallows a managed exception follows.
+    struct Scope
+    {
+        const char* saved;
+        explicit Scope(const char* t) : saved(t_startup_cctor_type)
+        {
+            t_startup_cctor_type = t;
+            ++t_startup_cctor_depth;
+        }
+        ~Scope()
+        {
+            t_startup_cctor_type = saved;
+            --t_startup_cctor_depth;
+        }
+    } scope(type != nullptr ? type : "<unknown>");
     try
     {
         ensure();
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_report_boundary_exception(
-            e.obj, "the startup static constructor of %s",
-            type != nullptr ? type : "<unknown>");
+        dn2cpp_exc_inflight_pop(e.obj);
     }
 }
 
