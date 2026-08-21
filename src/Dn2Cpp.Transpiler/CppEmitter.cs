@@ -338,6 +338,12 @@ internal sealed partial class CppEmitter
             {
                 if (c.IsEnum || IsOpaque(c) || IsCanonicalWorld(c))
                     continue; // RenderMemberTables skips these: no member table, no types spelled
+                // A typeof-only specialization arrives here still deferred — nothing
+                // reached its members — and this walk IS an ask (its table's rows are
+                // about to spell these signatures), so pull, as the dequeue below does
+                // for every other set member. Safe against the no-pull rule above: the
+                // ToList() snapshot is closed, so decode-appended classes cannot shift it.
+                _c.EnsureCompleted(c);
                 foreach (var m in c.Methods)
                 {
                     if (m.Name == ".cctor")
