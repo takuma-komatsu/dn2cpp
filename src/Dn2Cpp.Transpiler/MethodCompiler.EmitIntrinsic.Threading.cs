@@ -780,7 +780,7 @@ internal sealed partial class MethodCompiler
             }
             // ---- System.Threading.Timer (per-timer OS thread) ----
             // Change(dueTime, period): reschedule (int/long/uint/TimeSpan overloads, converted
-            // to int64 ms). Returns true (real Change returns false only after Dispose).
+            // to int64 ms). Returns false after Dispose, true otherwise — matching .NET.
             case ("System.Threading.Timer", "Change"):
             case ("System.TimeProvider+SystemTimeProviderTimer", "Change"):
             {

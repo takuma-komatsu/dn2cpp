@@ -4789,7 +4789,7 @@ Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                int64_t dueMs, int64_t periodMs);
 Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                             int64_t dueMs, int64_t periodMs);
-int32_t dn2cpp_timer_change(Dn2CppObject* t, int64_t dueMs, int64_t periodMs); // Change: returns 1
+int32_t dn2cpp_timer_change(Dn2CppObject* t, int64_t dueMs, int64_t periodMs); // Change: 0 after Dispose, else 1
 int32_t dn2cpp_timer_dispose(Dn2CppObject* t); // Dispose: stop + join, returns 1
 
 // ---- ThreadLocal<T> (per-instance, per-thread storage) ----

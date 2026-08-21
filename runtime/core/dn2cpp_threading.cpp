@@ -1831,7 +1831,9 @@ Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject
 
 // Timer.Change(dueTime, period): reschedule. Sets the new dueMs/periodMs, bumps the
 // generation so the timer thread abandons any in-progress wait and reschedules, then
-// wakes it. Always returns 1 (real Timer.Change returns false only after Dispose).
+// wakes it. After Dispose it returns 0 and leaves the schedule untouched (real .NET
+// reports false there); rewriting a disposed timer's dueMs would re-enter the settler
+// accounting for a thread that is already joined.
 // A Change is a principal transition: arming an idle timer joins the settler
 // set before this returns — the caller may block on the callback's settle next — and a
 // Change to Timeout.Infinite retires the pending fire, so the principal leaves HERE,
@@ -1841,6 +1843,8 @@ int32_t dn2cpp_timer_change(Dn2CppObject* o, int64_t dueMs, int64_t periodMs)
     auto* t = static_cast<Dn2CppManagedTimer*>(o);
     {
         std::lock_guard<std::mutex> lk(t->m);
+        if (t->disposed)
+            return 0;
         t->dueMs = dueMs;
         t->periodMs = periodMs;
         t->generation++;

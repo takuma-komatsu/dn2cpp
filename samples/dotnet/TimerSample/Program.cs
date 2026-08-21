@@ -17,6 +17,8 @@ static class Program
         SystemTimeProviderOneShot();
         SystemTimeProviderChange();
         SystemTimeProviderDisposeAsync();
+        ChangeAfterDispose();
+        SystemTimeProviderChangeAfterDispose();
     }
 
     // An Infinite period never re-fires, so the count is stable once the latch trips and
@@ -147,6 +149,27 @@ static class Program
         var disposed = timer.DisposeAsync();
         disposed.GetAwaiter().GetResult();
         Console.WriteLine($"provider async disposed={disposed.IsCompletedSuccessfully}");
+    }
+
+    // Change on a disposed timer reports false and must not rewrite the schedule; both
+    // the direct intrinsic call and the ITimer interface slot take the same helper.
+    static void ChangeAfterDispose()
+    {
+        var timer = new Timer(_ => { }, null, Timeout.Infinite, Timeout.Infinite);
+        timer.Dispose();
+        bool direct = timer.Change(30, Timeout.Infinite);
+        bool viaItf = ((ITimer)timer).Change(TimeSpan.FromMilliseconds(30), Timeout.InfiniteTimeSpan);
+        Console.WriteLine($"disposed change direct={direct} itimer={viaItf}"); // disposed change direct=False itimer=False
+    }
+
+    // The provider adapter's ITimer slot must report the same false after Dispose.
+    static void SystemTimeProviderChangeAfterDispose()
+    {
+        ITimer timer = TimeProvider.System.CreateTimer(
+            _ => { }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        timer.Dispose();
+        bool changed = timer.Change(TimeSpan.FromMilliseconds(30), Timeout.InfiniteTimeSpan);
+        Console.WriteLine($"provider disposed change={changed}");  // provider disposed change=False
     }
 
 }
