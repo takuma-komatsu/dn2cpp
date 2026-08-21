@@ -40,16 +40,17 @@ echo "ZString.dll: $zstring_sha (pinned 2.6.0)"
 
 echo "== 3/7 Transpiling the real package =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
-CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 refs=(-r "$corelib" -r "$zstring")
 rm -rf "$out"
+# A cap can only turn the run into an abort or back, never perturb a succeeding
+# transpile's bytes (AGENTS.md). Measured 3,168 instantiations (inst 2,904 +
+# minst 264), cap ~3.8x; measured peak heap 122 MB, belt ~2.1x.
 ( export DN2CPP_MAX_INSTANTIATIONS=12000
   invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 256 -o "$out" )
 echo "OK (bounded: <=12,000 instantiations, <=256 MB heap)"
 
 if gate_cache_check "$out" \
-        "zstring|cli=$CLI_SHA|corelib=$corelib" \
+        "zstring|cli:$(_gate_cli_hash)|corelib=$corelib" \
         "$app" "$zstring" "$MARKERS_EXPECTED" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
@@ -84,8 +85,9 @@ compile_console "$out" "$project"
 
 echo "== 7/7 Running (exact diff vs real .NET) =="
 native_stderr="$out/native-stderr.txt"
+oracle_stderr="$out/oracle-stderr.txt"
 set +e
-expected=$(dotnet "$app"); expected_code=$?
+expected=$(dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
 native=$("./$out/$project" 2>"$native_stderr"); native_code=$?
 set -e
 assert_output "$native" "$expected"
@@ -96,11 +98,17 @@ assert_exit_code "$native_code" "$expected_code"
 # monomorphized Cysharp.Text.EnumUtil<T> cctor, and the non-enum T ones throw; each is
 # recorded SILENTLY, exactly as real .NET is silent about an initializer it never runs.
 # This program never touches those types — a touch would report here and re-raise.
+# The bar is two-sided: a divergence where only real .NET reports must fail too.
+if [ -s "$oracle_stderr" ]; then
+    echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
+    cat "$oracle_stderr" >&2
+    exit 1
+fi
 if [ -s "$native_stderr" ]; then
     echo "FAIL: the native binary wrote to stderr; it must stay silent:" >&2
     cat "$native_stderr" >&2
     exit 1
 fi
-echo "native stderr: empty"
+echo "stderr: empty on both sides"
 gate_cache_commit
 echo "OK — the real ZString 2.6.0 ran byte-identically to real .NET."

@@ -39,8 +39,6 @@ echo "R3.dll: $r3_sha (pinned 1.3.1)"
 
 echo "== 3/7 Transpiling the real package =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
-CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 refs=(-r "$corelib" -r "$r3")
 rm -rf "$out"
 ( export DN2CPP_MAX_INSTANTIATIONS=12000
@@ -48,7 +46,7 @@ rm -rf "$out"
 echo "OK (bounded: <=12,000 instantiations, <=256 MB heap)"
 
 if gate_cache_check "$out" \
-        "r3|cli=$CLI_SHA|corelib=$corelib" \
+        "r3|cli:$(_gate_cli_hash)|corelib=$corelib" \
         "$app" "$r3" "$MARKERS_EXPECTED" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg

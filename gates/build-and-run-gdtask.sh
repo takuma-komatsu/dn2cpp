@@ -125,8 +125,6 @@ echo "GDTask.dll: $gdtask_sha (pinned 3.1.0)"
 
 echo "== 3/7 Transpiling for real (tier 2, NO cuts) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
-CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 # Pin net10.0: the highest installed runtime can be an 11.0 preview whose CoreLib
 # shape skews the transpile spuriously.
 CORELIB="$(resolve_net10_corelib)"
@@ -141,13 +139,13 @@ invoke_cli "$APP" --dotnet-module "${REFS[@]}" --auto-ref -o "$OUT"
 
 # Everything past this point — the gap measurement, the native build, the engine run
 # and the oracle diff — is a pure function of the transpile surface in $OUT, the CLI
-# that produced it (CLI_SHA: the zero-gap assertion depends on the transpiler's
+# that produced it (_gate_cli_hash: the zero-gap assertion depends on the transpiler's
 # behaviour, not only on its output, so a CLI change must miss the cache even when
 # the emitted C++ is byte-identical), the corelib, the sample and its
 # GDTask/GodotSharp inputs, and the pinned engine binaries. The pin/ABI tripwire
 # above stays always-on, so a drifted clone still fails on a hit.
 if gate_cache_check "$OUT" \
-    "gdtask|nocut|cli=$CLI_SHA|corelib=$CORELIB|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
+    "gdtask|nocut|cli:$(_gate_cli_hash)|corelib=$CORELIB|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
     "$APP" "$GDTASK" "$GODOT_DOTNET_GODOTSHARP" "$MARKERS_EXPECTED" "$SAMPLE_DIR"; then
     { gate_cache_hit_msg; exit 0; }
 fi

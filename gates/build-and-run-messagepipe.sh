@@ -24,9 +24,10 @@ echo "corelib: $corelib"
 echo "== 2/7 Building the driver against the real NuGet MessagePipe =="
 nuget_packages="$(nuget_global_packages_root)"
 if { [ ! -d "$nuget_packages/messagepipe/1.8.2" ] \
-        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection/10.0.1" ]; } \
+        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection/10.0.1" ] \
+        || [ ! -d "$nuget_packages/microsoft.extensions.dependencyinjection.abstractions/10.0.1" ]; } \
     && ! curl -fsI --max-time 15 https://api.nuget.org/v3/index.json >/dev/null 2>&1; then
-    gate_skip "MessagePipe 1.8.2 + DependencyInjection 10.0.1 are not both in the NuGet cache and nuget.org is unreachable"
+    gate_skip "MessagePipe 1.8.2 + DependencyInjection(.Abstractions) 10.0.1 are not all in the NuGet cache and nuget.org is unreachable"
 fi
 build_gate_proj "samples/dotnet/$project/$project.csproj"
 app="samples/dotnet/$project/bin/$CONFIG/$TFM/$project.dll"
@@ -59,16 +60,17 @@ echo "OK: ${#mp_dlls[@]} pinned assemblies verified against $MESSAGEPIPE_SHA_EXP
 
 echo "== 3/7 Transpiling the real package =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
-CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 refs=(-r "$corelib" "${mp_refs[@]}")
 rm -rf "$out"
+# A cap can only turn the run into an abort or back, never perturb a succeeding
+# transpile's bytes (AGENTS.md). Measured 4,975 instantiations (inst 4,286 +
+# minst 689), cap ~3.0x; measured peak heap 187 MB, belt ~2.7x.
 ( export DN2CPP_MAX_INSTANTIATIONS=15000
   invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 512 -o "$out" )
 echo "OK (bounded: <=15,000 instantiations, <=512 MB heap)"
 
 if gate_cache_check "$out" \
-        "messagepipe|cli=$CLI_SHA|corelib=$corelib" \
+        "messagepipe|cli:$(_gate_cli_hash)|corelib=$corelib" \
         "$app" "$MESSAGEPIPE_SHA_EXPECTED" "${mp_dlls[@]}" "$MARKERS_EXPECTED" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
@@ -103,8 +105,9 @@ compile_console "$out" "$project"
 
 echo "== 7/7 Running (exact diff vs real .NET) =="
 native_stderr="$out/native-stderr.txt"
+oracle_stderr="$out/oracle-stderr.txt"
 set +e
-expected=$(dotnet "$app"); expected_code=$?
+expected=$(dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
 native=$("./$out/$project" 2>"$native_stderr"); native_code=$?
 set -e
 assert_output "$native" "$expected"
@@ -112,11 +115,17 @@ assert_exit_code "$native_code" "$expected_code"
 
 # stdout matching hides everything the runtime writes to stderr — a swallowed
 # startup-cctor failure reports there and nowhere else. This corpus reports none.
+# The bar is two-sided: a divergence where only real .NET reports must fail too.
+if [ -s "$oracle_stderr" ]; then
+    echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
+    cat "$oracle_stderr" >&2
+    exit 1
+fi
 if [ -s "$native_stderr" ]; then
     echo "FAIL: the native binary wrote to stderr; it must stay silent:" >&2
     cat "$native_stderr" >&2
     exit 1
 fi
-echo "native stderr: empty"
+echo "stderr: empty on both sides"
 gate_cache_commit
 echo "OK — the real MessagePipe 1.8.2 ran byte-identically to real .NET."

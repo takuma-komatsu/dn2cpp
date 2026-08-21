@@ -88,8 +88,6 @@ echo "UniTask.dll: $unitask_sha (pinned 2.5.11)"
 
 echo "== 3/7 Transpiling for real (tier 2: NO flags — the adoption must auto-decline) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
-CLI_DLL="${DN2CPP_CLI_DLL:-$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}"
-CLI_SHA="$(shasum -a 256 "$CLI_DLL" | awk '{print $1}')"
 refs=(-r "$corelib" -r "$unitask")
 rm -rf "$out"
 # Both caps ride the ONE transpile the diff uses; a cap can only turn a run into
@@ -124,7 +122,7 @@ echo "OK (declined flag-free; bounded: <=12,000 instantiations, <=256 MB heap)"
 # the CLI that produced it (the zero-gap claim depends on the transpiler's
 # behaviour, not only its output), the corelib and the pinned inputs.
 if gate_cache_check "$out" \
-        "unitask|cli=$CLI_SHA|corelib=$corelib" \
+        "unitask|cli:$(_gate_cli_hash)|corelib=$corelib" \
         "$app" "$unitask" "$MARKERS_EXPECTED" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
