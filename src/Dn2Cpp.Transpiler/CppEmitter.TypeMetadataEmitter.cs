@@ -165,22 +165,27 @@ internal sealed partial class CppEmitter
                 or "System.Collections.Generic.IReadOnlyList`1"
                 or "System.Collections.Generic.IReadOnlyCollection`1";
 
-        /// <summary>The ARGUMENT-FREE relations a <c>gendef_</c> shell carries: its nearest
-        /// non-generic ancestor as the base pointer, and one nullptr-slot row per non-generic
-        /// interface in the definition's transitive closure — the same relation-only shape
-        /// <see cref="RenderItfTables"/> gives an interface or an abstract class.
+        /// <summary>The SUBSTITUTION-INVARIANT relations a <c>gendef_</c> shell carries: its
+        /// nearest ancestor naming no type parameter as the base pointer, and one
+        /// nullptr-slot row per such interface in the definition's transitive closure — the
+        /// same relation-only shape <see cref="RenderItfTables"/> gives an interface or an
+        /// abstract class.
         ///
-        /// <para>Substitution cannot touch a type that names no type parameter, so this set is
-        /// the same for the definition and for every close of it. That identity is the whole
-        /// invariant: it makes <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c>
-        /// answer True with no instantiation emitted, while every relation with a generic end
+        /// <para>Substitution cannot touch a type that names no type parameter, so this set —
+        /// non-generic ancestry plus closed fixed-argument entries like <c>B&lt;int&gt;</c> —
+        /// is the same for the definition and for every close of it. That identity is the
+        /// whole invariant: it makes <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c>
+        /// answer True with nothing minted HERE — the reads this side makes are lookup-only,
+        /// and a closed entry a typeof-only program never instantiates was minted upstream by
+        /// the wiring pass — while every relation spelled in the definition's own parameters
         /// stays False by construction, because no row here can name one.</para>
         ///
         /// <para>Rows are filtered by the definedness test rather than force-emitted, exactly
         /// as RenderItfTables filters its own, so the answer degrades to a SUBSET of .NET's
-        /// the same monotone way. A definition no close exists of has its ancestry forced
-        /// into the emit set upstream (Compilation.WireTypeofOpenGenericDefAncestry). The
-        /// base of a value type or interface stays null, matching the closed-type rule.</para>
+        /// the same monotone way. A definition no close exists of has its ancestry minted and
+        /// forced into the emit set upstream (Compilation.WireTypeofOpenGenericDefAncestry).
+        /// The base of a value type or interface stays null, matching the closed-type
+        /// rule.</para>
         /// </summary>
         private (string Base, string Itfs, int ItfCount) GenericDefRelations(
             string defSym, ClassInfo? nonGenericBase, List<ClassInfo> itfs, bool isValueType, bool isInterface)
@@ -188,7 +193,7 @@ internal sealed partial class CppEmitter
             string baseExpr =
                 isValueType || isInterface ? "nullptr"
                 : nonGenericBase is { } b && _e.TypeInfoSymbolDefined(b.CppTypeInfoName)
-                    ? _e.TypeInfoRef(b, "generic-definition nearest non-generic base")
+                    ? _e.TypeInfoRef(b, "generic-definition nearest invariant base")
                     : "&dn2cpp_object_type";
             var rows = itfs
                 .Where(i => _e.TypeInfoSymbolDefined(i.CppTypeInfoName))

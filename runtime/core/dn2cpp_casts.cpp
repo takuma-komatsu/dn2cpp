@@ -1170,13 +1170,15 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
                     return 1;
     }
     // A generic type DEFINITION needs no arm of its own: the walk above IS the answer.
-    // Its shell carries the definition's ARGUMENT-FREE relations — nearest non-generic
-    // ancestor as base, one row per non-generic interface in the closure (CppEmitter's
-    // GenericDefRelations) — which hold for the definition exactly when they hold for
-    // every instantiation, so none need exist. A relation with a generic end
+    // Its shell carries the definition's SUBSTITUTION-INVARIANT relations — nearest
+    // ancestor naming no type parameter (non-generic, or closed like `B<int>`) as base,
+    // one row per such interface in the closure (CppEmitter's GenericDefRelations) —
+    // which hold for the definition exactly when they hold for every instantiation, so
+    // none need exist. A relation spelled in the definition's parameters
     // (`IEnumerable<>` <- `List<>`) is False by construction: no row can name one, and
-    // the variance walk cannot lift it, every gendef row being non-generic. MessagePipe's
-    // `AddGlobalMessageHandlerFilter(typeof(LoggingFilter<>))` is the load-bearing reader.
+    // the variance walk cannot lift it, a gendef handle carrying no arguments of its
+    // own. MessagePipe's `AddGlobalMessageHandlerFilter(typeof(LoggingFilter<>))` is
+    // the load-bearing reader.
 
     // Well-known-interface fallback for the row-less primitive/enum/hand-written
     // type-infos (table + rationale at dn2cpp_wellknown_itf_bit above). Last, so a

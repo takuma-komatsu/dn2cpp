@@ -3562,8 +3562,8 @@ internal sealed partial class Compilation
     private readonly HashSet<string> _gendefAncestryWired = new(System.StringComparer.Ordinal);
 
     /// <summary>Force-emits the type-infos a bare <c>typeof(D&lt;&gt;)</c> handle's
-    /// argument-free relation rows will name (<see cref="OpenGenericDefAncestry"/>): its
-    /// nearest non-generic ancestor and its non-generic interface closure. Only these
+    /// substitution-invariant relation rows will name (<see cref="OpenGenericDefAncestry"/>):
+    /// its nearest invariant ancestor and its invariant interface closure. Only these
     /// definitions need forcing — one with an emitted closed instantiation already drags its
     /// own base and interfaces into the emit set, and the shell filters its rows by the same
     /// definedness test the closed type's table uses.
@@ -3571,8 +3571,12 @@ internal sealed partial class Compilation
     /// <para>Without it, a definition the program only ever names — <c>class Box&lt;T&gt; :
     /// IMarker</c> with no close — has no <c>ti_IMarker</c> to point at, and
     /// <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c> answers False where .NET
-    /// answers True. Driven in the emit fixpoint like its array siblings, since
-    /// <see cref="TypeofOpenGenericDefs"/> grows as bodies compile.</para></summary>
+    /// answers True. This pass is also the one place a CLOSED invariant entry
+    /// (<c>class Fixed&lt;T&gt; : ClosedBase&lt;int&gt;</c>) is MINTED, not merely looked
+    /// up: the reflected-over definition observably needs that type-info, and nothing else
+    /// in a typeof-only program would instantiate it. Driven in the emit fixpoint like its
+    /// array siblings, since <see cref="TypeofOpenGenericDefs"/> grows as bodies
+    /// compile.</para></summary>
     private bool WireTypeofOpenGenericDefAncestry()
     {
         int before = ReferencedTypes.Count;
@@ -3581,7 +3585,7 @@ internal sealed partial class Compilation
         {
             if (!_gendefAncestryWired.Add(defName))
                 continue;
-            var (bas, itfs) = OpenGenericDefAncestryByName(defName);
+            var (bas, itfs) = OpenGenericDefAncestryByName(defName, materialize: true);
             if (bas is not null)
                 NoteReferencedType(bas);
             foreach (var itf in itfs)
