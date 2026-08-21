@@ -1337,7 +1337,7 @@ internal sealed class ClassInfo
     /// tables, none of which the runtime can know on its own. Either way the SYMBOL is
     /// one.</para></summary>
     public string CppTypeInfoName =>
-        CoreIntrinsics.RuntimeTypeInfoSymbol(FullName) is { } rt ? rt[1..] : "ti_" + CppName;
+        CoreIntrinsics.RuntimeTypeInfoSymbol(this) is { } rt ? rt[1..] : "ti_" + CppName;
 
     /// <summary>The symbol this class's type-info DEFINITION is emitted under. Same as
     /// <see cref="CppTypeInfoName"/> except for the bind-kind types, whose handle the
@@ -1347,12 +1347,12 @@ internal sealed class ClassInfo
     /// it is a bug, so it throws rather than handing back a name that would produce a
     /// duplicate definition of the runtime's own handle.</summary>
     public string CppTypeInfoDefName =>
-        CoreIntrinsics.RuntimeOwnsTypeInfo(FullName)
+        CoreIntrinsics.RuntimeOwnsTypeInfo(this)
             ? throw new InvalidOperationException(
                 $"{FullName}'s type-info is owned by the C++ runtime ({CppTypeInfoName}); "
                 + "this emission defines none, so it has no definition symbol. The caller "
                 + "should have skipped the class (CoreIntrinsics.RuntimeOwnsTypeInfo).")
-            : CoreIntrinsics.RuntimeTypeInfoSymbol(FullName) is not null ? "tibind_" + CppName : "ti_" + CppName;
+            : CoreIntrinsics.RuntimeTypeInfoSymbol(this) is not null ? "tibind_" + CppName : "ti_" + CppName;
 }
 
 internal static class CppNaming

@@ -31,6 +31,7 @@ namespace DictCollections
             OrdinalStringSetDedupSubset.Program.__GateEntry();
             StructKeySubset.Program.__GateEntry();
             ValueTupleKeyDictSubset.Program.__GateEntry();
+            EqualityComparerDefaultSubset.Program.__GateEntry();
         }
     }
 }

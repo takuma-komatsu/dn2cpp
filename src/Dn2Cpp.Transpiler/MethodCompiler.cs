@@ -16,9 +16,8 @@ namespace Dn2Cpp;
 // <c>StrLiteral</c> carries the value of an <c>ldstr</c> so an intrinsic that needs
 // a compile-time string argument can recover it from the stack (the symbol is
 // spilled to a temp by Push) — e.g. the field name of <c>Marshal.OffsetOf</c>.
-// <c>KnownNull</c> records that the operand is the null constant — an <c>ldnull</c>,
-// or an intrinsic whose value IS the nullptr sentinel (<c>EqualityComparer&lt;T&gt;
-// .Default</c>). Mirror of <c>NonNull</c>, and like it a pure optimization: losing it
+// <c>KnownNull</c> records that the operand is the null constant. Mirror of
+// <c>NonNull</c>, and like it a pure optimization: losing it
 // (Push spills, and a block boundary re-spills) can only cost back a run-time null
 // test, never an answer.
 /// <summary>One evaluation-stack slot. <c>Expr</c> is the C++ text that reads it —
@@ -284,6 +283,24 @@ internal sealed partial class MethodCompiler : IEvalStack
         {
             return false;
         }
+    }
+
+    /// <summary>The keying check for a call an intrinsic arm answered on an
+    /// intrinsic-OPAQUE class: its members are never decoded, so
+    /// <see cref="CallTokenResolvesTo"/> has no MethodInfo to compare against and
+    /// the rgctx entry must re-resolve the member reference's PARENT TYPE instead.
+    /// Structural only — the per-instantiation resolve is the authority, and a
+    /// token that fails there marks the slot bad and taints this body.</summary>
+    private bool CallTokenIsOpaqueMemberRef(string name)
+    {
+        if (_callSiteToken == 0)
+            return false;
+        var handle = SRME.EntityHandle(_callSiteToken);
+        if (handle.Kind != HandleKind.MemberReference)
+            return false;
+        var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
+        return _reader.GetString(mr.Name) == name
+            && mr.Parent.Kind is HandleKind.TypeSpecification or HandleKind.TypeDefinition;
     }
 
     /// <summary>Records (planning pass) that this trial body dispatches through
@@ -3331,15 +3348,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // as (Dn2CppObject*, <Invoke params>) -> <Invoke return> — on wasm a
                 // `call_indirect` type-immediate trap naming nothing).
                 //
-                // A VIRTUAL-DISPATCH bound (CoreIntrinsics.BdVirtualDispatch — today
-                // SynchronizationContext.Post) falls through to the ordinary arms, exactly
-                // as its callvirt sites do in MethodCompiler.Call.cs: only the base BODY is
-                // cut there, the overrides stay reachable, and taking the address must hand
-                // back the receiver's real slot. `ldvirtftn` IS the virtual form, so the
-                // `isCallvirt` half of the call-site test is satisfied by construction.
-                bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name)
-                    && !(m.IsVirtual
-                         && CoreIntrinsics.BdVirtualDispatch.Matches(m.DeclaringClass.FullName, m.Name));
+                bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);

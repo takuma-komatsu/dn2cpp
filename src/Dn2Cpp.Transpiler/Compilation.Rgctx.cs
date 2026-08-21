@@ -1525,6 +1525,20 @@ internal sealed partial class Compilation
                 ReachAllocatedType(gc);
                 return "&" + gc.CppTypeInfoName;
             }
+            // EqualityComparer<T> is intrinsic-OPAQUE: its members are never decoded,
+            // so the entry re-resolves the get_Default member reference's PARENT TYPE
+            // rather than the method.
+            case RgctxSlotKind.EqualityComparerDefault:
+                return RgctxTypeInfoEntry(RgctxResolveMemberParentType(module, handle, ctx));
+            case RgctxSlotKind.EqualityComparerInterface:
+            {
+                var t = RgctxResolveMemberParentType(module, handle, ctx);
+                if (t is not { Kind: TypeKind.Class, Class: { } ec } || ec.Context.TypeArgs.Length != 1)
+                    throw new NotSupportedException($"rgctx: {t} is not a closed EqualityComparer<T>");
+                var itf = IEqualityComparerInterfaceFor(ec.Context.TypeArgs[0])
+                    ?? throw new NotSupportedException("rgctx: no IEqualityComparer<T> for element");
+                return RgctxTypeInfoEntry(TypeDesc.MakeClass(itf));
+            }
             case RgctxSlotKind.RgctxTable:
             {
                 var callee = ResolveMethodHandle(module, handle, ctx, scope)
@@ -1609,6 +1623,17 @@ internal sealed partial class Compilation
             .DecodeSignature(SigProvider, ctx),
         _ => throw new NotSupportedException($"rgctx type token kind {handle.Kind} is not supported"),
     };
+
+    /// <summary>The declaring type of a member-reference token, resolved under
+    /// <paramref name="ctx"/>: the resolution path for a member of an
+    /// intrinsic-opaque class, which has no MethodInfo to resolve to.</summary>
+    private TypeDesc RgctxResolveMemberParentType(Module module, EntityHandle handle, GenericContext ctx)
+    {
+        if (handle.Kind != HandleKind.MemberReference)
+            throw new NotSupportedException($"rgctx member-parent token kind {handle.Kind} is not supported");
+        var parent = module.Reader.GetMemberReference((MemberReferenceHandle)handle).Parent;
+        return RgctxResolveTypeToken(module, parent, ctx);
+    }
 
     private (ClassInfo, FieldInfo) RgctxResolveField(Module module, EntityHandle handle, GenericContext ctx, ClassInfo user)
     {

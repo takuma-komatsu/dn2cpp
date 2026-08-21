@@ -48,6 +48,13 @@ internal enum RgctxSlotKind
     /// <summary>The type-info of the GenericComparer&lt;T&gt; the intercepted
     /// Comparer&lt;T&gt;.Default synthesizes (the token is the get_Default call).</summary>
     ComparerDefault,
+    /// <summary>The <c>EqualityComparer&lt;T&gt;</c> type-info the intercepted
+    /// <c>EqualityComparer&lt;T&gt;.Default</c> stamps as its singleton's base, and
+    /// the closed <c>IEqualityComparer&lt;T&gt;</c> handle that is the singleton's
+    /// cache key and interface row (both tokens are the get_Default call). Two
+    /// kinds because one slot carries one identity and the site needs both.</summary>
+    EqualityComparerDefault,
+    EqualityComparerInterface,
     /// <summary>Another grouped class's rgctx table — passed as the hidden
     /// parameter when a shared body direct-calls a context-needing shared body
     /// of a different canonical class (the token is the call/newobj method

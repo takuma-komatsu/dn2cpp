@@ -208,7 +208,7 @@ internal sealed partial class CppEmitter
                             // table exists to prevent. Not subsumed by the TypeInfoExprOf
                             // comparison below, which holds for every class since the Class
                             // arm answers "&" + CppTypeInfoName.
-                            && !CoreIntrinsics.RuntimeOwnsTypeInfo(c.FullName)
+                            && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
                             && MethodCompiler.TypeInfoExprOf(TypeDesc.MakeClass(c)) == "&" + c.CppTypeInfoName)
                 .OrderBy(c => c.CppName, System.StringComparer.Ordinal)
                 .ToList();
@@ -430,7 +430,7 @@ internal sealed partial class CppEmitter
             // emitted by the definition loop below — so it needs a matching forward
             // declaration here, or a field table naming &ti_base fails to compile.
             foreach (var cls in _e.TopoOrder().Where(c => !c.IsEnum && !_e.SkipsCanonicalMetadata(c)
-                                                          && !CoreIntrinsics.RuntimeOwnsTypeInfo(c.FullName)))
+                                                          && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)))
             {
                 // CppTypeInfoDefName, not CppTypeInfoName: a runtime-raised exception type's
                 // handle is declared by dn2cpp.h (and is mutable — the startup bind writes it),
@@ -708,7 +708,7 @@ internal sealed partial class CppEmitter
                 // what keeps the vtable/field/member tables from being emitted as statics
                 // nothing names — for the primitives, which are not opaque, those are real
                 // tables.
-                if (CoreIntrinsics.RuntimeOwnsTypeInfo(cls.FullName))
+                if (CoreIntrinsics.RuntimeOwnsTypeInfo(cls))
                     continue;
                 block.Clear();
                 if (_o.MetadataWillRoll)
@@ -1697,7 +1697,7 @@ internal sealed partial class CppEmitter
             // type-info is itself emitted (the opaque pass pulls base chains in), so isinst
             // / IsAssignableFrom over a typeof-only type still walks the real hierarchy.
             string baseExpr = !cls.IsValueType && cls.BaseClass is { } bc
-                    && (CoreIntrinsics.RuntimeTypeInfoSymbol(bc.FullName) is not null
+                    && (CoreIntrinsics.RuntimeTypeInfoSymbol(bc) is not null
                         || !_e.IsOpaque(cls)
                         || (_e._emit.Contains(bc) && !bc.IsEnum && !_e.SkipsCanonicalMetadata(bc)))
                 ? _e.TypeInfoRef(bc, "base type-info of an emitted class")
@@ -2009,7 +2009,7 @@ internal sealed partial class CppEmitter
             // handle at startup. An OPAQUE one (System.Exception, System.AggregateException
             // — intrinsic, no fields, no vtable, and a runtime object layout the emitted
             // struct does not describe) is left alone: the runtime's own stub IS its truth.
-            if (CoreIntrinsics.RuntimeTypeInfoSymbol(cls.FullName) is not null && !_e.IsOpaque(cls))
+            if (CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is not null && !_e.IsOpaque(cls))
                 _e._typeBinds.Add(cls);
         }
     }

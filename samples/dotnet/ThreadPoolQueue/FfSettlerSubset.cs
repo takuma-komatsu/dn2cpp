@@ -111,6 +111,21 @@ static class Program
         ThreadPool.UnsafeQueueUserWorkItem(new SettleItem(tcs7, 55), false);
         Console.WriteLine("ff unsafe workitem: " + tcs7.Task.Result);
 
+        var tcsValue = new TaskCompletionSource<int>();
+        ThreadPool.UnsafeQueueUserWorkItem<(TaskCompletionSource<int>, int)>(
+            static s => s.Item1.SetResult(s.Item2), (tcsValue, 66), false);
+        Console.WriteLine("ff unsafe value state: " + tcsValue.Task.Result);
+
+        var tcsPrimitive = new TaskCompletionSource<int>();
+        ThreadPool.QueueUserWorkItem<int>(
+            s => tcsPrimitive.SetResult(s), 77, false);
+        Console.WriteLine("ff primitive state: " + tcsPrimitive.Task.Result);
+
+        var tcsContext = new TaskCompletionSource<int>();
+        new SynchronizationContext().Post(
+            static s => ((TaskCompletionSource<int>)s!).SetResult(88), tcsContext);
+        Console.WriteLine("sync context base post: " + tcsContext.Task.Result);
+
         // 5. Several promises settled by several items, waited with WaitAll.
         var batch = new Task[6];
         int[] got = new int[6];

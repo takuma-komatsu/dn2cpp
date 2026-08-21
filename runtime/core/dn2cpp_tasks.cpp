@@ -1464,10 +1464,10 @@ Dn2CppCancelReg* dn2cpp_cts_register_state_token(Dn2CppCancelSource* src, Dn2Cpp
     return nullptr;
 }
 
-void dn2cpp_cts_unregister(Dn2CppCancelReg* reg)
+int32_t dn2cpp_ctr_unregister(Dn2CppCancelReg* reg)
 {
     if (reg == nullptr || reg->source == nullptr)
-        return;
+        return 0;
     Dn2CppCancelSource* src = reg->source;
     std::lock_guard<std::mutex> lk(g_cts_mtx);
     for (Dn2CppCancelReg** pp = &src->regs; *pp != nullptr; pp = &(*pp)->next)
@@ -1475,9 +1475,20 @@ void dn2cpp_cts_unregister(Dn2CppCancelReg* reg)
         if (*pp == reg)
         {
             dn2cpp_gc_store_ref(pp, reg->next);
-            return;
+            return 1;
         }
     }
+    return 0;
+}
+
+void dn2cpp_cts_unregister(Dn2CppCancelReg* reg)
+{
+    (void)dn2cpp_ctr_unregister(reg);
+}
+
+Dn2CppCancelToken dn2cpp_ctr_token(Dn2CppCancelReg* reg)
+{
+    return Dn2CppCancelToken{ reg != nullptr ? reg->source : nullptr };
 }
 
 // ---- CancelAfter's timer -----------------------------------------------------------

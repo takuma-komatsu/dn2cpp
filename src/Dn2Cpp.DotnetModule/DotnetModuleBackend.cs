@@ -174,10 +174,11 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         _lookupScriptsInAssembly = ResolveRoot(c, "Godot.Bridge.ScriptManagerBridge", "LookupScriptsInAssembly", 1);
         // The main-thread SynchronizationContext singleton: the epilogue's
         // dn2cpp_dm_sync_ctx/pump call the ctor and ExecutePendingContinuations
-        // directly, and Post/Send are what the vtable dispatch of the
-        // virtual-dispatch-bounded SynchronizationContext.Post (and Send) lands
-        // on — root all four so they are emitted whether or not the app's own
-        // call graph reaches them.
+        // directly. Post and Send are reached only by an ordinary virtual call
+        // on a base-typed SynchronizationContext reference, and this class is
+        // never newobj'd in managed IL (ExternallyAllocatedClasses is its only
+        // instantiation site) — root all four explicitly so they emit whether
+        // or not the app's own call graph reaches them.
         _syncCtxCtor = ResolveRoot(c, "Godot.GodotSynchronizationContext", ".ctor", 0);
         _syncCtxExecute = ResolveRoot(c, "Godot.GodotSynchronizationContext", "ExecutePendingContinuations", 0);
         var syncCtxPost = ResolveRoot(c, "Godot.GodotSynchronizationContext", "Post", 2);

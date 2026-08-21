@@ -155,6 +155,8 @@ internal enum InterceptEmitArm
     /// <summary>ExecutionContext.Capture() — push the null "nothing to flow"
     /// encoding every consumer already handles.</summary>
     ExecutionContextCaptureNull,
+    /// <summary>ExecutionContext.Run/RunInternal — invoke ContextCallback directly.</summary>
+    ExecutionContextRunDirect,
     /// <summary>SynchronizationContext's thread-slot statics —
     /// <c>EmitIntrinsic</c> under the literal type key (the per-thread
     /// dn2cpp_sync_ctx_get/set slot).</summary>
@@ -320,14 +322,6 @@ internal enum InterceptEmitArm
     /// shape-preserving no-op stub, because a cut body has no symbol to
     /// address.</summary>
     BoundedNeutralize,
-    /// <summary>A bounded VIRTUAL whose callvirt sites are NOT neutralized: only the
-    /// base body is cut, and the call falls through to the ordinary virtual-dispatch
-    /// emission so a user override still runs. Not a second route so much as the
-    /// absence of one — which is exactly why it is a row: the carve-out is a
-    /// property of the intercepted member set, and stating it beside
-    /// <see cref="BoundedNeutralize"/> is what keeps the two from being read as one
-    /// rule.</summary>
-    BoundedVirtualDispatch,
     /// <summary>The base Stream async funnels: bounded body, but the call site is
     /// REWRITTEN rather than neutralized —
     /// <c>MethodCompiler.TryEmitStreamSyncOverAsyncFunnel</c> dispatches
@@ -657,13 +651,19 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.ComparerCompare,
         extra: static mi => LoweredComparerCompare(mi.DeclaringClass.FullName, mi.Name));
 
-    /// <summary>ExecutionContext.Capture() lowers to the null "nothing to flow"
-    /// encoding; its real body reads Thread._executionContext on the intrinsic
+    /// <summary>ExecutionContext.Capture overloads lower to the null "nothing to flow"
+    /// encoding; their real bodies read Thread._executionContext on the intrinsic
     /// Thread model.</summary>
     public static readonly MethodDefIntercept MdExecutionContextCapture = new(
         InterceptCutKind.Cut, InterceptEmitArm.ExecutionContextCaptureNull,
-        typeGate: "System.Threading.ExecutionContext", nameGate: "Capture",
-        extra: static mi => mi.Signature.ParameterTypes.Length == 0);
+        typeGate: "System.Threading.ExecutionContext", nameGate: "Capture");
+
+    /// <summary>ExecutionContext flow is absent, so Run invokes its callback directly.</summary>
+    public static readonly MethodDefIntercept MdExecutionContextRun = new(
+        InterceptCutKind.Cut, InterceptEmitArm.ExecutionContextRunDirect,
+        typeGate: "System.Threading.ExecutionContext",
+        extra: static mi => mi.Name is "Run" or "RunInternal"
+            && mi.Signature.ParameterTypes.Length == 3);
 
     /// <summary>SynchronizationContext's thread-slot statics — get_Current /
     /// SetSynchronizationContext read/write the per-thread runtime slot; the
@@ -710,6 +710,7 @@ internal static partial class CoreIntrinsics
         MdInlinePrimitive,
         MdComparerCompare,
         MdExecutionContextCapture,
+        MdExecutionContextRun,
         MdSyncContextSlot,
         MdMemoryMarshalArrayData,
         MdIntrinsicType,
@@ -844,6 +845,18 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicUnderDeclType,
         typeGate: "System.Threading.SynchronizationContext",
         extra: static (_, n, _) => n is "get_Current" or "SetSynchronizationContext");
+
+    /// <summary>The cross-assembly twin of <see cref="MdExecutionContextCapture"/>.</summary>
+    public static readonly MemberRefIntercept MrExecutionContextCapture = new(
+        InterceptCutKind.Cut, InterceptEmitArm.ExecutionContextCaptureNull,
+        typeGate: "System.Threading.ExecutionContext", nameGate: "Capture");
+
+    /// <summary>The cross-assembly twin of <see cref="MdExecutionContextRun"/>.</summary>
+    public static readonly MemberRefIntercept MrExecutionContextRun = new(
+        InterceptCutKind.Cut, InterceptEmitArm.ExecutionContextRunDirect,
+        typeGate: "System.Threading.ExecutionContext",
+        extra: static (_, n, sig) => n is "Run" or "RunInternal"
+            && sig().ParameterTypes.Length == 3);
 
     /// <summary>NativeMemory's C-heap wrappers (Alloc/AllocZeroed/Free/Realloc,
     /// the Aligned* trio, the bulk Clear/Copy/Fill) → dn2cpp_native_* / memset /
@@ -992,6 +1005,8 @@ internal static partial class CoreIntrinsics
         MrEnumStatics,
         MrNullableGetUnderlyingType,
         MrSyncContextSlot,
+        MrExecutionContextCapture,
+        MrExecutionContextRun,
         MrNativeMemory,
         MrMarshalInterop,
         MrMemoryMarshalArrayData,
@@ -1314,7 +1329,7 @@ internal static partial class CoreIntrinsics
     /// <para>The NON-GENERIC <c>System.Collections.IEqualityComparer</c> carries the same
     /// two member names and is in the set for the same reason: its emitted dispatch
     /// (MethodCompiler.EmitManagedCall's interface arm) answers a null receiver — the
-    /// <c>EqualityComparer&lt;T&gt;.Default</c> nullptr sentinel, escaped into Tuple's
+    /// <c>EqualityComparer&lt;T&gt;.Default</c> opaque identity, escaped into Tuple's
     /// structural trio as an object — with these very helpers, so a body holding such a
     /// call site can hand them a boxed element whose type-info slots must be wired.</para>
     ///
@@ -1529,20 +1544,11 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Bounded, InterceptEmitArm.BoundedNeutralize,
         extra: static (dt, n) => dt is not null && IsBoundedMethod(dt, n));
 
-    /// <summary>The bounded virtual whose callvirt sites keep dispatching
-    /// (<see cref="IsVirtualDispatchBounded"/> — SynchronizationContext.Post): only the
-    /// base BODY is cut. A carve-out ON <see cref="BdCoreBounded"/> rather than a row
-    /// beside it — every member it names is also in the core bounded set — so the emit
-    /// site asks both, in that order.</summary>
-    public static readonly NameKeyedIntercept BdVirtualDispatch = new(
-        InterceptCutKind.Bounded, InterceptEmitArm.BoundedVirtualDispatch,
-        extra: static (dt, n) => dt is not null && IsVirtualDispatchBounded(dt, n));
-
     /// <summary>The base Stream async funnels
     /// (<see cref="IsStreamSyncOverAsyncFunnel"/>): bounded — their bodies are in the
     /// core set and stay cut — but rewritten at the call site instead of neutralized,
     /// because the default they would otherwise get is a NULL Task and awaiting one is a
-    /// nullptr dereference. Like <see cref="BdVirtualDispatch"/> this is a carve-out on
+    /// nullptr dereference. This is a carve-out on
     /// <see cref="BdCoreBounded"/>, and BOTH askers need it: the emitter to rewrite, and
     /// <c>Compilation.Reach</c> to reach the sync slot the rewrite dispatches
     /// through.</summary>
@@ -1589,17 +1595,13 @@ internal static partial class CoreIntrinsics
         extra: static (dt, n) => dt is not null && IsAbsentNetworkPalMember(dt, n));
 
     /// <summary>Every BodyReplace/Bounded row. A REGISTRY, not a chain, like the four
-    /// tables above — and, like them, two of these rows deliberately OVERLAP
-    /// (<see cref="BdVirtualDispatch"/> and <see cref="BdStreamSyncFunnel"/> both name
-    /// members of <see cref="BdCoreBounded"/>), because they are carve-outs on it rather
-    /// than alternatives to it. There is no first-match walk to be confused by that; each
-    /// asker names the rows it needs at its own site.</summary>
+    /// tables above. <see cref="BdStreamSyncFunnel"/> overlaps
+    /// <see cref="BdCoreBounded"/> because it is a carve-out on that row.</summary>
     public static readonly NameKeyedIntercept[] BoundedIntercepts =
     [
         BrHttpShim,
         BrEnumInstanceFormat,
         BdCoreBounded,
-        BdVirtualDispatch,
         BdStreamSyncFunnel,
         BdDynamicCodegen,
         BdAbsentNetworkPal,

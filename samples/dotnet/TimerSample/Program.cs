@@ -13,6 +13,10 @@ static class Program
         StartViaChange();
         OneShotTimeSpan();
         LongOverload();
+        PublicTimerInterfaces();
+        SystemTimeProviderOneShot();
+        SystemTimeProviderChange();
+        SystemTimeProviderDisposeAsync();
     }
 
     // An Infinite period never re-fires, so the count is stable once the latch trips and
@@ -85,4 +89,64 @@ static class Program
         timer.Dispose();
         Console.WriteLine($"long fires={fires}");                       // long fires=1
     }
+
+    static void PublicTimerInterfaces()
+    {
+        int fires = 0;
+        var timer = new Timer(_ => Interlocked.Increment(ref fires), null,
+            TimeSpan.FromHours(1), Timeout.InfiniteTimeSpan);
+        object boxed = timer;
+        var disposed = timer.DisposeAsync();
+        disposed.GetAwaiter().GetResult();
+        Console.WriteLine($"timer type={timer.GetType().FullName} itimer={boxed is ITimer} " +
+            $"async={disposed.IsCompletedSuccessfully} stopped={fires == 0}");
+    }
+
+    // TimeProvider.System constructs CoreLib's private ITimer adapter. The callback and
+    // state use the same runtime timer path as the public Timer constructors.
+    static void SystemTimeProviderOneShot()
+    {
+        var done = new CountdownEvent(1);
+        int observed = -1;
+        ITimer timer = TimeProvider.System.CreateTimer(s =>
+        {
+            observed = (int)s!;
+            done.Signal();
+        }, 11, TimeSpan.FromMilliseconds(30), Timeout.InfiniteTimeSpan);
+        var publicTimer = new Timer(_ => { });
+        bool distinct = publicTimer.GetType() != timer.GetType();
+        publicTimer.Dispose();
+        Console.WriteLine($"provider type={timer.GetType().FullName} itimer={((object)timer is ITimer)} distinct={distinct}");
+        done.Wait();
+        timer.Dispose();
+        Console.WriteLine($"provider state={observed}");                // provider state=11
+    }
+
+    // Exercise Change through the ITimer interface, not the concrete Timer intrinsic.
+    static void SystemTimeProviderChange()
+    {
+        var done = new CountdownEvent(1);
+        int fires = 0;
+        ITimer timer = TimeProvider.System.CreateTimer(_ =>
+        {
+            Interlocked.Increment(ref fires);
+            done.Signal();
+        }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        bool changed = timer.Change(TimeSpan.FromMilliseconds(30), Timeout.InfiniteTimeSpan);
+        done.Wait();
+        timer.Dispose();
+        Console.WriteLine($"provider change={changed} fires={fires}");  // provider change=True fires=1
+    }
+
+    // ITimer inherits IAsyncDisposable. The runtime adapter stops synchronously and
+    // returns an already-completed ValueTask through the interface slot.
+    static void SystemTimeProviderDisposeAsync()
+    {
+        ITimer timer = TimeProvider.System.CreateTimer(
+            _ => { }, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        var disposed = timer.DisposeAsync();
+        disposed.GetAwaiter().GetResult();
+        Console.WriteLine($"provider async disposed={disposed.IsCompletedSuccessfully}");
+    }
+
 }

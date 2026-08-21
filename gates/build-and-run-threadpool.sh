@@ -29,6 +29,11 @@
 # RE-ARMS once such a settler leaves cannot be diffed here either; it is the
 # afterff/aftertimer pair of the same frozen ColdTaskDeadlock section.
 #
+# The same section is also the only in-tree exercise of a base (non-overridden)
+# SynchronizationContext.Post dispatch — every other sample's Post goes through an
+# override — plus the generic value-TState QueueUserWorkItem/UnsafeQueueUserWorkItem
+# overloads, where the state travels by value instead of boxed through object.
+#
 # The TimerSettler section covers the third settler of that class: a
 # System.Threading.Timer callback, whose count follows the timer's ARMED state — a
 # pending due time or a callback in flight, with Change and Dispose as principal

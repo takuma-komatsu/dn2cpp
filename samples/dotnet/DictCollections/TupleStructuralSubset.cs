@@ -1,7 +1,7 @@
 #nullable enable
 // System.Tuple's structural equality/order/format trio — the reference Tuple, not
 // ValueTuple. Its BCL bodies pass `EqualityComparer<object>.Default` (dn2cpp: the
-// nullptr sentinel) into `IStructuralEquatable.GetHashCode/Equals(…, IEqualityComparer)`
+// opaque identity) into `IStructuralEquatable.GetHashCode/Equals(…, IEqualityComparer)`
 // as an OBJECT, and the inner bodies dispatch the comparer through the NON-GENERIC
 // System.Collections.IEqualityComparer interface. That dispatch used to read
 // nullptr->type and crash — Thrive's PatchMap.Verify (`HashSet<Tuple<Patch,Patch>>.Add`

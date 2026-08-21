@@ -650,7 +650,14 @@ internal sealed partial class MethodCompiler
         // A within-assembly ctor (e.g. CoreLib's own `new string(...)`) is a MethodDef;
         // resolve its declaring type so intrinsic-type interception still fires.
         if (handle.Kind == HandleKind.MethodDefinition)
-            return ResolveMethodDef((MethodDefinitionHandle)handle).DeclaringClass.FullName;
+        {
+            var cls = ResolveMethodDef((MethodDefinitionHandle)handle).DeclaringClass;
+            // Nested-qualified only, never the adopted-async BCL key: `.ctor` is outside the
+            // adopted contract, and answering the key here would let an adopted task type's
+            // own ctor match a BCL-name-keyed arm (the cold-Task one takes MethodDefs) and
+            // be lowered with foreign operand semantics.
+            return cls.IntrinsicCppName is not null ? NestedIntrinsicDispatchName(cls) : cls.FullName;
+        }
         return handle.Kind.ToString();
     }
 
@@ -1141,7 +1148,7 @@ internal sealed partial class MethodCompiler
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             // The only mint point of the intrinsic timer: note it so the emitter can
-            // install the IDisposable row onto the runtime timer type-info — `using (new
+            // install its interface rows onto the runtime timer type-info — `using (new
             // Timer(...))` dispatches Dispose through the interface map. The note sits
             // INSIDE the token-kind gate, so a mouth this arm declined would leave the row
             // uninstalled and `using (new Timer(...))` a runtime fatal — silently, since a
@@ -1163,6 +1170,31 @@ internal sealed partial class MethodCompiler
             string periodMs = TimerMs(period, tmSig.ParameterTypes[3]);
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_timer_new((Dn2CppObject*)({cb.Expr}), (Dn2CppObject*)({state.Expr}), {dueMs}, {periodMs})");
+            return;
+        }
+        // TimeProvider.System.CreateTimer constructs CoreLib's private adapter with
+        // (dueTime, period, callback, state). Its real ctor reaches TimerQueue's runtime
+        // thread/ThreadPool internals; represent it with the same timer object as the
+        // public Timer intrinsic. A custom TimeProvider override remains ordinary IL.
+        if (NewobjTypeName(handle) == "System.TimeProvider+SystemTimeProviderTimer"
+            && handle.Kind == HandleKind.MethodDefinition)
+        {
+            _c.NoteIntrinsicInterfaces("System.TimeProvider+SystemTimeProviderTimer");
+            var tmSig = DecodeCtorSignature(handle);
+            // Four operands are popped below and the first two parameters read, so the shape
+            // is asserted first: a name-gated route may decline a shape, never pop one.
+            if (tmSig.ParameterTypes.Length != 4)
+                throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: "
+                    + "System.TimeProvider+SystemTimeProviderTimer..ctor expects "
+                    + $"(dueTime, period, callback, state), got {SigArgs(tmSig)}");
+            var state = Pop();
+            var callback = Pop();
+            var period = Pop();
+            var dueTime = Pop();
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"dn2cpp_timeprovider_timer_new((Dn2CppObject*)({callback.Expr}), (Dn2CppObject*)({state.Expr}), " +
+                $"{TimerMs(dueTime, tmSig.ParameterTypes[0])}, {TimerMs(period, tmSig.ParameterTypes[1])})");
             return;
         }
         // new ThreadLocal<T>() / ThreadLocal<T>(Func<T>) / ThreadLocal<T>(Func<T>, bool
@@ -1505,14 +1537,15 @@ internal sealed partial class MethodCompiler
         // int formattedCount, StringBuilder sb [, IFormatProvider]) — the value-type
         // newobj form (the common `ldloca + call.ctor` form is handled in EmitIntrinsic).
         // The handler is modeled as the underlying StringBuilder pointer, so the value it
-        // pushes IS the builder; the counts/provider are advisory. NewobjTypeName returns
-        // the bare nested name for both mouths (the MemberRef's TypeRef carries no
-        // namespace; a nested ClassInfo's Namespace is empty), which is what makes the
-        // widened token-kind gate effective rather than dead. The handler is
+        // pushes IS the builder; the counts/provider are advisory. BOTH names must be
+        // matched or the widened token-kind gate is dead: NewobjTypeName answers the bare
+        // nested name for the MemberRef mouth (its TypeRef carries no namespace) and the
+        // enclosing-qualified nested dispatch name for the MethodDef mouth. The handler is
         // intrinsic-mapped by the NESTED key ("System.Text.StringBuilder",
         // "AppendInterpolatedStringHandler"), so the cut that obliges the route is
         // Compilation.Reach's IntrinsicCppName guard, not the s_intrinsicTypes name table.
-        if (NewobjTypeName(handle) == "AppendInterpolatedStringHandler"
+        if (NewobjTypeName(handle) is "AppendInterpolatedStringHandler"
+                or "System.Text.StringBuilder+AppendInterpolatedStringHandler"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var hsig = DecodeCtorSignature(handle);
@@ -1809,6 +1842,20 @@ internal sealed partial class MethodCompiler
 
         if (_intrinsics is not null && _intrinsics.TryEmitNewobj(this, ctor))
             return;
+
+        // A same-assembly `new MyTask(...)` on an adopted custom async task type. `.ctor` is
+        // outside the mapped contract and the MemberRef pre-scan cannot see a MethodDef, so
+        // this is the fail-loud hole the adoption owes: the type is an empty intrinsic shell
+        // whose ctor body reachability already cut, and both tails below would call it.
+        if (_c.AdoptedAsyncKey(cls) is { } adoptedKey)
+            throw new NotSupportedException(
+                $"{_method.DeclaringClass.FullName}.{_method.Name}: newobj {cls.FullName}"
+                + $"{SigArgs(ctor.Signature)} — {cls.FullName} is a custom async task type, which "
+                + $"dn2cpp models by adopting it into its intrinsic Task family (as {adoptedKey}) "
+                + "rather than transpiling the library's own scheduler and object-pool machinery. "
+                + "Only the members the C# compiler and the await pattern require are mapped; a "
+                + $"constructor is not one of them. Remedy: --no-adopt-async {cls.Module.AssemblyName}, "
+                + "so the library's real IL transpiles instead");
 
         // `new <ExceptionType>(...)` for any type whose base chain reaches
         // System.Exception. Two forms:

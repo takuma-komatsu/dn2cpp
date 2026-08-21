@@ -611,6 +611,11 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_generic_params(Dn2CppTypeInfo ti, const 
 // is monomorphic (rgctx null) or a shared world whose slot order is its own.
 // dn2cpp_rgctx routes a flagged receiver to the clone's per-level tables.
 #define DN2CPP_TF_RUNTIME_SYNTH 0x2000000
+// The runtime-minted synthetic type of an EqualityComparer<T>.Default singleton
+// (dn2cpp_default_equality_comparer). A BIT rather than a registry lookup because
+// the non-generic comparer dispatch asks "is this the default comparer?" once per
+// element; nothing but that mint stamps it.
+#define DN2CPP_TF_DEFAULT_EQ_COMPARER 0x4000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -2003,6 +2008,15 @@ void* dn2cpp_alloc_type_associated(Dn2CppType* t, int32_t size);
 
 // Built-in type metadata (defined in dn2cpp_typeinfo.cpp).
 extern const Dn2CppTypeInfo dn2cpp_object_type;
+Dn2CppObject* dn2cpp_default_equality_comparer(const Dn2CppTypeInfo* comparerType,
+                                               const Dn2CppTypeInfo* genericInterface,
+                                               const Dn2CppTypeInfo* nongenericInterface);
+// Inline and lock-free — the per-element comparer dispatch is its caller, and a
+// separate translation unit would put a call there.
+static inline int32_t dn2cpp_is_default_equality_comparer(const Dn2CppObject* obj)
+{
+    return obj != nullptr && (obj->type->flags & DN2CPP_TF_DEFAULT_EQ_COMPARER) != 0;
+}
 // Non-const: generated code registers String's interface-dispatch map onto it at
 // startup (dn2cpp_string_set_interfaces) — the interface set and its slot
 // implementations are program-specific (tree-shaken CoreLib IL), so the runtime
@@ -2082,9 +2096,10 @@ void dn2cpp_intrinsic_set_interfaces(Dn2CppTypeInfo* type, const Dn2CppInterface
 // The mapped intrinsics' type-info handles, named by the generated init prologue. Each
 // is defined beside its own runtime helpers (dn2cpp_threading.cpp and the System.Threading
 // / System.Collections.Concurrent intrinsic units) and is non-const for this reason
-// alone; every one models a CLR type implementing IDisposable. The transpiler-side table
+// alone. The transpiler-side table
 // that pairs them with an interface and a slot thunk is Compilation.IntrinsicInterfaceRows.
 extern Dn2CppTypeInfo dn2cpp_timer_type;
+extern Dn2CppTypeInfo dn2cpp_timeprovider_timer_type;
 extern Dn2CppTypeInfo dn2cpp_countdown_type;
 extern Dn2CppTypeInfo dn2cpp_barrier_type;
 extern Dn2CppTypeInfo dn2cpp_rwlock_type;
@@ -4553,6 +4568,43 @@ Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src);
 // the same worker pool. Returns no Task (returns bool, always 1/true); a GC holder keeps
 // the delegate + state reachable from enqueue until the worker finishes invoking them.
 int32_t dn2cpp_threadpool_queue(Dn2CppObject* callback, Dn2CppObject* state);
+template<typename T>
+struct Dn2CppThreadPoolValueState : Dn2CppObject
+{
+    Dn2CppObject* callback;
+    T state;
+};
+template<typename T>
+inline void dn2cpp_action_value_invoke(Dn2CppObject* del, T state)
+{
+    if (del == nullptr)
+        return;
+    auto* dg = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (dg->prev != nullptr)
+        dn2cpp_action_value_invoke<T>(dg->prev, state);
+    reinterpret_cast<void (*)(Dn2CppObject*, T)>(dg->method)(dg->target, state);
+}
+template<typename T>
+inline void dn2cpp_threadpool_value_thunk(Dn2CppObject* target, Dn2CppObject*)
+{
+    auto* item = reinterpret_cast<Dn2CppThreadPoolValueState<T>*>(target);
+    dn2cpp_action_value_invoke<T>(item->callback, item->state);
+}
+template<typename T>
+inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
+{
+    auto* item = static_cast<Dn2CppThreadPoolValueState<T>*>(
+        dn2cpp_alloc(sizeof(Dn2CppThreadPoolValueState<T>)));
+    item->type = &dn2cpp_object_type;
+    item->callback = callback;
+    item->state = state;
+    auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
+    del->type = &dn2cpp_object_type;
+    del->target = item;
+    del->method = reinterpret_cast<void*>(&dn2cpp_threadpool_value_thunk<T>);
+    del->prev = nullptr;
+    return dn2cpp_threadpool_queue(del, nullptr);
+}
 // ThreadPool.UnsafeQueueUserWorkItem(IThreadPoolWorkItem, bool) — fire-and-forget
 // Execute() on the same pool; `executeFn` is the Execute implementation the call
 // site resolved through the receiver's interface table (void (*)(receiver)).
@@ -4735,6 +4787,8 @@ int32_t dn2cpp_rwlock_recursion_policy(Dn2CppObject* r);   // RecursionPolicy (a
 // callback to avoid a self-join deadlock.
 Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                int64_t dueMs, int64_t periodMs);
+Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
+                                            int64_t dueMs, int64_t periodMs);
 int32_t dn2cpp_timer_change(Dn2CppObject* t, int64_t dueMs, int64_t periodMs); // Change: returns 1
 int32_t dn2cpp_timer_dispose(Dn2CppObject* t); // Dispose: stop + join, returns 1
 
@@ -6038,6 +6092,7 @@ void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
 // Invoke a no-arg System.Action delegate (and its multicast chain) generically, via
 // the uniform delegate layout.
 void dn2cpp_action_invoke(Dn2CppObject* action);
+void dn2cpp_paramthread_invoke(Dn2CppObject* action, Dn2CppObject* state);
 // Register a System.Action to run when `t` completes — backs a user awaiter's
 // TaskAwaiter.OnCompleted(Action) and the custom-awaitable await continuation.
 void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action);
@@ -6215,6 +6270,10 @@ void dn2cpp_tokenthread_invoke(Dn2CppObject* del, Dn2CppObject* arg, Dn2CppCance
 // Detach a still-pending callback registration (CancellationTokenRegistration
 // .Dispose). A no-op if the registration already fired or was detached.
 void dn2cpp_cts_unregister(Dn2CppCancelReg* reg);
+int32_t dn2cpp_ctr_unregister(Dn2CppCancelReg* reg);
+// The token associated with a registration remains observable after the callback fires
+// or Dispose detaches it. A default registration returns CancellationToken.None.
+Dn2CppCancelToken dn2cpp_ctr_token(Dn2CppCancelReg* reg);
 // A Task.Delay(ms) bound to a token source: if the source cancels before the timer
 // fires, the delay task transitions to CANCELED instead of completing.
 Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src);

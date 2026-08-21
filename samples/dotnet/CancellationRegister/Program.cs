@@ -20,6 +20,7 @@ namespace CancellationRegister
             // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
             StateTokenCallback.Program.__GateEntry();
             TernaryDefaultMerge.Program.__GateEntry();
+            RegistrationToken.Program.__GateEntry();
         }
     }
 }

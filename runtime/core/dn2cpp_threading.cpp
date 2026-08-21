@@ -1625,6 +1625,7 @@ int32_t dn2cpp_rwlock_recursion_policy(Dn2CppObject* o)
 // The mutex/condition_variable are constructed in place (the GC heap is raw) and never
 // destructed, a small bounded leak like the other primitives.
 extern const Dn2CppType dn2cpp_timer_type_obj;
+extern const Dn2CppType dn2cpp_timeprovider_timer_type_obj;
 // Non-const and externally visible (like dn2cpp_string_type): its IDisposable interface
 // row points at a program-specific emitted type-info (`ti_System__IDisposable`), so the
 // generated init prologue wires it in at startup (dn2cpp_intrinsic_set_interfaces).
@@ -1638,6 +1639,9 @@ extern const Dn2CppType dn2cpp_timer_type_obj;
 Dn2CppTypeInfo dn2cpp_timer_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Timer", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_timer_type_obj);
 const Dn2CppType dn2cpp_timer_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timer_type };
+Dn2CppTypeInfo dn2cpp_timeprovider_timer_type =
+    dn2cpp_ti_with_typeobject({ "System.TimeProvider+SystemTimeProviderTimer", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_timeprovider_timer_type_obj);
+const Dn2CppType dn2cpp_timeprovider_timer_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timeprovider_timer_type };
 
 struct Dn2CppManagedTimer : Dn2CppObject
 {
@@ -1747,14 +1751,15 @@ static void dn2cpp_timer_thread(Dn2CppManagedTimer* t)
     }
 }
 
-Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
-                               int64_t dueMs, int64_t periodMs)
+static Dn2CppObject* dn2cpp_timer_new_with_type(Dn2CppTypeInfo* type,
+                                                Dn2CppObject* callback, Dn2CppObject* state,
+                                                int64_t dueMs, int64_t periodMs)
 {
     // GC-allocated (it holds managed callback/state), then constructed in place so the
     // std::mutex / std::condition_variable members get real ctors over the raw GC heap.
     auto* t = static_cast<Dn2CppManagedTimer*>(dn2cpp_alloc(sizeof(Dn2CppManagedTimer)));
     new (t) Dn2CppManagedTimer();
-    t->type = &dn2cpp_timer_type;
+    t->type = type;
     t->callback = callback;
     t->state = state;
     t->dueMs = dueMs;
@@ -1802,6 +1807,19 @@ Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
     t->threadId = th->get_id();
     t->handle = th;
     return t;
+}
+
+Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
+                               int64_t dueMs, int64_t periodMs)
+{
+    return dn2cpp_timer_new_with_type(&dn2cpp_timer_type, callback, state, dueMs, periodMs);
+}
+
+Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
+                                            int64_t dueMs, int64_t periodMs)
+{
+    return dn2cpp_timer_new_with_type(&dn2cpp_timeprovider_timer_type,
+                                      callback, state, dueMs, periodMs);
 }
 
 // Timer.Change(dueTime, period): reschedule. Sets the new dueMs/periodMs, bumps the
@@ -1855,4 +1873,3 @@ int32_t dn2cpp_timer_dispose(Dn2CppObject* o)
     }
     return 1;
 }
-
