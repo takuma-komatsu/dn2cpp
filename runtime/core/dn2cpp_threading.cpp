@@ -1786,26 +1786,33 @@ static Dn2CppObject* dn2cpp_timer_new_with_type(Dn2CppTypeInfo* type,
     // wait, so `t` itself stays in a callee-saved register the collector scans — not
     // because capturing it is safe. A timer whose thread ever went to sleep holding
     // nothing but the capture would need CancelAfter's pinned cell.
+    // Publish threadId/handle under t->m with the spawn in the same critical section: the
+    // timer thread's first act is to take t->m, so an immediate (dueMs == 0) fire cannot
+    // see them unset and self-Dispose against a stale identity test — which would join its
+    // own thread. Holding t->m across the spawn only blocks the child's t->m acquire.
     std::thread* th;
-    try
     {
-        th = new std::thread([t] { dn2cpp_timer_thread(t); });
-    }
-    catch (...)
-    {
-        // No thread was started (a native host can refuse one; on wasm the ctor always
-        // throws). Take the +1 back down — nothing else ever will, and a leaked count
-        // disarms the defeated-wait report for the rest of the process, turning every
-        // later defeated wait into a silent hang.
-        if (t->counted)
+        std::lock_guard<std::mutex> lk(t->m);
+        try
         {
-            t->counted = false;
-            dn2cpp_timer_principal_leave();
+            th = new std::thread([t] { dn2cpp_timer_thread(t); });
         }
-        throw;
+        catch (...)
+        {
+            // No thread was started (a native host can refuse one; on wasm the ctor always
+            // throws). Take the +1 back down — nothing else ever will, and a leaked count
+            // disarms the defeated-wait report for the rest of the process, turning every
+            // later defeated wait into a silent hang.
+            if (t->counted)
+            {
+                t->counted = false;
+                dn2cpp_timer_principal_leave();
+            }
+            throw;
+        }
+        t->threadId = th->get_id();
+        t->handle = th;
     }
-    t->threadId = th->get_id();
-    t->handle = th;
     return t;
 }
 
@@ -1857,16 +1864,22 @@ int32_t dn2cpp_timer_change(Dn2CppObject* o, int64_t dueMs, int64_t periodMs)
 int32_t dn2cpp_timer_dispose(Dn2CppObject* o)
 {
     auto* t = static_cast<Dn2CppManagedTimer*>(o);
+    std::thread* th;
+    std::thread::id tid;
     {
         std::lock_guard<std::mutex> lk(t->m);
         t->disposed = true;
         dn2cpp_timer_sync_principal(t);
+        // Read under t->m: this is the only edge ordering the ctor's publish of
+        // handle/threadId before these reads.
+        th = static_cast<std::thread*>(t->handle);
+        tid = t->threadId;
     }
     t->cv.notify_one();
-    auto* th = static_cast<std::thread*>(t->handle);
+    // The join stays OUTSIDE t->m — the timer thread holds it around every wait.
     if (th != nullptr && th->joinable())
     {
-        if (std::this_thread::get_id() == t->threadId)
+        if (std::this_thread::get_id() == tid)
             th->detach(); // Dispose() called from the callback — cannot join self
         else
             th->join();
