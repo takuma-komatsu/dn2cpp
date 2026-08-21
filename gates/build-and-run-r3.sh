@@ -2,6 +2,8 @@
 # The real R3 1.3.1 core NuGet package: multiple Subject subscriptions,
 # Where/Select/Scan, resumable and terminal errors, ReactiveProperty equality,
 # Timer, and Channels-backed async enumeration, exact-diffed against real .NET.
+# Also a MoveNextAsync read completed and cancelled from another thread while
+# pending — IValueTaskSource.OnCompleted's continuation path and AsyncOperation.TrySetCanceled.
 source "$(dirname "$0")/_common.sh"
 
 project=R3Sample

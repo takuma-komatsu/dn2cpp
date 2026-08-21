@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using R3;
 
 namespace R3AsyncSubset
@@ -11,6 +12,8 @@ namespace R3AsyncSubset
             OneShotTimer();
             BufferedAsyncEnumerable();
             CancelledAsyncEnumerable();
+            PendingReadResumedCrossThread();
+            PendingReadCancelledCrossThread();
         }
 
         private static void OneShotTimer()
@@ -85,6 +88,77 @@ namespace R3AsyncSubset
             Console.WriteLine("[async cancel] first=" + first + ":" + value
                 + " cancelled=" + cancelled + " cancel-disposed=" + disposedByCancellation
                 + " dispose-stable=" + (upstreamDisposes == 1));
+        }
+
+        // Both sections above publish/cancel BEFORE the first MoveNextAsync, so only the
+        // already-completed ValueTask fast path ever ran. These read first, then publish
+        // from another thread — forcing OnCompleted's registered-continuation path and, in
+        // the cancel case, TrySetCanceled on an outstanding read.
+
+        private static void PendingReadResumedCrossThread() =>
+            PendingReadResumedCrossThreadAsync().GetAwaiter().GetResult();
+
+        private static async Task PendingReadResumedCrossThreadAsync()
+        {
+            using var subject = new Subject<int>();
+            var enumerator = subject.ToAsyncEnumerable().GetAsyncEnumerator();
+
+            ValueTask<bool> pending = enumerator.MoveNextAsync();
+            // Read before queueing: proves the pending arm was taken, not the completed one.
+            bool pendingBeforePublish = pending.IsCompleted;
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(5); subject.OnNext(41); });
+            bool moved = await pending;
+            int value = enumerator.Current;
+
+            ValueTask<bool> tail = enumerator.MoveNextAsync();
+            bool pendingBeforeComplete = tail.IsCompleted;
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(5); subject.OnCompleted(); });
+            bool ended = await tail; // false: sequence end, not a value
+
+            await enumerator.DisposeAsync();
+            Console.WriteLine("[async pending] beforePublish=" + pendingBeforePublish + " moved=" + moved
+                + " value=" + value + " beforeComplete=" + pendingBeforeComplete + " ended=" + ended);
+        }
+
+        private static void PendingReadCancelledCrossThread() =>
+            PendingReadCancelledCrossThreadAsync().GetAwaiter().GetResult();
+
+        private static async Task PendingReadCancelledCrossThreadAsync()
+        {
+            using var subject = new Subject<int>();
+            using var cancellation = new CancellationTokenSource();
+            int upstreamDisposes = 0;
+            var enumerator = subject
+                .Do(onDispose: () => upstreamDisposes++)
+                .ToAsyncEnumerable(cancellation.Token)
+                .GetAsyncEnumerator();
+
+            ValueTask<bool> outstanding = enumerator.MoveNextAsync();
+            bool pendingBeforeCancel = outstanding.IsCompleted;
+            var cancelReturned = new TaskCompletionSource<int>();
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Thread.Sleep(5);
+                cancellation.Cancel();
+                cancelReturned.SetResult(1);
+            });
+
+            bool cancelled = false;
+            try
+            {
+                await outstanding;
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled = true;
+            }
+            // Cancel callbacks run LIFO: the read's own callback can resume `outstanding`
+            // before the subscription-dispose callback registered ahead of it has run.
+            await cancelReturned.Task;
+
+            await enumerator.DisposeAsync();
+            Console.WriteLine("[async pending cancel] beforeCancel=" + pendingBeforeCancel
+                + " cancelled=" + cancelled + " dispose-stable=" + (upstreamDisposes == 1));
         }
     }
 }
