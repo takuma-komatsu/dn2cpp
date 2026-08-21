@@ -516,7 +516,7 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.MrDirectory.Matches(mrParent, mrName, Sig))
                     return null;
                 // Byte/SByte/Int16/UInt16 ToString/Parse/TryParse/TryFormat are lowered inline
-                // to dn2cpp_int_to_string / dn2cpp_format_int|uint / dn2cpp_try_format_int|uint
+                // to dn2cpp_int_to_string / dn2cpp_format_int|uint / dn2cpp_try_format_int|uint_c
                 // and the width-parameterized NumberStyles engine (mirroring Int32/Int64, which
                 // are intrinsic types). The sub-word primitives are NOT intrinsic types, so
                 // without this their real System.Number.Format*/ParseBinaryInteger bodies are a

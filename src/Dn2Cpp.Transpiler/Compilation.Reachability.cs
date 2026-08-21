@@ -1167,7 +1167,7 @@ internal sealed partial class Compilation
         }
         // A `constrained. <int> callvirt ISpanFormattable::TryFormat`
         // (a `{value:fmt}` interpolation hole lowered through DefaultInterpolatedString
-        // Handler) is emitted inline via dn2cpp_try_format_int|uint (TryEmitValueConstrained),
+        // Handler) is emitted inline via dn2cpp_try_format_int|uint_c (TryEmitValueConstrained),
         // so do NOT reach the integer primitive's real TryFormat body — it pulls in the whole
         // System.Number.TryFormat* subtree (the dominant remaining self-host cascade, reached
         // from SRM SignatureDecoder.CheckHeader via Byte.TryFormat). The concrete cut for the
@@ -2288,7 +2288,7 @@ internal sealed partial class Compilation
                 && ResolveItfImplOrNull(c, decl) is { } impl)
             {
                 // An integer primitive's ISpanFormattable::TryFormat impl
-                // is lowered inline (dn2cpp_try_format_int|uint — see MethodCompiler /
+                // is lowered inline (dn2cpp_try_format_int|uint_c — see MethodCompiler /
                 // TryEmitValueConstrained), so don't reach the real body even when the byte/
                 // int is boxed (an allocated value type) and TryFormat is a used virtual slot.
                 // The real body pulls in the whole System.Number.TryFormat* subtree (the

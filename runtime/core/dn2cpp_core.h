@@ -6347,22 +6347,23 @@ Dn2CppString* dn2cpp_format_uint(uint64_t v, int32_t byteWidth, Dn2CppString* fm
 // `nullptr`/empty fmt = "G" = default decimal), then copies the result into `dest`
 // (capacity `destLen` char16_t): if it fits, write the code units, set
 // *charsWritten = length, return true; otherwise leave `dest` untouched, set
-// *charsWritten = 0, return false (matches real .NET, probed). `provider` is dropped
-// (InvariantCulture). The real bodies route through System.Number.TryFormat* — the
-// dominant remaining console-self-host cascade (reached from SRM SignatureDecoder).
-bool dn2cpp_try_format_int(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char16_t* dest, int32_t destLen, int32_t* charsWritten);
-bool dn2cpp_try_format_uint(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char16_t* dest, int32_t destLen, int32_t* charsWritten);
+// *charsWritten = 0, return false (matches real .NET, probed). `nfi` is the popped
+// IFormatProvider; null keeps .NET's null-provider rule (current culture). The real
+// bodies route through System.Number.TryFormat* — the dominant remaining
+// console-self-host cascade (reached from SRM SignatureDecoder).
+bool dn2cpp_try_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char16_t* dest, int32_t destLen, int32_t* charsWritten, const Dn2CppNumberFormatInfo* nfi);
+bool dn2cpp_try_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char16_t* dest, int32_t destLen, int32_t* charsWritten, const Dn2CppNumberFormatInfo* nfi);
 // UTF-8 twins for `IUtf8SpanFormattable.TryFormat(Span<byte> utf8Destination,
 // out int bytesWritten, ReadOnlySpan<char> format, IFormatProvider)`: the same
 // formatter cores, narrowed into the byte span as UTF-8 (multi-byte for any
 // non-ASCII culture symbol) with the same fits ⇒ write+true / else untouched +
 // bytesWritten=0 + false semantics.
-bool dn2cpp_try_format_int_utf8(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char* dest, int32_t destLen, int32_t* bytesWritten);
-bool dn2cpp_try_format_uint_utf8(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char* dest, int32_t destLen, int32_t* bytesWritten);
+bool dn2cpp_try_format_int_utf8_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char* dest, int32_t destLen, int32_t* bytesWritten, const Dn2CppNumberFormatInfo* nfi);
+bool dn2cpp_try_format_uint_utf8_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char* dest, int32_t destLen, int32_t* bytesWritten, const Dn2CppNumberFormatInfo* nfi);
 Dn2CppString* dn2cpp_format_r8(double v, Dn2CppString* fmt);
 Dn2CppString* dn2cpp_format_r4(float v, Dn2CppString* fmt);
 

@@ -482,21 +482,22 @@ internal sealed partial class MethodCompiler
         // Decimal.TryFormat(Span<char/byte> dest, out int charsWritten, ReadOnlySpan<char>
         // format, IFormatProvider): render into the destination span (fits -> copy + count
         // + true; too short -> false). An empty/default format takes the "G" round-trip
-        // (preserves scale); a standard specifier routes through dn2cpp_decimal_format,
-        // which throws loudly on one it does not cover. The provider is invariant.
+        // (preserves scale); a standard specifier routes through dn2cpp_decimal_format_c,
+        // which throws loudly on one it does not cover. The provider routes like the
+        // ToString(format, provider) arm; null keeps .NET's null-provider rule (current culture).
         if (name == "TryFormat" && ps is [var tfDest, { Kind: TypeKind.ByRef }, var tfFmt, _]
             && (IsSpanOfPrimitive(tfDest, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(tfDest, PrimitiveTypeCode.Byte))
             && IsReadOnlySpanChar(tfFmt))
         {
             bool isByte = IsSpanOfPrimitive(tfDest, PrimitiveTypeCode.Byte);
-            Pop();                                                  // IFormatProvider — invariant
+            string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
             string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));  // ReadOnlySpan<char> format
             string wrote = Cast(Pop(), "int32_t*");                 // out int charsWritten
             string dPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));       // Span destination
             var recv = Pop();
             string sv = NewTemp("Dn2CppString*");
-            Emit($"{sv} = {fmtSpan}.f__length == 0 ? dn2cpp_decimal_to_string({DecVal(recv)}) " +
-                 $": dn2cpp_decimal_format({DecVal(recv)}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
+            Emit($"{sv} = {fmtSpan}.f__length == 0 ? dn2cpp_decimal_format_c({DecVal(recv)}, nullptr, {prov}) " +
+                 $": dn2cpp_decimal_format_c({DecVal(recv)}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length), {prov});");
             if (isByte)
                 Push(StackKind.I4, "int32_t",
                     $"dn2cpp_string_try_copy_to_utf8_span({sv}, (uint8_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
@@ -892,7 +893,7 @@ internal sealed partial class MethodCompiler
                 && IsReadOnlySpanChar(d2):
             {
                 bool isByte = IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte);
-                Pop();                                            // IFormatProvider — invariant
+                Pop();                     // IFormatProvider — dropped: the timespan formatter takes no culture
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));
                 string wrote = Cast(Pop(), "int32_t*");
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));
@@ -1146,7 +1147,7 @@ internal sealed partial class MethodCompiler
                 && IsReadOnlySpanChar(d2):
             {
                 bool isByte = IsSpanOfPrimitive(d0, PrimitiveTypeCode.Byte);
-                Pop();                                            // IFormatProvider — invariant
+                Pop();                     // IFormatProvider — dropped: the datetime formatter takes no culture
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(ps[2]));
                 string wrote = Cast(Pop(), "int32_t*");
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));

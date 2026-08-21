@@ -371,12 +371,12 @@ internal sealed partial class MethodCompiler
             // the integer-primitive span-write formatter
             // bool TryFormat(Span<char> dest, out int charsWritten,
             // ReadOnlySpan<char> format = default, IFormatProvider provider = null)
-            // (ISpanFormattable). Lower to dn2cpp_try_format_int|uint, which reuse the
+            // (ISpanFormattable). Lower to dn2cpp_try_format_int|uint_c, which reuse the
             // same byteWidth-aware formatters as ToString(format) and copy into the
             // Span<char>'s buffer with .NET semantics (fits ⇒ write + true, else
             // untouched + charsWritten=0 + false). format span -> Dn2CppString*
-            // (empty = "G"); provider dropped (InvariantCulture). These types are NOT
-            // added to s_intrinsicTypes — this is a targeted cut.
+            // (empty = "G"); provider routed (null = current culture, .NET's rule).
+            // These types are NOT added to s_intrinsicTypes — this is a targeted cut.
             // The destination span's element type discriminates the two shape-identical
             // interface methods: Span<char> is ISpanFormattable's char16 writer,
             // Span<byte> IUtf8SpanFormattable's UTF-8 one (without the check the char16
@@ -419,9 +419,10 @@ internal sealed partial class MethodCompiler
             // Double/Single.TryFormat(Span<char> dest, out int charsWritten,
             // ReadOnlySpan<char> format, IFormatProvider): render into the destination span
             // (fits -> copy + count + true; too short -> false). An empty/default format
-            // takes the round-trip ToString (dn2cpp_float_to_string keeps float precision);
+            // takes the round-trip ToString (dn2cpp_float_to_string_c keeps float precision);
             // a standard format string routes through the format helper, which throws loudly
-            // on one it does not cover. The provider is invariant.
+            // on one it does not cover. The provider routes to the *_c formatters like the
+            // ToString(provider) arms; null keeps .NET's null-provider rule (current culture).
             case ("System.Double" or "System.Single", "TryFormat")
                 when sig.ParameterTypes is [var f0, { Kind: TypeKind.ByRef }, var f2, _]
                     && (IsSpanOfPrimitive(f0, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(f0, PrimitiveTypeCode.Byte))
@@ -429,17 +430,17 @@ internal sealed partial class MethodCompiler
             {
                 bool isByte = IsSpanOfPrimitive(f0, PrimitiveTypeCode.Byte);
                 bool f32 = declType == "System.Single";
-                Pop();                                                       // IFormatProvider — invariant
+                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[2]));
                 string wrote = Cast(Pop(), "int32_t*");
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
                 string vt = NewTemp(f32 ? "float" : "double");
                 Emit($"{vt} = {DerefReceiver(f32 ? "float" : "double")};");
-                string defExpr = f32 ? $"dn2cpp_float_to_string({vt})" : $"dn2cpp_double_to_string({vt})";
-                string fmtCall = f32 ? "dn2cpp_format_r4" : "dn2cpp_format_r8";
+                string defExpr = f32 ? $"dn2cpp_float_to_string_c({vt}, {prov})" : $"dn2cpp_double_to_string_c({vt}, {prov})";
+                string fmtCall = f32 ? "dn2cpp_format_r4_c" : "dn2cpp_format_r8_c";
                 string sv = NewTemp("Dn2CppString*");
                 Emit($"{sv} = {fmtSpan}.f__length == 0 ? {defExpr} " +
-                     $": {fmtCall}({vt}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
+                     $": {fmtCall}({vt}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length), {prov});");
                 if (isByte)
                     Push(StackKind.I4, "int32_t",
                         $"dn2cpp_string_try_copy_to_utf8_span({sv}, (uint8_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
@@ -1777,16 +1778,16 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The integer-primitive span-write formatter body, shared by the
     /// ISpanFormattable (Span&lt;char&gt;) and IUtf8SpanFormattable (Span&lt;byte&gt;,
-    /// <paramref name="utf8"/>) arms: lower to dn2cpp_try_format_int|uint[_utf8], the same
+    /// <paramref name="utf8"/>) arms: lower to dn2cpp_try_format_int|uint[_utf8]_c, the same
     /// byteWidth-aware formatter cores as ToString(format), writing into the span's buffer
     /// with .NET semantics (fits ⇒ write + count + true; too short ⇒ buffer untouched +
-    /// 0 + false). format span -> Dn2CppString* (empty = "G"); provider dropped
-    /// (InvariantCulture).</summary>
+    /// 0 + false). format span -> Dn2CppString* (empty = "G"); provider routed
+    /// (null = current culture, .NET's rule).</summary>
     private void EmitIntegerTryFormat(string declType, MethodSignature<TypeDesc> sig, bool utf8)
     {
         // Stack (top → bottom): provider, format(span), charsWritten(ByRef),
         // destination(span), receiver. Pop in that order; receiver last.
-        Pop();                                                   // IFormatProvider — invariant
+        string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
         string fmtSpanCt = CppTypes.Of(sig.ParameterTypes[2]);  // ReadOnlySpan<char>
         string fmtPtr = SpanPtr(Pop(), fmtSpanCt);
         string fmt = NewTemp("Dn2CppString*");
@@ -1813,7 +1814,7 @@ internal sealed partial class MethodCompiler
         // and width-correct hex needs the unsigned helper's masking input).
         string recv = DerefReceiver(recvCt);
         string helper = (uns ? "dn2cpp_try_format_uint" : "dn2cpp_try_format_int")
-            + (utf8 ? "_utf8" : "");
+            + (utf8 ? "_utf8" : "") + "_c";
         string destCast = utf8 ? "char*" : "char16_t*";
         string valExpr = uns
             ? (width switch
@@ -1825,6 +1826,6 @@ internal sealed partial class MethodCompiler
             })
             : $"(int64_t)({recv})";
         Push(StackKind.I4, "int32_t",
-            $"({helper}({valExpr}, {width}, {fmt}, ({destCast}){destPtr}->f__reference, {destPtr}->f__length, {wrote}) ? 1 : 0)");
+            $"({helper}({valExpr}, {width}, {fmt}, ({destCast}){destPtr}->f__reference, {destPtr}->f__length, {wrote}, {prov}) ? 1 : 0)");
     }
 }

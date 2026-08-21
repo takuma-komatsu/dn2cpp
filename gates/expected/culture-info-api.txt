@@ -89,3 +89,26 @@ e-prov:P:CultureInfo
 f-asm:ok
 f-mod:ok
 g-sv:PlatformNotSupportedException
+== span TryFormat provider ==
+  d inv@de c=[1,234.50] u8=[1,234.50] okc=True okb=True nc=8 nb=8
+  f inv@de c=[1,234.50] u8=[1,234.50] okc=True okb=True nc=8 nb=8
+  m inv@de c=[1,234.50] u8=[1,234.50] okc=True okb=True nc=8 nb=8
+  i inv@de c=[1,234,567] u8=[1,234,567] okc=True okb=True nc=9 nb=9
+  l inv@de c=[9,876,543,210] u8=[9,876,543,210] okc=True okb=True nc=13 nb=13
+  b inv@de c=[200] u8=[200] okc=True okb=True nc=3 nb=3
+  d null@de c=[1.234,50] u8=[1.234,50] okc=True okb=True nc=8 nb=8
+  i null@de c=[1.234.567] u8=[1.234.567] okc=True okb=True nc=9 nb=9
+  d de@inv c=[1.234,50] u8=[1.234,50] okc=True okb=True nc=8 nb=8
+  f de@inv c=[1.234,50] u8=[1.234,50] okc=True okb=True nc=8 nb=8
+  m de@inv c=[1.234,50] u8=[1.234,50] okc=True okb=True nc=8 nb=8
+  i de@inv c=[1.234.567] u8=[1.234.567] okc=True okb=True nc=9 nb=9
+  l de@inv c=[9.876.543.210] u8=[9.876.543.210] okc=True okb=True nc=13 nb=13
+  b de@inv c=[200] u8=[200] okc=True okb=True nc=3 nb=3
+  d fr@inv c=[1 234 567,50] u8=[1 234 567,50] okc=True okb=True nc=12 nb=16
+  i fr@inv c=[1 234 567] u8=[1 234 567] okc=True okb=True nc=9 nb=13
+  d nan de c=[NaN] u8=[NaN] okc=True okb=True nc=3 nb=3
+  d +inf de c=[∞] u8=[∞] okc=True okb=True nc=1 nb=3
+  d -inf de c=[-∞] u8=[-∞] okc=True okb=True nc=2 nb=4
+  i fr fit c(cap=9)=True/9 u8(cap=13)=True/13
+  i fr short c(cap=8)=False/0 u8(cap=12)=False/0
+  i fr chars-as-bytes c(cap=9)=True/9 u8(cap=9)=False/0
