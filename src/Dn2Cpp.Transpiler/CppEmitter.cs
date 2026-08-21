@@ -1847,6 +1847,24 @@ internal sealed partial class CppEmitter
                     compiledMethods.Add(m);
                     continue;
                 }
+                // An address-taken member whose CALLS an intercept row cut (ldftn /
+                // delegate method group over e.g. ExecutionContext.Run): reachability
+                // deleted the edge to the real body, so replay that row's own emit arm
+                // at the body position — cut ⟹ route holds through the body too. Behind
+                // the Comparer.Compare arm above: that row already owns its own body, and
+                // an address taken of it must keep getting that one.
+                if (_c.InterceptFtnTargets.Contains(m))
+                {
+                    var wrapper = new MethodCompiler(_c, m, literals, _backend)
+                            .CompileInterceptWrapper()
+                        ?? throw new NotSupportedException(
+                            $"taking the address of {m.DeclaringClass.FullName}::{m.Name} " +
+                            "(delegate method group / function pointer): the intercept that " +
+                            "lowers its calls cannot be replayed as a function body");
+                    emitBody?.Invoke(m, wrapper);
+                    compiledMethods.Add(m);
+                    continue;
+                }
                 // A synthesized GenericComparer<T>.Compare over a VALUE TYPE real .NET's
                 // default comparer cannot order (see
                 // Compilation.IsUnorderableComparerCompareBody): its real IL boxes the value
@@ -2647,26 +2665,72 @@ internal sealed partial class CppEmitter
     /// row (contrast <see cref="EmitStringInterfaceMap"/>).</summary>
     private void EmitIntrinsicInterfaceMaps(StringBuilder sb)
     {
-        int i = 0;
+        // A row whose slot the loaded framework spells differently is fatal only here,
+        // where the emit set is known: minting the intrinsic without ever dispatching
+        // through the interface installs nothing, so nothing can trap.
+        foreach (var mismatch in _c.IntrinsicInterfaceMismatches)
+            if (_emit.Contains(mismatch.Itf))
+                throw new NotSupportedException(mismatch.Message);
+        var infos = new List<Compilation.IntrinsicInterfaceInfo>();
         foreach (var info in _c.IntrinsicInterfaces)
         {
-            if (!_emit.Contains(info.Itf))
-                continue;
-            if (_intrinsicItfMaps.Count == 0)
-                sb.AppendLine("// ---- intrinsic-type interface-dispatch maps (installed at init) ----");
-            var row = info.Row;
-            sb.AppendLine($"// {row.IntrinsicName} : {row.ItfNamespace}.{row.ItfName}");
-            sb.AppendLine($"static void {row.ThunkSym}(Dn2CppObject* o) {{ {row.ThunkBody} }}");
-            int slot = info.SlotDecl.VtableSlot >= 0 ? info.SlotDecl.VtableSlot : 0;
-            var slots = new string[slot + 1];
-            for (int s = 0; s < slot; s++)
-                slots[s] = "nullptr";
-            slots[slot] = $"(const void*)&{row.ThunkSym}";
-            sb.AppendLine($"static const void* intr_itf_{i}[] = {{ {string.Join(", ", slots)} }};");
-            sb.AppendLine($"static const Dn2CppInterfaceEntry intr_itfs_{i}[] = "
-                + $"{{ {{ {TypeInfoRef(info.Itf, "intrinsic-type interface-dispatch map")}, intr_itf_{i} }} }};");
-            _intrinsicItfMaps.Add((row.TypeInfoSym, $"intr_itfs_{i}", 1));
-            i++;
+            if (_emit.Contains(info.Itf))
+                infos.Add(info);
+        }
+        if (infos.Count == 0)
+            return;
+        sb.AppendLine("// ---- intrinsic-type interface-dispatch maps (installed at init) ----");
+        int thunk = 0;
+        // dn2cpp_intrinsic_set_interfaces REPLACES the type-info's interface list, so one
+        // type-info may get exactly one map: the run-length scan below requires the rows of
+        // one intrinsic to be adjacent, and a second run for the same type-info would drop
+        // the first run's interfaces with no error anywhere.
+        var mapped = new HashSet<string>(StringComparer.Ordinal);
+        for (int begin = 0; begin < infos.Count;)
+        {
+            string typeInfoSym = infos[begin].Row.TypeInfoSym;
+            if (!mapped.Add(typeInfoSym))
+                throw new InvalidOperationException(
+                    $"intrinsic interface rows for {typeInfoSym} are not adjacent in "
+                    + "Compilation.IntrinsicInterfaceRows; the second group's map would "
+                    + "replace the first's.");
+            var entries = new List<string>();
+            int end = begin;
+            while (end < infos.Count && infos[end].Row.TypeInfoSym == typeInfoSym)
+            {
+                var info = infos[end];
+                var row = info.Row;
+                sb.AppendLine($"// {row.IntrinsicName} : {row.ItfNamespace}.{row.ItfName}");
+                string thunkBody = row.ThunkKind switch
+                {
+                    Compilation.IntrinsicInterfaceThunkKind.TimerDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_timer_dispose(o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.NoopDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ (void)o; }}",
+                    Compilation.IntrinsicInterfaceThunkKind.TimerChange =>
+                        $"static int32_t {row.ThunkSym}(Dn2CppObject* o, Dn2CppTimeSpan due, Dn2CppTimeSpan period) " +
+                        "{ return dn2cpp_timer_change(o, due.ticks / 10000LL, period.ticks / 10000LL); }",
+                    Compilation.IntrinsicInterfaceThunkKind.TimerDisposeAsync =>
+                        $"static Dn2CppTaskAwaiter {row.ThunkSym}(Dn2CppObject* o) " +
+                        "{ dn2cpp_timer_dispose(o); return Dn2CppTaskAwaiter{ nullptr }; }",
+                    _ => throw new InvalidOperationException(
+                        $"unknown intrinsic interface thunk kind {row.ThunkKind}"),
+                };
+                sb.AppendLine(thunkBody);
+                int slot = info.SlotDecl.VtableSlot >= 0 ? info.SlotDecl.VtableSlot : 0;
+                var slots = new string[slot + 1];
+                for (int s = 0; s < slot; s++)
+                    slots[s] = "nullptr";
+                slots[slot] = $"(const void*)&{row.ThunkSym}";
+                sb.AppendLine($"static const void* intr_itf_{thunk}[] = {{ {string.Join(", ", slots)} }};");
+                entries.Add($"{{ {TypeInfoRef(info.Itf, "intrinsic-type interface-dispatch map")}, intr_itf_{thunk} }}");
+                thunk++;
+                end++;
+            }
+            string mapSym = $"intr_itfs_{_intrinsicItfMaps.Count}";
+            sb.AppendLine($"static const Dn2CppInterfaceEntry {mapSym}[] = {{ {string.Join(", ", entries)} }};");
+            _intrinsicItfMaps.Add((typeInfoSym, mapSym, entries.Count));
+            begin = end;
         }
     }
 
@@ -3268,7 +3332,7 @@ internal sealed partial class CppEmitter
             // one identity table rather than a second copy of it. It also subsumes the
             // "not emitted ⟹ degrade to System.Object" fallback for these types, which was
             // itself a wrong answer.
-            if (CoreIntrinsics.RuntimeTypeInfoSymbol(fc.FullName) is { } rt) return rt;
+            if (CoreIntrinsics.RuntimeTypeInfoSymbol(fc) is { } rt) return rt;
             if (fc.IsEnum) return emittedEnums.Contains(fc) ? TypeInfoRef(fc, "reflected member type (enum)") : "&dn2cpp_object_type";
             return _emit.Contains(fc) ? TypeInfoRef(fc, "reflected member type") : "&dn2cpp_object_type";
         }

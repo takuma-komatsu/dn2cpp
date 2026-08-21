@@ -177,32 +177,29 @@ internal sealed partial class MethodCompiler
 
         // The generic ThreadPool work-item overloads — QueueUserWorkItem<TState>(
         // Action<TState>, TState, bool preferLocal) and UnsafeQueueUserWorkItem<TState>
-        // — with a reference-typed TState enqueue on the same pool as the non-generic
-        // WaitCallback form: (Action<TState>, TState) is exactly the callback+state
-        // shape dn2cpp_threadpool_queue's fire-and-forget invoke runs, and preferLocal
-        // is a scheduling hint the fixed pool ignores. The IValueTaskSource completion
-        // plumbing (ManualResetValueTaskSourceCore.SignalCompletion,
-        // SynchronizationContext.Post) is what reaches these, always with an object
-        // state. A value-type TState stays a carve-out (the pool's uniform invoke
-        // passes the state as an object pointer).
+        // enqueue on the same pool as the non-generic WaitCallback form. Reference states
+        // use its callback+object path directly; value states use a typed holder and thunk
+        // so Action<TState> receives the unboxed value. preferLocal is a scheduling hint
+        // the fixed pool ignores.
         if (declType == "System.Threading.ThreadPool")
         {
             if (name is "QueueUserWorkItem" or "UnsafeQueueUserWorkItem"
-                && MethodSpecSig(msh, methodArgs).ParameterTypes.Length == 3
-                && CppTypes.KindOf(methodArgs[0]) == StackKind.Ref)
+                && MethodSpecSig(msh, methodArgs).ParameterTypes.Length == 3)
             {
                 Pop();             // bool preferLocal — scheduling hint the fixed pool ignores
-                var state = Pop(); // TState (reference-typed)
+                var state = Pop(); // TState
                 var cb = Pop();    // Action<TState>
+                bool refState = CppTypes.KindOf(methodArgs[0]) == StackKind.Ref;
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_threadpool_queue({Cast(cb, "Dn2CppObject*")}, {Cast(state, "Dn2CppObject*")})");
+                    refState
+                        ? $"dn2cpp_threadpool_queue({Cast(cb, "Dn2CppObject*")}, {Cast(state, "Dn2CppObject*")})"
+                        : $"dn2cpp_threadpool_queue_value<{CppTypes.Of(methodArgs[0])}>" +
+                          $"({Cast(cb, "Dn2CppObject*")}, {state.Expr})");
                 return;
             }
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: the generic ThreadPool." +
-                $"{name}<TState> overload with a value-typed TState is a carve-out; " +
-                "supported: the non-generic QueueUserWorkItem(WaitCallback [, object]) overloads " +
-                "and the reference-TState (Action<TState>, TState, bool preferLocal) forms");
+                $"{name}<TState> overload shape is not modeled");
         }
 
         // Marshal.{SizeOf,PtrToStructure,StructureToPtr}<T> — blittable struct <-> native
@@ -868,11 +865,8 @@ internal sealed partial class MethodCompiler
             // one does not apply to it. Take the comparer off the stack and match the
             // shapes on what is left.
             //
-            // The operands that MEAN "default equality" cost nothing: the omitted optional
-            // argument (the null literal) and an explicit EqualityComparer<T>.Default (the
-            // intrinsic nullptr sentinel) are KnownNull, so the loops below are emitted
-            // bare; a null arriving through a variable — an ldarg no static test can see —
-            // falls to the default arm of the runtime probe.
+            // Null means default equality. EqualityComparer<T>.Default is a non-null
+            // singleton whose relation-only interface row takes the same runtime fallback.
             //
             // A GENUINE custom comparer is HONORED: the interface probe is hoisted out of
             // the loop (the same dn2cpp_try_resolve_interface + interface-slot template as
@@ -907,7 +901,7 @@ internal sealed partial class MethodCompiler
                         Emit($"{cmpObj} = {Cast(comparer, "Dn2CppObject*")};");
                         cmpSlots = NewTemp("const void**");
                         Emit($"{cmpSlots} = {cmpObj} ? dn2cpp_try_resolve_interface({cmpObj}->type, {itf}) : nullptr;");
-                        Emit($"if ({cmpObj} != nullptr && {cmpSlots} == nullptr) {{");
+                        Emit($"if ({cmpObj} != nullptr && !dn2cpp_is_default_equality_comparer({cmpObj}) && {cmpSlots} == nullptr) {{");
                         Emit($"    dn2cpp_throw_platform_not_supported(\"MemoryExtensions.{name}<{elem}>: "
                             + "the custom IEqualityComparer<T>'s type has no reachable "
                             + "IEqualityComparer<T> interface table to dispatch through.\");");
@@ -2184,21 +2178,15 @@ internal sealed partial class MethodCompiler
     /// silently ignored. It throws a catchable <c>PlatformNotSupportedException</c> naming
     /// the scan, rather than answering the default-equality question nobody asked.
     ///
-    /// <para>The test is at RUN time because null-ness cannot be settled statically: the
-    /// one caller that forwards a real operand — <c>Enumerable.SequenceEqual</c>'s array
-    /// fast path — forwards its own comparer *parameter*, so the IL says <c>ldarg</c>, not
-    /// <c>ldnull</c>, and reading that as "custom" would reject every comparerless LINQ
-    /// SequenceEqual over two arrays. What IS settled statically is the null constant
-    /// (<see cref="StackEntry.KnownNull"/>): the omitted optional argument and
-    /// <c>EqualityComparer&lt;T&gt;.Default</c>, whose intrinsic value is the nullptr
-    /// sentinel — both emit no guard at all.</para></summary>
+    /// <para>The test is at run time because Enumerable.SequenceEqual forwards a comparer
+    /// parameter. Null and the non-null Default identity both select default equality.</para></summary>
     private void EmitCustomComparerGuard(StackEntry comparer, string scan)
     {
         if (comparer.KnownNull)
             return;
         string cmp = NewTemp("Dn2CppObject*");
         Emit($"{cmp} = {Cast(comparer, "Dn2CppObject*")};");
-        Emit($"if ({cmp} != nullptr) {{");
+        Emit($"if ({cmp} != nullptr && !dn2cpp_is_default_equality_comparer({cmp})) {{");
         Emit($"    dn2cpp_throw_platform_not_supported(\"{scan}: a custom IEqualityComparer<T> arrived, but no "
             + "IEqualityComparer<T> implementation for this element type was statically reachable, so the scan "
             + "was compiled over T's default equality and cannot dispatch through the comparer; it throws rather "

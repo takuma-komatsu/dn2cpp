@@ -182,6 +182,8 @@ internal sealed partial class Compilation
                 // async path.
                 if (CoreIntrinsics.MdExecutionContextCapture.Matches(mi))
                     return null;
+                if (CoreIntrinsics.MdExecutionContextRun.Matches(mi))
+                    return null;
                 // SynchronizationContext.get_Current / SetSynchronizationContext are
                 // the same shape — lowered to the per-thread runtime slot
                 // (dn2cpp_sync_ctx_get/set; see the intercepts in
@@ -412,6 +414,11 @@ internal sealed partial class Compilation
                 // SynchronizationContext.get_Current / SetSynchronizationContext — the
                 // per-thread runtime slot; instance members (Post/Send) transpile.
                 if (CoreIntrinsics.MrSyncContextSlot.Matches(mrParent, mrName, Sig))
+                    return null;
+                // ExecutionContext capture is represented by null across all pool hops.
+                if (CoreIntrinsics.MrExecutionContextCapture.Matches(mrParent, mrName, Sig))
+                    return null;
+                if (CoreIntrinsics.MrExecutionContextRun.Matches(mrParent, mrName, Sig))
                     return null;
                 // NativeMemory's C-heap wrappers / memset / memmove — InternalCall /
                 // P-Invoke into the unmanaged allocator, never an edge.

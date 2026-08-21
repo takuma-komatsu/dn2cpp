@@ -385,31 +385,72 @@ internal sealed partial class MethodCompiler
 
             // The base .ctor of a user `class MyCmp : EqualityComparer<T>`. The real ctor
             // body is empty (no instance state), so this only consumes the `this` receiver
-            // the subclass ctor pushed. Making the base constructible is sound ONLY because
-            // the Equals/GetHashCode arms below discriminate a real receiver from the
-            // Default nullptr sentinel.
+            // the subclass ctor pushed.
             case ("System.Collections.Generic.EqualityComparer", ".ctor"):
                 Pop(); // the receiver — the base ctor stores nothing
                 return true;
 
             // EqualityComparer<T> is intrinsic. The JIT devirtualizes
-            // Default.Equals/GetHashCode to type-specialized ops; do the same. The
-            // sentinel get_Default returns is never dereferenced.
+            // Default.Equals/GetHashCode to type-specialized ops; do the same. The runtime
+            // singleton carries a synthetic concrete subtype and both comparer interface
+            // relations. Their relation-only rows deliberately have no slots because the
+            // generic calls lower through TryEmitComparerDispatch, while non-generic calls
+            // use the same default-object lowering as Tuple structural equality.
             case ("System.Collections.Generic.EqualityComparer", "get_Default"):
-                Push(StackKind.Ref, "Dn2CppObject*", "nullptr");
-                // The sentinel IS the null constant, so a site that reads "no comparer
-                // was supplied" off a null operand — the span scans' trailing
-                // IEqualityComparer<T> — reads the default comparer as exactly that,
-                // which is what it means. Passing it explicitly costs nothing.
-                Top = Top with { KnownNull = true };
+            {
+                if (sig.ReturnType is not { Kind: TypeKind.Class, Class: { } comparerClass }
+                    || comparerClass.Context.TypeArgs.Length != 1)
+                    throw new InvalidOperationException(
+                        "EqualityComparer<T>.Default has no closed element type");
+                var elem = comparerClass.Context.TypeArgs[0];
+                if (Comp.IEqualityComparerInterfaceFor(elem) is not { } comparerInterface)
+                    throw new InvalidOperationException(
+                        "EqualityComparer<T>.Default could not resolve its closed IEqualityComparer<T>");
+                if (Comp.NonGenericEqualityComparerInterface() is not { } nongenericInterface)
+                    throw new InvalidOperationException(
+                        "EqualityComparer<T>.Default could not resolve System.Collections.IEqualityComparer");
+                NoteReferencedType(comparerInterface);
+                NoteReferencedType(nongenericInterface);
+                string comparerType, interfaceType;
+                if (SharedTrial && Compilation.ContainsCanonPlaceholder(elem))
+                {
+                    // Both identities are per instantiation, so a shared body reads them
+                    // out of rgctx slots keyed on this get_Default call — the same trade
+                    // Comparer<T>.Default makes. Naming the canonical handles instead
+                    // would hand every group member the placeholder's identity: the
+                    // singleton is cached under it, so ONE comparer would serve
+                    // Dictionary<int,…> and Dictionary<Hue,…> alike.
+                    if (!CallTokenIsOpaqueMemberRef("get_Default"))
+                        ThrowSharedTaint("comparer-default", comparerClass.FullName);
+                    comparerType = "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(
+                        RgctxSlotKind.EqualityComparerDefault, _callSiteToken,
+                        "comparer-default", comparerClass.FullName);
+                    interfaceType = "(const Dn2CppTypeInfo*)" + RgctxSlotAccess(
+                        RgctxSlotKind.EqualityComparerInterface, _callSiteToken,
+                        "comparer-default", comparerInterface.FullName);
+                }
+                else
+                {
+                    comparerType = TypeInfoExpr(sig.ReturnType)
+                        ?? throw new InvalidOperationException(
+                            "EqualityComparer<T>.Default has no comparer type-info");
+                    interfaceType = TypeInfoExpr(TypeDesc.MakeClass(comparerInterface))
+                        ?? throw new InvalidOperationException(
+                            "EqualityComparer<T>.Default has no IEqualityComparer<T> type-info");
+                }
+                string nongenericInterfaceType = TypeInfoExpr(TypeDesc.MakeClass(nongenericInterface))
+                    ?? throw new InvalidOperationException(
+                        "EqualityComparer<T>.Default has no non-generic IEqualityComparer type-info");
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_default_equality_comparer({comparerType}, {interfaceType}, {nongenericInterfaceType})");
+                Top = Top with { NonNull = true };
                 return true;
+            }
             // Equals/GetHashCode on an EqualityComparer<T>. Two receivers can reach here,
             // and they are answered differently:
             //
-            //  * The Default nullptr sentinel (get_Default above, or a null through a
-            //    variable). The comparer holds no state, so DISCARD it and answer with T's
-            //    default equality — the JIT's devirtualization. Keyed on KnownNull so this
-            //    arm stays byte-identical for the sentinel.
+            //  * The Default singleton (get_Default above). Its IEqualityComparer<T> row
+            //    is relation-only, so object dispatch falls back to T's default equality.
             //
             //  * A real `class MyCmp : EqualityComparer<T>` receiver (constructible — its
             //    base .ctor is mapped above). Discarding it and answering default equality
@@ -419,15 +460,13 @@ internal sealed partial class MethodCompiler
             //    (unreachable-for-a-real-comparer) fallback. The interface + this receiver's
             //    overrides are reached in Compilation.ReachAllocatedType.
             //
-            // A null through a variable is not KnownNull, so it takes the object-dispatch
-            // path — correct, since the runtime probe reads the receiver as nullptr and
-            // falls straight to the default op.
             case ("System.Collections.Generic.EqualityComparer", "GetHashCode")
                 when sig.ParameterTypes.Length == 1:
             {
                 var key = Pop();
                 var recv = Pop();
-                if (recv.KnownNull || Comp.UserComparerInterfaceMethod(sig.ParameterTypes[0], "GetHashCode") is not { } gm)
+                recv = ComparerReceiverNullChecked(recv);
+                if (Comp.UserComparerInterfaceMethod(sig.ParameterTypes[0], "GetHashCode") is not { } gm)
                     Push(StackKind.I4, "int32_t", EqualityHashExpr(sig.ParameterTypes[0], key));
                 else
                     EmitComparerObjectDispatch(gm, sig.ParameterTypes[0], recv, key, null);
@@ -439,7 +478,8 @@ internal sealed partial class MethodCompiler
                 var b = Pop();
                 var a = Pop();
                 var recv = Pop();
-                if (recv.KnownNull || Comp.UserComparerInterfaceMethod(sig.ParameterTypes[0], "Equals") is not { } em)
+                recv = ComparerReceiverNullChecked(recv);
+                if (Comp.UserComparerInterfaceMethod(sig.ParameterTypes[0], "Equals") is not { } em)
                     Push(StackKind.I4, "int32_t", EqualityEqualsExpr(sig.ParameterTypes[0], a, b));
                 else
                     EmitComparerObjectDispatch(em, sig.ParameterTypes[0], recv, a, b);

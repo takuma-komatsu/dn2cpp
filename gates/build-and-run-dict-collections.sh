@@ -24,6 +24,9 @@
 #     orders cctors by assembly-reference depth (CoreLib first, entry assembly last)
 #     with System.HashCode hoisted ahead of even that, so an app-module cctor always
 #     runs after the seed is set. See the note at the head of that .cs.
+# Also covers EqualityComparerDefaultSubset: Default is a non-null, stable per-T concrete
+# object implementing generic and non-generic IEqualityComparer, including interface calls
+# and a null-conditional equality call as used by reactive properties.
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.

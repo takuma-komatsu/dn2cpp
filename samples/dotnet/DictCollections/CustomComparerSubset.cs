@@ -1,7 +1,7 @@
 #nullable enable
 // A user-defined `class MyCmp : EqualityComparer<T>` — the way the BCL docs tell you to
 // write a comparer. EqualityComparer<T> is intrinsic-mapped to an opaque Dn2CppObject*
-// whose Default is a nullptr sentinel, so a subclass needs its base .ctor mapped to be
+// whose Default is an opaque identity, so a subclass needs its base .ctor mapped to be
 // constructible at all; the load-bearing half is that its Equals/GetHashCode reach real
 // code through three routes that must all agree with real .NET:
 //
@@ -12,7 +12,7 @@
 //   * a Dictionary/HashSet KEY path (the _comparer callvirt through IEqualityComparer<T>).
 //
 // Covered for a REFERENCE element type (string) and a VALUE element type (a struct), with
-// the Default comparer used alongside to prove its nullptr fast path still answers default
+// the Default comparer used alongside to prove its intrinsic path still answers default
 // equality. Every printed value is comparer-controlled or a Count/lookup, so it is
 // deterministic and diffs exactly vs real .NET (no runtime-seeded string hashes).
 using System;
@@ -70,11 +70,11 @@ class Program
         Console.WriteLine("up len abc==xyz=" + UpEq(len, "abc", "xyz")); // True
         Console.WriteLine("up len hash=" + UpHash(len, "zzzzz"));        // 5
 
-        // ---- the Default comparer, upcast the SAME way: nullptr fast path still default ----
+        // ---- the Default comparer, upcast the SAME way: intrinsic path still default ----
         var def = EqualityComparer<string>.Default;
         Console.WriteLine("up def a==a=" + UpEq(def, "a", "a"));         // True
         Console.WriteLine("up def a==b=" + UpEq(def, "a", "b"));         // False
-        Console.WriteLine("def direct=" + def.Equals("abc", "abc"));     // True (KnownNull fast path)
+        Console.WriteLine("def direct=" + def.Equals("abc", "abc"));     // True
 
         // ---- reference element type as a Dictionary key ----
         var byLen = new Dictionary<string, int>(new LengthComparer());
@@ -127,7 +127,7 @@ class Program
         Console.WriteLine("cellSet count=" + cellSet.Count);     // 2
         Console.WriteLine("cellSet has species2=" + cellSet.Contains(new Cell { Species = 2, X = 7, Y = 7 })); // True
 
-        // ---- the value-type Default comparer still works (nullptr fast path over a struct) ----
+        // ---- the value-type Default comparer still works over a struct ----
         var cellDef = EqualityComparer<Cell>.Default;
         Console.WriteLine("cellDef c1==c1=" + cellDef.Equals(c1, c1));   // True (all fields)
         Console.WriteLine("cellDef c1==c1b=" + cellDef.Equals(c1, c1b)); // False (X/Y differ)

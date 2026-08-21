@@ -79,8 +79,8 @@ internal sealed partial class MethodCompiler
             // the delegate on the same pool as Task.Run, returning no Task. The 1-arg overload
             // passes a null state. A GC holder (dn2cpp_threadpool_queue) keeps the delegate +
             // state reachable while queued. The generic QueueUserWorkItem<TState>(Action<TState>,
-            // TState, bool preferLocal) routes through TranslateGenericIntrinsic (carved out
-            // there); the IThreadPoolWorkItem form is handled just below.
+            // TState, bool preferLocal) routes through TranslateGenericIntrinsic; the
+            // IThreadPoolWorkItem form is handled just below.
             //
             // UnsafeQueueUserWorkItem(WaitCallback, object) is the SAME lowering and shares
             // this arm: the only thing "unsafe" names is that it does not capture and flow the
@@ -138,10 +138,8 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.ThreadPool", "QueueUserWorkItem"):
             case ("System.Threading.ThreadPool", "UnsafeQueueUserWorkItem"):
                 throw new NotSupportedException(
-                    $"{Method.DeclaringClass.FullName}.{Method.Name}: only the non-generic " +
-                    "ThreadPool.QueueUserWorkItem(WaitCallback [, object]) overloads are supported " +
-                    "(the generic QueueUserWorkItem<TState>(Action<TState>, TState, bool preferLocal) " +
-                    "and UnsafeQueueUserWorkItem / IThreadPoolWorkItem forms are carve-outs)");
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: this non-generic " +
+                    "ThreadPool work-item overload is not modeled");
 
             // ---- System.Text.StringBuilder ----
             // Append(ref AppendInterpolatedStringHandler) — the overload `sb.Append($"...")`

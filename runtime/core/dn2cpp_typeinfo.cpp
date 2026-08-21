@@ -50,6 +50,77 @@ extern const Dn2CppType dn2cpp_object_type_obj;
 const Dn2CppTypeInfo dn2cpp_object_type =
     dn2cpp_ti_with_typeobject({ "System.Object", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_object_type_obj);
 const Dn2CppType dn2cpp_object_type_obj = { { &dn2cpp_type_type }, &dn2cpp_object_type };
+
+// EqualityComparer<T>.Default is read once per element on the dictionary-probe and
+// span-scan paths, so the cache must be readable without a lock: an APPEND-ONLY list
+// published through an atomic head. A node is immutable once published and is never
+// freed — a concurrent reader may be walking it — and the list holds one node per
+// closed IEqualityComparer<T> the program reaches, so the walk is over a handful.
+namespace {
+struct Dn2CppDefaultComparerNode
+{
+    const Dn2CppTypeInfo* genericInterface;
+    Dn2CppObject* comparer;
+    Dn2CppDefaultComparerNode* next;
+};
+}
+static std::atomic<Dn2CppDefaultComparerNode*> g_default_equality_comparers{ nullptr };
+static std::mutex& g_default_equality_comparer_lock = dn2cpp_never_destroyed<std::mutex>();
+
+static Dn2CppObject* dn2cpp_find_default_equality_comparer(const Dn2CppDefaultComparerNode* head,
+                                                           const Dn2CppTypeInfo* genericInterface)
+{
+    for (const auto* n = head; n != nullptr; n = n->next)
+        if (n->genericInterface == genericInterface)
+            return n->comparer;
+    return nullptr;
+}
+
+Dn2CppObject* dn2cpp_default_equality_comparer(const Dn2CppTypeInfo* comparerType,
+                                               const Dn2CppTypeInfo* genericInterface,
+                                               const Dn2CppTypeInfo* nongenericInterface)
+{
+    if (auto* hit = dn2cpp_find_default_equality_comparer(
+            g_default_equality_comparers.load(std::memory_order_acquire), genericInterface))
+        return hit;
+    if (comparerType == nullptr)
+        comparerType = &dn2cpp_object_type;
+    std::lock_guard<std::mutex> guard(g_default_equality_comparer_lock);
+    // Re-check under the lock: one comparer per closed interface, for the whole
+    // process — callers compare the returned reference by identity.
+    if (auto* hit = dn2cpp_find_default_equality_comparer(
+            g_default_equality_comparers.load(std::memory_order_relaxed), genericInterface))
+        return hit;
+    auto* interfaceEntries = new Dn2CppInterfaceEntry[2]{
+        { genericInterface, nullptr }, { nongenericInterface, nullptr }
+    };
+    auto* concreteType = new Dn2CppTypeInfo{};
+    const char* elementName = genericInterface->genericArgCount == 1
+        && genericInterface->genericArgs != nullptr
+        && genericInterface->genericArgs[0] != nullptr
+        ? genericInterface->genericArgs[0]->name : "?";
+    std::string concreteName = "System.Collections.Generic.DefaultEqualityComparer<";
+    concreteName += elementName;
+    concreteName += ">";
+    auto* ownedName = new char[concreteName.size() + 1];
+    std::memcpy(ownedName, concreteName.c_str(), concreteName.size() + 1);
+    concreteType->name = ownedName;
+    concreteType->base = comparerType;
+    concreteType->instanceSize = (int32_t)sizeof(Dn2CppObject);
+    concreteType->interfaces = interfaceEntries;
+    concreteType->interfaceCount = 2;
+    // The bit is what dn2cpp_is_default_equality_comparer reads; nothing else mints
+    // a type-info carrying it, so the bit and this object's identity coincide.
+    concreteType->flags = DN2CPP_TF_SEALED | DN2CPP_TF_DEFAULT_EQ_COMPARER;
+    auto* comparer = new Dn2CppObject{ concreteType };
+    auto* node = new Dn2CppDefaultComparerNode{
+        genericInterface, comparer, g_default_equality_comparers.load(std::memory_order_relaxed)
+    };
+    // Release: the node's fields and the comparer's type-info must be visible to a
+    // reader that acquires this head.
+    g_default_equality_comparers.store(node, std::memory_order_release);
+    return comparer;
+}
 // String's one public field, real .NET's whole surface for it (the argument for
 // hand-writing an owned handle's field table is at dn2cpp_primflds_bool).
 static Dn2CppObject* dn2cpp_ownfld_string_Empty(Dn2CppObject*)
@@ -1187,4 +1258,3 @@ int32_t dn2cpp_assembly_equals(const char* a, const char* b)
         return 0;
     return std::strcmp(a, b) == 0 ? 1 : 0;
 }
-

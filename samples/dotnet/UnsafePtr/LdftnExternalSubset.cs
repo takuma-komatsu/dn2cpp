@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace LdftnExternalSubset
 {
@@ -10,6 +11,13 @@ namespace LdftnExternalSubset
     // synthesizes one per instantiation from the intrinsic's lowering. The first
     // two must resolve like a call site, then route through the existing
     // delegate-adapter / raw-address path.
+    //
+    // A fourth shape: a member a per-member intercept row CUT (ExecutionContext.Run,
+    // whose calls lower to a direct callback invoke). Its declaring type is not
+    // intrinsic-mapped, so nothing about the type says the body is missing.
+
+    // The method group's own delegate type: Run's exact signature.
+    internal delegate void RunDelegate(ExecutionContext ctx, ContextCallback cb, object state);
 
     internal sealed class Box<T>
     {
@@ -116,6 +124,14 @@ namespace LdftnExternalSubset
             Console.WriteLine(refEq(o, new object())); // False
             Console.WriteLine(refEq(null, null));     // True
 
+            // An intercepted CUT member, address-taken: reachability transpiles no
+            // body, so the emitter must synthesize one from the row's own lowering.
+            // Both sides only ever print from INSIDE the callback — dn2cpp ignores the
+            // context argument, and real .NET throws on a null one, so it is Capture()'s.
+            RunDelegate run = ExecutionContext.Run;
+            run(ExecutionContext.Capture(), static s => Console.WriteLine("ec-run:" + s), "flowed");
+            FnPtrRun();
+
             ClosedStaticDelegateSubset.Program.__GateEntry();
         }
 
@@ -128,6 +144,14 @@ namespace LdftnExternalSubset
             Console.WriteLine(ReferenceEquals(f(), Array.Empty<int>())); // True
             delegate*<string[]> g = &Array.Empty<string>;
             Console.WriteLine(g().Length);            // 0
+        }
+
+        // The intercepted CUT member as a RAW address, invoked through calli: no
+        // delegate adapter in between, so the synthesized body is reached on its own.
+        private static unsafe void FnPtrRun()
+        {
+            delegate*<ExecutionContext, ContextCallback, object, void> f = &ExecutionContext.Run;
+            f(ExecutionContext.Capture(), static s => Console.WriteLine("ec-fnptr:" + s), "flowed");
         }
     }
 }

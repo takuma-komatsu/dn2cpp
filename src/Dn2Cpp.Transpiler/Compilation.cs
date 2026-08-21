@@ -2873,39 +2873,59 @@ internal sealed partial class Compilation
     /// divergence between the two mouths is what makes the hole invisible until a
     /// <c>using</c> shows up.</para>
     ///
-    /// <para><paramref name="ThunkBody"/> is emitted into a function of the interface
-    /// method's *exact* signature over the receiver (today: <c>void(Dn2CppObject*)</c>),
-    /// never a direct pointer to the runtime helper — the dispatch site casts the slot to
-    /// the interface's shape, and entering an <c>int32_t</c>-returning function through a
-    /// <c>void</c> fnptr is a wasm signature trap. Every body here is either the runtime
-    /// dispose (Timer) or the same no-op the intrinsic call-site route already emits for
-    /// that type, so the two mouths agree by construction.</para></summary>
+    /// <para>The thunk kind fixes both managed and C++ signatures. Row resolution validates
+    /// the managed slot at mint time and records a mismatch
+    /// (<see cref="IntrinsicInterfaceMismatch"/>); the emitter fails the transpile when a
+    /// mismatched row's interface is in the emit set, instead of producing a wasm
+    /// function-pointer signature trap.</para></summary>
+    internal enum IntrinsicInterfaceThunkKind
+    {
+        TimerDispose,
+        NoopDispose,
+        TimerChange,
+        TimerDisposeAsync,
+    }
+
     internal sealed record IntrinsicInterfaceRow(
         string IntrinsicName, string TypeInfoSym, string ThunkSym,
-        string ItfNamespace, string ItfName, string SlotMethod, string ThunkBody);
+        string ItfNamespace, string ItfName, string SlotMethod, int SlotParameterCount,
+        IntrinsicInterfaceThunkKind ThunkKind);
 
     /// <summary>The intrinsic types given a runtime interface map, in emit order.
-    /// Every entry is a <c>Dn2CppObject*</c>-shaped intrinsic modeling a CLR type that
-    /// implements <c>IDisposable</c>. Timer's thunk stops and joins the timer thread;
-    /// the other five have no per-instance teardown (the native object lives for the
-    /// program), which is exactly what their intrinsic call-site <c>Dispose</c> arms
-    /// already emit — see <c>MethodCompiler.EmitIntrinsic.Threading.cs</c> /
-    /// <c>.Concurrent.cs</c>. Add a row here, reference it from the type's newobj mint
-    /// point, and the interface mouth is plugged; nothing else is per-type.</summary>
+    /// A type may own multiple rows, and they must stay ADJACENT here: the emitter turns
+    /// each run of one TypeInfoSym into a single map, and installing a map REPLACES the
+    /// type-info's interface list, so a second run would drop the first one's interfaces.
+    /// A split run fails the emit rather than silently dropping
+    /// (<c>CppEmitter.EmitIntrinsicInterfaceMaps</c>).</summary>
     internal static readonly IntrinsicInterfaceRow[] IntrinsicInterfaceRows =
     [
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_dispose",
-            "System", "IDisposable", "Dispose", "dn2cpp_timer_dispose(o);"),
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.TimerDispose),
+        new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_change",
+            "System.Threading", "ITimer", "Change", 2, IntrinsicInterfaceThunkKind.TimerChange),
+        new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_dispose_async",
+            "System", "IAsyncDisposable", "DisposeAsync", 0,
+            IntrinsicInterfaceThunkKind.TimerDisposeAsync),
+        new("System.TimeProvider+SystemTimeProviderTimer", "dn2cpp_timeprovider_timer_type",
+            "itfthunk_timeprovider_timer_dispose", "System", "IDisposable", "Dispose", 0,
+            IntrinsicInterfaceThunkKind.TimerDispose),
+        new("System.TimeProvider+SystemTimeProviderTimer", "dn2cpp_timeprovider_timer_type",
+            "itfthunk_timeprovider_timer_change", "System.Threading", "ITimer", "Change", 2,
+            IntrinsicInterfaceThunkKind.TimerChange),
+        new("System.TimeProvider+SystemTimeProviderTimer", "dn2cpp_timeprovider_timer_type",
+            "itfthunk_timeprovider_timer_dispose_async", "System", "IAsyncDisposable", "DisposeAsync", 0,
+            IntrinsicInterfaceThunkKind.TimerDisposeAsync),
         new("System.Threading.CountdownEvent", "dn2cpp_countdown_type", "itfthunk_countdown_dispose",
-            "System", "IDisposable", "Dispose", "(void)o;"),
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         new("System.Threading.Barrier", "dn2cpp_barrier_type", "itfthunk_barrier_dispose",
-            "System", "IDisposable", "Dispose", "(void)o;"),
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         new("System.Threading.ReaderWriterLockSlim", "dn2cpp_rwlock_type", "itfthunk_rwlock_dispose",
-            "System", "IDisposable", "Dispose", "(void)o;"),
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         new("System.Threading.ThreadLocal`1", "dn2cpp_threadlocal_type", "itfthunk_threadlocal_dispose",
-            "System", "IDisposable", "Dispose", "(void)o;"),
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
         new("System.Collections.Concurrent.BlockingCollection`1", "dn2cpp_blockingcollection_type",
-            "itfthunk_blockingcoll_dispose", "System", "IDisposable", "Dispose", "(void)o;"),
+            "itfthunk_blockingcoll_dispose", "System", "IDisposable", "Dispose", 0,
+            IntrinsicInterfaceThunkKind.NoopDispose),
     ];
 
     /// <summary>A row whose intrinsic is instantiated by the program and whose interface
@@ -2914,8 +2934,20 @@ internal sealed partial class Compilation
     /// <c>Dn2CppInterfaceEntry</c> row installed by the init prologue.</summary>
     internal sealed record IntrinsicInterfaceInfo(IntrinsicInterfaceRow Row, ClassInfo Itf, MethodInfo SlotDecl);
 
+    /// <summary>A row whose interface resolved but whose declared slot did not match the
+    /// row: the interface and the diagnostic. Recorded rather than thrown, because the
+    /// mint point cannot tell whether it matters — the row is rendered only when the
+    /// interface's type-info is in the emit set, and a program that mints the intrinsic
+    /// without ever touching the interface installs nothing and must not abort.</summary>
+    internal sealed record IntrinsicInterfaceMismatch(ClassInfo Itf, string Message);
+
     private readonly IntrinsicInterfaceInfo?[] _intrinsicItfs = new IntrinsicInterfaceInfo?[IntrinsicInterfaceRows.Length];
     private readonly bool[] _intrinsicItfNoted = new bool[IntrinsicInterfaceRows.Length];
+    private readonly List<IntrinsicInterfaceMismatch> _intrinsicItfMismatches = [];
+
+    /// <summary>The rows that failed shape validation, for the emitter to raise on if it
+    /// reaches one whose interface is emitted.</summary>
+    internal IReadOnlyList<IntrinsicInterfaceMismatch> IntrinsicInterfaceMismatches => _intrinsicItfMismatches;
 
     /// <summary>The resolved rows, in table order — a stable emit order independent of
     /// the order the program happened to mint the intrinsics in.</summary>
@@ -2937,7 +2969,9 @@ internal sealed partial class Compilation
     /// never touches the interface installs nothing, and no dispatch can miss the absent
     /// row. No-op without a CoreLib, or when <paramref name="intrinsicName"/> names no
     /// row — the table is the whole contract, so an unlisted caller is a no-op rather
-    /// than an error.</summary>
+    /// than an error. A row whose slot the loaded framework spells differently leaves the
+    /// row uninstalled and records an <see cref="IntrinsicInterfaceMismatch"/> for the
+    /// emitter to raise on.</summary>
     public void NoteIntrinsicInterfaces(string intrinsicName)
     {
         for (int i = 0; i < IntrinsicInterfaceRows.Length; i++)
@@ -2946,18 +2980,44 @@ internal sealed partial class Compilation
             if (!string.Equals(row.IntrinsicName, intrinsicName, StringComparison.Ordinal))
                 continue;
             if (_intrinsicItfNoted[i])
-                return;
+                continue;
             _intrinsicItfNoted[i] = true;
             if (!TypeIndex().TryGetValue((row.ItfNamespace, row.ItfName), out var cands)
                 || !cands[0].Item1.ClassMap.TryGetValue(cands[0].Item2, out var itf))
-                return;
+                continue;
             itf.EnsureMembers();
             var decl = itf.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == row.SlotMethod
-                && m.Signature.ParameterTypes.Length == 0);
+                && m.Signature.ParameterTypes.Length == row.SlotParameterCount);
             if (decl is null)
-                return;
+            {
+                _intrinsicItfMismatches.Add(new(itf,
+                    $"intrinsic interface row {row.IntrinsicName} -> {row.ItfNamespace}.{row.ItfName}." +
+                    $"{row.SlotMethod} could not resolve its declared slot shape"));
+                continue;
+            }
+            bool shapeMatches = row.ThunkKind switch
+            {
+                IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
+                    && decl.Signature.ParameterTypes.Length == 0,
+                IntrinsicInterfaceThunkKind.TimerChange =>
+                    decl.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+                    && decl.Signature.ParameterTypes is
+                        [{ Kind: TypeKind.Class, Class.FullName: "System.TimeSpan" },
+                         { Kind: TypeKind.Class, Class.FullName: "System.TimeSpan" }],
+                IntrinsicInterfaceThunkKind.TimerDisposeAsync =>
+                    decl.Signature.ReturnType is
+                        { Kind: TypeKind.Class, Class.FullName: "System.Threading.Tasks.ValueTask" }
+                    && decl.Signature.ParameterTypes.Length == 0,
+                _ => false,
+            };
+            if (!shapeMatches)
+            {
+                _intrinsicItfMismatches.Add(new(itf,
+                    $"intrinsic interface row {row.IntrinsicName} -> {row.ItfNamespace}.{row.ItfName}." +
+                    $"{row.SlotMethod} does not match thunk kind {row.ThunkKind}"));
+                continue;
+            }
             _intrinsicItfs[i] = new IntrinsicInterfaceInfo(row, itf, decl);
-            return;
         }
     }
 
@@ -3093,6 +3153,25 @@ internal sealed partial class Compilation
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
         if (IntrinsicFtnTargets.Add(m))
+            Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
+    }
+
+    /// <summary>ldftn/delegate targets whose call sites an intercept descriptor row CUT
+    /// (<see cref="CoreIntrinsics.TryFindCutRow"/>) — a method group over
+    /// <c>ExecutionContext.Run</c> and its kind. Reachability deleted the edge to the real
+    /// body, but the delegate adapter (or the raw address) NAMES the method's own symbol,
+    /// so cut ⟹ route holds only if the body exists: CppEmitter synthesizes it by
+    /// replaying that row's own emit arm
+    /// (<see cref="MethodCompiler.CompileInterceptWrapper"/>), which is the same lowering
+    /// a direct call gets. The method joins <see cref="Reachable"/> scan-less — following
+    /// its IL is exactly what the cut forbids — the same protocol as
+    /// <see cref="IntrinsicFtnTargets"/>, whose rows are the intrinsic-mapped TYPES this
+    /// one's are not.</summary>
+    internal HashSet<MethodInfo> InterceptFtnTargets { get; } = new();
+
+    public void NoteInterceptFtnTarget(MethodInfo m)
+    {
+        if (InterceptFtnTargets.Add(m))
             Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
     }
 

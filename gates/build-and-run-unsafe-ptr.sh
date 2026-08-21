@@ -24,11 +24,15 @@
 # static appears in BOTH shapes in one program. Covers reference/interface/base-
 # class/array/object/null bound arguments, void and non-void returns, the 0-argument
 # closed form, generic statics (including a shared canonical body), LINQ consumption,
-# multicast, Target and delegate equality. The two extra BCL references below are
+# multicast, Target and delegate equality. Two of the extra BCL references below are
 # that section's (System.Runtime for the extension-method shapes, System.Linq for the
 # LINQ consumption) — the pointer sections need neither, and this gate is the only
 # consumer of the UnsafePtr project, so widening its reference set costs nothing
-# elsewhere.
+# elsewhere. System.Threading is the remaining one, and its subject is neither ldftn
+# shapes nor threading: an address-taken member whose CALLS an intercept row cut
+# (ExecutionContext.Run), for which reachability transpiles no body and the emitter
+# must synthesize one by replaying that row's own lowering — taken both as a delegate
+# method group and as a raw delegate* address, the two arms that name the symbol.
 #
 # And the CorelibSubset section (folded in from `corelib-subset`),
 # whose real subject is neither unsafe nor pointers alone — it is the ORIGINAL
@@ -55,4 +59,4 @@
 # corelib-subset.
 source "$(dirname "$0")/_common.sh"
 
-corelib_diff_gate UnsafePtr System.Runtime System.Linq
+corelib_diff_gate UnsafePtr System.Runtime System.Linq System.Threading

@@ -780,10 +780,18 @@ internal sealed partial class MethodCompiler
             }
             // ---- System.Threading.Timer (per-timer OS thread) ----
             // Change(dueTime, period): reschedule (int/long/uint/TimeSpan overloads, converted
-            // to int64 ms). Returns true (real Change returns false only after Dispose).
+            // to int64 ms). Returns false after Dispose, true otherwise — matching .NET.
             case ("System.Threading.Timer", "Change"):
+            case ("System.TimeProvider+SystemTimeProviderTimer", "Change"):
             {
                 var ps = sig.ParameterTypes;
+                // Two operands plus the receiver are popped below and both parameters read,
+                // so the shape is asserted first: a name-gated route may decline a shape,
+                // never pop one.
+                if (ps.Length != 2)
+                    throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}.Change "
+                        + $"expects (dueTime, period), got {SigArgs(sig)}");
                 var period = Pop();
                 var dueTime = Pop();
                 var o = Pop();
@@ -792,19 +800,32 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // Dispose(): stop the timer and join its thread. Timer.Dispose() returns void, so
-            // discard the helper's result. The Dispose(WaitHandle) (returns bool) and
-            // DisposeAsync (returns ValueTask) overloads are carve-outs below.
+            // discard the helper's result. DisposeAsync stops synchronously and returns a
+            // completed ValueTask; Dispose(WaitHandle) remains a carve-out below.
+            // A `when` clause binds to its own label only, so each zero-arg label carries its
+            // own guard and the throw below covers both type names — an unguarded label would
+            // pop the receiver and strand the extra argument on the stack.
             case ("System.Threading.Timer", "Dispose") when sig.ParameterTypes.Length == 0:
+            case ("System.TimeProvider+SystemTimeProviderTimer", "Dispose")
+                when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
                 Emit($"dn2cpp_timer_dispose((Dn2CppObject*)({o.Expr}));");
                 return true;
             }
             case ("System.Threading.Timer", "Dispose"):
-            case ("System.Threading.Timer", "DisposeAsync"):
+            case ("System.TimeProvider+SystemTimeProviderTimer", "Dispose"):
                 throw new NotSupportedException(
-                    $"{Method.DeclaringClass.FullName}.{Method.Name}: only Timer.Dispose() is " +
-                    "supported (the Dispose(WaitHandle) signal and DisposeAsync overloads are carve-outs)");
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: only {declType}.Dispose() is " +
+                    "supported (Timer's Dispose(WaitHandle) signal overload is a carve-out)");
+            case ("System.Threading.Timer", "DisposeAsync"):
+            case ("System.TimeProvider+SystemTimeProviderTimer", "DisposeAsync"):
+            {
+                var o = Pop();
+                Emit($"dn2cpp_timer_dispose((Dn2CppObject*)({o.Expr}));");
+                Push(StackKind.Struct, "Dn2CppTaskAwaiter", "Dn2CppTaskAwaiter{ nullptr }");
+                return true;
+            }
             // ---- System.Threading.ThreadLocal<T> (per-instance, per-thread storage) ----
             // The value is stored boxed in a uniform slot; the get unboxes (value-type T)
             // or casts (reference T) to the element representation, the set boxes (value-

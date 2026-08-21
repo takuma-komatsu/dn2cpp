@@ -1750,6 +1750,18 @@ internal sealed partial class Compilation
         return cls;
     }
 
+    /// <summary>The non-generic comparer interface inherited by every
+    /// <c>EqualityComparer&lt;T&gt;</c>. Its calls use the same default-object lowering as
+    /// Tuple's structural equality path.</summary>
+    internal ClassInfo? NonGenericEqualityComparerInterface()
+    {
+        if (!TypeIndex().TryGetValue(("System.Collections", "IEqualityComparer"), out var cands)
+            || !cands[0].Item1.ClassMap.TryGetValue(cands[0].Item2, out var cls))
+            return null;
+        EnsureCompleted(cls);
+        return cls;
+    }
+
     /// <summary>If <paramref name="c"/>'s base chain reaches the intrinsic-opaque
     /// <c>EqualityComparer&lt;T&gt;</c> (the shape a user comparer subclass takes), the
     /// element type <c>T</c> it was closed at; otherwise null. Walks the base chain because
@@ -1782,8 +1794,8 @@ internal sealed partial class Compilation
     /// receiver, or a MemoryExtensions span scan's trailing comparer operand
     /// — should dispatch through, but ONLY when an implementer for this element type was
     /// actually allocated (its interface type-info is therefore emitted). With no such
-    /// implementer, every comparer value a program can normally hold is the Default nullptr
-    /// sentinel, so the caller's default-op is both correct and the only link-safe choice —
+    /// implementer, every comparer value a program can normally hold is Default, so the
+    /// caller's default-op is both correct and the only link-safe choice —
     /// routing through an un-emitted interface type-info would fail at C++ link time. (The
     /// span scans additionally keep their runtime guard on that arm, for the one receiver
     /// reachability cannot see: a reflection-built comparer.) The leading bool short-

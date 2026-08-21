@@ -305,9 +305,8 @@ internal static partial class CoreIntrinsics
         // Task.Run. QueueUserWorkItem(WaitCallback [, object state]) is intercepted at the
         // call site and lowered to dn2cpp_threadpool_queue (a GC holder keeps the delegate +
         // state reachable while queued). A static class never instantiated, so no C++ type
-        // is mapped. The generic QueueUserWorkItem<TState>(Action<TState>, TState, bool),
-        // UnsafeQueueUserWorkItem/IThreadPoolWorkItem forms, and the SetMinThreads/
-        // GetAvailableThreads/etc. tuning surface are carve-outs (loud NotSupported).
+        // is mapped. Generic Action<TState> and IThreadPoolWorkItem forms share the same
+        // pool; SetMinThreads/GetAvailableThreads and the tuning surface stay loud.
         "System.Threading.ThreadPool",
         // Blocking synchronization primitives backed by a real mutex+condvar
         // (dn2cpp_semaphore_* / dn2cpp_event_*). The concrete object is built at newobj
@@ -344,8 +343,8 @@ internal static partial class CoreIntrinsics
         // System.Threading.Timer — a per-timer OS thread that waits dueTime, fires
         // TimerCallback(state), and (when period is finite > 0) re-fires every period.
         // Built at newobj (dn2cpp_timer_*); Change reschedules, Dispose stops + joins the
-        // thread. GC-allocated (it holds the managed callback/state). The Dispose(WaitHandle)
-        // and DisposeAsync overloads are carve-outs (loud NotSupported).
+        // thread. GC-allocated (it holds the managed callback/state). DisposeAsync stops
+        // synchronously; Dispose(WaitHandle) remains a loud carve-out.
         "System.Threading.Timer",
         // Atomic primitives — real hardware atomics (the multithread model). Their real
         // bodies are InternalCall/extern; mapped to seq_cst runtime intrinsics. The
@@ -598,17 +597,6 @@ internal static partial class CoreIntrinsics
         // WITH a message (the `_message == null` guard short-circuits SetMessageField), so
         // the trap at the call site is unreachable in practice.
         [("System.IO.FileLoadException", "FormatFileLoadExceptionMessage")] = BoundedVerdict.Silent,
-        // SynchronizationContext.Post — the BASE body reaches the untranspilable generic
-        // ThreadPool.QueueUserWorkItem<TState> (a value-typed tuple TState the pool's
-        // uniform object-pointer invoke cannot carry), so it stays cut. A user-installed
-        // context's Post must still run, and a C# call site always names this base
-        // declaration (member lookup excludes overrides), so neutralizing the call site
-        // would silently drop `ctx.Post(...)` on the override too. Hence the
-        // IsVirtualDispatchBounded carve-out: a callvirt to Post dispatches through the
-        // vtable, and only the base body is cut — a dispatch landing on a plain
-        // SynchronizationContext hits its nullptr slot, the price of keeping the ThreadPool
-        // subtree out.
-        [("System.Threading.SynchronizationContext", "Post")] = BoundedVerdict.Silent,
         // Environment.FailFast must NOT be bounded: neutralization drops the arguments and
         // pushes the default result, and FailFast returns void — so the call would do
         // nothing and execution would continue past a request to halt on corrupted state.
@@ -1386,6 +1374,27 @@ internal static partial class CoreIntrinsics
         ["System.Threading.ManualResetEventSlim"] = "&dn2cpp_manualreseteventslim_type",
     };
 
+    // A nested ClassInfo.FullName is only the simple name, so runtime-owned nested types are
+    // keyed on the CLR reflection name (Compilation.ReflectionTypeName) — the same
+    // enclosing-qualified spelling the newobj mint and the intrinsic interface rows use, and
+    // like the sibling s_intrinsicNestedCpp derived from metadata alone. The emitted CppName
+    // cannot be the key: cross-module disambiguation may prepend "m<idx>_" to it, and the
+    // resulting miss is silent — the emitter would define its own ti_ while every object
+    // keeps the runtime handle, two identities for one CLR type.
+    private static readonly Dictionary<string, string> s_runtimeOwnedNestedTypeInfo = new()
+    {
+        ["System.TimeProvider+SystemTimeProviderTimer"] = "&dn2cpp_timeprovider_timer_type",
+    };
+
+    // Leaf simple names of the rows above: the O(1) guard that keeps the reflection-name
+    // walk (which allocates for any nested type) off every class's type-info lookup.
+    private static readonly HashSet<string> s_runtimeOwnedNestedLeafNames = new(StringComparer.Ordinal);
+
+    private static string? RuntimeOwnedNestedHandle(ClassInfo cls) =>
+        s_runtimeOwnedNestedLeafNames.Contains(cls.Name)
+        && s_runtimeOwnedNestedTypeInfo.TryGetValue(Compilation.ReflectionTypeName(cls), out var h)
+            ? h : null;
+
     /// <summary>The runtime type-info handles that are deliberately NOT rows above, each
     /// with the reason. The set exists because
     /// <c>gates/build-and-run-reflect-types.sh</c> re-derives every handle the runtime
@@ -1448,8 +1457,9 @@ internal static partial class CoreIntrinsics
         s_runtimeExceptionTypeInfo
             .Concat(s_runtimeBoundTypeInfo)
             .Concat(s_runtimeOwnedTypeInfo)
-            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => (kv.Key, kv.Value));
+            .Concat(s_runtimeOwnedNestedTypeInfo)
+            .Select(kv => (Name: kv.Key, Handle: kv.Value))
+            .OrderBy(kv => kv.Name, StringComparer.Ordinal);
 
     /// <summary>Every runtime type-info handle this file carries a row for, by C++ symbol
     /// (no leading <c>&amp;</c>) — the other half of the same check.</summary>
@@ -1457,6 +1467,7 @@ internal static partial class CoreIntrinsics
         s_runtimeExceptionTypeInfo.Values
             .Concat(s_runtimeBoundTypeInfo.Values)
             .Concat(s_runtimeOwnedTypeInfo.Values)
+            .Concat(s_runtimeOwnedNestedTypeInfo.Values)
             .Select(v => v[1..])
             .Distinct();
 
@@ -1478,6 +1489,8 @@ internal static partial class CoreIntrinsics
 
     static CoreIntrinsics()
     {
+        foreach (var name in s_runtimeOwnedNestedTypeInfo.Keys)
+            s_runtimeOwnedNestedLeafNames.Add(name[(name.LastIndexOf('+') + 1)..]);
         // The three tables partition the runtime-handle set: a type either owns its
         // metadata or receives it, never both, and a name in two tables would make
         // ClassInfo.CppTypeInfoName's answer depend on lookup order — which is the two-lists
@@ -1506,6 +1519,9 @@ internal static partial class CoreIntrinsics
         : s_runtimeOwnedTypeInfo.TryGetValue(fullTypeName, out var ow) ? ow
         : null;
 
+    public static string? RuntimeTypeInfoSymbol(ClassInfo cls) =>
+        RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
+
     /// <summary>Whether the runtime OWNS this type's metadata, i.e. the emitter must define
     /// no type-info for it at all. False both for a type with no runtime handle (its emitted
     /// <c>ti_</c> is the definition) and for a bind-kind one (its emitted metadata is
@@ -1513,6 +1529,9 @@ internal static partial class CoreIntrinsics
     /// startup).</summary>
     public static bool RuntimeOwnsTypeInfo(string? fullTypeName) =>
         fullTypeName is not null && s_runtimeOwnedTypeInfo.ContainsKey(fullTypeName);
+
+    public static bool RuntimeOwnsTypeInfo(ClassInfo cls) =>
+        RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null;
 
     /// <summary>Whether an UNLOADED (External) type name is a BCL exception type —
     /// <c>System.Exception</c> itself or any <c>System.*</c> type whose name carries
@@ -1554,15 +1573,6 @@ internal static partial class CoreIntrinsics
     /// MEANS, so only it may ask for a throw.</para></summary>
     public static BoundedVerdict BoundedVerdictOf(string declType, string name) =>
         s_boundedMethods.TryGetValue((declType, name), out var v) ? v : BoundedVerdict.Silent;
-
-    /// <summary>A bounded VIRTUAL whose callvirt sites still dispatch through the
-    /// vtable instead of being neutralized: only the base BODY is cut. Needed when
-    /// user overrides must run (SynchronizationContext.Post — every C# call site
-    /// names the base declaration, so neutralizing it would drop the override's
-    /// dispatch too). See the s_boundedMethods entry's comment, and
-    /// <see cref="BdVirtualDispatch"/> for the row the emit site asks.</summary>
-    public static bool IsVirtualDispatchBounded(string declType, string name) =>
-        (declType, name) == ("System.Threading.SynchronizationContext", "Post");
 
     /// <summary>The AssemblyLoadContext runtime-assembly-LOAD primitive: the
     /// [LibraryImport] QCall that maps and registers an IL assembly from a path. A
@@ -2032,9 +2042,9 @@ internal static partial class CoreIntrinsics
     {
         // EqualityComparer<T>: the real Default/Equals/GetHashCode route through
         // reflection + per-type comparer subclasses (GenericEqualityComparer,
-        // ObjectEqualityComparer, …) we never allocate. Model it as an opaque
-        // reference sentinel; get_Default yields nullptr and Equals/GetHashCode
-        // lower to type-specialized ops at the call site.
+        // ObjectEqualityComparer, …) we never transpile. Model it as an opaque
+        // reference; get_Default yields a non-null per-T synthetic singleton and
+        // Equals/GetHashCode lower to type-specialized ops at the call site.
         ["System.Collections.Generic.EqualityComparer"] = "Dn2CppObject*",
         // DefaultInterpolatedStringHandler: the compiler lowers $"..." to this
         // value type. Its real body reaches Buffer.Memmove (InternalCall), so
@@ -2253,6 +2263,10 @@ internal static partial class CoreIntrinsics
     /// type the nested type lowers to.</summary>
     private static readonly Dictionary<(string Enclosing, string Name), string> s_intrinsicNestedCpp = new()
     {
+        // TimeProvider.System.CreateTimer returns this private CoreLib adapter. Its real
+        // ctor enters TimerQueue's runtime-owned thread and ThreadPool machinery; use the
+        // same per-timer thread object as the public System.Threading.Timer intrinsic.
+        [("System.TimeProvider", "SystemTimeProviderTimer")] = "Dn2CppObject*",
         // Lock.Scope: the ref struct EnterScope() returns and the `lock` body's finally
         // disposes. Both calls are intercepted, so it carries no state — a 0-byte struct.
         [("System.Threading.Lock", "Scope")] = "Dn2CppLockScope",

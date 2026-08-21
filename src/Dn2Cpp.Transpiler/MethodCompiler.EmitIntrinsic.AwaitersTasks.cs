@@ -606,6 +606,21 @@ internal sealed partial class MethodCompiler
                 return true;
             }
 
+            case ("System.Threading.CancellationTokenRegistration", "get_Token"):
+            {
+                var t = Pop(); // ref this (Dn2CppCancelReg* value)
+                Push(StackKind.Struct, "Dn2CppCancelToken",
+                    $"dn2cpp_ctr_token(*((Dn2CppCancelReg**)({t.Expr})))");
+                return true;
+            }
+            case ("System.Threading.CancellationTokenRegistration", "Unregister"):
+            {
+                var t = Pop(); // ref this (Dn2CppCancelReg* value)
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_ctr_unregister(*((Dn2CppCancelReg**)({t.Expr})))");
+                return true;
+            }
+
             // ---- Task.Yield ----
             // Task.Yield returns a YieldAwaitable; GetAwaiter a YieldAwaiter.
             // Both are the stateless Dn2CppYieldAwaiter. IsCompleted is always

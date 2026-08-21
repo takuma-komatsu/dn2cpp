@@ -16,9 +16,8 @@ namespace Dn2Cpp;
 // <c>StrLiteral</c> carries the value of an <c>ldstr</c> so an intrinsic that needs
 // a compile-time string argument can recover it from the stack (the symbol is
 // spilled to a temp by Push) — e.g. the field name of <c>Marshal.OffsetOf</c>.
-// <c>KnownNull</c> records that the operand is the null constant — an <c>ldnull</c>,
-// or an intrinsic whose value IS the nullptr sentinel (<c>EqualityComparer&lt;T&gt;
-// .Default</c>). Mirror of <c>NonNull</c>, and like it a pure optimization: losing it
+// <c>KnownNull</c> records that the operand is the null constant. Mirror of
+// <c>NonNull</c>, and like it a pure optimization: losing it
 // (Push spills, and a block boundary re-spills) can only cost back a run-time null
 // test, never an answer.
 /// <summary>One evaluation-stack slot. <c>Expr</c> is the C++ text that reads it —
@@ -284,6 +283,24 @@ internal sealed partial class MethodCompiler : IEvalStack
         {
             return false;
         }
+    }
+
+    /// <summary>The keying check for a call an intrinsic arm answered on an
+    /// intrinsic-OPAQUE class: its members are never decoded, so
+    /// <see cref="CallTokenResolvesTo"/> has no MethodInfo to compare against and
+    /// the rgctx entry must re-resolve the member reference's PARENT TYPE instead.
+    /// Structural only — the per-instantiation resolve is the authority, and a
+    /// token that fails there marks the slot bad and taints this body.</summary>
+    private bool CallTokenIsOpaqueMemberRef(string name)
+    {
+        if (_callSiteToken == 0)
+            return false;
+        var handle = SRME.EntityHandle(_callSiteToken);
+        if (handle.Kind != HandleKind.MemberReference)
+            return false;
+        var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
+        return _reader.GetString(mr.Name) == name
+            && mr.Parent.Kind is HandleKind.TypeSpecification or HandleKind.TypeDefinition;
     }
 
     /// <summary>Records (planning pass) that this trial body dispatches through
@@ -1106,6 +1123,23 @@ internal sealed partial class MethodCompiler : IEvalStack
                 return true;
             },
             "synthesized P/Invoke forwarder");
+    }
+
+    /// <summary>Synthesizes a standalone body for a method whose call sites an intercept
+    /// row CUT and whose ADDRESS is taken (noted by
+    /// <see cref="Compilation.NoteInterceptFtnTarget"/>): stages the parameters and
+    /// replays the row's own emit arm at the body position, so invoking the delegate /
+    /// function pointer computes what a direct call computes. Routed through the intercept
+    /// funnel and NOT <see cref="EmitIntrinsic"/> — most rows lower to something no
+    /// intrinsic table names. Null when no Cut row answers the method.</summary>
+    internal string? CompileInterceptWrapper()
+    {
+        if (!CoreIntrinsics.TryFindCutRow(_method, out var row))
+            return null;
+        return SynthesizeWrapperBody(
+            _method.DeclaringClass.CppStructName + "*",
+            () => TryEmitMethodDefIntercept(row, _method),
+            "synthesized from the intercept's lowering");
     }
 
     private static int CountOf(string haystack, string needle)
@@ -3247,12 +3281,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // adapter that either ignores it (open) or takes the static's
                     // bound first argument out of it (closed). The adapter wraps the
                     // symbol that carries the body (the canonical shared impl when one
-                    // is assigned). An intrinsic-mapped type's method has no
-                    // transpiled body to wrap — synthesize one from its call
-                    // intrinsic's lowering so the adapter's callee exists.
+                    // is assigned). A method whose real body reachability never
+                    // transpiles has none to wrap — NoteFtnTargetBody makes the
+                    // emitter synthesize one so the adapter's callee exists.
                     var impl = m.Emittable;
-                    if (CoreIntrinsics.IsIntrinsicType(impl.DeclaringClass.FullName))
-                        _c.NoteIntrinsicFtnTarget(impl);
+                    NoteFtnTargetBody(impl);
                     var adapter = new DelegateAdapter(impl, IsClosedStaticDelegate(dgClass, impl),
                         NeedsNfiErasedAdapter(impl));
                     if (!_c.DelegateAdapters.Contains(adapter))
@@ -3271,8 +3304,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // headerless intrinsic position does not render alike, so the
                     // method gets the NFI-erasing adapter: the one shape for which an
                     // instance target has an adapter at all.
-                    if (CoreIntrinsics.IsIntrinsicType(m.Emittable.DeclaringClass.FullName))
-                        _c.NoteIntrinsicFtnTarget(m.Emittable);
+                    NoteFtnTargetBody(m.Emittable);
                     var adapter = new DelegateAdapter(m.Emittable, false, NfiErased: true);
                     if (!_c.DelegateAdapters.Contains(adapter))
                         _c.DelegateAdapters.Add(adapter);
@@ -3284,10 +3316,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // Instance method, or a C# function pointer (delegate*<...> via
                     // &Method): the raw method address. A function pointer is invoked
                     // by calli with no target slot, so it must point at the method
-                    // itself, not the delegate adapter. Same synthesized-body rule
-                    // for an intrinsic-mapped type's method.
-                    if (CoreIntrinsics.IsIntrinsicType(m.Emittable.DeclaringClass.FullName))
-                        _c.NoteIntrinsicFtnTarget(m.Emittable);
+                    // itself, not the delegate adapter. Same synthesized-body rule.
+                    NoteFtnTargetBody(m.Emittable);
                     _c.NoteNamedBodySymbol(_method, m.Emittable);
                     expr = $"(void*)&{m.Emittable.CppName}";
                 }
@@ -3331,15 +3361,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // as (Dn2CppObject*, <Invoke params>) -> <Invoke return> — on wasm a
                 // `call_indirect` type-immediate trap naming nothing).
                 //
-                // A VIRTUAL-DISPATCH bound (CoreIntrinsics.BdVirtualDispatch — today
-                // SynchronizationContext.Post) falls through to the ordinary arms, exactly
-                // as its callvirt sites do in MethodCompiler.Call.cs: only the base BODY is
-                // cut there, the overrides stay reachable, and taking the address must hand
-                // back the receiver's real slot. `ldvirtftn` IS the virtual form, so the
-                // `isCallvirt` half of the call-site test is satisfied by construction.
-                bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name)
-                    && !(m.IsVirtual
-                         && CoreIntrinsics.BdVirtualDispatch.Matches(m.DeclaringClass.FullName, m.Name));
+                bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);
@@ -3370,9 +3392,13 @@ internal sealed partial class MethodCompiler : IEvalStack
                 else
                 {
                     // A vtable slot names no symbol; a non-virtual target's address is
-                    // the symbol itself, exactly as in the ldftn arm above.
+                    // the symbol itself, exactly as in the ldftn arm above — including
+                    // the body the symbol needs when nothing transpiles the real one.
                     if (!m.IsVirtual)
+                    {
+                        NoteFtnTargetBody(m.Emittable);
                         _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    }
                     // The two slot loads take the receiver null guard, like the
                     // callvirt arms they mirror: `ldvirtftn` on a null receiver is
                     // an NRE in .NET, raised where the delegate is BOUND rather

@@ -60,10 +60,20 @@ internal sealed partial class MethodCompiler
                 return true;
             case InterceptEmitArm.ExecutionContextCaptureNull:
             {
+                for (int i = callee.Signature.ParameterTypes.Length - 1; i >= 0; i--)
+                    Pop();
                 if (callee.Signature.ReturnType is { Kind: TypeKind.Class, Class: { } ecCls })
                     _c.NoteReferencedType(ecCls);
                 string ecT = CppTypes.Of(callee.Signature.ReturnType);
                 Push(StackKind.Ref, ecT, $"({ecT})nullptr");
+                return true;
+            }
+            case InterceptEmitArm.ExecutionContextRunDirect:
+            {
+                var state = Pop();
+                var callback = Pop();
+                Pop(); // ExecutionContext
+                Emit($"dn2cpp_paramthread_invoke({Cast(callback, "Dn2CppObject*")}, {Cast(state, "Dn2CppObject*")});");
                 return true;
             }
             case InterceptEmitArm.IntrinsicUnderDeclType:
@@ -111,6 +121,25 @@ internal sealed partial class MethodCompiler
                 // where it was).
                 EmitIntrinsic(declType!, name, mr.DecodeMethodSignature(_c.SigProvider, null));
                 return true;
+            case InterceptEmitArm.ExecutionContextCaptureNull:
+            {
+                var callSig = sig();
+                for (int i = callSig.ParameterTypes.Length - 1; i >= 0; i--)
+                    Pop();
+                if (callSig.ReturnType is { Kind: TypeKind.Class, Class: { } ecCls })
+                    _c.NoteReferencedType(ecCls);
+                string ecT = CppTypes.Of(callSig.ReturnType);
+                Push(StackKind.Ref, ecT, $"({ecT})nullptr");
+                return true;
+            }
+            case InterceptEmitArm.ExecutionContextRunDirect:
+            {
+                var state = Pop();
+                var callback = Pop();
+                Pop(); // ExecutionContext
+                Emit($"dn2cpp_paramthread_invoke({Cast(callback, "Dn2CppObject*")}, {Cast(state, "Dn2CppObject*")});");
+                return true;
+            }
             case InterceptEmitArm.GcFamily:
                 switch (name)
                 {
@@ -414,6 +443,8 @@ internal sealed partial class MethodCompiler
                 // (no transpiled struct). The edge is cut in
                 // Compilation.ResolveCallTarget.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdExecutionContextCapture, callee))
+                    return;
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdExecutionContextRun, callee))
                     return;
                 // SynchronizationContext's thread-slot statics reached intra-corelib
                 // (MethodDef): Current reads / SetSynchronizationContext writes the
@@ -721,6 +752,10 @@ internal sealed partial class MethodCompiler
                 // SynchronizationContext.get_Current / SetSynchronizationContext — the
                 // per-thread runtime slot, same as the MethodDef intercept above.
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrSyncContextSlot, mr, mrParent, mrName, Sig))
+                    return;
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrExecutionContextCapture, mr, mrParent, mrName, Sig))
+                    return;
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrExecutionContextRun, mr, mrParent, mrName, Sig))
                     return;
                 // NativeMemory's C-heap wrappers / memset / memmove; the real bodies are
                 // InternalCall / P-Invoke into the unmanaged allocator.
@@ -1406,14 +1441,7 @@ internal sealed partial class MethodCompiler
         // string-comparer factories' null means "use the default comparer", and
         // JsonSerializerOptions.TrackOptionsInstance's registration into an unread
         // ConditionalWeakTable is unobservable.
-        // Exception: a virtual-dispatch bound (SynchronizationContext.Post) keeps
-        // its callvirt sites dispatching — only the base BODY is cut. Falling
-        // through here reaches the ordinary virtual-dispatch emission below; the
-        // overrides it can land on were reached by the ReachUsedVirtual cross
-        // product exactly because Reach's bounded check skips only the base body.
-        if (_c.IsBoundedMethod(callee.DeclaringClass.FullName, callee.Name)
-            && !(isCallvirt && callee.IsVirtual
-                 && CoreIntrinsics.BdVirtualDispatch.Matches(callee.DeclaringClass.FullName, callee.Name)))
+        if (_c.IsBoundedMethod(callee.DeclaringClass.FullName, callee.Name))
         {
             // If the callee is a bodyless [DllImport], the bound is not neutralizing a
             // modelled BCL path — it is standing in for a native module this build does
@@ -1893,17 +1921,10 @@ internal sealed partial class MethodCompiler
         // pointer to storage, not an object reference (a `constrained.` callvirt
         // arrives through EmitConstrainedCall, which forms its own receiver).
         //
-        // The one exemption is the EqualityComparer<T>.Default nullptr SENTINEL
-        // where it escapes as a non-generic IEqualityComparer object: nullptr is
-        // a legitimate value there, meaning "default equality", and the
-        // interface arm below answers it with the boxed-object default ops. A
-        // guard would throw before that ternary could look, turning a working
-        // Tuple hash into an NRE. It is not an exception to the rule — the
-        // receiver is not a user null.
-        bool sentinelReceiver = callee.DeclaringClass.FullName == "System.Collections.IEqualityComparer"
+        bool defaultComparerReceiver = callee.DeclaringClass.FullName == "System.Collections.IEqualityComparer"
             && callee.Name is "GetHashCode" or "Equals";
         if (isCallvirt && !callee.IsStatic && !callee.DeclaringClass.IsValueType
-            && !sentinelReceiver && args.Count > 0)
+            && args.Count > 0)
             args[0] = $"dn2cpp_null_check({args[0]})";
 
         string call;
@@ -1941,32 +1962,16 @@ internal sealed partial class MethodCompiler
             string fnPtrType = FnPtrType(callee);
             string receiver = args[0];
             call = $"(({fnPtrType})(dn2cpp_resolve_interface(((Dn2CppObject*){receiver})->type, &{ItfDispatchTi(callee.DeclaringClass).CppTypeInfoName})[{callee.VtableSlot}]))({string.Join(", ", args)})";
-            // The NON-GENERIC System.Collections.IEqualityComparer is the one place the
-            // EqualityComparer<T>.Default nullptr sentinel escapes into transpiled BCL
-            // bodies as an OBJECT: Tuple's structural trio — GetHashCode() / Equals(object)
-            // / the explicit IStructuralEquatable pair — passes `EqualityComparer<object>
-            // .Default` (the sentinel) into GetHashCode(IEqualityComparer) and dispatches
-            // it here, so the unconditional resolve above would read nullptr->type. Guard
-            // the receiver and answer a null comparer with the boxed-object default ops —
-            // exactly what the real ObjectEqualityComparer behind EqualityComparer<object>
-            // .Default computes (hash(null)=0, equal iff same reference/value). This is the
-            // established sentinel rule — "a null comparer receiver falls to the default op
-            // at run time" (EmitComparerObjectDispatch) — extended to the sentinel's
-            // non-generic interface face; keyed on the RUNTIME value, so a sentinel that
-            // flowed through a field or local (where KnownNull is invisible) is covered the
-            // same. The reach-side counterpart is ScObjectEqualityDispatch's
-            // IEqualityComparer arm (NoteObjectEqualityDispatch), which wires the type-info
-            // slots dn2cpp_object_gethashcode/_equals answer from for boxed elements.
-            // IComparer.Compare deliberately takes NO guard here: Comparer<T>.get_Default
-            // materializes a real GenericComparer<T> object (never the sentinel), so a null
-            // IComparer is a genuine user null and the receiver guard above raises the same
-            // catchable NullReferenceException real .NET does.
-            if (sentinelReceiver)
+            // Tuple passes EqualityComparer<object>.Default through the non-generic
+            // interface. Its opaque runtime identity has no interface map, so use the
+            // boxed-object default operations only for that identity; user null already
+            // failed the callvirt null check above.
+            if (defaultComparerReceiver)
             {
                 string dflt = callee.Name == "GetHashCode"
                     ? $"dn2cpp_object_gethashcode((Dn2CppObject*)({args[1]}))"
                     : $"dn2cpp_object_equals((Dn2CppObject*)({args[1]}), (Dn2CppObject*)({args[2]}))";
-                call = $"(({receiver}) != nullptr ? {call} : {dflt})";
+                call = $"(dn2cpp_is_default_equality_comparer((Dn2CppObject*)({receiver})) ? {dflt} : {call})";
             }
         }
         else if (isCallvirt && callee.IsVirtual
@@ -2767,20 +2772,22 @@ internal sealed partial class MethodCompiler
                 CppTypes.Of(invoke.Signature.ReturnType), call);
     }
 
-    /// <summary>The EmitIntrinsic dispatch key for an intrinsic declaring class. A nested
+    /// <summary>The EmitIntrinsic dispatch key for an intrinsic declaring class: an adopted
+    /// third-party async task-family type answers to its BCL key — its task / builder /
+    /// awaiter member names are the ones the C# compiler and the await pattern require, i.e.
+    /// the BCL's own, so every existing Task/ValueTask intrinsic case fires unchanged —
+    /// every other type to <see cref="NestedIntrinsicDispatchName"/>.</summary>
+    private string IntrinsicDispatchName(ClassInfo cls) =>
+        _c.AdoptedAsyncKey(cls) ?? NestedIntrinsicDispatchName(cls);
+
+    /// <summary>The dispatch key of an intrinsic class by its own identity only. A nested
     /// intrinsic (e.g. StringBuilder.AppendInterpolatedStringHandler) decodes to a bare
     /// simple FullName that collides with other nested types and is not what the
     /// (declType, name) switch keys on, so resolve its enclosing type from metadata and
     /// return the enclosing-qualified name (<see cref="CoreIntrinsics.NestedDispatchName"/>).
     /// A top-level / non-registered type returns its plain FullName unchanged.</summary>
-    private string IntrinsicDispatchName(ClassInfo cls)
+    private string NestedIntrinsicDispatchName(ClassInfo cls)
     {
-        // An adopted third-party async task-family type answers to its BCL key:
-        // its task / builder / awaiter member names are the ones the C# compiler and the
-        // await pattern require, i.e. the BCL's own, so every existing Task/ValueTask
-        // intrinsic case fires unchanged.
-        if (_c.AdoptedAsyncKey(cls) is { } adopted)
-            return adopted;
         try
         {
             var td = cls.Module.Reader.GetTypeDefinition(cls.Handle);
@@ -3468,6 +3475,22 @@ internal sealed partial class MethodCompiler
         }
     }
 
+    /// <summary>Null-checks an <c>EqualityComparer&lt;T&gt;</c> receiver into a temp, unless
+    /// it is statically non-null. On the dominant <c>Default.Equals(a, b)</c> shape the answer
+    /// comes from <c>T</c>'s default op and the check is the receiver's ONLY use, so emitting
+    /// it pins a whole <c>get_Default</c> call the C++ compiler may not delete —
+    /// <c>dn2cpp_null_check</c> can throw. Safe for the other arm because
+    /// <see cref="EmitComparerObjectDispatch"/> materializes the receiver itself, so the
+    /// unchecked expression is still evaluated once.</summary>
+    private StackEntry ComparerReceiverNullChecked(StackEntry recv)
+    {
+        if (recv.NonNull)
+            return recv;
+        string checkedRecv = NewTemp("Dn2CppObject*");
+        Emit($"{checkedRecv} = (Dn2CppObject*)dn2cpp_null_check({recv.Expr});");
+        return recv with { Expr = checkedRecv, NonNull = true, KnownNull = false };
+    }
+
     /// <summary>The shared body behind every <c>IEqualityComparer&lt;T&gt;</c> dispatch:
     /// probe the (possibly null) comparer object for the interface once, dispatch through
     /// its slot when it implements it, else devirtualize to <c>T</c>'s default op — the ONE
@@ -3476,7 +3499,7 @@ internal sealed partial class MethodCompiler
     /// <c>Equals</c>/<c>GetHashCode</c> on a real subclass receiver cannot drift. The
     /// operands are passed pre-popped so the receiver-null fast path can be decided by the
     /// caller (the intrinsic arm keeps the byte-identical default-op form for the Default
-    /// nullptr sentinel). <paramref name="b"/> is null for the one-operand GetHashCode.</summary>
+    /// opaque identity). <paramref name="b"/> is null for the one-operand GetHashCode.</summary>
     private void EmitComparerObjectDispatch(MethodInfo callee, TypeDesc keyType,
         StackEntry comparer, StackEntry a, StackEntry? b)
     {
