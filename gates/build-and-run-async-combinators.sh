@@ -34,7 +34,9 @@
 # (the constructors name paramName "action" for every kind, the Func ones included), and
 # a COMBINED delegate runs every handler front-to-back with the task's result taken from
 # the last one — including a STRUCT result, whose transpiler-stamped boxing trampoline
-# walks the invocation chain itself rather than leaning on a runtime thunk.
+# walks the invocation chain itself rather than leaning on a runtime thunk, and including
+# every result kind of a ContinueWith continuation, which answers through thunks of its
+# own and so needs the walk written into each one.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

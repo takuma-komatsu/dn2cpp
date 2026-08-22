@@ -765,10 +765,15 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The <c>Task.ContinueWith</c> mirror of <see cref="TaskStructResultThunk"/>:
     /// a two-argument trampoline over <c>(delegate, settled antecedent)</c> whose
-    /// <c>Func&lt;Task, TStruct&gt;</c> struct result is boxed into the slot.</summary>
+    /// <c>Func&lt;Task, TStruct&gt;</c> struct result is boxed into the slot. Walks the
+    /// multicast chain the same way, for the same reason.</summary>
     private static string TaskStructContWithThunk(string cppStruct) =>
-        $"+[](Dn2CppObject* __d, Dn2CppObject* __ante) -> uint64_t {{ auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__d); "
-      + $"{cppStruct} __r = reinterpret_cast<{cppStruct} (*)(Dn2CppObject*, Dn2CppObject*)>(__dg->method)(__dg->target, __ante); "
+        $"+[](Dn2CppObject* __d, Dn2CppObject* __ante) -> uint64_t {{ "
+      + $"struct __chain {{ static {cppStruct} run(Dn2CppObject* __o, Dn2CppObject* __a) {{ "
+      + $"auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__o); "
+      + $"if (__dg->prev != nullptr) run(__dg->prev, __a); "
+      + $"return reinterpret_cast<{cppStruct} (*)(Dn2CppObject*, Dn2CppObject*)>(__dg->method)(__dg->target, __a); }} }}; "
+      + $"{cppStruct} __r = __chain::run(__d, __ante); "
       + $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__r, (int32_t)sizeof({cppStruct})); }}";
 
     /// <summary>Pushes a Task&lt;T&gt;'s result, reinterpreting the raw slot as

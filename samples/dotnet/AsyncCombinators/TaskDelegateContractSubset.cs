@@ -13,7 +13,8 @@ namespace TaskDelegateContractSubset
     //     names "action", the Func ones included; Run/StartNew name "function".
     //   * a COMBINED delegate runs every handler front-to-back and the task's result is
     //     the last handler's — a struct result, whose trampoline walks the chain itself,
-    //     included.
+    //     included, and the same for a ContinueWith continuation, whose result kinds
+    //     answer through their own thunks.
     // The handlers append to a field instead of printing, so nothing is written from a
     // pool thread and the output stays deterministic.
     internal static class Program
@@ -33,6 +34,19 @@ namespace TaskDelegateContractSubset
 
         private static Pair SA() { s_log += "A"; return new Pair { X = 1, Y = 10 }; }
         private static Pair SB() { s_log += "B"; return new Pair { X = 2, Y = 20 }; }
+
+        private static int CA(Task t) { s_log += "A"; return 1; }
+        private static int CB(Task t) { s_log += "B"; return 2; }
+        private static double CDA(Task t) { s_log += "A"; return 0.5; }
+        private static double CDB(Task t) { s_log += "B"; return 2.5; }
+        private static string CSA(Task t) { s_log += "A"; return "a"; }
+        private static string CSB(Task t) { s_log += "B"; return "b"; }
+        private static Pair CPA(Task t) { s_log += "A"; return new Pair { X = 1, Y = 10 }; }
+        private static Pair CPB(Task t) { s_log += "B"; return new Pair { X = 2, Y = 20 }; }
+        private static long CLA(Task t) { s_log += "A"; return 1L; }
+        private static long CLB(Task t) { s_log += "B"; return 2L; }
+        private static float CFA(Task t) { s_log += "A"; return 0.5f; }
+        private static float CFB(Task t) { s_log += "B"; return 2.5f; }
 
         internal static void __GateEntry()
         {
@@ -74,6 +88,46 @@ namespace TaskDelegateContractSubset
             cold.Start();
             Pair p3 = cold.Result;
             Console.WriteLine("cold struct multicast: " + s_log + ", " + p3.X + "/" + p3.Y);
+
+            // ContinueWith's continuation is a delegate too, and each of its result kinds
+            // answers through its own thunk — so the chain walk has to be in every one.
+            Task antecedent = Task.CompletedTask;
+
+            s_log = "";
+            Func<Task, int> ci = CA;
+            ci += CB;
+            int ir = antecedent.ContinueWith(ci).Result;
+            Console.WriteLine("ContinueWith int multicast: " + s_log + ", " + ir);
+
+            s_log = "";
+            Func<Task, double> cd = CDA;
+            cd += CDB;
+            double dr = antecedent.ContinueWith(cd).Result;
+            Console.WriteLine("ContinueWith double multicast: " + s_log + ", " + dr);
+
+            s_log = "";
+            Func<Task, string> cs = CSA;
+            cs += CSB;
+            string sr = antecedent.ContinueWith(cs).Result;
+            Console.WriteLine("ContinueWith ref multicast: " + s_log + ", " + sr);
+
+            s_log = "";
+            Func<Task, Pair> cp = CPA;
+            cp += CPB;
+            Pair pr = antecedent.ContinueWith(cp).Result;
+            Console.WriteLine("ContinueWith struct multicast: " + s_log + ", " + pr.X + "/" + pr.Y);
+
+            s_log = "";
+            Func<Task, long> cl = CLA;
+            cl += CLB;
+            long lr = antecedent.ContinueWith(cl).Result;
+            Console.WriteLine("ContinueWith long multicast: " + s_log + ", " + lr);
+
+            s_log = "";
+            Func<Task, float> cf = CFA;
+            cf += CFB;
+            float fr = antecedent.ContinueWith(cf).Result;
+            Console.WriteLine("ContinueWith float multicast: " + s_log + ", " + fr);
         }
 
         // The submit MUST throw here; a returned task would mean the rejection happened

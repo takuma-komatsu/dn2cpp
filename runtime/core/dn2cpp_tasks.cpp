@@ -3137,6 +3137,51 @@ struct Dn2CppContWith
     uint64_t (*invokeStruct)(Dn2CppObject*, Dn2CppObject*);
 };
 
+// The ContinueWith result-kind thunks: the two-argument mirror of the dn2cpp_run_*
+// family above — the same prev-first multicast walk and result packing, with the
+// settled antecedent as every handler's argument. The void kinds get their walk from
+// dn2cpp_paramthread_invoke.
+static uint64_t dn2cpp_contwith_i4(Dn2CppObject* del, Dn2CppObject* ante)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_contwith_i4(d->prev, ante);
+    return static_cast<uint64_t>(static_cast<uint32_t>(
+        reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+}
+static uint64_t dn2cpp_contwith_i8(Dn2CppObject* del, Dn2CppObject* ante)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_contwith_i8(d->prev, ante);
+    return static_cast<uint64_t>(
+        reinterpret_cast<int64_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante));
+}
+static uint64_t dn2cpp_contwith_r4(Dn2CppObject* del, Dn2CppObject* ante)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_contwith_r4(d->prev, ante);
+    return dn2cpp_r8_bits(static_cast<double>(
+        reinterpret_cast<float (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+}
+static uint64_t dn2cpp_contwith_r8(Dn2CppObject* del, Dn2CppObject* ante)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_contwith_r8(d->prev, ante);
+    return dn2cpp_r8_bits(
+        reinterpret_cast<double (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante));
+}
+static uint64_t dn2cpp_contwith_ref(Dn2CppObject* del, Dn2CppObject* ante)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_contwith_ref(d->prev, ante);
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
+        reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+}
+
 // The three TaskContinuationOptions bits that FILTER rather than schedule. .NET spells
 // the six combinations with both polarities — OnlyOnRanToCompletion is
 // NotOnFaulted|NotOnCanceled, and so on — so reading the NotOn* trio covers the whole
@@ -3183,7 +3228,6 @@ static void dn2cpp_cont_with_run(void* p)
         return;
     }
     auto* ante = reinterpret_cast<Dn2CppObject*>(c->antecedent);
-    auto* d = reinterpret_cast<Dn2CppDelegate*>(c->del);
     try
     {
         uint64_t r = 0;
@@ -3196,27 +3240,22 @@ static void dn2cpp_cont_with_run(void* p)
                 dn2cpp_paramthread_invoke_state(c->del, ante, c->state);
                 break;
             case DN2CPP_CONTWITH_I4:
-                r = static_cast<uint64_t>(static_cast<uint32_t>(
-                    reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+                r = dn2cpp_contwith_i4(c->del, ante);
                 break;
             case DN2CPP_CONTWITH_I8:
-                r = static_cast<uint64_t>(
-                    reinterpret_cast<int64_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante));
+                r = dn2cpp_contwith_i8(c->del, ante);
                 break;
             case DN2CPP_CONTWITH_R4:
-                r = dn2cpp_r8_bits(static_cast<double>(
-                    reinterpret_cast<float (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+                r = dn2cpp_contwith_r4(c->del, ante);
                 break;
             case DN2CPP_CONTWITH_R8:
-                r = dn2cpp_r8_bits(
-                    reinterpret_cast<double (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante));
+                r = dn2cpp_contwith_r8(c->del, ante);
                 break;
             case DN2CPP_CONTWITH_STRUCT: // Func<Task, TStruct> — the trampoline boxes the result
                 r = c->invokeStruct(c->del, ante);
                 break;
             default: // DN2CPP_CONTWITH_REF
-                r = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-                    reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, ante)));
+                r = dn2cpp_contwith_ref(c->del, ante);
                 break;
         }
         dn2cpp_task_set_result(c->task, r);
