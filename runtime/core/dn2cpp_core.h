@@ -6004,6 +6004,12 @@ struct Dn2CppTask : Dn2CppObject
     // null-ness test generated Task.Status makes without the claim's lock; nothing
     // dereferences it unlocked, so there is nothing to publish through it.
     std::atomic<Dn2CppTaskCold*> cold;
+    // The IValueTaskSource bridge this task fronts, or null for every other task.
+    // Written once before the task is published and never cleared: it is what lets a
+    // synchronous read tell a source-backed ValueTask from a Task-backed one, which the
+    // CLR distinguishes and dn2cpp otherwise could not. Appended last — generated code
+    // reads the fields above by offset.
+    Dn2CppObject* vtsBridge;
 };
 
 // Generated code reads Dn2CppTask by offset: an atomic field that is not shaped like
@@ -6197,6 +6203,12 @@ void dn2cpp_sched_pump();
 // dn2cpp_tasks.cpp, and the stderr line is there because a caught exception would
 // otherwise leave the defeat with no trace at all.
 Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t);
+// The ValueTask sync-read funnel. Blocking is right for a Task- or builder-backed
+// ValueTask, which is all dn2cpp_task_block sees; a still-pending SOURCE-backed one is
+// not a task at all to the CLR, which reads the source's GetResult on the spot and lets
+// it refuse. So route that case there instead of sleeping until somebody settles it —
+// the exception is then the source's own, which is the only way its text can match.
+Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t);
 // The BLOCKING-WAIT flavor of the same drain: Task.Wait()/Wait(timeout)/
 // Task<T>.Result wrap a fault or cancellation in an AggregateException, like real
 // .NET — the wrap is the contract of the blocking wait, not of the task, which is

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using R3;
@@ -14,6 +15,7 @@ namespace R3AsyncSubset
             CancelledAsyncEnumerable();
             PendingReadResumedCrossThread();
             PendingReadCancelledCrossThread();
+            PendingEarlySyncRead();
         }
 
         private static void OneShotTimer()
@@ -159,6 +161,68 @@ namespace R3AsyncSubset
             await enumerator.DisposeAsync();
             Console.WriteLine("[async pending cancel] beforeCancel=" + pendingBeforeCancel
                 + " cancelled=" + cancelled + " dispose-stable=" + (upstreamDisposes == 1));
+        }
+
+        // The two sections above AWAIT their pending read. This one reads it
+        // SYNCHRONOUSLY while still pending, which a source-backed ValueTask refuses
+        // rather than waiting for: the source's own GetResult raises, so the message is
+        // whichever that source type mints. The refused operation stays live — the same
+        // ValueTask must still complete under a later await — and the two sources answer
+        // differently, so both are here: the channel behind R3's ToAsyncEnumerable, and
+        // an async iterator's ManualResetValueTaskSourceCore promise.
+        private static void PendingEarlySyncRead() =>
+            PendingEarlySyncReadAsync().GetAwaiter().GetResult();
+
+        private static async IAsyncEnumerable<int> OneAfterSignal(Task signal)
+        {
+            await signal;
+            yield return 11;
+        }
+
+        private static async Task PendingEarlySyncReadAsync()
+        {
+            using var subject = new Subject<int>();
+            var enumerator = subject.ToAsyncEnumerable().GetAsyncEnumerator();
+
+            ValueTask<bool> pending = enumerator.MoveNextAsync();
+            bool pendingBeforeRead = pending.IsCompleted;
+            string channelRefusal = "none";
+            try
+            {
+                pending.GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException e)
+            {
+                channelRefusal = e.Message;
+            }
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(5); subject.OnNext(7); });
+            bool moved = await pending;
+            int value = enumerator.Current;
+            await enumerator.DisposeAsync();
+            Console.WriteLine("[early read channel] before=" + pendingBeforeRead
+                + " refused=" + channelRefusal + " moved=" + moved + " value=" + value);
+
+            var gate = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var iterator = OneAfterSignal(gate.Task).GetAsyncEnumerator();
+
+            ValueTask<bool> pendingIterator = iterator.MoveNextAsync();
+            bool iteratorBeforeRead = pendingIterator.IsCompleted;
+            string promiseRefusal = "none";
+            try
+            {
+                pendingIterator.GetAwaiter().GetResult();
+            }
+            catch (InvalidOperationException e)
+            {
+                promiseRefusal = e.Message;
+            }
+            ThreadPool.QueueUserWorkItem(_ => { Thread.Sleep(5); gate.SetResult(1); });
+            bool movedIterator = await pendingIterator;
+            int iteratorValue = iterator.Current;
+            await iterator.DisposeAsync();
+            Console.WriteLine("[early read promise] before=" + iteratorBeforeRead
+                + " refused=" + promiseRefusal + " moved=" + movedIterator
+                + " value=" + iteratorValue);
         }
     }
 }

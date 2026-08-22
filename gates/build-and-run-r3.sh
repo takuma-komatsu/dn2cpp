@@ -4,6 +4,9 @@
 # Timer, and Channels-backed async enumeration, exact-diffed against real .NET.
 # Also a MoveNextAsync read completed and cancelled from another thread while
 # pending — IValueTaskSource.OnCompleted's continuation path and AsyncOperation.TrySetCanceled.
+# And a still-pending source-backed read taken SYNCHRONOUSLY, which must raise the
+# source's own refusal rather than block until somebody settles it, and must leave the
+# refused operation awaitable — the markers pin the two sources' throwing guards.
 source "$(dirname "$0")/_common.sh"
 
 project=R3Sample

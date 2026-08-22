@@ -77,6 +77,7 @@ Dn2CppTask* dn2cpp_task_alloc()
     t->continuations = nullptr;
     t->workerKeepAlive = nullptr;
     t->cold.store(nullptr, std::memory_order_relaxed);
+    t->vtsBridge = nullptr;
     return t;
 }
 
@@ -3489,8 +3490,8 @@ Dn2CppObject* dn2cpp_taskscheduler_from_sync_ctx()
 // ExecutionContext or scheduling context is captured.
 // Rooting: the source stores delegate+state in its own scanned fields and the bridge
 // holds the task; the bridge task counts in g_inflight_async_tasks from registration
-// until the continuation settles it, so an awaiting task_block sleeps instead of
-// deadlock-failing.
+// until the continuation runs (the settle itself may be an early synchronous read's —
+// dn2cpp_vts_block), so an awaiting task_block sleeps instead of deadlock-failing.
 struct Dn2CppVtsBridge
 {
     Dn2CppObject header;
@@ -3499,6 +3500,11 @@ struct Dn2CppVtsBridge
     const void* getResultFn; // resolved GetResult impl: R (*)(receiver, int16_t)
     int16_t version;        // the source's token for this operation
     int32_t resultKind;     // 0=void 1=int32 2=int64 3=reference
+    // Who consumes the source's GetResult, which answers once per operation:
+    // 0 unclaimed, 1 held by an early synchronous read, 2 consumed. An early read
+    // stores 2 only AFTER settling the task, which is what lets the continuation
+    // treat an observed 2 as fully settled and just decrement.
+    std::atomic<int32_t> claim;
 };
 
 extern const Dn2CppType dn2cpp_vts_bridge_type_obj;
@@ -3506,35 +3512,53 @@ static const Dn2CppTypeInfo dn2cpp_vts_bridge_type =
     dn2cpp_ti_with_typeobject({ "dn2cpp.ValueTaskSourceBridge", nullptr, (int32_t)sizeof(Dn2CppVtsBridge), nullptr, nullptr, 0 }, &dn2cpp_vts_bridge_type_obj);
 const Dn2CppType dn2cpp_vts_bridge_type_obj = { { &dn2cpp_type_type }, &dn2cpp_vts_bridge_type };
 
+// The one call to the source's GetResult, packed into the task's 8-byte slot by kind.
+// Shared by the continuation and the early synchronous read, which the claim word keeps
+// from both calling it.
+static uint64_t dn2cpp_vts_get_result(Dn2CppVtsBridge* b)
+{
+    switch (b->resultKind)
+    {
+        case 0:
+            reinterpret_cast<void (*)(Dn2CppObject*, int16_t)>(
+                const_cast<void*>(b->getResultFn))(b->vts, b->version);
+            return 0;
+        case 1:
+            return static_cast<uint64_t>(static_cast<uint32_t>(
+                reinterpret_cast<int32_t (*)(Dn2CppObject*, int16_t)>(
+                    const_cast<void*>(b->getResultFn))(b->vts, b->version)));
+        case 2:
+            return static_cast<uint64_t>(
+                reinterpret_cast<int64_t (*)(Dn2CppObject*, int16_t)>(
+                    const_cast<void*>(b->getResultFn))(b->vts, b->version));
+        default:
+            return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
+                reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, int16_t)>(
+                    const_cast<void*>(b->getResultFn))(b->vts, b->version)));
+    }
+}
+
 static void dn2cpp_vts_continuation(Dn2CppObject* target, Dn2CppObject* /*state*/)
 {
     auto* b = reinterpret_cast<Dn2CppVtsBridge*>(target);
+    // An early synchronous read may hold the claim right now. It holds it across one
+    // GetResult call, which neither blocks nor pumps, so the spin is bounded; and if it
+    // consumed the result the task is already settled, leaving nothing to do but the
+    // in-flight decrement this function owns.
+    int32_t expected = 0;
+    while (!b->claim.compare_exchange_strong(expected, 2, std::memory_order_acq_rel))
+    {
+        if (expected == 2)
+        {
+            dn2cpp_principal_left(g_inflight_async_tasks);
+            return;
+        }
+        std::this_thread::yield();
+        expected = 0;
+    }
     try
     {
-        uint64_t r = 0;
-        switch (b->resultKind)
-        {
-            case 0:
-                reinterpret_cast<void (*)(Dn2CppObject*, int16_t)>(
-                    const_cast<void*>(b->getResultFn))(b->vts, b->version);
-                break;
-            case 1:
-                r = static_cast<uint64_t>(static_cast<uint32_t>(
-                    reinterpret_cast<int32_t (*)(Dn2CppObject*, int16_t)>(
-                        const_cast<void*>(b->getResultFn))(b->vts, b->version)));
-                break;
-            case 2:
-                r = static_cast<uint64_t>(
-                    reinterpret_cast<int64_t (*)(Dn2CppObject*, int16_t)>(
-                        const_cast<void*>(b->getResultFn))(b->vts, b->version));
-                break;
-            default:
-                r = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-                    reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, int16_t)>(
-                        const_cast<void*>(b->getResultFn))(b->vts, b->version)));
-                break;
-        }
-        dn2cpp_task_set_result(b->task, r);
+        dn2cpp_task_set_result(b->task, dn2cpp_vts_get_result(b));
     }
     catch (const Dn2CppException& e)
     {
@@ -3544,6 +3568,41 @@ static void dn2cpp_vts_continuation(Dn2CppObject* target, Dn2CppObject* /*state*
     dn2cpp_principal_left(g_inflight_async_tasks);
 }
 
+// The invariant: the source's GetResult is consumed exactly once per operation, the
+// claim word arbitrating between the registered continuation and an early synchronous
+// read — and a read that THREW hands the claim back, because the operation it was
+// refused is still live and the continuation must still consume it.
+Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
+{
+    if (t->status.load(std::memory_order_seq_cst) != DN2CPP_TASK_PENDING)
+        return t;
+    auto* b = reinterpret_cast<Dn2CppVtsBridge*>(t->vtsBridge);
+    if (b == nullptr)
+        return dn2cpp_task_block(t); // Task- or builder-backed: the CLR blocks here too
+    int32_t expected = 0;
+    if (!b->claim.compare_exchange_strong(expected, 1, std::memory_order_acq_rel))
+        return dn2cpp_task_block(t); // the continuation or a concurrent read holds the claim: wait for the settle
+    uint64_t r;
+    try
+    {
+        r = dn2cpp_vts_get_result(b);
+    }
+    catch (...)
+    {
+        // The refusal the CLR gives a premature read, raised by the source itself. A
+        // fault raised by an already-completed source lands here too, and releasing is
+        // still right: only a program that reads the same ValueTask twice can tell.
+        b->claim.store(0, std::memory_order_release);
+        throw;
+    }
+    // The source completed between the pending test and the call, so this read is a
+    // legitimate one: settle the task here rather than leave it pending, and let the
+    // continuation the source still owes us see claim==2 and skip.
+    dn2cpp_task_set_result(t, r);
+    b->claim.store(2, std::memory_order_release);
+    return t;
+}
+
 Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
                             const void* getResultFn, const void* onCompletedFn,
                             const Dn2CppTypeInfo* actionTi, int32_t resultKind)
@@ -3551,10 +3610,14 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     auto* b = static_cast<Dn2CppVtsBridge*>(dn2cpp_alloc(sizeof(Dn2CppVtsBridge)));
     b->header.type = &dn2cpp_vts_bridge_type;
     b->vts = vts;
-    dn2cpp_gc_store_ref(&b->task, dn2cpp_task_alloc());
+    Dn2CppTask* t = dn2cpp_task_alloc();
+    dn2cpp_gc_store_ref(&b->task, t);
     b->getResultFn = getResultFn;
     b->version = version;
     b->resultKind = resultKind;
+    b->claim.store(0, std::memory_order_relaxed);
+    // Both directions before OnCompleted, which may run the continuation synchronously.
+    dn2cpp_gc_store_ref(&t->vtsBridge, &b->header);
     auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     del->type = actionTi;
     del->target = &b->header;
@@ -3570,5 +3633,5 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     // rooting the bridge for the whole pending window.
     reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*, int16_t, int32_t)>(
         const_cast<void*>(onCompletedFn))(vts, del, &b->header, version, 0);
-    return b->task;
+    return t;
 }
