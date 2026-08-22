@@ -740,6 +740,12 @@ internal sealed partial class Compilation
 
     private void ApplyPreservation(ClassInfo cls)
     {
+        // Policies key on the TypeDef handle, so an open shell (an unsubstituted
+        // !!n spec from an empty-context overload decode) matches its definition's
+        // policy — preserving it drags an open definition into the emit set. Each
+        // closed instantiation gets the policy applied as it completes.
+        if (ContainsGenericVar(cls))
+            return;
         if (!_preservePolicies.TryGetValue((cls.Module.Index, cls.Handle), out var policy))
             return;
         bool conditional = _activatedConditionalPolicies.Contains(cls);
@@ -823,6 +829,7 @@ internal sealed partial class Compilation
     private void ApplyPreservationAfterShape(ClassInfo cls)
     {
         if (!_preservationSeedingActive
+            || ContainsGenericVar(cls) // open shell — see ApplyPreservation
             || !_preservePolicies.TryGetValue((cls.Module.Index, cls.Handle), out var policy))
             return;
         if (cls.MembersReady)

@@ -79,6 +79,7 @@ namespace ReflectTypes
             DelegateBaseTypeSubset.Program.Run();
             ReflectRuntimeInstantiationSubset.Program.Run();
             GenericDefAssignabilitySubset.Program.Run();
+            ReflectIntrinsicTemplateSubset.Program.Run();
         }
     }
 }

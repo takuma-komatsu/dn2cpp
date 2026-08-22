@@ -3968,9 +3968,13 @@ internal sealed partial class MethodCompiler
     /// probes for the implementing static body. Value-type structs pass through
     /// unchanged. A concrete reference-type class (statically known at
     /// monomorphization) passes too — its resolved impl is a real static body, called
-    /// directly like a struct's; interfaces and placeholder-bearing (canonical-shared)
-    /// classes stay out, the latter tainting the shared trial at the call site so each
-    /// real instantiation compiles its own body. Arrays, strings and other non-Class
+    /// directly like a struct's. An interface passes for the same reason: C# admits
+    /// an interface type argument against a static-abstract constraint only when the
+    /// interface itself carries the explicit static impls, and the resolver probes its
+    /// own ExplicitInterfaceImpls (a no-impl interface resolves to null and falls
+    /// through). Placeholder-bearing (canonical-shared) classes stay out, tainting
+    /// the shared trial at the call site so each real instantiation compiles its own
+    /// body. Arrays, strings and other non-Class
     /// TypeDesc shapes never match. TSelf closed to double/float maps to the CoreLib
     /// Double/Single struct so the plain-named public static impls (Sqrt, Sin, MaxMagnitude,
     /// IsInteger, …) resolve to the intrinsic math surface; the struct is
@@ -3991,7 +3995,7 @@ internal sealed partial class MethodCompiler
     private ClassInfo? ConstrainedStaticVirtualSelf() => _constrained switch
     {
         { Kind: TypeKind.Class, Class: { IsValueType: true } c } => c,
-        { Kind: TypeKind.Class, Class: { IsValueType: false, IsInterface: false } c }
+        { Kind: TypeKind.Class, Class: { IsValueType: false } c }
             when !Compilation.ContainsCanonPlaceholder(c) => c,
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double } => _c.FindClassByFullName("System.Double"),
         { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single } => _c.FindClassByFullName("System.Single"),

@@ -273,6 +273,23 @@ internal sealed partial class Compilation
     internal static bool ContainsCanonPlaceholder(ClassInfo c) =>
         c.Context.TypeArgs.Any(ContainsCanonPlaceholder);
 
+    /// <summary>Whether the type transitively carries an unsubstituted generic
+    /// parameter (<c>!n</c>/<c>!!n</c>) — a deferred-substitution shell minted by an
+    /// empty-context decode, never a real instantiation.</summary>
+    internal static bool ContainsGenericVar(TypeDesc t) => t.Kind switch
+    {
+        TypeKind.GenericVar => true,
+        TypeKind.SZArray or TypeKind.MDArray or TypeKind.ByRef or TypeKind.Pointer =>
+            ContainsGenericVar(t.Element!),
+        TypeKind.Class => ContainsGenericVar(t.Class!),
+        _ => false,
+    };
+
+    /// <summary>Whether the class is such a shell (any type argument transitively
+    /// carries an unsubstituted generic parameter).</summary>
+    internal static bool ContainsGenericVar(ClassInfo c) =>
+        c.Context.TypeArgs.Any(ContainsGenericVar);
+
     /// <summary>Whether the type is, or transitively contains, a per-index ANY
     /// placeholder ($CnAnyN) — i.e. belongs to a runtime-instantiation TEMPLATE.
     /// A $CnAny token folds nothing (it stands for value and reference arguments
@@ -1292,6 +1309,12 @@ internal sealed partial class Compilation
                 if (!ContainsCanonPlaceholder(lv))
                     break;
                 if (lv.IsValueType || RgctxAnchorSym(lv) is null)
+                    return false;
+                // An intrinsic-mapped level (BlockingCollection<T> -> Dn2CppBlockingCollection*)
+                // is a memberless shell whose metadata nothing emits, so a template row
+                // would name a type-info this emission never defines. Skipped, the runtime
+                // diagnostic keeps naming the missing instantiation.
+                if (lv.IntrinsicCppName is not null)
                     return false;
                 lv.EnsureMembers();
                 if (lv.StaticCctor is not null)

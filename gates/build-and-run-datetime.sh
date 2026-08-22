@@ -16,6 +16,9 @@
 # does NOT close it: the pin means neither side reaches a named culture's date
 # patterns, so what is asserted here is the invariant ones. A section that set
 # CurrentCulture to a real culture and printed a date would be red, correctly.
+# TzSerializedStringSubset covers TimeZoneInfo.FromSerializedString over a fixed
+# serialized zone with adjustment rules — the deserialize path routes a transition
+# time through the internal TimeOnly.ToDateTime().
 # Former gates: datetime, datetime-now, datetime-parse, datetime-format,
 # datetime-tz, datetimeoffset.
 source "$(dirname "$0")/_common.sh"

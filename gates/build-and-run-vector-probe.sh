@@ -6,7 +6,9 @@
 # with Google Highway (runtime/core/dn2cpp_vectors_hwy.h). VectorProbe exercises a
 # spread of those ops (abs / copysign / cos / exp / hypot / reductions over float +
 # int lanes) and the output is diffed exact vs real .NET, so the lowering stays
-# byte-faithful. The scalar-axis twin (build-and-run-vector-probe-scalar.sh) covers
+# byte-faithful. QuaternionPlaneReinterprets covers the 16-byte System.Numerics
+# struct <-> Vector128<float> reinterprets (AsVector128 / AsQuaternion / AsPlane)
+# behind Quaternion/Plane Equals and the lane-wise ops. The scalar-axis twin (build-and-run-vector-probe-scalar.sh) covers
 # the scalar emulation. The Ascii/UTF transcode + JSON paths reach this lowering
 # indirectly; this is its direct, focused cover.
 source "$(dirname "$0")/_common.sh"

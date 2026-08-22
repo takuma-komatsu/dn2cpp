@@ -1853,10 +1853,14 @@ internal sealed partial class Compilation
 
         DiscoverPreservationPolicies();
 
-        // Pass 2.5: populate MethodImpls for all non-generic classes
+        // Pass 2.5: populate MethodImpls for all non-generic classes. Interfaces
+        // included: an interface carries .override rows when it explicitly implements
+        // a base interface's static abstract member — the only way C# admits it as a
+        // static-abstract-constrained type argument — and ResolveStaticVirtualImpl
+        // probes that map. (Specializations already populate via CompleteMembers.)
         foreach (var cls in Classes.ToList())
         {
-            if (cls.IsInterface || cls.IsDelegate || cls.IsEnum || cls.GenericArity > 0)
+            if (cls.IsDelegate || cls.IsEnum || cls.GenericArity > 0)
                 continue;
             var td = cls.Module.Reader.GetTypeDefinition(cls.Handle);
             PopulateMethodImpls(cls, td, cls.Module, GenericContext.Empty);
@@ -6016,9 +6020,8 @@ internal sealed partial class Compilation
         var reader = module.Reader;
         foreach (var mih in td.GetMethodImplementations())
         {
-            // A real CoreLib has MethodImpls pointing at members we don't model
-            // (generic-in-generic interface methods, ...). Skip those for
-            // reference assemblies; the app module stays strict.
+            // A real CoreLib has MethodImpls pointing at members we don't model.
+            // Skip those for reference assemblies; the app module stays strict.
             try
             {
                 var mi = reader.GetMethodImplementation(mih);
@@ -6042,6 +6045,23 @@ internal sealed partial class Compilation
                     && reader.GetMemberReference((MemberReferenceHandle)mi.MethodDeclaration).Parent
                         is { Kind: HandleKind.TypeReference } declParent
                     && ResolveTypeRef(module, (TypeReferenceHandle)declParent) is null)
+                    continue;
+                // A generic method's .override row (e.g. a static abstract
+                // Serialize<TBufferWriter> on a generic interface): open templates are
+                // not modeled as MethodInfo, so the row cannot key this map — and needs
+                // to reach nobody: ReachGvmImpl and ResolveStaticVirtualImpl's generic
+                // arm resolve the implementation by template lookup, dotted explicit
+                // names included (FindGenericMethodTemplate). Skip, don't resolve.
+                bool declIsGenericMethod = mi.MethodDeclaration.Kind switch
+                {
+                    HandleKind.MemberReference => reader.GetBlobReader(
+                            reader.GetMemberReference((MemberReferenceHandle)mi.MethodDeclaration).Signature)
+                        .ReadSignatureHeader().IsGeneric,
+                    HandleKind.MethodDefinition => reader.GetMethodDefinition(
+                        (MethodDefinitionHandle)mi.MethodDeclaration).GetGenericParameters().Count > 0,
+                    _ => false,
+                };
+                if (declIsGenericMethod)
                     continue;
                 var bodyMethod = ResolveMethodHandle(module, mi.MethodBody, ctx, cls);
                 var declMethod = ResolveMethodHandle(module, mi.MethodDeclaration, ctx);

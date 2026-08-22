@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <!-- The generator emits unsafe unmanaged-span writes for the fixed-size paths. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Deliberately no InvariantGlobalization: it pins only the real-.NET oracle and
+         drops ICU, so it is not a second spelling of the driver's CurrentCulture pin.
+         gates/verify-culture-invariance.sh fails a bucket that reintroduces it. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The REAL MemoryPack from nuget.org (Cysharp, MIT). The meta package pulls
+         MemoryPack.Core (the only runtime assembly) plus the source generator, whose
+         output is part of what the gate transpiles. The DLL's content is pinned by
+         gates/expected/memorypack-dll.sha256. -->
+    <PackageReference Include="MemoryPack" Version="1.21.4" />
+  </ItemGroup>
+
+</Project>

@@ -435,6 +435,7 @@ ORDERED_PROJECTS=(
 # here would turn a missing optional prerequisite into a Phase-3 failure before
 # the gate can report the sanctioned skip.
 GATE_OWNED_PROJECTS=(
+    "samples/dotnet/MemoryPackSample/MemoryPackSample.csproj"
     "samples/dotnet/MessagePipeSample/MessagePipeSample.csproj"
     "samples/dotnet/R3Sample/R3Sample.csproj"
     "samples/dotnet/UniTaskSample/UniTaskSample.csproj"

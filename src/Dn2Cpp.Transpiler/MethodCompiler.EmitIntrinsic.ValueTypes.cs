@@ -1477,6 +1477,9 @@ internal sealed partial class MethodCompiler
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeOnly", $"dn2cpp_timeonly_add({TOnlyVal(a)}, ({TSVal(b)}).ticks)"); return true; }
             case "ToTimeSpan" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_from_ticks(({TOnlyVal(a)}).ticks)"); return true; }
+            // The internal 0-arg ToDateTime: day one at the same ticks, Kind Unspecified.
+            case "ToDateTime" when ps.Length == 0:
+            { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_from_ticks(({TOnlyVal(a)}).ticks, 0)"); return true; }
             case "CompareTo" when ps.Length == 1 && IsTimeOnly(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_timeonly_cmp({TOnlyVal(a)}, {TOnlyVal(b)})"); return true; }
             case "Equals" when ps.Length == 1 && IsTimeOnly(ps[0]):

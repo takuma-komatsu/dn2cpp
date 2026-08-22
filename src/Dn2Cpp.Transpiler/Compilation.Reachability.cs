@@ -5066,7 +5066,9 @@ internal sealed partial class Compilation
                         // therefore be transpiled. `t` is the resolved (substituted)
                         // interface method, so match its SigKey against the type's static
                         // methods. Mirrors the emit-side admission: value types plus
-                        // concrete (placeholder-free, non-interface) reference classes.
+                        // placeholder-free reference classes — interfaces included, since
+                        // an interface type argument carries its own explicit static
+                        // impls (a no-impl interface resolves to null and reaches nothing).
                         if (insn.OpCode == ILOpCode.Call
                             && constrained is { Kind: TypeKind.Class, Class: { } scn }
                             && t is { IsStatic: true } && t.DeclaringClass.IsInterface)
@@ -5080,8 +5082,7 @@ internal sealed partial class Compilation
                             // duplicate its fields.
                             if (scn.Context.TypeArgs.Length > 0)
                                 EnsureCompleted(scn);
-                            if (scn.IsValueType
-                                || (!scn.IsInterface && !ContainsCanonPlaceholder(scn)))
+                            if (scn.IsValueType || !ContainsCanonPlaceholder(scn))
                                 ReachStaticVirtualImpl(scn, t);
                         }
                         // The integer-primitive twin of the arm above, mirroring the

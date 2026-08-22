@@ -1430,3 +1430,6 @@ solo<> base  : GenericDefAssignabilitySubset.SoloBase`1[System.Int32]
 solo<> itf   : GenericDefAssignabilitySubset.ISoloItf`1[System.String]
 wide<> base  : GenericDefAssignabilitySubset.WideBase`19[System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32,System.Int32]
 ngroot<-wide : True
+-- intrinsic open definition as MakeGenericType input --
+open: BlockingCollection`1
+closed: NotSupportedException
