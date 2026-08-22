@@ -8,11 +8,10 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- [PR #52](https://github.com/takuma-komatsu/dn2cpp/pull/52) で、typeof されたオープンジェネリック型のランタイム型生成テンプレートと `MakeGenericType` を追加し、共有ジェネリックとリフレクションの経路を拡張しました
-- [PR #51](https://github.com/takuma-komatsu/dn2cpp/pull/51) で ASCII エンコーディングのデコードを追加しました
-- [PR #49](https://github.com/takuma-komatsu/dn2cpp/pull/49) でトポロジー専用レイアウトの型閉包・アラインメント検証を強化し、Wasm MEMFS の `FileStream` / PAL を拡充しました
+- [PR #54](https://github.com/takuma-komatsu/dn2cpp/pull/54) で、ZLinq・ZString・MessagePipe のサポートと検証ゲートを追加し、オープンジェネリック定義の閉じた祖先型の保持や Span `TryFormat` の `IFormatProvider` ルーティングを改善しました
+- [PR #53](https://github.com/takuma-komatsu/dn2cpp/pull/53) で、R3 ライブラリのサポートと非同期ランタイムプリミティブ（Timer、アドレス取得されたカットインターセプトのボディ合成など）を追加しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/c4a1dd7ed734fae8ceee2dca1f404797ec45e8ba...138fe12c71a91ec0c1b5614a8532789abced399a> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/ba13925269ae28abd2489aca76a86b34257456b4...4aba7152789df2f51df3b70d8046ea51f9a69fa8> を参照してください。
 
 ## アセット
 
