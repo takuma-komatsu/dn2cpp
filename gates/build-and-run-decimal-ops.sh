@@ -17,7 +17,10 @@
 #     dn2cpp_object_tostring/_equals/_gethashcode recover the payload. ToString
 #     preserves scale, Equals is scale-insensitive value equality, GetHashCode
 #     honours equal-value->equal-hash (a boxed-decimal Dictionary key), and the
-#     string.Format holes (no spec, :F2, :N2) work.
+#     string.Format holes (no spec, :F2, :N2) work. Its tail also asserts the
+#     STATICALLY TYPED GetHashCode — a different lowering, the same contract, and it
+#     must agree with the boxed one value for value; it sits there rather than in
+#     DecimalSubset only because appending is what keeps the earlier output a prefix.
 #
 # Diffed exact vs real .NET. Both sections used to assert a hard-coded string
 # instead, because both print grouped/percent-formatted decimals; the project's

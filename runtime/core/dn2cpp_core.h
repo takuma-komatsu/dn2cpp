@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef> // offsetof — the decimal layout assertions below
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -6445,17 +6446,44 @@ Dn2CppString* dn2cpp_format_r4_c(float v, Dn2CppString* fmt, const Dn2CppNumberF
 // --- System.Decimal ---
 // A value type modeled as an intrinsic (the real corelib Decimal.ToString reaches
 // Number.FormatDecimal -> ArrayPool -> EventSource -> Calli, which we cannot
-// transpile). Layout mirrors .NET: a 96-bit integer mantissa (lo64 + hi32) scaled
-// by 10^-scale, with a separate sign bit. value = (-1)^sign * mantissa * 10^-scale.
-// `scale` is 0..28; trailing zeros are preserved (scale is significant), so 1.50m
-// keeps mantissa 150 / scale 2 and prints "1.50". Passed by value.
+// transpile). value = (-1)^sign * mantissa * 10^-scale, the mantissa a 96-bit integer
+// in _hi32:_lo64. `scale` is 0..28 and trailing zeros are significant, so 1.50m keeps
+// mantissa 150 / scale 2 and prints "1.50". Passed by value.
+//
+// The fields are .NET's, in .NET's order, with sign and scale packed into _flags the
+// way .NET packs them, because a serializer that treats an unmanaged value as a blob
+// memcpys the whole thing: these sixteen bytes ARE the wire image, and GetBits' flags
+// word is _flags verbatim.
 struct Dn2CppDecimal
 {
-    uint64_t lo;     // low 64 bits of the 96-bit mantissa
-    uint32_t hi;     // high 32 bits of the 96-bit mantissa
-    uint8_t  scale;  // 0..28: digits after the decimal point
-    uint8_t  sign;   // 1 = negative, 0 = non-negative
+    int32_t  _flags;  // scale in bits 16..23, sign in bit 31; every other bit zero
+    uint32_t _hi32;   // high 32 bits of the 96-bit mantissa
+    uint64_t _lo64;   // low 64 bits of the 96-bit mantissa
+
+    constexpr int32_t scale() const { return (int32_t)(((uint32_t)_flags >> 16) & 0xFFu); }
+    constexpr int32_t sign() const { return (int32_t)((uint32_t)_flags >> 31); }
 };
+// The flags assembly, shared by the runtime's two writers and by the assertions below.
+// The shift is unsigned and cast back: `1 << 31` on a signed int32 is undefined
+// behaviour under C++17, the tree's standard.
+constexpr int32_t dn2cpp_dec_flags(int32_t scale, int32_t sign)
+{
+    return (int32_t)(((uint32_t)(scale & 0xFF) << 16) | ((uint32_t)(sign & 1) << 31));
+}
+// The layout, pinned where the compiler can check it: a host that laid the fields out
+// any other way would put different bytes on the wire, which is a silently wrong answer
+// rather than a failure — so make it fail to COMPILE instead. The bit positions are
+// asserted through the accessors, so the packing and its inverse cannot drift apart.
+static_assert(sizeof(Dn2CppDecimal) == 16, "decimal must be .NET's sixteen bytes");
+static_assert(alignof(Dn2CppDecimal) == 8, "decimal must be eight-byte aligned");
+static_assert(offsetof(Dn2CppDecimal, _flags) == 0 && offsetof(Dn2CppDecimal, _hi32) == 4
+    && offsetof(Dn2CppDecimal, _lo64) == 8, "the field order is .NET's");
+static_assert(dn2cpp_dec_flags(0, 0) == 0, "zero scale and a positive sign is the zero word");
+static_assert(dn2cpp_dec_flags(2, 0) == 0x00020000, "the scale byte sits at bits 16..23");
+static_assert((uint32_t)dn2cpp_dec_flags(3, 1) == 0x80030000u, "the sign is bit 31");
+static_assert(Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.scale() == 28
+    && Dn2CppDecimal{ dn2cpp_dec_flags(28, 1), 0, 1 }.sign() == 1,
+    "the accessors invert the packing");
 
 // Constructors. `from_parts` is the .NET `Decimal(int lo, int mid, int hi, bool
 // isNegative, byte scale)` ctor (and the bit-pattern form); the rest are the

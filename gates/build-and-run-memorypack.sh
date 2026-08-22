@@ -10,11 +10,12 @@
 # The generator's output is part of the subject: it lands in the driver assembly, so the
 # transpiled IL is code no human wrote and no other gate covers.
 #
-# The driver serializes no `decimal`. MemoryPack memcpys an unmanaged value, so the raw
-# struct layout reaches the wire, and Dn2CppDecimal's field order is not .NET's — a
-# divergence this gate would pin as a hex diff while hiding what it really is; it has its
-# own row in docs/STATUS.md. Everything else about decimal is covered by the decimal-ops
-# and boxed-decimal buckets.
+# The memcpy path carries `decimal` too: MemoryPack puts the raw struct bytes on the wire,
+# so the runtime decimal's field order is observable there and nowhere a caller reads the
+# value as a number. MemoryPackLayoutSubset's [fixed-decimal] section pins it as hex
+# against real .NET, one value per axis of the layout (a trailing-zero scale, a negative,
+# scale 28, a full 96-bit mantissa). decimal-as-a-number is the decimal-ops and
+# boxed-decimal buckets.
 source "$(dirname "$0")/_common.sh"
 
 project=MemoryPackSample
@@ -62,8 +63,8 @@ build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 refs=(-r "$corelib" -r "$memorypack")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding
-# transpile's bytes (AGENTS.md). Measured 6,821 instantiations (inst 4,765 +
-# minst 2,056), cap ~2.9x; measured peak heap 253 MB, belt ~3.0x.
+# transpile's bytes (AGENTS.md). Measured 6,912 instantiations (inst 4,797 +
+# minst 2,115), cap ~2.9x; measured peak heap 259 MB, belt ~3.0x.
 ( export DN2CPP_MAX_INSTANTIATIONS=20000
   invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 768 -o "$out" )
 echo "OK (bounded: <=20,000 instantiations, <=768 MB heap)"

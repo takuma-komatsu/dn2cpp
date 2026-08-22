@@ -277,8 +277,12 @@ internal sealed partial class MethodCompiler
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_decimal_cmp({DecVal(a)}, {DecVal(b)})"); return true; }
             case "Equals" when ps.Length == 1 && IsDecimal(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"(dn2cpp_decimal_cmp({DecVal(a)}, {DecVal(b)}) == 0 ? 1 : 0)"); return true; }
+            // The runtime helper, not a field mix: equal decimals must hash equal, and
+            // trailing zeros are significant in the representation but not in the value,
+            // so the canonicalization has to happen. The boxed Object virtual already
+            // routes here — a second rule would have the two disagree.
             case "GetHashCode" when ps.Length == 0:
-            { var a = Pop(); Push(StackKind.I4, "int32_t", $"(int32_t)(dn2cpp_decimal_to_i8({DecVal(a)}) ^ {DecVal(a)}.scale)"); return true; }
+            { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_decimal_hash({DecVal(a)})"); return true; }
         }
 
         // The INumberBase<decimal> category predicates (the plainly-named public statics the
@@ -310,13 +314,13 @@ internal sealed partial class MethodCompiler
                 case "IsNegative":
                 {
                     var a = Pop();
-                    Push(StackKind.I4, "int32_t", $"({DecVal(a)}.sign != 0 ? 1 : 0)");
+                    Push(StackKind.I4, "int32_t", $"({DecVal(a)}.sign() != 0 ? 1 : 0)");
                     return true;
                 }
                 case "IsPositive":
                 {
                     var a = Pop();
-                    Push(StackKind.I4, "int32_t", $"({DecVal(a)}.sign == 0 ? 1 : 0)");
+                    Push(StackKind.I4, "int32_t", $"({DecVal(a)}.sign() == 0 ? 1 : 0)");
                     return true;
                 }
                 case "IsInteger":
@@ -442,32 +446,32 @@ internal sealed partial class MethodCompiler
         if (name == "get_High" && ps.Length == 0)
         {
             var a = Pop();
-            Push(StackKind.I4, "int32_t", $"(int32_t)({DecVal(a)}.hi)");
+            Push(StackKind.I4, "int32_t", $"(int32_t)({DecVal(a)}._hi32)");
             return true;
         }
 
         // Decimal.get_Low64 — the internal `ulong Low64` accessor: the low 64 mantissa bits.
-        // Dn2CppDecimal stores exactly that as its 64-bit `lo` field (the .NET lo32|mid32<<32
+        // Dn2CppDecimal stores exactly that as its 64-bit `_lo64` field (the .NET lo32|mid32<<32
         // pair already fused), so it is a straight read.
         if (name == "get_Low64" && ps.Length == 0)
         {
             var a = Pop();
-            Push(StackKind.I8, "int64_t", $"(int64_t)({DecVal(a)}.lo)");
+            Push(StackKind.I8, "int64_t", $"(int64_t)({DecVal(a)}._lo64)");
             return true;
         }
 
         // Decimal.get_Low / get_Mid — the internal `uint Low` / `uint Mid` accessors: the low
-        // and high halves of the 64-bit `lo` mantissa field (the .NET lo32 and mid32 words).
+        // and high halves of the 64-bit `_lo64` mantissa field (the .NET lo32 and mid32 words).
         if (name == "get_Low" && ps.Length == 0)
         {
             var a = Pop();
-            Push(StackKind.I4, "int32_t", $"(int32_t)(uint32_t)({DecVal(a)}.lo)");
+            Push(StackKind.I4, "int32_t", $"(int32_t)(uint32_t)({DecVal(a)}._lo64)");
             return true;
         }
         if (name == "get_Mid" && ps.Length == 0)
         {
             var a = Pop();
-            Push(StackKind.I4, "int32_t", $"(int32_t)(uint32_t)(({DecVal(a)}.lo) >> 32)");
+            Push(StackKind.I4, "int32_t", $"(int32_t)(uint32_t)(({DecVal(a)}._lo64) >> 32)");
             return true;
         }
 
