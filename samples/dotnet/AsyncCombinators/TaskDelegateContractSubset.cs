@@ -15,7 +15,8 @@ namespace TaskDelegateContractSubset
     //     the last handler's — a struct result, whose trampoline walks the chain itself,
     //     included, and the same for a ContinueWith continuation, whose result kinds
     //     answer through their own thunks, and for a Task-returning delegate, where the
-    //     last handler's task is the one that gets unwrapped or handed back.
+    //     last handler's task is the one that gets unwrapped or handed back — and a null
+    //     task unwraps into a cancellation rather than a fault.
     // The handlers append to a field instead of printing, so nothing is written from a
     // pool thread and the output stays deterministic.
     internal static class Program
@@ -56,6 +57,7 @@ namespace TaskDelegateContractSubset
         private static async Task<int> FIA() { s_log += "A"; await Task.Yield(); throw new InvalidOperationException("late fault"); }
         private static Task<int> TIA() { s_log += "A"; throw new InvalidOperationException("early throw"); }
 
+        private static Task NullTask() { s_log += "A"; return null; }
         private static TaskCompletionSource<int> s_chainRelease;
         private static Task WaitForLaterHandler() { s_log += "A"; return s_chainRelease.Task; }
         private static Task ReleaseEarlierHandler()
@@ -217,6 +219,21 @@ namespace TaskDelegateContractSubset
             {
                 Console.WriteLine("StartNew throwing-earlier multicast: " + s_log + ", "
                     + ae.InnerException.GetType().Name + ": " + ae.InnerException.Message);
+
+            // Unwrapping a null task: .NET's Run(Func<Task>) cancels the outer rather than
+            // faulting or crashing, so a body that returns null is a contract, not a bug.
+            s_log = "";
+            string nullOutcome;
+            try
+            {
+                Task.Run((Func<Task>)NullTask).Wait();
+                nullOutcome = "no-throw";
+            }
+            catch (AggregateException ex)
+            {
+                nullOutcome = ex.InnerException.GetType().Name;
+            }
+            Console.WriteLine("Run unwrap-null: " + s_log + ", " + nullOutcome);
             }
         }
 

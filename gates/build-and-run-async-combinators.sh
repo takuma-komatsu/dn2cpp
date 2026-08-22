@@ -39,8 +39,8 @@
 # own and so needs the walk written into each one, and a Task-RETURNING delegate, where
 # the last handler's task is the one Run unwraps and StartNew hands back — an earlier
 # handler's async fault stays unobserved in its own task, while its synchronous throw
-# stops the chain and faults the outer, and one handler may return a task settled
-# only by a later handler without deadlocking.
+# stops the chain and faults the outer, one handler may return a task settled only by a
+# later handler without deadlocking, and a null task unwraps into a cancellation.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

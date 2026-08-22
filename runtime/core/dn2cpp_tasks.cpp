@@ -2608,8 +2608,18 @@ static void dn2cpp_pool_worker()
                 // returned (a non-async Func<Task> body) is caught below and faults the
                 // outer, matching real .NET's eager fault.
                 Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
-                dn2cpp_task_drain(inner);
-                dn2cpp_task_complete(it.task, inner->status, inner->result, inner->exception);
+                // Unwrapping a null task is CANCELED on .NET, not a crash: an async lambda
+                // whose body returns null hands one back, and the outer is all the caller
+                // holds.
+                if (inner == nullptr)
+                {
+                    dn2cpp_task_set_canceled(it.task);
+                }
+                else
+                {
+                    dn2cpp_task_drain(inner);
+                    dn2cpp_task_complete(it.task, inner->status, inner->result, inner->exception);
+                }
             }
             else if (it.nested)
             {
