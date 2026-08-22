@@ -36,7 +36,11 @@
 # the last one — including a STRUCT result, whose transpiler-stamped boxing trampoline
 # walks the invocation chain itself rather than leaning on a runtime thunk, and including
 # every result kind of a ContinueWith continuation, which answers through thunks of its
-# own and so needs the walk written into each one.
+# own and so needs the walk written into each one, and a Task-RETURNING delegate, where
+# the last handler's task is the one Run unwraps and StartNew hands back — an earlier
+# handler's async fault stays unobserved in its own task, while its synchronous throw
+# stops the chain and faults the outer, and one handler may return a task settled
+# only by a later handler without deadlocking.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

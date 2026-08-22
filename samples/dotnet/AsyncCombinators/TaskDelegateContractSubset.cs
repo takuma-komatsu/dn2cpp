@@ -14,7 +14,8 @@ namespace TaskDelegateContractSubset
     //   * a COMBINED delegate runs every handler front-to-back and the task's result is
     //     the last handler's — a struct result, whose trampoline walks the chain itself,
     //     included, and the same for a ContinueWith continuation, whose result kinds
-    //     answer through their own thunks.
+    //     answer through their own thunks, and for a Task-returning delegate, where the
+    //     last handler's task is the one that gets unwrapped or handed back.
     // The handlers append to a field instead of printing, so nothing is written from a
     // pool thread and the output stays deterministic.
     internal static class Program
@@ -47,6 +48,22 @@ namespace TaskDelegateContractSubset
         private static long CLB(Task t) { s_log += "B"; return 2L; }
         private static float CFA(Task t) { s_log += "A"; return 0.5f; }
         private static float CFB(Task t) { s_log += "B"; return 2.5f; }
+
+        private static async Task UA() { s_log += "A"; await Task.Yield(); }
+        private static async Task UB() { s_log += "B"; await Task.Yield(); }
+        private static async Task<int> UIA() { s_log += "A"; await Task.Yield(); return 1; }
+        private static async Task<int> UIB() { s_log += "B"; await Task.Yield(); return 2; }
+        private static async Task<int> FIA() { s_log += "A"; await Task.Yield(); throw new InvalidOperationException("late fault"); }
+        private static Task<int> TIA() { s_log += "A"; throw new InvalidOperationException("early throw"); }
+
+        private static TaskCompletionSource<int> s_chainRelease;
+        private static Task WaitForLaterHandler() { s_log += "A"; return s_chainRelease.Task; }
+        private static Task ReleaseEarlierHandler()
+        {
+            s_log += "B";
+            s_chainRelease.SetResult(1);
+            return Task.CompletedTask;
+        }
 
         internal static void __GateEntry()
         {
@@ -128,6 +145,79 @@ namespace TaskDelegateContractSubset
             cf += CFB;
             float fr = antecedent.ContinueWith(cf).Result;
             Console.WriteLine("ContinueWith float multicast: " + s_log + ", " + fr);
+
+            // A Task-returning delegate is a chain too. Real .NET runs every handler and
+            // takes the LAST one's task — Run unwraps it, StartNew hands it back as the
+            // outer task's result. Each handler appends before its first await, so the log
+            // is the invocation order and not a race between the resumed tails.
+            s_log = "";
+            Func<Task> unwrapVoid = UA;
+            unwrapVoid += UB;
+            Task.Run(unwrapVoid).Wait();
+            Console.WriteLine("Run unwrap multicast: " + s_log);
+
+            s_log = "";
+            Func<Task<int>> unwrapInt = UIA;
+            unwrapInt += UIB;
+            int ur = Task.Run(unwrapInt).Result;
+            Console.WriteLine("Run unwrap-int multicast: " + s_log + ", " + ur);
+
+            s_log = "";
+            int nr = Task.Factory.StartNew(unwrapInt).Result.Result;
+            Console.WriteLine("StartNew nested multicast: " + s_log + ", " + nr);
+
+            // Every handler must be invoked before an earlier returned task is observed:
+            // the second handler is the only code that can settle the first one's task.
+            s_log = "";
+            s_chainRelease = new TaskCompletionSource<int>();
+            Func<Task> dependent = WaitForLaterHandler;
+            dependent += ReleaseEarlierHandler;
+            Task dependentRun = Task.Run(dependent);
+            bool runCompleted = dependentRun.Wait(TimeSpan.FromSeconds(1));
+            if (!runCompleted)
+            {
+                s_chainRelease.TrySetResult(1);
+                dependentRun.Wait();
+            }
+            Console.WriteLine("Run dependent multicast: " + s_log + ", " + runCompleted);
+
+            s_log = "";
+            s_chainRelease = new TaskCompletionSource<int>();
+            dependent = WaitForLaterHandler;
+            dependent += ReleaseEarlierHandler;
+            Task<Task> dependentStart = Task.Factory.StartNew(dependent);
+            bool startCompleted = dependentStart.Wait(TimeSpan.FromSeconds(1));
+            if (!startCompleted)
+            {
+                s_chainRelease.TrySetResult(1);
+                dependentStart.Wait();
+            }
+            dependentStart.Result.Wait();
+            Console.WriteLine("StartNew dependent multicast: " + s_log + ", " + startCompleted);
+
+            // The fault side of the same contract: an EARLIER handler's async fault
+            // (thrown after its first await) stays in that handler's own task and the
+            // outer still takes the last handler's, while a synchronous throw stops the
+            // chain and faults the outer, so the last handler never runs.
+            s_log = "";
+            Func<Task<int>> faultedEarlier = FIA;
+            faultedEarlier += UIB;
+            int fe = Task.Run(faultedEarlier).Result;
+            Console.WriteLine("Run faulted-earlier multicast: " + s_log + ", " + fe);
+
+            s_log = "";
+            Func<Task<int>> throwsEarlier = TIA;
+            throwsEarlier += UIB;
+            try
+            {
+                Task.Factory.StartNew(throwsEarlier).Wait();
+                Console.WriteLine("StartNew throwing-earlier multicast: no-throw " + s_log);
+            }
+            catch (AggregateException ae)
+            {
+                Console.WriteLine("StartNew throwing-earlier multicast: " + s_log + ", "
+                    + ae.InnerException.GetType().Name + ": " + ae.InnerException.Message);
+            }
         }
 
         // The submit MUST throw here; a returned task would mean the rejection happened

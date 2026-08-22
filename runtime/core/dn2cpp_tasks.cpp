@@ -2510,6 +2510,17 @@ static void dn2cpp_sched_abandon_pool_local(Dn2CppScheduler* s)
         dn2cpp_principal_left(g_inflight_async_tasks);
 }
 
+// Invoke the entire Func<Task> chain before observing its last return. Awaiting an
+// earlier task here can deadlock when a later handler settles it; worker-local work from
+// discarded returns remains rooted and is driven by the pool scheduler.
+static Dn2CppTask* dn2cpp_pool_inner_chain(Dn2CppObject* del)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_pool_inner_chain(d->prev);
+    return reinterpret_cast<Dn2CppTask* (*)(Dn2CppObject*)>(d->method)(d->target);
+}
+
 static void dn2cpp_pool_worker()
 {
     Dn2CppGCThread guard; // workers allocate managed objects -> must be GC-registered
@@ -2596,8 +2607,7 @@ static void dn2cpp_pool_worker()
                 // (0 for a void inner Task). A synchronous throw before the inner Task is
                 // returned (a non-async Func<Task> body) is caught below and faults the
                 // outer, matching real .NET's eager fault.
-                auto* d = reinterpret_cast<Dn2CppDelegate*>(it.del);
-                Dn2CppTask* inner = reinterpret_cast<Dn2CppTask* (*)(Dn2CppObject*)>(d->method)(d->target);
+                Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
                 dn2cpp_task_drain(inner);
                 dn2cpp_task_complete(it.task, inner->status, inner->result, inner->exception);
             }
@@ -2613,8 +2623,7 @@ static void dn2cpp_pool_worker()
                 // decrements g_inflight_async_tasks only after the drain, so a thread
                 // awaiting the inner task stays asleep (counted in flight) instead of
                 // tripping the deadlock guard.
-                auto* d = reinterpret_cast<Dn2CppDelegate*>(it.del);
-                Dn2CppTask* inner = reinterpret_cast<Dn2CppTask* (*)(Dn2CppObject*)>(d->method)(d->target);
+                Dn2CppTask* inner = dn2cpp_pool_inner_chain(it.del);
                 dn2cpp_task_set_result(it.task, static_cast<uint64_t>(reinterpret_cast<uintptr_t>(inner)));
                 if (inner != nullptr)
                 {
