@@ -131,7 +131,8 @@ dotnet "$srv" > "$h2cdir/ready.out" 2>"$h2cdir/server.err" &
 h2cpid=$!
 disown "$h2cpid" 2>/dev/null || true
 trap 'kill "$h2cpid" "$tlspid" 2>/dev/null; rm -rf "$h2cdir" "$tlsdir"' EXIT
-ready=$(wait_ready_line "h2 oracle server" "$h2cpid" "$h2cdir/ready.out" "$h2cdir/server.err") || exit 1
+# Hosted macOS runners can take longer to schedule Kestrel's startup.
+ready=$(wait_ready_line "h2 oracle server" "$h2cpid" "$h2cdir/ready.out" "$h2cdir/server.err" 120) || exit 1
 read -r tag h2cport h1port <<<"$ready"
 [ "$tag" = "READY" ] && [ -n "${h2cport:-}" ] && [ -n "${h1port:-}" ] || {
     echo "FAIL: could not parse the oracle's READY line (expected 2 ports): $ready" >&2; exit 1; }
