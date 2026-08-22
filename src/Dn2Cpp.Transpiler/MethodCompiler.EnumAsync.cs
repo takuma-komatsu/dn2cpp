@@ -743,20 +743,24 @@ internal sealed partial class MethodCompiler
         return $"(uint64_t)(uintptr_t)dn2cpp_struct_result_box(&{tmp}, (int32_t)sizeof({v.CppType}))";
     }
 
-    /// <summary>A captureless C++ trampoline that runs a single <c>Func&lt;TStruct&gt;</c>
-    /// worker delegate, heap-boxes its by-value struct return
-    /// (<c>dn2cpp_struct_result_box</c>), and packs the boxed pointer into the task's 8-byte
-    /// result slot — the reader (<see cref="PushTaskResult"/>'s Struct arm, i.e.
-    /// <c>Task&lt;T&gt;.Result</c> / await) copies it back out by the same T. Used by the
-    /// worker-invoked task producers (<c>Task.Run</c>, <c>new Task&lt;T&gt;</c>,
+    /// <summary>A captureless C++ trampoline that runs a <c>Func&lt;TStruct&gt;</c> worker
+    /// delegate's whole multicast chain prev-first, heap-boxes the LAST handler's by-value
+    /// struct return (<c>dn2cpp_struct_result_box</c>), and packs the boxed pointer into the
+    /// task's 8-byte result slot — the reader (<see cref="PushTaskResult"/>'s Struct arm,
+    /// i.e. <c>Task&lt;T&gt;.Result</c> / await) copies it back out by the same T. Used by
+    /// the worker-invoked task producers (<c>Task.Run</c>, <c>new Task&lt;T&gt;</c>,
     /// <c>StartNew</c>) where the struct kind has no 8-byte result thunk; the struct's exact
     /// C++ type is stamped here, so the runtime worker never needs a struct-return ABI. The
-    /// direct <c>del-&gt;method(del-&gt;target)</c> call matches the single-delegate
-    /// convention of the <c>dn2cpp_run_*</c> thunks (a result-producing Func is not
-    /// multicast).</summary>
+    /// walk mirrors the <c>dn2cpp_run_*</c> thunks — earlier handlers run for their side
+    /// effects and their returns are dropped unboxed — and the local class is there because
+    /// a captureless lambda cannot name itself to recurse.</summary>
     private static string TaskStructResultThunk(string cppStruct) =>
-        $"+[](Dn2CppObject* __d) -> uint64_t {{ auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__d); "
-      + $"{cppStruct} __r = reinterpret_cast<{cppStruct} (*)(Dn2CppObject*)>(__dg->method)(__dg->target); "
+        $"+[](Dn2CppObject* __d) -> uint64_t {{ "
+      + $"struct __chain {{ static {cppStruct} run(Dn2CppObject* __o) {{ "
+      + $"auto* __dg = reinterpret_cast<Dn2CppDelegate*>(__o); "
+      + $"if (__dg->prev != nullptr) run(__dg->prev); "
+      + $"return reinterpret_cast<{cppStruct} (*)(Dn2CppObject*)>(__dg->method)(__dg->target); }} }}; "
+      + $"{cppStruct} __r = __chain::run(__d); "
       + $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__r, (int32_t)sizeof({cppStruct})); }}";
 
     /// <summary>The <c>Task.ContinueWith</c> mirror of <see cref="TaskStructResultThunk"/>:

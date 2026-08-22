@@ -2853,11 +2853,13 @@ static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del)
     return t;
 }
 
-// Every pool-submission entry below rejects a null delegate HERE, synchronously, before
-// a Task exists — that is where real .NET throws, and a queued null would instead reach
-// the worker as a call through a null method pointer, with no managed exception to
-// catch. The paramName is the overload's own: "action" for the void kinds, "function"
-// for every result kind (the Task-returning unwrap/nested forms included).
+// Every delegate-taking entry — the pool submissions below and the cold constructors —
+// rejects a null delegate HERE, synchronously, before a Task exists: that is where real
+// .NET throws, and a queued null would instead reach the worker as a call through a null
+// method pointer, with no managed exception to catch. The paramName is the overload's
+// own: "action" for the void kinds, "function" for every result kind (the Task-returning
+// unwrap/nested forms included) — except the constructors, which say "action" for every
+// kind, the Func ones included, .NET's sole check being its Task(Delegate action, ...).
 static void dn2cpp_task_require_delegate(Dn2CppObject* del, const char* paramName)
 {
     if (del == nullptr)
@@ -3041,6 +3043,7 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
                                     uint64_t (*invoke)(Dn2CppObject*),
                                     uint64_t (*invoke2)(Dn2CppObject*, Dn2CppObject*))
 {
+    dn2cpp_task_require_delegate(del, "action");
     Dn2CppTask* t = dn2cpp_task_alloc();
     auto* c = static_cast<Dn2CppTaskCold*>(dn2cpp_alloc(sizeof(Dn2CppTaskCold)));
     c->del = del;
