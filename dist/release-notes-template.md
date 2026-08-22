@@ -11,7 +11,7 @@
 - [PR #54](https://github.com/takuma-komatsu/dn2cpp/pull/54) で、ZLinq・ZString・MessagePipe のサポートと検証ゲートを追加し、オープンジェネリック定義の閉じた祖先型の保持や Span `TryFormat` の `IFormatProvider` ルーティングを改善しました
 - [PR #53](https://github.com/takuma-komatsu/dn2cpp/pull/53) で、R3 ライブラリのサポートと非同期ランタイムプリミティブ（Timer、アドレス取得されたカットインターセプトのボディ合成など）を追加しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/ba13925269ae28abd2489aca76a86b34257456b4...4aba7152789df2f51df3b70d8046ea51f9a69fa8> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/ba13925269ae28abd2489aca76a86b34257456b4...8bccf337a5b8f05076b3be196db5188b88c8e97b> を参照してください。
 
 ## アセット
 
