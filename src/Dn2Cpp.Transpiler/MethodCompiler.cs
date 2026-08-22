@@ -2699,6 +2699,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 EnsureCctorBefore(fld.DeclaringClass);
                 _c.NoteForceEmit(fld.DeclaringClass);
                 Push(CppTypes.KindOf(fld.Type), CppTypes.Of(fld.Type), fld.CppStaticAccess);
+                if (fld.Type is { Kind: TypeKind.Class or TypeKind.SZArray })
+                    _stack[^1] = _stack[^1] with { StaticType = fld.Type };
                 break;
             }
             case ILOpCode.Stsfld:

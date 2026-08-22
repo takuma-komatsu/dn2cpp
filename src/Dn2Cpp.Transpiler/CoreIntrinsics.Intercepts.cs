@@ -1235,7 +1235,7 @@ internal static partial class CoreIntrinsics
     /// EIGHT widths (Byte..UInt64). Reached as a `constrained. &lt;int&gt; callvirt
     /// ISpanFormattable::TryFormat` out of a `{value:fmt}` interpolation hole (Roslyn
     /// lowers those through DefaultInterpolatedStringHandler), or as an interface slot on
-    /// a boxed integer. Lowered inline to dn2cpp_try_format_int|uint, so the real body must
+    /// a boxed integer. Lowered inline to dn2cpp_try_format_int|uint_c, so the real body must
     /// not be reached: it pulls in the whole System.Number.TryFormat* subtree.
     ///
     /// <para>EIGHT-wide, which is why <see cref="IsInlineLoweredPrimitiveMember"/> cannot

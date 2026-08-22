@@ -951,6 +951,18 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")})");
                 return true;
             }
+            case ("System.Reflection.MethodBase", "Invoke") when sig.ParameterTypes.Length == 5
+                && sig.ParameterTypes[3].Kind == TypeKind.SZArray:
+            {
+                Pop(); // CultureInfo
+                var args = Pop(); // object[]
+                Pop(); // Binder
+                Pop(); // BindingFlags
+                var obj = Pop();
+                var m = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")})");
+                return true;
+            }
             // MethodInfo.CreateDelegate(Type[, object target]): bind the methtab row
             // into a fresh delegate of the requested type via the emitted
             // reflection-bind registry (boxed-invoker dispatch; see
@@ -1010,6 +1022,17 @@ internal sealed partial class MethodCompiler
                 && sig.ParameterTypes[0].Kind == TypeKind.SZArray:
             {
                 var args = Pop();
+                var c = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")})");
+                return true;
+            }
+            case ("System.Reflection.ConstructorInfo", "Invoke") when sig.ParameterTypes.Length == 4
+                && sig.ParameterTypes[2].Kind == TypeKind.SZArray:
+            {
+                Pop(); // CultureInfo
+                var args = Pop(); // object[]
+                Pop(); // Binder
+                Pop(); // BindingFlags
                 var c = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")})");
                 return true;
@@ -2271,6 +2294,11 @@ internal sealed partial class MethodCompiler
         switch (declType, name)
         {
             // ---- System.Diagnostics.StackTrace ----
+            case ("System.Diagnostics.StackTrace", "get_IsSupported") when ps.Length == 0:
+            {
+                Push(StackKind.I4, "int32_t", "1");
+                return true;
+            }
             case ("System.Diagnostics.StackTrace", "get_FrameCount") when ps.Length == 0:
             {
                 string st = Cast(Pop(), "Dn2CppStackTrace*");

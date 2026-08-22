@@ -206,6 +206,10 @@ namespace CultureInfoApi
             // Invoke thunk), and the two headerless representations that trap
             // instead of wrapping. See that file's header.
             CultureEscapeResidueSubset.Program.Run();
+
+            // Span TryFormat with provider != CurrentCulture — the one shape every
+            // other bucket's pinned call sites cannot see. See that file's header.
+            SpanTryFormatProviderSubset.Program.Run();
         }
 
         // NumberGroupSizes spelled out. The three axes are one modeled array here and three

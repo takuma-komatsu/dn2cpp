@@ -338,6 +338,12 @@ internal sealed partial class CppEmitter
             {
                 if (c.IsEnum || IsOpaque(c) || IsCanonicalWorld(c))
                     continue; // RenderMemberTables skips these: no member table, no types spelled
+                // A typeof-only specialization arrives here still deferred — nothing
+                // reached its members — and this walk IS an ask (its table's rows are
+                // about to spell these signatures), so pull, as the dequeue below does
+                // for every other set member. Safe against the no-pull rule above: the
+                // ToList() snapshot is closed, so decode-appended classes cannot shift it.
+                _c.EnsureCompleted(c);
                 foreach (var m in c.Methods)
                 {
                     if (m.Name == ".cctor")
@@ -5022,7 +5028,7 @@ internal sealed partial class CppEmitter
         var decl = new List<string> { $"{im.DeclaringClass.CppStructName}* o" };
         for (int k = 0; k < ps.Length; k++)
             decl.Add($"{CppTypes.Of(ps[k])} a{k}");
-        var implPs = impl.Signature.ParameterTypes;
+        var implPs = impl.Emittable.Signature.ParameterTypes;
         // A static-abstract interface member (generic-math/SIMD operators like
         // IAdditionOperators.op_Addition, INumber.Min/Max, ISimdVector.get_Zero) is
         // implemented by a *static* method with no receiver, so the unboxed `this`
@@ -5030,7 +5036,7 @@ internal sealed partial class CppEmitter
         // slot stays populated (index alignment is preserved) but the boxed receiver
         // `o` is ignored, which is correct: a static member never reads the instance.
         var callArgs = new List<string>();
-        if (!impl.IsStatic)
+        if (!impl.Emittable.IsStatic)
             callArgs.Add($"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
         for (int k = 0; k < ps.Length; k++)
             callArgs.Add(NfiSlotArg(implPs[k], $"a{k}"));

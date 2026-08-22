@@ -517,16 +517,16 @@ static bool dn2cpp_try_emit(Dn2CppString* s, char16_t* dest, int32_t destLen, in
     return true;
 }
 
-bool dn2cpp_try_format_int(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char16_t* dest, int32_t destLen, int32_t* charsWritten)
+bool dn2cpp_try_format_int_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char16_t* dest, int32_t destLen, int32_t* charsWritten, const Dn2CppNumberFormatInfo* nfi)
 {
-    return dn2cpp_try_emit(dn2cpp_format_int(v, byteWidth, fmt), dest, destLen, charsWritten);
+    return dn2cpp_try_emit(dn2cpp_format_int_c(v, byteWidth, fmt, nfi), dest, destLen, charsWritten);
 }
 
-bool dn2cpp_try_format_uint(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char16_t* dest, int32_t destLen, int32_t* charsWritten)
+bool dn2cpp_try_format_uint_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char16_t* dest, int32_t destLen, int32_t* charsWritten, const Dn2CppNumberFormatInfo* nfi)
 {
-    return dn2cpp_try_emit(dn2cpp_format_uint(v, byteWidth, fmt), dest, destLen, charsWritten);
+    return dn2cpp_try_emit(dn2cpp_format_uint_c(v, byteWidth, fmt, nfi), dest, destLen, charsWritten);
 }
 
 // UTF-8 twin of dn2cpp_try_emit for IUtf8SpanFormattable.TryFormat's Span<byte>
@@ -552,16 +552,16 @@ static bool dn2cpp_try_emit_utf8(Dn2CppString* s, char* dest, int32_t destLen, i
     return true;
 }
 
-bool dn2cpp_try_format_int_utf8(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char* dest, int32_t destLen, int32_t* bytesWritten)
+bool dn2cpp_try_format_int_utf8_c(int64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char* dest, int32_t destLen, int32_t* bytesWritten, const Dn2CppNumberFormatInfo* nfi)
 {
-    return dn2cpp_try_emit_utf8(dn2cpp_format_int(v, byteWidth, fmt), dest, destLen, bytesWritten);
+    return dn2cpp_try_emit_utf8(dn2cpp_format_int_c(v, byteWidth, fmt, nfi), dest, destLen, bytesWritten);
 }
 
-bool dn2cpp_try_format_uint_utf8(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
-    char* dest, int32_t destLen, int32_t* bytesWritten)
+bool dn2cpp_try_format_uint_utf8_c(uint64_t v, int32_t byteWidth, Dn2CppString* fmt,
+    char* dest, int32_t destLen, int32_t* bytesWritten, const Dn2CppNumberFormatInfo* nfi)
 {
-    return dn2cpp_try_emit_utf8(dn2cpp_format_uint(v, byteWidth, fmt), dest, destLen, bytesWritten);
+    return dn2cpp_try_emit_utf8(dn2cpp_format_uint_c(v, byteWidth, fmt, nfi), dest, destLen, bytesWritten);
 }
 
 // Enum numeric fallback. Hex zero-pads to the underlying type's width (2 hex

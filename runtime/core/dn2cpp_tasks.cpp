@@ -2853,8 +2853,21 @@ static Dn2CppTask* dn2cpp_pool_submit_nested(Dn2CppObject* del)
     return t;
 }
 
-// Result-kind invoke thunks: run the (single) delegate and pack its return value into
-// the 8-byte Task result slot using the same conventions as WhenAll / FromResult.
+// Every pool-submission entry below rejects a null delegate HERE, synchronously, before
+// a Task exists — that is where real .NET throws, and a queued null would instead reach
+// the worker as a call through a null method pointer, with no managed exception to
+// catch. The paramName is the overload's own: "action" for the void kinds, "function"
+// for every result kind (the Task-returning unwrap/nested forms included).
+static void dn2cpp_task_require_delegate(Dn2CppObject* del, const char* paramName)
+{
+    if (del == nullptr)
+        dn2cpp_throw_argument_null_param(paramName);
+}
+
+// Result-kind invoke thunks: run the delegate's whole multicast chain and pack the
+// return value into the 8-byte Task result slot using the same conventions as WhenAll /
+// FromResult. .NET runs a combined Func front-to-back and keeps only the LAST handler's
+// value, which is what the prev-first recursion gives: `prev` is the earlier handler.
 static uint64_t dn2cpp_run_void(Dn2CppObject* del)
 {
     dn2cpp_action_invoke(del);
@@ -2863,45 +2876,88 @@ static uint64_t dn2cpp_run_void(Dn2CppObject* del)
 static uint64_t dn2cpp_run_i4(Dn2CppObject* del)
 {
     auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_i4(d->prev);
     return static_cast<uint64_t>(static_cast<uint32_t>(
         reinterpret_cast<int32_t (*)(Dn2CppObject*)>(d->method)(d->target)));
 }
 static uint64_t dn2cpp_run_i8(Dn2CppObject* del)
 {
     auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_i8(d->prev);
     return static_cast<uint64_t>(reinterpret_cast<int64_t (*)(Dn2CppObject*)>(d->method)(d->target));
 }
 static uint64_t dn2cpp_run_r4(Dn2CppObject* del)
 {
     auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_r4(d->prev);
     return dn2cpp_r8_bits(static_cast<double>(reinterpret_cast<float (*)(Dn2CppObject*)>(d->method)(d->target)));
 }
 static uint64_t dn2cpp_run_r8(Dn2CppObject* del)
 {
     auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_r8(d->prev);
     return dn2cpp_r8_bits(reinterpret_cast<double (*)(Dn2CppObject*)>(d->method)(d->target));
 }
 static uint64_t dn2cpp_run_ref(Dn2CppObject* del)
 {
     auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_ref(d->prev);
     return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
         reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*)>(d->method)(d->target)));
 }
 
-Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_void); }
-Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_i4); }
-Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_i8); }
-Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_r4); }
-Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_r8); }
-Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del) { return dn2cpp_pool_submit(del, &dn2cpp_run_ref); }
+Dn2CppTask* dn2cpp_task_run_void(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "action");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_void);
+}
+Dn2CppTask* dn2cpp_task_run_i4(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_i4);
+}
+Dn2CppTask* dn2cpp_task_run_i8(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_i8);
+}
+Dn2CppTask* dn2cpp_task_run_r4(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_r4);
+}
+Dn2CppTask* dn2cpp_task_run_r8(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_r8);
+}
+Dn2CppTask* dn2cpp_task_run_ref(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit(del, &dn2cpp_run_ref);
+}
 // A struct result carries its own boxing thunk (the transpiler stamps in the struct's
 // exact type); the worker packs the boxed pointer into the 8-byte slot like any other run.
 Dn2CppTask* dn2cpp_task_run_struct(Dn2CppObject* del, uint64_t (*invoke)(Dn2CppObject*))
 {
+    dn2cpp_task_require_delegate(del, "function");
     return dn2cpp_pool_submit(del, invoke);
 }
-Dn2CppTask* dn2cpp_task_run_unwrap(Dn2CppObject* del) { return dn2cpp_pool_submit_unwrap(del); }
-Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del) { return dn2cpp_pool_submit_nested(del); }
+Dn2CppTask* dn2cpp_task_run_unwrap(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_unwrap(del);
+}
+Dn2CppTask* dn2cpp_task_run_nested(Dn2CppObject* del)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_nested(del);
+}
 
 // TaskFactory.StartNew(Action<object?>, state): run the 1-arg delegate chain with the
 // state argument (the same multicast-aware invoke the fire-and-forget items use).
@@ -2910,10 +2966,73 @@ static uint64_t dn2cpp_run_void_state(Dn2CppObject* del, Dn2CppObject* state)
     dn2cpp_paramthread_invoke(del, state);
     return 0;
 }
+static uint64_t dn2cpp_run_i4_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_i4_state(d->prev, state);
+    return static_cast<uint64_t>(static_cast<uint32_t>(
+        reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state)));
+}
+static uint64_t dn2cpp_run_i8_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_i8_state(d->prev, state);
+    return static_cast<uint64_t>(reinterpret_cast<int64_t (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state));
+}
+static uint64_t dn2cpp_run_r4_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_r4_state(d->prev, state);
+    return dn2cpp_r8_bits(static_cast<double>(reinterpret_cast<float (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state)));
+}
+static uint64_t dn2cpp_run_r8_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_r8_state(d->prev, state);
+    return dn2cpp_r8_bits(reinterpret_cast<double (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state));
+}
+static uint64_t dn2cpp_run_ref_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    auto* d = reinterpret_cast<Dn2CppDelegate*>(del);
+    if (d->prev != nullptr)
+        dn2cpp_run_ref_state(d->prev, state);
+    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
+        reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, Dn2CppObject*)>(d->method)(d->target, state)));
+}
 
 Dn2CppTask* dn2cpp_task_run_void_state(Dn2CppObject* del, Dn2CppObject* state)
 {
+    dn2cpp_task_require_delegate(del, "action");
     return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_void_state);
+}
+Dn2CppTask* dn2cpp_task_run_i4_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i4_state);
+}
+Dn2CppTask* dn2cpp_task_run_i8_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_i8_state);
+}
+Dn2CppTask* dn2cpp_task_run_r4_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r4_state);
+}
+Dn2CppTask* dn2cpp_task_run_r8_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_r8_state);
+}
+Dn2CppTask* dn2cpp_task_run_ref_state(Dn2CppObject* del, Dn2CppObject* state)
+{
+    dn2cpp_task_require_delegate(del, "function");
+    return dn2cpp_pool_submit_state(del, state, &dn2cpp_run_ref_state);
 }
 
 // ---- cold tasks: `new Task(...)` / `new Task<T>(...)` + Start / RunSynchronously ----

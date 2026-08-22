@@ -1091,11 +1091,17 @@ internal sealed partial class Compilation
             _ => null,
         };
 
-    /// <summary>Reaches a value type's implementation of a <c>constrained.</c>
-    /// callvirt target by signature. Needed for Object/ValueType-rooted virtuals
-    /// (ToString/Equals/GetHashCode), whose declaring type is intrinsic so the
-    /// normal call edge is cut — yet a constrained call on a struct emits a direct
-    /// call to the struct's override, which must therefore be transpiled.</summary>
+    /// <summary>Reaches a value type's implementation of a <c>constrained.</c> callvirt
+    /// target — an interface slot, or an Object/ValueType-rooted virtual whose declaring
+    /// type is intrinsic so the normal call edge is cut. Either way the emit side lowers
+    /// the call to a DIRECT call on the struct's body, which must therefore be transpiled.
+    ///
+    /// <para>The order below mirrors the emit side's decision order: the typed
+    /// IEquatable/IComparable devirtualization, then the cuts and boxed-dispatch wiring
+    /// <c>TryEmitValueConstrained</c> claims, then the resolution
+    /// <c>EmitConstrainedCall</c> makes. A step that ran early here and returned would
+    /// reach a body emit never calls while leaving the one it does call
+    /// untranspiled.</para></summary>
     private void ReachConstrainedImpl(Module module, EntityHandle calleeHandle, TypeDesc constrained, GenericContext ctx)
     {
         // A `constrained. System.Object callvirt IComparable<object>::CompareTo` — the
@@ -1111,17 +1117,28 @@ internal sealed partial class Compilation
             return;
         string name;
         MethodSignature<TypeDesc> sig;
+        // The resolved callee, when the token yields one: what the shared resolution below
+        // (ConstrainedImplOf) needs, and the only thing that can see an .override row or a
+        // variance-compatible interface slot. A token that resolves to nothing keeps the
+        // name+shape walk at the bottom.
+        MethodInfo? resolvedCallee = null;
         switch (calleeHandle.Kind)
         {
             case HandleKind.MemberReference:
                 var mr = module.Reader.GetMemberReference((MemberReferenceHandle)calleeHandle);
                 name = module.Reader.GetString(mr.Name);
                 sig = mr.DecodeMethodSignature(SigProvider, ctx);
+                // An unresolvable member ref is not an error here — the name+shape walk at
+                // the bottom still answers. The filter is what keeps InstantiationBound
+                // (a NotSupportedException subclass) escaping.
+                try { resolvedCallee = ResolveMemberRefMethod(module, (MemberReferenceHandle)calleeHandle, ctx); }
+                catch (NotSupportedException e) when (!IsMustEscape(e)) { }
                 // The typed IEquatable<T>::Equals(!0) / IComparable<T>::CompareTo(!0)
-                // devirtualizes to the struct's typed overload (the emit side's
-                // ConstrainedValueTypeImpl); under an erased caller context the SigKey
-                // walk below would decode !0 to object and reach the Equals(object)
-                // override instead, so reach the typed body explicitly.
+                // devirtualizes to the struct's typed overload; under an erased caller
+                // context the SigKey walk below would decode !0 to object and reach the
+                // Equals(object) override instead, so reach the typed body explicitly. Kept
+                // here rather than deferred to ConstrainedImplOf: that asks the RESOLVED
+                // callee, and this token may not resolve to one.
                 if (mr.Parent.Kind == HandleKind.TypeSpecification
                     && ResolveTypeTokenForScan(module, mr.Parent, ctx) is
                         { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
@@ -1150,7 +1167,7 @@ internal sealed partial class Compilation
         }
         // A `constrained. <int> callvirt ISpanFormattable::TryFormat`
         // (a `{value:fmt}` interpolation hole lowered through DefaultInterpolatedString
-        // Handler) is emitted inline via dn2cpp_try_format_int|uint (TryEmitValueConstrained),
+        // Handler) is emitted inline via dn2cpp_try_format_int|uint_c (TryEmitValueConstrained),
         // so do NOT reach the integer primitive's real TryFormat body — it pulls in the whole
         // System.Number.TryFormat* subtree (the dominant remaining self-host cascade, reached
         // from SRM SignatureDecoder.CheckHeader via Byte.TryFormat). The concrete cut for the
@@ -1191,19 +1208,32 @@ internal sealed partial class Compilation
             ReachSynthesizedValueEquality(c,
                 includeHash: name == "GetHashCode", includeEquals: name == "Equals");
         }
+        // Past the cuts, the emitted call is a direct call to the body ConstrainedImplOf
+        // picks (MethodCompiler.EmitConstrainedCall asks the same function), so reach that
+        // one. INVARIANT: no canon-placeholder guard here — the emit side's value-type path
+        // has none either, so a shared canonical body's `constrained.<Wrap<!T>> callvirt`
+        // emits a direct call that only this edge reaches.
+        if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } bound)
+        {
+            Reach(bound);
+            return;
+        }
+        // No resolved callee (or none bound): fall back to the name+shape walk, which can
+        // still answer a MethodDefinition token or an unresolvable MemberRef.
+        //
         // The same renderer the key itself is built from (MethodInfo.SigKey), rather than a
         // second copy of its format — the two have to agree exactly or every scan below misses.
         string key = name + AbiContract.SigShape(sig);
         for (var b = c; b is not null; b = b.BaseClass)
         {
-            // The emit side (MethodCompiler.FindImpl) binds an explicit interface
-            // implementation first — its dotted metadata name means the SigKey scan
-            // below can never see it. Mirror that here or the bound body is never
-            // reached and the emitted call dangles (Regex.ValueMatchEnumerator's
-            // `IDisposable.Dispose`). Matching by the DECLARATION's SigKey is a
-            // superset of the emit side's exact-method probe (two interfaces can
-            // declare the same name+shape), so reach every match: over-reaching is
-            // safe, a dangling symbol is not.
+            EnsureCompleted(b);
+            // The emit side binds an explicit interface implementation first — its dotted
+            // metadata name means the SigKey scan below can never see it. Mirror that here
+            // or the bound body is never reached and the emitted call dangles
+            // (Regex.ValueMatchEnumerator's `IDisposable.Dispose`). Matching by the
+            // DECLARATION's SigKey is a superset of the emit side's exact-method probe (two
+            // interfaces can declare the same name+shape), so reach every match:
+            // over-reaching is safe, a dangling symbol is not.
             bool matched = false;
             foreach (var kv in b.ExplicitInterfaceImpls)
                 if (kv.Key.Name == name && kv.Key.SigKey == key)
@@ -2258,7 +2288,7 @@ internal sealed partial class Compilation
                 && ResolveItfImplOrNull(c, decl) is { } impl)
             {
                 // An integer primitive's ISpanFormattable::TryFormat impl
-                // is lowered inline (dn2cpp_try_format_int|uint — see MethodCompiler /
+                // is lowered inline (dn2cpp_try_format_int|uint_c — see MethodCompiler /
                 // TryEmitValueConstrained), so don't reach the real body even when the byte/
                 // int is boxed (an allocated value type) and TryFormat is a used virtual slot.
                 // The real body pulls in the whole System.Number.TryFormat* subtree (the
@@ -3340,6 +3370,287 @@ internal sealed partial class Compilation
         {
             return null;   // unreadable metadata -> ToString degrades to the bare FullName
         }
+    }
+
+    /// <summary>The SUBSTITUTION-INVARIANT ancestry of the open generic definition at
+    /// <paramref name="handle"/>: its nearest ancestor class that names no type parameter —
+    /// non-generic, or closed over fixed arguments (<c>class D&lt;T&gt; : B&lt;int&gt;</c>) —
+    /// and every such interface in its transitive closure.
+    ///
+    /// <para>Substitution cannot touch a type that names no type parameter, so this set is
+    /// identical for the definition and for every closed instantiation of it. That identity
+    /// is what lets a <c>gendef_</c> shell carry the rows and answer
+    /// <c>Type.IsAssignableFrom</c>; a relation spelled in the definition's own parameters
+    /// (<c>IEnumerable&lt;T&gt;</c> ← <c>List&lt;&gt;</c>) stays False because no row can
+    /// name one. A closed entry (<c>B&lt;int&gt;</c>) is materialized once, by the wiring
+    /// pass (<paramref name="materialize"/>, Compilation.WireTypeofOpenGenericDefAncestry)
+    /// — a reflected-over definition observably needs those type-infos, so its rows must
+    /// not depend on unrelated code happening to instantiate them. Every later read is
+    /// lookup-only and finds what the wiring minted; a close absent even then degrades to
+    /// the walk stepping past it, the same monotone subset the emitter's definedness
+    /// filter makes.</para>
+    ///
+    /// <para>Everything ABOVE the nearest invariant ancestor is left out: it becomes the
+    /// shell's base pointer and the runtime's own base walk reaches the rest from there.
+    /// Metadata order throughout — interface list order, then base-chain order — so the
+    /// emitted row order is a pure function of the input.</para></summary>
+    internal (ClassInfo? Base, List<ClassInfo> Interfaces) OpenGenericDefAncestry(
+        Module m, TypeDefinitionHandle handle, bool materialize = false)
+    {
+        var itfs = new List<ClassInfo>();
+        var seen = new HashSet<(int, TypeDefinitionHandle)>();
+        ClassInfo? nearest = null;
+        Module? node = m;
+        var nodeHandle = handle;
+        while (node is { } nm)
+        {
+            CollectArgumentFreeInterfaces(nm, nodeHandle, itfs, seen, materialize);
+            var rawBase = BaseTypeHandleOf(nm, nodeHandle);
+            var (bm, bh) = ResolveTypeDefRefSpec(nm, rawBase);
+            if (bm is null)
+                break;
+            if (GenericArityOf(bm, bh) != 0)
+            {
+                if (ClosedInvariantClass(nm, rawBase, materialize) is { } closed)
+                {
+                    nearest = closed;
+                    break;
+                }
+                node = bm;
+                nodeHandle = bh;
+                continue;
+            }
+            bm.ClassMap.TryGetValue(bh, out nearest);
+            break;
+        }
+        return (nearest, itfs);
+    }
+
+    /// <summary>The by-NAME entry to <see cref="OpenGenericDefAncestry"/>, for a definition
+    /// reached as a bare <c>typeof(D&lt;&gt;)</c> (no ClassInfo, only the backtick name).
+    /// A name no loaded module declares yields an empty ancestry — the same degrade
+    /// <see cref="OpenGenericDefFactsByName"/> makes.</summary>
+    internal (ClassInfo? Base, List<ClassInfo> Interfaces) OpenGenericDefAncestryByName(
+        string defName, bool materialize = false) =>
+        OpenGenericDefHandleByName(defName) is { } d
+            ? OpenGenericDefAncestry(d.Module, d.Handle, materialize)
+            : (null, new List<ClassInfo>());
+
+    /// <summary>Appends every substitution-invariant interface reachable from
+    /// <paramref name="handle"/>'s own interface list: non-generic ones, closed ones over
+    /// fixed arguments (<c>I&lt;string&gt;</c>), and — recursing THROUGH the
+    /// generic entries either way — a generic interface's closure can still hold
+    /// argument-free members (<c>IEnumerable&lt;T&gt;</c> is an <c>IEnumerable</c>).</summary>
+    private void CollectArgumentFreeInterfaces(Module m, TypeDefinitionHandle handle,
+        List<ClassInfo> itfs, HashSet<(int, TypeDefinitionHandle)> seen, bool materialize)
+    {
+        if (!seen.Add((m.Index, handle)))
+            return;
+        var reader = m.Reader;
+        InterfaceImplementationHandleCollection impls;
+        try
+        {
+            impls = reader.GetTypeDefinition(handle).GetInterfaceImplementations();
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return;
+        }
+        foreach (var iih in impls)
+        {
+            var raw = reader.GetInterfaceImplementation(iih).Interface;
+            var (im, ih) = ResolveTypeDefRefSpec(m, raw);
+            if (im is null)
+                continue;
+            if (GenericArityOf(im, ih) != 0)
+            {
+                if (ClosedInvariantClass(m, raw, materialize) is { } closed && !itfs.Contains(closed))
+                    itfs.Add(closed);
+                CollectArgumentFreeInterfaces(im, ih, itfs, seen, materialize);
+            }
+            else if (im.ClassMap.TryGetValue(ih, out var itf) && !itfs.Contains(itf))
+                itfs.Add(itf);
+        }
+    }
+
+    private static EntityHandle BaseTypeHandleOf(Module m, TypeDefinitionHandle handle)
+    {
+        try
+        {
+            return m.Reader.GetTypeDefinition(handle).BaseType;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return default;
+        }
+    }
+
+    private static int GenericArityOf(Module m, TypeDefinitionHandle handle)
+    {
+        try
+        {
+            return m.Reader.GetTypeDefinition(handle).GetGenericParameters().Count;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>A TypeDefOrRefOrSpec resolved to the (module, TypeDef) of its DEFINITION.
+    /// A TypeSpec is read off the signature BLOB rather than decoded: its GENERICINST names
+    /// the open template, which is exactly what an argument-free walk wants, and decoding it
+    /// would instantiate a specialization the load set never asked for. Null module when the
+    /// load set does not carry the target.</summary>
+    private (Module?, TypeDefinitionHandle) ResolveTypeDefRefSpec(Module m, EntityHandle h)
+    {
+        switch (h.IsNil ? HandleKind.Blob : h.Kind)
+        {
+            case HandleKind.TypeDefinition:
+                return (m, (TypeDefinitionHandle)h);
+            case HandleKind.TypeReference:
+                return TemplateOrClassDef(ResolveTypeRef(m, (TypeReferenceHandle)h));
+            case HandleKind.TypeSpecification:
+                try
+                {
+                    var blob = m.Reader.GetBlobReader(
+                        m.Reader.GetTypeSpecification((TypeSpecificationHandle)h).Signature);
+                    var tc = blob.ReadSignatureTypeCode();
+                    if (tc == SignatureTypeCode.GenericTypeInstance)
+                        tc = blob.ReadSignatureTypeCode();
+                    if (tc != SignatureTypeCode.TypeHandle)
+                        return (null, default);
+                    var inner = blob.ReadTypeHandle();
+                    // A GENERICINST names a TypeDef or TypeRef; anything else is not a
+                    // shape this walk can open, and re-entering would not terminate.
+                    return inner.Kind == HandleKind.TypeSpecification
+                        ? (null, default)
+                        : ResolveTypeDefRefSpec(m, inner);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    return (null, default);
+                }
+            default:
+                return (null, default);
+        }
+    }
+
+    /// <summary>The ClassInfo of a substitution-invariant closed TypeSpec — a GENERICINST
+    /// whose blob names no VAR/MVAR, e.g. <c>B&lt;int&gt;</c> under
+    /// <c>class D&lt;T&gt; : B&lt;int&gt;</c>. With <paramref name="materialize"/> the
+    /// decode runs the real provider and MINTS the close (the wiring pass, inside the emit
+    /// fixpoint); without it the decode answers from the existing instance table only, so
+    /// a close nothing minted yields null instead of a fresh shell — the post-fixpoint
+    /// emitter reads must not grow the emit set. The VAR/MVAR probe walks the signature
+    /// grammar, so only a genuine parameter occurrence disqualifies — a compressed-integer
+    /// byte (an arg count of 19, say) cannot collide with the codes.</summary>
+    private ClassInfo? ClosedInvariantClass(Module m, EntityHandle h, bool materialize)
+    {
+        if (h.IsNil || h.Kind != HandleKind.TypeSpecification)
+            return null;
+        try
+        {
+            var spec = m.Reader.GetTypeSpecification((TypeSpecificationHandle)h);
+            if (spec.DecodeSignature(ParameterMentionProbe.Instance, null))
+                return null;
+            if (materialize)
+            {
+                var d = spec.DecodeSignature(SigProvider, null);
+                return d.Kind != TypeKind.Class ? null : d.Class;
+            }
+            var lookup = new LookupOnlySignatureProvider(this);
+            var t = spec.DecodeSignature(lookup, null);
+            return lookup.Missed || t.Kind != TypeKind.Class ? null : t.Class;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>A <see cref="SignatureProvider"/> whose GENERICINST arm answers from
+    /// <see cref="InstancesFor"/> instead of <see cref="Instantiate"/>: a hit returns the
+    /// existing close, a miss sets <see cref="Missed"/> and the caller discards the decode.
+    /// Everything else delegates to the real provider.</summary>
+    private sealed class LookupOnlySignatureProvider : ISignatureTypeProvider<TypeDesc, object?>
+    {
+        private readonly Compilation _c;
+        internal bool Missed;
+
+        internal LookupOnlySignatureProvider(Compilation c) => _c = c;
+
+        public TypeDesc GetGenericInstantiation(TypeDesc genericType, ImmutableArray<TypeDesc> typeArguments)
+        {
+            if (!Missed && genericType.Kind == TypeKind.Template
+                && _c.InstancesFor(genericType.TemplateModule!, genericType.TemplateHandle)
+                     .TryGetValue(typeArguments.ToArray(), out var cls))
+                return TypeDesc.MakeClass(cls);
+            Missed = true;
+            return genericType;
+        }
+
+        public TypeDesc GetPrimitiveType(PrimitiveTypeCode typeCode) => _c.SigProvider.GetPrimitiveType(typeCode);
+        public TypeDesc GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+            _c.SigProvider.GetTypeFromDefinition(reader, handle, rawTypeKind);
+        public TypeDesc GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+            _c.SigProvider.GetTypeFromReference(reader, handle, rawTypeKind);
+        public TypeDesc GetSZArrayType(TypeDesc elementType) => _c.SigProvider.GetSZArrayType(elementType);
+        public TypeDesc GetArrayType(TypeDesc elementType, ArrayShape shape) => _c.SigProvider.GetArrayType(elementType, shape);
+        public TypeDesc GetByReferenceType(TypeDesc elementType) => _c.SigProvider.GetByReferenceType(elementType);
+        public TypeDesc GetPointerType(TypeDesc elementType) => _c.SigProvider.GetPointerType(elementType);
+        public TypeDesc GetFunctionPointerType(MethodSignature<TypeDesc> signature) => _c.SigProvider.GetFunctionPointerType(signature);
+        public TypeDesc GetGenericMethodParameter(object? genericContext, int index) =>
+            _c.SigProvider.GetGenericMethodParameter(genericContext, index);
+        public TypeDesc GetGenericTypeParameter(object? genericContext, int index) =>
+            _c.SigProvider.GetGenericTypeParameter(genericContext, index);
+        public TypeDesc GetModifiedType(TypeDesc modifier, TypeDesc unmodifiedType, bool isRequired) => unmodifiedType;
+        public TypeDesc GetPinnedType(TypeDesc elementType) => elementType;
+        public TypeDesc GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+    }
+
+    /// <summary>Decodes to "does this signature mention a VAR/MVAR anywhere?" — the
+    /// substitution-invariance test <see cref="ClosedInvariantClass"/> runs before the
+    /// real decode. Stateless; composites OR their children, leaves are false.</summary>
+    private sealed class ParameterMentionProbe : ISignatureTypeProvider<bool, object?>
+    {
+        internal static readonly ParameterMentionProbe Instance = new();
+
+        public bool GetGenericTypeParameter(object? genericContext, int index) => true;
+        public bool GetGenericMethodParameter(object? genericContext, int index) => true;
+
+        public bool GetGenericInstantiation(bool genericType, ImmutableArray<bool> typeArguments)
+        {
+            if (genericType)
+                return true;
+            foreach (bool arg in typeArguments)
+                if (arg)
+                    return true;
+            return false;
+        }
+
+        public bool GetFunctionPointerType(MethodSignature<bool> signature)
+        {
+            if (signature.ReturnType)
+                return true;
+            foreach (bool p in signature.ParameterTypes)
+                if (p)
+                    return true;
+            return false;
+        }
+
+        public bool GetPrimitiveType(PrimitiveTypeCode typeCode) => false;
+        public bool GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) => false;
+        public bool GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) => false;
+        public bool GetTypeFromSpecification(MetadataReader reader, object? genericContext, TypeSpecificationHandle handle, byte rawTypeKind) =>
+            reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        public bool GetSZArrayType(bool elementType) => elementType;
+        public bool GetArrayType(bool elementType, ArrayShape shape) => elementType;
+        public bool GetByReferenceType(bool elementType) => elementType;
+        public bool GetPointerType(bool elementType) => elementType;
+        public bool GetModifiedType(bool modifier, bool unmodifiedType, bool isRequired) => modifier || unmodifiedType;
+        public bool GetPinnedType(bool elementType) => elementType;
     }
 
     private static bool HasMethodNamed(MetadataReader reader, TypeDefinition td, string name)
@@ -4743,10 +5054,9 @@ internal sealed partial class Compilation
                         // other type, so this only pays a name compare per call site.
                         if (insn.OpCode == ILOpCode.Call && IsCtorToken(module, handle))
                             ReachValueTaskSourceBridge(module, handle, m.Context);
-                        // A constrained callvirt on a value type whose target is an
-                        // Object/ValueType virtual (intrinsic decl, so the edge
-                        // above is null) still emits a direct call to the struct's
-                        // override — reach it by signature so it is transpiled.
+                        // A constrained call/callvirt on a value type whose target is an
+                        // interface or Object/ValueType virtual emits a direct call to the
+                        // struct's implementation — reach it so it is transpiled.
                         if (insn.OpCode == ILOpCode.Callvirt && constrained is { } cn)
                             ReachConstrainedImpl(module, handle, cn, m.Context);
                         // The `call` (not callvirt) analogue: a static-abstract interface

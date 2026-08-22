@@ -158,10 +158,9 @@ internal static class Program
     {
         // The bucket cannot set <InvariantGlobalization>: its NumberStyles/FloatParse
         // sections assert real de-DE and fr-FR separators, and that property turns ICU off.
-        // Only "N0" below is culture-sensitive (real .NET takes its group separator from
-        // CurrentCulture when the provider argument is null), so the pin is scoped to this
-        // section. dn2cpp's own formatting is invariant unconditionally, so this moves the
-        // ORACLE only.
+        // Only "N0" below is culture-sensitive (a null provider reads CurrentCulture — on
+        // both sides: dn2cpp resolves it the same way via dn2cpp_nfi_or_current), so the
+        // pin is scoped to this section and holds both renderers to one culture.
         //
         // SCOPED, not a hand-written save/restore: the restore owes the bucket its ambient
         // culture back, and a `finally` is the only form of that which survives an early

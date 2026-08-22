@@ -371,12 +371,12 @@ internal sealed partial class MethodCompiler
             // the integer-primitive span-write formatter
             // bool TryFormat(Span<char> dest, out int charsWritten,
             // ReadOnlySpan<char> format = default, IFormatProvider provider = null)
-            // (ISpanFormattable). Lower to dn2cpp_try_format_int|uint, which reuse the
+            // (ISpanFormattable). Lower to dn2cpp_try_format_int|uint_c, which reuse the
             // same byteWidth-aware formatters as ToString(format) and copy into the
             // Span<char>'s buffer with .NET semantics (fits ⇒ write + true, else
             // untouched + charsWritten=0 + false). format span -> Dn2CppString*
-            // (empty = "G"); provider dropped (InvariantCulture). These types are NOT
-            // added to s_intrinsicTypes — this is a targeted cut.
+            // (empty = "G"); provider routed (null = current culture, .NET's rule).
+            // These types are NOT added to s_intrinsicTypes — this is a targeted cut.
             // The destination span's element type discriminates the two shape-identical
             // interface methods: Span<char> is ISpanFormattable's char16 writer,
             // Span<byte> IUtf8SpanFormattable's UTF-8 one (without the check the char16
@@ -419,27 +419,34 @@ internal sealed partial class MethodCompiler
             // Double/Single.TryFormat(Span<char> dest, out int charsWritten,
             // ReadOnlySpan<char> format, IFormatProvider): render into the destination span
             // (fits -> copy + count + true; too short -> false). An empty/default format
-            // takes the round-trip ToString (dn2cpp_float_to_string keeps float precision);
+            // takes the round-trip ToString (dn2cpp_float_to_string_c keeps float precision);
             // a standard format string routes through the format helper, which throws loudly
-            // on one it does not cover. The provider is invariant.
+            // on one it does not cover. The provider routes to the *_c formatters like the
+            // ToString(provider) arms; null keeps .NET's null-provider rule (current culture).
             case ("System.Double" or "System.Single", "TryFormat")
                 when sig.ParameterTypes is [var f0, { Kind: TypeKind.ByRef }, var f2, _]
-                    && IsSpanOfPrimitive(f0, PrimitiveTypeCode.Char) && IsReadOnlyCharSpan(f2):
+                    && (IsSpanOfPrimitive(f0, PrimitiveTypeCode.Char) || IsSpanOfPrimitive(f0, PrimitiveTypeCode.Byte))
+                    && IsReadOnlyCharSpan(f2):
             {
+                bool isByte = IsSpanOfPrimitive(f0, PrimitiveTypeCode.Byte);
                 bool f32 = declType == "System.Single";
-                Pop();                                                       // IFormatProvider — invariant
+                string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
                 string fmtSpan = SpanValue(Pop(), CppTypes.Of(sig.ParameterTypes[2]));
                 string wrote = Cast(Pop(), "int32_t*");
                 string dPtr = SpanPtr(Pop(), CppTypes.Of(sig.ParameterTypes[0]));
                 string vt = NewTemp(f32 ? "float" : "double");
                 Emit($"{vt} = {DerefReceiver(f32 ? "float" : "double")};");
-                string defExpr = f32 ? $"dn2cpp_float_to_string({vt})" : $"dn2cpp_double_to_string({vt})";
-                string fmtCall = f32 ? "dn2cpp_format_r4" : "dn2cpp_format_r8";
+                string defExpr = f32 ? $"dn2cpp_float_to_string_c({vt}, {prov})" : $"dn2cpp_double_to_string_c({vt}, {prov})";
+                string fmtCall = f32 ? "dn2cpp_format_r4_c" : "dn2cpp_format_r8_c";
                 string sv = NewTemp("Dn2CppString*");
                 Emit($"{sv} = {fmtSpan}.f__length == 0 ? {defExpr} " +
-                     $": {fmtCall}({vt}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length));");
-                Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                     $": {fmtCall}({vt}, dn2cpp_string_from_chars((const char16_t*){fmtSpan}.f__reference, {fmtSpan}.f__length), {prov});");
+                if (isByte)
+                    Push(StackKind.I4, "int32_t",
+                        $"dn2cpp_string_try_copy_to_utf8_span({sv}, (uint8_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
+                else
+                    Push(StackKind.I4, "int32_t",
+                        $"dn2cpp_string_try_copy_to_span({sv}, (char16_t*){dPtr}->f__reference, {dPtr}->f__length, {wrote})");
                 return true;
             }
             // ---- Culture-aware numeric ToString (IFormatProvider) overloads ----
@@ -880,14 +887,12 @@ internal sealed partial class MethodCompiler
             }
             // CultureInfo.DateTimeFormat — the real getter reads fields of the intrinsic-
             // mapped CultureInfo (Dn2CppNumberFormatInfo) and cannot transpile; dn2cpp's
-            // culture is always invariant. Synthesize the invariant DateTimeFormatInfo with
-            // its abbreviated month/day-name arrays pre-seeded: dn2cpp does not construct a
-            // DTFI's CultureData/Calendar, so the lazy getter init those arrays would
-            // otherwise trigger dereferences null — and System.DateTimeFormat's EAGER cctor
-            // reads exactly AbbreviatedMonthNames/AbbreviatedDayNames off this object at
-            // startup. Seeding them makes that read return without touching the missing
-            // globalization machinery (dn2cpp formats dates through its own runtime tables,
-            // never this DTFI — here it is only a dropped IFormatProvider).
+            // culture is always invariant, so synthesize a bare invariant DateTimeFormatInfo.
+            // Its fields stay zero and nothing may read them raw: dn2cpp does not construct a
+            // DTFI's CultureData/Calendar, so every property whose real getter would lazily
+            // init off that machinery has its own intercept below (the abbreviated month/day
+            // name getters among them). dn2cpp formats dates through its own runtime tables,
+            // never this DTFI — here it is only a dropped IFormatProvider.
             case ("System.Globalization.CultureInfo", "get_DateTimeFormat")
                 when sig.ReturnType is { Kind: TypeKind.Class, Class: { } dtfiCls }:
             {
@@ -896,11 +901,137 @@ internal sealed partial class MethodCompiler
                 string o = NewTemp(dtfiCls.CppStructName + "*");
                 Emit($"{o} = ({dtfiCls.CppStructName}*)dn2cpp_alloc(sizeof({dtfiCls.CppStructName}));");
                 Emit($"((Dn2CppObject*){o})->type = &{dtfiCls.CppTypeInfoName};");
-                if (dtfiCls.Fields.FirstOrDefault(f => f.Name == "abbreviatedMonthNames") is { Type: { Kind: TypeKind.SZArray, Element: { } me } } mf)
-                    Emit($"{o}->{mf.CppName} = dn2cpp_dtfi_invariant_abbrev_month_names({PreciseArrayTypeInfoExpr(me)});");
-                if (dtfiCls.Fields.FirstOrDefault(f => f.Name == "abbreviatedDayNames") is { Type: { Kind: TypeKind.SZArray, Element: { } de } } df)
-                    Emit($"{o}->{df.CppName} = dn2cpp_dtfi_invariant_abbrev_day_names({PreciseArrayTypeInfoExpr(de)});");
                 Push(StackKind.Ref, dtfiCls.CppStructName + "*", o);
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_InvariantInfo")
+                or ("System.Globalization.DateTimeFormatInfo", "get_CurrentInfo")
+                or ("System.Globalization.DateTimeFormatInfo", "GetInstance")
+                when sig.ReturnType is { Kind: TypeKind.Class, Class: { } dtfiCls }:
+            {
+                if (sig.ParameterTypes.Length == 1) Pop(); // GetInstance(IFormatProvider)
+                NoteReferenceClass(sig.ReturnType);
+                string o = NewTemp(dtfiCls.CppStructName + "*");
+                Emit($"{o} = ({dtfiCls.CppStructName}*)dn2cpp_alloc(sizeof({dtfiCls.CppStructName}));");
+                Emit($"((Dn2CppObject*){o})->type = &{dtfiCls.CppTypeInfoName};");
+                Push(StackKind.Ref, dtfiCls.CppStructName + "*", o);
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "ReadOnly"):
+            {
+                // Returns the same instance
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_DecimalSeparator"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("."));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_DateSeparator"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("/"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_TimeSeparator"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(":"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_AMDesignator"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("AM"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_PMDesignator"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("PM"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_RFC1123Pattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("ddd, dd MMM yyyy HH':'mm':'ss 'GMT'"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_SortableDateTimePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("yyyy'-'MM'-'dd'T'HH':'mm':'ss"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_UniversalSortableDateTimePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("yyyy'-'MM'-'dd HH':'mm':'ss'Z'"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_ShortDatePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("MM/dd/yyyy"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_LongDatePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("dddd, dd MMMM yyyy"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_ShortTimePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("HH:mm"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_LongTimePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("HH:mm:ss"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_FullDateTimePattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("dddd, dd MMMM yyyy HH:mm:ss"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_MonthDayPattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("MMMM dd"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_YearMonthPattern"):
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd("yyyy MMMM"));
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_FirstDayOfWeek")
+                or ("System.Globalization.DateTimeFormatInfo", "get_CalendarWeekRule"):
+            {
+                Pop();
+                Push(StackKind.I4, "int32_t", "0");
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedMonthNames")
+                or ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedMonthGenitiveNames")
+                when sig.ReturnType is { Kind: TypeKind.SZArray, Element: { } me }:
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_dtfi_invariant_abbrev_month_names({PreciseArrayTypeInfoExpr(me)})");
+                return true;
+            }
+            case ("System.Globalization.DateTimeFormatInfo", "get_AbbreviatedDayNames")
+                when sig.ReturnType is { Kind: TypeKind.SZArray, Element: { } de }:
+            {
+                Pop();
+                Push(StackKind.Ref, "Dn2CppArrayRef*", $"dn2cpp_dtfi_invariant_abbrev_day_names({PreciseArrayTypeInfoExpr(de)})");
                 return true;
             }
             // CultureInfo.Name / ToString — read the culture's modeled name (the
@@ -1004,19 +1135,51 @@ internal sealed partial class MethodCompiler
                 Pop(); // the TextInfo receiver
                 Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(","));
                 return true;
-            // TextInfo.ToUpper(string) — the TextInfo model is the invariant culture
-            // pointer (see get_TextInfo), so this lowers to the same invariant BMP
-            // upper map as string.ToUpperInvariant; exact for the invariant culture and
-            // any culture whose simple case fold coincides with it. The receiver is
-            // popped and dropped (it carries no per-culture casing state). Only the
-            // (string) overload is modeled — the (char)/ToLower/ToTitleCase siblings
-            // decline and fall through to the loud miss (TextInfo is an intrinsic type).
-            case ("System.Globalization.TextInfo", "ToUpper")
+            // TextInfo casing — the TextInfo model is the invariant culture pointer (see
+            // get_TextInfo), so these lower to the same invariant BMP case maps as
+            // string.ToUpperInvariant; exact for the invariant culture and any culture
+            // whose simple case fold coincides with it. The receiver is popped and dropped
+            // (it carries no per-culture casing state) only when the arm is an instance
+            // one — the *Invariant/*AsciiInvariant siblings are static. ToTitleCase is not
+            // modeled and falls through to the loud miss (TextInfo is an intrinsic type).
+            case ("System.Globalization.TextInfo", "ToLower")
+                or ("System.Globalization.TextInfo", "ToLowerInvariant")
+                or ("System.Globalization.TextInfo", "ToLowerAsciiInvariant")
                 when sig.ParameterTypes is [{ IsString: true }]:
             {
                 var s = Pop();
-                Pop(); // the TextInfo receiver (invariant model, no casing state)
+                if (sig.Header.IsInstance) Pop(); // the TextInfo receiver (if instance)
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_str_to_case({Cast(s, "Dn2CppString*")}, 0)");
+                return true;
+            }
+            case ("System.Globalization.TextInfo", "ToUpper")
+                or ("System.Globalization.TextInfo", "ToUpperInvariant")
+                or ("System.Globalization.TextInfo", "ToUpperAsciiInvariant")
+                when sig.ParameterTypes is [{ IsString: true }]:
+            {
+                var s = Pop();
+                if (sig.Header.IsInstance) Pop(); // the TextInfo receiver (if instance)
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_str_to_case({Cast(s, "Dn2CppString*")}, 1)");
+                return true;
+            }
+            case ("System.Globalization.TextInfo", "ToLower")
+                or ("System.Globalization.TextInfo", "ToLowerInvariant")
+                or ("System.Globalization.TextInfo", "ToLowerAsciiInvariant")
+                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }]:
+            {
+                var c = Pop();
+                if (sig.Header.IsInstance) Pop();
+                Push(StackKind.I4, "int32_t", $"(int32_t)dn2cpp_char_lower_invariant((char16_t)({c.Expr}))");
+                return true;
+            }
+            case ("System.Globalization.TextInfo", "ToUpper")
+                or ("System.Globalization.TextInfo", "ToUpperInvariant")
+                or ("System.Globalization.TextInfo", "ToUpperAsciiInvariant")
+                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }]:
+            {
+                var c = Pop();
+                if (sig.Header.IsInstance) Pop();
+                Push(StackKind.I4, "int32_t", $"(int32_t)dn2cpp_char_upper_invariant((char16_t)({c.Expr}))");
                 return true;
             }
             // SearchValues.Create(ReadOnlySpan<T> values) — build the runtime membership
@@ -1603,16 +1766,16 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The integer-primitive span-write formatter body, shared by the
     /// ISpanFormattable (Span&lt;char&gt;) and IUtf8SpanFormattable (Span&lt;byte&gt;,
-    /// <paramref name="utf8"/>) arms: lower to dn2cpp_try_format_int|uint[_utf8], the same
+    /// <paramref name="utf8"/>) arms: lower to dn2cpp_try_format_int|uint[_utf8]_c, the same
     /// byteWidth-aware formatter cores as ToString(format), writing into the span's buffer
     /// with .NET semantics (fits ⇒ write + count + true; too short ⇒ buffer untouched +
-    /// 0 + false). format span -> Dn2CppString* (empty = "G"); provider dropped
-    /// (InvariantCulture).</summary>
+    /// 0 + false). format span -> Dn2CppString* (empty = "G"); provider routed
+    /// (null = current culture, .NET's rule).</summary>
     private void EmitIntegerTryFormat(string declType, MethodSignature<TypeDesc> sig, bool utf8)
     {
         // Stack (top → bottom): provider, format(span), charsWritten(ByRef),
         // destination(span), receiver. Pop in that order; receiver last.
-        Pop();                                                   // IFormatProvider — invariant
+        string prov = Cast(Pop(), "const Dn2CppNumberFormatInfo*");
         string fmtSpanCt = CppTypes.Of(sig.ParameterTypes[2]);  // ReadOnlySpan<char>
         string fmtPtr = SpanPtr(Pop(), fmtSpanCt);
         string fmt = NewTemp("Dn2CppString*");
@@ -1639,7 +1802,7 @@ internal sealed partial class MethodCompiler
         // and width-correct hex needs the unsigned helper's masking input).
         string recv = DerefReceiver(recvCt);
         string helper = (uns ? "dn2cpp_try_format_uint" : "dn2cpp_try_format_int")
-            + (utf8 ? "_utf8" : "");
+            + (utf8 ? "_utf8" : "") + "_c";
         string destCast = utf8 ? "char*" : "char16_t*";
         string valExpr = uns
             ? (width switch
@@ -1651,6 +1814,6 @@ internal sealed partial class MethodCompiler
             })
             : $"(int64_t)({recv})";
         Push(StackKind.I4, "int32_t",
-            $"({helper}({valExpr}, {width}, {fmt}, ({destCast}){destPtr}->f__reference, {destPtr}->f__length, {wrote}) ? 1 : 0)");
+            $"({helper}({valExpr}, {width}, {fmt}, ({destCast}){destPtr}->f__reference, {destPtr}->f__length, {wrote}, {prov}) ? 1 : 0)");
     }
 }

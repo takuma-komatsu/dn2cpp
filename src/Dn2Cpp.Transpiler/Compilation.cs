@@ -1403,12 +1403,19 @@ internal sealed partial class Compilation
 
     public (string? Name, GenericDefKind Kind, string? ParamNames) OpenGenericDefFactsByName(string defName)
     {
+        if (OpenGenericDefHandleByName(defName) is not { } d)
+            return (defName, GenericDefKind.Unknown, null);
+        return (defName, ResolveOpenGenericDefKind(d.Module, d.Handle), GenericParamNames(d.Module, d.Handle));
+    }
+
+    /// <summary>The (module, TypeDef) a generic definition's backtick full name points at,
+    /// or null when no loaded module declares it. <see cref="TypeIndex"/> is keyed on the
+    /// RAW name, arity backtick included.</summary>
+    internal (Module Module, TypeDefinitionHandle Handle)? OpenGenericDefHandleByName(string defName)
+    {
         int cut = defName.LastIndexOf('.');
         var key = cut < 0 ? ("", defName) : (defName[..cut], defName[(cut + 1)..]);
-        if (!TypeIndex().TryGetValue(key, out var cands) || cands.Count == 0)
-            return (defName, GenericDefKind.Unknown, null);
-        var (m, h) = cands[0];
-        return (defName, ResolveOpenGenericDefKind(m, h), GenericParamNames(m, h));
+        return TypeIndex().TryGetValue(key, out var cands) && cands.Count > 0 ? cands[0] : null;
     }
 
     public TypeDesc? ResolveTypeRef(Module from, TypeReferenceHandle handle)
@@ -3213,6 +3220,9 @@ internal sealed partial class Compilation
         // interfaces as relation-only rows, so Type.GetInterfaces() over an array
         // reports them. Keyed on any array type-info existing at all.
         added |= WireArrayNongenericItfRows();
+        // The gendef sibling: force-emit the argument-free ancestry every bare
+        // typeof(D<>) handle's relation rows will point at.
+        added |= WireTypeofOpenGenericDefAncestry();
         // Eager VALUE-element wiring: a value-element array
         // reached through an `object`-typed variable has no statically visible
         // cast/boundary to key the lazy per-element map on — the reference-element
@@ -3547,6 +3557,41 @@ internal sealed partial class Compilation
             NoteReferencedType(itf);
         ArrayNongenericInterfaces = itfs;
         return true;
+    }
+
+    private readonly HashSet<string> _gendefAncestryWired = new(System.StringComparer.Ordinal);
+
+    /// <summary>Force-emits the type-infos a bare <c>typeof(D&lt;&gt;)</c> handle's
+    /// substitution-invariant relation rows will name (<see cref="OpenGenericDefAncestry"/>):
+    /// its nearest invariant ancestor and its invariant interface closure. Only these
+    /// definitions need forcing — one with an emitted closed instantiation already drags its
+    /// own base and interfaces into the emit set, and the shell filters its rows by the same
+    /// definedness test the closed type's table uses.
+    ///
+    /// <para>Without it, a definition the program only ever names — <c>class Box&lt;T&gt; :
+    /// IMarker</c> with no close — has no <c>ti_IMarker</c> to point at, and
+    /// <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c> answers False where .NET
+    /// answers True. This pass is also the one place a CLOSED invariant entry
+    /// (<c>class Fixed&lt;T&gt; : ClosedBase&lt;int&gt;</c>) is MINTED, not merely looked
+    /// up: the reflected-over definition observably needs that type-info, and nothing else
+    /// in a typeof-only program would instantiate it. Driven in the emit fixpoint like its
+    /// array siblings, since <see cref="TypeofOpenGenericDefs"/> grows as bodies
+    /// compile.</para></summary>
+    private bool WireTypeofOpenGenericDefAncestry()
+    {
+        int before = ReferencedTypes.Count;
+        foreach (string defName in TypeofOpenGenericDefs.Keys
+                     .OrderBy(k => k, System.StringComparer.Ordinal).ToList())
+        {
+            if (!_gendefAncestryWired.Add(defName))
+                continue;
+            var (bas, itfs) = OpenGenericDefAncestryByName(defName, materialize: true);
+            if (bas is not null)
+                NoteReferencedType(bas);
+            foreach (var itf in itfs)
+                NoteReferencedType(itf);
+        }
+        return ReferencedTypes.Count != before;
     }
 
     /// <summary>Whether <paramref name="cls"/> is the <c>SZArrayEnumerable&lt;object&gt;</c>

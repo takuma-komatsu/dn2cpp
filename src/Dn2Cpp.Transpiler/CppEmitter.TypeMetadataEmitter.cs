@@ -165,6 +165,49 @@ internal sealed partial class CppEmitter
                 or "System.Collections.Generic.IReadOnlyList`1"
                 or "System.Collections.Generic.IReadOnlyCollection`1";
 
+        /// <summary>The SUBSTITUTION-INVARIANT relations a <c>gendef_</c> shell carries: its
+        /// nearest ancestor naming no type parameter as the base pointer, and one
+        /// nullptr-slot row per such interface in the definition's transitive closure — the
+        /// same relation-only shape <see cref="RenderItfTables"/> gives an interface or an
+        /// abstract class.
+        ///
+        /// <para>Substitution cannot touch a type that names no type parameter, so this set —
+        /// non-generic ancestry plus closed fixed-argument entries like <c>B&lt;int&gt;</c> —
+        /// is the same for the definition and for every close of it. That identity is the
+        /// whole invariant: it makes <c>typeof(IMarker).IsAssignableFrom(typeof(Box&lt;&gt;))</c>
+        /// answer True with nothing minted HERE — the reads this side makes are lookup-only,
+        /// and a closed entry a typeof-only program never instantiates was minted upstream by
+        /// the wiring pass — while every relation spelled in the definition's own parameters
+        /// stays False by construction, because no row here can name one.</para>
+        ///
+        /// <para>Rows are filtered by the definedness test rather than force-emitted, exactly
+        /// as RenderItfTables filters its own, so the answer degrades to a SUBSET of .NET's
+        /// the same monotone way. A definition no close exists of has its ancestry minted and
+        /// forced into the emit set upstream (Compilation.WireTypeofOpenGenericDefAncestry).
+        /// The base of a value type or interface stays null, matching the closed-type
+        /// rule.</para>
+        /// </summary>
+        private (string Base, string Itfs, int ItfCount) GenericDefRelations(
+            string defSym, ClassInfo? nonGenericBase, List<ClassInfo> itfs, bool isValueType, bool isInterface)
+        {
+            string baseExpr =
+                isValueType || isInterface ? "nullptr"
+                : nonGenericBase is { } b && _e.TypeInfoSymbolDefined(b.CppTypeInfoName)
+                    ? _e.TypeInfoRef(b, "generic-definition nearest invariant base")
+                    : "&dn2cpp_object_type";
+            var rows = itfs
+                .Where(i => _e.TypeInfoSymbolDefined(i.CppTypeInfoName))
+                .Select(i => $"{{ {_e.TypeInfoRef(i, "generic-definition relation row")}, nullptr }}")
+                .ToList();
+            if (rows.Count == 0)
+                return (baseExpr, "nullptr", 0);
+            // File-local, defined immediately before the handle whose initializer is its
+            // only reader; the gendef sections all render into the primary metadata TU.
+            string tab = "gendefitfs_" + defSym;
+            _sb.AppendLine($"static const Dn2CppInterfaceEntry {tab}[] = {{ {string.Join(", ", rows)} }};");
+            return (baseExpr, tab, rows.Count);
+        }
+
         /// <summary>Wraps a <c>gendef_</c> row's positional initializer so the handle carries
         /// <paramref name="names"/>, its definition's comma-joined type-parameter names —
         /// the bracket group <c>Type.ToString()</c> appends. The member is the
@@ -352,7 +395,8 @@ internal sealed partial class CppEmitter
             {
                 if (_e.GenericDefInfo(c) is not { } gi || _e._genericDefSyms.ContainsKey(gi.DefName))
                     continue;
-                string defSym = "gendef_" + CppNaming.Sanitize(gi.DefName);
+                string defBase = CppNaming.Sanitize(gi.DefName);
+                string defSym = "gendef_" + defBase;
                 _e._genericDefSyms[gi.DefName] = defSym;
                 var defFlagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
                 AddGenericDefKindFlags(defFlagBits, c.IsValueType, c.IsInterface, c.IsAbstract, c.IsSealed);
@@ -361,7 +405,10 @@ internal sealed partial class CppEmitter
                 string defFlags = "(" + string.Join(" | ", defFlagBits) + ")";
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {defSym};");
                 _sb.AppendLine($"extern const Dn2CppType ty_{defSym};");
-                string defInit = $"{{ \"{gi.DefName}\", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{defSym} }}";
+                var defAnc = _c.OpenGenericDefAncestry(c.Module, c.Handle);
+                var (dfBase, dfItfs, dfItfCount) =
+                    GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
+                string defInit = $"{{ \"{gi.DefName}\", {dfBase}, 0, nullptr, {dfItfs}, {dfItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{defSym} }}";
                 _sb.AppendLine($"const Dn2CppTypeInfo {defSym} = "
                     + WithGenericParams(defInit, Compilation.GenericParamNames(c.Module, c.Handle)) + ";");
                 _sb.AppendLine($"const Dn2CppType ty_{defSym} = {{ {{ &dn2cpp_type_type }}, &{defSym} }};");
@@ -553,7 +600,8 @@ internal sealed partial class CppEmitter
             {
                 if (_e.GenericDefInfo(cls) is not { } gi || _e._genericDefSyms.ContainsKey(gi.DefName))
                     continue;
-                string sym = "gendef_" + CppNaming.Sanitize(gi.DefName);
+                string symBase = CppNaming.Sanitize(gi.DefName);
+                string sym = "gendef_" + symBase;
                 _e._genericDefSyms[gi.DefName] = sym;
                 // Generic variance rides the definition handle, which is the only place it can:
                 // it is a property of the type PARAMETERS, so every closed instantiation reads
@@ -588,12 +636,17 @@ internal sealed partial class CppEmitter
                 // The ty_ companion keeps its extern declaration next to the definition
                 // (only the def's own initializer needs the companion's address).
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
+                // The definition's TypeDef is this closed instantiation's own handle, so the
+                // argument-free ancestry reads off the same metadata a synthetic def's does.
+                var anc = _c.OpenGenericDefAncestry(cls.Module, cls.Handle);
+                var (relBase, relItfs, relItfCount) =
+                    GenericDefRelations(symBase, anc.Base, anc.Interfaces, cls.IsValueType, cls.IsInterface);
                 // A variant def spells the members between typeObject and varianceMask that the
                 // trailing 0-fill convention would otherwise leave implicit (formatspec, ilAttrs,
                 // metadataToken, defaultMemberName); an invariant one stops at typeObject exactly
                 // as before, so its text is unchanged.
                 string varTail = varMask != 0 ? $", nullptr, 0u, 0, nullptr, {varMask}" : "";
-                string init = $"{{ \"{gi.DefName}\", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym}{varTail} }}";
+                string init = $"{{ \"{gi.DefName}\", {relBase}, 0, nullptr, {relItfs}, {relItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym}{varTail} }}";
                 _sb.AppendLine($"const Dn2CppTypeInfo {sym} = "
                     + WithGenericParams(init, Compilation.GenericParamNames(cls.Module, cls.Handle)) + ";");
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
@@ -603,29 +656,36 @@ internal sealed partial class CppEmitter
             // instantiation minted a gendef for above (that loop keys on TopoOrder's emitted
             // classes; an open definition names no ClassInfo). A body that lowered such a
             // typeof named &gendef_<sym> (recorded in TypeofOpenGenericDefs), so the symbol
-            // MUST be defined or the C++ link fails on it (cut ⟹ route). Minimal — name +
-            // self-referencing genericDef + the KIND bits resolved at the token site:
-            // with no closed instantiation there is nothing to covariance-match or
-            // array-interface-test against (both bits are only ever read off a CLOSED
-            // target's genericDef), and MakeGenericType finding no registry candidate
-            // throws, matching IL2CPP. GenericDefKind.Unknown — a definition no loaded
-            // module declares — keeps the minimal flags, a best-effort degrade.
+            // MUST be defined or the C++ link fails on it (cut ⟹ route). Name +
+            // self-referencing genericDef + the KIND bits resolved at the token site + the
+            // argument-free relations (GenericDefRelations, whose ancestry this lane forced
+            // into the emit set): with no closed instantiation there is nothing to
+            // covariance-match or array-interface-test against (both bits are only ever read
+            // off a CLOSED target's genericDef), and MakeGenericType finding no registry
+            // candidate throws, matching IL2CPP. GenericDefKind.Unknown — a definition no
+            // loaded module declares — keeps the minimal flags, a best-effort degrade.
             foreach (var (defName, def) in _c.TypeofOpenGenericDefs.OrderBy(kv => kv.Key, System.StringComparer.Ordinal))
             {
                 if (_e._genericDefSyms.ContainsKey(defName))
                     continue;
-                string sym = "gendef_" + CppNaming.Sanitize(defName);
+                string symBase = CppNaming.Sanitize(defName);
+                string sym = "gendef_" + symBase;
                 _e._genericDefSyms[defName] = sym;
                 var flagBits = new List<string> { "DN2CPP_TF_GENERICDEF" };
+                bool synthValueType = (def.Kind & GenericDefKind.ValueType) != 0;
+                bool synthInterface = (def.Kind & GenericDefKind.Interface) != 0;
                 AddGenericDefKindFlags(flagBits,
-                    (def.Kind & GenericDefKind.ValueType) != 0,
-                    (def.Kind & GenericDefKind.Interface) != 0,
+                    synthValueType,
+                    synthInterface,
                     (def.Kind & GenericDefKind.Abstract) != 0,
                     (def.Kind & GenericDefKind.Sealed) != 0);
                 string defFlags = flagBits.Count == 1 ? flagBits[0] : "(" + string.Join(" | ", flagBits) + ")";
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo {sym};");
                 _sb.AppendLine($"extern const Dn2CppType ty_{sym};");
-                string synthInit = $"{{ \"{defName}\", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym} }}";
+                var synthAnc = _c.OpenGenericDefAncestryByName(defName);
+                var (synthBase, synthItfs, synthItfCount) = GenericDefRelations(
+                    symBase, synthAnc.Base, synthAnc.Interfaces, synthValueType, synthInterface);
+                string synthInit = $"{{ \"{defName}\", {synthBase}, 0, nullptr, {synthItfs}, {synthItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym} }}";
                 _sb.AppendLine($"const Dn2CppTypeInfo {sym} = "
                     + WithGenericParams(synthInit, def.ParamNames) + ";");
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");

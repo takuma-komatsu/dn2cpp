@@ -516,7 +516,7 @@ internal sealed partial class Compilation
                 if (CoreIntrinsics.MrDirectory.Matches(mrParent, mrName, Sig))
                     return null;
                 // Byte/SByte/Int16/UInt16 ToString/Parse/TryParse/TryFormat are lowered inline
-                // to dn2cpp_int_to_string / dn2cpp_format_int|uint / dn2cpp_try_format_int|uint
+                // to dn2cpp_int_to_string / dn2cpp_format_int|uint / dn2cpp_try_format_int|uint_c
                 // and the width-parameterized NumberStyles engine (mirroring Int32/Int64, which
                 // are intrinsic types). The sub-word primitives are NOT intrinsic types, so
                 // without this their real System.Number.Format*/ParseBinaryInteger bodies are a
@@ -1683,6 +1683,116 @@ internal sealed partial class Compilation
                 Reach(inv);
             ReachAllocatedType(action);
         }
+    }
+
+    /// <summary>The body a <c>constrained.&lt;cls&gt; callvirt callee</c> on a value type
+    /// devirtualizes to, or null when the type provides none.
+    ///
+    /// <para><b>THE resolution</b> — the emit route (MethodCompiler.EmitConstrainedCall)
+    /// and the reachability cut (ReachConstrainedImpl) both ask this and nothing else, so
+    /// <c>cut ⟹ route</c> holds by construction. A second copy that drifted would either
+    /// dangle a mangled name at C++ link time or, worse, call a different body than the one
+    /// reachability transpiled.</para>
+    ///
+    /// <para>The typed <c>IEquatable&lt;T&gt;::Equals(!0)</c> /
+    /// <c>IComparable&lt;T&gt;::CompareTo(!0)</c> slots are answered first: the erased
+    /// <c>!0</c> makes the signature walk match the struct's <c>Equals(object)</c> override
+    /// instead of the typed overload the interface dispatch must reach (SRM's
+    /// Symbolic.BitVector has both). The non-generic <c>System.IComparable</c> (no type
+    /// args, boxed argument) keeps the signature path.</para></summary>
+    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee)
+    {
+        EnsureCompleted(cls);
+        if (callee.DeclaringClass is { IsInterface: true } itf
+            && itf.Context.TypeArgs.Length == 1
+            && callee.Signature.ParameterTypes.Length == 1)
+        {
+            switch (GenericDefFullName(itf))
+            {
+                case "System.IEquatable" when callee.Name == "Equals"
+                    && EffectiveTypedEquals(cls) is { } teq:
+                    return teq;
+                case "System.IComparable" when callee.Name == "CompareTo"
+                    && EffectiveTypedCompareTo(cls) is { } tct:
+                    return tct;
+            }
+        }
+        if (DeclaredImplOf(cls, callee) is { } direct)
+            return direct;
+        if (!callee.DeclaringClass.IsInterface)
+            return null;
+        // The callee names a DIFFERENT instantiation of an interface the type implements —
+        // legal through variance (`struct S : I<object>` invoked as `I<string>::M` for a
+        // contravariant `I<in T>`), and the exact-signature probe above cannot see it. Re-ask
+        // against the slot the type really declares. Matching name + parameter COUNT instead
+        // would pick whichever same-named overload metadata happened to order first.
+        MethodInfo? found = null;
+        foreach (var slot in VariantInterfaceSlots(cls, callee))
+        {
+            if (DeclaredImplOf(cls, slot) is not { } impl || ReferenceEquals(impl, found))
+                continue;
+            if (found is not null)
+                throw new NotSupportedException(
+                    $"constrained callvirt: {cls.FullName} implements several instantiations of "
+                    + $"{callee.DeclaringClass.FullName} whose {callee.Name} slots bind to different "
+                    + "bodies — the variance-compatible one cannot be told apart here");
+            found = impl;
+        }
+        return found;
+    }
+
+    /// <summary>The implementation <paramref name="cls"/> or one of its bases declares for
+    /// the EXACT slot <paramref name="target"/>: the .override row first (an explicit
+    /// implementation's dotted metadata name is invisible to the signature scan), then a
+    /// full name+signature match — <see cref="MethodInfo.SigKey"/> covers the parameter
+    /// types and the return type, and one MethodDef row is one generic arity. Per level, so
+    /// a derived level's match outranks a base's.</summary>
+    private MethodInfo? DeclaredImplOf(ClassInfo cls, MethodInfo target)
+    {
+        for (var c = cls; c is not null; c = c.BaseClass)
+        {
+            EnsureCompleted(c);
+            if (c.ExplicitInterfaceImpls.TryGetValue(target, out var em))
+                return em;
+            if (c.Methods.FirstOrDefault(x => !x.IsStatic && x.Rva != 0
+                    && x.Name == target.Name && x.SigKey == target.SigKey) is { } m)
+                return m;
+        }
+        return null;
+    }
+
+    /// <summary>The slots of the interfaces <paramref name="cls"/> actually implements that
+    /// correspond to <paramref name="callee"/> on a DIFFERENT instantiation of the same
+    /// interface definition. Correspondence is the shared MethodDef row, which is exact:
+    /// same name, same parameter count, same generic arity, same declaration order.
+    /// The DAG walk reads shape only (<c>Interfaces</c>); members are pulled for the few
+    /// nodes that are instantiations of the callee's own definition, never for the rest.
+    /// </summary>
+    private List<MethodInfo> VariantInterfaceSlots(ClassInfo cls, MethodInfo callee)
+    {
+        var slots = new List<MethodInfo>();
+        var def = callee.DeclaringClass;
+        var seen = new HashSet<ClassInfo>();
+        var pending = new Stack<ClassInfo>();
+        for (var b = cls; b is not null; b = b.BaseClass)
+            foreach (var i in b.Interfaces)
+                pending.Push(i);
+        while (pending.Count > 0)
+        {
+            var i = pending.Pop();
+            if (!seen.Add(i))
+                continue;
+            foreach (var up in i.Interfaces)
+                pending.Push(up);
+            if (ReferenceEquals(i, def) || i.Handle != def.Handle || i.Module != def.Module)
+                continue;
+            EnsureCompleted(i);
+            if (i.MethodByTemplate.TryGetValue(callee.Handle, out var slot))
+                slots.Add(slot);
+            else if (i.Methods.FirstOrDefault(m => m.Handle == callee.Handle) is { } scan)
+                slots.Add(scan);
+        }
+        return slots;
     }
 
     /// <summary>Full name of the type owning the (generic) method a MethodSpec
