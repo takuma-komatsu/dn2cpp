@@ -53,6 +53,7 @@ namespace MemoryPackLayoutSubset
         public decimal Delta;
         public decimal Tiny;
         public decimal Widest;
+        public decimal NegativeZero;
         public int Tag;
     }
 
@@ -160,12 +161,15 @@ namespace MemoryPackLayoutSubset
                 Delta = -123.456m,
                 Tiny = 0.0000000000000000000000000001m,
                 Widest = decimal.MaxValue,
+                NegativeZero = new decimal(0, 0, 0, true, 3),
                 Tag = 7,
             });
             Console.WriteLine("[fixed-decimal] len=" + one.Length + " hex=" + Convert.ToHexString(one));
             FixedDecimal back = MemoryPackSerializer.Deserialize<FixedDecimal>(one);
             Console.WriteLine("[fixed-decimal] price=" + back.Price + " delta=" + back.Delta
-                + " tiny=" + back.Tiny + " widest=" + back.Widest + " tag=" + back.Tag);
+                + " tiny=" + back.Tiny + " widest=" + back.Widest
+                + " negative-zero=" + decimal.GetBits(back.NegativeZero)[3].ToString("X8")
+                + " tag=" + back.Tag);
         }
     }
 }

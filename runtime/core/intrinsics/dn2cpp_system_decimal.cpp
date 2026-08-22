@@ -219,14 +219,14 @@ static inline Dn2CppDecimal dec_pack(dec_u128 mant, int sign, int scale)
     Dn2CppDecimal d;
     d._lo64 = (uint64_t)mant;
     d._hi32 = (uint32_t)(mant >> 64);
-    d._flags = dn2cpp_dec_flags(scale, (mant == 0) ? 0 : sign); // decimal has no negative zero
+    d._flags = dn2cpp_dec_flags(scale, sign);
     return d;
 }
 
-// Replace the sign, keeping scale and mantissa; a zero mantissa stays non-negative.
+// Replace the sign without changing the observable scale or zero representation.
 static inline void dec_set_sign(Dn2CppDecimal& d, int neg)
 {
-    d._flags = dn2cpp_dec_flags(d.scale(), (neg && dec_mant(d) != 0) ? 1 : 0);
+    d._flags = dn2cpp_dec_flags(d.scale(), neg);
 }
 
 // Reduce a magnitude (possibly > 96 bits) to fit in 96 bits with scale <= 28,
@@ -333,8 +333,18 @@ static Dn2CppDecimal dec_addsub(Dn2CppDecimal a, Dn2CppDecimal b, bool subtract)
     else
     {
         int c = decbig_cmp(ma, mb);
-        if (c >= 0) { s = decbig_sub(ma, mb); sign = a.sign(); }
+        if (c > 0) { s = decbig_sub(ma, mb); sign = a.sign(); }
         else { s = decbig_sub(mb, ma); sign = bsign; }
+        if (c == 0)
+        {
+            // .NET's DecAddSub keeps a sign on exact cancellation: the smaller-scale
+            // operand's (the left one on equal scales) — except a zero being rescaled,
+            // whose fast path hands back the other operand's effective sign instead.
+            if (a.scale() <= b.scale())
+                sign = (dec_mant(a) == 0 && a.scale() < b.scale()) ? bsign : a.sign();
+            else
+                sign = dec_mant(b) == 0 ? a.sign() : bsign;
+        }
     }
     return dec_reduce_round(s, sign, scale);
 }
@@ -356,7 +366,6 @@ Dn2CppDecimal dn2cpp_decimal_div(Dn2CppDecimal a, Dn2CppDecimal b)
     if (den == 0) dn2cpp_throw_divide_by_zero();
     dec_u128 num = dec_mant(a);
     int sign = a.sign() ^ b.sign();
-    if (num == 0) return dec_pack(0, 0, 0);
 
     dec_u128 Q = num / den;
     dec_u128 r = num % den;

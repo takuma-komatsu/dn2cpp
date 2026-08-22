@@ -21,6 +21,10 @@
 #     STATICALLY TYPED GetHashCode — a different lowering, the same contract, and it
 #     must agree with the boxed one value for value; it sits there rather than in
 #     DecimalSubset only because appending is what keeps the earlier output a prefix.
+#   * NegativeZeroSubset — constructor, parse, Negate, mul/div/rem and add/sub
+#     cancellation all preserve zero's sign flag; the arithmetic runs on PARSED
+#     operands because Roslyn folds constant decimal expressions (to +0 for
+#     -1m + 1m, unlike the runtime's DecCalc), which would bypass the operators.
 #
 # Diffed exact vs real .NET. Both sections used to assert a hard-coded string
 # instead, because both print grouped/percent-formatted decimals; the project's

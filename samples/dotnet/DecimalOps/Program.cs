@@ -27,6 +27,7 @@ namespace DecimalOps
             // asserted to appear in.
             DecimalSubset.Program.Run();
             BoxedDecimalSubset.Program.Run();
+            NegativeZeroSubset.Program.Run();
         }
     }
 }

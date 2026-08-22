@@ -14,8 +14,8 @@
 # so the runtime decimal's field order is observable there and nowhere a caller reads the
 # value as a number. MemoryPackLayoutSubset's [fixed-decimal] section pins it as hex
 # against real .NET, one value per axis of the layout (a trailing-zero scale, a negative,
-# scale 28, a full 96-bit mantissa). decimal-as-a-number is the decimal-ops and
-# boxed-decimal buckets.
+# scale 28, a full 96-bit mantissa, and a signed zero). decimal-as-a-number is the
+# decimal-ops and boxed-decimal buckets.
 source "$(dirname "$0")/_common.sh"
 
 project=MemoryPackSample
