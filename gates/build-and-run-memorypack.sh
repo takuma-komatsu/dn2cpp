@@ -104,14 +104,27 @@ echo "== 6/7 Compiling C++ =="
 compile_console "$out" "$project"
 
 echo "== 7/7 Running (exact diff vs real .NET) =="
-native_stderr="$out/native-stderr.txt"
-oracle_stderr="$out/oracle-stderr.txt"
+gate_run_logs_init memorypack MemoryPack
+log_dir="$_GATE_RUN_LOG_DIR"
+native_stderr="$log_dir/native.log"
+oracle_stderr="$log_dir/oracle.log"
+expected=
+expected_code=
+native=
+native_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "MemoryPack native" "$native_code" "$native" "$native_stderr"
+    gate_run_diag "MemoryPack oracle" "$expected_code" "$expected" "$oracle_stderr"
+}
+
 set +e
-expected=$(dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
-native=$("./$out/$project" 2>"$native_stderr"); native_code=$?
+expected=$(run_bounded dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
+native=$(run_bounded "./$out/$project" 2>"$native_stderr"); native_code=$?
 set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+assertions_failed=0
+assert_output "$native" "$expected" || assertions_failed=1
+assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
 
 # stdout matching hides everything the runtime writes to stderr — a swallowed
 # startup-cctor failure reports there and nowhere else. This corpus reports none.
@@ -119,11 +132,15 @@ assert_exit_code "$native_code" "$expected_code"
 if [ -s "$oracle_stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
     cat "$oracle_stderr" >&2
-    exit 1
+    assertions_failed=1
 fi
 if [ -s "$native_stderr" ]; then
     echo "FAIL: the native binary wrote to stderr; it must stay silent:" >&2
     cat "$native_stderr" >&2
+    assertions_failed=1
+fi
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
     exit 1
 fi
 echo "stderr: empty on both sides"

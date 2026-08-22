@@ -167,12 +167,29 @@ echo "== 6/7 Compiling C++ =="
 compile_console "$out" "$project"
 
 echo "== 7/7 Running (exact diff vs real .NET) =="
+gate_run_logs_init unitask UniTask
+log_dir="$_GATE_RUN_LOG_DIR"
+expected=
+expected_code=
+native=
+native_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "UniTask native" "$native_code" "$native" "$log_dir/native.log"
+    gate_run_diag "UniTask oracle" "$expected_code" "$expected" "$log_dir/oracle.log"
+}
+
 set +e
-expected=$(dotnet "$app");   expected_code=$?
-native=$("./$out/$project"); native_code=$?
+expected=$(run_bounded dotnet "$app" 2>"$log_dir/oracle.log"); expected_code=$?
+native=$(run_bounded "./$out/$project" 2>"$log_dir/native.log"); native_code=$?
 set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+assertions_failed=0
+assert_output "$native" "$expected" || assertions_failed=1
+assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
+    exit 1
+fi
 gate_cache_commit
 echo "OK — the real UniTask 2.5.11, transpiled from its own IL with zero flags,"
 echo "     ran byte-identically to real .NET."
