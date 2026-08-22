@@ -26,6 +26,8 @@ namespace DateTimeOps
             TryFormatDatesSubset.Program.__GateEntry();
             TimeSpanConstrained.Program.__GateEntry();
             DateTimeThrowSubset.Program.__GateEntry();
+            TzSerializedString.Program.__GateEntry();
+            ParseExactDotElision.Program.__GateEntry();
         }
     }
 }

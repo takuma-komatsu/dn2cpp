@@ -149,8 +149,8 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
-    /// <summary>A conversion operand of the Vector2/3/4 reinterpret family: a concrete
-    /// System.Numerics.Vector2/3/4 struct (8/12/16 bytes, <paramref name="concrete"/> true)
+    /// <summary>A conversion operand of the System.Numerics reinterpret family: a concrete
+    /// Vector2/3/4/Quaternion/Plane struct (8/12/16 bytes, <paramref name="concrete"/> true)
     /// or Vector128&lt;float&gt; (16 bytes, false — the software-vector pivot). Returns false
     /// for anything else. The byte width fixes the reinterpret copy size.</summary>
     private static bool VecConvOperand(TypeDesc t, out int bytes, out bool concrete)
@@ -161,7 +161,8 @@ internal sealed partial class MethodCompiler
             {
                 "System.Numerics.Vector2" => 8,
                 "System.Numerics.Vector3" => 12,
-                "System.Numerics.Vector4" => 16,
+                "System.Numerics.Vector4" or "System.Numerics.Quaternion"
+                    or "System.Numerics.Plane" => 16,
                 _ => 0,
             }
             : 0;
@@ -172,9 +173,9 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
-    /// <summary>Lowers the System.Numerics.Vector2/3/4 reinterpret family: the
-    /// AsVector2/AsVector3/AsVector4(+Unsafe) and AsVector128(+Unsafe) conversions whose
-    /// operand or result is a concrete Vector2/3/4 struct. In real .NET each pivots through
+    /// <summary>Lowers the System.Numerics reinterpret family: the
+    /// AsVector2/3/4(+Unsafe), AsQuaternion/AsPlane and AsVector128(+Unsafe) conversions
+    /// whose operand or result is a concrete Vector2/3/4/Quaternion/Plane struct. In real .NET each pivots through
     /// Vector128&lt;float&gt; and is a pure byte reinterpret: copy the low min(src,dst) bytes
     /// into a zero-initialized destination. Vector2/3/4 stay real transpiled structs, and
     /// their packed <c>{float X,Y,Z,W}</c> layout is byte-identical to the software-vector
@@ -186,7 +187,8 @@ internal sealed partial class MethodCompiler
     private bool TryEmitVector234Conversion(string name, MethodSignature<TypeDesc> sig)
     {
         if (name is not ("AsVector2" or "AsVector3" or "AsVector4" or "AsVector3Unsafe"
-            or "AsVector4Unsafe" or "AsVector128" or "AsVector128Unsafe"))
+            or "AsVector4Unsafe" or "AsVector128" or "AsVector128Unsafe"
+            or "AsQuaternion" or "AsPlane"))
             return false;
         // The extension receiver is the single parameter; the return is the destination.
         if (sig.ParameterTypes is not [{ } srcType]) return false;

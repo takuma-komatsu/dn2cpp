@@ -157,6 +157,8 @@ internal static class Program
         GenericMathEnumName.EnumUnderlyingName.__GateEntry();
         GenericMathReadBE.ReadBigEndianOps.__GateEntry();
         GenericMathOutWidth.OutSlotWidth.__GateEntry();
+        GenericMathStaticAbstractGvm.StaticAbstractGenericMethod.__GateEntry();
+        GenericMathInterfaceStaticImpl.InterfaceStaticImpl.__GateEntry();
 
         return 0;
     }

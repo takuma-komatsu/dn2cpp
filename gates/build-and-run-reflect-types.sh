@@ -281,6 +281,11 @@
 # depended on the PROGRAM too (one the emit set carries gets its row from the emitted-class
 # loop), which is why the seed is derived. Every line matches real .NET.
 #
+# ReflectIntrinsicTemplateSubset freezes the intrinsic-open-definition negative:
+# typeof(BlockingCollection<>) + MakeGenericType roots no runtime template
+# (intrinsic levels are shape-ineligible), so the transpile completes and the
+# mint throws the catchable NotSupportedException where real .NET constructs.
+#
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
@@ -288,7 +293,7 @@ source "$(dirname "$0")/_common.sh"
 EXPFILE="$(dirname "$0")/expected/reflect-types.txt"
 BCL=(System.Linq.Expressions System.Linq System.Collections \
     System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration \
-    System.ComponentModel.Primitives)
+    System.ComponentModel.Primitives System.Collections.Concurrent)
 
 corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}"
 

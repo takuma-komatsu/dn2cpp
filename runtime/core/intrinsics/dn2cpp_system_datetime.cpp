@@ -947,6 +947,15 @@ static bool dn2cpp_ts_parse_custom(const char16_t* p, int pn, const char16_t* in
                 frac = fv;
                 break;
             }
+            case u'.':
+                // A '.' whose fraction is absent from the input is elided together
+                // with its 'F' run -- .NET 10's exact shape: one format char after
+                // the '.' skips unconditionally, then an 'F' must stand right there,
+                // so ".FF" / "..FFF" elide while ".F" / "...FFF" fail. Dots match 1:1.
+                if (ii < inLen && in[ii] == u'.') { ii++; fi++; continue; }
+                if (fi + 2 < pn && p[fi + 2] == u'F')
+                { fi += 2; while (fi < pn && p[fi] == u'F') fi++; continue; }
+                return false;
             default:
                 if (ii >= inLen || in[ii] != ch) return false; ii++; fi += cnt; continue;
         }
@@ -1063,6 +1072,15 @@ static bool dn2cpp_dt_parse_custom(const char16_t* p, int pn, const char16_t* in
                     else while (ii < inLen && (in[ii] == u'+' || in[ii] == u'-' || in[ii] == u':' || (in[ii] >= u'0' && in[ii] <= u'9'))) ii++;
                 }
                 break;
+            case u'.':
+                // A '.' whose fraction is absent from the input is elided together
+                // with its 'F' run -- .NET 10's exact shape: one format char after
+                // the '.' skips unconditionally, then an 'F' must stand right there,
+                // so ".FF" / "..FFF" elide while ".F" / "...FFF" fail. Dots match 1:1.
+                if (ii < inLen && in[ii] == u'.') { ii++; fi++; continue; }
+                if (fi + 2 < pn && p[fi + 2] == u'F')
+                { fi += 2; while (fi < pn && p[fi] == u'F') fi++; continue; }
+                return false;
             default:
                 if (ii >= inLen || in[ii] != ch) return false; ii++; fi += cnt; continue;
         }

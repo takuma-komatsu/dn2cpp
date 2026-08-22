@@ -487,6 +487,9 @@ Full ECMA-335 IL coverage. What that means concretely:
   (`calli`/`delegate*<...>`).
 - **Generics** — canonically shared bodies by default, in the IL2CPP
   manner; see *Optimization* below.
+- **Static abstract interface members** — dispatched through `constrained.`,
+  including a generic static abstract method on a generic interface and an
+  implementation the interface carries itself.
 - **`MethodImplOptions` honored** — `Synchronized` (RAII monitor guard,
   static sharing the monitor with `lock(typeof(X))`),
   `AggressiveInlining`, `NoInlining`.
@@ -526,6 +529,33 @@ happens by default. The vendored native path is still there
 (`runtime/core/intrinsics/dn2cpp_zlib_native.cpp` over `third_party/zlib/`,
 the vendored brotli's own exports) and `--no-default-ref DnZlib` /
 `--no-default-ref DnBrotli` is the way back to it.
+
+### Real third-party libraries
+
+Not shims, not ports. Each of these gates restores the library's own package
+from nuget.org, pins the restored assembly by SHA-256, transpiles the IL the
+library actually ships against the tree-shaken real CoreLib, and diffs the
+native binary's stdout and exit code against `dotnet` running the same
+assembly — with the transpile itself required to report zero gaps and zero
+cuts, and both sides' stderr required to stay empty.
+
+| Library | What its gate drives | Gate |
+|---|---|---|
+| MemoryPack | Source-generated formatters — object/struct/record, member ordering, `[MemoryPackConstructor]`, the serialization callbacks, unions over an interface and over an abstract base, version-tolerant and explicit layouts, the unmanaged whole-struct memcpy path, the `IBufferWriter` and `ReadOnlySequence` entry points | `gates/build-and-run-memorypack.sh` |
+| MessagePipe | In-memory, keyed, buffered and async pub/sub, request/response, request-all, global filter pipelines — resolved out of the real `Microsoft.Extensions.DependencyInjection` container | `gates/build-and-run-messagepipe.sh` |
+| ZLinq | The zero-allocation LINQ pipeline: struct value-enumerator chains, aggregations, ordering, set operations, grouping and joining, materialization | `gates/build-and-run-zlinq.sh` |
+| ZString | `Utf16ValueStringBuilder` and `Utf8ValueStringBuilder`, `ZString.Format`/`Concat`/`Join`, custom numeric formats | `gates/build-and-run-zstring.sh` |
+| R3 | Subject subscriptions, `Where`/`Select`/`Scan`, resumable and terminal errors, `ReactiveProperty`, `Timer`, Channels-backed async enumeration | `gates/build-and-run-r3.sh` |
+| UniTask | The tier-2 custom-async-task lane on the .NET build: adoption is declined automatically and the library's own combinators, scheduler and cancellation model transpile as real IL | `gates/build-and-run-unitask.sh` |
+| GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
+
+A source generator's output is part of the subject, not a detail of the build:
+for MemoryPack the formatters live in the driver assembly, so the transpiled IL
+is code no human wrote. Where a library's own design reaches for reflection
+that no AOT target can serve — `MakeGenericType` plus `Activator` to mint a
+formatter for a shape nothing named — the driver takes the library's documented
+AOT route and registers the closed type instead; the gate says so at the call
+site rather than hiding it.
 
 ### Runtime services
 

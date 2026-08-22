@@ -28,6 +28,13 @@
 # and for the intrinsic-decimal one. It is also the corpus's only direct caller of the
 # `protected` static-abstract TryConvert* members, reached through a helper interface
 # deriving from INumberBase<byte>, which is the whole reason that interface exists.
+# StaticAbstractGenericMethod covers a static abstract GENERIC method on a generic
+# interface (IPackable<TSelf>.Pack<TSink>) dispatched through a constrained call:
+# the explicit implementation's .override row names an open generic MemberRef, and
+# the impl is template-matched and instantiated at the caller's method args.
+# InterfaceStaticImpl covers an INTERFACE as the constrained type argument: the
+# interface's own explicit static impls resolve the static abstract members, and
+# an unimplemented static-virtual default still binds the default body.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime

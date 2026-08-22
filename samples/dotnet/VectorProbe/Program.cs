@@ -199,6 +199,28 @@ internal static class Program
         AsVectorReinterprets();
         AsVector234Conversions();
         BoxedVectorIdentity();
+        QuaternionPlaneReinterprets();
+    }
+
+    // Quaternion/Plane.Equals pivot through the internal AsVector128 reinterpret and
+    // the lane-wise ops return through AsQuaternion/AsPlane — both directions of the
+    // 16-byte System.Numerics struct <-> Vector128<float> reinterpret. These bodies
+    // enter the emit set from the LOAD SET (a serializer's well-known formatter table
+    // names the family), so they must compile even in a program that never uses them.
+    private static void QuaternionPlaneReinterprets()
+    {
+        var q1 = new Quaternion(1f, 2f, 3f, 4f);
+        var q2 = new Quaternion(1f, 2f, 3f, 4f);
+        var q3 = new Quaternion(1f, 2f, 3f, 5f);
+        Console.WriteLine("q== " + (q1 == q2) + " " + q1.Equals(q3) + " " + (q1 != q3));
+        Console.WriteLine("qneg " + Quaternion.Negate(q1));
+        Console.WriteLine("qconj " + Quaternion.Conjugate(q1));
+        Console.WriteLine("qadd " + Quaternion.Add(q1, q3));
+        var p1 = new Plane(2f, 4f, 8f, 16f);
+        var p2 = new Plane(2f, 4f, 8f, 16f);
+        var p3 = new Plane(2f, 4f, 8f, 17f);
+        Console.WriteLine("p== " + (p1 == p2) + " " + p1.Equals(p3) + " " + (p1 != p3));
+        Console.WriteLine("pdot " + Plane.Dot(p1, new Vector4(1f, 1f, 1f, 1f)));
     }
 
     // A boxed vector's type identity, which must be exact PER INSTANTIATION even
