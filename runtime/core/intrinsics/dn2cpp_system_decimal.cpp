@@ -127,7 +127,7 @@ struct dec_u128
 #endif
 static const dec_u128 DEC_MANT_MAX = (((dec_u128)0xFFFFFFFFu) << 64) | 0xFFFFFFFFFFFFFFFFull; // 2^96-1
 
-static inline dec_u128 dec_mant(const Dn2CppDecimal& d) { return (((dec_u128)d.hi) << 64) | d.lo; }
+static inline dec_u128 dec_mant(const Dn2CppDecimal& d) { return (((dec_u128)d._hi32) << 64) | d._lo64; }
 
 // Little-endian base-2^32 magnitude, wide enough for 10^28 * 2^96 (~189 bits)
 // plus a carry — 8 limbs (256 bits) is ample.
@@ -211,14 +211,22 @@ static dec_u128 decbig_to_u128(const DecBig& b)
     return v;
 }
 
+// The only writers of _flags, here and in dec_set_sign: scale into bits 16..23, sign
+// into bit 31, every other bit zero. GetBits hands the word back verbatim and the memcpy
+// image is diffed against real .NET, so a stray bit would be a wire divergence.
 static inline Dn2CppDecimal dec_pack(dec_u128 mant, int sign, int scale)
 {
     Dn2CppDecimal d;
-    d.lo = (uint64_t)mant;
-    d.hi = (uint32_t)(mant >> 64);
-    d.scale = (uint8_t)scale;
-    d.sign = (mant == 0) ? 0 : (uint8_t)(sign & 1); // decimal has no negative zero
+    d._lo64 = (uint64_t)mant;
+    d._hi32 = (uint32_t)(mant >> 64);
+    d._flags = dn2cpp_dec_flags(scale, sign);
     return d;
+}
+
+// Replace the sign without changing the observable scale or zero representation.
+static inline void dec_set_sign(Dn2CppDecimal& d, int neg)
+{
+    d._flags = dn2cpp_dec_flags(d.scale(), neg);
 }
 
 // Reduce a magnitude (possibly > 96 bits) to fit in 96 bits with scale <= 28,
@@ -250,10 +258,10 @@ Dn2CppDecimal dn2cpp_decimal_from_parts(int32_t lo, int32_t mid, int32_t hi, int
 // The four .NET GetBits words in the { lo32, mid32, hi32, flags } layout.
 static inline void dn2cpp_decimal_bits(Dn2CppDecimal a, int32_t out[4])
 {
-    out[0] = (int32_t)(uint32_t)(a.lo & 0xFFFFFFFFu);
-    out[1] = (int32_t)(uint32_t)(a.lo >> 32);
-    out[2] = (int32_t)a.hi;
-    out[3] = ((int32_t)a.scale << 16) | (a.sign != 0 ? (int32_t)0x80000000 : 0);
+    out[0] = (int32_t)(uint32_t)(a._lo64 & 0xFFFFFFFFu);
+    out[1] = (int32_t)(uint32_t)(a._lo64 >> 32);
+    out[2] = (int32_t)a._hi32;
+    out[3] = a._flags;
 }
 // `ti` is the Int32[] handle the emit arm supplies: the result is the public
 // decimal.GetBits return value, so its GetType() must be the image's int[] and not
@@ -298,7 +306,7 @@ Dn2CppDecimal dn2cpp_decimal_from_double(double v)
     char buf[40];
     std::snprintf(buf, sizeof(buf), "%.15g", mag);
     Dn2CppDecimal r = dn2cpp_decimal_parse(dn2cpp_string_from_ascii(buf, (int32_t)std::strlen(buf)));
-    r.sign = (dec_mant(r) == 0) ? 0 : (uint8_t)sign;
+    dec_set_sign(r, sign);
     return r;
 }
 Dn2CppDecimal dn2cpp_decimal_from_float(float v)
@@ -310,23 +318,33 @@ Dn2CppDecimal dn2cpp_decimal_from_float(float v)
     char buf[40];
     std::snprintf(buf, sizeof(buf), "%.7g", mag); // float carries 7 significant digits
     Dn2CppDecimal r = dn2cpp_decimal_parse(dn2cpp_string_from_ascii(buf, (int32_t)std::strlen(buf)));
-    r.sign = (dec_mant(r) == 0) ? 0 : (uint8_t)sign;
+    dec_set_sign(r, sign);
     return r;
 }
 
 static Dn2CppDecimal dec_addsub(Dn2CppDecimal a, Dn2CppDecimal b, bool subtract)
 {
-    int bsign = subtract ? !b.sign : b.sign;
-    int scale = a.scale > b.scale ? a.scale : b.scale;
-    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale);
-    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale);
+    int bsign = subtract ? !b.sign() : b.sign();
+    int scale = a.scale() > b.scale() ? a.scale() : b.scale();
+    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale());
+    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale());
     DecBig s; int sign;
-    if ((int)a.sign == bsign) { s = decbig_add(ma, mb); sign = a.sign; }
+    if ((int)a.sign() == bsign) { s = decbig_add(ma, mb); sign = a.sign(); }
     else
     {
         int c = decbig_cmp(ma, mb);
-        if (c >= 0) { s = decbig_sub(ma, mb); sign = a.sign; }
+        if (c > 0) { s = decbig_sub(ma, mb); sign = a.sign(); }
         else { s = decbig_sub(mb, ma); sign = bsign; }
+        if (c == 0)
+        {
+            // .NET's DecAddSub keeps a sign on exact cancellation: the smaller-scale
+            // operand's (the left one on equal scales) — except a zero being rescaled,
+            // whose fast path hands back the other operand's effective sign instead.
+            if (a.scale() <= b.scale())
+                sign = (dec_mant(a) == 0 && a.scale() < b.scale()) ? bsign : a.sign();
+            else
+                sign = dec_mant(b) == 0 ? a.sign() : bsign;
+        }
     }
     return dec_reduce_round(s, sign, scale);
 }
@@ -336,7 +354,7 @@ Dn2CppDecimal dn2cpp_decimal_sub(Dn2CppDecimal a, Dn2CppDecimal b) { return dec_
 Dn2CppDecimal dn2cpp_decimal_mul(Dn2CppDecimal a, Dn2CppDecimal b)
 {
     DecBig p = decbig_mul_u128(dec_mant(a), dec_mant(b));
-    return dec_reduce_round(p, a.sign ^ b.sign, (int)a.scale + (int)b.scale);
+    return dec_reduce_round(p, a.sign() ^ b.sign(), a.scale() + b.scale());
 }
 
 // The two div-by-zero guards below raise the same catchable
@@ -347,15 +365,14 @@ Dn2CppDecimal dn2cpp_decimal_div(Dn2CppDecimal a, Dn2CppDecimal b)
     dec_u128 den = dec_mant(b);
     if (den == 0) dn2cpp_throw_divide_by_zero();
     dec_u128 num = dec_mant(a);
-    int sign = a.sign ^ b.sign;
-    if (num == 0) return dec_pack(0, 0, 0);
+    int sign = a.sign() ^ b.sign();
 
     dec_u128 Q = num / den;
     dec_u128 r = num % den;
     int f = 0; // fractional digits produced
     while (r != 0)
     {
-        if (f + (int)a.scale - (int)b.scale >= 28) break;
+        if (f + a.scale() - b.scale() >= 28) break;
         if (Q > DEC_MANT_MAX / 10) break;
         r *= 10;
         Q = Q * 10 + (r / den);
@@ -363,7 +380,7 @@ Dn2CppDecimal dn2cpp_decimal_div(Dn2CppDecimal a, Dn2CppDecimal b)
         f++;
     }
     if (r != 0 && 2 * r >= den) { Q += 1; } // round half-away-from-zero
-    int scale = f + (int)a.scale - (int)b.scale;
+    int scale = f + a.scale() - b.scale();
     if (scale < 0)
     {
         DecBig qb = decbig_from_u128(Q); decbig_mul_pow10(qb, -scale);
@@ -378,9 +395,9 @@ Dn2CppDecimal dn2cpp_decimal_rem(Dn2CppDecimal a, Dn2CppDecimal b)
     dec_u128 den = dec_mant(b);
     if (den == 0) dn2cpp_throw_divide_by_zero();
     // a % b == a - truncate(a/b)*b. Compute on aligned mantissas to keep it exact.
-    int scale = a.scale > b.scale ? a.scale : b.scale;
-    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale);
-    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale);
+    int scale = a.scale() > b.scale() ? a.scale() : b.scale();
+    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale());
+    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale());
     // Compute ma mod mb on magnitudes; result keeps a's sign. Decimal long-division:
     // find the largest power-of-10 multiple of mb that fits within ma, subtract it
     // repeatedly, then continue until ma < mb.
@@ -393,18 +410,18 @@ Dn2CppDecimal dn2cpp_decimal_rem(Dn2CppDecimal a, Dn2CppDecimal b)
         while (decbig_cmp(t, ma) <= 0) ma = decbig_sub(ma, t);
         (void)shift;
     }
-    return dec_reduce_round(ma, a.sign, scale);
+    return dec_reduce_round(ma, a.sign(), scale);
 }
 
-Dn2CppDecimal dn2cpp_decimal_neg(Dn2CppDecimal a) { a.sign = (dec_mant(a) == 0) ? 0 : !a.sign; return a; }
-Dn2CppDecimal dn2cpp_decimal_abs(Dn2CppDecimal a) { a.sign = 0; return a; }
+Dn2CppDecimal dn2cpp_decimal_neg(Dn2CppDecimal a) { dec_set_sign(a, !a.sign()); return a; }
+Dn2CppDecimal dn2cpp_decimal_abs(Dn2CppDecimal a) { dec_set_sign(a, 0); return a; }
 
 int32_t dn2cpp_decimal_is_canonical(Dn2CppDecimal a)
 {
     // .NET's Decimal.IsCanonical: scale 0 is always canonical; otherwise the
     // representation is canonical iff the mantissa carries no trailing decimal
     // zero (so 0.05m is canonical while 0.50m — and 0.0m, mantissa 0 — is not).
-    return (a.scale == 0 || dec_mant(a) % 10 != 0) ? 1 : 0;
+    return (a.scale() == 0 || dec_mant(a) % 10 != 0) ? 1 : 0;
 }
 
 int32_t dn2cpp_decimal_is_even_integer(Dn2CppDecimal a)
@@ -414,13 +431,13 @@ int32_t dn2cpp_decimal_is_even_integer(Dn2CppDecimal a)
     // the full 96-bit integer — is even. 2.00m is even; 2.5m is neither even
     // nor odd.
     Dn2CppDecimal t = dn2cpp_decimal_truncate(a);
-    return (dn2cpp_decimal_cmp(t, a) == 0 && (t.lo & 1) == 0) ? 1 : 0;
+    return (dn2cpp_decimal_cmp(t, a) == 0 && (t._lo64 & 1) == 0) ? 1 : 0;
 }
 
 int32_t dn2cpp_decimal_is_odd_integer(Dn2CppDecimal a)
 {
     Dn2CppDecimal t = dn2cpp_decimal_truncate(a);
-    return (dn2cpp_decimal_cmp(t, a) == 0 && (t.lo & 1) != 0) ? 1 : 0;
+    return (dn2cpp_decimal_cmp(t, a) == 0 && (t._lo64 & 1) != 0) ? 1 : 0;
 }
 
 Dn2CppDecimal dn2cpp_decimal_max_magnitude(Dn2CppDecimal x, Dn2CppDecimal y)
@@ -430,7 +447,7 @@ Dn2CppDecimal dn2cpp_decimal_max_magnitude(Dn2CppDecimal x, Dn2CppDecimal y)
     // representation — wins), else x. MaxMagnitude(1.0m, 1.00m) returns 1.0m.
     int32_t c = dn2cpp_decimal_cmp(dn2cpp_decimal_abs(x), dn2cpp_decimal_abs(y));
     if (c > 0) return x;
-    if (c == 0) return x.sign ? y : x;
+    if (c == 0) return x.sign() ? y : x;
     return y;
 }
 
@@ -440,20 +457,20 @@ Dn2CppDecimal dn2cpp_decimal_min_magnitude(Dn2CppDecimal x, Dn2CppDecimal y)
     // else y — MinMagnitude(1.0m, 1.00m) returns 1.00m.
     int32_t c = dn2cpp_decimal_cmp(dn2cpp_decimal_abs(x), dn2cpp_decimal_abs(y));
     if (c < 0) return x;
-    if (c == 0) return x.sign ? x : y;
+    if (c == 0) return x.sign() ? x : y;
     return y;
 }
 
 int32_t dn2cpp_decimal_cmp(Dn2CppDecimal a, Dn2CppDecimal b)
 {
     bool az = dec_mant(a) == 0, bz = dec_mant(b) == 0;
-    int asg = az ? 0 : (a.sign ? -1 : 1);
-    int bsg = bz ? 0 : (b.sign ? -1 : 1);
+    int asg = az ? 0 : (a.sign() ? -1 : 1);
+    int bsg = bz ? 0 : (b.sign() ? -1 : 1);
     if (asg != bsg) return asg < bsg ? -1 : 1;
     if (asg == 0) return 0; // both zero
-    int scale = a.scale > b.scale ? a.scale : b.scale;
-    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale);
-    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale);
+    int scale = a.scale() > b.scale() ? a.scale() : b.scale();
+    DecBig ma = decbig_from_u128(dec_mant(a)); decbig_mul_pow10(ma, scale - a.scale());
+    DecBig mb = decbig_from_u128(dec_mant(b)); decbig_mul_pow10(mb, scale - b.scale());
     int c = decbig_cmp(ma, mb);
     return asg > 0 ? c : -c; // negatives: larger magnitude is smaller
 }
@@ -464,11 +481,11 @@ int32_t dn2cpp_decimal_hash(Dn2CppDecimal a)
     // and 1.00m reduce to the same mantissa). The mixed value need not match
     // .NET's hash — only the equal-value->equal-hash contract matters here.
     dec_u128 m = dec_mant(a);
-    int scale = a.scale;
+    int scale = a.scale();
     while (scale > 0 && m != 0 && (m % 10) == 0) { m /= 10; scale--; }
     uint64_t lo = (uint64_t)m;
     uint64_t hi = (uint64_t)(m >> 64);
-    int sign = (m == 0) ? 0 : a.sign; // -0 == 0
+    int sign = (m == 0) ? 0 : a.sign(); // -0 == 0
     uint64_t h = lo ^ (hi * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)sign << 1);
     return (int32_t)((h ^ (h >> 32)) & 0x7fffffff);
 }
@@ -480,22 +497,22 @@ double dn2cpp_decimal_to_double(Dn2CppDecimal a)
     // double for k <= 22) rather than dividing by 10 in a loop, which would accumulate
     // rounding error (314/10/10 != 314/100, so 3.14m would round to 3.1399999999999997).
     double div = 1.0;
-    for (int i = 0; i < a.scale; i++) div *= 10.0;
+    for (int i = 0; i < a.scale(); i++) div *= 10.0;
     m /= div;
-    return a.sign ? -m : m;
+    return a.sign() ? -m : m;
 }
 float dn2cpp_decimal_to_float(Dn2CppDecimal a) { return (float)dn2cpp_decimal_to_double(a); }
 int64_t dn2cpp_decimal_to_i8(Dn2CppDecimal a)
 {
     dec_u128 m = dec_mant(a);
-    for (int i = 0; i < a.scale; i++) m /= 10; // truncate toward zero
+    for (int i = 0; i < a.scale(); i++) m /= 10; // truncate toward zero
     int64_t v = (int64_t)(uint64_t)m;
-    return a.sign ? -v : v;
+    return a.sign() ? -v : v;
 }
 uint64_t dn2cpp_decimal_to_u8(Dn2CppDecimal a)
 {
     dec_u128 m = dec_mant(a);
-    for (int i = 0; i < a.scale; i++) m /= 10;
+    for (int i = 0; i < a.scale(); i++) m /= 10;
     return (uint64_t)m;
 }
 
@@ -507,7 +524,7 @@ uint64_t dn2cpp_decimal_to_u8(Dn2CppDecimal a)
 static Dn2CppDecimal dec_drop_places(Dn2CppDecimal a, int drop, int mode)
 {
     if (drop <= 0) return a;
-    if (drop >= a.scale + 1 + 30) return dec_pack(0, 0, 0);
+    if (drop >= a.scale() + 1 + 30) return dec_pack(0, 0, 0);
     DecBig b = decbig_from_u128(dec_mant(a));
     uint32_t lastDropped = 0; bool sticky = false;
     for (int i = 0; i < drop; i++)
@@ -529,12 +546,12 @@ static Dn2CppDecimal dec_drop_places(Dn2CppDecimal a, int drop, int mode)
             break;
         case 1: roundUp = lastDropped >= 5; break;       // AwayFromZero
         case 2: roundUp = false; break;                  // ToZero: truncate
-        case 3: roundUp = a.sign && anyDropped; break;   // ToNegativeInfinity
-        case 4: roundUp = !a.sign && anyDropped; break;  // ToPositiveInfinity
+        case 3: roundUp = a.sign() && anyDropped; break;   // ToNegativeInfinity
+        case 4: roundUp = !a.sign() && anyDropped; break;  // ToPositiveInfinity
         default: dn2cpp_throw_argument();                // catchable, like the BCL
     }
     if (roundUp) m += 1;
-    return dec_pack(m, a.sign, a.scale - drop);
+    return dec_pack(m, a.sign(), a.scale() - drop);
 }
 
 Dn2CppDecimal dn2cpp_decimal_round(Dn2CppDecimal a, int32_t digits, int32_t mode)
@@ -543,27 +560,27 @@ Dn2CppDecimal dn2cpp_decimal_round(Dn2CppDecimal a, int32_t digits, int32_t mode
     // an invalid mode throws even when no digit would be dropped.
     if ((uint32_t)mode > 4u)
         dn2cpp_throw_argument();
-    if (a.scale <= digits) return a;
-    return dec_drop_places(a, a.scale - digits, mode);
+    if (a.scale() <= digits) return a;
+    return dec_drop_places(a, a.scale() - digits, mode);
 }
 Dn2CppDecimal dn2cpp_decimal_truncate(Dn2CppDecimal a)
 {
-    if (a.scale == 0) return a;
+    if (a.scale() == 0) return a;
     DecBig b = decbig_from_u128(dec_mant(a));
-    for (int i = 0; i < a.scale; i++) decbig_divmod_small(b, 10);
-    return dec_pack(decbig_to_u128(b), a.sign, 0);
+    for (int i = 0; i < a.scale(); i++) decbig_divmod_small(b, 10);
+    return dec_pack(decbig_to_u128(b), a.sign(), 0);
 }
 Dn2CppDecimal dn2cpp_decimal_floor(Dn2CppDecimal a)
 {
     Dn2CppDecimal t = dn2cpp_decimal_truncate(a);
-    if (a.sign && dn2cpp_decimal_cmp(t, a) != 0) // negative with a fractional part -> toward -inf
+    if (a.sign() && dn2cpp_decimal_cmp(t, a) != 0) // negative with a fractional part -> toward -inf
         t = dn2cpp_decimal_sub(t, dn2cpp_decimal_from_i4(1));
     return t;
 }
 Dn2CppDecimal dn2cpp_decimal_ceiling(Dn2CppDecimal a)
 {
     Dn2CppDecimal t = dn2cpp_decimal_truncate(a);
-    if (!a.sign && dn2cpp_decimal_cmp(t, a) != 0) // positive with a fractional part -> toward +inf
+    if (!a.sign() && dn2cpp_decimal_cmp(t, a) != 0) // positive with a fractional part -> toward +inf
         t = dn2cpp_decimal_add(t, dn2cpp_decimal_from_i4(1));
     return t;
 }
@@ -587,8 +604,8 @@ static int dec_layout(const Dn2CppDecimal& a, char* out)
     char digits[40];
     int dl = dec_digits(m, digits);
     int o = 0;
-    if (a.sign && m != 0) out[o++] = '-';
-    int scale = a.scale;
+    if (a.sign() && m != 0) out[o++] = '-';
+    int scale = a.scale();
     if (scale == 0)
     {
         for (int i = 0; i < dl; i++) out[o++] = digits[i];
