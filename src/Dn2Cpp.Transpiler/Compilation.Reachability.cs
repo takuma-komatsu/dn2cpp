@@ -963,6 +963,10 @@ internal sealed partial class Compilation
         // helpers instead.
         if (MethodCompiler.IntrinsicValueTypeFn(t) is not null)
             return true;
+        // Opaque pointer-backed handles compare and hash their entire representation;
+        // their loaded managed fields do not describe the emitted runtime payload.
+        if (MethodCompiler.IntrinsicPointerValueType(t) is not null)
+            return true;
         // A real struct. System.Enum/System.ValueType cannot arrive here — both are
         // modeled as reference types and were answered by the IsReferenceKeyType arm
         // above; see the note at SynthesizableShape.
@@ -1082,7 +1086,8 @@ internal sealed partial class Compilation
         // (System.Enum/System.ValueType are reference-typed in the model, so the
         // IsValueType test excludes them here as it does in the twin above.)
         if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
-            || MethodCompiler.IntrinsicValueTypeFn(t) is not null)
+            || MethodCompiler.IntrinsicValueTypeFn(t) is not null
+            || MethodCompiler.IntrinsicPointerValueType(t) is not null)
             return;
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through
         // the box — never the typed IEquatable<T>.Equals (see CanCompareStructuralField).

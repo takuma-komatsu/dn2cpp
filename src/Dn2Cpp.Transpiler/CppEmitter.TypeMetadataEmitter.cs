@@ -1963,7 +1963,17 @@ internal sealed partial class CppEmitter
             // one, which it does for a struct boxed in a program that compares objects at
             // all, so nothing else pays.
             string getHash = "nullptr";
-            if ((Compilation.EffectiveGetHashCode(cls) ?? _c.ReachedSynthesizedValueHash(cls)) is { } gh
+            string equals = "nullptr";
+            if (MethodCompiler.IntrinsicPointerValueType(TypeDesc.MakeClass(cls)) is { } ip)
+            {
+                string ghThunk = $"ghthunk_{cls.CppName}";
+                _sb.AppendLine($"static int32_t {ghThunk}(Dn2CppObject* o) {{ {ip} v = *({ip}*)(o + 1); return (int32_t)((uint64_t)v ^ ((uint64_t)v >> 32)); }}");
+                getHash = $"&{ghThunk}";
+                string eqThunk = $"eqthunk_{cls.CppName}";
+                _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && *({ip}*)(a + 1) == *({ip}*)(b + 1)) ? 1 : 0; }}");
+                equals = $"&{eqThunk}";
+            }
+            else if ((Compilation.EffectiveGetHashCode(cls) ?? _c.ReachedSynthesizedValueHash(cls)) is { } gh
                 && _c.Reachable.Contains(gh)
                 && !_e._backend.ShouldSkipMethodBody(gh.DeclaringClass, gh))
             {
@@ -1978,9 +1988,8 @@ internal sealed partial class CppEmitter
                     getHash = $"&{thunk}";
                 }
             }
-            string equals = "nullptr";
             var synEq = _c.ReachedSynthesizedValueEquals(cls);
-            if ((Compilation.EffectiveEquals(cls) ?? synEq) is { } eq
+            if (equals == "nullptr" && (Compilation.EffectiveEquals(cls) ?? synEq) is { } eq
                 && _c.Reachable.Contains(eq)
                 && !_e._backend.ShouldSkipMethodBody(eq.DeclaringClass, eq))
             {

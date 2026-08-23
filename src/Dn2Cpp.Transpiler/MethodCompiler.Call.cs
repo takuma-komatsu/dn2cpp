@@ -3252,15 +3252,20 @@ internal sealed partial class MethodCompiler
     /// (CancellationTokenRegistration = Dn2CppCancelReg*, …): its members are never
     /// transpiled, so naming its Equals/GetHashCode is the dangling-symbol trap
     /// (AGENTS.md, intrinsic-type equality) — and identity of the representation IS
-    /// the .NET equality for these opaque handles. IntrinsicCppName alone decides
-    /// (the mapped repr itself is what is needed, and it is stamped for table and
-    /// closed-generic intrinsics alike); non-pointer intrinsic structs get no arm
-    /// and stay a loud NotSupported/null at the caller.</summary>
-    private static string? IntrinsicPointerValueType(TypeDesc t) =>
-        t is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false, IntrinsicCppName: { } n } }
-        && n.EndsWith('*')
-            ? n
-            : null;
+    /// the .NET equality for these opaque handles. The rendered representation decides:
+    /// table/closed-generic intrinsics stamp <c>IntrinsicCppName</c>, while special loaded
+    /// structs such as <c>RuntimeTypeHandle</c> are mapped by <c>CppTypes.Of</c>.
+    /// Non-pointer intrinsic structs get no arm and stay a loud NotSupported/null at the
+    /// caller.</summary>
+    internal static string? IntrinsicPointerValueType(TypeDesc t)
+    {
+        if (t is not { Kind: TypeKind.Class,
+                Class: { IsValueType: true, IsEnum: false } c })
+            return null;
+        string n = c.IntrinsicCppName ?? CppTypes.Of(t);
+        return n.EndsWith('*') && (c.IntrinsicCppName is not null
+            || CoreIntrinsics.SpecialTypeCppName(c.FullName) == n) ? n : null;
+    }
 
     /// <summary>Whether <see cref="TryEqualityEqualsLValue"/> can compare two values
     /// of <paramref name="t"/> — the same branch chain as a pure predicate, with none

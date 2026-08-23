@@ -27,6 +27,8 @@
 # Also covers EqualityComparerDefaultSubset: Default is a non-null, stable per-T concrete
 # object implementing generic and non-generic IEqualityComparer, including interface calls
 # and a null-conditional equality call as used by reactive properties.
+# RuntimeTypeHandleKeySubset covers the opaque pointer-backed handle as a direct key and as
+# a synthesized structural field, including nested KeyValuePair dictionary values.
 # Former gates: dict, dict-api, dict-enum, dict-more, dict-string, hashset,
 # hashkey, sorted-collections, join-enumerable-subset,
 # ordinal-stringset-dedup-subset, struct-key-subset, valuetuple-key-dict-subset.

@@ -32,6 +32,7 @@ namespace DictCollections
             StructKeySubset.Program.__GateEntry();
             ValueTupleKeyDictSubset.Program.__GateEntry();
             EqualityComparerDefaultSubset.Program.__GateEntry();
+            RuntimeTypeHandleKeySubset.Program.__GateEntry();
         }
     }
 }
