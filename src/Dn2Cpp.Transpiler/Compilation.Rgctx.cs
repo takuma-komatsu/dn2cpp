@@ -1606,6 +1606,7 @@ internal sealed partial class Compilation
     /// object-protocol overrides the boxed form can dispatch reached.</summary>
     private string RgctxTypeInfoEntry(TypeDesc t)
     {
+        NoteTypeIdentityClosure(t);
         if (t is { Kind: TypeKind.Class, Class: { } c })
         {
             if (c.IsValueType)

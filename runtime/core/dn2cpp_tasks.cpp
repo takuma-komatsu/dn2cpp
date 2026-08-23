@@ -50,7 +50,7 @@
 
 extern const Dn2CppType dn2cpp_task_type_obj;
 const Dn2CppTypeInfo dn2cpp_task_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", nullptr, (int32_t)sizeof(Dn2CppTask), nullptr, nullptr, 0 }, &dn2cpp_task_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, (int32_t)sizeof(Dn2CppTask), nullptr, nullptr, 0 }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
 
 // Task.Id numbering: positive, monotonic, minted once per task at alloc time.
@@ -104,6 +104,35 @@ Dn2CppTask* dn2cpp_task_from_result(uint64_t result)
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
     return t;
+}
+
+Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type)
+{
+    if (task == &dn2cpp_task_default_completed)
+        task = dn2cpp_task_from_result(0);
+    if (task->type == type)
+        return task;
+    if (task->type != &dn2cpp_task_type)
+        dn2cpp_throw_invalid_operation_msg("A Task cannot change its closed result type.");
+    task->type = type;
+    return task;
+}
+
+Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type)
+{
+    if (task == nullptr || task == &dn2cpp_task_default_completed)
+        return dn2cpp_task_stamp(dn2cpp_task_from_result(0), type);
+    return task;
+}
+
+Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
+                                              const Dn2CppTypeInfo* taskType)
+{
+    auto* source = static_cast<Dn2CppTaskCompletionSource*>(
+        dn2cpp_alloc(sizeof(Dn2CppTaskCompletionSource)));
+    source->type = type;
+    dn2cpp_gc_store_ref(&source->task, dn2cpp_task_stamp(dn2cpp_task_alloc(), taskType));
+    return source;
 }
 
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t)
@@ -1090,8 +1119,7 @@ Dn2CppTask* dn2cpp_task_from_canceled()
 }
 
 // ---- TaskCompletionSource(<T>) -----------------------------------------------
-// A TCS is modeled as the bare Dn2CppTask* it completes (get_Task is the
-// identity), so the whole surface is these exactly-once transitions. Unlike
+// The wrapper's task surface is these exactly-once transitions. Unlike
 // dn2cpp_task_complete (whose callers settle a task they exclusively own), a
 // TCS may race concurrent TrySet* calls — the PENDING check and the transition
 // happen under the same g_task_mtx hold, so exactly one caller wins.

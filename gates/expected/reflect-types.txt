@@ -1242,12 +1242,12 @@ c-fix GetValues(typeof(Hue)) == typeof(Hue[]) = True name=Hue[]
 c-fix GetValues walk = 12
 c-DIVERGES GetValues(runtime Type) name=Object[]
 c-DIVERGES-but-works GetValues(runtime Type) walk = 12
-== bound handles (d): the erased generics, and the Task precedent ==
+== bound handles (d): erased ThreadLocal and exact Task identity ==
 d-right ThreadLocal<string> = True
 d-right Task<string> = True
 d-right GetType()==typeof(ThreadLocal<string>) = True
 d-DIVERGES ThreadLocal<int> = True
-d-DIVERGES Task<int> = True
+d-exact Task<int> = False
 d-data ThreadLocal value = held
 d-other ThreadLocal<string> from object = False
 == runtime array identity ==
@@ -1446,3 +1446,42 @@ methoddef=PlatformNotSupportedException
 methodspec=PlatformNotSupportedException
 fielddef=PlatformNotSupportedException
 memberref-field=PlatformNotSupportedException
+== task runtime identity ==
+from-result runtime=True expected=True wrong=False
+from-result-exact=True
+task-metadata base=True task=True assign=True subclass=True generic=True def=True arg=True
+cast-wrong=InvalidCastException
+cast-right=True
+tcs-source runtime=True expected=True wrong=False
+tcs-source-metadata arg=True task=False
+tcs-pending runtime=True expected=True wrong=False
+tcs-exact source=True task=True
+tcs-unobserved=True
+async-builder runtime=True expected=True wrong=False
+from-exception runtime=True expected=True wrong=False
+from-canceled runtime=True expected=True wrong=False
+run runtime=True expected=True wrong=False
+start-new runtime=True expected=True wrong=False
+cold-ctor runtime=True expected=True wrong=False
+continue-with runtime=True expected=True wrong=False
+when-all runtime=True expected=True wrong=False
+when-any runtime=True expected=True wrong=False
+when-any-inner-arg=True
+when-any-nongeneric runtime=True expected=True wrong=False
+wait-async runtime=True expected=True wrong=False
+wait-result=5
+valuetask-sync runtime=True expected=True wrong=False
+valuetask-default runtime=True expected=True wrong=False
+valuetask-builder runtime=True expected=True wrong=False
+valuetask-builder-unobserved=True
+valuetask-from-result runtime=True expected=True wrong=False
+valuetask-from-exception runtime=True expected=True wrong=False
+valuetask-from-canceled runtime=True expected=True wrong=False
+valuetask-task-preserve=True
+arg-ref runtime=True expected=True wrong=False
+arg-struct runtime=True expected=True wrong=False
+arg-enum runtime=True expected=True wrong=False
+arg-array runtime=True expected=True wrong=False
+arg-mdarray runtime=True expected=True wrong=False
+arg-metadata ref=True struct=True enum=True array=True mdarray=True
+shared-arg ref=True nested=True

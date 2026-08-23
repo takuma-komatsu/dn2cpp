@@ -626,7 +626,12 @@ internal sealed partial class MethodCompiler
                     + "storage; only its CompletedTask constant is modeled");
             bool byRef = fld.DeclaringClass.IntrinsicCppName == "Dn2CppTask*";
             cppType = byRef ? "Dn2CppTask*" : "Dn2CppTaskAwaiter";
-            expr = byRef ? "dn2cpp_task_completed()" : "Dn2CppTaskAwaiter{ dn2cpp_task_completed() }";
+            TypeDesc declaredTask = TypeDesc.MakeClass(fld.DeclaringClass);
+            expr = byRef
+                ? StampTask("dn2cpp_task_completed()", declaredTask)
+                : TaskBackingType(declaredTask) is { } taskType
+                    ? $"Dn2CppTaskAwaiter{{ {StampTask("dn2cpp_task_completed()", taskType)} }}"
+                    : "Dn2CppTaskAwaiter{ dn2cpp_task_completed() }";
             if (wantAddress)
             {
                 string t = NewTemp(cppType);

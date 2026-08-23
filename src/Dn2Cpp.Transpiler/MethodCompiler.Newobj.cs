@@ -845,7 +845,8 @@ internal sealed partial class MethodCompiler
                 && _c.GenericDefFullName(pcl) == "System.Threading.Tasks.Task";
             string task = fromTask
                 ? $"(Dn2CppTask*)({arg.Expr})"
-                : $"dn2cpp_task_from_result({EmitTaskResultStore(arg)})";
+                : StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(arg)})",
+                    TaskTypeForResult(vcls.Context.TypeArgs[0]));
             Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
             return;
         }
@@ -900,7 +901,7 @@ internal sealed partial class MethodCompiler
             && _c.GenericDefFullName(ctcls) == "System.Threading.Tasks.Task")
         {
             var ctsig = ctmr.DecodeMethodSignature(_c.SigProvider, ctcls.Context);
-            EmitColdTaskCtor(ctcls.Context.TypeArgs[0], ctsig.ParameterTypes);
+            EmitColdTaskCtor(ctcls.Context.TypeArgs[0], ctsig.ParameterTypes, TypeDesc.MakeClass(ctcls));
             return;
         }
         // The same cold-task ctor on the NON-generic Task: a plain TypeRef MemberRef
@@ -912,13 +913,15 @@ internal sealed partial class MethodCompiler
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle)
                     .DecodeMethodSignature(_c.SigProvider, _method.Context).ParameterTypes
                 : ResolveMethodDef((MethodDefinitionHandle)handle).Signature.ParameterTypes;
-            EmitColdTaskCtor(null, ctps);
+            ClassInfo nonGenericTaskClass = handle.Kind == HandleKind.MemberReference
+                ? _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context).DeclaringClass
+                : ResolveMethodDef((MethodDefinitionHandle)handle).DeclaringClass;
+            EmitColdTaskCtor(null, ctps, TypeDesc.MakeClass(nonGenericTaskClass));
             return;
         }
 
-        // new TaskCompletionSource(<T>)([state][, TaskCreationOptions]) — a TCS is
-        // the bare pending Dn2CppTask* it completes (get_Task is the identity), so
-        // the ctor is dn2cpp_task_alloc. The generic form is a TypeSpec MemberRef,
+        // new TaskCompletionSource(<T>)([state][, TaskCreationOptions]) — the source
+        // wrapper and its pending task are distinct objects. The generic form is a TypeSpec MemberRef,
         // the non-generic a TypeRef MemberRef / MethodDef, mirroring Task above.
         // Every ctor argument is popped and ignored: TaskCreationOptions is a
         // scheduling hint (like StartNew's), and the `object? state` argument only
@@ -933,7 +936,13 @@ internal sealed partial class MethodCompiler
             var tcsig = tcmr.DecodeMethodSignature(_c.SigProvider, tccls.Context);
             for (int i = 0; i < tcsig.ParameterTypes.Length; i++)
                 Pop(); // object? state (AsyncState is unmodeled) / TaskCreationOptions hint
-            Push(StackKind.Ref, "Dn2CppTask*", "dn2cpp_task_alloc()");
+            string tcsType = TypeInfoExpr(TypeDesc.MakeClass(tccls))
+                ?? throw new InvalidOperationException($"{tccls.FullName} has no runtime identity");
+            TypeDesc taskType = TaskTypeForResult(tccls.Context.TypeArgs[0]);
+            string taskTypeInfo = TypeInfoExpr(taskType)
+                ?? throw new InvalidOperationException($"{taskType} has no runtime identity");
+            Push(StackKind.Ref, "Dn2CppTaskCompletionSource*",
+                $"dn2cpp_tcs_alloc({tcsType}, {taskTypeInfo})");
             return;
         }
         if (NewobjTypeName(handle) == "System.Threading.Tasks.TaskCompletionSource"
@@ -945,7 +954,18 @@ internal sealed partial class MethodCompiler
                 : ResolveMethodDef((MethodDefinitionHandle)handle).Signature.ParameterTypes;
             for (int i = 0; i < tcps.Length; i++)
                 Pop(); // object? state (AsyncState is unmodeled) / TaskCreationOptions hint
-            Push(StackKind.Ref, "Dn2CppTask*", "dn2cpp_task_alloc()");
+            ClassInfo nonGenericSourceClass = handle.Kind == HandleKind.MemberReference
+                ? _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context).DeclaringClass
+                : ResolveMethodDef((MethodDefinitionHandle)handle).DeclaringClass;
+            string tcsType = TypeInfoExpr(TypeDesc.MakeClass(nonGenericSourceClass))
+                ?? throw new InvalidOperationException($"{nonGenericSourceClass.FullName} has no runtime identity");
+            TypeDesc taskType = Comp.FindClassByFullName("System.Threading.Tasks.Task") is { } taskClass
+                ? TypeDesc.MakeClass(taskClass)
+                : throw new InvalidOperationException("System.Threading.Tasks.Task is not in the completed image");
+            string taskTypeInfo = TypeInfoExpr(taskType)
+                ?? throw new InvalidOperationException($"{taskType} has no runtime identity");
+            Push(StackKind.Ref, "Dn2CppTaskCompletionSource*",
+                $"dn2cpp_tcs_alloc({tcsType}, {taskTypeInfo})");
             return;
         }
 
@@ -2056,7 +2076,8 @@ internal sealed partial class MethodCompiler
     /// / TaskCreationOptions arguments are scheduling hints only — popped and ignored,
     /// like TaskFactory.StartNew's (the delegate always runs on the real pool or, for
     /// RunSynchronously, the calling thread).</summary>
-    private void EmitColdTaskCtor(TypeDesc? tres, System.Collections.Immutable.ImmutableArray<TypeDesc> ps)
+    private void EmitColdTaskCtor(TypeDesc? tres, System.Collections.Immutable.ImmutableArray<TypeDesc> ps,
+                                  TypeDesc taskType)
     {
         if (ps.Length == 0 || ps[0] is not { Kind: TypeKind.Class, Class: { } delCls })
             throw new NotSupportedException(
@@ -2077,8 +2098,9 @@ internal sealed partial class MethodCompiler
                     "argument (Func<object?, TResult>, state) is not supported yet");
             var state = Pop(); // object? state (passed to the delegate)
             var sdel = Pop();  // Action<object?>
-            Push(StackKind.Ref, "Dn2CppTask*",
-                $"dn2cpp_task_cold_void_state((Dn2CppObject*)({sdel.Expr}), {Cast(state, "Dn2CppObject*")})");
+            PushStampedTask(
+                $"dn2cpp_task_cold_void_state((Dn2CppObject*)({sdel.Expr}), {Cast(state, "Dn2CppObject*")})",
+                taskType);
             return;
         }
         // A value-type result rides the boxing trampoline (TaskStructResultThunk) stored as
@@ -2087,8 +2109,9 @@ internal sealed partial class MethodCompiler
         if (tres is not null && CppTypes.KindOf(tres) == StackKind.Struct)
         {
             var sdel = Pop(); // Func<TResult>
-            Push(StackKind.Ref, "Dn2CppTask*",
-                $"dn2cpp_task_cold_struct((Dn2CppObject*)({sdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))})");
+            PushStampedTask(
+                $"dn2cpp_task_cold_struct((Dn2CppObject*)({sdel.Expr}), {TaskStructResultThunk(CppTypes.Of(tres))})",
+                taskType);
             return;
         }
         string fn = tres is null ? "dn2cpp_task_cold_void" : CppTypes.KindOf(tres) switch
@@ -2103,7 +2126,7 @@ internal sealed partial class MethodCompiler
                 "result kind not supported yet (int/long/float/double/reference only)"),
         };
         var del = Pop(); // Action or Func<TResult>
-        Push(StackKind.Ref, "Dn2CppTask*", $"{fn}((Dn2CppObject*)({del.Expr}))");
+        PushStampedTask($"{fn}((Dn2CppObject*)({del.Expr}))", taskType);
     }
 
     /// <summary>The IValueTaskSource-backed <c>new ValueTask(&lt;T&gt;)(source,
@@ -2146,9 +2169,15 @@ internal sealed partial class MethodCompiler
         Emit($"{vts} = {Cast(src, "Dn2CppObject*")};");
         string slots = NewTemp("const void**");
         Emit($"{slots} = dn2cpp_resolve_interface({vts}->type, &{itf.CppTypeInfoName});");
-        return $"Dn2CppTaskAwaiter{{ dn2cpp_vts_task({vts}, (int16_t)({token.Expr}), " +
+        TypeDesc taskType = rt.IsVoid
+            ? Comp.FindClassByFullName("System.Threading.Tasks.Task") is { } task
+                ? TypeDesc.MakeClass(task)
+                : throw new InvalidOperationException("System.Threading.Tasks.Task is not loaded")
+            : TaskTypeForResult(rt);
+        string bridge = $"dn2cpp_vts_task({vts}, (int16_t)({token.Expr}), " +
                $"{slots}[{members.GetResult.VtableSlot}], {slots}[{members.OnCompleted.VtableSlot}], " +
-               $"&{actionCls.CppTypeInfoName}, {kind}) }}";
+               $"&{actionCls.CppTypeInfoName}, {kind})";
+        return $"Dn2CppTaskAwaiter{{ {StampTask(bridge, taskType)} }}";
     }
 
     /// <summary>Whether a parameter names <c>System.Diagnostics.StackFrame</c> (loaded

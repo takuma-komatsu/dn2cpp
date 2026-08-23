@@ -273,6 +273,26 @@ internal sealed partial class Compilation
         return inner;
     }
 
+    public ClassInfo? FindGenericInstantiation(string definitionName, TypeDesc[] args)
+    {
+        foreach (var module in Modules)
+        {
+            foreach (var handle in module.GenericTemplates)
+            {
+                var td = module.Reader.GetTypeDefinition(handle);
+                if (td.GetGenericParameters().Count != args.Length)
+                    continue;
+                string ns = module.Reader.GetString(td.Namespace);
+                string name = StripArity(module.Reader.GetString(td.Name));
+                string fullName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
+                if (fullName == definitionName
+                    && InstancesFor(module, handle).TryGetValue(args, out var instance))
+                    return instance;
+            }
+        }
+        return null;
+    }
+
     private Dictionary<(string Decl, TypeDesc[] Args), MethodInfo> MethodInstancesFor(Module module, MethodDefinitionHandle template)
     {
         var key = (module.Index, SRME.GetToken(template));
@@ -971,6 +991,28 @@ internal sealed partial class Compilation
     public HashSet<ClassInfo> ReferencedTypes { get; } = new();
 
     public void NoteReferencedType(ClassInfo cls) => ReferencedTypes.Add(cls);
+
+    /// <summary>Notes every concrete handle that a constructed type's runtime identity
+    /// points through, including generic arguments and array elements.</summary>
+    internal void NoteTypeIdentityClosure(TypeDesc type)
+    {
+        switch (type.Kind)
+        {
+            case TypeKind.Class:
+                NoteReferencedType(type.Class!);
+                foreach (var arg in type.Class!.Context.TypeArgs)
+                    NoteTypeIdentityClosure(arg);
+                break;
+            case TypeKind.SZArray:
+                NoteArrayElementType(type.Element!);
+                NoteTypeIdentityClosure(type.Element!);
+                break;
+            case TypeKind.MDArray:
+                NoteMdArrayType(type);
+                NoteTypeIdentityClosure(type.Element!);
+                break;
+        }
+    }
 
     /// <summary>Open generic DEFINITIONS a body took the runtime <c>typeof</c> of —
     /// <c>typeof(IDictionary&lt;,&gt;)</c>, <c>typeof(List&lt;&gt;)</c>. Such a token decodes
@@ -2149,6 +2191,15 @@ internal sealed partial class Compilation
         _instanceCount++;
         Classes.Add(spec);
         EnqueuePending(spec);
+        // Intrinsic ValueTask<T> and TaskCompletionSource<T> both allocate a real
+        // Task<T> backing. Create its identity while the model can still grow, even when
+        // no managed signature exposes it; emission may only look it up.
+        if (args.Length == 1
+            && (defFull is "System.Threading.Tasks.ValueTask"
+                          or "System.Threading.Tasks.TaskCompletionSource"
+                || AdoptedAsyncKey(spec) == "System.Threading.Tasks.ValueTask")
+            && TypeIndex().TryGetValue(("System.Threading.Tasks", "Task`1"), out var taskDefs))
+            Instantiate(taskDefs[0].Item1, taskDefs[0].Item2, args);
         return spec;
     }
 
@@ -2460,7 +2511,7 @@ internal sealed partial class Compilation
     /// own ti_ (the NoteReflectedArrayType precedent), and keys the shared rank&gt;=2
     /// dispatch map — instances of the MD type flow out of the SZ array without any
     /// statically visible MD token.</summary>
-    private void NoteMdArrayType(TypeDesc md)
+    internal void NoteMdArrayType(TypeDesc md)
     {
         if (ContainsCanonPlaceholder(md) || !MdArrayTypes.TryAdd(ArrayElemMangle(md), md))
             return;

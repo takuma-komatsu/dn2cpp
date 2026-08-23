@@ -213,8 +213,8 @@ internal static partial class CoreIntrinsics
         "System.Threading.Tasks.Task",
         "System.Runtime.CompilerServices.AsyncTaskMethodBuilder",
         "System.Runtime.CompilerServices.TaskAwaiter",
-        // TaskCompletionSource(<T>) — modeled as the bare Dn2CppTask* it
-        // completes (get_Task is the identity); newobj allocates a pending task,
+        // TaskCompletionSource(<T>) — a wrapper around the Dn2CppTask* it
+        // completes; newobj allocates both objects,
         // (Try)SetResult/SetException/SetCanceled are exactly-once transitions on
         // it. Its real body is the TPL promise plumbing we don't model.
         "System.Threading.Tasks.TaskCompletionSource",
@@ -449,8 +449,7 @@ internal static partial class CoreIntrinsics
     private static readonly Dictionary<string, string> s_taskFamilyCpp = new()
     {
         ["System.Threading.Tasks.Task"] = "Dn2CppTask*",
-        // A TCS is the bare task it completes (get_Task is the identity).
-        ["System.Threading.Tasks.TaskCompletionSource"] = "Dn2CppTask*",
+        ["System.Threading.Tasks.TaskCompletionSource"] = "Dn2CppTaskCompletionSource*",
         ["System.Runtime.CompilerServices.AsyncTaskMethodBuilder"] = "Dn2CppAsyncBuilder",
         ["System.Runtime.CompilerServices.TaskAwaiter"] = "Dn2CppTaskAwaiter",
         // ValueTask family — modeled on the Task structs (a ValueTask is a {task}
@@ -1282,6 +1281,7 @@ internal static partial class CoreIntrinsics
         // serving only as a second identity on emitted classes' base pointers.
         ["System.Object"] = "&dn2cpp_object_type",
         ["System.String"] = "&dn2cpp_string_type",
+        ["System.Threading.Tasks.Task"] = "&dn2cpp_task_type",
         ["System.Void"] = "&dn2cpp_void_type",
         // The primitives. The runtime handle carries DN2CPP_TF_PRIMITIVE, which the class
         // emitter does not model — so here the runtime really does know more, and binding
@@ -1417,18 +1417,13 @@ internal static partial class CoreIntrinsics
     /// the C++ symbol, since that is what the gate reads out of the runtime sources.
     ///
     /// <para>Two reasons only. A handle that models MORE THAN ONE CLR type is a deliberate
-    /// type ERASURE, and a row would make the erasure worse rather than better: every
-    /// <c>Task&lt;T&gt;</c> shares <c>Dn2CppTask</c>, so a row for System.Threading.Tasks.Task
-    /// would make <c>t.GetType() == typeof(Task)</c> true for a <c>Task&lt;int&gt;</c>. Their
-    /// <c>typeof</c> route is keyed on the runtime STRUCT instead
-    /// (<c>MethodCompiler.TypeInfoExprOf</c>'s <c>IntrinsicCppName</c> arms), which is the
-    /// only key that can name a family. And a handle whose CLR name is not a
+    /// type ERASURE, and a row would make the erasure worse rather than better. A handle
+    /// whose CLR name is not a
     /// <c>ClassInfo.FullName</c> at all cannot be keyed here: FullName is arity-stripped and
     /// carries no enclosing type, so a private nested runtime shape would need the key
     /// "Node", which any type in any namespace could match.</para></summary>
     private static readonly Dictionary<string, string> s_runtimeTypeInfoNotRowed = new()
     {
-        ["dn2cpp_task_type"] = "erasure: the whole intrinsic Task family shares Dn2CppTask",
         ["dn2cpp_task_awaiter_type"] = "erasure: every TaskAwaiter(<T>)/ValueTaskAwaiter/Configured* form shares Dn2CppTaskAwaiter",
         ["dn2cpp_yield_awaiter_type"] = "erasure: YieldAwaitable+YieldAwaiter is nested, and its FullName is the bare \"YieldAwaiter\"",
         ["dn2cpp_threadlocal_type"] = "erasure: every ThreadLocal<T> shares one handle (T rides as data, not in the header)",
@@ -1534,7 +1529,9 @@ internal static partial class CoreIntrinsics
         : null;
 
     public static string? RuntimeTypeInfoSymbol(ClassInfo cls) =>
-        RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
+        cls.GenericArity > 0 && cls.FullName == "System.Threading.Tasks.Task"
+            ? null
+            : RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
 
     /// <summary>Whether the runtime OWNS this type's metadata, i.e. the emitter must define
     /// no type-info for it at all. False both for a type with no runtime handle (its emitted
@@ -1545,7 +1542,8 @@ internal static partial class CoreIntrinsics
         fullTypeName is not null && s_runtimeOwnedTypeInfo.ContainsKey(fullTypeName);
 
     public static bool RuntimeOwnsTypeInfo(ClassInfo cls) =>
-        RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null;
+        !(cls.GenericArity > 0 && cls.FullName == "System.Threading.Tasks.Task")
+        && (RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null);
 
     /// <summary>Whether an UNLOADED (External) type name is a BCL exception type —
     /// <c>System.Exception</c> itself or any <c>System.*</c> type whose name carries

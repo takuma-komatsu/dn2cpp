@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace CustomAsyncTaskLib;
 
@@ -125,6 +126,10 @@ public readonly struct CustomTask<T>
         _result = default;
         _token = token;
     }
+
+    public static CustomTask<T> CompletedTask => default;
+
+    public async Task<T> AsTask() => await this;
 
     public Awaiter GetAwaiter() => new Awaiter(this);
 

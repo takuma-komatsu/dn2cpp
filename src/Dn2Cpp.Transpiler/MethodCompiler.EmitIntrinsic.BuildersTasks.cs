@@ -836,12 +836,13 @@ internal sealed partial class MethodCompiler
             // (Dn2CppAsyncBuilder/Dn2CppTask/Dn2CppTaskAwaiter).
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "Create"):
                 // static: a fresh builder owning a pending task.
-                Push(StackKind.Struct, "Dn2CppAsyncBuilder", "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
+                Push(StackKind.Struct, "Dn2CppAsyncBuilder",
+                    "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
                 return true;
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "get_Task"):
             {
                 var b = Pop(); // ref builder
-                Push(StackKind.Ref, "Dn2CppTask*", $"((Dn2CppAsyncBuilder*)({b.Expr}))->task");
+                PushStampedTask($"((Dn2CppAsyncBuilder*)({b.Expr}))->task", sig.ReturnType);
                 return true;
             }
             case ("System.Runtime.CompilerServices.AsyncTaskMethodBuilder", "SetResult"):
@@ -877,7 +878,7 @@ internal sealed partial class MethodCompiler
                 return true;
 
             case ("System.Threading.Tasks.Task", "get_CompletedTask"):
-                Push(StackKind.Ref, "Dn2CppTask*", "dn2cpp_task_completed()");
+                PushStampedTask("dn2cpp_task_completed()", sig.ReturnType);
                 return true;
             // Task.ThrowAsync(Exception, SynchronizationContext) — the async-void
             // unhandled-exception re-raise. AsyncVoidMethodBuilder.SetException calls it to
@@ -896,17 +897,18 @@ internal sealed partial class MethodCompiler
             // completing with the first input task to finish (the generic Task<T>
             // overloads bind in TranslateGenericIntrinsic). Same runtime helper.
             case ("System.Threading.Tasks.Task", "WhenAny"):
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_when_any({PopTaskArrayOperand(sig.ParameterTypes)})");
+                PushStampedTask($"dn2cpp_task_when_any({PopTaskArrayOperand(sig.ParameterTypes)})", sig.ReturnType);
                 return true;
             // Non-generic Task.WhenAll(Task[] / IEnumerable<Task>) -> a plain Task
             // (no result array) that completes once every input completes, or faults
             // with the first input fault. The generic WhenAll<T> (result array) binds
             // in TranslateGenericIntrinsic; this is the void-result join.
             case ("System.Threading.Tasks.Task", "WhenAll"):
-                Push(StackKind.Ref, "Dn2CppTask*",
+                PushStampedTask(
                     // Non-generic WhenAll completes with no result array at all
                     // (DN2CPP_WHENALL_VOID), so there is no element handle to carry.
-                    $"dn2cpp_task_when_all({PopTaskArrayOperand(sig.ParameterTypes)}, DN2CPP_WHENALL_VOID, nullptr)");
+                    $"dn2cpp_task_when_all({PopTaskArrayOperand(sig.ParameterTypes)}, DN2CPP_WHENALL_VOID, nullptr)",
+                    sig.ReturnType);
                 return true;
             // Task.WaitAll(Task[] / ReadOnlySpan<Task> / IEnumerable<Task>) — the BLOCKING
             // join: drain until every input settles, then raise one AggregateException over
@@ -954,10 +956,10 @@ internal sealed partial class MethodCompiler
                 if (src is not null)
                 {
                     EmitCanceledExcRegistration();
-                    Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_delay_ct({ms}, {src})");
+                    PushStampedTask($"dn2cpp_task_delay_ct({ms}, {src})", sig.ReturnType);
                 }
                 else
-                    Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_delay({ms})");
+                    PushStampedTask($"dn2cpp_task_delay({ms})", sig.ReturnType);
                 return true;
             }
             // Task.Run(Func<Task> [, CancellationToken]) -> Task, the non-generic async-
@@ -970,7 +972,7 @@ internal sealed partial class MethodCompiler
                 if (sig.ParameterTypes.Length == 2)
                     Pop(); // CancellationToken (ignored)
                 var del = Pop(); // Func<Task>
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}))");
+                PushStampedTask($"dn2cpp_task_run_unwrap((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
                 return true;
             }
             // Task.Run(Action [, CancellationToken]) -> Task, dispatched to the real
@@ -983,7 +985,7 @@ internal sealed partial class MethodCompiler
                 if (sig.ParameterTypes.Length == 2)
                     Pop(); // CancellationToken (ignored)
                 var del = Pop(); // Action
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))");
+                PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
                 return true;
             }
             // Task.Factory / TaskScheduler.Default / TaskScheduler.Current — opaque
@@ -1027,14 +1029,15 @@ internal sealed partial class MethodCompiler
                     var state = Pop(); // object? state (passed to the delegate)
                     var del = Pop();   // Action<object?>
                     Pop();             // receiver — the Task.Factory nullptr sentinel
-                    Push(StackKind.Ref, "Dn2CppTask*",
-                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")})");
+                    PushStampedTask(
+                        $"dn2cpp_task_run_void_state((Dn2CppObject*)({del.Expr}), {Cast(state, "Dn2CppObject*")})",
+                        sig.ReturnType);
                 }
                 else
                 {
                     var del = Pop(); // Action
                     Pop();           // receiver — the Task.Factory nullptr sentinel
-                    Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))");
+                    PushStampedTask($"dn2cpp_task_run_void((Dn2CppObject*)({del.Expr}))", sig.ReturnType);
                 }
                 return true;
             }
@@ -1147,8 +1150,9 @@ internal sealed partial class MethodCompiler
             {
                 var waT = Pop();  // CancellationToken (by value)
                 var waSelf = Pop();
-                Push(StackKind.Ref, "Dn2CppTask*",
-                    $"dn2cpp_task_wait_async((Dn2CppTask*)({waSelf.Expr}), ({waT.Expr}).source)");
+                PushStampedTask(
+                    $"dn2cpp_task_wait_async((Dn2CppTask*)({waSelf.Expr}), ({waT.Expr}).source)",
+                    sig.ReturnType);
                 return true;
             }
             case ("System.Threading.Tasks.Task", "ContinueWith"):
@@ -1167,13 +1171,14 @@ internal sealed partial class MethodCompiler
                 var cwT = Pop();
                 string stateExpr = cwState is null ? "nullptr" : Cast(cwState, "Dn2CppObject*");
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
-                Push(StackKind.Ref, "Dn2CppTask*",
+                PushStampedTask(
                     $"dn2cpp_task_continue_with((Dn2CppTask*)({cwT.Expr}), (Dn2CppObject*)({cwD.Expr}), "
-                    + $"{stateExpr}, {kind}, {cwOpts})");
+                    + $"{stateExpr}, {kind}, {cwOpts})", sig.ReturnType);
                 return true;
             }
-            // ---- TaskCompletionSource(<T>) — the bare pending task it completes ----
-            // get_Task is the identity (the TCS *is* its Dn2CppTask*); the setters are
+            // ---- TaskCompletionSource(<T>) -----------------------------------------
+            // The source wrapper and its Task are separate objects, so both retain their
+            // own runtime identity after get_Task exposes the pending promise.
             // exactly-once transitions: Set* throws InvalidOperationException when the
             // task has already settled, TrySet* returns false instead. A TCS<T> result
             // packs into the task's 8-byte slot exactly like an async Task<T>'s
@@ -1181,7 +1186,8 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.TaskCompletionSource", "get_Task"):
             {
                 var t = Pop();
-                Push(StackKind.Ref, "Dn2CppTask*", $"(Dn2CppTask*)({t.Expr})");
+                Push(StackKind.Ref, "Dn2CppTask*",
+                    $"((Dn2CppTaskCompletionSource*)({t.Expr}))->task");
                 return true;
             }
             case ("System.Threading.Tasks.TaskCompletionSource", "SetResult"):
@@ -1190,9 +1196,9 @@ internal sealed partial class MethodCompiler
                 string store = sig.ParameterTypes.Length == 1 ? EmitTaskResultStore(Pop()) : "0";
                 var t = Pop();
                 if (name == "SetResult")
-                    Emit($"dn2cpp_tcs_set_result((Dn2CppTask*)({t.Expr}), {store});");
+                    Emit($"dn2cpp_tcs_set_result(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {store});");
                 else
-                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_result((Dn2CppTask*)({t.Expr}), {store})");
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_result(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {store})");
                 return true;
             }
             // Only the single-Exception overloads; SetException(IEnumerable<Exception>)
@@ -1205,10 +1211,10 @@ internal sealed partial class MethodCompiler
                 var ex = Pop();
                 var t = Pop();
                 if (name == "SetException")
-                    Emit($"dn2cpp_tcs_set_exception((Dn2CppTask*)({t.Expr}), {Cast(ex, "Dn2CppObject*")});");
+                    Emit($"dn2cpp_tcs_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")});");
                 else
                     Push(StackKind.I4, "int32_t",
-                        $"dn2cpp_task_try_set_exception((Dn2CppTask*)({t.Expr}), {Cast(ex, "Dn2CppObject*")})");
+                        $"dn2cpp_task_try_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")})");
                 return true;
             }
             // SetCanceled([CancellationToken]) — the transition allocates its own
@@ -1222,9 +1228,9 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 EmitCanceledExcRegistration();
                 if (name == "SetCanceled")
-                    Emit($"dn2cpp_tcs_set_canceled((Dn2CppTask*)({t.Expr}));");
+                    Emit($"dn2cpp_tcs_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task);");
                 else
-                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_canceled((Dn2CppTask*)({t.Expr}))");
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_task_try_set_canceled(((Dn2CppTaskCompletionSource*)({t.Expr}))->task)");
                 return true;
             }
             // Task state inspection (also inherited by Task<T>): map directly to the
@@ -1307,7 +1313,7 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.Task", "FromException") when sig.ParameterTypes.Length == 1:
             {
                 var ex = Pop();
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_from_exception({Cast(ex, "Dn2CppObject*")})");
+                PushStampedTask($"dn2cpp_task_from_exception({Cast(ex, "Dn2CppObject*")})", sig.ReturnType);
                 return true;
             }
             // Non-generic Task.FromCanceled(CancellationToken) -> a pre-completed
@@ -1321,7 +1327,7 @@ internal sealed partial class MethodCompiler
             {
                 Pop(); // CancellationToken (its canceled state is not re-validated)
                 EmitCanceledExcRegistration();
-                Push(StackKind.Ref, "Dn2CppTask*", "dn2cpp_task_from_canceled()");
+                PushStampedTask("dn2cpp_task_from_canceled()", sig.ReturnType);
                 return true;
             }
 

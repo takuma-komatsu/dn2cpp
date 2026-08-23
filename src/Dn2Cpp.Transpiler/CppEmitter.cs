@@ -2760,7 +2760,7 @@ internal sealed partial class CppEmitter
     /// array itself (the precise per-element identity makes this sound).</summary>
     private void EmitArrayTypeInfos(StringBuilder sb, HashSet<ClassInfo> emittedEnums)
     {
-        if (_c.ArrayElementTypes.Count == 0)
+        if (_c.ArrayElementTypes.Count == 0 && _c.MdArrayTypes.Count == 0)
             return;
         sb.AppendLine("// ---- per-element array type-infos ----");
         // Content-intern pool for the SZArray dispatch tables (arritfpool_):
@@ -2780,8 +2780,8 @@ internal sealed partial class CppEmitter
                 : element.Kind == TypeKind.MDArray
                 ? "&ti_md_" + Compilation.ArrayElemMangle(element)
                 : FieldTypeInfoExpr(element, emittedEnums);
-        // Static MD-array type-infos: one ti_md_<T> per MD type noted as an SZArray
-        // element, the linkable constant that SZ handle's elementType names. Shape matches
+        // Static MD-array type-infos: one ti_md_<T> per noted MD identity, the linkable
+        // constant that constructed generic arguments and nested array elements name. Shape matches
         // dn2cpp_array_ti's fabricated identity (ARRAY|SEALED, real elementType and rank, no
         // rows — MD dispatch is the shared rank-keyed table); the registry row
         // EmitTypeRegistry takes from _arrayTypeSyms is what makes the interner answer THIS
@@ -3323,16 +3323,19 @@ internal sealed partial class CppEmitter
     /// member elements in that set — a mirror of this emitter's own filters, so a "no" here
     /// means the mirror came apart, which is why it is counted and fails the transpile
     /// (<see cref="AssertArrayTypeInfoDegradesWithinCap"/>) rather than degrading in
-    /// silence. A bare MDArray member type keeps the System.Object
-    /// degrade: its runtime identity is the interned <c>dn2cpp_mdarr_ti(elem, rank)</c> —
-    /// a runtime call, not a linkable constant a static table row can carry. (An MDArray
-    /// as an SZArray's ELEMENT is different — that SZ handle's own elementType is the
-    /// static <c>ti_md_</c> the note emits.)</summary>
+    /// silence. An MDArray type whose identity closure was noted names the same static
+    /// <c>ti_md_</c> handle the runtime interner registers for that element/rank shape.</summary>
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
             && ArrayTypeInfoDeclared(el, "reflected member type (array)"))
             return MethodCompiler.PreciseArrayTypeInfoExprOf(el);
+        if (t.Kind == TypeKind.MDArray)
+        {
+            string sym = "ti_md_" + Compilation.ArrayElemMangle(t);
+            if (TypeInfoSymbolDefined(sym))
+                return "&" + sym;
+        }
         // A cross-assembly type can arrive in ResolveTypeToken's degraded External spelling
         // (an array element's first noter wins) while typeof answers the loaded class's own
         // handle — promote so both mouths answer one identity, else an IDisposable[]

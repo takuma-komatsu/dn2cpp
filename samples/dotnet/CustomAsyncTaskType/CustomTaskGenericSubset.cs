@@ -37,6 +37,15 @@ internal static class Program
             static q => new Point { X = q.X + 10, Y = q.Y + 10 });
         Console.WriteLine($"generic: struct {p}");
 
+        object builderTask = Twice(5, static x => x).AsTask();
+        Console.WriteLine("generic: builder task type "
+            + (typeof(Task<int>).IsAssignableFrom(builderTask.GetType())
+                && builderTask is Task<int> && builderTask is not Task<string>));
+        object completedTask = CustomTask<int>.CompletedTask.AsTask();
+        Console.WriteLine("generic: completed task type "
+            + (typeof(Task<int>).IsAssignableFrom(completedTask.GetType())
+                && completedTask is Task<int> && completedTask is not Task<string>));
+
         Console.WriteLine("generic: done");
     }
 
