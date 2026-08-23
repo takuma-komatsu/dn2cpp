@@ -1457,6 +1457,8 @@ tcs-source-metadata arg=True task=False
 tcs-pending runtime=True expected=True wrong=False
 tcs-exact source=True task=True
 tcs-unobserved=True
+tcs-nongeneric runtime=True expected=True wrong=False
+tcs-nongeneric-exact=True
 async-builder runtime=True expected=True wrong=False
 from-exception runtime=True expected=True wrong=False
 from-canceled runtime=True expected=True wrong=False
@@ -1471,6 +1473,8 @@ when-any-nongeneric runtime=True expected=True wrong=False
 wait-async runtime=True expected=True wrong=False
 wait-result=5
 valuetask-sync runtime=True expected=True wrong=False
+valuetask-completed-nongeneric runtime=True expected=True wrong=False
+valuetask-default-nongeneric runtime=True expected=True wrong=False
 valuetask-default runtime=True expected=True wrong=False
 valuetask-builder runtime=True expected=True wrong=False
 valuetask-builder-unobserved=True

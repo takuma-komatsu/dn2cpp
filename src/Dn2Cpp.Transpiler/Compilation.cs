@@ -273,22 +273,15 @@ internal sealed partial class Compilation
         return inner;
     }
 
-    public ClassInfo? FindGenericInstantiation(string definitionName, TypeDesc[] args)
+    public ClassInfo? FindGenericInstantiation(string @namespace, string name, TypeDesc[] args)
     {
-        foreach (var module in Modules)
+        if (!TypeIndex().TryGetValue((@namespace, name), out var definitions)
+            || definitions.Count == 0)
+            return null;
+        foreach (var (module, handle) in definitions)
         {
-            foreach (var handle in module.GenericTemplates)
-            {
-                var td = module.Reader.GetTypeDefinition(handle);
-                if (td.GetGenericParameters().Count != args.Length)
-                    continue;
-                string ns = module.Reader.GetString(td.Namespace);
-                string name = StripArity(module.Reader.GetString(td.Name));
-                string fullName = string.IsNullOrEmpty(ns) ? name : ns + "." + name;
-                if (fullName == definitionName
-                    && InstancesFor(module, handle).TryGetValue(args, out var instance))
-                    return instance;
-            }
+            if (InstancesFor(module, handle).TryGetValue(args, out var instance))
+                return instance;
         }
         return null;
     }
@@ -2496,21 +2489,21 @@ internal sealed partial class Compilation
             NoteMdArrayType(element);
     }
 
-    /// <summary>MDArray types reached as an SZArray ELEMENT (<c>new int[2][,]</c>,
-    /// <c>typeof(int[][,])</c>), keyed by <see cref="ArrayElemMangle"/>.
+    /// <summary>MDArray types whose identity is named by emitted metadata: either
+    /// as an SZArray element (<c>new int[2][,]</c>, <c>typeof(int[][,])</c>) or
+    /// inside a constructed type's identity closure, keyed by <see cref="ArrayElemMangle"/>.
     /// CppEmitter emits one static <c>ti_md_&lt;key&gt;</c> per entry and registers it in
     /// the type registry, where the runtime interner (<c>dn2cpp_array_ti</c>) resolves
     /// every <c>new T[,]</c> of the shape to it — so the static handle IS the interned
-    /// identity, not a second one. MD types reached only as their own tokens stay
-    /// runtime-interned as before (no entry, no emitted symbol, byte-identical
-    /// output).</summary>
+    /// identity, not a second one. A bare instruction token still uses the runtime
+    /// interner directly unless another emitted identity names its static handle.</summary>
     internal Dictionary<string, TypeDesc> MdArrayTypes { get; } = new(System.StringComparer.Ordinal);
 
     /// <summary>See <see cref="MdArrayTypes"/>. Recurses like NoteArrayElementType so
     /// the whole GetElementType chain stays linkable, notes a referenced enum element's
     /// own ti_ (the NoteReflectedArrayType precedent), and keys the shared rank&gt;=2
-    /// dispatch map — instances of the MD type flow out of the SZ array without any
-    /// statically visible MD token.</summary>
+    /// dispatch map — the MD identity can flow through an SZ array or constructed
+    /// generic metadata without a statically visible MD token.</summary>
     internal void NoteMdArrayType(TypeDesc md)
     {
         if (ContainsCanonPlaceholder(md) || !MdArrayTypes.TryAdd(ArrayElemMangle(md), md))

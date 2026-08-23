@@ -1496,6 +1496,8 @@ internal sealed partial class Compilation
         {
             case RgctxSlotKind.TypeInfo:
                 return RgctxTypeInfoEntry(RgctxResolveTypeToken(module, handle, ctx));
+            case RgctxSlotKind.TaskTypeInfo:
+                return RgctxTypeInfoEntry(RgctxTaskTypeForSite(module, handle, ctx, scope));
             case RgctxSlotKind.TypeArg0TypeInfo:
             {
                 var t = RgctxResolveTypeToken(module, handle, ctx);
@@ -1596,6 +1598,121 @@ internal sealed partial class Compilation
             default:
                 throw new NotSupportedException($"rgctx slot kind {slot.Kind}");
         }
+    }
+
+    /// <summary>Re-resolves an intrinsic producer's raw token so each real
+    /// context stamps its call return, constructor type, or adopted field type.
+    /// ValueTask and TaskCompletionSource project to their backing Task.</summary>
+    private TypeDesc RgctxTaskTypeForSite(
+        Module module, EntityHandle handle, GenericContext ctx, ClassInfo scope)
+    {
+        var lookup = new LookupOnlySignatureProvider(this);
+        TypeDesc siteType;
+        bool field = handle.Kind == HandleKind.FieldDefinition;
+        if (handle.Kind == HandleKind.MemberReference)
+        {
+            var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
+            field = module.Reader.GetBlobReader(mr.Signature).ReadSignatureHeader().Kind
+                == SignatureKind.Field;
+        }
+        if (field)
+        {
+            if (handle.Kind == HandleKind.FieldDefinition)
+            {
+                var fd = module.Reader.GetFieldDefinition((FieldDefinitionHandle)handle);
+                var declHandle = fd.GetDeclaringType();
+                siteType = TypeDesc.MakeClass(scope.Module == module && scope.Handle == declHandle
+                    ? scope
+                    : GetClass(module, declHandle));
+            }
+            else
+            {
+                siteType = RgctxResolveTaskMemberParentType(module, handle, ctx, lookup);
+            }
+        }
+        else
+        {
+            var (name, declaringType, returnType) =
+                RgctxResolveMethodSite(module, handle, ctx, scope, lookup);
+            siteType = name == ".ctor" ? declaringType : returnType;
+        }
+        if (lookup.Missed)
+            throw new NotSupportedException("rgctx: Task producer type is not in the completed image");
+
+        if (siteType is not { Kind: TypeKind.Class, Class: { } cls })
+            throw new NotSupportedException($"rgctx: Task producer has non-class site type {siteType}");
+        if (cls.IntrinsicCppName == "Dn2CppTask*")
+            return siteType;
+        if (GenericDefFullName(cls) is not ("System.Threading.Tasks.ValueTask"
+                                             or "System.Threading.Tasks.TaskCompletionSource")
+            && AdoptedAsyncKey(cls) != "System.Threading.Tasks.ValueTask")
+            throw new NotSupportedException($"rgctx: {siteType} is not a Task producer type");
+        if (cls.Context.TypeArgs is not [{ } resultType])
+            throw new NotSupportedException($"rgctx: {siteType} has no generic Task result");
+        return FindGenericInstantiation("System.Threading.Tasks", "Task`1", [resultType]) is { } task
+            ? TypeDesc.MakeClass(task)
+            : throw new NotSupportedException($"rgctx: Task<{resultType}> is not in the completed image");
+    }
+
+    private (string Name, TypeDesc DeclaringType, TypeDesc ReturnType) RgctxResolveMethodSite(
+        Module module, EntityHandle handle, GenericContext callerCtx, ClassInfo scope,
+        LookupOnlySignatureProvider lookup)
+    {
+        TypeDesc[] methodArgs = callerCtx.MethodArgs;
+        if (handle.Kind == HandleKind.MethodSpecification)
+        {
+            var spec = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+            methodArgs = spec.DecodeSignature(lookup, callerCtx).ToArray();
+            handle = spec.Method;
+        }
+
+        if (handle.Kind == HandleKind.MemberReference)
+        {
+            var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
+            var declaringType = RgctxResolveTaskMemberParentType(
+                module, handle, callerCtx, lookup);
+            var typeArgs = declaringType is { Kind: TypeKind.Class, Class: { } dc }
+                ? dc.Context.TypeArgs
+                : Array.Empty<TypeDesc>();
+            var sig = mr.DecodeMethodSignature(
+                lookup, new GenericContext(typeArgs, methodArgs));
+            return (module.Reader.GetString(mr.Name), declaringType, sig.ReturnType);
+        }
+
+        if (handle.Kind == HandleKind.MethodDefinition)
+        {
+            var md = module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+            var declHandle = md.GetDeclaringType();
+            var declaringClass = scope.Module == module && scope.Handle == declHandle
+                ? scope
+                : GetClass(module, declHandle);
+            var sig = md.DecodeSignature(
+                lookup, new GenericContext(declaringClass.Context.TypeArgs, methodArgs));
+            return (module.Reader.GetString(md.Name), TypeDesc.MakeClass(declaringClass), sig.ReturnType);
+        }
+
+        throw new NotSupportedException($"rgctx method token kind {handle.Kind} is not supported");
+    }
+
+    private TypeDesc RgctxResolveTaskMemberParentType(
+        Module module, EntityHandle handle, GenericContext ctx,
+        LookupOnlySignatureProvider lookup)
+    {
+        if (handle.Kind != HandleKind.MemberReference)
+            throw new NotSupportedException($"rgctx member-parent token kind {handle.Kind} is not supported");
+        var parent = module.Reader.GetMemberReference((MemberReferenceHandle)handle).Parent;
+        return parent.Kind switch
+        {
+            HandleKind.TypeDefinition => GetTypeDescForDefinition(
+                module, (TypeDefinitionHandle)parent),
+            HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)parent)
+                ?? throw new NotSupportedException("rgctx Task producer parent did not resolve"),
+            HandleKind.TypeSpecification => module.Reader
+                .GetTypeSpecification((TypeSpecificationHandle)parent)
+                .DecodeSignature(lookup, ctx),
+            _ => throw new NotSupportedException(
+                $"rgctx Task producer parent kind {parent.Kind} is not supported"),
+        };
     }
 
     /// <summary>A real type's type-info expression for an rgctx table entry,

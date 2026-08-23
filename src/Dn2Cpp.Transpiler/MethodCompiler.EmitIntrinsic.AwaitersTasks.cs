@@ -6,26 +6,33 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
-    private string TaskTypeInfo(TypeDesc managedType)
+    private string TaskTypeInfo(TypeDesc managedType, int token)
     {
         if (managedType is not { Kind: TypeKind.Class, Class.IntrinsicCppName: "Dn2CppTask*" })
             throw new InvalidOperationException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: cannot stamp non-Task type {managedType}");
+        if (SharedTrial && Compilation.ContainsCanonPlaceholder(managedType))
+            return "(const Dn2CppTypeInfo*)"
+                + RgctxSlotAccess(RgctxSlotKind.TaskTypeInfo, token, "task typeinfo", managedType);
         return TypeInfoExpr(managedType)
             ?? throw new InvalidOperationException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Task type {managedType} has no runtime identity");
     }
 
+    private string TaskTypeInfo(TypeDesc managedType) => TaskTypeInfo(managedType, _callSiteToken);
+
+    private string StampTask(string expression, TypeDesc managedType, int token) =>
+        $"dn2cpp_task_stamp({expression}, {TaskTypeInfo(managedType, token)})";
+
     private string StampTask(string expression, TypeDesc managedType) =>
-        $"dn2cpp_task_stamp({expression}, {TaskTypeInfo(managedType)})";
+        StampTask(expression, managedType, _callSiteToken);
 
     private void PushStampedTask(string expression, TypeDesc managedType) =>
         Push(StackKind.Ref, "Dn2CppTask*", StampTask(expression, managedType));
 
     private TypeDesc TaskTypeForResult(TypeDesc resultType)
     {
-        TaintIfCanonical(resultType, "task typeinfo");
-        var task = Comp.FindGenericInstantiation("System.Threading.Tasks.Task", [resultType])
+        var task = Comp.FindGenericInstantiation("System.Threading.Tasks", "Task`1", [resultType])
             ?? throw new InvalidOperationException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: Task<{resultType}> is not in the completed image");
         return TypeDesc.MakeClass(task);

@@ -973,8 +973,26 @@ internal sealed partial class Compilation
         if (cls.GenericArity > 0)
             CompleteShape(cls);
         string name = reader.GetString(mr.Name);
-        var fld = cls.Fields.FirstOrDefault(f => f.Name == name)
-            ?? throw new NotSupportedException(
+        var fld = cls.Fields.FirstOrDefault(f => f.Name == name);
+        // Adopted task-role types are intrinsic memberless shells. Their contract admits
+        // one self-typed static CompletedTask; builders and awaiters admit no fields.
+        if (fld is null && name == "CompletedTask"
+            && AdoptedAsyncKey(cls) is "System.Threading.Tasks.Task"
+                                      or "System.Threading.Tasks.ValueTask"
+            && mr.DecodeFieldSignature(SigProvider, cls.Context) is
+                { Kind: TypeKind.Class, Class: { } fieldClass } fieldType
+            && ReferenceEquals(fieldClass, cls))
+        {
+            fld = new FieldInfo
+            {
+                DeclaringClass = cls,
+                Name = name,
+                Type = fieldType,
+                IsStatic = true,
+            };
+        }
+        if (fld is null)
+            throw new NotSupportedException(
                 $"field '{name}' not found on {cls.FullName} "
                 + $"(fields: {string.Join(", ", cls.Fields.Select(f => f.Name))})");
         return (cls, fld);

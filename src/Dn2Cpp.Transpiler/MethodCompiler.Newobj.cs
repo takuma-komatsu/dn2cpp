@@ -936,11 +936,10 @@ internal sealed partial class MethodCompiler
             var tcsig = tcmr.DecodeMethodSignature(_c.SigProvider, tccls.Context);
             for (int i = 0; i < tcsig.ParameterTypes.Length; i++)
                 Pop(); // object? state (AsyncState is unmodeled) / TaskCreationOptions hint
-            string tcsType = TypeInfoExpr(TypeDesc.MakeClass(tccls))
+            string tcsType = TypeInfoExpr(TypeDesc.MakeClass(tccls), SRME.GetToken(tcmr.Parent))
                 ?? throw new InvalidOperationException($"{tccls.FullName} has no runtime identity");
             TypeDesc taskType = TaskTypeForResult(tccls.Context.TypeArgs[0]);
-            string taskTypeInfo = TypeInfoExpr(taskType)
-                ?? throw new InvalidOperationException($"{taskType} has no runtime identity");
+            string taskTypeInfo = TaskTypeInfo(taskType);
             Push(StackKind.Ref, "Dn2CppTaskCompletionSource*",
                 $"dn2cpp_tcs_alloc({tcsType}, {taskTypeInfo})");
             return;

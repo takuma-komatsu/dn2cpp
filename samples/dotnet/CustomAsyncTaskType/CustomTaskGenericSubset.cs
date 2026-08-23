@@ -19,6 +19,9 @@ internal struct Point
 
 internal static class Program
 {
+    private static Task<T> CompletedRef<T>() where T : class =>
+        CustomTask<T>.CompletedTask.AsTask();
+
     // A generic async CustomTask<T> declared in the APP assembly.
     private static async CustomTask<T> Twice<T>(T value, Func<T, T> f)
     {
@@ -45,6 +48,11 @@ internal static class Program
         Console.WriteLine("generic: completed task type "
             + (typeof(Task<int>).IsAssignableFrom(completedTask.GetType())
                 && completedTask is Task<int> && completedTask is not Task<string>));
+        object completedString = CompletedRef<string>();
+        object completedObject = CompletedRef<object>();
+        Console.WriteLine("generic: completed field shared "
+            + (completedString is Task<string> && completedString is not Task<object>)
+            + "," + (completedObject is Task<object> && completedObject is not Task<string>));
 
         Console.WriteLine("generic: done");
     }

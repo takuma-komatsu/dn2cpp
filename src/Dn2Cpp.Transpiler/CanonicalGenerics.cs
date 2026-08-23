@@ -28,6 +28,11 @@ internal enum RgctxSlotKind
 {
     /// <summary>The resolved type's own type-info (box/unbox/castclass/isinst).</summary>
     TypeInfo,
+    /// <summary>The Task identity produced by an intrinsic call, constructor or
+    /// adopted-task field. The raw member token is re-resolved under each real
+    /// context; ValueTask and TaskCompletionSource sites project to their backing
+    /// Task.</summary>
+    TaskTypeInfo,
     /// <summary>The type-info of the resolved closed generic's first type
     /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity) and the
     /// IComparable&lt;T&gt; boxed-primitive cast.</summary>

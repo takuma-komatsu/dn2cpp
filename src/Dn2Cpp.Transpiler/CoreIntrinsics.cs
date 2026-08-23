@@ -1419,9 +1419,10 @@ internal static partial class CoreIntrinsics
     /// <para>Two reasons only. A handle that models MORE THAN ONE CLR type is a deliberate
     /// type ERASURE, and a row would make the erasure worse rather than better. A handle
     /// whose CLR name is not a
-    /// <c>ClassInfo.FullName</c> at all cannot be keyed here: FullName is arity-stripped and
-    /// carries no enclosing type, so a private nested runtime shape would need the key
-    /// "Node", which any type in any namespace could match.</para></summary>
+    /// <c>ClassInfo.FullName</c> at all cannot be keyed here: a nested FullName carries no
+    /// enclosing type (closed specializations still carry their mangled arguments), so a
+    /// private nested runtime shape would need the key "Node", which any type in any
+    /// namespace could match.</para></summary>
     private static readonly Dictionary<string, string> s_runtimeTypeInfoNotRowed = new()
     {
         ["dn2cpp_task_awaiter_type"] = "erasure: every TaskAwaiter(<T>)/ValueTaskAwaiter/Configured* form shares Dn2CppTaskAwaiter",
@@ -1529,9 +1530,7 @@ internal static partial class CoreIntrinsics
         : null;
 
     public static string? RuntimeTypeInfoSymbol(ClassInfo cls) =>
-        cls.GenericArity > 0 && cls.FullName == "System.Threading.Tasks.Task"
-            ? null
-            : RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
+        RuntimeTypeInfoSymbol(cls.FullName) ?? RuntimeOwnedNestedHandle(cls);
 
     /// <summary>Whether the runtime OWNS this type's metadata, i.e. the emitter must define
     /// no type-info for it at all. False both for a type with no runtime handle (its emitted
@@ -1542,8 +1541,7 @@ internal static partial class CoreIntrinsics
         fullTypeName is not null && s_runtimeOwnedTypeInfo.ContainsKey(fullTypeName);
 
     public static bool RuntimeOwnsTypeInfo(ClassInfo cls) =>
-        !(cls.GenericArity > 0 && cls.FullName == "System.Threading.Tasks.Task")
-        && (RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null);
+        RuntimeOwnsTypeInfo(cls.FullName) || RuntimeOwnedNestedHandle(cls) is not null;
 
     /// <summary>Whether an UNLOADED (External) type name is a BCL exception type —
     /// <c>System.Exception</c> itself or any <c>System.*</c> type whose name carries

@@ -127,7 +127,9 @@ public readonly struct CustomTask<T>
         _token = token;
     }
 
-    public static CustomTask<T> CompletedTask => default;
+    /// <summary>The generic field form exercises the same adopted ldsfld fold
+    /// under a caller's generic context.</summary>
+    public static readonly CustomTask<T> CompletedTask = default;
 
     public async Task<T> AsTask() => await this;
 

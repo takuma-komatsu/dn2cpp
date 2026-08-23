@@ -14,8 +14,9 @@
 # the CRTP object pool the ticket fingered (TaskPool<T> where T : class, ITaskPoolNode<T>,
 # closed by Runner<TStateMachine> : ITaskPoolNode<Runner<TStateMachine>>), a
 # ConcurrentDictionary scheduler, a default-interface-method source bridge, and a set of
-# internal async methods for reachability to sweep — plus a driver that awaits it, and a
-# SECOND custom task type declared in the app assembly itself.
+# internal async methods for reachability to sweep — plus a driver that awaits it, a
+# generic CompletedTask field shared through rgctx, and a SECOND custom task type declared
+# in the app assembly itself.
 #
 # That last one is not decoration. A MethodSpec's parent resolves down a different arm for a
 # MethodDef (same assembly) than for a MemberRef/TypeRef (cross assembly), and the builder's
@@ -286,6 +287,26 @@ if grep -qh "ConcurrentDictionary" "$out"/generated*.cpp; then
     echo "FAIL: the library scheduler's ConcurrentDictionary was pulled into the tree" >&2
     exit 1
 fi
+# CustomTask<T>.CompletedTask is an adopted static FIELD. The string/object
+# callers must keep one CnRef body whose field and AsTask identities come from
+# each real method context.
+if ! grep -qE "m_CustomTaskGenericSubset_Program_CompletedRef_[0-9]+___CnRef\(" \
+        "$out/generated.h"; then
+    echo "FAIL: no canonical CompletedRef<CnRef> body for the adopted generic field" >&2
+    exit 1
+fi
+for arg in String Object; do
+    sym="m_CustomTaskGenericSubset_Program_CompletedRef_[0-9]+__${arg}"
+    if ! grep -qE "rgctx_${sym}" "$out/generated.h"; then
+        echo "FAIL: CompletedRef<$arg> has no rgctx table" >&2
+        exit 1
+    fi
+    if ! grep -A 3 -hE "^[A-Za-z_][A-Za-z0-9_* ]* ${sym}\(" \
+            "$out/generated.h" | grep -qE "rgctx_${sym}"; then
+        echo "FAIL: CompletedRef<$arg> is not an rgctx forwarder" >&2
+        exit 1
+    fi
+done
 echo "OK (the library's pool / runner / promise / scheduler never entered the tree)"
 
 echo "== 7/10 Un-adopted: the library's async plumbing MUST be in the tree =="

@@ -230,6 +230,13 @@
 # CoreLib's registry does not account for — the section covers the types this
 # bucket names, that check covers the ones no corpus happens to name.
 #
+# TaskRuntimeIdentitySubset asserts the producer side of the same identity
+# contract: every intrinsic Task/ValueTask/TCS mouth stamps the exact closed
+# Task<T>, including nested/array result arguments and source-backed pending
+# tasks, while wrong closed casts stay false. Its generic SharedArg calls are
+# behavioural identity checks; canonical-body retention itself is asserted by
+# the Task rgctx section of build-and-run-shared-generics.sh.
+#
 # The OWNED-HANDLE RESIDUE section (BoundHandleResidueSubset) is in this bucket for
 # the same reason TypeIdentitySubset is, and its subject is likewise not reflection:
 # it is what a RUNTIME-OWNED Dn2CppTypeInfo answers about its own members, i.e. which

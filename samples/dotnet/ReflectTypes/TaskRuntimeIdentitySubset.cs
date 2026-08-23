@@ -79,6 +79,10 @@ namespace TaskRuntimeIdentitySubset
             source.SetResult("done");
             _ = new TaskCompletionSource<Marker>();
             Console.WriteLine("tcs-unobserved=True");
+            Check("tcs-nongeneric", new TaskCompletionSource().Task,
+                typeof(Task), typeof(Task<int>));
+            Console.WriteLine("tcs-nongeneric-exact="
+                + (new TaskCompletionSource().Task.GetType() == typeof(Task)));
 
             Check("async-builder", AsyncTaskValue(), typeof(Task<string>), typeof(Task<int>));
             Check("from-exception", Task.FromException<int>(new Exception("fault")),
@@ -113,6 +117,10 @@ namespace TaskRuntimeIdentitySubset
 
             Check("valuetask-sync", new ValueTask<int>(7).AsTask(),
                 typeof(Task<int>), typeof(Task<string>));
+            Check("valuetask-completed-nongeneric", ValueTask.CompletedTask.AsTask(),
+                typeof(Task), typeof(Task<int>));
+            Check("valuetask-default-nongeneric", default(ValueTask).AsTask(),
+                typeof(Task), typeof(Task<int>));
             Check("valuetask-default", default(ValueTask<int>).AsTask(),
                 typeof(Task<int>), typeof(Task<string>));
             Check("valuetask-builder", AsyncValueTaskValue().AsTask(),

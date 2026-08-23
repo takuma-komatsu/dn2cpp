@@ -32,6 +32,7 @@ namespace SharedGenerics
             TypeofFoldSubset.Program.__GateEntry();
             AliasCollisionSubset.Program.__GateEntry();
             MethodShareSubset.Program.__GateEntry();
+            TaskRgctxSubset.Program.__GateEntry();
             SettingWrapperSubset.Program.__GateEntry();
             PrimitiveNameShadowSubset.Program.__GateEntry();
             MangleKindShadowSubset.Program.__GateEntry();
