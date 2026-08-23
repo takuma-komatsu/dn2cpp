@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# System.Exception.get_Message + GetType.
+# System.Exception.get_Message + GetType, including TypeLoadException's public
+# constructor messages without entering its VM-only lazy formatter.
 # dn2cpp's own catch+inspect code reads a caught exception's .Message and
 # .GetType().Name to build a wrapped exception (MethodCompiler.Compile /
 # Compilation.ScanBodyForGenerics) or a measure-gap record (MeasureGap.From), so

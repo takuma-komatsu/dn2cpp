@@ -46,6 +46,9 @@
 #     a real game's settings comparison). Every T kind that reaches the prefix:
 #     the primitives, enum, an overriding struct, decimal/DateTime, string and
 #     object — the last four being the arms that already boxed.
+#   * PrimitiveObjectCompareSubset — both CompareTo siblings on every scalar primitive:
+#     typed ordering, plus the object overload's null, exact-box and foreign-type paths.
+#     Sub-word integers and Char pin their raw difference directly and via IComparable.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the

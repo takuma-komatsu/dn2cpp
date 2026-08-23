@@ -1840,6 +1840,9 @@ internal sealed partial class MethodCompiler
         };
         var cls = ctor.DeclaringClass;
 
+        if (!cls.IsBeforeFieldInit)
+            EnsureCctorBefore(cls);
+
         if (_intrinsics is not null && _intrinsics.TryEmitNewobj(this, ctor))
             return;
 

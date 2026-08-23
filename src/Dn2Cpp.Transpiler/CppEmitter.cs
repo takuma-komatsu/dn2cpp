@@ -796,7 +796,8 @@ internal sealed partial class CppEmitter
 
         // Static constructors run eagerly at startup (EmitInitCalls), in reach/compile
         // order; .NET runs each lazily on first use, which guarantees a type's statics are
-        // set before anything reads them. Three orderings have to be restored by hand.
+        // set before anything reads them. The startup subset and its remaining orderings
+        // have to be restored by hand.
         //
         // System.HashCode.s_seed is a .cctor fill consumed — transitively, via
         // HashCode.Combine — by the GetHashCode of every ValueTuple / record / struct key,
@@ -817,18 +818,26 @@ internal sealed partial class CppEmitter
         // same "before its dependents" rule one level down. (The use-site guards make it
         // safe either way; the hoist is what makes the order match .NET.)
         var modDepth = ModuleInitDepths();
-        var cctors = compiledMethods
+        var allCctors = compiledMethods
             .Where(m => m.Name == ".cctor" && m.IsStatic)
             .OrderBy(m => m.DeclaringClass.FullName == "System.HashCode" ? -1
                         : modDepth.GetValueOrDefault(m.DeclaringClass.Module, 0))
             .ThenBy(m => m.DeclaringClass.Name == "<Module>" ? 0 : 1)
+            .ToList();
+        // A closed generic's statics belong to that exact instantiation. Running every
+        // reached instantiation here turns first-use caches into pre-Main side effects;
+        // resolver caches in particular can freeze a registry before Main registers it.
+        // Their static-field mouths already call the idempotent __ensure wrapper, so leave
+        // closed generic cctors lazy while retaining the legacy startup pass for other types.
+        var startupCctors = allCctors
+            .Where(m => m.DeclaringClass.GenericArity == 0)
             .ToList();
         // Idempotent first-use wrappers for every static constructor: the eager init
         // loop (EmitInitCalls) and the use-site guards (EnsureCctorBefore) both run a
         // cctor only through its __ensure wrapper, so it runs at most once whichever
         // fires first. The use-site guard reproduces .NET's "statics set before first
         // read" ordering for the dependencies the eager reach order violates.
-        EmitCctorEnsures(o, cctors, compiledMethods);
+        EmitCctorEnsures(o, allCctors, compiledMethods);
         // Inline-promoted bodies (AggressiveInlining + tiny-IL) close the header —
         // after the cctor __ensure guards just above, the last header-declared
         // symbols a body can name.
@@ -839,7 +848,7 @@ internal sealed partial class CppEmitter
         }
         // The entry point / Godot tables are definitions, so they land in the primary
         // Data TU (generated.cpp); they reference only header-visible symbols.
-        _backend.EmitEpilogue(this, o.Data, cctors);
+        _backend.EmitEpilogue(this, o.Data, startupCctors);
 
         // Every mouth that can name a precise ti_arr_ handle has now run — the reflection
         // tables, the attribute rows, the assembly registry and the backend's epilogue — so
@@ -3339,6 +3348,8 @@ internal sealed partial class CppEmitter
             // "not emitted ⟹ degrade to System.Object" fallback for these types, which was
             // itself a wrong answer.
             if (CoreIntrinsics.RuntimeTypeInfoSymbol(fc) is { } rt) return rt;
+            if (_referencedIntrinsicTis.Contains(fc))
+                return TypeInfoRef(fc, "reflected signature custom modifier");
             if (fc.IsEnum) return emittedEnums.Contains(fc) ? TypeInfoRef(fc, "reflected member type (enum)") : "&dn2cpp_object_type";
             return _emit.Contains(fc) ? TypeInfoRef(fc, "reflected member type") : "&dn2cpp_object_type";
         }

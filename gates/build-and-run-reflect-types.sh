@@ -37,6 +37,8 @@
 # Also covers the dynamic-code-generation surface cut: Expression tree building
 # transpiles, but Expression.Compile / Reflection.Emit construction throws a
 # catchable PlatformNotSupportedException (the NativeAOT posture).
+# MemberHandleSubset covers Roslyn's legal ldtoken method/field forms (definition,
+# specification and cross-module MemberReference) and their catchable raw-handle boundary.
 #
 # And, right beside it, its OPPOSITE — the degraded stack-trace model
 # (StackTraceSubset). The two sections are the two halves of the rule in
@@ -96,8 +98,9 @@
 # MakeArrayType(rank) overload always throws it (MD array types — including
 # the rank-1 T[*] — are not modeled),
 # CustomAttributeData's argument views throw PlatformNotSupportedException,
-# ParameterInfo.DefaultValue throws it too (the Constant blob is not carried;
-# HasDefaultValue/IsOut answer exactly from the recorded attributes word), and
+# ParameterInfo custom modifiers answer from the method signature (including the
+# init-only setter return modreq); DefaultValue throws (the Constant blob is not
+# carried; HasDefaultValue/IsOut answer exactly from the attributes word), and
 # Type.GetGenericParameterConstraints throws it where real .NET throws
 # InvalidOperationException (no generic-parameter Type materializes), the
 # dynamic-codegen section's Compile()/DynamicMethod throw where the JIT-backed

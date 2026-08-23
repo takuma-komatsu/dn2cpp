@@ -1578,6 +1578,7 @@ internal sealed partial class Compilation
                     IsSealed = (td.Attributes & TypeAttributes.Sealed) != 0,
                     IsPublic = (td.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.Public,
                     IsInterface = (td.Attributes & TypeAttributes.ClassSemanticsMask) == TypeAttributes.Interface,
+                    IsBeforeFieldInit = (td.Attributes & TypeAttributes.BeforeFieldInit) != 0,
                 };
                 // Non-generic async/await Task-family types lower to runtime
                 // structs; mark them so their IL is never transpiled. The
@@ -2132,6 +2133,7 @@ internal sealed partial class Compilation
             IsSealed = (td.Attributes & TypeAttributes.Sealed) != 0,
             IsPublic = (td.Attributes & TypeAttributes.VisibilityMask) == TypeAttributes.Public,
             IsInterface = (td.Attributes & TypeAttributes.ClassSemanticsMask) == TypeAttributes.Interface,
+            IsBeforeFieldInit = (td.Attributes & TypeAttributes.BeforeFieldInit) != 0,
             GenericArity = args.Length,
             GenericDepth = depth,
             Context = new GenericContext(args, Array.Empty<TypeDesc>()),

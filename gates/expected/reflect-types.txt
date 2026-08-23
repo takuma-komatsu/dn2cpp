@@ -632,6 +632,13 @@ p-attrs0=0
 p-attrs1=4112
 p-member=Opt
 p-ctor-member=1
+p-init-modreq-count=1
+p-init-modreq-type=System.Runtime.CompilerServices.IsExternalInit
+p-init-modopt=0
+p-value-modreq=0
+p-plain-modreq=0
+p-return-modreq=0
+p-byref-ret-modreq=1:System.Runtime.InteropServices.InAttribute
 p-isout=True|False
 p-hasdefault=True|False
 p-default=PlatformNotSupportedException
@@ -1433,3 +1440,9 @@ ngroot<-wide : True
 -- intrinsic open definition as MakeGenericType input --
 open: BlockingCollection`1
 closed: NotSupportedException
+== ldtoken member handles ==
+memberref-method=PlatformNotSupportedException
+methoddef=PlatformNotSupportedException
+methodspec=PlatformNotSupportedException
+fielddef=PlatformNotSupportedException
+memberref-field=PlatformNotSupportedException

@@ -2855,16 +2855,44 @@ internal sealed partial class MethodCompiler : IEvalStack
 
             case ILOpCode.Ldtoken:
             {
+                var tokenHandle = SRME.EntityHandle(insn.Token);
                 // ldtoken <field>: the RVA blob of a static array initializer
                 // (`RuntimeHelpers.InitializeArray`). Materialize the field's raw
                 // bytes as a static blob and push a pointer to it.
-                if (SRME.EntityHandle(insn.Token).Kind == HandleKind.FieldDefinition)
+                if (tokenHandle.Kind == HandleKind.FieldDefinition
+                    && _reader.GetFieldDefinition((FieldDefinitionHandle)tokenHandle)
+                        .GetRelativeVirtualAddress() != 0)
                 {
-                    byte[] blob = FieldRvaBlob((FieldDefinitionHandle)SRME.EntityHandle(insn.Token));
+                    byte[] blob = FieldRvaBlob((FieldDefinitionHandle)tokenHandle);
                     Push(StackKind.Ptr, "const uint8_t*", _literals.AddBlob(blob));
                     // Carry the blob byte length so a directly-following CreateSpan can
                     // size the span (the Push spilled the symbol to a temp).
                     _stack[^1] = _stack[^1] with { BlobLen = blob.Length };
+                    break;
+                }
+                // InlineTok can legally name a method or a cross-module field as well as
+                // a type. Their RuntimeMethodHandle/RuntimeFieldHandle payload is opaque in
+                // an AOT image; carry a dummy raw handle to the Get*FromHandle intrinsic,
+                // which raises the same catchable unsupported boundary as MethodHandle.
+                if (tokenHandle.Kind is HandleKind.MethodDefinition or HandleKind.MethodSpecification)
+                {
+                    Push(StackKind.Ptr, "void*", "nullptr");
+                    break;
+                }
+                if (tokenHandle.Kind is HandleKind.FieldDefinition)
+                {
+                    Push(StackKind.Ptr, "void*", "nullptr");
+                    break;
+                }
+                if (tokenHandle.Kind == HandleKind.MemberReference)
+                {
+                    var memberKind = _reader.GetBlobReader(_reader.GetMemberReference(
+                            (MemberReferenceHandle)tokenHandle).Signature)
+                        .ReadSignatureHeader().Kind;
+                    if (memberKind is not (SignatureKind.Method or SignatureKind.Field))
+                        throw new NotSupportedException(
+                            $"ldtoken MemberReference signature kind {memberKind} is not supported");
+                    Push(StackKind.Ptr, "void*", "nullptr");
                     break;
                 }
                 // ResolveCastTarget, not ResolveTypeToken: a cross-assembly

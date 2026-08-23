@@ -41,6 +41,12 @@
 # Everything else — that it throws, that it throws every time, the identity, the
 # survival — is compared raw against the real-.NET oracle rather than frozen.
 #
+# GenericCctorFirstUseSubset pins the corresponding successful first-use path: closed
+# generic initializers stay dormant until first use, so startup cannot freeze or inspect
+# a registry before Main has populated it. The section covers static-field, static-call
+# and newobj triggers, early returns both inside and before EmitManagedCall, plus two
+# independent cache instantiations.
+#
 # The swallowed startup failure must also be REPORTED, naming the failed type (the
 # same contract the --dotnet-module boundary report holds): the multi-arg run's stderr is
 # asserted to carry the boundary report for FailedCctorSubset.Broken with the original

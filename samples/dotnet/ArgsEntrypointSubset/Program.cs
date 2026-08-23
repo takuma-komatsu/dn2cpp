@@ -41,6 +41,7 @@ internal static class Program
 
         ModuleInitSubset.Program.Run();
         FailedCctorSubset.Program.Run();
+        GenericCctorFirstUseSubset.Program.Run();
 
         return 0;
     }

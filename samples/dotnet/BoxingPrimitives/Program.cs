@@ -34,6 +34,8 @@ namespace BoxingPrimitives
     //     `constrained. !T; callvirt object::Equals(object)` hands the helper a
     //     managed pointer to the raw value, so a receiver left unboxed there is its
     //     own bits read as a type-info. Every T kind that reaches the prefix.
+    //   * PrimitiveObjectCompareSubset covers both primitive CompareTo siblings:
+    //     typed order and the object overload's null/type checks.
     //   * MouthAgreementSubset is a MOUTH-AGREEMENT test over three surfaces
     //     that are not boxing at heart: a boxed enum's cut ISpanFormattable.TryFormat
     //     against its IFormattable text, the self-instantiated IComparable<T>/
@@ -59,6 +61,7 @@ namespace BoxingPrimitives
             MouthAgreementSubset.Program.Run();
             BoxedNegativeItfSubset.Program.Run();
             ConstrainedObjectEqualsSubset.Program.Run();
+            PrimitiveObjectCompareSubset.Program.Run();
         }
     }
 }

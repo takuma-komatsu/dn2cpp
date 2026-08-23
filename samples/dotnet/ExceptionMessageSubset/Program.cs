@@ -269,6 +269,10 @@ namespace ExceptionMessageSubset
             // bucket's earlier output stays an unchanged prefix.
             FaultSubset.Program.Run();
             FilterSubset.Program.Run();
+
+            // TypeLoadException's public constructors never need its VM-only lazy
+            // formatter, but get_Message makes that body statically reachable.
+            TypeLoadExceptionMessageSubset.Run();
         }
     }
 }
