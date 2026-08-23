@@ -635,12 +635,12 @@ internal sealed partial class Compilation
             && m.Signature.ParameterTypes is [{ Kind: TypeKind.Class, Class: { } pc }] && pc == c);
 
     /// <summary>Reaches a type's static constructor. A reference assembly's
-    /// .cctor is not a root (only the app module's are), so allocating the type
-    /// must pull it in, or its static fields (e.g. List&lt;T&gt;.s_emptyArray) stay
-    /// zero-inited and the type faults at runtime. Triggered on allocation only:
-    /// reaching a .cctor on every static call/field access pulls unwanted BCL
-    /// initializers (e.g. Environment..cctor -> GetProcessorCount). All reached
-    /// .cctors run eagerly at startup.</summary>
+    /// .cctor is not a root (only the app module's are), so allocation, static-field
+    /// access, and a static call on a non-beforefieldinit type must pull it in. Static
+    /// calls on beforefieldinit types do not: their initializer need only precede a
+    /// static-field access, and reaching it here pulls unwanted BCL initializers. Reached
+    /// non-generic .cctors run at startup; closed generic ones run through first-use
+    /// guards.</summary>
     private void ReachCctor(ClassInfo c)
     {
         EnsureCompleted(c);   // its .cctor is a member
@@ -733,6 +733,46 @@ internal sealed partial class Compilation
             default:
                 return null;
         }
+    }
+
+    /// <summary>The loaded declaring class of a static call token, before any intrinsic
+    /// or bounded route cuts its MethodInfo edge. This is the type-initialization asker:
+    /// a non-beforefieldinit cctor is a first-use edge even when emission replaces the
+    /// method body and returns before the ordinary managed-call path.</summary>
+    private ClassInfo? ResolveStaticCallClass(Module module, EntityHandle handle, GenericContext ctx)
+    {
+        var reader = module.Reader;
+        if (handle.Kind == HandleKind.MethodSpecification)
+            return ResolveStaticCallClass(module,
+                reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method, ctx);
+        if (handle.Kind == HandleKind.MethodDefinition)
+        {
+            var md = reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+            if ((md.Attributes & MethodAttributes.Static) == 0)
+                return null;
+            var decl = md.GetDeclaringType();
+            return module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
+                : _currentScan?.DeclaringClass is { } current
+                    && current.Module == module && current.Handle == decl ? current
+                : null;
+        }
+        if (handle.Kind != HandleKind.MemberReference)
+            return null;
+        var mr = reader.GetMemberReference((MemberReferenceHandle)handle);
+        if (reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance)
+            return null;
+        return mr.Parent.Kind switch
+        {
+            HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                .DecodeSignature(SigProvider, ctx).Class,
+            HandleKind.TypeDefinition => module.ClassMap.TryGetValue(
+                (TypeDefinitionHandle)mr.Parent, out var mapped) ? mapped
+                : _currentScan?.DeclaringClass is { } current
+                    && current.Module == module && current.Handle == (TypeDefinitionHandle)mr.Parent
+                        ? current : null,
+            HandleKind.TypeReference => ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class,
+            _ => null,
+        };
     }
 
     /// <summary>Resolves a type token seen during the reachability scan (the
@@ -4557,6 +4597,11 @@ internal sealed partial class Compilation
                     case ILOpCode.Ldftn:
                     case ILOpCode.Ldvirtftn:
                     {
+                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
+                            && ResolveStaticCallClass(module, handle, m.Context) is
+                                { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
+                            ReachCctor(callCls);
+
                         // MethodInfo/MethodBase.Invoke usage enables the reflection-invoke
                         // reachability route: reach all app-module method bodies so
                         // a reflected method is invokable even if never called directly.

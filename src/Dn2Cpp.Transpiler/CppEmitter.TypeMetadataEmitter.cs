@@ -119,6 +119,122 @@ internal sealed partial class CppEmitter
         // The enums whose ti_ is actually emitted — snapshotted by Emit once the
         // enum section has run (see the assignment there).
         private HashSet<ClassInfo> _emittedEnums = new();
+        private readonly Dictionary<MethodInfo, ModifierSignature?> _modifierSignatures = new();
+        private int _customModifierSeq;
+
+        private sealed class ModifiedType
+        {
+            internal TypeDesc Type { get; }
+            internal TypeDesc[] Required { get; }
+            internal TypeDesc[] Optional { get; }
+
+            internal ModifiedType(TypeDesc type, TypeDesc[]? required = null, TypeDesc[]? optional = null)
+            {
+                Type = type;
+                Required = required ?? Array.Empty<TypeDesc>();
+                Optional = optional ?? Array.Empty<TypeDesc>();
+            }
+        }
+
+        private sealed class ModifierSignature
+        {
+            internal ModifiedType ReturnType { get; }
+            internal System.Collections.Immutable.ImmutableArray<ModifiedType> ParameterTypes { get; }
+
+            internal ModifierSignature(MethodSignature<ModifiedType> signature)
+            {
+                ReturnType = signature.ReturnType;
+                ParameterTypes = signature.ParameterTypes;
+            }
+        }
+
+        /// <summary>Signature decoder that keeps the custom modifiers which the main
+        /// TypeDesc decoder deliberately erases. A modifier belongs to the signature
+        /// layer it wraps; composing an array/pointer/generic type therefore does not
+        /// promote a nested element modifier to the parameter itself.</summary>
+        private sealed class ModifierSignatureProvider : ISignatureTypeProvider<ModifiedType, object?>
+        {
+            private readonly SignatureProvider _types;
+
+            internal ModifierSignatureProvider(SignatureProvider types) => _types = types;
+
+            private static ModifiedType Plain(TypeDesc type) => new(type);
+
+            public ModifiedType GetPrimitiveType(PrimitiveTypeCode typeCode) => Plain(_types.GetPrimitiveType(typeCode));
+            public ModifiedType GetTypeFromDefinition(MetadataReader reader, TypeDefinitionHandle handle, byte rawTypeKind) =>
+                Plain(_types.GetTypeFromDefinition(reader, handle, rawTypeKind));
+            public ModifiedType GetTypeFromReference(MetadataReader reader, TypeReferenceHandle handle, byte rawTypeKind) =>
+                Plain(_types.GetTypeFromReference(reader, handle, rawTypeKind));
+            public ModifiedType GetSZArrayType(ModifiedType elementType) => Plain(_types.GetSZArrayType(elementType.Type));
+            public ModifiedType GetArrayType(ModifiedType elementType, ArrayShape shape) => Plain(_types.GetArrayType(elementType.Type, shape));
+            public ModifiedType GetByReferenceType(ModifiedType elementType) => Plain(_types.GetByReferenceType(elementType.Type));
+            public ModifiedType GetPointerType(ModifiedType elementType) => Plain(_types.GetPointerType(elementType.Type));
+            public ModifiedType GetFunctionPointerType(MethodSignature<ModifiedType> signature) => Plain(TypeDesc.MakeFunctionPointer());
+            public ModifiedType GetGenericInstantiation(ModifiedType genericType,
+                System.Collections.Immutable.ImmutableArray<ModifiedType> typeArguments)
+            {
+                var args = new TypeDesc[typeArguments.Length];
+                for (int i = 0; i < args.Length; i++) args[i] = typeArguments[i].Type;
+                return Plain(_types.GetGenericInstantiation(genericType.Type,
+                    System.Collections.Immutable.ImmutableArray.Create(args)));
+            }
+            public ModifiedType GetGenericMethodParameter(object? genericContext, int index) =>
+                Plain(_types.GetGenericMethodParameter(genericContext, index));
+            public ModifiedType GetGenericTypeParameter(object? genericContext, int index) =>
+                Plain(_types.GetGenericTypeParameter(genericContext, index));
+            public ModifiedType GetModifiedType(ModifiedType modifier, ModifiedType unmodifiedType, bool isRequired)
+            {
+                var prior = isRequired ? unmodifiedType.Required : unmodifiedType.Optional;
+                var next = new TypeDesc[prior.Length + 1];
+                next[0] = modifier.Type;
+                Array.Copy(prior, 0, next, 1, prior.Length);
+                return isRequired
+                    ? new ModifiedType(unmodifiedType.Type, next, unmodifiedType.Optional)
+                    : new ModifiedType(unmodifiedType.Type, unmodifiedType.Required, next);
+            }
+            public ModifiedType GetPinnedType(ModifiedType elementType) => Plain(_types.GetPinnedType(elementType.Type));
+            public ModifiedType GetTypeFromSpecification(MetadataReader reader, object? genericContext,
+                TypeSpecificationHandle handle, byte rawTypeKind) =>
+                reader.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
+        }
+
+        private ModifierSignature? CustomModifiers(MethodInfo method)
+        {
+            if (_modifierSignatures.TryGetValue(method, out var cached))
+                return cached;
+            try
+            {
+                var md = method.Module.Reader.GetMethodDefinition(method.Handle);
+                cached = new ModifierSignature(md.DecodeSignature(
+                    new ModifierSignatureProvider(_c.SigProvider), method.Context));
+            }
+            catch (Exception e) when (!Compilation.IsMustEscape(e))
+            {
+                cached = null;
+            }
+            _modifierSignatures[method] = cached;
+            return cached;
+        }
+
+        private void NoteModifierTypes(ModifiedType type)
+        {
+            foreach (var modifier in type.Required)
+                if (modifier.Class is { } cls) _c.NoteReferencedType(cls);
+            foreach (var modifier in type.Optional)
+                if (modifier.Class is { } cls) _c.NoteReferencedType(cls);
+        }
+
+        private (string Expr, int Count) RenderCustomModifiers(TypeDesc[] modifiers)
+        {
+            if (modifiers.Length == 0)
+                return ("nullptr", 0);
+            string name = $"custommods_{_customModifierSeq++}";
+            var rows = new string[modifiers.Length];
+            for (int i = 0; i < rows.Length; i++)
+                rows[i] = _e.MemberTypeInfoExpr(modifiers[i], _emittedEnums);
+            _sb.AppendLine($"static const Dn2CppTypeInfo* const {name}[] = {{ {string.Join(", ", rows)} }};");
+            return (name, rows.Length);
+        }
 
         internal TypeMetadataEmitter(CppEmitter e, CppOutput o)
         {
@@ -330,6 +446,12 @@ internal sealed partial class CppEmitter
                         NoteReflectedArrayType(p);
                     foreach (var ga in m.Context.MethodArgs)
                         NoteReflectedArrayType(ga);
+                    if (CustomModifiers(m) is { } modifiers)
+                    {
+                        NoteModifierTypes(modifiers.ReturnType);
+                        foreach (var p in modifiers.ParameterTypes)
+                            NoteModifierTypes(p);
+                    }
                 }
                 // BuildPropTable's rows: a property renders (with its decoded type) when
                 // either accessor is in the type's method list, even if the accessor's own
@@ -452,6 +574,12 @@ internal sealed partial class CppEmitter
             // tables below will type a member with, so its precise ti_arr_ handle (and
             // an enum element's ti_) is declared/emitted like a body-noted one.
             NoteReflectedMemberArrayElements();
+
+            // The note pass also discovers custom-modifier types. Unlike member
+            // parameter types, those are erased by the main TypeDesc signature and
+            // can first become referenced here; refresh the minimal type-info set
+            // before its forward declarations are emitted.
+            _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
 
             // The noted-array set is final HERE, so this is where the relation-only generic
             // interface rows are planted: an element the pass above just discovered is
@@ -1456,6 +1584,9 @@ internal sealed partial class CppEmitter
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable method metadata */ }
                 var ps = m.Signature.ParameterTypes;
+                var modifierSig = CustomModifiers(m);
+                bool modifiersKnown = modifierSig is not null
+                    && modifierSig.ParameterTypes.Length == ps.Length;
                 string paramsExpr = "nullptr";
                 if (ps.Length > 0)
                 {
@@ -1474,7 +1605,15 @@ internal sealed partial class CppEmitter
                                     m.Module.Reader.GetParameter(pph).GetCustomAttributes());
                             pAttrs = (int)m.Module.Reader.GetParameter(pph).Attributes;
                         }
-                        prows.Add($"{{ {ptInfo}, {nm}, {pca.Expr}, {pca.Count}, 0x{pAttrs:X} }}");
+                        (string Expr, int Count) req = ("nullptr", 0);
+                        (string Expr, int Count) opt = ("nullptr", 0);
+                        if (modifiersKnown)
+                        {
+                            req = RenderCustomModifiers(modifierSig!.ParameterTypes[i].Required);
+                            opt = RenderCustomModifiers(modifierSig.ParameterTypes[i].Optional);
+                        }
+                        prows.Add($"{{ {ptInfo}, {nm}, {pca.Expr}, {pca.Count}, 0x{pAttrs:X}, "
+                            + $"{req.Expr}, {req.Count}, {opt.Expr}, {opt.Count}, {(modifiersKnown ? 1 : 0)} }}");
                     }
                     // Intern byte-identical parameter tables across the whole
                     // emission (first definition wins; explicit `extern` because
@@ -1579,7 +1718,15 @@ internal sealed partial class CppEmitter
                     _sb.AppendLine($"static const Dn2CppTypeInfo* const {gaName}[] = {{ {string.Join(", ", gargs)} }};");
                     genArgsExpr = gaName;
                 }
-                rows.Add($"{{ \"{m.Name}\", {_e.TypeInfoRef(cls, "method/ctor row's declaring type")}, {retInfo}, {paramsExpr}, {ps.Length}, {attrs}, {m.VtableSlot}, {fnPtr}, {invoker}, {mca.Expr}, {mca.Count}, {sigShape}, 0x{(int)m.Attributes:X}, 0x{(int)m.ImplAttributes:X}, {mdToken}, {m.Context.MethodArgs.Length}, {genArgsExpr} }}");
+                (string Expr, int Count) retReq = ("nullptr", 0);
+                (string Expr, int Count) retOpt = ("nullptr", 0);
+                if (modifiersKnown)
+                {
+                    retReq = RenderCustomModifiers(modifierSig!.ReturnType.Required);
+                    retOpt = RenderCustomModifiers(modifierSig.ReturnType.Optional);
+                }
+                rows.Add($"{{ \"{m.Name}\", {_e.TypeInfoRef(cls, "method/ctor row's declaring type")}, {retInfo}, {paramsExpr}, {ps.Length}, {attrs}, {m.VtableSlot}, {fnPtr}, {invoker}, {mca.Expr}, {mca.Count}, {sigShape}, 0x{(int)m.Attributes:X}, 0x{(int)m.ImplAttributes:X}, {mdToken}, {m.Context.MethodArgs.Length}, {genArgsExpr}, "
+                    + $"{retReq.Expr}, {retReq.Count}, {retOpt.Expr}, {retOpt.Count}, {(modifiersKnown ? 1 : 0)} }}");
             }
             // The trim can empty a table the member list did not. A zero-length array is
             // ill-formed, and no _memberAddr entry survives to point into it, so report

@@ -260,12 +260,63 @@ internal sealed partial class MethodCompiler
             && CoreIntrinsics.ScEnumHasFlag.Matches(_c.MemberRefParentTypeName(_module, mrh), n);
     }
 
+    /// <summary>Runs a non-beforefieldinit declaring type's cctor before any call route
+    /// can replace the method and return. Reads only the MemberRef signature header to
+    /// distinguish static from instance; decoding its parameter types here would grow the
+    /// compilation for every call before the route decides whether it needs them.</summary>
+    private void EnsureStaticCallCctorBefore(EntityHandle handle)
+    {
+        if (handle.Kind == HandleKind.MethodSpecification)
+        {
+            EnsureStaticCallCctorBefore(
+                _reader.GetMethodSpecification((MethodSpecificationHandle)handle).Method);
+            return;
+        }
+
+        ClassInfo? cls;
+        if (handle.Kind == HandleKind.MethodDefinition)
+        {
+            var md = _reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+            if ((md.Attributes & System.Reflection.MethodAttributes.Static) == 0)
+                return;
+            var decl = md.GetDeclaringType();
+            cls = _module.ClassMap.TryGetValue(decl, out var mapped) ? mapped
+                : _method.DeclaringClass.Handle == decl ? _method.DeclaringClass
+                : null;
+        }
+        else if (handle.Kind == HandleKind.MemberReference)
+        {
+            var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
+            if (_reader.GetBlobReader(mr.Signature).ReadSignatureHeader().IsInstance)
+                return;
+            cls = mr.Parent.Kind switch
+            {
+                HandleKind.TypeSpecification => _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                    .DecodeSignature(_c.SigProvider, _method.Context).Class,
+                HandleKind.TypeDefinition => _module.ClassMap.TryGetValue(
+                    (TypeDefinitionHandle)mr.Parent, out var mapped) ? mapped
+                    : _method.DeclaringClass.Handle == (TypeDefinitionHandle)mr.Parent
+                        ? _method.DeclaringClass : null,
+                HandleKind.TypeReference => _c.ResolveTypeRef(_module, (TypeReferenceHandle)mr.Parent)?.Class,
+                _ => null,
+            };
+        }
+        else
+        {
+            return;
+        }
+
+        if (cls is { IsBeforeFieldInit: false })
+            EnsureCctorBefore(cls);
+    }
+
     private void TranslateCall(Instruction insn, bool isCallvirt)
     {
         // The raw call token, for rgctx slot keying (verified before use).
         _callSiteToken = insn.Token;
         _callIsVirtual = isCallvirt;
         var handle = SRME.EntityHandle(insn.Token);
+        EnsureStaticCallCctorBefore(handle);
         // Enum.HasFlag(flag): both the receiver and the flag arrive as boxed Enum
         // values; the call is non-virtual (HasFlag is sealed on Enum). Test the bits
         // inline rather than reaching the real (GetMethodTable/InternalCall) body.

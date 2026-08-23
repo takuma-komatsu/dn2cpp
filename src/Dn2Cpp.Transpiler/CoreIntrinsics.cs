@@ -598,6 +598,10 @@ internal static partial class CoreIntrinsics
         // WITH a message (the `_message == null` guard short-circuits SetMessageField), so
         // the trap at the call site is unreachable in practice.
         [("System.IO.FileLoadException", "FormatFileLoadExceptionMessage")] = BoundedVerdict.Silent,
+        // TypeLoadException's public constructors likewise initialize Exception._message
+        // before its override calls SetMessageField. Only the VM-only private constructor
+        // can reach this QCall, and dn2cpp raises the type through dn2cpp_exception_new.
+        [("System.TypeLoadException", "GetTypeLoadExceptionMessage")] = BoundedVerdict.Silent,
         // Environment.FailFast must NOT be bounded: neutralization drops the arguments and
         // pushes the default result, and FailFast returns void — so the call would do
         // nothing and execution would continue past a request to halt on corrupted state.
@@ -839,19 +843,25 @@ internal static partial class CoreIntrinsics
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
-    /// <summary>Members of the sub-word integer primitives (which are NOT intrinsic
-    /// types — their other members transpile from real IL) that are nonetheless
-    /// lowered inline at every call site: ToString to dn2cpp_int_to_string /
-    /// dn2cpp_format_*, Parse/TryParse to the width-parameterized NumberStyles
-    /// engine, TryFormat to dn2cpp_try_format_* (mirroring the reach-side edge
-    /// cuts, which keep the System.Number format/parse cascade out of the tree).
+    /// <summary>Primitive members lowered inline despite their declaring type not always
+    /// being intrinsic: the sub-word integers' format/parse family, plus both
+    /// <c>CompareTo</c> overloads of every scalar primitive. The latter is one sibling
+    /// family because <c>CompareTo(object)</c> adds null/type checks around the same typed
+    /// order, and pointer-sized/sub-word types otherwise fall through to real IL while the
+    /// 32/64-bit, floating, Boolean and Char bodies are already cut with their type.
     /// The constrained static-virtual resolution and its reach twin share this
     /// predicate so both route a resolved sub-word impl identically: a member in
     /// this set goes through the intrinsic table (its real body is reach-cut), any
     /// other member direct-calls the real transpiled body (which reach reaches).</summary>
     public static bool IsInlineLoweredPrimitiveMember(string? fullTypeName, string name) =>
-        fullTypeName is "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16"
-        && name is "ToString" or "Parse" or "TryParse" or "TryFormat";
+        (fullTypeName is "System.Byte" or "System.SByte" or "System.Int16" or "System.UInt16"
+            && name is "ToString" or "Parse" or "TryParse" or "TryFormat")
+        || (name == "CompareTo" && IsScalarPrimitive(fullTypeName));
+
+    private static bool IsScalarPrimitive(string? fullTypeName) =>
+        fullTypeName is not null
+        && Compilation.WellKnownPrimitive(fullTypeName) is { Kind: TypeKind.Primitive } p
+        && p.Primitive is not (PrimitiveTypeCode.String or PrimitiveTypeCode.Object);
 
     /// <summary>The non-generic <c>System.Collections.Comparer::Compare(object, object)</c> —
     /// body-intercepted. Its real IL does <c>x as IComparable</c> (and a CompareInfo string

@@ -936,6 +936,7 @@ internal sealed class ClassInfo
     public PrimitiveTypeCode EnumUnderlying = PrimitiveTypeCode.Int32;
     public bool IsInterface;
     public bool IsDelegate;                 // base is System.MulticastDelegate
+    public bool IsBeforeFieldInit;
     public int GenericArity;                // count of type parameters (0 = non-generic)
     /// <summary>Type-argument nesting depth of a closed specialization: 0 for a
     /// non-generic class, else <c>1 + max(depth of the type arguments)</c> — so

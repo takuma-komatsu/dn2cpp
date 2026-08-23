@@ -92,6 +92,22 @@ internal sealed partial class MethodCompiler
         }
         switch (declType, name)
         {
+            case ("System.Reflection.MethodBase", "GetMethodFromHandle"):
+            {
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\"MethodBase.GetMethodFromHandle is not available in AOT-compiled code\");");
+                Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable; stack typing only
+                return true;
+            }
+            case ("System.Reflection.FieldInfo", "GetFieldFromHandle"):
+            {
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    Pop();
+                Emit("dn2cpp_throw_platform_not_supported(\"FieldInfo.GetFieldFromHandle is not available in AOT-compiled code\");");
+                Push(StackKind.Ref, "Dn2CppObject*", "nullptr"); // unreachable; stack typing only
+                return true;
+            }
             case ("System.Type", "GetTypeFromHandle") when sig.ParameterTypes.Length == 1:
             {
                 var arg = Pop();
@@ -2037,6 +2053,15 @@ internal sealed partial class MethodCompiler
             {
                 var p = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_paramref_is_optional((Dn2CppParamRef*)({p.Expr}))");
+                return true;
+            }
+            case ("System.Reflection.ParameterInfo", "GetRequiredCustomModifiers" or "GetOptionalCustomModifiers")
+                when sig.ParameterTypes.Length == 0:
+            {
+                var p = Pop();
+                int required = name == "GetRequiredCustomModifiers" ? 1 : 0;
+                Push(StackKind.Ref, "Dn2CppArrayRef*",
+                    $"dn2cpp_paramref_custom_modifiers((Dn2CppParamRef*)({p.Expr}), {required})");
                 return true;
             }
             // ParameterInfo.IsOut / HasDefaultValue: the raw ECMA

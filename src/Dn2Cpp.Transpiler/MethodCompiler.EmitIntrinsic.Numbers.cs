@@ -6,8 +6,87 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    /// <summary>The two CompareTo siblings on every scalar primitive. The typed form
+    /// compares the value directly; the object form first implements IComparable's
+    /// null / exact-box-type contract. Keeping both here makes the intrinsic-type and
+    /// selectively intercepted primitive families answer from one shape table.</summary>
+    private bool TryEmitPrimitiveCompareTo(string declType, MethodSignature<TypeDesc> sig)
+    {
+        if (Compilation.WellKnownPrimitive(declType) is not
+                { Kind: TypeKind.Primitive, Primitive: var code } prim
+            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+            || !sig.Header.IsInstance
+            || sig.ParameterTypes.Length != 1)
+            return false;
+
+        TypeDesc argType = sig.ParameterTypes[0];
+        bool objectArg = argType.IsObject;
+        if (!objectArg)
+        {
+            if (argType is not { Kind: TypeKind.Primitive, Primitive: var argCode }
+                || argCode != code)
+                return false;
+        }
+
+        string compareCt = code switch
+        {
+            PrimitiveTypeCode.UIntPtr => "uintptr_t",
+            PrimitiveTypeCode.IntPtr => "intptr_t",
+            PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
+            _ => CppTypes.Of(prim),
+        };
+        string receiverCt = CppTypes.StorageOf(prim);
+
+        if (!objectArg)
+        {
+            string other = NewTemp(compareCt);
+            Emit($"{other} = ({compareCt})({Cast(Pop(), CppTypes.Of(prim))});");
+            string self = NewTemp(compareCt);
+            Emit($"{self} = ({compareCt})({DerefReceiver(receiverCt)});");
+            Push(StackKind.I4, "int32_t", PrimitiveCompareToExpr(code, self, other));
+            return true;
+        }
+
+        string boxed = NewTemp("Dn2CppObject*");
+        Emit($"{boxed} = {Cast(Pop(), "Dn2CppObject*")};");
+        string selfObj = NewTemp(compareCt);
+        Emit($"{selfObj} = ({compareCt})({DerefReceiver(receiverCt)});");
+        string result = NewTemp("int32_t");
+        Emit($"{result} = 1;");
+        Emit($"if ({boxed} != nullptr) {{");
+        string ti = TypeInfoExpr(prim)!;
+        Emit($"    if ({boxed}->type != {ti}) dn2cpp_throw_argument_msg(\"Object must be of the same type as the value being compared.\");");
+        string payloadCt = CppTypes.Of(prim);
+        string otherObj = NewTemp(compareCt);
+        Emit($"    {otherObj} = ({compareCt})(*({payloadCt}*)({boxed} + 1));");
+        Emit($"    {result} = {PrimitiveCompareToExpr(code, selfObj, otherObj)};");
+        Emit("}");
+        Push(StackKind.I4, "int32_t", result);
+        return true;
+    }
+
+    private static string PrimitiveCompareToExpr(PrimitiveTypeCode code, string self, string other) =>
+        code switch
+        {
+            // Sub-word integer and Char CompareTo return the raw widened difference,
+            // not its sign. The range always fits Int32.
+            PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte
+                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
+                or PrimitiveTypeCode.Char => $"({self} - {other})",
+            PrimitiveTypeCode.Boolean =>
+                $"(({self} != 0) < ({other} != 0) ? -1 : (({self} != 0) > ({other} != 0) ? 1 : 0))",
+            // Floating CompareTo defines a total order in which NaN sorts below numbers.
+            PrimitiveTypeCode.Single or PrimitiveTypeCode.Double =>
+                $"({self} < {other} ? -1 : ({self} > {other} ? 1 : ({self} == {other} ? 0 : "
+                + $"({self} != {self} ? ({other} != {other} ? 0 : -1) : 1))))",
+            _ => $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))",
+        };
+
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (name == "CompareTo" && TryEmitPrimitiveCompareTo(declType, sig))
+            return true;
+
         switch (declType, name)
         {
             // Any System.Exception constructor (parameterless, message, message+inner,
@@ -1522,117 +1601,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
 
-            // ---- Primitive Int32/UInt32 CompareTo / Int32 GetHashCode ----
-            // Int32/UInt32 are already s_intrinsicTypes members, so Compilation.ResolveCallTarget
-            // already cuts their BCL bodies — this is emit-only. The receiver of a primitive
-            // instance call arrives as a managed pointer (ldarga/ldloca/ldflda -> StackKind.Ptr)
-            // or the value itself (DerefReceiver handles both); the argument is the by-value
-            // operand on top of the stack, so pop it BEFORE deref-ing the receiver underneath.
-            // Both operands are spilled to temps because each appears multiple times in the
-            // comparison ladder.
-            //
-            // int.CompareTo(int) returns strictly -1/0/1 (the SIGN, not the difference —
-            // 2000000000.CompareTo(-2000000000) == 1, never an overflowing subtraction).
-            case ("System.Int32", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
-            {
-                string other = NewTemp("int32_t");
-                Emit($"{other} = {Cast(Pop(), "int32_t")};");
-                string self = NewTemp("int32_t");
-                Emit($"{self} = {DerefReceiver("int32_t")};");
-                Push(StackKind.I4, "int32_t", $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))");
-                return true;
-            }
-            // uint.CompareTo(uint): same -1/0/1 sign result, but with UNSIGNED comparison — the
-            // stack/slot holds an int32 bit pattern, so reinterpret both as uint32_t before
-            // comparing (0x80000000.CompareTo(0x7FFFFFFF) == 1).
-            case ("System.UInt32", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 }]:
-            {
-                string other = NewTemp("uint32_t");
-                Emit($"{other} = (uint32_t)({Cast(Pop(), "int32_t")});");
-                string self = NewTemp("uint32_t");
-                Emit($"{self} = (uint32_t)({DerefReceiver("int32_t")});");
-                Push(StackKind.I4, "int32_t", $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))");
-                return true;
-            }
-            // long.CompareTo(long): the same -1/0/1 sign contract as int.CompareTo —
-            // real .NET compares and returns the sign, never a (truncating) difference.
-            case ("System.Int64", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }]:
-            {
-                string other = NewTemp("int64_t");
-                Emit($"{other} = {Cast(Pop(), "int64_t")};");
-                string self = NewTemp("int64_t");
-                Emit($"{self} = {DerefReceiver("int64_t")};");
-                Push(StackKind.I4, "int32_t", $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))");
-                return true;
-            }
-            // ulong.CompareTo(ulong): the uint arm at 64 bits — the -1/0/1 sign of an
-            // UNSIGNED comparison, reinterpreting the int64 bit pattern the stack/slot
-            // holds (0x8000000000000000.CompareTo(0x7FFFFFFFFFFFFFFF) == 1).
-            case ("System.UInt64", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 }]:
-            {
-                string other = NewTemp("uint64_t");
-                Emit($"{other} = (uint64_t)({Cast(Pop(), "int64_t")});");
-                string self = NewTemp("uint64_t");
-                Emit($"{self} = (uint64_t)({DerefReceiver("int64_t")});");
-                Push(StackKind.I4, "int32_t", $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))");
-                return true;
-            }
-            // float/double.CompareTo: sign result with .NET's total-order NaN handling —
-            // NaN sorts below everything (including -inf) and NaN.CompareTo(NaN) == 0.
-            // `x != x` is the NaN test.
-            case ("System.Single", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Single }]:
-            case ("System.Double", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double }]:
-            {
-                string ct = declType == "System.Single" ? "float" : "double";
-                string other = NewTemp(ct);
-                Emit($"{other} = {Cast(Pop(), ct)};");
-                string self = NewTemp(ct);
-                Emit($"{self} = {DerefReceiver(ct)};");
-                Push(StackKind.I4, "int32_t",
-                    $"({self} < {other} ? -1 : ({self} > {other} ? 1 : ({self} == {other} ? 0 : ({self} != {self} ? ({other} != {other} ? 0 : -1) : 1))))");
-                return true;
-            }
-            // char.CompareTo(char): real .NET returns the raw difference m_value - value,
-            // NOT a clamped sign — and that difference is observable (SpanHelpers.
-            // SequenceCompareTo<char> propagates it as its return value, so string
-            // ordinal comparison surfaces it). Both code units are zero-extended into
-            // [0,65535] int32 slots, so the int subtraction reproduces .NET exactly.
-            case ("System.Char", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }]:
-            {
-                string other = NewTemp("int32_t");
-                Emit($"{other} = {Cast(Pop(), "int32_t")};");
-                string self = NewTemp("int32_t");
-                // Deref the receiver at the real 2-byte width (SubWordCppType): a
-                // char16_t* receiver (ldflda of a narrowed struct field, or a span/array
-                // ref) must read one code unit, or an int32 deref splices the neighboring
-                // field into the comparison. The int32 temp zero-extends.
-                Emit($"{self} = {DerefReceiver(SubWordCppType(declType))};");
-                Push(StackKind.I4, "int32_t", $"({self} - {other})");
-                return true;
-            }
-            // bool.CompareTo(bool): false < true, returning strictly -1/0/1 (real .NET
-            // compares m_value against value and returns the sign). Both operands are
-            // normalized to 0/1 first — C# only ever materializes those, and normalizing
-            // keeps any unsafe-minted nonzero byte comparing as `true`. Deref the
-            // receiver at the real 1-byte width (SubWordCppType): a bool* into packed
-            // storage (a bool[] element, a narrowed struct field) must read one byte.
-            case ("System.Boolean", "CompareTo")
-                    when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
-            {
-                string other = NewTemp("int32_t");
-                Emit($"{other} = (({Cast(Pop(), "int32_t")}) != 0 ? 1 : 0);");
-                string self = NewTemp("int32_t");
-                Emit($"{self} = (({DerefReceiver(SubWordCppType(declType))}) != 0 ? 1 : 0);");
-                Push(StackKind.I4, "int32_t", $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))");
-                return true;
-            }
+            // ---- Primitive equality/hash ----
             // float/double.Equals(T) and .GetHashCode: the two runtime helpers the boxed
             // arm of dn2cpp_object_equals/_gethashcode and the transpiler's inline key
             // emit already share, so a value compared or hashed through any of the three

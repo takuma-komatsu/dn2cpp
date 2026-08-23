@@ -25,6 +25,17 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_char_unicode_category((char16_t)({c.Expr}))");
                 return true;
             }
+            case ("System.Char", "GetUnicodeCategory")
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
+            {
+                var idx = Pop();
+                var str = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_char_unicode_category((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}))");
+                return true;
+            }
             // Category-backed classification (the generated full-BMP
             // dn2cpp_char_unicode_category table), exact vs .NET for every BMP
             // code point. IsLetter is Lu/Ll/Lt/Lm/Lo (0..4), IsDigit is Nd (8)
@@ -90,16 +101,18 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // The (string, int) surrogate predicate overloads — the same range
-            // tests against the indexed code unit (bounds-checked by
-            // dn2cpp_string_get_char). The three siblings share one shape, so all
+            // tests against the indexed code unit (argument-checked by
+            // dn2cpp_char_get_string_char). The three siblings share one shape, so all
             // are mapped together.
             case ("System.Char", "IsSurrogate" or "IsHighSurrogate" or "IsLowSurrogate")
-                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }, _]:
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var idx = Pop();
                 var str = Pop();
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_string_get_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
                 (string lo, string hi) = name switch
                 {
                     "IsHighSurrogate" => ("0xD800", "0xDBFF"),
@@ -109,22 +122,30 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"({cu} >= {lo} && {cu} <= {hi} ? 1 : 0)");
                 return true;
             }
-            // The (string, int) classification overloads — the same category-backed
-            // tests as the (char) forms above (IsDigit == Nd(8), IsUpper == Lu(0),
-            // IsWhiteSpace the dn2cpp_char_is_whitespace definition) applied to the
-            // indexed code unit. The index is bounds-checked by dn2cpp_string_get_char,
-            // matching .NET's ArgumentOutOfRangeException. Matched on the (String, _)
-            // shape so the single-char forms (Length == 1) keep their own arms.
-            case ("System.Char", "IsUpper" or "IsWhiteSpace" or "IsDigit")
-                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }, _]:
+            // The (string, int) classification overload family applies the same
+            // full-BMP tests as each (char) form to the indexed code unit.
+            case ("System.Char", "IsControl" or "IsDigit" or "IsLetter" or "IsLetterOrDigit"
+                or "IsLower" or "IsNumber" or "IsPunctuation" or "IsSeparator" or "IsSymbol"
+                or "IsUpper" or "IsWhiteSpace")
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var idx = Pop();
                 var str = Pop();
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_string_get_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
                 string expr = name switch
                 {
+                    "IsControl" => $"dn2cpp_char_is_control((char16_t){cu})",
                     "IsDigit" => $"(dn2cpp_char_unicode_category((char16_t){cu}) == 8 ? 1 : 0)",
+                    "IsLetter" => $"(dn2cpp_char_unicode_category((char16_t){cu}) <= 4 ? 1 : 0)",
+                    "IsLetterOrDigit" => $"((dn2cpp_char_unicode_category((char16_t){cu}) <= 4 || dn2cpp_char_unicode_category((char16_t){cu}) == 8) ? 1 : 0)",
+                    "IsLower" => $"(dn2cpp_char_unicode_category((char16_t){cu}) == 1 ? 1 : 0)",
+                    "IsNumber" => $"((dn2cpp_char_unicode_category((char16_t){cu}) >= 8 && dn2cpp_char_unicode_category((char16_t){cu}) <= 10) ? 1 : 0)",
+                    "IsPunctuation" => $"dn2cpp_char_is_punctuation((char16_t){cu})",
+                    "IsSeparator" => $"((dn2cpp_char_unicode_category((char16_t){cu}) >= 11 && dn2cpp_char_unicode_category((char16_t){cu}) <= 13) ? 1 : 0)",
+                    "IsSymbol" => $"dn2cpp_char_is_symbol((char16_t){cu})",
                     "IsUpper" => $"(dn2cpp_char_unicode_category((char16_t){cu}) == 0 ? 1 : 0)",
                     _ => $"dn2cpp_char_is_whitespace((char16_t){cu})",
                 };
@@ -153,13 +174,15 @@ internal sealed partial class MethodCompiler
                     $"((((int32_t)({high.Expr}) - 0xD800) * 0x400) + ((int32_t)({low.Expr}) - 0xDC00) + 0x10000)");
                 return true;
             }
-            // The (string, int) pair walkers. Index bounds ride the checked
-            // dn2cpp_string_get_char. DECLARED DIVERGENCE: ConvertToUtf32 returns the raw
+            // The (string, int) pair walkers. Argument checks ride
+            // dn2cpp_char_get_string_char. DECLARED DIVERGENCE: ConvertToUtf32 returns the raw
             // code unit where real .NET would throw on an unpaired surrogate (its BCL
             // callers test IsSurrogatePair first, so the throw path is unobserved); a
             // proper pair combines exactly as in .NET.
             case ("System.Char", "IsSurrogatePair")
-                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }, _]:
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var idx = Pop();
                 var str = Pop();
@@ -168,7 +191,7 @@ internal sealed partial class MethodCompiler
                 string i = NewTemp("int32_t");
                 Emit($"{i} = {idx.Expr};");
                 string hi2 = NewTemp("int32_t");
-                Emit($"{hi2} = dn2cpp_string_get_char({s}, {i});");
+                Emit($"{hi2} = dn2cpp_char_get_string_char({s}, {i});");
                 Push(StackKind.I4, "int32_t",
                     $"(({hi2} >= 0xD800 && {hi2} <= 0xDBFF && {i} + 1 < {s}->length"
                     + $" && dn2cpp_string_get_char({s}, {i} + 1) >= 0xDC00"
@@ -176,7 +199,9 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             case ("System.Char", "ConvertToUtf32")
-                when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }, _]:
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var idx = Pop();
                 var str = Pop();
@@ -185,7 +210,7 @@ internal sealed partial class MethodCompiler
                 string i = NewTemp("int32_t");
                 Emit($"{i} = {idx.Expr};");
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_string_get_char({s}, {i});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({s}, {i});");
                 string r = NewTemp("int32_t");
                 Emit($"{r} = ({cu} >= 0xD800 && {cu} <= 0xDBFF && {i} + 1 < {s}->length"
                     + $" && dn2cpp_string_get_char({s}, {i} + 1) >= 0xDC00"
@@ -243,6 +268,17 @@ internal sealed partial class MethodCompiler
                 // -1.0 for code points with no numeric value, like .NET.
                 var c = Pop();
                 Push(StackKind.R8, "double", $"dn2cpp_char_get_numeric_value((char16_t)({c.Expr}))");
+                return true;
+            }
+            case ("System.Char", "GetNumericValue")
+                when sig.ParameterTypes is [
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }]:
+            {
+                var idx = Pop();
+                var str = Pop();
+                Push(StackKind.R8, "double",
+                    $"dn2cpp_char_get_numeric_value((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}))");
                 return true;
             }
             // Simple one-to-one BMP invariant case maps (generated tables in

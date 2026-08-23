@@ -42,6 +42,7 @@ namespace ReflectLongtailSubset
         private int secret;
 
         [Mark("prop")] public int Level { get; set; }
+        public int InitValue { get; init; }
 
         [Mark("method")]
         public virtual int Spin(int turns) => turns + Counter + secret;
@@ -53,6 +54,9 @@ namespace ReflectLongtailSubset
             v = 3;
             return true;
         }
+
+        private static int readonlyRefValue;
+        public static ref readonly int ReadOnlyRef() => ref readonlyRefValue;
 
         public T Echo<T>(T v) => v;
 
@@ -203,6 +207,19 @@ namespace ReflectLongtailSubset
             Show("p-attrs1", (int)optPs[1].Attributes);
             Show("p-member", optPs[1].Member.Name);
             Show("p-ctor-member", (int)ctor.GetParameters()[0].Member.MemberType);
+            MethodInfo initSetter = tg.GetProperty("InitValue").SetMethod;
+            ParameterInfo initP = initSetter.ReturnParameter;
+            Type[] initReq = initP.GetRequiredCustomModifiers();
+            Show("p-init-modreq-count", initReq.Length);
+            if (initReq.Length > 0)
+                Show("p-init-modreq-type", initReq[0].FullName);
+            Show("p-init-modopt", initP.GetOptionalCustomModifiers().Length);
+            Show("p-value-modreq", initSetter.GetParameters()[0].GetRequiredCustomModifiers().Length);
+            Show("p-plain-modreq", optPs[0].GetRequiredCustomModifiers().Length);
+            Show("p-return-modreq", tg.GetMethod("Opt").ReturnParameter.GetRequiredCustomModifiers().Length);
+            ParameterInfo roRet = tg.GetMethod("ReadOnlyRef").ReturnParameter;
+            Type[] roReq = roRet.GetRequiredCustomModifiers();
+            Show("p-byref-ret-modreq", roReq.Length + ":" + roReq[0].FullName);
             // IsOut / HasDefaultValue read the recorded ParameterAttributes word
             // exactly; DefaultValue is the marked divergence (the Constant-table
             // blob is not carried into the image -> catchable

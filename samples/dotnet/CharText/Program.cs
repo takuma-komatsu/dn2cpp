@@ -24,6 +24,7 @@ namespace CharText
             ToStringSubset.Program.__GateEntry();
             CultureInvariantOverloadsSubset.Program.__GateEntry();
             EncodingGetStringSubset.Program.__GateEntry();
+            CharStringClassifySubset.Program.__GateEntry();
         }
     }
 }

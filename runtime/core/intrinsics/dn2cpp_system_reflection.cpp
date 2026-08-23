@@ -2087,6 +2087,11 @@ Dn2CppObject* dn2cpp_methodref_return_parameter(Dn2CppMethodRef* m)
     auto* pi = static_cast<Dn2CppParamInfo*>(dn2cpp_alloc(sizeof(Dn2CppParamInfo)));
     *pi = Dn2CppParamInfo{};
     pi->paramType = dn2cpp_methodref_require(m)->returnType;
+    pi->requiredCustomModifiers = m->method->returnRequiredCustomModifiers;
+    pi->requiredCustomModifierCount = m->method->returnRequiredCustomModifierCount;
+    pi->optionalCustomModifiers = m->method->returnOptionalCustomModifiers;
+    pi->optionalCustomModifierCount = m->method->returnOptionalCustomModifierCount;
+    pi->customModifiersKnown = m->method->returnCustomModifiersKnown;
     auto* p = static_cast<Dn2CppParamRef*>(dn2cpp_alloc(sizeof(Dn2CppParamRef)));
     p->type = &dn2cpp_parameterinfo_type;
     p->param = pi;
@@ -4231,6 +4236,23 @@ int32_t dn2cpp_paramref_attributes(Dn2CppParamRef* p)
 int32_t dn2cpp_paramref_is_optional(Dn2CppParamRef* p)
 {
     return (dn2cpp_paramref_require(p)->param->ilAttrs & 0x10) != 0 ? 1 : 0; // ParameterAttributes.Optional
+}
+
+Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t required)
+{
+    const Dn2CppParamInfo* pi = dn2cpp_paramref_require(p)->param;
+    if (pi->customModifiersKnown == 0)
+        dn2cpp_throw_platform_not_supported(
+            "ParameterInfo.GetCustomModifiers: the signature modifiers are not recorded in the AOT image");
+    const Dn2CppTypeInfo* const* modifiers = required
+        ? pi->requiredCustomModifiers : pi->optionalCustomModifiers;
+    int32_t count = required
+        ? pi->requiredCustomModifierCount : pi->optionalCustomModifierCount;
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref(count);
+    for (int32_t i = 0; i < count; i++)
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
+            dn2cpp_get_type_from_handle(modifiers[i])));
+    return arr;
 }
 
 // Enum.InternalGetCorElementType: the CorElementType code of a boxed enum's

@@ -541,6 +541,7 @@ cuts, and both sides' stderr required to stay empty.
 
 | Library | What its gate drives | Gate |
 |---|---|---|
+| MasterMemory | Source-generated typed tables over MessagePack data — database build/load, unique and non-unique indexes, composite indexes, exact/range/closest queries and forward/reverse views | `gates/build-and-run-mastermemory.sh` |
 | MemoryPack | Source-generated formatters — object/struct/record, member ordering, `[MemoryPackConstructor]`, the serialization callbacks, unions over an interface and over an abstract base, version-tolerant and explicit layouts, the unmanaged whole-struct memcpy path, the `IBufferWriter` and `ReadOnlySequence` entry points | `gates/build-and-run-memorypack.sh` |
 | MessagePipe | In-memory, keyed, buffered and async pub/sub, request/response, request-all, global filter pipelines — resolved out of the real `Microsoft.Extensions.DependencyInjection` container | `gates/build-and-run-messagepipe.sh` |
 | ZLinq | The zero-allocation LINQ pipeline: struct value-enumerator chains, aggregations, ordering, set operations, grouping and joining, materialization | `gates/build-and-run-zlinq.sh` |
@@ -550,8 +551,12 @@ cuts, and both sides' stderr required to stay empty.
 | GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
 
 A source generator's output is part of the subject, not a detail of the build:
-for MemoryPack the formatters live in the driver assembly, so the transpiled IL
-is code no human wrote. Where a library's own design reaches for reflection
+MasterMemory's generated database, tables and resolver, and MemoryPack's generated
+formatters live in their driver assemblies, so the transpiled IL is code no human
+wrote. Where a library documents an AOT resolver route, the gate takes it:
+MasterMemory composes its resolver with MessagePack's generated and builtin
+resolvers, then passes the composite locally to database build and load. Where a
+library's own design reaches for reflection
 that no AOT target can serve — `MakeGenericType` plus `Activator` to mint a
 formatter for a shape nothing named — the driver takes the library's documented
 AOT route and registers the closed type instead; the gate says so at the call

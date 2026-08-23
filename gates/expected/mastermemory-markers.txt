@@ -1,0 +1,5 @@
+MasterMemory_MemoryDatabaseBase
+MasterMemorySample_Tables_CharacterTable
+MasterMemorySample_DatabaseBuilder
+MasterMemorySample_MemoryDatabase
+MessagePack_MessagePackSerializer

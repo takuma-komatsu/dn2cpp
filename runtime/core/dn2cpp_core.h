@@ -953,6 +953,14 @@ struct Dn2CppParamInfo
     // 0-fill trailing convention (0 == ParameterAttributes.None when unrecorded,
     // which is also the correct answer for a parameter with no Param row).
     int32_t ilAttrs;
+    // Signature custom modifiers. A null vector with a zero count is a real empty
+    // answer only when customModifiersKnown is set; hand-written/legacy rows
+    // zero-fill it and the reflection API fails loud instead of fabricating one.
+    const Dn2CppTypeInfo* const* requiredCustomModifiers;
+    int32_t requiredCustomModifierCount;
+    const Dn2CppTypeInfo* const* optionalCustomModifiers;
+    int32_t optionalCustomModifierCount;
+    int32_t customModifiersKnown;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
@@ -1005,6 +1013,13 @@ struct Dn2CppMethodInfo
     // (rows sharing the definition's metadata token are matched argument-wise) and
     // MethodInfo.GetGenericArguments. 0-fill trailing convention.
     const Dn2CppTypeInfo* const* genericArgs;
+    // Return-parameter custom modifiers; ordinary parameters carry the same
+    // representation in Dn2CppParamInfo.
+    const Dn2CppTypeInfo* const* returnRequiredCustomModifiers;
+    int32_t returnRequiredCustomModifierCount;
+    const Dn2CppTypeInfo* const* returnOptionalCustomModifiers;
+    int32_t returnOptionalCustomModifierCount;
+    int32_t returnCustomModifiersKnown;
 };
 
 // Dn2CppMethodInfo::attrs bits; identical layout to DN2CPP_FLDA_* so the
@@ -1995,6 +2010,7 @@ int32_t dn2cpp_fieldref_is_specialname(Dn2CppFieldRef* f);
 Dn2CppObject* dn2cpp_paramref_member(Dn2CppParamRef* p);
 int32_t dn2cpp_paramref_attributes(Dn2CppParamRef* p);
 int32_t dn2cpp_paramref_is_optional(Dn2CppParamRef* p);
+Dn2CppArrayRef* dn2cpp_paramref_custom_modifiers(Dn2CppParamRef* p, int32_t required);
 // Enum.InternalGetCorElementType: the CorElementType code of the boxed enum's
 // underlying primitive (read from the type-info's enumUnderlying handle).
 int32_t dn2cpp_enum_cor_element_type(Dn2CppObject* e);
@@ -3971,6 +3987,9 @@ int32_t dn2cpp_chars_indexof_ignorecase_ordinal(const char16_t* source, int32_t 
 int32_t dn2cpp_chars_hashcode_oic(const char16_t* p, int32_t length);
 int32_t dn2cpp_string_hashcode_oic(Dn2CppString* s);
 int32_t dn2cpp_string_get_char(Dn2CppString* s, int32_t index);
+// System.Char's (string, int) statics reject null and a bad index as argument errors,
+// unlike String.get_Chars, whose corresponding failures are null-reference/index errors.
+int32_t dn2cpp_char_get_string_char(Dn2CppString* s, int32_t index);
 // char.GetUnicodeCategory(char) — the System.Globalization.UnicodeCategory
 // value (0..29) from a two-level BMP table generated from the real .NET
 // data (dn2cpp_unicode_category.cpp); exact for every BMP code point.

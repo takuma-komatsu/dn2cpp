@@ -636,7 +636,8 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Environment",
         extra: static mi => LoweredEnvMember(mi.DeclaringClass.FullName, mi.Name, () => mi.Signature));
 
-    /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat
+    /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
+    /// primitive's two CompareTo overloads
     /// (<see cref="IsInlineLoweredPrimitiveMember"/>), lowered inline at every
     /// call site so the System.Number format/parse cascade stays out of the
     /// tree.</summary>
@@ -775,7 +776,8 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Environment",
         extra: static (dt, n, sig) => LoweredEnvMember(dt, n, sig));
 
-    /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat
+    /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
+    /// primitive's two CompareTo overloads
     /// (<see cref="IsInlineLoweredPrimitiveMember"/>) — the MemberRef twin of
     /// <see cref="MdInlinePrimitive"/>.</summary>
     public static readonly MemberRefIntercept MrInlinePrimitive = new(
