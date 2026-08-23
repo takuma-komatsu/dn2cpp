@@ -85,6 +85,9 @@ internal static partial class CoreIntrinsics
         "System.String",
         "System.Delegate",
         "System.Type",
+        // RuntimeTypeHandle is the type-info pointer itself. Its managed CoreLib field
+        // layout and member bodies must not leak into the emitted representation.
+        "System.RuntimeTypeHandle",
         "System.Reflection.MemberInfo",
         // Reflected field handles. FieldInfo is abstract in the BCL; we model
         // a reflected field as a Dn2CppFieldRef and intrinsic-dispatch its members, so

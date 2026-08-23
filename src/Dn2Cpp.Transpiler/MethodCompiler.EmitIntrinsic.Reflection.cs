@@ -126,6 +126,40 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_type_require({Cast(a, "Dn2CppType*")})", a.TypeToken);
                 return true;
             }
+            // RuntimeTypeHandle is the type-info pointer itself; its CoreLib struct
+            // fields are an implementation detail of CoreCLR, not emitted storage.
+            case ("System.RuntimeTypeHandle", "get_Value") when sig.ParameterTypes.Length == 0:
+            {
+                string a = DerefReceiver("const Dn2CppTypeInfo*");
+                Push(StackKind.I8, "intptr_t", $"(intptr_t)({a})");
+                return true;
+            }
+            case ("System.RuntimeTypeHandle", "GetHashCode") when sig.ParameterTypes.Length == 0:
+            {
+                string a = DerefReceiver("const Dn2CppTypeInfo*");
+                Push(StackKind.I4, "int32_t",
+                    $"(int32_t)((uint64_t)({a}) ^ ((uint64_t)({a}) >> 32))");
+                return true;
+            }
+            case ("System.RuntimeTypeHandle", "Equals") when sig.ParameterTypes is [{ } p]
+                && p is { Kind: TypeKind.Class, Class.FullName: "System.RuntimeTypeHandle" }:
+            {
+                var b = Pop();
+                string a = DerefReceiver("const Dn2CppTypeInfo*");
+                Push(StackKind.I4, "int32_t",
+                    $"(({a}) == ({Cast(b, "const Dn2CppTypeInfo*")}) ? 1 : 0)");
+                return true;
+            }
+            case ("System.RuntimeTypeHandle", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
+            {
+                var b = Pop();
+                string a = DerefReceiver("const Dn2CppTypeInfo*");
+                string o = Cast(b, "Dn2CppObject*");
+                Push(StackKind.I4, "int32_t", $"(({o}) != nullptr"
+                    + $" && ({o})->type == &ti_System_RuntimeTypeHandle"
+                    + $" && ({a}) == *((const Dn2CppTypeInfo**)dn2cpp_unbox({o}, &ti_System_RuntimeTypeHandle)) ? 1 : 0)");
+                return true;
+            }
             // Type.GetType(string): resolve a CLR FullName against the embedded type
             // name registry. The 1-arg form returns null when missing; the
             // (string, bool throwOnError) form raises TypeLoadException instead. The

@@ -437,6 +437,7 @@ ORDERED_PROJECTS=(
 GATE_OWNED_PROJECTS=(
     "samples/dotnet/MemoryPackSample/MemoryPackSample.csproj"
     "samples/dotnet/MasterMemorySample/MasterMemorySample.csproj"
+    "samples/dotnet/MessagePackSample/MessagePackSample.csproj"
     "samples/dotnet/MessagePipeSample/MessagePipeSample.csproj"
     "samples/dotnet/R3Sample/R3Sample.csproj"
     "samples/dotnet/UniTaskSample/UniTaskSample.csproj"

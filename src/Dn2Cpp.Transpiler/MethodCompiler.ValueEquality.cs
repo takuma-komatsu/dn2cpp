@@ -106,6 +106,10 @@ internal sealed partial class MethodCompiler
             return $"((({x.Expr}).{hvF} ? 1 : 0) == (({y.Expr}).{hvF} ? 1 : 0)"
                  + $" && (!({x.Expr}).{hvF} || {inner}))";
         }
+        // Opaque pointer-backed handles compare by their whole representation; their
+        // loaded CoreLib fields do not describe the emitted runtime payload.
+        if (IntrinsicPointerValueType(t) is not null)
+            return TryEqualityEqualsLValue(t, x, y);
         // A System.Enum-typed field holds a BOXED reference (CppTypes.Of -> Dn2CppObject*),
         // not a value-struct layout, so it must NOT take this arm's `&field` value-type call.
         // Modeled as a reference type, it fails the IsValueType test and falls through to
@@ -160,6 +164,9 @@ internal sealed partial class MethodCompiler
                 ? $"((({x.Expr}).{hvF}) ? ({inner}) : 0)"
                 : null;
         }
+        // Keep the hash twin on the same raw-handle representation as equality.
+        if (IntrinsicPointerValueType(t) is not null)
+            return EqualityHashExpr(t, x);
         // System.Enum-typed field: a boxed reference, not a value struct — see the equality
         // twin. Falls through to EqualityHashExpr, which routes it to
         // dn2cpp_object_gethashcode, matching the equality so equal fields hash alike.

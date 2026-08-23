@@ -543,6 +543,7 @@ cuts, and both sides' stderr required to stay empty.
 |---|---|---|
 | MasterMemory | Source-generated typed tables over MessagePack data — database build/load, unique and non-unique indexes, composite indexes, exact/range/closest queries and forward/reverse views | `gates/build-and-run-mastermemory.sh` |
 | MemoryPack | Source-generated formatters — object/struct/record, member ordering, `[MemoryPackConstructor]`, the serialization callbacks, unions over an interface and over an abstract base, version-tolerant and explicit layouts, the unmanaged whole-struct memcpy path, the `IBufferWriter` and `ReadOnlySequence` entry points | `gates/build-and-run-memorypack.sh` |
+| MessagePack-CSharp | Source-generated indexed and map-keyed objects, ignored members and serialization constructors, collection formatters, interface unions, an AOT-safe composite resolver with a custom formatter, direct reader/writer use, `ReadOnlySequence` input and LZ4 block-array compression | `gates/build-and-run-messagepack.sh` |
 | MessagePipe | In-memory, keyed, buffered and async pub/sub, request/response, request-all, global filter pipelines — resolved out of the real `Microsoft.Extensions.DependencyInjection` container | `gates/build-and-run-messagepipe.sh` |
 | ZLinq | The zero-allocation LINQ pipeline: struct value-enumerator chains, aggregations, ordering, set operations, grouping and joining, materialization | `gates/build-and-run-zlinq.sh` |
 | ZString | `Utf16ValueStringBuilder` and `Utf8ValueStringBuilder`, `ZString.Format`/`Concat`/`Join`, custom numeric formats | `gates/build-and-run-zstring.sh` |
@@ -551,9 +552,10 @@ cuts, and both sides' stderr required to stay empty.
 | GDTask | The same tier-2 lane inside the real Godot engine | `gates/build-and-run-gdtask.sh` |
 
 A source generator's output is part of the subject, not a detail of the build:
-MasterMemory's generated database, tables and resolver, and MemoryPack's generated
-formatters live in their driver assemblies, so the transpiled IL is code no human
-wrote. Where a library documents an AOT resolver route, the gate takes it:
+MasterMemory's generated database, tables and resolver, MemoryPack's generated
+formatters, and MessagePack-CSharp's generated resolver and formatters live in their
+driver assemblies, so the transpiled IL is code no human wrote. Where a library
+documents an AOT resolver route, the gate takes it:
 MasterMemory composes its resolver with MessagePack's generated and builtin
 resolvers, then passes the composite locally to database build and load. Where a
 library's own design reaches for reflection
