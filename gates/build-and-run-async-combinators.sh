@@ -29,9 +29,18 @@
 # Task.WaitAll) agree on that set while the awaiter raises its first element unwrapped.
 # TaskDelegateContractSubset.cs asserts the delegate contract of the RESULT-returning
 # Task.Run / Task.Factory.StartNew overloads (stateless and the Func<object,TResult> +
-# state form): a null delegate is rejected synchronously at the entry with .NET's
-# ArgumentNullException text, and a COMBINED delegate runs every handler front-to-back
-# with the task's result taken from the last one.
+# state form) and of the cold `new Task(...)` / `new Task<T>(...)` constructors: a null
+# delegate is rejected synchronously at the entry with .NET's ArgumentNullException text
+# (the constructors name paramName "action" for every kind, the Func ones included), and
+# a COMBINED delegate runs every handler front-to-back with the task's result taken from
+# the last one — including a STRUCT result, whose transpiler-stamped boxing trampoline
+# walks the invocation chain itself rather than leaning on a runtime thunk, and including
+# every result kind of a ContinueWith continuation, which answers through thunks of its
+# own and so needs the walk written into each one, and a Task-RETURNING delegate, where
+# the last handler's task is the one Run unwraps and StartNew hands back — an earlier
+# handler's async fault stays unobserved in its own task, while its synchronous throw
+# stops the chain and faults the outer, one handler may return a task settled only by a
+# later handler without deadlocking, and a null task unwraps into a cancellation.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"

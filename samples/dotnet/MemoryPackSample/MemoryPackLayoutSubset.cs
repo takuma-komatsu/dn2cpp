@@ -42,6 +42,21 @@ namespace MemoryPackLayoutSubset
         public bool D;
     }
 
+    // decimal is unmanaged, so a struct carrying one stays on that same memcpy path and
+    // its 16 raw bytes reach the wire: the hex below is what pins the runtime decimal's
+    // field order to .NET's. One value per axis of the layout — a scale with a trailing
+    // zero, a negative, the top legal scale, and a full 96-bit mantissa.
+    [MemoryPackable]
+    internal partial struct FixedDecimal
+    {
+        public decimal Price;
+        public decimal Delta;
+        public decimal Tiny;
+        public decimal Widest;
+        public decimal NegativeZero;
+        public int Tag;
+    }
+
     [MemoryPackable]
     internal partial class Holder
     {
@@ -58,6 +73,7 @@ namespace MemoryPackLayoutSubset
             UnmanagedFastPath();
             BufferWriterPath();
             SequenceAndOverwrite();
+            DecimalFastPath();
         }
 
         private static void VersionTolerantLayout()
@@ -135,6 +151,25 @@ namespace MemoryPackLayoutSubset
             int consumed = MemoryPackSerializer.Deserialize(payload, ref target);
             Console.WriteLine("[overwrite] consumed=" + consumed + " id=" + target.Id
                 + " label=" + target.Label + " ratio=" + target.Ratio.ToString("R"));
+        }
+
+        private static void DecimalFastPath()
+        {
+            byte[] one = MemoryPackSerializer.Serialize(new FixedDecimal
+            {
+                Price = 1.50m,
+                Delta = -123.456m,
+                Tiny = 0.0000000000000000000000000001m,
+                Widest = decimal.MaxValue,
+                NegativeZero = new decimal(0, 0, 0, true, 3),
+                Tag = 7,
+            });
+            Console.WriteLine("[fixed-decimal] len=" + one.Length + " hex=" + Convert.ToHexString(one));
+            FixedDecimal back = MemoryPackSerializer.Deserialize<FixedDecimal>(one);
+            Console.WriteLine("[fixed-decimal] price=" + back.Price + " delta=" + back.Delta
+                + " tiny=" + back.Tiny + " widest=" + back.Widest
+                + " negative-zero=" + decimal.GetBits(back.NegativeZero)[3].ToString("X8")
+                + " tag=" + back.Tag);
         }
     }
 }

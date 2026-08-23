@@ -10,11 +10,12 @@
 # The generator's output is part of the subject: it lands in the driver assembly, so the
 # transpiled IL is code no human wrote and no other gate covers.
 #
-# The driver serializes no `decimal`. MemoryPack memcpys an unmanaged value, so the raw
-# struct layout reaches the wire, and Dn2CppDecimal's field order is not .NET's — a
-# divergence this gate would pin as a hex diff while hiding what it really is; it has its
-# own row in docs/STATUS.md. Everything else about decimal is covered by the decimal-ops
-# and boxed-decimal buckets.
+# The memcpy path carries `decimal` too: MemoryPack puts the raw struct bytes on the wire,
+# so the runtime decimal's field order is observable there and nowhere a caller reads the
+# value as a number. MemoryPackLayoutSubset's [fixed-decimal] section pins it as hex
+# against real .NET, one value per axis of the layout (a trailing-zero scale, a negative,
+# scale 28, a full 96-bit mantissa, and a signed zero). decimal-as-a-number is the
+# decimal-ops and boxed-decimal buckets.
 source "$(dirname "$0")/_common.sh"
 
 project=MemoryPackSample
@@ -62,8 +63,8 @@ build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 refs=(-r "$corelib" -r "$memorypack")
 rm -rf "$out"
 # A cap can only turn the run into an abort or back, never perturb a succeeding
-# transpile's bytes (AGENTS.md). Measured 6,821 instantiations (inst 4,765 +
-# minst 2,056), cap ~2.9x; measured peak heap 253 MB, belt ~3.0x.
+# transpile's bytes (AGENTS.md). Measured 6,912 instantiations (inst 4,797 +
+# minst 2,115), cap ~2.9x; measured peak heap 259 MB, belt ~3.0x.
 ( export DN2CPP_MAX_INSTANTIATIONS=20000
   invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 768 -o "$out" )
 echo "OK (bounded: <=20,000 instantiations, <=768 MB heap)"
@@ -103,14 +104,27 @@ echo "== 6/7 Compiling C++ =="
 compile_console "$out" "$project"
 
 echo "== 7/7 Running (exact diff vs real .NET) =="
-native_stderr="$out/native-stderr.txt"
-oracle_stderr="$out/oracle-stderr.txt"
+gate_run_logs_init memorypack MemoryPack
+log_dir="$_GATE_RUN_LOG_DIR"
+native_stderr="$log_dir/native.log"
+oracle_stderr="$log_dir/oracle.log"
+expected=
+expected_code=
+native=
+native_code=
+
+gate_run_diagnostics() {
+    gate_run_diag "MemoryPack native" "$native_code" "$native" "$native_stderr"
+    gate_run_diag "MemoryPack oracle" "$expected_code" "$expected" "$oracle_stderr"
+}
+
 set +e
-expected=$(dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
-native=$("./$out/$project" 2>"$native_stderr"); native_code=$?
+expected=$(run_bounded dotnet "$app" 2>"$oracle_stderr"); expected_code=$?
+native=$(run_bounded "./$out/$project" 2>"$native_stderr"); native_code=$?
 set -e
-assert_output "$native" "$expected"
-assert_exit_code "$native_code" "$expected_code"
+assertions_failed=0
+assert_output "$native" "$expected" || assertions_failed=1
+assert_exit_code "$native_code" "$expected_code" || assertions_failed=1
 
 # stdout matching hides everything the runtime writes to stderr — a swallowed
 # startup-cctor failure reports there and nowhere else. This corpus reports none.
@@ -118,11 +132,15 @@ assert_exit_code "$native_code" "$expected_code"
 if [ -s "$oracle_stderr" ]; then
     echo "FAIL: real .NET wrote to stderr; the diff only covers stdout:" >&2
     cat "$oracle_stderr" >&2
-    exit 1
+    assertions_failed=1
 fi
 if [ -s "$native_stderr" ]; then
     echo "FAIL: the native binary wrote to stderr; it must stay silent:" >&2
     cat "$native_stderr" >&2
+    assertions_failed=1
+fi
+if [ "$assertions_failed" -ne 0 ]; then
+    gate_run_diag_once
     exit 1
 fi
 echo "stderr: empty on both sides"

@@ -5905,7 +5905,7 @@ internal sealed partial class CppEmitter
         ["Dn2CppDateTimeOffset"] = (16, 8),   // int64 ticks + int32 offsetMinutes
         ["Dn2CppDateOnly"] = (4, 4),          // int32 dayNumber
         ["Dn2CppTimeOnly"] = (8, 8),          // int64 ticks
-        ["Dn2CppDecimal"] = (16, 8),          // uint64 lo + uint32 hi + 2*uint8
+        ["Dn2CppDecimal"] = (16, 8),          // int32 flags + uint32 hi32 + uint64 lo64
     };
 
     /// <summary>The byte size and alignment a field of type <paramref name="t"/>

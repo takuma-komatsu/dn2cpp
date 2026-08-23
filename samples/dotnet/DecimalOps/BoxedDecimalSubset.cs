@@ -41,5 +41,20 @@ internal static class Program
         map[1.0m] = "one";
         Console.WriteLine(map.ContainsKey(1.00m));   // True (equal-by-value key)
         Console.WriteLine(map.ContainsKey(2.0m));    // False
+
+        // The STATICALLY TYPED GetHashCode belongs to the bucket's other half, but it
+        // lands here because appending is the only placement that leaves the earlier
+        // output an unchanged prefix. Same contract, a different lowering: no boxing, so
+        // the transpiler emits the hash at the call site.
+        decimal u1 = 1.0m;
+        decimal u2 = 1.00m;
+        Console.WriteLine(u1.GetHashCode() == u2.GetHashCode());       // True
+        Console.WriteLine(u1.GetHashCode() == ((object)u2).GetHashCode()); // True
+        Console.WriteLine((-0.0m).GetHashCode() == 0.0m.GetHashCode()); // True
+        Console.WriteLine(2.5m.GetHashCode() == u1.GetHashCode());     // False
+        var typed = new Dictionary<decimal, string>();
+        typed[1.0m] = "one";
+        Console.WriteLine(typed.ContainsKey(1.00m));  // True
+        Console.WriteLine(typed.ContainsKey(2.0m));   // False
     }
 }

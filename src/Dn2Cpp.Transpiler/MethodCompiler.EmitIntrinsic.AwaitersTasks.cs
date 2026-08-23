@@ -14,8 +14,11 @@ internal sealed partial class MethodCompiler
     /// <para>The block is what makes the sync-over-async idiom correct: without it a
     /// still-PENDING task's unset result slot is read as the answer, so an
     /// <c>async ValueTask&lt;T&gt;</c> method that suspends silently returns default(T).
-    /// dn2cpp_task_block returns immediately on a completed task, so the await-resume
-    /// path is unchanged.</para>
+    /// <c>dn2cpp_vts_block</c> returns immediately on a completed task, so the
+    /// await-resume path is unchanged. It blocks for a builder- or Task-backed ValueTask,
+    /// as the CLR does, and for a still-pending <c>IValueTaskSource</c>-backed one reads
+    /// the source's own GetResult instead — the read the CLR refuses, refused by the
+    /// source itself so the exception is the one real .NET raises.</para>
     ///
     /// <para><c>taskExpr</c> is re-evaluated per statement rather than spilled to a temp:
     /// it is a pure read off an already-spilled stack temp, and minting a temp here would
@@ -23,7 +26,7 @@ internal sealed partial class MethodCompiler
     /// </summary>
     private void EmitAwaitedTaskResult(string taskExpr, TypeDesc returnType)
     {
-        Emit($"dn2cpp_task_block({taskExpr});");
+        Emit($"dn2cpp_vts_block({taskExpr});");
         Emit($"dn2cpp_task_throw_if_faulted({taskExpr});");
         if (!returnType.IsVoid) // the ValueTask<T> / ValueTaskAwaiter<T> forms
             PushTaskResult(taskExpr, returnType);
