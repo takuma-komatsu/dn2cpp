@@ -24,7 +24,7 @@
 # of it, and the reference target's refusal set against what it claims to refuse.
 #
 # WHY A NEW BUCKET rather than a section in an existing one (see AGENTS.md,
-# "Consolidated gate structure", and PORTING.md §4): a genuinely new target is
+# "Adding regression coverage", and PORTING.md §4): a genuinely new target is
 # one of the few legitimate reasons. Every section here needs a
 # runtime configured with a cache variable no other gate sets, so folding it into
 # a themed bucket would mean that bucket building the runtime twice for reasons
