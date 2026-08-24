@@ -118,8 +118,8 @@ backend projects and `ConsoleBackend.cs`; run it when you widen the surface.
 - `Module` — one assembly, owning its `Reader` and handle maps (handles are
   unique only within a reader).
 
-Members, signatures and field types are decoded **on demand**; read the
-transpiler-resource section of `AGENTS.md` before writing any walk over
+Members, signatures and field types are decoded **on demand**; read
+*Transpiler invariants* in `AGENTS.md` before writing any walk over
 `Compilation.Classes` that reads them.
 
 ## 4. Extension recipes (common changes)
