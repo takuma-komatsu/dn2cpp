@@ -353,7 +353,7 @@ internal sealed partial class MethodCompiler
                 for (int i = 0; i < sig.ParameterTypes.Length; i++)
                     Pop(); // CancellationToken (ignored)
                 var o = Pop();
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_semaphore_wait_async((Dn2CppObject*)({o.Expr}))");
+                PushStampedTask($"dn2cpp_semaphore_wait_async((Dn2CppObject*)({o.Expr}))", sig.ReturnType);
                 return true;
             }
             // ---- ManualResetEvent(Slim) / AutoResetEvent ----

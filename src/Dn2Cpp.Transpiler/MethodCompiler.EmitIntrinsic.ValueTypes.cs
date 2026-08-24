@@ -607,16 +607,15 @@ internal sealed partial class MethodCompiler
     /// either as a value (<c>ldsfld</c>) or, with <paramref name="wantAddress"/>,
     /// materialized into a temp whose address is pushed (<c>ldsflda</c>, for an instance
     /// call on the constant). Returns false if the declaring type isn't one.</summary>
-    private bool TryIntrinsicStaticField(FieldInfo fld, bool wantAddress)
+    private bool TryIntrinsicStaticField(FieldInfo fld, bool wantAddress, int token)
     {
         string cppType;
         string expr;
-        // A custom async task type adopted into the intrinsic Task family has no emitted
-        // static storage either. Its one universal static constant is the already-completed
-        // task, spelled CompletedTask — a FIELD on some such types where the BCL makes it a
-        // property, which is why it lands here rather than in the intrinsic call tables. Any
-        // other static is named and refused, never folded to a constant that might be wrong.
-        if (Comp.AdoptedAsyncKey(fld.DeclaringClass) is not null)
+        // A custom async task-role type adopted as Task/ValueTask has no emitted static
+        // storage either. Its one modeled field is CompletedTask; builder and awaiter roles
+        // admit no fields, and every other task static is named and refused.
+        if (Comp.AdoptedAsyncKey(fld.DeclaringClass) is "System.Threading.Tasks.Task"
+                                                        or "System.Threading.Tasks.ValueTask")
         {
             if (fld.Name != "CompletedTask")
                 throw new NotSupportedException(
@@ -626,7 +625,12 @@ internal sealed partial class MethodCompiler
                     + "storage; only its CompletedTask constant is modeled");
             bool byRef = fld.DeclaringClass.IntrinsicCppName == "Dn2CppTask*";
             cppType = byRef ? "Dn2CppTask*" : "Dn2CppTaskAwaiter";
-            expr = byRef ? "dn2cpp_task_completed()" : "Dn2CppTaskAwaiter{ dn2cpp_task_completed() }";
+            TypeDesc declaredTask = TypeDesc.MakeClass(fld.DeclaringClass);
+            expr = byRef
+                ? StampTask("dn2cpp_task_completed()", declaredTask, token)
+                : TaskBackingType(declaredTask) is { } taskType
+                    ? $"Dn2CppTaskAwaiter{{ {StampTask("dn2cpp_task_completed()", taskType, token)} }}"
+                    : "Dn2CppTaskAwaiter{ dn2cpp_task_completed() }";
             if (wantAddress)
             {
                 string t = NewTemp(cppType);

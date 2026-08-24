@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace TcsSubset
 {
     // TaskCompletionSource / TaskCompletionSource<T>: a manually-completed task.
-    // The TCS is modeled as the bare pending task it completes; SetResult /
+    // The TCS is a source wrapper over one stable pending task; SetResult /
     // SetException / SetCanceled are exactly-once transitions (Set* throws
     // InvalidOperationException once settled, TrySet* returns false), results
     // pack like async Task<T> results (double bit-cast, reference carried), and

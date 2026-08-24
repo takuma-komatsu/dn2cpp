@@ -28,7 +28,9 @@
 # instantiations share canonically too (canonical NameSuffix bodies,
 # per-method rgctx tables, per-real forwarders — and the List<ref> group's
 # Contains/IndexOf/Remove stay shared instead of cascading through
-# Array.IndexOf<T>), and that sharing genuinely shrinks the output vs the
+# Array.IndexOf<T>), that non-async Task producers read each real closed identity
+# through rgctx without forfeiting their shared reference-group bodies, and
+# that sharing genuinely shrinks the output vs the
 # same transpile with --no-shared-generics (total generated*.cpp bytes AND
 # the header's method forward-declaration count must be strictly smaller).
 #
@@ -151,7 +153,31 @@ if ! grep -q "rgctx_m_MethodShareSubset_Ops_ArrName" <<<"$(
 fi
 echo "method-dimension sharing: OK"
 
-echo "== 4c/7 typeof(T)==typeof(X) fold prunes cross-product instantiations =="
+echo "== 4c/7 Task producer identities stay shared through rgctx =="
+# Each non-async producer runs for Alpha and Beta, which collapse to one CnRef
+# method body. Async Task/ValueTask identity is covered by the runtime diff; its
+# existing state-machine fallback also keeps each kickoff body concrete.
+for method in FromResult ValueTaskResult Source; do
+    if ! grep -qE "m_TaskRgctxSubset_Ops_${method}_[0-9]+___CnRef\(" "$out/generated.h"; then
+        echo "FAIL: no canonical TaskRgctxSubset.Ops.$method<CnRef> body" >&2
+        exit 1
+    fi
+    for arg in TaskRgctxSubset_Alpha TaskRgctxSubset_Beta; do
+        sym="m_TaskRgctxSubset_Ops_${method}_[0-9]+__${arg}"
+        if ! grep -qE "rgctx_${sym}" "$out/generated.h"; then
+            echo "FAIL: TaskRgctxSubset.Ops.$method<$arg> has no rgctx table" >&2
+            exit 1
+        fi
+        if ! grep -A 3 -hE "^[A-Za-z_][A-Za-z0-9_* ]* ${sym}\(" \
+                "$out/generated.h" | grep -qE "rgctx_${sym}"; then
+            echo "FAIL: TaskRgctxSubset.Ops.$method<$arg> is not an rgctx forwarder" >&2
+            exit 1
+        fi
+    done
+done
+echo "Task producer rgctx sharing: OK"
+
+echo "== 4d/7 typeof(T)==typeof(X) fold prunes cross-product instantiations =="
 # TypeofFoldSubset.Dispatch<T> chains `if (typeof(T) == typeof(X)) return
 # Tag<T, X>();` over five X — folding the comparison at transpile time must
 # leave only the DIAGONAL Tag instantiations reachable, so no Tag<int, not-int>
@@ -180,7 +206,7 @@ if ! grep -qE "m_TypeofFoldSubset_Program_Tag_[0-9]+__Int32_Int32\(" "$out/gener
 fi
 echo "typeof fold prunes off-diagonal instantiations: OK"
 
-echo "== 4d/7 Generic-virtual dispatch over a canonical group owner =="
+echo "== 4e/7 Generic-virtual dispatch over a canonical group owner =="
 # The emit-set invariant of the dn2cpp_gvm_* dispatcher, and the widest thing
 # that walks the type-info funnel's refusal path. A generic virtual has no
 # vtable slot, so a callvirt routes through a type-switch whose cases are the

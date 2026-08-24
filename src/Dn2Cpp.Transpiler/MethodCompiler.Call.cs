@@ -1302,12 +1302,12 @@ internal sealed partial class MethodCompiler
         {
             // Task<int>: the byte count the sync Read returned, in a completed task.
             var n = Pop();
-            Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_task_from_result({EmitTaskResultStore(n)})");
+            PushStampedTask($"dn2cpp_task_from_result({EmitTaskResultStore(n)})", callee.Signature.ReturnType);
         }
         else
         {
             // Task: Write returns void, so the completed task carries no result.
-            Push(StackKind.Ref, "Dn2CppTask*", "dn2cpp_task_completed()");
+            PushStampedTask("dn2cpp_task_completed()", callee.Signature.ReturnType);
         }
         return true;
     }

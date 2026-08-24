@@ -358,19 +358,28 @@ internal sealed partial class CppEmitter
         private List<ClassInfo> ReferencedIntrinsicTypeInfos()
         {
             var topo = _e.TopoOrder().ToHashSet();
-            return _c.ReferencedTypes
-                .Where(c => !c.IsEnum
-                            && !_e._emit.Contains(c)
-                            && !topo.Contains(c)
-                            // A runtime-OWNED type's ti_ is the runtime's own definition —
-                            // minting a minimal one here would be the second identity this
-                            // table exists to prevent. Not subsumed by the TypeInfoExprOf
-                            // comparison below, which holds for every class since the Class
-                            // arm answers "&" + CppTypeInfoName.
-                            && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
-                            && MethodCompiler.TypeInfoExprOf(TypeDesc.MakeClass(c)) == "&" + c.CppTypeInfoName)
-                .OrderBy(c => c.CppName, System.StringComparer.Ordinal)
-                .ToList();
+            bool Eligible(ClassInfo c) => !c.IsEnum
+                && !_e._emit.Contains(c)
+                && !topo.Contains(c)
+                // A runtime-OWNED type's ti_ is the runtime's own definition —
+                // minting a minimal one here would be the second identity this
+                // table exists to prevent. Not subsumed by the TypeInfoExprOf
+                // comparison below, which holds for every class since the Class
+                // arm answers "&" + CppTypeInfoName.
+                && !CoreIntrinsics.RuntimeOwnsTypeInfo(c)
+                && MethodCompiler.TypeInfoExprOf(TypeDesc.MakeClass(c)) == "&" + c.CppTypeInfoName;
+            var result = _c.ReferencedTypes.Where(Eligible).ToHashSet();
+            var pending = result.ToList();
+            for (int i = 0; i < pending.Count; i++)
+            {
+                foreach (var arg in pending[i].Context.TypeArgs)
+                {
+                    if (arg is { Kind: TypeKind.Class, Class: { } nested }
+                        && Eligible(nested) && result.Add(nested))
+                        pending.Add(nested);
+                }
+            }
+            return result.OrderBy(c => c.CppName, System.StringComparer.Ordinal).ToList();
         }
 
         /// <summary>One SZArray member type the reflection tables will name: record its
@@ -502,8 +511,8 @@ internal sealed partial class CppEmitter
 
         /// <summary>The minimal type-infos of the classes <see cref="ReferencedIntrinsicTypeInfos"/>
         /// forward-declared: name, base chain (a reference type chains to System.Object; a
-        /// value type or interface roots at null, like the class emitter), unboxed size for a
-        /// `box` that survives folding, and the flag bits <c>dn2cpp_isinst</c>/
+        /// value type or interface roots at null, runtime-struct size where one exists, and
+        /// the flag bits <c>dn2cpp_isinst</c>/
         /// <c>dn2cpp_type_is_*</c> read. No vtable and no member/interface tables — those are
         /// intrinsic-dispatched — and no ty_ companion, so typeof interns lazily.
         ///
@@ -537,8 +546,17 @@ internal sealed partial class CppEmitter
             }
             foreach (var c in _e._referencedIntrinsicTis)
             {
-                string baseExpr = c.IsValueType || c.IsInterface ? "nullptr" : "&dn2cpp_object_type";
-                string size = c.IsValueType ? $"(int32_t)sizeof({CppTypes.Of(TypeDesc.MakeClass(c))})" : "0";
+                string baseExpr = c.IsValueType || c.IsInterface ? "nullptr"
+                    : _c.GenericDefFullName(c) == "System.Threading.Tasks.Task"
+                        ? "&dn2cpp_task_type"
+                        : "&dn2cpp_object_type";
+                string size = c.IntrinsicCppName == "Dn2CppTask*"
+                    ? "(int32_t)sizeof(Dn2CppTask)"
+                    : c.IntrinsicCppName == "Dn2CppTaskCompletionSource*"
+                        ? "(int32_t)sizeof(Dn2CppTaskCompletionSource)"
+                        : c.IsValueType && c.IntrinsicCppName is not null
+                            ? $"(int32_t)sizeof({CppTypes.Of(TypeDesc.MakeClass(c))})"
+                            : "0";
                 var flagBits = new List<string>();
                 if (c.IsValueType)
                     flagBits.Add("DN2CPP_TF_VALUETYPE");
@@ -629,8 +647,8 @@ internal sealed partial class CppEmitter
                 _o.Header.AppendLine($"extern const Dn2CppType ty_arr_{kv.Key};");
                 NoteDefinedTypeInfo("ti_arr_" + kv.Key);
             }
-            // Static MD-array handles: named by an SZArray-of-MDArray entry's
-            // elementType and by the type-registry row; defined by EmitArrayTypeInfos.
+            // Static MD-array handles: named by constructed type identities, nested array
+            // elementType rows and the registry; defined by EmitArrayTypeInfos.
             foreach (var kv in _c.MdArrayTypes.OrderBy(kv => kv.Key, System.StringComparer.Ordinal))
             {
                 _o.Header.AppendLine($"extern const Dn2CppTypeInfo ti_md_{kv.Key};");

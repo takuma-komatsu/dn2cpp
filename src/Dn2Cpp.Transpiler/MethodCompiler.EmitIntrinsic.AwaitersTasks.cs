@@ -6,6 +6,53 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private string TaskTypeInfo(TypeDesc managedType, int token)
+    {
+        if (managedType is not { Kind: TypeKind.Class, Class.IntrinsicCppName: "Dn2CppTask*" })
+            throw new InvalidOperationException(
+                $"{Method.DeclaringClass.FullName}.{Method.Name}: cannot stamp non-Task type {managedType}");
+        if (SharedTrial && Compilation.ContainsCanonPlaceholder(managedType))
+            return "(const Dn2CppTypeInfo*)"
+                + RgctxSlotAccess(RgctxSlotKind.TaskTypeInfo, token, "task typeinfo", managedType);
+        return TypeInfoExpr(managedType)
+            ?? throw new InvalidOperationException(
+                $"{Method.DeclaringClass.FullName}.{Method.Name}: Task type {managedType} has no runtime identity");
+    }
+
+    private string TaskTypeInfo(TypeDesc managedType) => TaskTypeInfo(managedType, _callSiteToken);
+
+    private string StampTask(string expression, TypeDesc managedType, int token) =>
+        $"dn2cpp_task_stamp({expression}, {TaskTypeInfo(managedType, token)})";
+
+    private string StampTask(string expression, TypeDesc managedType) =>
+        StampTask(expression, managedType, _callSiteToken);
+
+    private void PushStampedTask(string expression, TypeDesc managedType) =>
+        Push(StackKind.Ref, "Dn2CppTask*", StampTask(expression, managedType));
+
+    private TypeDesc TaskTypeForResult(TypeDesc resultType)
+    {
+        var task = Comp.FindGenericInstantiation("System.Threading.Tasks", "Task`1", [resultType])
+            ?? throw new InvalidOperationException(
+                $"{Method.DeclaringClass.FullName}.{Method.Name}: Task<{resultType}> is not in the completed image");
+        return TypeDesc.MakeClass(task);
+    }
+
+    private TypeDesc? TaskBackingType(TypeDesc taskLikeType)
+    {
+        if (taskLikeType is not { Kind: TypeKind.Class, Class: { } cls })
+            return null;
+        if (cls.IntrinsicCppName == "Dn2CppTask*")
+            return taskLikeType;
+        if (Comp.GenericDefFullName(cls) == "System.Threading.Tasks.ValueTask"
+            || Comp.AdoptedAsyncKey(cls) == "System.Threading.Tasks.ValueTask")
+            return cls.Context.TypeArgs.Length == 0
+                ? Comp.FindClassByFullName("System.Threading.Tasks.Task") is { } task
+                    ? TypeDesc.MakeClass(task) : null
+                : TaskTypeForResult(cls.Context.TypeArgs[0]);
+        return null;
+    }
+
     /// <summary>Read the result out of an awaited task (<c>taskExpr</c> must already be
     /// normalized through <c>dn2cpp_vtask</c> for the ValueTask family): block until it
     /// leaves the pending state, re-raise its fault, then push the result unless the
@@ -192,14 +239,18 @@ internal sealed partial class MethodCompiler
             // of, so it lowers exactly like the non-pooling builder.
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "Create"):
             case ("System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder", "Create"):
-                Push(StackKind.Struct, "Dn2CppAsyncBuilder", "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
+                Push(StackKind.Struct, "Dn2CppAsyncBuilder",
+                    "Dn2CppAsyncBuilder{ dn2cpp_task_alloc() }");
                 return true;
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "get_Task"):
             case ("System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder", "get_Task"):
             {
                 // get_Task returns a ValueTask<T> — the {task} struct over the builder's task.
                 var b = Pop();
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ ((Dn2CppAsyncBuilder*)({b.Expr}))->task }}");
+                string task = $"((Dn2CppAsyncBuilder*)({b.Expr}))->task";
+                if (TaskBackingType(sig.ReturnType) is { } taskType)
+                    task = StampTask(task, taskType);
+                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
             }
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "SetResult"):
@@ -298,7 +349,8 @@ internal sealed partial class MethodCompiler
                     && Comp.GenericDefFullName(pcl) == "System.Threading.Tasks.Task";
                 string task = fromTask
                     ? $"(Dn2CppTask*)({arg.Expr})"
-                    : $"dn2cpp_task_from_result({EmitTaskResultStore(arg)})";
+                    : StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(arg)})",
+                        TaskTypeForResult(sig.ParameterTypes[0]));
                 Emit($"*(Dn2CppTaskAwaiter*)({self.Expr}) = Dn2CppTaskAwaiter{{ {task} }};");
                 return true;
             }
@@ -315,7 +367,9 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.ValueTask", "AsTask"):
             {
                 var v = Pop();
-                Push(StackKind.Ref, "Dn2CppTask*", $"dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)");
+                Push(StackKind.Ref, "Dn2CppTask*",
+                    $"dn2cpp_vtask_as_task(((Dn2CppTaskAwaiter*)({v.Expr}))->task, "
+                    + $"{TaskTypeInfo(sig.ReturnType)})");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "get_IsCompleted"):
@@ -342,7 +396,10 @@ internal sealed partial class MethodCompiler
             {
                 Pop(); // CancellationToken (its canceled state is not re-validated)
                 EmitCanceledExcRegistration();
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", "Dn2CppTaskAwaiter{ dn2cpp_task_from_canceled() }");
+                string task = TaskBackingType(sig.ReturnType) is { } taskType
+                    ? StampTask("dn2cpp_task_from_canceled()", taskType)
+                    : "dn2cpp_task_from_canceled()";
+                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
             }
             // ValueTask.FromException(Exception) -> a pre-completed faulted ValueTask;
@@ -350,16 +407,24 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Tasks.ValueTask", "FromException") when sig.ParameterTypes.Length == 1:
             {
                 var ex = Pop();
+                string task = $"dn2cpp_task_from_exception({Cast(ex, "Dn2CppObject*")})";
+                if (TaskBackingType(sig.ReturnType) is { } taskType)
+                    task = StampTask(task, taskType);
                 Push(StackKind.Struct, "Dn2CppTaskAwaiter",
-                    $"Dn2CppTaskAwaiter{{ dn2cpp_task_from_exception({Cast(ex, "Dn2CppObject*")}) }}");
+                    $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
             }
             // ValueTask.CompletedTask -> a pre-completed successful ValueTask; the
             // mirror of Task.CompletedTask wrapped in the {task} struct. Reached as
             // OSFileStreamStrategy.DisposeAsync's nothing-to-flush arm.
             case ("System.Threading.Tasks.ValueTask", "get_CompletedTask"):
-                Push(StackKind.Struct, "Dn2CppTaskAwaiter", "Dn2CppTaskAwaiter{ dn2cpp_task_completed() }");
+            {
+                string task = TaskBackingType(sig.ReturnType) is { } taskType
+                    ? StampTask("dn2cpp_task_completed()", taskType)
+                    : "dn2cpp_task_completed()";
+                Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
+            }
             case ("System.Threading.Tasks.ValueTask", "get_IsCompletedSuccessfully"):
             {
                 var v = Pop();

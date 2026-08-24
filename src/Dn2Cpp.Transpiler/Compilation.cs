@@ -273,6 +273,19 @@ internal sealed partial class Compilation
         return inner;
     }
 
+    public ClassInfo? FindGenericInstantiation(string @namespace, string name, TypeDesc[] args)
+    {
+        if (!TypeIndex().TryGetValue((@namespace, name), out var definitions)
+            || definitions.Count == 0)
+            return null;
+        foreach (var (module, handle) in definitions)
+        {
+            if (InstancesFor(module, handle).TryGetValue(args, out var instance))
+                return instance;
+        }
+        return null;
+    }
+
     private Dictionary<(string Decl, TypeDesc[] Args), MethodInfo> MethodInstancesFor(Module module, MethodDefinitionHandle template)
     {
         var key = (module.Index, SRME.GetToken(template));
@@ -971,6 +984,28 @@ internal sealed partial class Compilation
     public HashSet<ClassInfo> ReferencedTypes { get; } = new();
 
     public void NoteReferencedType(ClassInfo cls) => ReferencedTypes.Add(cls);
+
+    /// <summary>Notes every concrete handle that a constructed type's runtime identity
+    /// points through, including generic arguments and array elements.</summary>
+    internal void NoteTypeIdentityClosure(TypeDesc type)
+    {
+        switch (type.Kind)
+        {
+            case TypeKind.Class:
+                NoteReferencedType(type.Class!);
+                foreach (var arg in type.Class!.Context.TypeArgs)
+                    NoteTypeIdentityClosure(arg);
+                break;
+            case TypeKind.SZArray:
+                NoteArrayElementType(type.Element!);
+                NoteTypeIdentityClosure(type.Element!);
+                break;
+            case TypeKind.MDArray:
+                NoteMdArrayType(type);
+                NoteTypeIdentityClosure(type.Element!);
+                break;
+        }
+    }
 
     /// <summary>Open generic DEFINITIONS a body took the runtime <c>typeof</c> of —
     /// <c>typeof(IDictionary&lt;,&gt;)</c>, <c>typeof(List&lt;&gt;)</c>. Such a token decodes
@@ -2149,6 +2184,15 @@ internal sealed partial class Compilation
         _instanceCount++;
         Classes.Add(spec);
         EnqueuePending(spec);
+        // Intrinsic ValueTask<T> and TaskCompletionSource<T> both allocate a real
+        // Task<T> backing. Create its identity while the model can still grow, even when
+        // no managed signature exposes it; emission may only look it up.
+        if (args.Length == 1
+            && (defFull is "System.Threading.Tasks.ValueTask"
+                          or "System.Threading.Tasks.TaskCompletionSource"
+                || AdoptedAsyncKey(spec) == "System.Threading.Tasks.ValueTask")
+            && TypeIndex().TryGetValue(("System.Threading.Tasks", "Task`1"), out var taskDefs))
+            Instantiate(taskDefs[0].Item1, taskDefs[0].Item2, args);
         return spec;
     }
 
@@ -2445,22 +2489,22 @@ internal sealed partial class Compilation
             NoteMdArrayType(element);
     }
 
-    /// <summary>MDArray types reached as an SZArray ELEMENT (<c>new int[2][,]</c>,
-    /// <c>typeof(int[][,])</c>), keyed by <see cref="ArrayElemMangle"/>.
+    /// <summary>MDArray types whose identity is named by emitted metadata: either
+    /// as an SZArray element (<c>new int[2][,]</c>, <c>typeof(int[][,])</c>) or
+    /// inside a constructed type's identity closure, keyed by <see cref="ArrayElemMangle"/>.
     /// CppEmitter emits one static <c>ti_md_&lt;key&gt;</c> per entry and registers it in
     /// the type registry, where the runtime interner (<c>dn2cpp_array_ti</c>) resolves
     /// every <c>new T[,]</c> of the shape to it — so the static handle IS the interned
-    /// identity, not a second one. MD types reached only as their own tokens stay
-    /// runtime-interned as before (no entry, no emitted symbol, byte-identical
-    /// output).</summary>
+    /// identity, not a second one. A bare instruction token still uses the runtime
+    /// interner directly unless another emitted identity names its static handle.</summary>
     internal Dictionary<string, TypeDesc> MdArrayTypes { get; } = new(System.StringComparer.Ordinal);
 
     /// <summary>See <see cref="MdArrayTypes"/>. Recurses like NoteArrayElementType so
     /// the whole GetElementType chain stays linkable, notes a referenced enum element's
     /// own ti_ (the NoteReflectedArrayType precedent), and keys the shared rank&gt;=2
-    /// dispatch map — instances of the MD type flow out of the SZ array without any
-    /// statically visible MD token.</summary>
-    private void NoteMdArrayType(TypeDesc md)
+    /// dispatch map — the MD identity can flow through an SZ array or constructed
+    /// generic metadata without a statically visible MD token.</summary>
+    internal void NoteMdArrayType(TypeDesc md)
     {
         if (ContainsCanonPlaceholder(md) || !MdArrayTypes.TryAdd(ArrayElemMangle(md), md))
             return;

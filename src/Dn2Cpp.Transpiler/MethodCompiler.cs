@@ -2604,7 +2604,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // ldsflda of an intrinsic value-type constant (e.g. TimeSpan.Zero.
                 // ToString) — materialize the value into a temp and push its address
                 // so the following value-type instance call has a receiver.
-                if (TryIntrinsicStaticField(fld, wantAddress: true))
+                if (TryIntrinsicStaticField(fld, wantAddress: true, insn.Token))
                     break;
                 // A string constant on an INTRINSIC type, by address — materialize the
                 // interned literal into a temp and push its address (an intrinsic type has
@@ -2639,7 +2639,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // Zero/Min/Max, DateTime.Min/Max) have no emitted storage — fold them to
                 // the runtime constructor. DateTime.Now/UtcNow/Today are
                 // static *properties* (get_*) ->.
-                if (TryIntrinsicStaticField(fld, wantAddress: false))
+                if (TryIntrinsicStaticField(fld, wantAddress: false, insn.Token))
                     break;
                 // System.Type is intrinsic, so its EmptyTypes static field (the canonical
                 // empty Type[], commonly passed to GetConstructor/GetMethod) has no

@@ -270,7 +270,7 @@ internal sealed partial class MethodCompiler
         _c.NoteNamedTypeInfoSymbol(_method, expr);
         if (expr is not null && expr.StartsWith("&ti_", System.StringComparison.Ordinal)
             && t is { Kind: TypeKind.Class, Class: { IntrinsicCppName: not null } cls })
-            _c.NoteReferencedType(cls);
+            _c.NoteTypeIdentityClosure(t);
     }
 
     /// <summary>Token-carrying variant for instruction-level sites (box/unbox/
@@ -314,7 +314,7 @@ internal sealed partial class MethodCompiler
         // other answer — one CLR type, two type-infos, and
         // `typeof(MyClass).BaseType == typeof(object)` false. The arms below therefore key
         // on the runtime STRUCT (IntrinsicCppName), never on a name: one struct serves many
-        // names (every Task<T> shares Dn2CppTask), which no per-name table can express.
+        // names, which no per-name table can express.
         //
         // The intrinsic Task-family awaiter structs, keyed on their runtime struct (every
         // TaskAwaiter(<T>)/ValueTaskAwaiter(<T>)/Configured* form shares Dn2CppTaskAwaiter):
@@ -326,13 +326,14 @@ internal sealed partial class MethodCompiler
             => "&dn2cpp_task_awaiter_type",
         TypeKind.Class when t.Class!.IsValueType && t.Class.IntrinsicCppName == "Dn2CppYieldAwaiter"
             => "&dn2cpp_yield_awaiter_type",
-        // The intrinsic Task family is type-erased to one Dn2CppTask (Task<int>, Task<Stream>,
-        // TaskCompletionSource<T>, … all share the struct and the &dn2cpp_task_type header), so
-        // it has no per-instantiation ti_* to emit; an isinst/castclass/box against a Task<T>
-        // names the shared handle instead — otherwise it references a never-emitted symbol and
-        // the link fails.
-        TypeKind.Class when t.Class!.IntrinsicCppName == "Dn2CppTask*" => "&dn2cpp_task_type",
-        // ThreadLocal<T> and BlockingCollection<T> are erased exactly as Task<T> is — one
+        // The non-generic Task owns the runtime handle every fresh Dn2CppTask starts with.
+        // Closed Task<T> and adopted reference-task types keep the same C++ struct but name
+        // emitted per-close handles; producer mouths stamp those before the task escapes.
+        TypeKind.Class when t.Class!.IntrinsicCppName == "Dn2CppTask*"
+                            && t.Class.GenericArity == 0
+                            && t.Class.FullName == "System.Threading.Tasks.Task"
+            => "&dn2cpp_task_type",
+        // ThreadLocal<T> and BlockingCollection<T> remain erased — one
         // struct, one runtime handle, T riding as data rather than in the header
         // (CoreIntrinsics.s_runtimeTypeInfoNotRowed). Without an arm here they fall to the
         // Class arm's never-stamped ti_, and `o is ThreadLocal<string>` reads False on an
@@ -340,8 +341,7 @@ internal sealed partial class MethodCompiler
         //
         // The residue of the erasure, stated rather than hidden: one handle cannot
         // distinguish instantiations, so `o is ThreadLocal<int>` on a ThreadLocal<string>
-        // reads TRUE where real .NET reads False — the same answer `task is Task<int>` gives
-        // for a Task<string>. Exact whenever the program holds a single instantiation, and
+        // reads TRUE where real .NET reads False. Exact whenever the program holds a single instantiation, and
         // over-accepting only a test a correct program does not write; a per-instantiation
         // handle would mean giving each close its own runtime struct, i.e. dropping the
         // erasure.

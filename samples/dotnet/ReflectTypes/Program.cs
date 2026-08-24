@@ -81,6 +81,7 @@ namespace ReflectTypes
             GenericDefAssignabilitySubset.Program.Run();
             ReflectIntrinsicTemplateSubset.Program.Run();
             MemberHandleSubset.Program.Run();
+            TaskRuntimeIdentitySubset.Program.Run();
         }
     }
 }

@@ -6031,6 +6031,11 @@ struct Dn2CppTask : Dn2CppObject
     Dn2CppObject* vtsBridge;
 };
 
+struct Dn2CppTaskCompletionSource : Dn2CppObject
+{
+    Dn2CppTask* task;
+};
+
 // Generated code reads Dn2CppTask by offset: an atomic field that is not shaped like
 // the scalar it replaces moves every field after it, and a lock-backed one puts a
 // mutex inside the struct. Pointer-shaped is also what keeps the conservative
@@ -6100,6 +6105,12 @@ Dn2CppTask* dn2cpp_task_completed();
 // A completed Task<T> carrying a result (behind Task.FromResult). The raw slot
 // is reinterpreted by T at the get_Result/GetResult intrinsics.
 Dn2CppTask* dn2cpp_task_from_result(uint64_t result);
+// Stamp the closed managed Task identity at the producer mouth that knows it. A
+// default(ValueTask)'s shared sentinel is cloned before stamping.
+Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type);
+Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type);
+Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
+                                              const Dn2CppTypeInfo* taskType);
 // TaskAwaiter.GetResult: re-raise the stored exception if the task faulted,
 // otherwise a no-op. (Task<T>.GetResult adds the typed result load inline.)
 void dn2cpp_task_throw_if_faulted(Dn2CppTask* t);
@@ -6181,8 +6192,7 @@ Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception);
 // task carrying an OperationCanceledException; awaiting it or reading .Result
 // re-raises it (same path as an awaited canceled Task.Delay).
 Dn2CppTask* dn2cpp_task_from_canceled();
-// TaskCompletionSource(<T>) — modeled as the bare Dn2CppTask* it completes
-// (get_Task is the identity; the newobj is dn2cpp_task_alloc). Exactly-once
+// TaskCompletionSource(<T>) owns a separate Dn2CppTask* it completes. Exactly-once
 // transitions: TrySet* returns 1 on the winning transition and 0 when the task
 // had already settled (thread-safe — concurrent TrySet* calls see one winner);
 // the Set* forms throw InvalidOperationException instead of returning 0.

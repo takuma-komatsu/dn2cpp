@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace CustomAsyncTaskLib;
 
@@ -125,6 +126,12 @@ public readonly struct CustomTask<T>
         _result = default;
         _token = token;
     }
+
+    /// <summary>The generic field form exercises the same adopted ldsfld fold
+    /// under a caller's generic context.</summary>
+    public static readonly CustomTask<T> CompletedTask = default;
+
+    public async Task<T> AsTask() => await this;
 
     public Awaiter GetAwaiter() => new Awaiter(this);
 
