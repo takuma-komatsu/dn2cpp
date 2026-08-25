@@ -8,10 +8,15 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- [PR #54](https://github.com/takuma-komatsu/dn2cpp/pull/54) で、ZLinq・ZString・MessagePipe のサポートと検証ゲートを追加し、オープンジェネリック定義の閉じた祖先型の保持や Span `TryFormat` の `IFormatProvider` ルーティングを改善しました
-- [PR #53](https://github.com/takuma-komatsu/dn2cpp/pull/53) で、R3 ライブラリのサポートと非同期ランタイムプリミティブ（Timer、アドレス取得されたカットインターセプトのボディ合成など）を追加しました
+- Godot 4.7.2 ベースへ更新しました
+- [PR #61](https://github.com/takuma-komatsu/dn2cpp/pull/61) で、YetAnotherHttpHandler のサポートとエンドツーエンド検証ゲートの追加、NuGet パッケージ同梱ネイティブバイナリの自動配置・ロード対応、スレッド登録や Task 結果保持の改善を行いました
+- [PR #59](https://github.com/takuma-komatsu/dn2cpp/pull/59) で、MagicOnion クライアントのサポートと検証ゲートを追加し、共有ボディ・閉じたジェネリックにおける Task の識別性保持を改善しました
+- [PR #58](https://github.com/takuma-komatsu/dn2cpp/pull/58) で、MessagePack-CSharp のリグレッション検証ゲートを追加しました
+- [PR #57](https://github.com/takuma-komatsu/dn2cpp/pull/57) で、MasterMemory の互換性検証ゲートを追加しました
+- [PR #56](https://github.com/takuma-komatsu/dn2cpp/pull/56) で、Decimal のフィールドレイアウトおよび負のゼロ表現を .NET 準拠に修正し、ValueTask 早期読み出し拒否や Task.Run のキャンセル処理などランタイムコントラクトの乖離を解消しました
+- [PR #55](https://github.com/takuma-komatsu/dn2cpp/pull/55) で、MemoryPack の検証ゲートを追加しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/ba13925269ae28abd2489aca76a86b34257456b4...8bccf337a5b8f05076b3be196db5188b88c8e97b> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/bab0cc5c557fde07f327f17ba4fee2268f84446d...HEAD> を参照してください。
 
 ## アセット
 
