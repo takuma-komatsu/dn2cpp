@@ -29,6 +29,12 @@ unsafe class Program
         Console.WriteLine((nuint)p / 64 * 64 == (nuint)p);  // True
         Console.WriteLine(((nuint)p | 7) % 8);              // 7
         Console.WriteLine(((nuint)p ^ 5) % 8);              // 5
+        // Keep this pointer non-dereferenceable: the marker makes native-width
+        // truncation deterministic even when the allocator returns a low address.
+        nuint highMarker = IntPtr.Size == 8 ? (nuint)1 << 40 : 0;
+        void* shiftProbe = (void*)((nuint)p | highMarker);
+        nuint shifted = (nuint)shiftProbe >> 1;
+        Console.WriteLine((shifted << 1) == (nuint)shiftProbe); // True (64-aligned)
 
         // The local round-trip: stloc coerces the pointer into a nuint local.
         nuint addr = (nuint)p;
