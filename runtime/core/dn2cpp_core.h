@@ -4648,10 +4648,13 @@ int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn
 // (both implementations resolved by the call site through the source's interface
 // table). `actionTi` is the Action<object> type-info stamped on the runtime-built
 // continuation delegate; `resultKind` packs GetResult's return into the task's
-// result slot (0=void 1=int32 2=int64 3=reference).
+// result slot (0=void 1=int32 2=int64 3=reference 4=struct). A struct's ABI is
+// known only at the call site, so `getStructResult` invokes the typed method and
+// heap-copies its result into the slot.
 Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
                             const void* getResultFn, const void* onCompletedFn,
-                            const Dn2CppTypeInfo* actionTi, int32_t resultKind);
+                            const Dn2CppTypeInfo* actionTi, int32_t resultKind,
+                            uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t));
 
 // Environment.ProcessorCount (the GetProcessorCount InternalCall): hardware
 // concurrency, clamped to >= 1. A ConcurrentDictionary concurrency-level hint.

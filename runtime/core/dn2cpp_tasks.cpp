@@ -822,8 +822,9 @@ static void dn2cpp_when_all_finish(Dn2CppWhenAllState* s)
         {
             void* boxed = reinterpret_cast<void*>(static_cast<uintptr_t>(
                 reinterpret_cast<Dn2CppTask*>(s->tasks->data[i])->result));
-            std::memcpy(static_cast<char*>(a->data) + static_cast<size_t>(i) * s->elemSize,
-                        boxed, static_cast<size_t>(s->elemSize));
+            dn2cpp_gc_memmove_refs(
+                static_cast<char*>(a->data) + static_cast<size_t>(i) * s->elemSize,
+                boxed, static_cast<size_t>(s->elemSize));
         }
         arr = reinterpret_cast<Dn2CppObject*>(a);
     }
@@ -1007,7 +1008,7 @@ Dn2CppArrayRef* dn2cpp_reflist_to_array(Dn2CppRefList* l)
 void* dn2cpp_struct_result_box(const void* src, int32_t size)
 {
     void* p = dn2cpp_alloc(static_cast<size_t>(size));
-    std::memcpy(p, src, static_cast<size_t>(size));
+    dn2cpp_gc_memmove_refs(p, src, static_cast<size_t>(size));
     return p;
 }
 
@@ -3583,9 +3584,10 @@ struct Dn2CppVtsBridge
     Dn2CppObject header;
     Dn2CppObject* vts;      // the IValueTaskSource receiver
     Dn2CppTask* task;       // the pending task the ValueTask wraps
-    const void* getResultFn; // resolved GetResult impl: R (*)(receiver, int16_t)
+    const void* getResultFn; // resolved GetResult impl: R (*)(receiver, int32_t)
     int16_t version;        // the source's token for this operation
-    int32_t resultKind;     // 0=void 1=int32 2=int64 3=reference
+    int32_t resultKind;     // 0=void 1=int32 2=int64 3=reference 4=struct
+    uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t);
     // Who consumes the source's GetResult, which answers once per operation:
     // 0 unclaimed, 1 held by an early synchronous read, 2 consumed. An early read
     // stores 2 only AFTER settling the task, which is what lets the continuation
@@ -3606,20 +3608,22 @@ static uint64_t dn2cpp_vts_get_result(Dn2CppVtsBridge* b)
     switch (b->resultKind)
     {
         case 0:
-            reinterpret_cast<void (*)(Dn2CppObject*, int16_t)>(
+            reinterpret_cast<void (*)(Dn2CppObject*, int32_t)>(
                 const_cast<void*>(b->getResultFn))(b->vts, b->version);
             return 0;
         case 1:
             return static_cast<uint64_t>(static_cast<uint32_t>(
-                reinterpret_cast<int32_t (*)(Dn2CppObject*, int16_t)>(
+                reinterpret_cast<int32_t (*)(Dn2CppObject*, int32_t)>(
                     const_cast<void*>(b->getResultFn))(b->vts, b->version)));
         case 2:
             return static_cast<uint64_t>(
-                reinterpret_cast<int64_t (*)(Dn2CppObject*, int16_t)>(
+                reinterpret_cast<int64_t (*)(Dn2CppObject*, int32_t)>(
                     const_cast<void*>(b->getResultFn))(b->vts, b->version));
+        case 4:
+            return b->getStructResult(b->getResultFn, b->vts, b->version);
         default:
             return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(
-                reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, int16_t)>(
+                reinterpret_cast<Dn2CppObject* (*)(Dn2CppObject*, int32_t)>(
                     const_cast<void*>(b->getResultFn))(b->vts, b->version)));
     }
 }
@@ -3691,7 +3695,8 @@ Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
 
 Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
                             const void* getResultFn, const void* onCompletedFn,
-                            const Dn2CppTypeInfo* actionTi, int32_t resultKind)
+                            const Dn2CppTypeInfo* actionTi, int32_t resultKind,
+                            uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t))
 {
     auto* b = static_cast<Dn2CppVtsBridge*>(dn2cpp_alloc(sizeof(Dn2CppVtsBridge)));
     b->header.type = &dn2cpp_vts_bridge_type;
@@ -3701,6 +3706,7 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     b->getResultFn = getResultFn;
     b->version = version;
     b->resultKind = resultKind;
+    b->getStructResult = getStructResult;
     b->claim.store(0, std::memory_order_relaxed);
     // Both directions before OnCompleted, which may run the continuation synchronously.
     dn2cpp_gc_store_ref(&t->vtsBridge, &b->header);
@@ -3717,7 +3723,7 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     // The state is the bridge itself — the continuation reads everything from its
     // delegate target, but passing it keeps the source's _continuationState field
     // rooting the bridge for the whole pending window.
-    reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*, int16_t, int32_t)>(
+    reinterpret_cast<void (*)(Dn2CppObject*, Dn2CppObject*, Dn2CppObject*, int32_t, int32_t)>(
         const_cast<void*>(onCompletedFn))(vts, del, &b->header, version, 0);
     return t;
 }

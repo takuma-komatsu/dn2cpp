@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Consolidated async-core gate: async/await state machine over synchronously-
 # completed awaits, Task.Yield suspension, exceptions thrown across awaits,
-# ValueTask, a struct-returning async Task, task state, a suspended state machine
+# ValueTask, a struct-returning async Task, an IValueTaskSource<TStruct> result
+# through the managed int32 ABI used for its short version token,
+# incremental-GC preservation of references copied by Task.WhenAll<TStruct>,
+# task state, a suspended state machine
 # rooted only by per-thread scheduler state, and a continuation handed to the
 # scheduler of a thread that has already exited. One multi-section program
 # transpiled once against the tree-shaken real CoreLib.
@@ -22,5 +25,28 @@
 # Former gates: async, async-suspend, async-yield, async-catch, value-task,
 # struct-task, task-state.
 source "$(dirname "$0")/_common.sh"
+
+DN2CPP_GATE_EXTRA_CONTEXT="runs:default+incremental-ref-struct"
+gate_extra_asserts() {
+    local out="$1" incremental incremental_code log="$1/incremental.log"
+    local generated=("$1"/generated*.cpp)
+    if ! grep -qF \
+            'reinterpret_cast<t_ValueTaskSourceStructSubset_Pair (*)(Dn2CppObject*, int32_t)>' \
+            "${generated[@]}"; then
+        echo "FAIL: IValueTaskSource<TStruct>.GetResult token is not managed int32 ABI" >&2
+        return 1
+    fi
+    set +e
+    incremental=$(DN2CPP_GC_INCREMENTAL=1 DN2CPP_GC_STATS=1 \
+        run_bounded "./$out/AsyncCore" 2>"$log"); incremental_code=$?
+    set -e
+    assert_output "$(strip_cr_win "$incremental")" "$(cat gates/expected/async-core.txt)"
+    assert_exit_code "$incremental_code" 0
+    if ! grep -qF '[dn2cpp] GC mode: incremental' "$log"; then
+        echo "FAIL: AsyncCore incremental arm did not enter incremental GC mode" >&2
+        sed -n '1,40p' "$log" >&2
+        return 1
+    fi
+}
 
 corelib_freeze_gate AsyncCore "$(dirname "$0")/expected/async-core.txt"

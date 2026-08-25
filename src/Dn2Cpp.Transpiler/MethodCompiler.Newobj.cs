@@ -2150,14 +2150,16 @@ internal sealed partial class MethodCompiler
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: new ValueTask(source, token) over " +
                 $"{itf.FullName} without the GetResult/OnCompleted pair is not supported");
         var rt = members.GetResult.Signature.ReturnType;
+        TaintIfCanonAnyValue(rt, "IValueTaskSource result");
         int kind = rt.IsVoid ? 0 : CppTypes.KindOf(rt) switch
         {
             StackKind.I4 => 1,
             StackKind.I8 => 2,
             StackKind.Ref => 3,
+            StackKind.Struct => 4,
             _ => throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: IValueTaskSource<{rt}> result kind " +
-                "is not supported (void/int32/int64/reference results only)"),
+                "is not supported (void/int32/int64/reference/struct results only)"),
         };
         var actionCls = members.OnCompleted.Signature.ParameterTypes[0].Class!;
         _c.NoteReferencedType(itf);
@@ -2173,9 +2175,15 @@ internal sealed partial class MethodCompiler
                 ? TypeDesc.MakeClass(task)
                 : throw new InvalidOperationException("System.Threading.Tasks.Task is not loaded")
             : TaskTypeForResult(rt);
+        string structResult = kind == 4
+            ? $"+[](const void* __fn, Dn2CppObject* __src, int16_t __version) -> uint64_t {{ " +
+              $"{CppTypes.Of(rt)} __result = reinterpret_cast<{CppTypes.Of(rt)} (*)(Dn2CppObject*, int32_t)>(" +
+              $"const_cast<void*>(__fn))(__src, __version); " +
+              $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__result, (int32_t)sizeof({CppTypes.Of(rt)})); }}"
+            : "nullptr";
         string bridge = $"dn2cpp_vts_task({vts}, (int16_t)({token.Expr}), " +
                $"{slots}[{members.GetResult.VtableSlot}], {slots}[{members.OnCompleted.VtableSlot}], " +
-               $"&{actionCls.CppTypeInfoName}, {kind})";
+               $"&{actionCls.CppTypeInfoName}, {kind}, {structResult})";
         return $"Dn2CppTaskAwaiter{{ {StampTask(bridge, taskType)} }}";
     }
 
