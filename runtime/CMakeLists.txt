@@ -76,6 +76,7 @@ if(MSVC)
 endif()
 
 include(CheckCXXSourceCompiles)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dn2cpp_native_assets.cmake")
 
 # ── Options / inputs ──────────────────────────────────────────────────────────
 option(DN2CPP_USE_GC      "Compile and link the vendored Boehm-Demers-Weiser GC" ON)
@@ -1254,9 +1255,478 @@ if(DN2CPP_APP_DIR)
     # really does want to static-link a PIC archive routes it through
     # DN2CPP_APP_LINK_LIBS. The wasm *executable* (main module) keeps consuming
     # the manifest: there the archive is a link input like anywhere else.
+    # This build directory is reusable. Always truncate the handoff so removing
+    # native-assets.txt cannot republish a shared library selected by an older
+    # configure.
+    set(_dn2cpp_publish_native_manifest "${CMAKE_CURRENT_BINARY_DIR}/native-assets-publish.txt")
+    set(_dn2cpp_publish_native_generation_manifest
+        "${CMAKE_CURRENT_BINARY_DIR}/native-assets-generation.txt")
+    file(WRITE "${_dn2cpp_publish_native_manifest}" "")
+    file(WRITE "${_dn2cpp_publish_native_generation_manifest}" "")
+
     if(EXISTS "${DN2CPP_APP_DIR}/pinvoke-libs.txt"
             AND NOT (EMSCRIPTEN AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE)))
         file(STRINGS "${DN2CPP_APP_DIR}/pinvoke-libs.txt" DN2CPP_PINVOKE_LIBS)
+
+        # Dn2Cpp.Build records the native assets selected for the publish RID.
+        # Static archives link from that manifest directly. Shared assets first
+        # move through a private build copy: their dependency identity and
+        # loader path must remain valid after the NuGet cache is gone.
+        if(EXISTS "${DN2CPP_APP_DIR}/native-assets.txt")
+            file(STRINGS "${DN2CPP_APP_DIR}/native-assets.txt" DN2CPP_NATIVE_ASSETS)
+            list(REMOVE_DUPLICATES DN2CPP_NATIVE_ASSETS)
+            if(APPLE)
+                dn2cpp_prefer_macos_exact_native_assets(
+                    DN2CPP_NATIVE_ASSETS ${DN2CPP_NATIVE_ASSETS})
+            endif()
+            set(_dn2cpp_staged_native_names "")
+            set(_dn2cpp_staged_native_sources "")
+            set(_dn2cpp_staged_native_paths "")
+            set(_dn2cpp_staged_native_alias_paths "")
+            set(_dn2cpp_native_stage_work "${CMAKE_CURRENT_BINARY_DIR}/native-assets-stage")
+            file(REMOVE_RECURSE "${_dn2cpp_native_stage_work}")
+            file(REMOVE_RECURSE "${CMAKE_CURRENT_BINARY_DIR}/.dn2cpp-native")
+            file(MAKE_DIRECTORY "${_dn2cpp_native_stage_work}")
+
+            # Stage the complete selected shared set, including libraries used
+            # only as dependencies of the module named by P/Invoke.
+            foreach(_dn2cpp_native_asset IN LISTS DN2CPP_NATIVE_ASSETS)
+                if((UNIX AND _dn2cpp_native_asset MATCHES "\\.(so(\\..*)?|dylib|bundle)$")
+                        OR (WIN32 AND _dn2cpp_native_asset MATCHES "\\.[dD][lL][lL]$"))
+                    if(NOT IS_ABSOLUTE "${_dn2cpp_native_asset}" OR NOT EXISTS "${_dn2cpp_native_asset}")
+                        message(FATAL_ERROR
+                            "dn2cpp: native-assets.txt contains a missing or non-absolute shared asset: ${_dn2cpp_native_asset}")
+                    endif()
+                    get_filename_component(_dn2cpp_staged_name "${_dn2cpp_native_asset}" NAME)
+                    if(WIN32 AND NOT _dn2cpp_staged_name MATCHES "^[A-Za-z0-9_+.-]+\\.[dD][lL][lL]$")
+                        message(FATAL_ERROR
+                            "dn2cpp: unsafe Windows native asset filename: ${_dn2cpp_staged_name}")
+                    endif()
+                    set(_dn2cpp_staged_key "${_dn2cpp_staged_name}")
+                    if(APPLE OR WIN32)
+                        string(TOLOWER "${_dn2cpp_staged_key}" _dn2cpp_staged_key)
+                    endif()
+                    if(_dn2cpp_staged_key IN_LIST _dn2cpp_staged_native_names)
+                        message(FATAL_ERROR
+                            "dn2cpp: selected shared native assets collide at staged name ${_dn2cpp_staged_name}")
+                    endif()
+                    list(APPEND _dn2cpp_staged_native_names "${_dn2cpp_staged_key}")
+                    set(_dn2cpp_staged_asset "${_dn2cpp_native_stage_work}/${_dn2cpp_staged_name}")
+                    configure_file("${_dn2cpp_native_asset}" "${_dn2cpp_staged_asset}" COPYONLY)
+                    list(APPEND _dn2cpp_staged_native_sources "${_dn2cpp_native_asset}")
+                    list(APPEND _dn2cpp_staged_native_paths "${_dn2cpp_staged_asset}")
+                endif()
+            endforeach()
+
+            if(APPLE AND _dn2cpp_staged_native_paths)
+                find_program(DN2CPP_OTOOL otool)
+                find_program(DN2CPP_INSTALL_NAME_TOOL install_name_tool)
+                find_program(DN2CPP_CODESIGN codesign)
+                if(NOT DN2CPP_OTOOL OR NOT DN2CPP_INSTALL_NAME_TOOL OR NOT DN2CPP_CODESIGN)
+                    message(FATAL_ERROR
+                        "dn2cpp: otool, install_name_tool, and codesign are required to stage macOS native assets")
+                endif()
+                set(_dn2cpp_original_install_names "")
+                set(_dn2cpp_replacement_install_names "")
+                set(_dn2cpp_staged_native_has_install_id "")
+                set(_dn2cpp_native_source_index 0)
+                foreach(_dn2cpp_native_asset IN LISTS _dn2cpp_staged_native_sources)
+                    list(GET _dn2cpp_staged_native_paths ${_dn2cpp_native_source_index} _dn2cpp_native_staged_path)
+                    get_filename_component(_dn2cpp_native_staged_name "${_dn2cpp_native_staged_path}" NAME)
+                    execute_process(COMMAND "${DN2CPP_OTOOL}" -D "${_dn2cpp_native_asset}"
+                        RESULT_VARIABLE _dn2cpp_otool_result OUTPUT_VARIABLE _dn2cpp_otool_output
+                        ERROR_VARIABLE _dn2cpp_otool_error)
+                    if(NOT _dn2cpp_otool_result EQUAL 0)
+                        message(FATAL_ERROR
+                            "dn2cpp: failed to read install names from ${_dn2cpp_native_asset}: ${_dn2cpp_otool_error}")
+                    endif()
+                    string(REPLACE "\n" ";" _dn2cpp_otool_lines "${_dn2cpp_otool_output}")
+                    set(_dn2cpp_has_install_id FALSE)
+                    foreach(_dn2cpp_otool_line IN LISTS _dn2cpp_otool_lines)
+                        string(STRIP "${_dn2cpp_otool_line}" _dn2cpp_otool_line)
+                        if(_dn2cpp_otool_line AND NOT _dn2cpp_otool_line MATCHES ":$")
+                            set(_dn2cpp_has_install_id TRUE)
+                            set(_dn2cpp_replacement_install_name "@rpath/${_dn2cpp_native_staged_name}")
+                            list(FIND _dn2cpp_original_install_names "${_dn2cpp_otool_line}" _dn2cpp_existing_install_name_index)
+                            if(_dn2cpp_existing_install_name_index GREATER_EQUAL 0)
+                                list(GET _dn2cpp_replacement_install_names ${_dn2cpp_existing_install_name_index} _dn2cpp_existing_replacement)
+                                if(NOT _dn2cpp_existing_replacement STREQUAL _dn2cpp_replacement_install_name)
+                                    message(FATAL_ERROR
+                                        "dn2cpp: install name ${_dn2cpp_otool_line} maps to both ${_dn2cpp_existing_replacement} and ${_dn2cpp_replacement_install_name}")
+                                endif()
+                            else()
+                                list(APPEND _dn2cpp_original_install_names "${_dn2cpp_otool_line}")
+                                list(APPEND _dn2cpp_replacement_install_names "${_dn2cpp_replacement_install_name}")
+                            endif()
+                        endif()
+                    endforeach()
+                    list(APPEND _dn2cpp_staged_native_has_install_id "${_dn2cpp_has_install_id}")
+                    math(EXPR _dn2cpp_native_source_index "${_dn2cpp_native_source_index} + 1")
+                endforeach()
+                list(LENGTH _dn2cpp_staged_native_paths _dn2cpp_staged_native_count)
+                math(EXPR _dn2cpp_staged_native_last "${_dn2cpp_staged_native_count} - 1")
+                foreach(_dn2cpp_staged_index RANGE ${_dn2cpp_staged_native_last})
+                    list(GET _dn2cpp_staged_native_paths ${_dn2cpp_staged_index} _dn2cpp_staged_asset)
+                    get_filename_component(_dn2cpp_staged_name "${_dn2cpp_staged_asset}" NAME)
+                    list(LENGTH _dn2cpp_original_install_names _dn2cpp_install_name_count)
+                    if(_dn2cpp_install_name_count GREATER 0)
+                        math(EXPR _dn2cpp_install_name_last "${_dn2cpp_install_name_count} - 1")
+                        foreach(_dn2cpp_install_name_index RANGE ${_dn2cpp_install_name_last})
+                            list(GET _dn2cpp_original_install_names ${_dn2cpp_install_name_index} _dn2cpp_original_install_name)
+                            list(GET _dn2cpp_replacement_install_names ${_dn2cpp_install_name_index} _dn2cpp_replacement_install_name)
+                            execute_process(COMMAND "${DN2CPP_INSTALL_NAME_TOOL}" -change
+                                "${_dn2cpp_original_install_name}" "${_dn2cpp_replacement_install_name}" "${_dn2cpp_staged_asset}"
+                                RESULT_VARIABLE _dn2cpp_change_result ERROR_VARIABLE _dn2cpp_change_error)
+                            if(NOT _dn2cpp_change_result EQUAL 0)
+                                message(FATAL_ERROR
+                                    "dn2cpp: failed to rewrite a dependency in ${_dn2cpp_staged_asset}: ${_dn2cpp_change_error}")
+                            endif()
+                        endforeach()
+                    endif()
+                    list(GET _dn2cpp_staged_native_has_install_id ${_dn2cpp_staged_index} _dn2cpp_has_install_id)
+                    if(_dn2cpp_has_install_id)
+                        execute_process(COMMAND "${DN2CPP_INSTALL_NAME_TOOL}" -id
+                            "@rpath/${_dn2cpp_staged_name}" "${_dn2cpp_staged_asset}"
+                            RESULT_VARIABLE _dn2cpp_install_name_result ERROR_VARIABLE _dn2cpp_install_name_error)
+                        if(NOT _dn2cpp_install_name_result EQUAL 0)
+                            message(FATAL_ERROR
+                                "dn2cpp: failed to normalize ${_dn2cpp_staged_asset}: ${_dn2cpp_install_name_error}")
+                        endif()
+                    endif()
+                    execute_process(COMMAND "${DN2CPP_CODESIGN}" --force --sign - "${_dn2cpp_staged_asset}"
+                        RESULT_VARIABLE _dn2cpp_codesign_result ERROR_VARIABLE _dn2cpp_codesign_error)
+                    if(NOT _dn2cpp_codesign_result EQUAL 0)
+                        message(FATAL_ERROR
+                            "dn2cpp: failed to ad-hoc sign ${_dn2cpp_staged_asset}: ${_dn2cpp_codesign_error}")
+                    endif()
+                endforeach()
+            elseif(UNIX AND _dn2cpp_staged_native_paths)
+                find_program(DN2CPP_READELF readelf)
+                if(NOT DN2CPP_READELF)
+                    message(FATAL_ERROR
+                        "dn2cpp: readelf is required to stage Linux native assets safely")
+                endif()
+                foreach(_dn2cpp_staged_asset IN LISTS _dn2cpp_staged_native_paths)
+                    # A dependency's DT_RUNPATH takes precedence over the
+                    # executable's transitive generation RPATH. Package assets
+                    # must resolve their staged closure, not their build tree.
+                    file(RPATH_REMOVE FILE "${_dn2cpp_staged_asset}")
+                    execute_process(COMMAND "${DN2CPP_READELF}" -d "${_dn2cpp_staged_asset}"
+                        RESULT_VARIABLE _dn2cpp_readelf_result OUTPUT_VARIABLE _dn2cpp_readelf_output
+                        ERROR_VARIABLE _dn2cpp_readelf_error)
+                    if(NOT _dn2cpp_readelf_result EQUAL 0)
+                        message(FATAL_ERROR
+                            "dn2cpp: failed to inspect ${_dn2cpp_staged_asset}: ${_dn2cpp_readelf_error}")
+                    endif()
+                    string(REGEX MATCH "\\(SONAME\\)[^\n]*\\[([^]]+)\\]" _dn2cpp_soname_match "${_dn2cpp_readelf_output}")
+                    if(_dn2cpp_soname_match)
+                        set(_dn2cpp_soname "${CMAKE_MATCH_1}")
+                        get_filename_component(_dn2cpp_soname_basename "${_dn2cpp_soname}" NAME)
+                        if(NOT _dn2cpp_soname STREQUAL _dn2cpp_soname_basename
+                                OR NOT _dn2cpp_soname MATCHES "^lib[A-Za-z0-9_+.-]+\\.so(\\.[0-9]+)*$"
+                                OR _dn2cpp_soname STREQUAL "libnative-assets-publish.so"
+                                OR _dn2cpp_soname STREQUAL "libCMakeCache.so")
+                            message(FATAL_ERROR
+                                "dn2cpp: unsafe SONAME ${_dn2cpp_soname} in ${_dn2cpp_staged_asset}; expected a plain libNAME.so[.N...] filename")
+                        endif()
+                        if(_dn2cpp_soname STREQUAL DN2CPP_APP_NAME
+                                OR _dn2cpp_soname STREQUAL "native-assets-publish.txt"
+                                OR _dn2cpp_soname STREQUAL "CMakeCache.txt"
+                                OR _dn2cpp_soname STREQUAL "build.ninja")
+                            message(FATAL_ERROR
+                                "dn2cpp: SONAME ${_dn2cpp_soname} collides with native build control output")
+                        endif()
+                        get_filename_component(_dn2cpp_staged_name "${_dn2cpp_staged_asset}" NAME)
+                        if(NOT _dn2cpp_soname STREQUAL _dn2cpp_staged_name)
+                            set(_dn2cpp_soname_alias "${_dn2cpp_native_stage_work}/${_dn2cpp_soname}")
+                            if(_dn2cpp_soname IN_LIST _dn2cpp_staged_native_names)
+                                message(FATAL_ERROR
+                                    "dn2cpp: SONAME alias collides at ${_dn2cpp_soname_alias}")
+                            endif()
+                            list(APPEND _dn2cpp_staged_native_names "${_dn2cpp_soname}")
+                            configure_file("${_dn2cpp_staged_asset}" "${_dn2cpp_soname_alias}" COPYONLY)
+                            list(APPEND _dn2cpp_staged_native_alias_paths "${_dn2cpp_soname_alias}")
+                        endif()
+                    endif()
+                endforeach()
+            endif()
+            if(_dn2cpp_staged_native_paths)
+                set(_dn2cpp_generation_seed "")
+                set(_dn2cpp_generation_inputs ${_dn2cpp_staged_native_paths} ${_dn2cpp_staged_native_alias_paths})
+                list(SORT _dn2cpp_generation_inputs)
+                foreach(_dn2cpp_generation_input IN LISTS _dn2cpp_generation_inputs)
+                    get_filename_component(_dn2cpp_generation_name "${_dn2cpp_generation_input}" NAME)
+                    file(SHA256 "${_dn2cpp_generation_input}" _dn2cpp_generation_file_hash)
+                    string(APPEND _dn2cpp_generation_seed
+                        "${_dn2cpp_generation_name}:${_dn2cpp_generation_file_hash}\n")
+                endforeach()
+                string(SHA256 _dn2cpp_native_generation "${_dn2cpp_generation_seed}")
+                string(SUBSTRING "${_dn2cpp_native_generation}" 0 20 _dn2cpp_native_generation)
+                set(_dn2cpp_native_generation_relative ".dn2cpp-native/${_dn2cpp_native_generation}")
+                file(WRITE "${_dn2cpp_publish_native_generation_manifest}"
+                    "${_dn2cpp_native_generation}\n")
+                set(_dn2cpp_native_generation_dir
+                    "${CMAKE_CURRENT_BINARY_DIR}/${_dn2cpp_native_generation_relative}")
+                file(REMOVE_RECURSE "${_dn2cpp_native_generation_dir}")
+                file(MAKE_DIRECTORY "${_dn2cpp_native_generation_dir}")
+                set(_dn2cpp_staged_native_paths "")
+                foreach(_dn2cpp_generation_input IN LISTS _dn2cpp_generation_inputs)
+                    get_filename_component(_dn2cpp_generation_name "${_dn2cpp_generation_input}" NAME)
+                    set(_dn2cpp_generation_output
+                        "${_dn2cpp_native_generation_dir}/${_dn2cpp_generation_name}")
+                    configure_file("${_dn2cpp_generation_input}" "${_dn2cpp_generation_output}" COPYONLY)
+                    list(APPEND _dn2cpp_staged_native_paths "${_dn2cpp_generation_output}")
+                    file(APPEND "${_dn2cpp_publish_native_manifest}" "${_dn2cpp_generation_output}\n")
+                endforeach()
+                file(REMOVE_RECURSE "${_dn2cpp_native_stage_work}")
+            endif()
+
+            set(_dn2cpp_unresolved_pinvoke_libs "")
+            set(_dn2cpp_windows_delay_names "")
+            set(_dn2cpp_static_native_assets "")
+            set(_dn2cpp_windows_dll_keys "")
+            if(WIN32)
+                foreach(_dn2cpp_native_asset IN LISTS DN2CPP_NATIVE_ASSETS)
+                    if(_dn2cpp_native_asset MATCHES "\\.[dD][lL][lL]$")
+                        get_filename_component(_dn2cpp_native_key "${_dn2cpp_native_asset}" NAME)
+                        string(REGEX REPLACE "\\.[dD][lL][lL]$" "" _dn2cpp_native_key "${_dn2cpp_native_key}")
+                        string(REGEX REPLACE "^lib" "" _dn2cpp_native_key "${_dn2cpp_native_key}")
+                        string(TOLOWER "${_dn2cpp_native_key}" _dn2cpp_native_key)
+                        list(APPEND _dn2cpp_windows_dll_keys "${_dn2cpp_native_key}")
+                    endif()
+                endforeach()
+            endif()
+            foreach(_dn2cpp_native_asset IN LISTS DN2CPP_NATIVE_ASSETS)
+                if((UNIX AND _dn2cpp_native_asset MATCHES "\\.a$")
+                        OR (WIN32 AND _dn2cpp_native_asset MATCHES "\\.[lL][iI][bB]$"))
+                    set(_dn2cpp_is_dll_import_library FALSE)
+                    if(WIN32)
+                        get_filename_component(_dn2cpp_native_key "${_dn2cpp_native_asset}" NAME)
+                        string(REGEX REPLACE "\\.[lL][iI][bB]$" "" _dn2cpp_native_key "${_dn2cpp_native_key}")
+                        string(REGEX REPLACE "^lib" "" _dn2cpp_native_key "${_dn2cpp_native_key}")
+                        string(TOLOWER "${_dn2cpp_native_key}" _dn2cpp_native_key)
+                        if(_dn2cpp_native_key IN_LIST _dn2cpp_windows_dll_keys)
+                            set(_dn2cpp_is_dll_import_library TRUE)
+                        endif()
+                    endif()
+                    if(NOT _dn2cpp_is_dll_import_library)
+                        list(APPEND _dn2cpp_static_native_assets "${_dn2cpp_native_asset}")
+                    endif()
+                endif()
+            endforeach()
+            set(_dn2cpp_direct_static_native_assets "")
+            foreach(_dn2cpp_pinvoke_lib IN LISTS DN2CPP_PINVOKE_LIBS)
+                set(_dn2cpp_matching_assets "")
+                foreach(_dn2cpp_native_asset IN LISTS DN2CPP_NATIVE_ASSETS)
+                    get_filename_component(_dn2cpp_native_name "${_dn2cpp_native_asset}" NAME)
+                    string(REGEX REPLACE "\\.so(\\..*)?$" "" _dn2cpp_native_name "${_dn2cpp_native_name}")
+                    string(REGEX REPLACE "\\.(dylib|bundle|[dD][lL][lL]|[lL][iI][bB]|a)$" "" _dn2cpp_native_name "${_dn2cpp_native_name}")
+                    string(REGEX REPLACE "^lib" "" _dn2cpp_native_name "${_dn2cpp_native_name}")
+                    set(_dn2cpp_native_key "${_dn2cpp_native_name}")
+                    set(_dn2cpp_pinvoke_key "${_dn2cpp_pinvoke_lib}")
+                    if(WIN32)
+                        string(TOLOWER "${_dn2cpp_native_key}" _dn2cpp_native_key)
+                        string(TOLOWER "${_dn2cpp_pinvoke_key}" _dn2cpp_pinvoke_key)
+                    endif()
+                    if(_dn2cpp_native_key STREQUAL _dn2cpp_pinvoke_key)
+                        if(NOT IS_ABSOLUTE "${_dn2cpp_native_asset}" OR NOT EXISTS "${_dn2cpp_native_asset}")
+                            message(FATAL_ERROR
+                                "dn2cpp: native-assets.txt maps ${_dn2cpp_pinvoke_lib} to a missing or non-absolute path: ${_dn2cpp_native_asset}")
+                        endif()
+                        list(APPEND _dn2cpp_matching_assets "${_dn2cpp_native_asset}")
+                    endif()
+                endforeach()
+
+                list(LENGTH _dn2cpp_matching_assets _dn2cpp_matching_asset_count)
+                if(APPLE AND _dn2cpp_matching_asset_count GREATER 1)
+                    set(_dn2cpp_non_universal_assets ${_dn2cpp_matching_assets})
+                    list(FILTER _dn2cpp_non_universal_assets EXCLUDE REGEX "[/\\\\]runtimes[/\\\\]osx-universal[/\\\\]native[/\\\\]")
+                    list(LENGTH _dn2cpp_non_universal_assets _dn2cpp_non_universal_asset_count)
+                    if(_dn2cpp_non_universal_asset_count GREATER 0)
+                        set(_dn2cpp_matching_assets ${_dn2cpp_non_universal_assets})
+                        set(_dn2cpp_matching_asset_count ${_dn2cpp_non_universal_asset_count})
+                    endif()
+                endif()
+                if(WIN32 AND _dn2cpp_matching_asset_count GREATER 1)
+                    set(_dn2cpp_dll_assets ${_dn2cpp_matching_assets})
+                    list(FILTER _dn2cpp_dll_assets INCLUDE REGEX "\\.[dD][lL][lL]$")
+                    list(LENGTH _dn2cpp_dll_assets _dn2cpp_dll_asset_count)
+                    if(_dn2cpp_dll_asset_count EQUAL 1)
+                        set(_dn2cpp_matching_assets ${_dn2cpp_dll_assets})
+                        set(_dn2cpp_matching_asset_count 1)
+                    endif()
+                endif()
+                if(_dn2cpp_matching_asset_count GREATER 1)
+                    message(FATAL_ERROR
+                        "dn2cpp: more than one native asset matches P/Invoke module ${_dn2cpp_pinvoke_lib}: ${_dn2cpp_matching_assets}")
+                elseif(_dn2cpp_matching_asset_count EQUAL 1)
+                    list(GET _dn2cpp_matching_assets 0 _dn2cpp_matching_asset)
+                    if(WIN32 AND _dn2cpp_matching_asset MATCHES "\\.[dD][lL][lL]$")
+                        if(NOT MSVC)
+                            message(FATAL_ERROR
+                                "dn2cpp: package-native Windows DLLs require the MSVC toolchain")
+                        endif()
+                        if(NOT EXISTS "${DN2CPP_APP_DIR}/pinvoke-symbols.txt")
+                            message(FATAL_ERROR
+                                "dn2cpp: package-native Windows DLL linking requires pinvoke-symbols.txt")
+                        endif()
+                        get_filename_component(_dn2cpp_delay_name "${_dn2cpp_matching_asset}" NAME)
+                        set(_dn2cpp_delay_def
+                            "${CMAKE_CURRENT_BINARY_DIR}/dn2cpp-delay-${_dn2cpp_pinvoke_lib}.def")
+                        set(_dn2cpp_delay_lib
+                            "${CMAKE_CURRENT_BINARY_DIR}/dn2cpp-delay-${_dn2cpp_pinvoke_lib}.lib")
+                        set(_dn2cpp_delay_def_text "LIBRARY \"${_dn2cpp_delay_name}\"\nEXPORTS\n")
+                        set(_dn2cpp_delay_symbol_count 0)
+                        file(STRINGS "${DN2CPP_APP_DIR}/pinvoke-symbols.txt" _dn2cpp_pinvoke_symbols)
+                        foreach(_dn2cpp_pinvoke_symbol_line IN LISTS _dn2cpp_pinvoke_symbols)
+                            string(REPLACE "\t" ";" _dn2cpp_pinvoke_symbol_parts
+                                "${_dn2cpp_pinvoke_symbol_line}")
+                            list(LENGTH _dn2cpp_pinvoke_symbol_parts _dn2cpp_pinvoke_symbol_part_count)
+                            if(_dn2cpp_pinvoke_symbol_part_count EQUAL 2)
+                                list(GET _dn2cpp_pinvoke_symbol_parts 0 _dn2cpp_pinvoke_symbol_module)
+                                list(GET _dn2cpp_pinvoke_symbol_parts 1 _dn2cpp_pinvoke_symbol_name)
+                                if(_dn2cpp_pinvoke_symbol_module STREQUAL _dn2cpp_pinvoke_lib
+                                        AND _dn2cpp_pinvoke_symbol_name MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
+                                    string(APPEND _dn2cpp_delay_def_text "    ${_dn2cpp_pinvoke_symbol_name}\n")
+                                    math(EXPR _dn2cpp_delay_symbol_count "${_dn2cpp_delay_symbol_count} + 1")
+                                endif()
+                            endif()
+                        endforeach()
+                        if(_dn2cpp_delay_symbol_count EQUAL 0)
+                            message(FATAL_ERROR
+                                "dn2cpp: pinvoke-symbols.txt contains no exports for ${_dn2cpp_pinvoke_lib}")
+                        endif()
+                        file(WRITE "${_dn2cpp_delay_def}" "${_dn2cpp_delay_def_text}")
+                        set(_dn2cpp_windows_lib_machine x64)
+                        if(CMAKE_GENERATOR_PLATFORM MATCHES "^[Aa][Rr][Mm]64$"
+                                OR CMAKE_SYSTEM_PROCESSOR MATCHES "^[Aa][Rr][Mm]64$")
+                            set(_dn2cpp_windows_lib_machine arm64)
+                        elseif(CMAKE_GENERATOR_PLATFORM MATCHES "^([Ww]in32|[Xx]86)$"
+                                OR CMAKE_SYSTEM_PROCESSOR MATCHES "^([Xx]86|i.86)$"
+                                OR CMAKE_SIZEOF_VOID_P EQUAL 4)
+                            set(_dn2cpp_windows_lib_machine x86)
+                        endif()
+                        execute_process(COMMAND "${CMAKE_AR}" /nologo
+                            "/def:${_dn2cpp_delay_def}" "/out:${_dn2cpp_delay_lib}"
+                            "/machine:${_dn2cpp_windows_lib_machine}"
+                            RESULT_VARIABLE _dn2cpp_delay_lib_result
+                            OUTPUT_VARIABLE _dn2cpp_delay_lib_output
+                            ERROR_VARIABLE _dn2cpp_delay_lib_error)
+                        if(NOT _dn2cpp_delay_lib_result EQUAL 0 OR NOT EXISTS "${_dn2cpp_delay_lib}")
+                            message(FATAL_ERROR
+                                "dn2cpp: failed to construct an import library for ${_dn2cpp_delay_name}: ${_dn2cpp_delay_lib_output}${_dn2cpp_delay_lib_error}")
+                        endif()
+                        target_link_libraries(${DN2CPP_APP_NAME} PRIVATE "${_dn2cpp_delay_lib}" delayimp)
+                        target_link_options(${DN2CPP_APP_NAME} PRIVATE "/DELAYLOAD:${_dn2cpp_delay_name}")
+                        list(APPEND _dn2cpp_windows_delay_names "${_dn2cpp_delay_name}")
+                        message(STATUS
+                            "dn2cpp: P/Invoke ${_dn2cpp_pinvoke_lib} -> delayed ${_dn2cpp_delay_name}")
+                    elseif(UNIX AND _dn2cpp_matching_asset MATCHES "\\.(so(\\..*)?|dylib|bundle)$")
+                        get_filename_component(_dn2cpp_staged_name "${_dn2cpp_matching_asset}" NAME)
+                        set(_dn2cpp_staged_asset "${_dn2cpp_native_generation_dir}/${_dn2cpp_staged_name}")
+                        if(APPLE)
+                            target_link_libraries(${DN2CPP_APP_NAME} PRIVATE "${_dn2cpp_staged_asset}")
+                            set_property(TARGET ${DN2CPP_APP_NAME} PROPERTY BUILD_WITH_INSTALL_RPATH TRUE)
+                            set_property(TARGET ${DN2CPP_APP_NAME} APPEND PROPERTY INSTALL_RPATH
+                                "@loader_path/${_dn2cpp_native_generation_relative}")
+                        else()
+                            target_link_directories(${DN2CPP_APP_NAME} PRIVATE "${_dn2cpp_native_generation_dir}")
+                            target_link_libraries(${DN2CPP_APP_NAME} PRIVATE "-l:${_dn2cpp_staged_name}")
+                            target_link_options(${DN2CPP_APP_NAME} PRIVATE
+                                "-Wl,--disable-new-dtags"
+                                "-Wl,-rpath-link,${_dn2cpp_native_generation_dir}")
+                            set_property(TARGET ${DN2CPP_APP_NAME} PROPERTY BUILD_WITH_INSTALL_RPATH TRUE)
+                            set_property(TARGET ${DN2CPP_APP_NAME} APPEND PROPERTY INSTALL_RPATH
+                                "\$ORIGIN/${_dn2cpp_native_generation_relative}")
+                        endif()
+                        message(STATUS
+                            "dn2cpp: P/Invoke ${_dn2cpp_pinvoke_lib} -> staged ${_dn2cpp_staged_asset}")
+                    else()
+                        if(_dn2cpp_matching_asset IN_LIST _dn2cpp_static_native_assets)
+                            list(APPEND _dn2cpp_direct_static_native_assets "${_dn2cpp_matching_asset}")
+                        else()
+                            target_link_libraries(${DN2CPP_APP_NAME} PRIVATE "${_dn2cpp_matching_asset}")
+                        endif()
+                        message(STATUS
+                            "dn2cpp: P/Invoke ${_dn2cpp_pinvoke_lib} -> ${_dn2cpp_matching_asset}")
+                    endif()
+                else()
+                    list(APPEND _dn2cpp_unresolved_pinvoke_libs "${_dn2cpp_pinvoke_lib}")
+                endif()
+            endforeach()
+            if(_dn2cpp_static_native_assets)
+                set(_dn2cpp_static_link_closure ${_dn2cpp_direct_static_native_assets})
+                set(_dn2cpp_static_link_dependencies ${_dn2cpp_static_native_assets})
+                list(REMOVE_ITEM _dn2cpp_static_link_dependencies ${_dn2cpp_direct_static_native_assets})
+                list(APPEND _dn2cpp_static_link_closure ${_dn2cpp_static_link_dependencies})
+                # NuGet's selected native group is the dependency closure for
+                # the RID. GNU linkers need a group for cycles and arbitrary
+                # package order. Apple's linker has no group primitive, so N
+                # passes over N archives reach the same fixed point. link.exe
+                # rescans archive members without an explicit group.
+                if(UNIX AND NOT APPLE)
+                    target_link_libraries(${DN2CPP_APP_NAME} PRIVATE
+                        "-Wl,--start-group" ${_dn2cpp_static_link_closure} "-Wl,--end-group")
+                elseif(APPLE)
+                    list(LENGTH _dn2cpp_static_link_closure _dn2cpp_static_link_pass_count)
+                    foreach(_dn2cpp_static_link_pass RANGE 1 ${_dn2cpp_static_link_pass_count})
+                        target_link_libraries(${DN2CPP_APP_NAME} PRIVATE ${_dn2cpp_static_link_closure})
+                    endforeach()
+                else()
+                    target_link_libraries(${DN2CPP_APP_NAME} PRIVATE ${_dn2cpp_static_link_closure})
+                endif()
+            endif()
+            if(_dn2cpp_windows_delay_names)
+                set(_dn2cpp_delay_hook "${CMAKE_CURRENT_BINARY_DIR}/dn2cpp_delay_hook.cpp")
+                set(_dn2cpp_delay_hook_text [=[
+#include <windows.h>
+#include <delayimp.h>
+#include <cstring>
+
+static FARPROC WINAPI dn2cpp_delay_hook(unsigned notification, PDelayLoadInfo info)
+{
+    if (notification != dliNotePreLoadLibrary || info == nullptr || info->szDll == nullptr)
+        return nullptr;
+    bool selected = false;
+]=])
+                foreach(_dn2cpp_delay_name IN LISTS _dn2cpp_windows_delay_names)
+                    string(APPEND _dn2cpp_delay_hook_text
+                        "    selected = selected || _stricmp(info->szDll, \"${_dn2cpp_delay_name}\") == 0;\n")
+                endforeach()
+                string(APPEND _dn2cpp_delay_hook_text [=[
+    if (!selected)
+        return nullptr;
+
+    wchar_t path[32768];
+    DWORD length = GetModuleFileNameW(nullptr, path, static_cast<DWORD>(_countof(path)));
+    if (length == 0 || length >= _countof(path))
+        RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND), 0, 0, nullptr);
+    while (length != 0 && path[length - 1] != L'\\' && path[length - 1] != L'/')
+        --length;
+    static const wchar_t suffix[] = L".dn2cpp-native\\]=]
+                    "${_dn2cpp_native_generation}\\\\" [=[";
+    if (length == 0 || length + _countof(suffix) >= _countof(path))
+        RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND), 0, 0, nullptr);
+    std::memcpy(path + length, suffix, sizeof(suffix));
+    length += static_cast<DWORD>(_countof(suffix) - 1);
+    int written = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, info->szDll, -1,
+        path + length, static_cast<int>(_countof(path) - length));
+    if (written == 0)
+        RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND), 0, 0, nullptr);
+    HMODULE module = LoadLibraryExW(path, nullptr,
+        LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+    if (module == nullptr)
+        RaiseException(VcppException(ERROR_SEVERITY_ERROR, ERROR_MOD_NOT_FOUND), 0, 0, nullptr);
+    return reinterpret_cast<FARPROC>(module);
+}
+
+extern "C" const PfnDliHook __pfnDliNotifyHook2 = dn2cpp_delay_hook;
+]=])
+                file(WRITE "${_dn2cpp_delay_hook}" "${_dn2cpp_delay_hook_text}")
+                target_sources(${DN2CPP_APP_NAME} PRIVATE "${_dn2cpp_delay_hook}")
+            endif()
+            set(DN2CPP_PINVOKE_LIBS ${_dn2cpp_unresolved_pinvoke_libs})
+        endif()
         if(DN2CPP_PINVOKE_LIBS)
             target_link_libraries(${DN2CPP_APP_NAME} PRIVATE ${DN2CPP_PINVOKE_LIBS})
         endif()

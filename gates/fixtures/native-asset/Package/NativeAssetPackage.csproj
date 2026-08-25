@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>Dn2Cpp.NativeAssetFixture</PackageId>
+    <Version Condition="'$(FixtureVersion)' == ''">1.0.0</Version>
+    <Version Condition="'$(FixtureVersion)' != ''">$(FixtureVersion)</Version>
+    <NoWarn>$(NoWarn);NU5100</NoWarn>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(NativeAssetPath)' != ''">
+    <None Include="$(NativeAssetPath)" Pack="true"
+          PackagePath="runtimes/$(NativeAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeStaticDependencyPath)' != ''">
+    <None Include="$(NativeStaticDependencyPath)" Pack="true"
+          PackagePath="runtimes/$(NativeAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeAssetDecoyPath)' != ''">
+    <None Include="$(NativeAssetDecoyPath)" Pack="true"
+          PackagePath="runtimes/$(NativeAssetDecoyRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeSharedAssetPath)' != ''">
+    <None Include="$(NativeSharedAssetPath)" Pack="true"
+          PackagePath="runtimes/$(NativeSharedAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeSharedDependencyPath)' != ''">
+    <None Include="$(NativeSharedDependencyPath)" Pack="true"
+          PackagePath="runtimes/$(NativeSharedAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeSonameAssetPath)' != ''">
+    <None Include="$(NativeSonameAssetPath)" Pack="true"
+          PackagePath="runtimes/$(NativeSharedAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(NativeNoInstallIdAssetPath)' != ''">
+    <None Include="$(NativeNoInstallIdAssetPath)" Pack="true"
+          PackagePath="runtimes/$(NativeSharedAssetRid)/native/%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

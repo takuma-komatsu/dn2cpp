@@ -224,6 +224,18 @@ public static class TranspileDriver
                 File.WriteAllText(manifestPath, string.Concat(linkLibs.Select(l => l + Environment.NewLine).ToArray()));
             else if (File.Exists(manifestPath))
                 File.Delete(manifestPath);
+
+            // A Windows package may ship a DLL without its import .lib. Record
+            // every reachable entry point so CMake can construct a delay-load
+            // import library. This is separate from pinvoke-libs.txt because one
+            // module token may contribute many symbols.
+            string symbolManifestPath = Path.Combine(outDir, "pinvoke-symbols.txt");
+            var linkSymbols = compilation.PInvokeLinkSymbols();
+            if (linkSymbols.Count > 0)
+                File.WriteAllText(symbolManifestPath,
+                    string.Concat(linkSymbols.Select(s => s + Environment.NewLine).ToArray()));
+            else if (File.Exists(symbolManifestPath))
+                File.Delete(symbolManifestPath);
             Timing.Mark("write-files");
             // Second census, so the pair brackets emission: whatever grew between
             // the two was pulled in by a body's own tokens, not by discovery.

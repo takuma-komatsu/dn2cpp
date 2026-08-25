@@ -30,6 +30,9 @@ namespace AsyncCore
             ThreadAwaitTeardown.Program.__GateEntry();
             TaskInspectSubset.Program.__GateEntry();
             TaskSchedulerSyncContextSubset.Program.__GateEntry();
+            ValueTaskSourceStructSubset.Program.__GateEntry();
+            // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
+            StructTaskReferenceBarrierSubset.Program.__GateEntry();
         }
     }
 }

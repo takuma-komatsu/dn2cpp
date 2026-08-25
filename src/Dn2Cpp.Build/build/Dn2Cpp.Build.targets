@@ -1,38 +1,341 @@
 <Project>
 
+  <Target Name="_Dn2CppValidatePublishTarget"
+          Condition="'$(Dn2CppEnabled)' == 'true'">
+    <PropertyGroup>
+      <_Dn2CppRidIsLinux>$([System.Text.RegularExpressions.Regex]::IsMatch('$(RuntimeIdentifier)', '^linux-(x64|arm64)$'))</_Dn2CppRidIsLinux>
+      <_Dn2CppRidIsOsx>$([System.Text.RegularExpressions.Regex]::IsMatch('$(RuntimeIdentifier)', '^osx-(x64|arm64)$'))</_Dn2CppRidIsOsx>
+      <_Dn2CppRidIsWindows>$([System.Text.RegularExpressions.Regex]::IsMatch('$(RuntimeIdentifier)', '^win-(x64|arm64)$'))</_Dn2CppRidIsWindows>
+      <_Dn2CppRidIsSupported Condition="'$(RuntimeIdentifier)' == ''">True</_Dn2CppRidIsSupported>
+      <_Dn2CppRidIsSupported Condition="'$(_Dn2CppRidIsLinux)' == 'True' or '$(_Dn2CppRidIsOsx)' == 'True' or '$(_Dn2CppRidIsWindows)' == 'True'">True</_Dn2CppRidIsSupported>
+    </PropertyGroup>
+    <Error Condition="'$(_Dn2CppRidIsSupported)' != 'True'"
+           Text="dn2cpp: unsupported RuntimeIdentifier '$(RuntimeIdentifier)'; use host-default publication or one of linux-{x64,arm64}, osx-{x64,arm64}, win-{x64,arm64}" />
+    <Error Condition="('$(_Dn2CppRidIsLinux)' == 'True' and !$([MSBuild]::IsOSPlatform('Linux'))) or
+                      ('$(_Dn2CppRidIsOsx)' == 'True' and !$([MSBuild]::IsOSPlatform('OSX'))) or
+                      ('$(_Dn2CppRidIsWindows)' == 'True' and !$([MSBuild]::IsOSPlatform('Windows')))"
+           Text="dn2cpp: Dn2Cpp.Build does not support cross-OS publish; use the target platform or its dedicated exporter" />
+  </Target>
+
+  <!-- Package-native shared assets are owned by this target. Remove them from
+       the SDK's flat copy before they are staged into an immutable generation. -->
+  <Target Name="_Dn2CppCaptureNativeAssets"
+          BeforeTargets="_ComputeResolvedFilesToPublishTypes"
+          DependsOnTargets="_Dn2CppValidatePublishTarget"
+          Condition="'$(Dn2CppEnabled)' == 'true'">
+    <ItemGroup>
+      <_Dn2CppSdkNativeAsset Include="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.AssetType)' == 'native'" />
+      <_Dn2CppSdkUnixSharedAsset Include="@(_Dn2CppSdkNativeAsset)"
+          Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(FullPath)', '\.(so(\.[0-9]+)*|dylib|bundle)$'))" />
+      <_Dn2CppSdkAppHost Include="@(ResolvedFileToPublish)"
+          Condition="'%(ResolvedFileToPublish.RelativePath)' == '$(AssemblyName)$(Dn2CppNativeExecutableExtension)'" />
+      <_Dn2CppSdkWindowsDllAsset Include="@(_Dn2CppSdkNativeAsset)"
+          Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(FullPath)', '(?i)\.dll$'))" />
+      <!-- The SDK assigns AssetType later for some archive-shaped runtime
+           targets, so classify link-only archives by path before that pass. -->
+      <_Dn2CppSdkStaticArchive Include="@(ResolvedFileToPublish)"
+          Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.FullPath)', '(?i)\.(a|lib)$'))" />
+      <ResolvedFileToPublish Remove="@(_Dn2CppSdkUnixSharedAsset)" />
+      <ResolvedFileToPublish Remove="@(_Dn2CppSdkWindowsDllAsset)" />
+      <ResolvedFileToPublish Remove="@(_Dn2CppSdkStaticArchive)" />
+      <ResolvedFileToPublish Remove="@(_Dn2CppSdkAppHost)" />
+    </ItemGroup>
+    <Error Condition="'@(_Dn2CppSdkUnixSharedAsset)' != '' and $([MSBuild]::IsOSPlatform('Windows'))"
+           Text="dn2cpp: Unix shared native assets cannot be published by Dn2Cpp.Build on a Windows host" />
+  </Target>
+
+  <!-- Archive runtimeTargets join ResolvedFileToPublish after the early native
+       capture on some SDKs. Capture and remove them at the final copy seam. -->
+  <Target Name="_Dn2CppCaptureLateStaticArchives"
+          BeforeTargets="_CopyResolvedFilesToPublishPreserveNewest;_CopyResolvedFilesToPublishAlways"
+          Condition="'$(Dn2CppEnabled)' == 'true'">
+    <ItemGroup>
+      <_Dn2CppSdkStaticArchive Include="@(ResolvedFileToPublish)"
+          Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.FullPath)', '(?i)\.(a|lib)$'))" />
+      <ResolvedFileToPublish Remove="@(_Dn2CppSdkStaticArchive)" />
+    </ItemGroup>
+  </Target>
+
   <!-- After `dotnet publish`, transpile the published assembly to C++ with the
        installed dn2cpp tool and native-build it against the runtime the tool
        package carries; the native binary lands next to the managed publish
        output. Console apps only (the Godot lanes have their own export paths).
        Requires the dn2cpp dotnet tool plus clang++/cmake/ninja on the machine. -->
   <Target Name="Dn2CppNativePublish" AfterTargets="Publish"
+          DependsOnTargets="_Dn2CppValidatePublishTarget"
           Condition="'$(Dn2CppEnabled)' == 'true'">
 
+    <PropertyGroup>
+      <_Dn2CppTargetArchitecture Condition="$([System.String]::Copy('$(RuntimeIdentifier)').EndsWith('-x64'))">x64</_Dn2CppTargetArchitecture>
+      <_Dn2CppTargetArchitecture Condition="$([System.String]::Copy('$(RuntimeIdentifier)').EndsWith('-arm64'))">arm64</_Dn2CppTargetArchitecture>
+      <_Dn2CppTargetArchitecture Condition="$([System.String]::Copy('$(RuntimeIdentifier)').EndsWith('-x86'))">x86</_Dn2CppTargetArchitecture>
+      <_Dn2CppHostArchitecture Condition="$([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').EndsWith('-x64'))">x64</_Dn2CppHostArchitecture>
+      <_Dn2CppHostArchitecture Condition="$([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').EndsWith('-arm64'))">arm64</_Dn2CppHostArchitecture>
+      <_Dn2CppHostArchitecture Condition="$([System.String]::Copy('$(NETCoreSdkRuntimeIdentifier)').EndsWith('-x86'))">x86</_Dn2CppHostArchitecture>
+      <_Dn2CppHasToolchainFile>$([System.Text.RegularExpressions.Regex]::IsMatch('$(Dn2CppCMakeArgs)', '(^|[ \t])-DCMAKE_TOOLCHAIN_FILE(?::[^= \t]+)?=(&quot;[^&quot;]+&quot;|[^ \t&quot;]+)([ \t]|$)'))</_Dn2CppHasToolchainFile>
+      <_Dn2CppHasMatchingOsxArchitecture Condition="'$(_Dn2CppTargetArchitecture)' == 'x64'">$([System.Text.RegularExpressions.Regex]::IsMatch('$(Dn2CppCMakeArgs)', '(^|[ \t])-DCMAKE_OSX_ARCHITECTURES(?::[^= \t]+)?=&quot;?([A-Za-z0-9_+.-]+;)*(x86_64|x64)(;[A-Za-z0-9_+.-]+)*&quot;?([ \t]|$)'))</_Dn2CppHasMatchingOsxArchitecture>
+      <_Dn2CppHasMatchingOsxArchitecture Condition="'$(_Dn2CppTargetArchitecture)' == 'arm64'">$([System.Text.RegularExpressions.Regex]::IsMatch('$(Dn2CppCMakeArgs)', '(^|[ \t])-DCMAKE_OSX_ARCHITECTURES(?::[^= \t]+)?=&quot;?([A-Za-z0-9_+.-]+;)*arm64(;[A-Za-z0-9_+.-]+)*&quot;?([ \t]|$)'))</_Dn2CppHasMatchingOsxArchitecture>
+    </PropertyGroup>
+    <Error Condition="'$(_Dn2CppTargetArchitecture)' != '' and '$(_Dn2CppHostArchitecture)' != '' and
+                      '$(_Dn2CppTargetArchitecture)' != '$(_Dn2CppHostArchitecture)' and
+                      '$(_Dn2CppHasToolchainFile)' != 'True' and
+                      !($([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-')) and '$(_Dn2CppHasMatchingOsxArchitecture)' == 'True')"
+           Text="dn2cpp: publishing $(RuntimeIdentifier) from $(NETCoreSdkRuntimeIdentifier) requires a matching CMAKE_OSX_ARCHITECTURES value or a non-empty CMAKE_TOOLCHAIN_FILE" />
+
     <!-- Resolve the tool and the packaged C++ runtime in one probe. -->
-    <Exec Command="$(Dn2CppTool) --print-runtime-dir"
+    <Exec Command="&quot;$(Dn2CppTool)&quot; --print-runtime-dir"
           ConsoleToMSBuild="true" IgnoreExitCode="true"
           StandardOutputImportance="low" StandardErrorImportance="low">
       <Output TaskParameter="ConsoleOutput" ItemName="_Dn2CppRuntimeDirLine" />
       <Output TaskParameter="ExitCode" PropertyName="_Dn2CppProbeExit" />
     </Exec>
     <Error Condition="'$(_Dn2CppProbeExit)' != '0'"
-           Text="dn2cpp tool not found or it carries no runtime (probe: $(Dn2CppTool) --print-runtime-dir). Install it first: dotnet tool install -g dn2cpp" />
+           Text="dn2cpp tool not found or it carries no runtime (probe: $(Dn2CppTool) --print-runtime-dir). Dn2CppTool must name one executable path; install it first: dotnet tool install -g dn2cpp" />
 
     <PropertyGroup>
       <_Dn2CppRuntimeDir>@(_Dn2CppRuntimeDirLine)</_Dn2CppRuntimeDir>
       <_Dn2CppGenDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'dn2cpp'))</_Dn2CppGenDir>
       <_Dn2CppBuildDir>$([MSBuild]::NormalizeDirectory('$(_Dn2CppGenDir)', 'build'))</_Dn2CppBuildDir>
+      <_Dn2CppGenDirArgument>$([System.Text.RegularExpressions.Regex]::Replace('$(_Dn2CppGenDir)', '[\\/]+$', ''))</_Dn2CppGenDirArgument>
+      <_Dn2CppBuildDirArgument>$([System.Text.RegularExpressions.Regex]::Replace('$(_Dn2CppBuildDir)', '[\\/]+$', ''))</_Dn2CppBuildDirArgument>
     </PropertyGroup>
 
-    <Exec Command="$(Dn2CppTool) &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDir)&quot; --project-root &quot;$(MSBuildProjectDirectory)&quot; $(Dn2CppExtraArgs)" />
+    <Exec Command="&quot;$(Dn2CppTool)&quot; &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDirArgument)&quot; --project-root &quot;$(MSBuildProjectDirectory)&quot; $(Dn2CppExtraArgs)" />
 
-    <Exec Command="$(Dn2CppCMake) -S &quot;$(_Dn2CppRuntimeDir)&quot; -B &quot;$(_Dn2CppBuildDir)&quot; -G &quot;$(Dn2CppGenerator)&quot; -DDN2CPP_APP_DIR=&quot;$(_Dn2CppGenDir.TrimEnd('/'))&quot; -DDN2CPP_APP_NAME=&quot;$(AssemblyName)&quot; $(Dn2CppCMakeArgs)" />
-    <Exec Command="$(Dn2CppCMake) --build &quot;$(_Dn2CppBuildDir)&quot;" />
+    <!-- Preserve the SDK's RID reduction for the native linker. The only
+         supplemental lookup is the macOS universal convention below. -->
+    <ItemGroup>
+      <_Dn2CppNativeAsset Include="@(_Dn2CppSdkUnixSharedAsset)" />
+      <_Dn2CppNativeAsset Include="@(_Dn2CppSdkWindowsDllAsset)" />
+      <_Dn2CppNativeAsset Include="@(_Dn2CppSdkStaticArchive)" />
+      <_Dn2CppNativeAsset Include="@(ResolvedFileToPublish)"
+                          Condition="'%(ResolvedFileToPublish.AssetType)' == 'native'" />
+      <!-- Some macOS packages publish a single fat binary under the conventional
+           osx-universal RID. NuGet's portable graph does not treat that RID as
+           a fallback for osx-arm64/osx-x64, so recover it from each resolved
+           package containing a managed reference. Native-only packages must
+           use an SDK-resolved RID. Exact-RID assets still win during linker
+           resolution. -->
+      <_Dn2CppPackageReferenceAsset Include="@(ReferenceCopyLocalPaths)"
+          Condition="'%(ReferenceCopyLocalPaths.NuGetPackageId)' != '' and
+                     $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+        <_Dn2CppPackageDirectory>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))$([System.String]::Copy('%(ReferenceCopyLocalPaths.NuGetPackageId)').ToLowerInvariant())/%(ReferenceCopyLocalPaths.NuGetPackageVersion)/</_Dn2CppPackageDirectory>
+      </_Dn2CppPackageReferenceAsset>
+      <_Dn2CppUniversalNativeAsset
+          Include="%(_Dn2CppPackageReferenceAsset._Dn2CppPackageDirectory)runtimes/osx-universal/native/*" />
+      <_Dn2CppNativeAsset Include="@(_Dn2CppUniversalNativeAsset)" />
+    </ItemGroup>
+    <Delete Files="$(_Dn2CppGenDir)native-assets.txt" />
+    <WriteLinesToFile File="$(_Dn2CppGenDir)native-assets.txt"
+                      Lines="@(_Dn2CppNativeAsset-&gt;'%(FullPath)')"
+                      Overwrite="true" Encoding="UTF-8"
+                      Condition="'@(_Dn2CppNativeAsset)' != ''" />
+    <ReadLinesFromFile File="$(_Dn2CppGenDir)published-static-archives.txt"
+                       Condition="Exists('$(_Dn2CppGenDir)published-static-archives.txt')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppPreviouslyPublishedStaticArchiveName" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_Dn2CppInvalidPublishedStaticArchiveName Include="@(_Dn2CppPreviouslyPublishedStaticArchiveName)"
+          Condition="'%(Filename)%(Extension)' != '%(Identity)' or
+                     !$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '(?i)\.(a|lib)$'))" />
+      <_Dn2CppCurrentStaticArchiveName
+          Include="@(_Dn2CppSdkStaticArchive-&gt;'%(Filename)%(Extension)')"
+          KeepDuplicates="false" />
+      <_Dn2CppPriorFlatStaticArchive
+          Include="@(_Dn2CppPreviouslyPublishedStaticArchiveName-&gt;'$(PublishDir)%(Identity)')" />
+      <_Dn2CppCurrentFlatStaticArchive
+          Include="@(_Dn2CppCurrentStaticArchiveName-&gt;'$(PublishDir)%(Identity)')" />
+    </ItemGroup>
+    <Error Condition="'@(_Dn2CppInvalidPublishedStaticArchiveName)' != ''"
+           Text="dn2cpp: invalid prior static-archive filename: @(_Dn2CppInvalidPublishedStaticArchiveName)" />
+    <!-- Removing the SDK item prevents a new copy. The persisted basename set
+         also deletes archives renamed or removed since the previous publish. -->
+    <Delete Files="@(_Dn2CppPriorFlatStaticArchive);@(_Dn2CppCurrentFlatStaticArchive)" />
 
-    <Copy SourceFiles="$(_Dn2CppBuildDir)$(AssemblyName)"
-          DestinationFolder="$(PublishDir)" />
+    <Exec Command="&quot;$(Dn2CppCMake)&quot; -S &quot;$(_Dn2CppRuntimeDir)&quot; -B &quot;$(_Dn2CppBuildDirArgument)&quot; -G &quot;$(Dn2CppGenerator)&quot; -DDN2CPP_APP_DIR=&quot;$(_Dn2CppGenDirArgument)&quot; -DDN2CPP_APP_NAME=&quot;$(AssemblyName)&quot; $(Dn2CppCMakeArgs)" />
+    <Exec Command="&quot;$(Dn2CppCMake)&quot; --build &quot;$(_Dn2CppBuildDirArgument)&quot;" />
+
+    <ReadLinesFromFile File="$(_Dn2CppBuildDir)native-assets-publish.txt"
+                       Condition="Exists('$(_Dn2CppBuildDir)native-assets-publish.txt')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppStagedNativeAsset" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(_Dn2CppBuildDir)native-assets-generation.txt"
+                       Condition="Exists('$(_Dn2CppBuildDir)native-assets-generation.txt')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppNativeGenerationLine" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(PublishDir).dn2cpp-native/.current"
+                       Condition="Exists('$(PublishDir).dn2cpp-native/.current')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppCurrentNativeGenerationLine" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(PublishDir).dn2cpp-native/.previous"
+                       Condition="Exists('$(PublishDir).dn2cpp-native/.previous')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppPreviousNativeGenerationLine" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(_Dn2CppGenDir)published-native-generations.txt"
+                       Condition="'@(_Dn2CppCurrentNativeGenerationLine)' == '' and Exists('$(_Dn2CppGenDir)published-native-generations.txt')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppLegacyNativeGenerationLine" />
+    </ReadLinesFromFile>
+    <ReadLinesFromFile File="$(_Dn2CppGenDir)published-native-assets.txt"
+                       Condition="Exists('$(_Dn2CppGenDir)published-native-assets.txt')">
+      <Output TaskParameter="Lines" ItemName="_Dn2CppPreviouslyPublishedNativeName" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_Dn2CppNativeGeneration>@(_Dn2CppNativeGenerationLine)</_Dn2CppNativeGeneration>
+      <_Dn2CppCurrentNativeGeneration>@(_Dn2CppCurrentNativeGenerationLine)</_Dn2CppCurrentNativeGeneration>
+      <_Dn2CppCurrentNativeGeneration Condition="'$(_Dn2CppCurrentNativeGeneration)' == ''">@(_Dn2CppLegacyNativeGenerationLine)</_Dn2CppCurrentNativeGeneration>
+      <_Dn2CppPreviousNativeGeneration>@(_Dn2CppPreviousNativeGenerationLine)</_Dn2CppPreviousNativeGeneration>
+      <_Dn2CppNativeGenerationTemporaryDir>$(PublishDir).dn2cpp-native/.new-$(_Dn2CppNativeGeneration)-$([System.Guid]::NewGuid())/</_Dn2CppNativeGenerationTemporaryDir>
+      <_Dn2CppNativeGenerationFinalDir>$(PublishDir).dn2cpp-native/$(_Dn2CppNativeGeneration)/</_Dn2CppNativeGenerationFinalDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_Dn2CppInvalidPublishedNativeName Include="@(_Dn2CppPreviouslyPublishedNativeName)"
+          Condition="'%(Filename)%(Extension)' != '%(Identity)'" />
+      <_Dn2CppPublishedNativeGeneration Include="$(_Dn2CppCurrentNativeGeneration);$(_Dn2CppPreviousNativeGeneration)"
+          Condition="'%(Identity)' != ''" />
+      <_Dn2CppInvalidPublishedNativeGeneration Include="@(_Dn2CppPublishedNativeGeneration)"
+          Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('%(Identity)', '^[0-9a-f]{20}$'))" />
+      <_Dn2CppNativeInstall Include="@(_Dn2CppStagedNativeAsset)">
+        <Destination>$(_Dn2CppNativeGenerationFinalDir)%(Filename)%(Extension)</Destination>
+        <TemporaryDestination>$(_Dn2CppNativeGenerationTemporaryDir)%(Filename)%(Extension)</TemporaryDestination>
+      </_Dn2CppNativeInstall>
+      <_Dn2CppStaleNativeGeneration Include="$(_Dn2CppPreviousNativeGeneration)"
+          Condition="'$(_Dn2CppPreviousNativeGeneration)' != '' and
+                     '$(_Dn2CppPreviousNativeGeneration)' != '$(_Dn2CppCurrentNativeGeneration)' and
+                     '$(_Dn2CppPreviousNativeGeneration)' != '$(_Dn2CppNativeGeneration)'" />
+      <_Dn2CppStaleNativeGenerationDirectory
+          Include="@(_Dn2CppStaleNativeGeneration-&gt;'$(PublishDir).dn2cpp-native/%(Identity)')" />
+      <_Dn2CppPriorFlatNativeOutput
+          Include="@(_Dn2CppPreviouslyPublishedNativeName-&gt;'$(PublishDir)%(Identity)')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_Dn2CppExpectedNativeGenerationFileCount>@(_Dn2CppNativeInstall-&gt;Count())</_Dn2CppExpectedNativeGenerationFileCount>
+    </PropertyGroup>
+    <Error Condition="'@(_Dn2CppInvalidPublishedNativeName)' != ''"
+           Text="dn2cpp: invalid prior native-asset filename: @(_Dn2CppInvalidPublishedNativeName)" />
+    <Error Condition="'@(_Dn2CppInvalidPublishedNativeGeneration)' != ''"
+           Text="dn2cpp: invalid prior native generation: @(_Dn2CppInvalidPublishedNativeGeneration)" />
+    <Error Condition="'@(_Dn2CppStagedNativeAsset)' != '' and
+                      !$([System.Text.RegularExpressions.Regex]::IsMatch('$(_Dn2CppNativeGeneration)', '^[0-9a-f]{20}$'))"
+           Text="dn2cpp: native build emitted shared assets without one valid immutable generation" />
+    <Error Condition="'@(_Dn2CppStagedNativeAsset)' == '' and '$(_Dn2CppNativeGeneration)' != ''"
+           Text="dn2cpp: native build emitted a generation without shared assets" />
+
+    <!-- Build in a unique unpublished directory. A complete marker and atomic
+         directory rename make an interrupted copy unreachable by executables. -->
+    <MakeDir Directories="$(_Dn2CppNativeGenerationTemporaryDir)"
+             Condition="'@(_Dn2CppNativeInstall)' != ''" />
+    <ItemGroup Condition="'$(_Dn2CppTestFailAfterNativeAsset)' != ''">
+      <_Dn2CppFailureProbeNativeInstall Include="@(_Dn2CppNativeInstall)"
+          Condition="'%(Filename)%(Extension)' == '$(_Dn2CppTestFailAfterNativeAsset)'" />
+    </ItemGroup>
+    <Error Condition="'$(_Dn2CppTestFailAfterNativeAsset)' != '' and '@(_Dn2CppFailureProbeNativeInstall)' == ''"
+           Text="dn2cpp: native publish failure probe did not match an asset" />
+    <Copy SourceFiles="%(_Dn2CppFailureProbeNativeInstall.Identity)"
+          DestinationFiles="%(_Dn2CppFailureProbeNativeInstall.TemporaryDestination)"
+          Condition="'@(_Dn2CppFailureProbeNativeInstall)' != ''" />
+    <Error Condition="'@(_Dn2CppFailureProbeNativeInstall)' != ''"
+           Text="dn2cpp: injected native-generation copy failure after one asset" />
+    <Copy SourceFiles="%(_Dn2CppNativeInstall.Identity)"
+          DestinationFiles="%(_Dn2CppNativeInstall.TemporaryDestination)"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and '$(_Dn2CppTestFailAfterNativeAsset)' == ''" />
+    <ItemGroup>
+      <_Dn2CppMissingTemporaryNativeInstall Include="@(_Dn2CppNativeInstall)"
+          Condition="!Exists('%(TemporaryDestination)')" />
+    </ItemGroup>
+    <Error Condition="'@(_Dn2CppMissingTemporaryNativeInstall)' != ''"
+           Text="dn2cpp: temporary native generation is incomplete: @(_Dn2CppMissingTemporaryNativeInstall)" />
+    <WriteLinesToFile File="$(_Dn2CppNativeGenerationTemporaryDir).complete"
+                      Lines="$(_Dn2CppNativeGeneration)" Overwrite="true" Encoding="UTF-8"
+                      Condition="'@(_Dn2CppNativeInstall)' != ''" />
+    <Exec Command="cmp -s &quot;%(_Dn2CppNativeInstall.Identity)&quot; &quot;%(_Dn2CppNativeInstall.Destination)&quot;"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                     !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Exec Command="find &quot;$(_Dn2CppNativeGenerationFinalDir)&quot; -mindepth 1 -maxdepth 1 -type f ! -name .complete | awk 'END { exit(NR != $(_Dn2CppExpectedNativeGenerationFileCount)) }'"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                     !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <WriteLinesToFile File="$(_Dn2CppNativeGenerationFinalDir).complete"
+                      Lines="$(_Dn2CppNativeGeneration)" Overwrite="true" Encoding="UTF-8"
+                      Condition="'@(_Dn2CppNativeInstall)' != '' and
+                                 Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                                 !Exists('$(_Dn2CppNativeGenerationFinalDir).complete') and
+                                 !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <RemoveDir Directories="$(_Dn2CppNativeGenerationTemporaryDir)"
+               Condition="'@(_Dn2CppNativeInstall)' != '' and Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                          !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Exec Command="mv &quot;$(_Dn2CppNativeGenerationTemporaryDir.TrimEnd('/'))&quot; &quot;$(_Dn2CppNativeGenerationFinalDir.TrimEnd('/'))&quot;"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and !Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                     !$([MSBuild]::IsOSPlatform('Windows'))" />
+
+    <!-- A new generation is unreachable until the executable swap below. On
+         Windows, populate its final directory directly so publication needs no
+         POSIX directory-rename tool. A failed copy leaves no complete marker;
+         the next attempt discards that unreachable partial first. -->
+    <RemoveDir Directories="$(_Dn2CppNativeGenerationFinalDir)"
+               Condition="'@(_Dn2CppNativeInstall)' != '' and
+                          $([MSBuild]::IsOSPlatform('Windows')) and
+                          Exists('$(_Dn2CppNativeGenerationFinalDir)') and
+                          !Exists('$(_Dn2CppNativeGenerationFinalDir).complete')" />
+    <MakeDir Directories="$(_Dn2CppNativeGenerationFinalDir)"
+             Condition="'@(_Dn2CppNativeInstall)' != '' and
+                        $([MSBuild]::IsOSPlatform('Windows')) and
+                        !Exists('$(_Dn2CppNativeGenerationFinalDir).complete')" />
+    <Copy SourceFiles="%(_Dn2CppNativeInstall.TemporaryDestination)"
+          DestinationFiles="%(_Dn2CppNativeInstall.Destination)"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and
+                     $([MSBuild]::IsOSPlatform('Windows')) and
+                     !Exists('$(_Dn2CppNativeGenerationFinalDir).complete')" />
+    <WriteLinesToFile File="$(_Dn2CppNativeGenerationFinalDir).complete"
+                      Lines="$(_Dn2CppNativeGeneration)" Overwrite="true" Encoding="UTF-8"
+                      Condition="'@(_Dn2CppNativeInstall)' != '' and
+                                 $([MSBuild]::IsOSPlatform('Windows')) and
+                                 !Exists('$(_Dn2CppNativeGenerationFinalDir).complete')" />
+    <RemoveDir Directories="$(_Dn2CppNativeGenerationTemporaryDir)"
+               Condition="'@(_Dn2CppNativeInstall)' != '' and
+                          $([MSBuild]::IsOSPlatform('Windows'))" />
+    <Copy SourceFiles="$(_Dn2CppBuildDir)$(AssemblyName)$(Dn2CppNativeExecutableExtension)"
+          DestinationFiles="$(PublishDir)$(AssemblyName)$(Dn2CppNativeExecutableExtension).new" />
+    <Move SourceFiles="$(PublishDir)$(AssemblyName)$(Dn2CppNativeExecutableExtension).new"
+          DestinationFiles="$(PublishDir)$(AssemblyName)$(Dn2CppNativeExecutableExtension)" />
+    <RemoveDir Directories="@(_Dn2CppStaleNativeGenerationDirectory)" />
+    <Delete Files="@(_Dn2CppPriorFlatNativeOutput)" />
+    <!-- published-native-assets.txt is only the pre-generation flat shared
+         migration. Static archives keep a separate incremental basename set. -->
+    <Delete Files="$(_Dn2CppGenDir)published-native-assets.txt" />
+    <Delete Files="$(_Dn2CppGenDir)published-static-archives.txt" />
+    <WriteLinesToFile File="$(_Dn2CppGenDir)published-static-archives.txt"
+                      Lines="@(_Dn2CppCurrentStaticArchiveName)"
+                      Overwrite="true" Encoding="UTF-8"
+                      Condition="'@(_Dn2CppCurrentStaticArchiveName)' != ''" />
+    <WriteLinesToFile File="$(PublishDir).dn2cpp-native/.previous.new"
+                      Lines="$(_Dn2CppCurrentNativeGeneration)"
+                      Overwrite="true" Encoding="UTF-8"
+                      Condition="'$(_Dn2CppCurrentNativeGeneration)' != '' and
+                                 '$(_Dn2CppCurrentNativeGeneration)' != '$(_Dn2CppNativeGeneration)'" />
+    <Move SourceFiles="$(PublishDir).dn2cpp-native/.previous.new"
+          DestinationFiles="$(PublishDir).dn2cpp-native/.previous"
+          Condition="'$(_Dn2CppCurrentNativeGeneration)' != '' and
+                     '$(_Dn2CppCurrentNativeGeneration)' != '$(_Dn2CppNativeGeneration)'" />
+    <Delete Files="$(PublishDir).dn2cpp-native/.previous"
+            Condition="'$(_Dn2CppCurrentNativeGeneration)' == ''" />
+    <WriteLinesToFile File="$(PublishDir).dn2cpp-native/.current.new"
+                      Lines="$(_Dn2CppNativeGeneration)"
+                      Overwrite="true" Encoding="UTF-8"
+                      Condition="'$(_Dn2CppNativeGeneration)' != ''" />
+    <Move SourceFiles="$(PublishDir).dn2cpp-native/.current.new"
+          DestinationFiles="$(PublishDir).dn2cpp-native/.current"
+          Condition="'$(_Dn2CppNativeGeneration)' != ''" />
+    <Delete Files="$(PublishDir).dn2cpp-native/.current"
+            Condition="'$(_Dn2CppNativeGeneration)' == ''" />
+    <Delete Files="$(_Dn2CppGenDir)published-native-generations.txt" />
+    <Exec Command="find &quot;$(PublishDir).dn2cpp-native&quot; -mindepth 1 -maxdepth 1 -type d -name '.new-*' -exec rm -rf '{}' +"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and
+                     !$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Exec Command="for /d %%D in (&quot;$(PublishDir).dn2cpp-native\.new-*&quot;) do @rmdir /s /q &quot;%%D&quot;"
+          Condition="'@(_Dn2CppNativeInstall)' != '' and
+                     $([MSBuild]::IsOSPlatform('Windows'))" />
     <Message Importance="high"
-             Text="dn2cpp: native binary -> $(PublishDir)$(AssemblyName)" />
+             Text="dn2cpp: native binary -> $(PublishDir)$(AssemblyName)$(Dn2CppNativeExecutableExtension)" />
   </Target>
 
 </Project>

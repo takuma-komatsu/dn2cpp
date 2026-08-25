@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>9.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>Cysharp.Net.Http.YetAnotherHttpHandler</AssemblyName>
+    <RootNamespace>Cysharp.Net.Http</RootNamespace>
+    <Version>$(YahaVersion)</Version>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(YahaSourceRoot)/**/*.cs" />
+    <Reference Include="System.IO.Pipelines">
+      <HintPath>$(YahaPipelinesDll)</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

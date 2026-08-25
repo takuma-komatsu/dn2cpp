@@ -64,10 +64,11 @@ internal sealed partial class MethodCompiler
     {
         var amount = Pop();
         var value = Pop();
+        bool native = value.Kind == StackKind.Ptr;
         bool wide = value.Kind == StackKind.I8;
-        string ut = wide ? "uint64_t" : "uint32_t";
-        string st = wide ? "int64_t" : "int32_t";
-        int mask = wide ? 63 : 31;
+        string ut = native ? "uintptr_t" : wide ? "uint64_t" : "uint32_t";
+        string st = native ? "intptr_t" : wide ? "int64_t" : "int32_t";
+        string mask = native ? "(int32_t)(sizeof(uintptr_t) * 8 - 1)" : wide ? "63" : "31";
         string amt = $"((int32_t){amount.Expr} & {mask})";
         string expr = !right
             ? $"({value.CppType})((({ut}){value.Expr}) << {amt})"

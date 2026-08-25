@@ -541,7 +541,7 @@ cuts, and both sides' stderr required to stay empty.
 
 | Library | What its gate drives | Gate |
 |---|---|---|
-| MagicOnion.Client | Its source-generated NativeAOT client proxy over a mock `CallInvoker`: `DynamicArgumentTuple` request marshalling, response unmarshalling and `UnaryResult` await | `gates/build-and-run-magiconion-client.sh` |
+| MagicOnion.Client | Its source-generated NativeAOT client proxy first over a mock `CallInvoker`, then over a real `GrpcChannel`: a gate-only adapter carries the generated unary frame in a header so the YetAnotherHttpHandler HTTP/2 POST stays bodyless, while response unmarshalling, trailers and `UnaryResult` await cross the real transport | `gates/build-and-run-magiconion-client.sh`, `gates/build-and-run-magiconion-yetanotherhttphandler.sh` |
 | MasterMemory | Source-generated typed tables over MessagePack data — database build/load, unique and non-unique indexes, composite indexes, exact/range/closest queries and forward/reverse views | `gates/build-and-run-mastermemory.sh` |
 | MemoryPack | Source-generated formatters — object/struct/record, member ordering, `[MemoryPackConstructor]`, the serialization callbacks, unions over an interface and over an abstract base, version-tolerant and explicit layouts, the unmanaged whole-struct memcpy path, the `IBufferWriter` and `ReadOnlySequence` entry points | `gates/build-and-run-memorypack.sh` |
 | MessagePack-CSharp | Source-generated indexed and map-keyed objects, ignored members and serialization constructors, collection formatters, interface unions, an AOT-safe composite resolver with a custom formatter, direct reader/writer use, `ReadOnlySequence` input and LZ4 block-array compression | `gates/build-and-run-messagepack.sh` |
@@ -769,9 +769,9 @@ it does not come back as a ticket.
   editor and break in the shipped game.
 - **COM interop / `BStr` / `SafeArray`** — they depend on the COM/OLE
   runtime and are not portably implementable. `ByValArray` (blittable
-  elements) and `FunctionPtr` synchronous callbacks *are* implemented;
-  `ByValTStr`, `ByValArray` over non-blittable elements and asynchronous
-  callbacks are not, and a `[MarshalAs]` the struct marshaller does not
+  elements) and `FunctionPtr` callbacks (including stored callbacks invoked from
+  foreign native threads) *are* implemented; `ByValTStr` and `ByValArray` over
+  non-blittable elements are not, and a `[MarshalAs]` the struct marshaller does not
   implement **refuses the crossing at transpile time**, naming the field.
   **Windows 32-bit P/Invoke ABI details** (stdcall decoration, 32-bit
   layout) go with it: dn2cpp is 64-bit-only.

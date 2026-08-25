@@ -107,3 +107,6 @@ id: aPos=True bPos=True distinct=True stable=True
 == task scheduler sync context ==
 null: InvalidOperationException: The current SynchronizationContext may not be used as a TaskScheduler.
 installed: NotSupportedException: TaskScheduler.FromCurrentSynchronizationContext: dn2cpp treats a TaskScheduler as a scheduling hint only and cannot wrap the installed SynchronizationContext.
+value-task-source struct: 17,struct-vts
+value-task-source tokens: -32477,-32477
+whenall struct refs: True,barrier-a|barrier-b

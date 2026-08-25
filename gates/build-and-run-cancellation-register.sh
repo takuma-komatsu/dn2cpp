@@ -4,7 +4,8 @@
 # object) and UnsafeRegister(Action<object>, object) — that the callback receives the
 # CANCELLING token, and that the two spellings are indistinguishable. The rest: a cross-thread Cancel()
 # runs registered callbacks, LIFO ordering, immediate run when already canceled,
-# Dispose() detaches a registration, and concurrent register/cancel stays
+# Dispose() detaches a registration, copied registration handles preserve equality
+# and hash identity, distinct handles remain unequal, and concurrent register/cancel stays
 # data-race-free. Every cross-thread Cancel() is joined before printing, so the
 # program is deterministic and diffed exact vs real .NET.
 #

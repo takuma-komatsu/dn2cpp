@@ -625,9 +625,29 @@ if [ "$_chain_names" != "$_table_names" ]; then
 fi
 unset _chain_names _table_names
 
-NON_GODOT_GATES=()
+# These package-native gates own projects under gates/fixtures (outside the
+# Phase-3 samples scan) and use disjoint artifact/feed/source-cache directories.
+# Keep them explicit while still running as independent Phase-4 workers: the
+# native-asset fixture creates a local NuGet feed, while each YAH gate acquires
+# its pinned upstream source into a caller-owned cache, so none may be prebuilt
+# by the suite or share a cold Phase-4 output directory.
+PACKAGE_NATIVE_GATES=(
+    "gates/build-and-run-native-asset-publish.sh"
+    "gates/build-and-run-yetanotherhttphandler.sh"
+    "gates/build-and-run-magiconion-yetanotherhttphandler.sh"
+)
+for g in "${PACKAGE_NATIVE_GATES[@]}"; do
+    [ -f "$g" ] || { echo "error: missing package-native gate $g" >&2; exit 1; }
+    if in_list "$g" "${GODOT_GATES[@]}"; then
+        echo "error: package-native gate is also assigned to a Phase-5 chain: $g" >&2
+        exit 1
+    fi
+done
+
+NON_GODOT_GATES=("${PACKAGE_NATIVE_GATES[@]}")
 while IFS= read -r g; do
     in_list "$g" "${GODOT_GATES[@]}" && continue
+    in_list "$g" "${PACKAGE_NATIVE_GATES[@]}" && continue
     NON_GODOT_GATES+=("$g")
 done < <(ls gates/build-and-run-*.sh | sort)
 

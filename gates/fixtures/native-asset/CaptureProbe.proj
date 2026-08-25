@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <Dn2CppEnabled>true</Dn2CppEnabled>
+    <RuntimeIdentifier>$(ProbeRuntimeIdentifier)</RuntimeIdentifier>
+    <AssemblyName>CaptureProbe</AssemblyName>
+  </PropertyGroup>
+
+  <Target Name="_FixtureNativeItems" BeforeTargets="_Dn2CppCaptureNativeAssets">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProbeDll)">
+        <AssetType>native</AssetType>
+        <RelativePath>probe.dll</RelativePath>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+  <Import Project="../../../src/Dn2Cpp.Build/build/Dn2Cpp.Build.targets" />
+</Project>

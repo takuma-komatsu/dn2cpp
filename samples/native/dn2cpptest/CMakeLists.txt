@@ -12,7 +12,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(dn2cpptest C)
 
+find_package(Threads REQUIRED)
+
 add_library(dn2cpptest SHARED dn2cpptest.c)
+target_link_libraries(dn2cpptest PRIVATE Threads::Threads)
 set_target_properties(dn2cpptest PROPERTIES
     WINDOWS_EXPORT_ALL_SYMBOLS ON
     C_STANDARD 11)

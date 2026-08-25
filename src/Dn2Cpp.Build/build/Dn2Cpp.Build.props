@@ -6,17 +6,22 @@
     <!-- Master switch: set false to publish managed-only without removing the
          PackageReference. -->
     <Dn2CppEnabled Condition="'$(Dn2CppEnabled)' == ''">true</Dn2CppEnabled>
-    <!-- How to invoke the dn2cpp tool (a global tool on PATH by default; point
-         this at a tool-path install or "dotnet tool run dn2cpp" for a local
-         tool manifest). -->
+    <!-- The dn2cpp executable path (a global tool on PATH by default). This is
+         one executable, not a shell command; use a wrapper executable for a
+         local tool manifest. -->
     <Dn2CppTool Condition="'$(Dn2CppTool)' == ''">dn2cpp</Dn2CppTool>
     <Dn2CppCMake Condition="'$(Dn2CppCMake)' == ''">cmake</Dn2CppCMake>
     <Dn2CppGenerator Condition="'$(Dn2CppGenerator)' == ''">Ninja</Dn2CppGenerator>
+    <Dn2CppNativeExecutableExtension Condition="'$(Dn2CppNativeExecutableExtension)' == '' and $([MSBuild]::IsOSPlatform('Windows'))">.exe</Dn2CppNativeExecutableExtension>
+    <Dn2CppNativeExecutableExtension Condition="'$(Dn2CppNativeExecutableExtension)' == ''"></Dn2CppNativeExecutableExtension>
     <!-- Extra transpiler arguments. The auto-ref default pulls the BCL closure
          from the live shared framework, so a plain app needs no references at all. -->
     <Dn2CppExtraArgs Condition="'$(Dn2CppExtraArgs)' == ''">--auto-ref</Dn2CppExtraArgs>
     <!-- Extra cmake configure arguments (e.g. -DDN2CPP_USE_GC=OFF). -->
     <Dn2CppCMakeArgs Condition="'$(Dn2CppCMakeArgs)' == ''"></Dn2CppCMakeArgs>
+    <!-- The SDK apphost occupies the native executable's final path and would
+         overwrite a running generation before the native publish hook runs. -->
+    <UseAppHost Condition="'$(Dn2CppEnabled)' == 'true'">false</UseAppHost>
   </PropertyGroup>
 
 </Project>

@@ -142,6 +142,14 @@ driven=$(grep -o '^[[:space:]]*[A-Za-z0-9_]*\.Program\.__GateEntry();' "$BUCKET/
          | sed 's/^[[:space:]]*//; s/\.Program\.__GateEntry();$//' | sort -u)
 set_eq "PInvokeNative sections: bucket vs driver" "present in the bucket" "$tree_sections" "driven by Program.cs" "$driven"
 
+# The delegate-thunk pool never reclaims a published slot: native code may keep
+# any returned pointer indefinitely. Pin the documented lifetime capacity to the
+# emitter's one source-of-truth constant rather than another prose copy.
+pool_doc=$(grep -oE 'pool admits [0-9]+ distinct delegate' "$PM" | awk '{print $3}')
+pool_tree=$(sed -n 's/^[[:space:]]*const int poolSize = \([0-9][0-9]*\);/\1/p' \
+    src/Dn2Cpp.Transpiler/CppEmitter.cs)
+eq "delegate thunk-pool distinct-instance capacity" "$pool_doc" "$pool_tree"
+
 echo "== 2/13 AGENTS.md — the default-reference wiring =="
 # The conditional default references. This is the one claim in AGENTS.md that
 # says out loud that nothing checks it — "Nothing references these assemblies at

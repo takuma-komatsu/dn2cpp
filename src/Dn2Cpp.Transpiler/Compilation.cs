@@ -5565,6 +5565,19 @@ internal sealed partial class Compilation
             .OrderBy(t => t, StringComparer.Ordinal)
             .ToList();
 
+    /// <summary>Distinct module-token and entry-point pairs for build backends
+    /// that must construct an import library from a package-native DLL. The
+    /// linker manifest alone cannot name exports that the target platform omits
+    /// but CoreCLR would resolve lazily only if their managed branch executes.</summary>
+    public IReadOnlyList<string> PInvokeLinkSymbols() =>
+        PInvokeCalls.Select(m =>
+            (Token: LinkLibToken(m.PInvoke!.ModuleName), m.PInvoke.EntryPoint))
+            .Where(p => p.Token is not null)
+            .Select(p => p.Token + "\t" + p.EntryPoint)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(p => p, StringComparer.Ordinal)
+            .ToList();
+
     /// <summary>Normalize a <c>[DllImport]</c> module name to a <c>-l</c> library token,
     /// or null for an always-linked platform library that needs no flag. Strips a
     /// directory part, a shared-library extension (<c>.so[.N]</c> / <c>.dylib</c> /

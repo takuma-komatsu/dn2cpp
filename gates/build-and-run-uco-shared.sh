@@ -4,6 +4,8 @@
 # from a C++ dlopen host (samples/dotnet/UcoShared/driver.cpp) that
 #   - runs the generated `main` once to initialize the runtime,
 #   - enables foreign-thread GC registration via the dlsym'd runtime setter,
+#   - publishes a delegate thunk, disables the host opt-in, and proves the thunk's
+#     one-way registration latch still protects later foreign-thread calls,
 #   - calls the exported entry points from the main thread AND from a foreign
 #     std::thread (allocation loop big enough to trigger collections),
 #   - exercises by-value blittable structs, private-method rooting, and a
@@ -61,7 +63,8 @@ mul_thread=2991
 task_run=42
 quiesce OK
 dlclose OK
-driver OK'
+driver OK
+delegate_latch=1'
 # Capture the exit status explicitly: `$(...)` inline would swallow it, and a
 # driver that aborts in dlclose teardown AFTER printing everything (the exact
 # failure mode this gate exists to catch) would pass the diff silently.
