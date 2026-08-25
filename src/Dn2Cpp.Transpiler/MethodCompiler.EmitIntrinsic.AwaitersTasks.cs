@@ -688,6 +688,52 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_ctr_unregister(*((Dn2CppCancelReg**)({t.Expr})))");
                 return true;
             }
+            // Registration identity is the opaque registration node. Copies of one
+            // registration compare equal; separately registered callbacks do not, and
+            // every default/no-op registration is the null handle.
+            case ("System.Threading.CancellationTokenRegistration", "op_Equality"):
+            case ("System.Threading.CancellationTokenRegistration", "op_Inequality"):
+            {
+                var r = Pop();
+                var l = Pop();
+                string op = name == "op_Equality" ? "==" : "!=";
+                Push(StackKind.I4, "int32_t", $"(({l.Expr}) {op} ({r.Expr}) ? 1 : 0)");
+                return true;
+            }
+            case ("System.Threading.CancellationTokenRegistration", "Equals")
+                when sig.ParameterTypes is [{ } eqp]
+                    && CppTypes.Of(eqp) == "Dn2CppCancelReg*":
+            {
+                var other = Pop();
+                var self = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"((*((Dn2CppCancelReg**)({self.Expr}))) == ({other.Expr}) ? 1 : 0)");
+                return true;
+            }
+            case ("System.Threading.CancellationTokenRegistration", "Equals")
+                when sig.ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var self = Pop();
+                var registration = Comp.FindClassByFullName(
+                    "System.Threading.CancellationTokenRegistration")
+                    ?? throw new InvalidOperationException(
+                        "System.Threading.CancellationTokenRegistration is not loaded");
+                string boxed = NewTemp("Dn2CppObject*");
+                Emit($"{boxed} = {Cast(other, "Dn2CppObject*")};");
+                Push(StackKind.I4, "int32_t",
+                    $"(({boxed}) != nullptr && ({boxed})->type == &{registration.CppTypeInfoName} " +
+                    $"&& (*((Dn2CppCancelReg**)(({boxed}) + 1))) == " +
+                    $"(*((Dn2CppCancelReg**)({self.Expr}))) ? 1 : 0)");
+                return true;
+            }
+            case ("System.Threading.CancellationTokenRegistration", "GetHashCode"):
+            {
+                var t = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"(int32_t)(uintptr_t)(*((Dn2CppCancelReg**)({t.Expr})))");
+                return true;
+            }
 
             // ---- Task.Yield ----
             // Task.Yield returns a YieldAwaitable; GetAwaiter a YieldAwaiter.

@@ -38,6 +38,18 @@ namespace RegistrationToken
             CancellationTokenRegistration completed = completedSource.Token.Register(static () => { });
             completedSource.Cancel();
             Console.WriteLine($"registration unregister-completed={completed.Unregister()}");
+
+            var equalitySource = new CancellationTokenSource();
+            CancellationTokenRegistration first = equalitySource.Token.Register(static () => { });
+            CancellationTokenRegistration firstCopy = first;
+            CancellationTokenRegistration second = equalitySource.Token.Register(static () => { });
+            CancellationTokenRegistration defaultCopy = default;
+            Console.WriteLine($"registration equality="
+                + $"{first == firstCopy}:{first != second}:{defaultCopy == default}"
+                + $":{first.Equals(firstCopy)}:{first.GetHashCode() == firstCopy.GetHashCode()}"
+                + $":{first.Equals((object)firstCopy)}:{!first.Equals((object)second)}"
+                + $":{!first.Equals(null)}:{!first.Equals("registration")}"
+                + $":{defaultCopy.Equals((object)default(CancellationTokenRegistration))}");
         }
     }
 }
