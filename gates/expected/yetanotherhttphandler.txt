@@ -1,0 +1,3 @@
+yaha status=200
+yaha body=yaha-ok
+yaha callback=complete
