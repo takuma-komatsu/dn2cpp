@@ -769,9 +769,9 @@ it does not come back as a ticket.
   editor and break in the shipped game.
 - **COM interop / `BStr` / `SafeArray`** — they depend on the COM/OLE
   runtime and are not portably implementable. `ByValArray` (blittable
-  elements) and `FunctionPtr` synchronous callbacks *are* implemented;
-  `ByValTStr`, `ByValArray` over non-blittable elements and asynchronous
-  callbacks are not, and a `[MarshalAs]` the struct marshaller does not
+  elements) and `FunctionPtr` callbacks (including stored callbacks invoked from
+  foreign native threads) *are* implemented; `ByValTStr` and `ByValArray` over
+  non-blittable elements are not, and a `[MarshalAs]` the struct marshaller does not
   implement **refuses the crossing at transpile time**, naming the field.
   **Windows 32-bit P/Invoke ABI details** (stdcall decoration, 32-bit
   layout) go with it: dn2cpp is 64-bit-only.

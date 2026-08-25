@@ -273,14 +273,24 @@ void dn2cpp_interp_set_alloc_hook(Dn2CppObject* (*hook)(const Dn2CppTypeInfo* ty
 // can be invoked from a thread the collector has never seen (a native host's own
 // thread pool); with this enabled, the prologue the transpiler injects into every
 // such method registers the calling thread on first entry. Set-once before the
-// host makes off-main-thread calls, so a plain int suffices; defined
+// host makes off-main-thread calls. Delegate marshalling also enables it before
+// publishing a thunk to native code, where an existing executor may call immediately.
+// Its latch is separate from the host's reversible opt-in: a host cannot know when
+// native code has discarded every published delegate pointer. Both flags use
+// release/acquire publication. Defined
 // unconditionally so the setter links under DN2CPP_NO_GC too (where the prologue
 // is inert — the calloc fallback needs no thread registration).
-static int g_native_callback_gc_registration = 0;
+static std::atomic<int> g_host_callback_gc_registration{0};
+static std::atomic<int> g_delegate_callback_gc_registration{0};
 
 void dn2cpp_set_native_callback_gc_registration(int on)
 {
-    g_native_callback_gc_registration = on ? 1 : 0;
+    g_host_callback_gc_registration.store(on ? 1 : 0, std::memory_order_release);
+}
+
+void dn2cpp_enable_native_delegate_callback_gc_registration()
+{
+    g_delegate_callback_gc_registration.store(1, std::memory_order_release);
 }
 
 void dn2cpp_native_callback_prologue()
@@ -290,7 +300,8 @@ void dn2cpp_native_callback_prologue()
     // arm #errors under it): no foreign host thread can exist, so the prologue is
     // correctly inert — same empty body as the calloc fallback.
 #if defined(DN2CPP_USE_BOEHM_GC) && defined(GC_THREADS)
-    if (g_native_callback_gc_registration == 0)
+    if (g_host_callback_gc_registration.load(std::memory_order_acquire) == 0
+        && g_delegate_callback_gc_registration.load(std::memory_order_acquire) == 0)
         return;
     // Register a foreign host thread with the collector on first entry, and — the
     // point of the RAII latch below — unregister it when the thread exits.
@@ -307,9 +318,9 @@ void dn2cpp_native_callback_prologue()
     // newly registered the thread, so a thread the collector already owns (main, or a
     // runtime-spawned one) is left to its real owner and never double-unregistered.
     //
-    // The guard's destructor runs while the library is still mapped: the gate's
-    // driver join()s its foreign threads and quiesces the worker pool before
-    // dlclose, so no thread outlives the code its TLS destructor calls.
+    // The guard's destructor belongs to this runtime image. A shared-library host
+    // must stop every callback-capable foreign thread before unloading the image —
+    // the same lifetime rule the callback/export function pointer itself requires.
     //
     // Registration requires GC_INIT; if a callback fires before runtime init, fall
     // through without latching so a later call retries after init.
@@ -324,6 +335,7 @@ void dn2cpp_native_callback_prologue()
                 // Drop the thread-static block first, while still registered —
                 // same ordering as Dn2CppGCThread's destructor.
                 dn2cpp_threadstatic_release();
+                dn2cpp_sync_ctx_release();
                 GC_unregister_my_thread();
             }
         }
@@ -336,9 +348,13 @@ void dn2cpp_native_callback_prologue()
     if (!GC_thread_is_registered())
     {
         struct GC_stack_base sb;
-        if (GC_get_stack_base(&sb) == GC_SUCCESS
-            && GC_register_my_thread(&sb) == GC_SUCCESS)
+        if (GC_get_stack_base(&sb) != GC_SUCCESS)
+            dn2cpp_fail("native callback: failed to discover the foreign thread stack");
+        int registration = GC_register_my_thread(&sb);
+        if (registration == GC_SUCCESS)
             t_guard.ownsRegistration = true; // we registered it => we unregister it
+        else if (!GC_thread_is_registered())
+            dn2cpp_fail("native callback: failed to register the foreign thread with the GC");
     }
     t_guard.resolved = true;
 #endif
@@ -620,7 +636,8 @@ void* dn2cpp_threadstatic_block(int32_t size)
 // and everything it references. Called from the GC-thread guard destructor, after
 // which no managed code runs on the thread. Threads the runtime did not spawn
 // never pass through a guard; their blocks are deliberately leaked (such engine/
-// host threads normally live for the process anyway).
+// host threads normally live for the process anyway). A foreign thread entering a
+// native callback does pass through that prologue and releases its block on exit.
 void dn2cpp_threadstatic_release()
 {
     if (t_threadstatic_block != nullptr)
@@ -2729,4 +2746,3 @@ Dn2CppGCHandle dn2cpp_gchandle_from_intptr(intptr_t v)
         dn2cpp_gchandle_throw_not_initialized(); // measured: real .NET rejects 0
     return Dn2CppGCHandle{reinterpret_cast<Dn2CppGCHandleCell*>(v)};
 }
-

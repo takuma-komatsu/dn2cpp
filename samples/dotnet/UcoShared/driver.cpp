@@ -111,6 +111,8 @@ int main(int argc, char** argv)
     auto uco_secret = (int32_t (*)())sym("uco_secret");
     auto uco_alloc_sum = (int32_t (*)(int32_t))sym("uco_alloc_sum");
     auto uco_get_mul = (intptr_t (*)())sym("uco_get_mul");
+    auto uco_latch_delegate_registration =
+        (int32_t (*)())sym("uco_latch_delegate_registration");
 
     check("add", uco_add(20, 22), 42);
     Pair p = uco_pair_swap(Pair{3, 4});
@@ -123,6 +125,16 @@ int main(int argc, char** argv)
     // an exported entry point.
     auto mul = (int32_t (*)(int32_t, int32_t))uco_get_mul();
     check("mul", mul(6, 7), 42);
+
+    // Delegate publication is irreversible even though the host's independent
+    // registration opt-in is reversible.
+    int32_t delegate_latch = uco_latch_delegate_registration();
+    if (delegate_latch != 1)
+    {
+        std::fprintf(stderr, "FAIL delegate_latch: got %d, want 1\n", delegate_latch);
+        std::exit(1);
+    }
+    set_reg(0);
 
     // The collector has never seen this thread; only the prologue's registration
     // makes an allocation loop this large safe here.
@@ -157,5 +169,6 @@ int main(int argc, char** argv)
     std::puts("dlclose OK");
 
     std::puts("driver OK");
+    check("delegate_latch", delegate_latch, 1);
     return 0;
 }

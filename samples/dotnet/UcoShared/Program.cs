@@ -26,6 +26,12 @@ internal struct Pair
 // proves the [UnmanagedCallersOnly] rooting.
 internal static unsafe class Exports
 {
+    private delegate int Unary(int value);
+
+    private static readonly Unary s_identity = Identity;
+
+    private static int Identity(int value) => value;
+
     [UnmanagedCallersOnly(EntryPoint = "uco_add")]
     private static int Add(int a, int b) => a + b;
 
@@ -57,6 +63,12 @@ internal static unsafe class Exports
 
     [UnmanagedCallersOnly]
     private static int Mul(int a, int b) => a * b;
+
+    // Publishing any delegate thunk makes foreign-thread registration permanent:
+    // native code may keep the pointer after the host disables its own opt-in.
+    [UnmanagedCallersOnly(EntryPoint = "uco_latch_delegate_registration")]
+    private static int LatchDelegateRegistration() =>
+        Marshal.GetFunctionPointerForDelegate(s_identity) != IntPtr.Zero ? 1 : 0;
 
     // Leaves the Task.Run worker pool live inside the library on return, so the
     // host can exercise dn2cpp_runtime_quiesce followed by dlclose.

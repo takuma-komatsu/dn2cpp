@@ -4636,11 +4636,13 @@ internal sealed partial class CppEmitter
     /// path (a synchronous thread-local slot, valid only while the native call is on the
     /// stack, would be silent UB for a stored pointer). Each delegate type gets a fixed
     /// pool of delegate slots in a file-scope static array (data segment = a Boehm static
-    /// root, keeping the parked delegates alive) plus one C-ABI thunk per slot, which reads
-    /// its slot and dispatches through <c>dginvoke_&lt;T&gt;</c> with the native-width ⇔
-    /// managed-width casts the invoker expects. The same delegate instance always maps to
-    /// the same thunk (the .NET identity guarantee); a full pool traps loudly rather than
-    /// corrupting dispatch. The reverse direction
+    /// root, keeping the parked delegates alive) plus one C-ABI thunk per slot. Every thunk
+    /// registers a foreign calling thread with the collector before it reads managed state,
+    /// then dispatches through <c>dginvoke_&lt;T&gt;</c> with the native-width ⇔ managed-width
+    /// casts the invoker expects. A managed exception is reported and terminated at that C
+    /// boundary rather than unwinding through native code. The same delegate instance always
+    /// maps to the same thunk (the .NET identity guarantee); a full pool traps loudly rather
+    /// than corrupting dispatch. The reverse direction
     /// (<c>Marshal.GetDelegateForFunctionPointer&lt;T&gt;</c>) first checks the pool — a
     /// thunk pointer round-trips to its original parked delegate — and otherwise wraps the
     /// raw native pointer in a fresh delegate whose target boxes the pointer and whose
@@ -4686,16 +4688,27 @@ internal sealed partial class CppEmitter
             }
             string pool = $"g_dn2cpp_fnptr_dgs_{cls.CppName}";
             string thunks = $"g_dn2cpp_fnptr_thunks_{cls.CppName}";
+            string poolLock = $"g_dn2cpp_fnptr_lock_{cls.CppName}";
             sb.AppendLine($"// {cls.FullName}: {poolSize}-slot delegate pool + per-slot C-ABI thunks.");
-            sb.AppendLine($"static Dn2CppObject* {pool}[{poolSize}];");
+            sb.AppendLine($"static DN2CPP_GC_STATIC_ROOT Dn2CppObject* {pool}[{poolSize}];");
+            sb.AppendLine($"static std::atomic_flag {poolLock} = ATOMIC_FLAG_INIT;");
             var thunkAddrs = new List<string>();
             for (int i = 0; i < poolSize; i++)
             {
                 string invokeCall = $"dginvoke_{cls.CppName}({string.Join(", ", callArgs)})";
                 sb.AppendLine($"static {nativeRet} dn2cpp_fnptrtramp_{cls.CppName}_{i}({string.Join(", ", sigParams)})");
                 sb.AppendLine("{");
+                sb.AppendLine("    dn2cpp_native_callback_prologue();");
                 sb.AppendLine($"    auto* dg = ({cls.CppStructName}*){pool}[{i}];");
-                sb.AppendLine(rt.IsVoid ? $"    {invokeCall};" : $"    return ({nativeRet}){invokeCall};");
+                sb.AppendLine("    try");
+                sb.AppendLine("    {");
+                sb.AppendLine(rt.IsVoid ? $"        {invokeCall};" : $"        return ({nativeRet}){invokeCall};");
+                sb.AppendLine("    }");
+                sb.AppendLine("    catch (Dn2CppException& __ex)");
+                sb.AppendLine("    {");
+                sb.AppendLine("        dn2cpp_report_boundary_exception(__ex.obj, \"a native delegate callback\");");
+                sb.AppendLine("        dn2cpp_fail(\"native delegate callback: unhandled managed exception\");");
+                sb.AppendLine("    }");
                 sb.AppendLine("}");
                 thunkAddrs.Add($"(void*)&dn2cpp_fnptrtramp_{cls.CppName}_{i}");
             }
@@ -4705,21 +4718,30 @@ internal sealed partial class CppEmitter
             sb.AppendLine("{");
             sb.AppendLine("    if (dg == nullptr)");
             sb.AppendLine("        dn2cpp_throw_argument_null();");
+            sb.AppendLine("    // A callback can arrive on a native executor thread as soon as the pointer");
+            sb.AppendLine("    // is published. Enable its collector-registration prologue before publishing.");
+            sb.AppendLine("    dn2cpp_enable_native_delegate_callback_gc_registration();");
+            sb.AppendLine($"    while ({poolLock}.test_and_set(std::memory_order_acquire)) {{ }}");
             sb.AppendLine("    // Already parked: the same instance returns the same pointer (.NET identity).");
             sb.AppendLine($"    for (int32_t i = 0; i < {poolSize}; i++)");
             sb.AppendLine($"        if ({pool}[i] == dg)");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            {poolLock}.clear(std::memory_order_release);");
             sb.AppendLine($"            return {thunks}[i];");
-            sb.AppendLine("    // Claim the first free slot. The scan-then-store is not atomic: two threads");
-            sb.AppendLine("    // registering distinct delegates concurrently could claim the same slot; a CAS");
-            sb.AppendLine("    // per slot would harden this if multi-threaded marshalling ever needs it.");
+            sb.AppendLine("        }");
+            sb.AppendLine("    // Serialize scan-and-claim so concurrent marshalling cannot alias two delegates");
+            sb.AppendLine("    // onto one thunk. Static roots are rescanned by incremental GC, and each slot");
+            sb.AppendLine("    // is immutable after publication, so its store and thunk reads stay raw.");
             sb.AppendLine($"    for (int32_t i = 0; i < {poolSize}; i++)");
             sb.AppendLine($"        if ({pool}[i] == nullptr)");
             sb.AppendLine("        {");
             sb.AppendLine($"            {pool}[i] = dg;");
+            sb.AppendLine($"            {poolLock}.clear(std::memory_order_release);");
             sb.AppendLine($"            return {thunks}[i];");
             sb.AppendLine("        }");
+            sb.AppendLine($"    {poolLock}.clear(std::memory_order_release);");
             sb.AppendLine($"    dn2cpp_fail(\"Marshal.GetFunctionPointerForDelegate: thunk pool exhausted for "
-                + $"{cls.FullName} ({poolSize} live function pointers per delegate type)\");");
+                + $"{cls.FullName} ({poolSize} distinct function pointers per delegate type per process)\");");
             sb.AppendLine("}");
 
             // The reverse direction (Marshal.GetDelegateForFunctionPointer<T>): a

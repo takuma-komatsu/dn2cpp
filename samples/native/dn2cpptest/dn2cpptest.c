@@ -12,6 +12,8 @@
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>  // SetLastError — the slot [DllImport(SetLastError=true)] reads here
+#elif !defined(__EMSCRIPTEN__)
+#  include <pthread.h>
 #endif
 
 int32_t dn2cpptest_add(int32_t a, int32_t b) { return a + b; }
@@ -872,6 +874,54 @@ void dn2cpptest_store_cb(int32_t (*fn)(int32_t))
 int32_t dn2cpptest_invoke_stored(int32_t x)
 {
     return g_stored_cb ? g_stored_cb(x) : -1;
+}
+
+typedef struct
+{
+    int32_t x;
+    int32_t result;
+} dn2cpptest_stored_thread_args;
+
+#ifdef _WIN32
+static DWORD WINAPI dn2cpptest_stored_thread_main(void *opaque)
+#else
+static void *dn2cpptest_stored_thread_main(void *opaque)
+#endif
+{
+    dn2cpptest_stored_thread_args *args = (dn2cpptest_stored_thread_args *)opaque;
+    args->result = g_stored_cb ? g_stored_cb(args->x) : -1;
+#ifdef _WIN32
+    return 0;
+#else
+    return NULL;
+#endif
+}
+
+// Invoke a stored callback on a short-lived native thread. Joining here keeps the C ABI
+// deterministic while the callback itself runs on a stack the managed GC has never seen.
+int32_t dn2cpptest_invoke_stored_thread(int32_t x)
+{
+#ifdef __EMSCRIPTEN__
+    // The wasm runtime is deliberately threadless. Keep this section exercising the
+    // stored unmanaged function pointer without pretending a worker can be created.
+    return g_stored_cb ? g_stored_cb(x) : -1;
+#else
+    dn2cpptest_stored_thread_args args = { x, -2 };
+#ifdef _WIN32
+    HANDLE thread = CreateThread(NULL, 0, dn2cpptest_stored_thread_main, &args, 0, NULL);
+    if (thread == NULL)
+        return -3;
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+#else
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, dn2cpptest_stored_thread_main, &args) != 0)
+        return -3;
+    if (pthread_join(thread, NULL) != 0)
+        return -4;
+#endif
+    return args.result;
+#endif
 }
 
 // ---- collision-filter-shaped STORED callback: bool(BlittableStruct*) ----

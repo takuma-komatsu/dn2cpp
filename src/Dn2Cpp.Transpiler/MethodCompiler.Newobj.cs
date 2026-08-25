@@ -187,12 +187,12 @@ internal sealed partial class MethodCompiler
                 // THIS call returns — the native side may STORE it and invoke it on a later
                 // frame (the collision-filter / error-callback idiom), which the transpiler
                 // cannot statically rule out and which a slot restored on return would turn
-                // into silent UB. The pool holds 8 live delegates per delegate TYPE (a
-                // reused delegate maps to one slot); a 9th DISTINCT live delegate of that
-                // type traps loudly (dn2cpp_fail) rather than corrupting dispatch. Every
-                // delegate parameter marshals this way: the qsort/apply/reduce synchronous
-                // idiom works too (the parked pointer is valid during the call as well), at
-                // the cost of that bounded, loud capacity.
+                // into silent UB. The pool holds 8 distinct delegates per delegate TYPE
+                // over the program lifetime (a reused delegate maps to one slot); a 9th
+                // distinct delegate traps loudly (dn2cpp_fail) rather than corrupting
+                // dispatch. Every delegate parameter marshals this way: the
+                // qsort/apply/reduce synchronous idiom works too (the parked pointer is valid
+                // during the call as well), at the cost of that bounded, loud capacity.
                 var dgCls = pts[i].Class!;
                 _c.MarshalFnPtrDelegates.Add(dgCls);
                 _c.NoteForceEmit(dgCls);

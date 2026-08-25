@@ -2380,21 +2380,26 @@ void dn2cpp_gc_set_self_roots_default(int on);
 // runs on the engine's main thread, not off-thread. Inert under DN2CPP_NO_GC.
 // Call before the first finalizable allocation (before dn2cpp_runtime_init).
 void dn2cpp_gc_set_manual_finalizer_drain(int on);
-// Called at the top of every [UnmanagedCallersOnly] method body (the transpiler
-// injects it). Default: a cheap no-op. When enabled via
-// dn2cpp_set_native_callback_gc_registration, it registers the calling thread with
-// the collector on first entry (thread_local guarded, register-once-and-leave —
-// host threads are persistent), so a callback invoked from a thread the GC has
-// never seen can allocate and survive a stack scan. Inert under DN2CPP_NO_GC.
+// Called at the top of every [UnmanagedCallersOnly] method body and marshalled
+// delegate thunk (the transpiler injects it). Default: a cheap no-op. Delegate
+// marshalling latches it on before publishing a thunk; a native host controls an
+// independent opt-in via dn2cpp_set_native_callback_gc_registration. It registers
+// the calling thread on first entry and unregisters a newly registered thread from
+// its thread_local destructor, so both executor workers and short-lived native
+// threads can allocate and survive a stack scan. Inert under DN2CPP_NO_GC.
 // extern "C": both hooks are host-facing ABI — a dlopen host resolves the setter
 // by unmangled name (dlsym) from a shared-library build.
 extern "C" DN2CPP_RT_EXPORT void dn2cpp_native_callback_prologue();
-// Enable the GC registration performed by dn2cpp_native_callback_prologue
-// (default off — the same inert-unless-enabled shape as
-// dn2cpp_gc_set_manual_finalizer_drain). A host that invokes exported
-// [UnmanagedCallersOnly] entry points from threads it spawned itself flips this on
-// before those calls (e.g. via dlsym on this symbol from a shared-library build).
+// Control the host opt-in for GC registration performed by
+// dn2cpp_native_callback_prologue. Disabling it cannot revoke the one-way latch
+// set by a published delegate thunk, whose native owner may retain the pointer. A
+// host that invokes exported [UnmanagedCallersOnly] entry points from threads it
+// spawned itself flips this on before those calls (e.g. via dlsym on this symbol
+// from a shared-library build).
 extern "C" DN2CPP_RT_EXPORT void dn2cpp_set_native_callback_gc_registration(int on);
+// Latch callback registration on before a delegate thunk becomes visible to
+// native code. A published function pointer has no observable retirement point.
+void dn2cpp_enable_native_delegate_callback_gc_registration();
 // Register the calling thread with the collector, once, and never unregister —
 // the shared hook the Godot lanes call at the top of every entry point the
 // engine can invoke (the engine calls them from threads it spawned itself,

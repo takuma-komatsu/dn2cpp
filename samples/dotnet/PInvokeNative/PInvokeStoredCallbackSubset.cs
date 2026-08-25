@@ -17,6 +17,8 @@ internal static class Program
     private static extern void dn2cpptest_store_cb(StoredCb fn);
     [DllImport("dn2cpptest")]
     private static extern int dn2cpptest_invoke_stored(int x);
+    [DllImport("dn2cpptest")]
+    private static extern int dn2cpptest_invoke_stored_thread(int x);
 
     private static StoredCb? s_root;
 
@@ -86,5 +88,28 @@ internal static class Program
         dn2cpptest_filter_install(s_filter);
         Console.WriteLine(dn2cpptest_filter_run(7, 3));  // 1011
         Console.WriteLine(dn2cpptest_filter_run(2, 9));  // 2011
+
+        // The native creates a thread the managed runtime has never seen and dispatches
+        // through the same stored pointer there. Allocating enough garbage to collect from
+        // inside the callback makes registration observable: without the thunk prologue,
+        // Boehm aborts instead of merely returning a wrong value.
+        s_root = x =>
+        {
+            int sum = 0;
+            for (int i = 0; i < x; i++)
+            {
+                int[] a = new int[16];
+                a[3] = i;
+                sum += a[3] % 7;
+            }
+            return sum;
+        };
+        dn2cpptest_store_cb(s_root);
+        Console.WriteLine(dn2cpptest_invoke_stored_thread(400000));
+
+        // The worker above is short-lived. A second collection after its TLS destructor
+        // ran proves the collector no longer retains the dead native thread registration.
+        GC.Collect();
+        Console.WriteLine("foreign callback done");
     }
 }

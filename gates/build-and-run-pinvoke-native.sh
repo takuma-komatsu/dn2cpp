@@ -90,7 +90,7 @@ if is_msvc_compiler; then
     cp -f "$testlib_builddir/dn2cpptest.lib" "$LIBDIR/dn2cpptest.lib"
 else
     inflags=(); while IFS= read -r f; do inflags+=("$f"); done < <(install_name_flags "$libtest")
-    clang -O2 -fPIC -shared ${inflags[@]+"${inflags[@]}"} \
+    clang -O2 -fPIC -shared -pthread ${inflags[@]+"${inflags[@]}"} \
         samples/native/dn2cpptest/dn2cpptest.c -o "$libtest"
 fi
 
