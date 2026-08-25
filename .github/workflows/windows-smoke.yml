@@ -60,7 +60,7 @@ env:
   # The engine is a manual prerequisite everywhere else (nothing in gates/
   # downloads it). Here it is pinned to the same version gates/_common.sh
   # verifies, and fetched from the public godot-builds release.
-  GODOT_VERSION: 4.7.1-stable
+  GODOT_VERSION: 4.7.2-stable
 
 jobs:
   # ── The cheap, high-confidence half: does the transpiler still take C# to a

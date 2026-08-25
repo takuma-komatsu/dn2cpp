@@ -78,8 +78,8 @@ cd "$(dirname "$0")/.."
 
 # The upstream commit the fork is based on. Not the fork's HEAD: that moves with
 # every fork commit, while the contract dn2cpp depends on is "dn2cpp/main
-# descends from this 4.7.1-stable commit, whose interop ABI we fingerprinted".
-BASE_COMMIT=a13da4feb8d8aefc283c3763d33a2f170a18d541
+# descends from this 4.7.2-stable commit, whose interop ABI we fingerprinted".
+BASE_COMMIT=ed1daf0bf001b61586d9930840f2f1394092c079
 
 ROOT="${1:-${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}}"
 FORK="${DN2CPP_GODOT_FORK_CLONE:-$(dirname "$(pwd)")/godot-dn2cpp}"

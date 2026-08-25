@@ -30,7 +30,7 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_dotnet.sh"
 
 OUT=gates/out-godot-dotnet-lib
-PINNED_COMMIT=a13da4feb8d8aefc283c3763d33a2f170a18d541
+PINNED_COMMIT=ed1daf0bf001b61586d9930840f2f1394092c079
 ABI_EXPECTED=gates/expected/godot-dotnet-abi.sha256
 INTEROP_AGG_EXPECTED=gates/expected/godot-dotnet-interop-aggregates.txt
 

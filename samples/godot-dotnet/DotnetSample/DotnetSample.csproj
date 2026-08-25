@@ -1,4 +1,4 @@
-<Project Sdk="Godot.NET.Sdk/4.7.1">
+<Project Sdk="Godot.NET.Sdk/4.7.2">
   <!-- The Sdk version and TFM mirror what the pinned godot clone produces. The
        Sdk resolves from the local nuget feed via a nuget.config the gate
        generates next to this file (untracked: it holds a machine-specific path). -->

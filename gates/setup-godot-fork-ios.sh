@@ -28,7 +28,8 @@
 #
 # Idempotent: the download is skipped when the cached .tpz is there and
 # NON-EMPTY, the scons build when its product carries a provenance stamp naming
-# these settings (step 3 — the file name cannot), the final zip when it carries
+# both these settings and the engine sources (step 3 — the file name cannot),
+# the final zip when it carries
 # the engine-provenance stamp of the sources now in the fork AND is newer than
 # that library (FORCE=1 redoes the build + assembly); the verification always
 # runs.
@@ -78,7 +79,7 @@ echo "== 1/5 Resolving the engine version from the fork editor =="
 # Version parsing mirrors gates/setup-ios-export.sh, but reads the *fork*
 # editor rather than a PATH godot. Parse
 # "<major>.<minor>[.<patch>].<status>[.mono].<build>.<sha>", e.g.
-# "4.7.1.stable.mono.custom_build.a13da4feb" -> tag "4.7.1-stable", mono flavor.
+# "4.7.2.stable.mono.custom_build.ed1daf0bf" -> tag "4.7.2-stable", mono flavor.
 # The godot-builds release tag never carries the flavor — the mono variant is
 # a tpz filename variant (Godot_v<tag>_mono_export_templates.tpz).
 full_version="$("$FORK_EDITOR" --version 2>/dev/null | tail -1)"
@@ -149,15 +150,19 @@ echo "== 3/5 Building the simulator arm64 engine library (scons) =="
 # plain name — the very name a plain build writes, and a plain one splices into
 # the template as a simulator slice with no mono in it, which fails at run time
 # inside the exported app rather than here. The file name cannot carry the
-# answer, so the SETTINGS THAT PRODUCED IT are recorded beside it and the skip
-# reads the stamp: same placement and same rule as an engine binary's
+# answer, so the SETTINGS AND ENGINE SOURCES THAT PRODUCED IT are recorded
+# beside it and the skip reads the stamp: same placement and same rule as an
+# engine binary's
 # .engine-hash (gates/setup-godot-fork.sh), and as the .provenance stamp
 # gates/setup-ios-sim-template.sh writes for its own non-mono build of this
 # same library name. FORCE=1 still rebuilds; it is no longer the only way to
 # find out.
 SIM_SCONS_ARGS=(platform=ios target=template_debug arch=arm64
                 ios_simulator=yes module_mono_enabled=yes)
-SIM_PROVENANCE="${SIM_SCONS_ARGS[*]}"
+# Both terms are required. SCons arguments distinguish this mono simulator
+# library from another build using the same output name; engine provenance
+# makes a re-pin miss even when those arguments remain byte-for-byte identical.
+SIM_PROVENANCE="$ENGINE_PROVENANCE scons=${SIM_SCONS_ARGS[*]}"
 sim_lib="$FORK/bin/libgodot.ios.template_debug.arm64.simulator.a"
 sim_stamp="$sim_lib.provenance"
 sim_built="$(cat "$sim_stamp" 2>/dev/null || echo '<no stamp>')"

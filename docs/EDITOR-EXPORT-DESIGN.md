@@ -43,7 +43,7 @@ the fork drop-in compatible; the fork gates re-check the same fingerprint.
 
 ## 2. Fork strategy
 
-- **Base: `4.7.1-stable` (`a13da4feb8`)**, aligned with the 4.7 GDExtension lane
+- **Base: `4.7.2-stable` (`ed1daf0bf0`)**, aligned with the 4.7 GDExtension lane
   and the shipped `extension_api.json`.
 - **Local clone**: an independent clone with its own `.git`, defaulting to a
   sibling of the dn2cpp checkout (`DN2CPP_GODOT_FORK_CLONE` overrides), branch
@@ -480,10 +480,9 @@ retention; the macOS, Windows, iOS, Android and Web targets; and the
 distributable build — the editor `.app` and Web-template release assets and the
 release script that publishes them (§11).
 
-Remaining, tracked in `docs/STATUS.md`: notarization and the hardened-runtime
-entitlements audit for an editor that spawns a host `clang++` from outside the
-`.app` and cmake, ninja and Emscripten's clang from inside it, and the upstream
-re-pin to the next stable (§7).
+Remaining work is tracked in `docs/STATUS.md`, including notarization and the
+hardened-runtime entitlements audit for an editor that spawns a host `clang++`
+from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
 
 ## 7. Re-pin procedure (when moving the drop-in/fork base)
 
@@ -504,12 +503,15 @@ re-pin to the next stable (§7).
    | the fork's mono glue (step 2) | the same engine hash — the glue is the editor's output |
    | the fork's assemblies + feed + toolchain (step 4) | `tools_tree_hash` over the managed trees `build_assemblies.py` compiles |
    | the fork's desktop export template (step 5) | `<template>.provenance`, `godot_fork_engine_provenance` |
+   | the fork's iOS simulator library (`gates/setup-godot-fork-ios.sh` step 3) | `<library>.provenance`, `godot_fork_engine_provenance` plus the complete SCons argument vector |
 
    The three template zips built from the fork's engine rebuild themselves too
    and need no `FORCE=1` to notice a re-pin: each carries the same
    `<template>.provenance` stamp, the bake's skip reads it, and the consuming
-   gates refuse a template stamped with another engine. They are separate aids,
-   so re-run all three after a re-pin:
+   gates refuse a template stamped with another engine. The iOS aid also keys
+   its intermediate simulator library on that engine provenance, so it cannot
+   splice a library retained from the preceding pin into the rebuilt zip. They
+   are separate aids, so re-run all three after a re-pin:
 
    ```
    ./gates/setup-godot-fork-web.sh            # web_template.zip
@@ -527,10 +529,11 @@ re-pin to the next stable (§7).
 
    `cri_main_libs` needs nothing (a `CRI=1` run re-stages it unconditionally),
    and `bin-cache/` cannot go stale, being keyed on the engine tree hash.
-2. Diff the two ABI surfaces (`runtime_interop.cpp` callback block,
-   `ManagedCallbacks.cs`) against the old pin. If unchanged, the fingerprint in
-   `gates/expected/godot-dotnet-abi.sha256` stays; if changed, re-audit the
-   emitted `godotsharp_game_main_init` and re-freeze.
+2. Diff all three fingerprinted ABI surfaces (`runtime_interop.cpp` callback
+   block, `ManagedCallbacks.cs`, and `NativeFuncs.cs`) against the old pin. If
+   unchanged, the fingerprint in `gates/expected/godot-dotnet-abi.sha256`
+   stays; if changed, re-audit the emitted `godotsharp_game_main_init` and
+   re-freeze.
 3. Bump the pin constant in the gates, rebase `dn2cpp/main`, rebuild the fork
    cache, update `gates/expected/godot-fork-pin.txt`, re-run all Godot gates.
 

@@ -481,8 +481,8 @@ godot_editor_config_dir() {
 # parsed from `GODOT_BIN --version` (default $GODOT, then `godot`); the ONE
 # parser, so installer and detectors cannot drift. A fixed four-component cut
 # drops ".mono" and over-reads a 2-component version. Also sets:
-#   GODOT_TEMPLATE_VERSION_DIR  the echo ("4.7.1.stable.mono")
-#   GODOT_RELEASE_TAG           godot-builds tag ("4.7.1-stable"), never .mono
+#   GODOT_TEMPLATE_VERSION_DIR  the echo ("4.7.2.stable.mono")
+#   GODOT_RELEASE_TAG           godot-builds tag ("4.7.2-stable"), never .mono
 #   GODOT_VERSION_FLAVOR        ".mono" or ""
 #   GODOT_FULL_VERSION          raw --version line ("" if the probe failed)
 # Returns 1, everything empty, when missing or unparseable.

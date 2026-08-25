@@ -389,6 +389,27 @@ eq "$EED §1 'N engine surfaces' vs the lines of gates/expected/godot-dotnet-abi
 eq "$EED §1 ABI no-touch bullets vs the lines of gates/expected/godot-dotnet-abi.sha256" \
    "$abi_bullets" "$abi_lines"
 
+# setup-godot-fork-ios.sh shares one fixed simulator-library output name across
+# pins. Its stamp must therefore be the product of the source identity and the
+# build settings. This is deliberately a source-contract test: exercising the
+# wrong branch dynamically costs a full iOS SCons build. The synthetic old
+# stamp is the exact pre-engine-provenance format and proves that it cannot
+# satisfy the equality which licenses the skip after this format change.
+ios_setup=gates/setup-godot-fork-ios.sh
+sim_assignment=$(grep -F 'SIM_PROVENANCE=' "$ios_setup" | sed -n '1p')
+eq "iOS simulator provenance combines engine sources and SCons arguments" \
+   'SIM_PROVENANCE="$ENGINE_PROVENANCE scons=${SIM_SCONS_ARGS[*]}"' \
+   "$sim_assignment" \
+   "$ios_setup must make an unchanged argument vector miss after a re-pin"
+sim_skip_uses_provenance=$(grep -Fc '[ "$sim_built" = "$SIM_PROVENANCE" ]' "$ios_setup")
+eq "iOS simulator cache skip compares the recorded and wanted provenance" \
+   "1" "$sim_skip_uses_provenance"
+old_sim_stamp='platform=ios target=template_debug arch=arm64 ios_simulator=yes module_mono_enabled=yes'
+repinned_sim_provenance="engine=new-tree base=new-pin scons=$old_sim_stamp"
+[ "$old_sim_stamp" != "$repinned_sim_provenance" ] \
+    && ok "the pre-engine-provenance iOS simulator stamp misses after a re-pin" \
+    || bad "the pre-engine-provenance iOS simulator stamp still licenses a cache hit"
+
 echo "== 8/13 dist/release-notes-template.md — bound by its renderer =="
 # The template is rendered on a packaging host at release time, and that is the
 # only machine its two failure modes reach: an @@KEY@@ nothing binds dies mid-cut,

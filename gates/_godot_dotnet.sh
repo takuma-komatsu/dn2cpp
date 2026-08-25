@@ -84,7 +84,7 @@ godot_dotnet_root_ok() {
 #
 # It is generated rather than checked in because nuget.config cannot expand
 # environment variables, and the MSBuild NuGet SDK resolver — which resolves
-# Sdk="Godot.NET.Sdk/4.7.1" before any restore flag can apply — discovers config
+# Sdk="Godot.NET.Sdk/4.7.2" before any restore flag can apply — discovers config
 # by walking up from the project directory. So the machine-specific feed path has
 # to be *in the file*, and the file has to be *next to the project*.
 #

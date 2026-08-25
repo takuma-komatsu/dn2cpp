@@ -152,7 +152,7 @@ godot_dotnet_transpile() {
 
 OUT=gates/out-godot-dotnet-trim
 ROOT="$GODOT_DOTNET_ROOT"
-PINNED_COMMIT=a13da4feb8d8aefc283c3763d33a2f170a18d541
+PINNED_COMMIT=ed1daf0bf001b61586d9930840f2f1394092c079
 ABI_EXPECTED=gates/expected/godot-dotnet-abi.sha256
 
 if ! godot_dotnet_root_ok || [ ! -x "$GODOT_DOTNET_EDITOR" ] || [ ! -x "$GODOT_DOTNET_TEMPLATE" ] \

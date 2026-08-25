@@ -73,7 +73,7 @@ echo "== 1/4 Resolving the Godot template version =="
 # ios/android gates' template probes):
 #   "4.6.3.stable.official.7d41c59c4"       -> dir "4.6.3.stable",       tag "4.6.3-stable" (vanilla tpz)
 #   "4.7.stable.official.<sha>"             -> dir "4.7.stable",         tag "4.7-stable"   (vanilla tpz)
-#   "4.7.1.stable.mono.official.<sha>"      -> dir "4.7.1.stable.mono",  tag "4.7.1-stable" (mono tpz)
+#   "4.7.2.stable.mono.official.<sha>"      -> dir "4.7.2.stable.mono",  tag "4.7.2-stable" (mono tpz)
 # The template dir Godot's editor searches includes ".mono" for mono flavors,
 # but the godot-builds release tag never does — the flavor is a tpz filename
 # variant (Godot_v<tag>_mono_export_templates.tpz) rather than a tag suffix.

@@ -140,7 +140,7 @@ rm -rf "$PROJ/.godot" "$PROJ/bin" "$PROJ/obj" \
 # THIRD-PARTY project pinned to the Godot it shipped against (4.2.1 / net7.0 on
 # upstream master today), and nothing makes that track ours, so asserting either
 # without first writing it reports a pristine clone as a failure. The TFM has to
-# move with the Sdk, not merely alongside it: GodotSharp 4.7.1 targets net8.0, so
+# move with the Sdk, not merely alongside it: GodotSharp 4.7.2 targets net8.0, so
 # a project left at the sample's net7.0 fails restore before anything is built.
 # The pattern matches the ATTRIBUTE-LESS element only, leaving the sample's
 # `<TargetFramework Condition="...ios...">` line alone.

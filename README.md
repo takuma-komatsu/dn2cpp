@@ -53,7 +53,7 @@ One core, four ways to ship it:
   template stay stock and the source and scenes stay as they are. A
   [forked editor][fork] makes this flow one click.
   It indexes the engine's interop table by hard-coded position with no
-  runtime handshake, so it is **4.7.1-stable or nothing** — see the ABI pin
+  runtime handshake, so it is **4.7.2-stable or nothing** — see the ABI pin
   under Backends before shipping.
 - **GDExtension** — a distinct lane that emits a shared library for a
   stock engine with no .NET support compiled in. It does not use the
@@ -267,8 +267,8 @@ template; the fork changes editor tooling only.**
   the managed script bridge, so existing scenes bind as they are.
 - **Invoke.** `dotnet run --project src/Dn2Cpp.Cli -- <input.dll> --dotnet-module -o <outdir>`.
   Runtime backend: `runtime/dotnetmodule/`, CMake `DN2CPP_DOTNET_MODULE`.
-- **ABI pin — read this before shipping.** `godotengine/godot a13da4feb8`
-  (4.7.1-stable). The emitted library indexes the interop table **by
+- **ABI pin — read this before shipping.** `godotengine/godot ed1daf0bf0`
+  (4.7.2-stable). The emitted library indexes the interop table **by
   hard-coded position, with no runtime handshake**, so a mismatched engine
   build mis-dispatches silently rather than failing loudly. Two things hold
   it: the clone commit, in `gates/expected/godot-fork-pin.txt` and in each
@@ -859,7 +859,6 @@ headlessly.
   entitlements an editor needs to spawn a host `clang++` from outside the
   bundle and its own cmake, ninja, node and Emscripten clang from inside
   it.
-- **Re-pin the fork** to the next upstream Godot stable.
 - **Optimization** — the planned items are listed at the end of
   *Optimization* above.
 - **2D game showcase** — prove the pipeline on a real game scene rather
