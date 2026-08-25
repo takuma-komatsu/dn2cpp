@@ -282,6 +282,7 @@ relink_dead_strip() {
     rm -rf "$dst"; mkdir -p "$dst"
     cp "$src"/generated*.cpp "$src"/generated.h "$dst"/
     [ -f "$src/pinvoke-libs.txt" ] && cp "$src/pinvoke-libs.txt" "$dst"/
+    [ -f "$src/pinvoke-symbols.txt" ] && cp "$src/pinvoke-symbols.txt" "$dst"/
     ( export DN2CPP_EXTRA_CMAKE_ARGS="-DDN2CPP_STRIP=OFF"
       compile_console "$dst" "$name" )
     awk -v b="$(wc -c < "$src/$name" | tr -d ' ')" -v a="$(wc -c < "$dst/$name" | tr -d ' ')" -v f="$flags" 'BEGIN {
@@ -363,6 +364,7 @@ DN2CPP_SHIPPED="$OUT/dn2cpp-shipped"
 rm -rf "$DN2CPP_SHIPPED"; mkdir -p "$DN2CPP_SHIPPED"
 cp "$DN2CPP_BIN"/generated*.cpp "$DN2CPP_BIN"/generated.h "$DN2CPP_SHIPPED"/
 [ -f "$DN2CPP_BIN/pinvoke-libs.txt" ] && cp "$DN2CPP_BIN/pinvoke-libs.txt" "$DN2CPP_SHIPPED"/
+[ -f "$DN2CPP_BIN/pinvoke-symbols.txt" ] && cp "$DN2CPP_BIN/pinvoke-symbols.txt" "$DN2CPP_SHIPPED"/
 compile_console "$DN2CPP_SHIPPED" MinimalHello
 "./$DN2CPP_SHIPPED/MinimalHello"
 

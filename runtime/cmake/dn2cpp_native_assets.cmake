@@ -1,0 +1,32 @@
+function(dn2cpp_prefer_macos_exact_native_assets out_var)
+    set(_preferred "")
+    foreach(_asset IN LISTS ARGN)
+        set(_universal_shadowed FALSE)
+        if(_asset MATCHES "[/\\\\]runtimes[/\\\\]osx-universal[/\\\\]native[/\\\\]")
+            string(REGEX REPLACE
+                "[/\\\\]runtimes[/\\\\][^/\\\\]+[/\\\\]native[/\\\\].*$" ""
+                _universal_package_dir "${_asset}")
+            get_filename_component(_universal_name "${_asset}" NAME)
+            string(REGEX REPLACE "\\.(dylib|bundle|a)$" "" _universal_name "${_universal_name}")
+            string(REGEX REPLACE "^lib" "" _universal_name "${_universal_name}")
+            foreach(_exact_asset IN LISTS ARGN)
+                if(NOT _exact_asset MATCHES "[/\\\\]runtimes[/\\\\]osx-universal[/\\\\]native[/\\\\]")
+                    string(REGEX REPLACE
+                        "[/\\\\]runtimes[/\\\\][^/\\\\]+[/\\\\]native[/\\\\].*$" ""
+                        _exact_package_dir "${_exact_asset}")
+                    get_filename_component(_exact_name "${_exact_asset}" NAME)
+                    string(REGEX REPLACE "\\.(dylib|bundle|a)$" "" _exact_name "${_exact_name}")
+                    string(REGEX REPLACE "^lib" "" _exact_name "${_exact_name}")
+                    if(_universal_package_dir STREQUAL _exact_package_dir
+                            AND _universal_name STREQUAL _exact_name)
+                        set(_universal_shadowed TRUE)
+                    endif()
+                endif()
+            endforeach()
+        endif()
+        if(NOT _universal_shadowed)
+            list(APPEND _preferred "${_asset}")
+        endif()
+    endforeach()
+    set(${out_var} "${_preferred}" PARENT_SCOPE)
+endfunction()

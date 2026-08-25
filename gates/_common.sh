@@ -1461,6 +1461,121 @@ stage_binary() {
     mv -f "$dst.new" "$dst"
 }
 
+# stage_native_assets BUILDDIR OUT — publish a complete immutable generation.
+# The executable still points at the old generation until its later atomic swap.
+stage_native_assets() {
+    local builddir="$1" out="$2"
+    local manifest="$builddir/native-assets-publish.txt"
+    local root="$out/.dn2cpp-native"
+    local next="$out/.native-generation-next.txt"
+    local src relative generation="" name work="" final="" copied=0 actual_count
+    [ -f "$manifest" ] || {
+        echo "FAIL: native build emitted no staged-asset manifest: $manifest" >&2
+        return 1
+    }
+    mkdir -p "$root"
+    : > "$next"
+    while IFS= read -r src || [ -n "$src" ]; do
+        [ -n "$src" ] || continue
+        if [ "$DN2CPP_OS" = windows ]; then
+            src=$(cygpath -u "$src")
+        fi
+        [ -f "$src" ] || {
+            echo "FAIL: staged native asset is missing: $src" >&2
+            return 1
+        }
+        case "$src" in
+            "$builddir"/.dn2cpp-native/*/*) relative=${src#"$builddir"/} ;;
+            *) echo "FAIL: staged native asset is outside an immutable generation: $src" >&2; return 1 ;;
+        esac
+        relative=${relative#.dn2cpp-native/}
+        [ "${relative#*/}" = "$(basename "$relative")" ] \
+            || { echo "FAIL: invalid staged native asset path: $src" >&2; return 1; }
+        if [ -z "$generation" ]; then
+            generation=${relative%%/*}
+            case "$generation" in ''|*[!0-9a-f]*) echo "FAIL: invalid native generation: $generation" >&2; return 1 ;; esac
+            [ "${#generation}" -eq 20 ] \
+                || { echo "FAIL: invalid native generation length: $generation" >&2; return 1; }
+            work=$(mktemp -d "$root/.new-$generation.XXXXXX") || return 1
+            final="$root/$generation"
+            printf '%s\n' "$generation" > "$next"
+        elif [ "${relative%%/*}" != "$generation" ]; then
+            echo "FAIL: native build emitted more than one generation" >&2
+            rm -rf "$work"
+            return 1
+        fi
+        name="$(basename "$src")"
+        [ ! -e "$work/$name" ] || {
+            echo "FAIL: duplicate staged native asset name: $name" >&2
+            rm -rf "$work"
+            return 1
+        }
+        cp -f "$src" "$work/$name" || { rm -rf "$work"; return 1; }
+        copied=$((copied + 1))
+        if [ -n "${DN2CPP_TEST_NATIVE_ASSET_FAIL_AFTER:-}" ] \
+                && [ "$copied" -eq "$DN2CPP_TEST_NATIVE_ASSET_FAIL_AFTER" ]; then
+            echo "FAIL: injected native-generation copy failure after $copied asset(s)" >&2
+            return 1
+        fi
+    done < "$manifest"
+    if [ -n "$generation" ]; then
+        if [ -d "$final" ]; then
+            for src in "$work"/*; do
+                [ -f "$src" ] || continue
+                cmp -s "$src" "$final/$(basename "$src")" \
+                    || { echo "FAIL: native generation hash collision: $generation" >&2; rm -rf "$work"; return 1; }
+            done
+            actual_count=$(find "$final" -mindepth 1 -maxdepth 1 -type f ! -name .complete | wc -l | tr -d ' ')
+            [ "$actual_count" -eq "$copied" ] \
+                || { echo "FAIL: existing native generation has unexpected contents: $generation" >&2; rm -rf "$work"; return 1; }
+            [ -f "$final/.complete" ] || printf '%s\n' "$generation" > "$final/.complete"
+            rm -rf "$work"
+        else
+            printf '%s\n' "$generation" > "$work/.complete"
+            mv "$work" "$final" || { rm -rf "$work"; return 1; }
+        fi
+    fi
+}
+
+publish_native_assets() {
+    local builddir="$1" out="$2" bin="$3"
+    local current_file="$out/.native-generation-current.txt"
+    local previous_file="$out/.native-generation-previous.txt"
+    local next="$out/.native-generation-next.txt" current="" previous="" next_generation="" old abandoned
+    [ ! -f "$current_file" ] || current=$(cat "$current_file")
+    [ ! -f "$previous_file" ] || previous=$(cat "$previous_file")
+    if [ -z "$current" ] && [ -f "$out/.native-generations-published.txt" ]; then
+        current=$(sed -n '1p' "$out/.native-generations-published.txt")
+    fi
+    [ ! -f "$next" ] || next_generation=$(cat "$next")
+    for old in "$current" "$previous" "$next_generation"; do
+        [ -n "$old" ] || continue
+        case "$old" in ''|*[!0-9a-f]*) echo "FAIL: invalid native generation: $old" >&2; return 1 ;; esac
+        [ "${#old}" -eq 20 ] || { echo "FAIL: invalid native generation length: $old" >&2; return 1; }
+    done
+    stage_binary "$builddir/$bin" "$out/$bin" || return 1
+    if [ -n "$previous" ] && [ "$previous" != "$current" ] \
+            && [ "$previous" != "$next_generation" ]; then
+        rm -rf "$out/.dn2cpp-native/$previous" || return 1
+    fi
+    if [ -n "$current" ] && [ "$current" != "$next_generation" ]; then
+        printf '%s\n' "$current" > "$previous_file.new"
+        mv -f "$previous_file.new" "$previous_file"
+    elif [ -z "$current" ]; then
+        rm -f "$previous_file"
+    fi
+    if [ -n "$next_generation" ]; then
+        mv -f "$next" "$current_file"
+    else
+        rm -f "$current_file" "$next"
+    fi
+    for abandoned in "$out/.dn2cpp-native"/.new-*; do
+        [ -d "$abandoned" ] || continue
+        rm -rf "$abandoned" || return 1
+    done
+    rm -f "$out/.native-generations-published.txt"
+}
+
 # compile_console OUT BIN — build OUT/generated*.cpp into the native executable
 # OUT/BIN via CMake (runtime/CMakeLists.txt), importing the prebuilt runtime.
 compile_console() {
@@ -1472,7 +1587,9 @@ compile_console() {
     grep -q 'dn2cpp_main_exit' "$out/generated.cpp" \
         || { echo "FAIL: generated main does not exit through dn2cpp_main_exit" >&2; return 1; }
     cmake_build_app "$out" "$bin" ""
-    stage_binary "$(_cmake_app_builddir "$out")/$bin" "$out/$bin"
+    local builddir; builddir="$(_cmake_app_builddir "$out")"
+    stage_native_assets "$builddir" "$out" || return 1
+    publish_native_assets "$builddir" "$out" "$bin"
 }
 
 # compile_console_dual_backend OUT BIN — build OUT's generated C++ twice, on the
@@ -2106,7 +2223,7 @@ _gate_surface_lines() {
     st=0
     matched=$(printf '%s\n' "$listing" \
         | LC_ALL=C sort \
-        | grep -E '^(generated|pinvoke-libs\.txt$|base-abi\.json$)') || st=$?
+        | grep -E '^(generated|pinvoke-(libs|symbols)\.txt$|base-abi\.json$)') || st=$?
     # grep's contract: 1 is "no match", anything else is a real failure.
     [ "$st" -eq 1 ] && { printf 'no-generated\n'; return 0; }
     [ "$st" -eq 0 ] || return 1

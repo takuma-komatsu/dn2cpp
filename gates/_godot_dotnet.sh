@@ -166,7 +166,7 @@ godot_dotnet_transpile() {
 # It contributes nothing to the key, measured rather than assumed: everything it
 # writes into OUT is either dot-prefixed (the .cmake/.cmake-android build trees)
 # or named lib<Assembly>.<ext>, and _gate_surface_lines lists OUT with a bare
-# `ls -1` keeping only ^(generated|pinvoke-libs.txt|base-abi.json) — so it sees
+# `ls -1` keeping only generated files and P/Invoke/base-ABI sidecars — so it sees
 # neither. And no consumer needs it on a hit: all four of its callers
 # (godot-dotnet-{handshake,lib,sample,trim}) exit at gate_cache_hit_msg, before
 # their first mention of $DYLIB. That is a DIFFERENT four from the set at the top
