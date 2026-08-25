@@ -1,0 +1,5 @@
+magiconion first=67890
+magiconion second=2468
+status=OK,OK
+trailers=67890,2468
+transport=YetAnotherHttpHandler
