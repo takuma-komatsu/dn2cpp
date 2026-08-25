@@ -16,7 +16,7 @@
 - [PR #56](https://github.com/takuma-komatsu/dn2cpp/pull/56) で、Decimal のフィールドレイアウトおよび負のゼロ表現を .NET 準拠に修正し、ValueTask 早期読み出し拒否や Task.Run のキャンセル処理などランタイムコントラクトの乖離を解消しました
 - [PR #55](https://github.com/takuma-komatsu/dn2cpp/pull/55) で、MemoryPack の検証ゲートを追加しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/bab0cc5c557fde07f327f17ba4fee2268f84446d...HEAD> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/bab0cc5c557fde07f327f17ba4fee2268f84446d...b04c70d38cd4154a2311e7915822e2bf2b055509> を参照してください。
 
 ## アセット
 
