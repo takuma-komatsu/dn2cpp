@@ -3167,6 +3167,12 @@ internal sealed partial class MethodCompiler
             }
             : null;
 
+    /// <summary>CancellationToken is an intrinsic value struct whose equality is the
+    /// identity of its source. It is neither pointer-modeled nor orderable, so it does not
+    /// belong to the generic pointer or <see cref="IntrinsicValueTypeFn"/> arms.</summary>
+    internal static bool IsCancellationTokenValue(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { IsValueType: true, FullName: "System.Threading.CancellationToken" } };
+
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
@@ -3177,6 +3183,8 @@ internal sealed partial class MethodCompiler
             return PrimitiveHashExpr(keyType, key);
         if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
             return $"(int32_t)({Cast(key, "int32_t")})";
+        if (IsCancellationTokenValue(keyType))
+            return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
         // A reference-type key (a record/class with value equality, System.Type for
         // a record's EqualityContract, or plain object identity) dispatches its
         // GetHashCode override via the type-info slot, else an identity hash.
@@ -3321,6 +3329,7 @@ internal sealed partial class MethodCompiler
         || t is { Kind: TypeKind.Class, Class.IsEnum: true }
         || IsReferenceKeyType(t)
         || IntrinsicValueTypeFn(t) is not null
+        || IsCancellationTokenValue(t)
         || IntrinsicPointerValueType(t) is not null
         || (EqualityStructArm(t) is { } sc
             && (Compilation.EffectiveTypedEquals(sc) is not null
@@ -3366,6 +3375,8 @@ internal sealed partial class MethodCompiler
             string ect = CppTypes.Of(keyType);
             return $"(({Cast(a, ect)}) == ({Cast(b, ect)}) ? 1 : 0)";
         }
+        if (IsCancellationTokenValue(keyType))
+            return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
         // A reference-type key dispatches its Equals(object) override via the
         // type-info slot, else reference equality.
         if (IsReferenceKeyType(keyType))
@@ -3850,7 +3861,9 @@ internal sealed partial class MethodCompiler
         }
         switch (name)
         {
-            case "GetHashCode" when c.Kind == TypeKind.Primitive || c is { Kind: TypeKind.Class, Class.IsEnum: true }:
+            case "GetHashCode" when c.Kind == TypeKind.Primitive
+                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                || IsCancellationTokenValue(c):
             {
                 var receiver = Pop(); // managed pointer to the constrained primitive
                 string ct = CppTypes.Of(c);
@@ -3866,6 +3879,7 @@ internal sealed partial class MethodCompiler
             // mirrors the struct ToString devirtualization. ReachConstrainedImpl
             // pulls the impl into the tree).
             case "GetHashCode" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } ghs }
+                && !IsCancellationTokenValue(c)
                 && Compilation.EffectiveGetHashCode(ghs) is { } ghImpl:
             {
                 var receiver = Pop();
@@ -3880,6 +3894,7 @@ internal sealed partial class MethodCompiler
             // multi-word struct like SRM's Symbolic.BitVector) is excluded: it falls
             // through to EmitConstrainedCall, which devirtualizes to Equals(T).
             case "Equals" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } eqs }
+                && !IsCancellationTokenValue(c)
                 && Compilation.EffectiveEquals(eqs) is { } eqImpl
                 && !(IsTypedItfConstrained(handle, "System.IEquatable")
                      && Compilation.EffectiveTypedEquals(eqs) is not null):
@@ -3898,7 +3913,8 @@ internal sealed partial class MethodCompiler
             // instead. Distinguish the typed Equals (the value is on the stack) from
             // Object::Equals(object) (a boxed reference arg), which the arm below claims.
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
-                                || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                                || IsCancellationTokenValue(c))
                 && _stack.Count >= 2 && _stack[^1].Kind != StackKind.Ref:
             {
                 var arg = Pop();      // the other value (y)
@@ -3913,7 +3929,8 @@ internal sealed partial class MethodCompiler
             // dn2cpp_object_equals a managed pointer whose pointee it would read as an
             // object header (the struct twin below, for the same reason).
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
-                                || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                                || IsCancellationTokenValue(c))
                 && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
             {
                 var other = Pop();

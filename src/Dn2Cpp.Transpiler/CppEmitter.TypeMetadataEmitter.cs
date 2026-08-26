@@ -514,7 +514,9 @@ internal sealed partial class CppEmitter
         /// value type or interface roots at null, runtime-struct size where one exists, and
         /// the flag bits <c>dn2cpp_isinst</c>/
         /// <c>dn2cpp_type_is_*</c> read. No vtable and no member/interface tables — those are
-        /// intrinsic-dispatched — and no ty_ companion, so typeof interns lazily.
+        /// intrinsic-dispatched — and no ty_ companion, so typeof interns lazily. An
+        /// intrinsic value that can be boxed wires the object virtuals its runtime payload
+        /// can answer without a managed body.
         ///
         /// A CLOSED intrinsic generic also carries genericDef + genericArgs, minting the
         /// family's open-definition handle when no emitted instantiation did: without them
@@ -583,6 +585,17 @@ internal sealed partial class CppEmitter
                             + $"{MethodCompiler.VecWidthBytes(c.IntrinsicCppName)}, "
                             + $"{(c.IntrinsicCppName == "Dn2CppVectorT" ? 1 : 0)}>"
                         : "nullptr";
+                string getHash = "nullptr";
+                string equals = "nullptr";
+                if (MethodCompiler.IsCancellationTokenValue(TypeDesc.MakeClass(c)))
+                {
+                    string ghThunk = $"ghthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {ghThunk}(Dn2CppObject* o) {{ return (int32_t)(uintptr_t)(((Dn2CppCancelToken*)(o + 1))->source); }}");
+                    getHash = $"&{ghThunk}";
+                    string eqThunk = $"eqthunk_{c.CppName}";
+                    _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppCancelToken*)(a + 1))->source == ((Dn2CppCancelToken*)(b + 1))->source) ? 1 : 0; }}");
+                    equals = $"&{eqThunk}";
+                }
                 string genTail = "";
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))
                     genTail = $", nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, {GenericArgVector(c)}, {c.Context.TypeArgs.Length}";
@@ -590,7 +603,7 @@ internal sealed partial class CppEmitter
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
-                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, {toString}, nullptr, nullptr, {flags}{genTail} }};");
+                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, {toString}, {getHash}, {equals}, {flags}{genTail} }};");
             }
         }
 
