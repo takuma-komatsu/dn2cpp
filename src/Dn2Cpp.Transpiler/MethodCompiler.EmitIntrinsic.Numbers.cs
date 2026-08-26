@@ -1540,6 +1540,40 @@ internal sealed partial class MethodCompiler
                         : $"dn2cpp_assembly_full_name({o.Expr})");
                     return true;
                 }
+                // These CLR reference types are headerless by-value runtime handles. A
+                // direct Object.ToString call can lose StaticType at the call boundary,
+                // but the C++ representation remains unambiguous. Disposed/default handles
+                // are still non-null managed objects and retain this identity.
+                string? byValueReferenceName = o.CppType switch
+                {
+                    "Dn2CppMappedFile" => "System.IO.MemoryMappedFiles.MemoryMappedFile",
+                    "Dn2CppMappedView" => "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor",
+                    "Dn2CppMappedSafeHandle" => "Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle",
+                    _ => null,
+                };
+                if (byValueReferenceName is not null)
+                {
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({o.Expr}), {Literals.GetOrAdd(byValueReferenceName)})");
+                    return true;
+                }
+                // Some intrinsic CLR reference types are represented by-value in C++
+                // (the memory-map handles). They have no object header to dispatch
+                // through and no nullable representation to preserve. Their inherited
+                // Object.ToString is the static CLR type name; a declared override stays
+                // out so its intrinsic arm remains the only possible answer.
+                if (o.StaticType is { Kind: TypeKind.Class,
+                        Class: { IsValueType: false, IntrinsicCppName: not null } ir }
+                    && CppTypes.KindOf(o.StaticType) == StackKind.Struct
+                    && !_c.DeclaresIntrinsicToStringOverride(ir))
+                {
+                    string ti = TypeInfoExpr(o.StaticType)
+                        ?? throw new NotSupportedException(
+                            $"{Method.DeclaringClass.FullName}.{Method.Name}: ToString on {o.StaticType} has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({o.Expr}), dn2cpp_type_tostring({ti}))");
+                    return true;
+                }
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})");
                 return true;
             }

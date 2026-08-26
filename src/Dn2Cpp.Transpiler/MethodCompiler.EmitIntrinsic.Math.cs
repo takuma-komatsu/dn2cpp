@@ -826,6 +826,29 @@ internal sealed partial class MethodCompiler
             return $"dn2cpp_dateonly_format({Cast(val, "Dn2CppDateOnly")}, {formatExpr})";
         if (IsTimeOnly(t))
             return $"dn2cpp_timeonly_format({Cast(val, "Dn2CppTimeOnly")}, {formatExpr})";
+        if (IsDefaultNameExternalIntrinsic(t))
+        {
+            string ti = TypeInfoExpr(t)
+                ?? throw new NotSupportedException(
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: interpolation of {t} has no runtime type-info");
+            return $"((void)({val.Expr}), dn2cpp_type_tostring({ti}))";
+        }
+        if (t is { Kind: TypeKind.Class,
+                Class: { IntrinsicCppName: not null } intrinsic })
+        {
+            // ValueType/Object.ToString on an intrinsic with no declaration depends only
+            // on exact CLR identity. This also covers intrinsic reference types represented
+            // by-value in C++ (memory-map handles), which cannot use object-header dispatch.
+            // A declared intrinsic override stays unhandled here so an unmodeled custom
+            // formatter remains a loud transpile failure.
+            if (!_c.DeclaresIntrinsicToStringOverride(intrinsic))
+            {
+                string ti = TypeInfoExpr(t)
+                    ?? throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: interpolation of {t} has no emitted type-info");
+                return $"((void)({val.Expr}), dn2cpp_type_tostring({ti}))";
+            }
+        }
         if (t is { Kind: TypeKind.Class, Class: { IsValueType: true } vh })
         {
             // Value-type hole (e.g. $"{tuple}") — AppendFormatted<T> passes the

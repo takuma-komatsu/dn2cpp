@@ -576,7 +576,11 @@ internal sealed partial class CppEmitter
                 string genTail = "";
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))
                     genTail = $", nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, {GenericArgVector(c)}, {c.Context.TypeArgs.Length}";
-                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{Compilation.ReflectionTypeName(c)}\", {baseExpr}, {size}, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {flags}{genTail} }};");
+                string displayName = c.IntrinsicCppName == "Dn2CppTaskAwaiter"
+                    && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
+                        ? _e.ClosedNestedTypeDisplay(c)
+                        : Compilation.ReflectionTypeName(c);
+                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {flags}{genTail} }};");
             }
         }
 

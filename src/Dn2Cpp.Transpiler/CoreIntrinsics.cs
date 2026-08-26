@@ -1372,6 +1372,9 @@ internal static partial class CoreIntrinsics
         ["System.Threading.CancellationTokenSource"] = "&dn2cpp_cancel_source_type",
         ["System.Threading.Tasks.ParallelLoopState"] = "&dn2cpp_parallel_loop_state_type",
         ["System.Threading.Tasks.ParallelOptions"] = "&dn2cpp_parallel_options_type",
+        // ParallelLoopResult is the by-value peer of the two runtime parallel objects.
+        // Its box must carry the runtime struct's size and exact public CLR identity.
+        ["System.Threading.Tasks.ParallelLoopResult"] = "&dn2cpp_parallel_loop_result_type",
         // The event family: four CLR types over one Dn2CppEvent — but, unlike the
         // Task/ThreadLocal families next door, NOT instantiations of one type, so a single
         // shared handle would be merely lossy. One row each, on the real base chain the
@@ -1425,7 +1428,6 @@ internal static partial class CoreIntrinsics
     /// namespace could match.</para></summary>
     private static readonly Dictionary<string, string> s_runtimeTypeInfoNotRowed = new()
     {
-        ["dn2cpp_task_awaiter_type"] = "erasure: every TaskAwaiter(<T>)/ValueTaskAwaiter/Configured* form shares Dn2CppTaskAwaiter",
         ["dn2cpp_yield_awaiter_type"] = "erasure: YieldAwaitable+YieldAwaiter is nested, and its FullName is the bare \"YieldAwaiter\"",
         ["dn2cpp_threadlocal_type"] = "erasure: every ThreadLocal<T> shares one handle (T rides as data, not in the header)",
         ["dn2cpp_blockingcollection_type"] = "erasure: every BlockingCollection<T> shares one handle, ditto",

@@ -461,18 +461,14 @@ extern const Dn2CppType dn2cpp_double_type_obj;
 const Dn2CppTypeInfo dn2cpp_double_type =
     dn2cpp_ti_with_typeobject({ "System.Double", nullptr, 8, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_double, 10 }, &dn2cpp_double_type_obj);
 const Dn2CppType dn2cpp_double_type_obj = { { &dn2cpp_type_type }, &dn2cpp_double_type };
-// The intrinsic Task-family awaiter structs' boxed identities (see dn2cpp.h):
-// one shared handle per runtime struct, so a `box TAwaiter` in a real async
-// builder's IL has a defined type-info. The name is the family representative —
-// every ValueTaskAwaiter/Configured* form shares the Dn2CppTaskAwaiter layout.
-extern const Dn2CppType dn2cpp_task_awaiter_type_obj;
-const Dn2CppTypeInfo dn2cpp_task_awaiter_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.TaskAwaiter", nullptr, (int32_t)sizeof(Dn2CppTaskAwaiter), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE) }, &dn2cpp_task_awaiter_type_obj);
-const Dn2CppType dn2cpp_task_awaiter_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_awaiter_type };
 extern const Dn2CppType dn2cpp_yield_awaiter_type_obj;
 const Dn2CppTypeInfo dn2cpp_yield_awaiter_type =
     dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, (int32_t)sizeof(Dn2CppYieldAwaiter), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE) }, &dn2cpp_yield_awaiter_type_obj);
 const Dn2CppType dn2cpp_yield_awaiter_type_obj = { { &dn2cpp_type_type }, &dn2cpp_yield_awaiter_type };
+extern const Dn2CppType dn2cpp_parallel_loop_result_type_obj;
+const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type =
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopResult", nullptr, (int32_t)sizeof(Dn2CppParallelLoopResult), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED) }, &dn2cpp_parallel_loop_result_type_obj);
+const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_loop_result_type };
 // The System.Decimal type-info lives in intrinsics/dn2cpp_system_decimal.cpp, and
 // the System.TimeSpan / DateTime / DateTimeOffset / DateOnly / TimeOnly ones in
 // intrinsics/dn2cpp_system_datetime.cpp — each next to the formatting, hashing and

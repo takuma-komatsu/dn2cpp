@@ -128,5 +128,7 @@ internal static class Program
         Console.WriteLine($"diskA0={MemoryMarshal.Read<int>(ap.Slice(48))}");
         Console.WriteLine($"diskA1={MemoryMarshal.Read<int>(ap.Slice(52))}");
         Console.WriteLine($"diskA2={MemoryMarshal.Read<int>(ap.Slice(56))}");
+        Console.WriteLine($"mmap tostring={mmf2.ToString()}|{acc2.ToString()}|{mmf2}|{acc2}");
+        Console.WriteLine($"mmap handle tostring={h.ToString()}|{h}");
     }
 }

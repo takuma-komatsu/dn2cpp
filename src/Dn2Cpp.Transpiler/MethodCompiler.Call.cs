@@ -347,9 +347,36 @@ internal sealed partial class MethodCompiler
         // struct pointer would otherwise reach dn2cpp_object_tostring.
         if (isCallvirt && _constrained is { } cn
             && (cn.Kind == TypeKind.Primitive || cn is { Kind: TypeKind.Class, Class.IsEnum: true }
-                || cn is { Kind: TypeKind.Class, Class.IsValueType: true })
+                || cn is { Kind: TypeKind.Class, Class.IsValueType: true }
+                || IsDefaultNameExternalIntrinsic(cn))
             && TryEmitValueConstrained(handle, cn))
             return;
+        // A generic/interpolation constrained call can close over an intrinsic CLR
+        // reference type that is represented by-value in C++ (memory-map handles).
+        // There is no object pointer to dereference or box; inherited ToString depends
+        // only on the exact CLR type. Keep a declared override on normal intrinsic
+        // dispatch so an unmodeled custom formatter remains loud.
+        if (isCallvirt && _constrained is { Kind: TypeKind.Class,
+                Class: { IsValueType: false, IntrinsicCppName: not null } vrr } vrc
+            && CppTypes.KindOf(vrc) == StackKind.Struct
+            && !_c.DeclaresIntrinsicToStringOverride(vrr)
+            && (handle.Kind switch
+                {
+                    HandleKind.MemberReference => _reader.GetString(_reader.GetMemberReference((MemberReferenceHandle)handle).Name),
+                    HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
+                    _ => "",
+                }) == "ToString"
+            && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
+        {
+            var receiver = Pop();
+            string ti = TypeInfoExpr(vrc)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {vrc} has no emitted type-info");
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+            _constrained = null;
+            return;
+        }
         // constrained. callvirt on a *reference* class/interface — a generic
         // parameter (e.g. ConcurrentDictionary<TKey,…>'s TKey) instantiated as a
         // reference type. Per ECMA III.2.1, the managed-pointer receiver is
@@ -3630,6 +3657,17 @@ internal sealed partial class MethodCompiler
             HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
             _ => "",
         };
+        if (IsDefaultNameExternalIntrinsic(c) && name == "ToString"
+            && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
+        {
+            var receiver = Pop();
+            string ti = TypeInfoExpr(c)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {c} has no runtime type-info");
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+            return true;
+        }
         // An intrinsic value type (Decimal / TimeSpan / DateTime) overriding an Object
         // virtual (ToString/GetHashCode/Equals) or a typed IEquatable/IComparable via
         // `constrained. callvirt`: its real corelib body is intrinsic and never emitted,
@@ -3640,6 +3678,24 @@ internal sealed partial class MethodCompiler
             var csig = handle.Kind == HandleKind.MemberReference
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
                 : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+            // ValueType.ToString on an intrinsic with no override is still observable:
+            // it returns the exact CLR type name. These values may be ref structs or
+            // pointer-represented handles, so boxing is neither legal nor necessary.
+            // Keep types with a real override on the intrinsic table: an unclassified
+            // formatter must fail loudly instead of silently degrading to a type name.
+            if (name == "ToString" && csig.ParameterTypes.Length == 0)
+            {
+                if (!_c.DeclaresIntrinsicToStringOverride(ivc))
+                {
+                    var receiver = Pop();
+                    string ti = TypeInfoExpr(c)
+                        ?? throw new NotSupportedException(
+                            $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {c} has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+                    return true;
+                }
+            }
             // A vector struct virtual reached via `constrained. callvirt` (e.g.
             // IEquatable<Vector128<T>>.Equals): dispatch with the closed element, like the
             // TypeSpec member path. Equals(object)/GetHashCode/ToString fall through.
@@ -3995,6 +4051,10 @@ internal sealed partial class MethodCompiler
                 return false;
         }
     }
+
+    private static bool IsDefaultNameExternalIntrinsic(TypeDesc t) =>
+        t is { Kind: TypeKind.External,
+            ExternalName: "System.Threading.Tasks.ParallelLoopResult" };
 
     /// <summary>The decoded signature of a <c>constrained.</c> callvirt's callee, from
     /// either token shape — used to tell the parameterless <c>object::ToString()</c> apart
