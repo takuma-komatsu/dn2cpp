@@ -72,6 +72,22 @@ done
 [ -f "$BUNDLE/prebuilt/host/dn2cpp-targets.cmake" ] || {
     echo "error: bundle carries no prebuilt/host/dn2cpp-targets.cmake (packaged with --no-prebuilt?)" >&2
     exit 1; }
+[ -f "$BUNDLE/prebuilt/host/key.txt" ] || {
+    echo "error: bundle carries no prebuilt/host/key.txt" >&2
+    exit 1; }
+HOST_PREBUILT_DEPLOYMENT_TARGET="$(sed -n \
+    's/^CMAKE_OSX_DEPLOYMENT_TARGET=//p' "$BUNDLE/prebuilt/host/key.txt")"
+if [ "$DN2CPP_OS" = macos ]; then
+    [ "$HOST_PREBUILT_DEPLOYMENT_TARGET" = "$MACOS_DESKTOP_DEPLOYMENT_TARGET" ] || {
+        echo "error: the macOS host prebuilt records deployment target" \
+            "'${HOST_PREBUILT_DEPLOYMENT_TARGET:-<empty>}', expected" \
+            "$MACOS_DESKTOP_DEPLOYMENT_TARGET" >&2
+        exit 1; }
+elif [ -n "$HOST_PREBUILT_DEPLOYMENT_TARGET" ]; then
+    echo "error: the $DN2CPP_OS host prebuilt unexpectedly records macOS deployment target" \
+        "$HOST_PREBUILT_DEPLOYMENT_TARGET" >&2
+    exit 1
+fi
 # The bundle exists so a machine with no C++ build tools can export; a smoke test
 # that uses the host's cmake proves the bundle only for machines that need no
 # bundle. Both configures below run these two and nothing on PATH.
@@ -130,7 +146,13 @@ echo "-- transpiling with the bundle's native dn2cpp (--dotnet-module, --auto-re
 #    have to be visible.
 BUILD="$WORK/build"
 echo "-- building the mono-module library from the bundle's runtime"
+SMOKE_HOST_CMAKE_ARGS=()
+if [ "$DN2CPP_OS" = macos ]; then
+    SMOKE_HOST_CMAKE_ARGS+=(
+        "-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DESKTOP_DEPLOYMENT_TARGET")
+fi
 "$SMOKE_CMAKE" -S "$BUNDLE/runtime" -B "$BUILD" -G Ninja "$SMOKE_MAKE_ARG" \
+    "${SMOKE_HOST_CMAKE_ARGS[@]}" \
     -DDN2CPP_DOTNET_MODULE=ON \
     -DDN2CPP_APP_DIR="$GEN" \
     -DDN2CPP_APP_NAME=DotnetSample 2>&1 | tee "$WORK/configure.log"

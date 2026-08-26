@@ -64,6 +64,15 @@ detect_os() {
 }
 DN2CPP_OS=${DN2CPP_OS:-$(detect_os)}
 
+# The deployment floor shared by host-built macOS drop-ins and the prebuilt
+# runtime they import. Keep it explicit: leaving either configure unset makes
+# clang adopt the packaging machine's SDK version, and their prebuilt keys then
+# disagree on the next SDK. libc++ exposes the runtime's floating-point
+# std::to_chars path from macOS 13.3, which is therefore the published floor.
+# The editor-export gate pins the sample preset to this value at both the
+# CMake-cache and Mach-O boundaries.
+MACOS_DESKTOP_DEPLOYMENT_TARGET=13.30
+
 # Windows's host toolchain is MSVC, so name it rather than making every caller
 # do it: unset, cmake dies on its own "No CMAKE_CXX_COMPILER could be found"
 # instead of reaching ensure_msvc_env's vcvarsall import. Anything else on

@@ -53,6 +53,9 @@
 #      guard. A refusal exists to convert a failure that would otherwise land
 #      minutes later, inside a compiler or a linker that names none of them,
 #      into one sentence; a refusal nothing reads back is a comment.
+#   6. The macOS drop-in carries the selected architecture's deployment target
+#      from the export preset. Both the CMake cache and the built Mach-O are
+#      asserted: one alone would allow the configure or compiler half to drift.
 #
 # Requires the artifacts of gates/setup-godot-fork.sh (via DN2CPP_GODOT_FORK_ROOT,
 # default ~/.cache/dn2cpp-godot-fork); prints SKIP and exits 0 when absent.
@@ -468,6 +471,33 @@ BUILD_DIR="$PROJ/.godot/mono/dn2cpp/build/$BUILD_SLOT"
 CMAKE_CACHE="$BUILD_DIR/CMakeCache.txt"
 [ -f "$CMAKE_CACHE" ] \
     || { echo "FAIL: no CMakeCache.txt in the build slot $BUILD_DIR" >&2; ls -la "$BUILD_DIR" >&2; exit 1; }
+
+# A host SDK newer than the export target otherwise becomes clang's implicit
+# deployment target. That makes the drop-in unloadable on systems the preset and
+# template still support, while a successful build says nothing about the drift.
+# Read the selected arm's preset value back at both boundaries: CMake received it
+# and the final Mach-O recorded it.
+if [ "$DN2CPP_OS" = macos ]; then
+    CACHED_DEPLOYMENT_TARGET="$(sed -n \
+        's/^CMAKE_OSX_DEPLOYMENT_TARGET:[A-Z][A-Z]*=//p' "$CMAKE_CACHE")"
+    if [ "$CACHED_DEPLOYMENT_TARGET" != "$MACOS_DESKTOP_DEPLOYMENT_TARGET" ]; then
+        echo "FAIL: CMake cached macOS deployment target" \
+            "'${CACHED_DEPLOYMENT_TARGET:-<absent>}', expected" \
+            "$MACOS_DESKTOP_DEPLOYMENT_TARGET from the arm64 preset" >&2
+        exit 1
+    fi
+
+    MACHO_DEPLOYMENT_TARGET="$(vtool -show-build "$DROPIN" 2>/dev/null \
+        | awk '/^[[:space:]]*minos / { print $2 }')"
+    MACHO_EXPECTED_DEPLOYMENT_TARGET="${MACOS_DESKTOP_DEPLOYMENT_TARGET%0}"
+    if [ "$MACHO_DEPLOYMENT_TARGET" != "$MACHO_EXPECTED_DEPLOYMENT_TARGET" ]; then
+        echo "FAIL: $DROPIN records macOS minos" \
+            "'${MACHO_DEPLOYMENT_TARGET:-<absent>}', expected" \
+            "$MACHO_EXPECTED_DEPLOYMENT_TARGET" \
+            "from the arm64 preset" >&2
+        exit 1
+    fi
+fi
 
 # The witness for "the runtime was not recompiled" is the vendored Boehm GC's
 # static library: it is built from the toolchain's own sources, nothing in the game
