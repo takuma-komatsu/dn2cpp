@@ -1070,6 +1070,13 @@ nocurlexport="$(export DN2CPP_NO_CURL=1; ensure_cmake_runtime)" || {
     echo "FAIL: the runtime does not build with -DDN2CPP_USE_CURL=OFF — the opt-out is broken" >&2
     exit 1; }
 nocurlruntimedir="$(dirname "$nocurlexport")"
+# The Windows interface-name lookup is a platform import, not an HTTP feature.
+# libcurl also links iphlpapi, so the default runtime can hide a missing direct
+# dependency; only this opt-out axis proves the runtime exports it on its own.
+if [ "$DN2CPP_OS" = windows ] && ! grep -q 'iphlpapi' "$nocurlexport"; then
+    echo "FAIL: the curl-less Windows runtime does not export iphlpapi to generated P/Invoke callers" >&2
+    exit 1
+fi
 curl_archives=$(find "$nocurlruntimedir" -name 'libcurl*.a' -o -name 'libcurl*.lib')   # captured, not `| grep -q .` — see section 7
 if [ -n "$curl_archives" ]; then
     echo "FAIL: a libcurl archive exists in the curl-less runtime build — the option was not obeyed" >&2

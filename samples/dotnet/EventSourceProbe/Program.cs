@@ -1,6 +1,7 @@
 using System;
-using System.Net;
 using System.Diagnostics.Tracing;
+using System.Globalization;
+using System.Net;
 
 // The framework EventSource non-void provider fold, driven end to end.
 //
@@ -28,6 +29,9 @@ internal static class Program
 {
     private static void Main()
     {
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+
         string host = Dns.GetHostName();
         Console.WriteLine("GetHostName non-empty: " + (host.Length > 0));
         Console.WriteLine("GetHostName is string: " + (host is string));
@@ -38,6 +42,19 @@ internal static class Program
         Console.WriteLine("base: " + asBase.ToString());
         object asObject = provider;
         Console.WriteLine("object: " + asObject.ToString());
+
+        // Unix IPAddress parsing maps a named IPv6 scope through
+        // SystemNative_InterfaceNameToIndex. Loopback's name is stable on the
+        // POSIX hosts this gate covers. Windows exercises its separate Winsock
+        // PAL with a deliberately absent name, whose stable index is zero.
+        bool windows = OperatingSystem.IsWindows();
+        string scopeName = windows
+            ? "dn2cpp-no-such-interface"
+            : OperatingSystem.IsMacOS() || OperatingSystem.IsFreeBSD() ? "lo0" : "lo";
+        long first = IPAddress.Parse("fe80::1%" + scopeName).ScopeId;
+        long second = IPAddress.Parse("fe80::1%" + scopeName).ScopeId;
+        Console.WriteLine("named IPv6 scope result valid: " + (windows ? first == 0 : first > 0));
+        Console.WriteLine("named IPv6 scope stable: " + (first == second));
     }
 }
 

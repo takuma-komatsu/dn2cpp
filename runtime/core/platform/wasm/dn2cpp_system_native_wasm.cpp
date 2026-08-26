@@ -24,6 +24,9 @@
 //     user MemberReference to Environment.TickCount64 reach through their real
 //     BCL bodies. In-CoreLib MethodDefinition calls to TickCount64 can instead
 //     lower to dn2cpp_tickcount64. The engine's Time API is a separate surface.
+//   * InterfaceNameToIndex is the named IPv6-scope parser's platform query. A
+//     browser exposes no host network-interface namespace, so every name has the
+//     POSIX API's not-found answer (zero) rather than becoming an unresolved import.
 //   * SysLog and Write are DebugProvider.WriteCore's two sinks — the debugger arm
 //     and the stderr arm — so any game that logs reaches both. Write takes an fd,
 //     not a path: it is not part of the file-I/O closure.
@@ -70,6 +73,17 @@
 #include <unistd.h> // getentropy, write
 
 extern "C" {
+
+// pal_networking.c SystemNative_InterfaceNameToIndex. Emscripten applications
+// have no host interface namespace to query: browser networking is mediated by
+// the host and does not expose interface indexes. Zero is if_nametoindex(3)'s
+// documented not-found result and is the answer the managed parser already handles.
+uint32_t SystemNative_InterfaceNameToIndex(char* interfaceName)
+{
+    if (interfaceName == nullptr)
+        errno = EINVAL;
+    return 0;
+}
 
 // pal_random.c SystemNative_GetCryptographicallySecureRandomBytes: the entropy
 // source behind Guid.NewGuid / RandomNumberGenerator. Returns 0 on success, -1 on

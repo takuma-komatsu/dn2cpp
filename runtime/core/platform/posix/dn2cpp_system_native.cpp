@@ -42,6 +42,7 @@
 #include <ctime>
 #include <dirent.h>
 #include <fcntl.h>
+#include <net/if.h>
 #include <pthread.h> // the LowLevelMonitor section (CoreLib's own mutex+condvar)
 #include <pwd.h>
 #include <sys/file.h>
@@ -358,6 +359,22 @@ void SystemNative_SetErrNo(int32_t error)
 int32_t SystemNative_GetHostName(uint8_t* name, int32_t nameLength)
 {
     return gethostname(reinterpret_cast<char*>(name), static_cast<size_t>(nameLength));
+}
+
+// pal_networking.c SystemNative_InterfaceNameToIndex: IPAddress's named IPv6
+// scope parser reaches this directly through InterfaceInfoPal. The native PAL
+// accepts the '%' delimiter as part of the input too, although the managed
+// caller normally strips it before transcoding the interface name to UTF-8.
+uint32_t SystemNative_InterfaceNameToIndex(char* interfaceName)
+{
+    if (interfaceName == nullptr)
+    {
+        errno = EINVAL;
+        return 0;
+    }
+    if (interfaceName[0] == '%')
+        interfaceName++;
+    return ::if_nametoindex(interfaceName);
 }
 
 // StrErrorR(platform errno, buffer, size) → the message (buffer, or a static
