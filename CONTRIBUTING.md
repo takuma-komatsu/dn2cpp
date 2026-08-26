@@ -17,7 +17,10 @@ The merge gate — `./gates/pre-merge.sh` — does not run there and cannot. Its
 header states each structural reason (a scons-built dn2cpp fork of the Godot
 editor, Xcode plus an iOS simulator, an Android NDK, a proprietary CRI package);
 read it there rather than trusting a summary. A maintainer runs it on a
-provisioned machine.
+provisioned machine. The Emscripten SDK is the one prerequisite pre-merge
+provisions itself (`gates/setup-emsdk.sh`); a host missing any other one still
+runs to completion, and the surfaces it cannot cover are reported red at the
+verdict — never green, never skipped.
 
 So a green pull request is not permission to merge — and equally, a pull request
 never goes red over a toolchain you cannot install.

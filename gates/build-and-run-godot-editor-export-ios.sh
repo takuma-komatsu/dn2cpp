@@ -52,54 +52,21 @@ BUNDLE_ID=org.dn2cpp.editorexportsample
 IOS_TEMPLATE="$FORK_ROOT/ios_template.zip"
 
 godot_fork_preflight
-if ! command -v xcodebuild >/dev/null 2>&1; then
-    gate_skip "xcodebuild not found — Xcode required for the iOS editor-export gate"
+if ! godot_fork_ios_ready "$IOS_TEMPLATE"; then
+    if [ "$FORK_IOS_READY_KIND" = prerequisite ]; then
+        gate_skip "$FORK_IOS_READY_WHY"
+    fi
+    echo "FAIL: $FORK_IOS_READY_WHY" >&2
+    exit 1
 fi
-if [ ! -f "$IOS_TEMPLATE" ]; then
-    gate_skip "no $IOS_TEMPLATE — run gates/setup-godot-fork-ios.sh"
-fi
-# Snapshot once, never `simctl … | grep -q` — under pipefail that reports 141 when
-# grep -q exits early, so a machine WITH simulators skips blaming Xcode. Full
-# reasoning at the same probe in gates/build-and-run-ios-sim-console.sh.
-_sim_devices="$(xcrun simctl list devices available 2>/dev/null || true)"
-if ! grep -q iPhone <<<"$_sim_devices"; then
-    gate_skip "no available iPhone simulator device"
-fi
-# Cheap tripwire on the template itself: a stock (unrepaired) ios.zip dropped
-# at the path would fail only minutes later, inside xcodebuild. Only the archs
-# after lipo's colon count — the slice's own path contains "arm64"
-# (ios-arm64_x86_64-simulator), which must not satisfy the check.
-_tmp="$(mktemp -d)"
-# `|| true`: a template with no simulator slice at all makes grep exit 1, which
-# under `set -e`/`pipefail` would abort the gate instead of reaching the skip
-# below — the skip path has to survive the very condition it exists to report.
-# The first match is taken off a captured string rather than with `| head -1`:
-# head quits after its line and the grep behind it dies of SIGPIPE, which
-# `pipefail` reports as the pipeline's status (see _common.sh's note beside
-# `set -o pipefail`).
-_sim_entries="$(unzip -l "$IOS_TEMPLATE" 2>/dev/null | grep -oE 'libgodot\.ios\.debug\.xcframework/ios-[a-z0-9_]*-simulator/libgodot\.a' || true)"
-_sim_entry="${_sim_entries%%$'\n'*}"
-if [ -n "$_sim_entry" ] && unzip -q "$IOS_TEMPLATE" "$_sim_entry" -d "$_tmp" 2>/dev/null \
-    && grep -q arm64 <<<"$(lipo -info "$_tmp/$_sim_entry" 2>/dev/null | LC_ALL=C sed 's/^.*: //')"; then
-    rm -rf "$_tmp"
-else
-    rm -rf "$_tmp"
-    gate_skip "$IOS_TEMPLATE has no arm64 debug simulator slice — re-run gates/setup-godot-fork-ios.sh"
-fi
+echo "iOS template: readable, current, arm64 simulator slice present"
 
 echo "== 1/9 Fork pin + interop-ABI tripwire =="
 godot_fork_pin_abi_check
 
-# The template is the second engine in this gate, and the arm64 probe above does
-# not see its VERSION: the preset points custom_template at it and Godot
-# validates that path with FileAccess::exists alone, so a zip spliced before a
-# re-pin exports, runs on the simulator and matches every expectation here while
-# shipping the older engine, which a re-pin has already produced once.
-# Live, before gate_cache_check, for the reason the preflight is:
-# `tmpl=` in the key fingerprints the stale zip itself, so a warm key replays a
-# green *because* nothing changed.
-godot_fork_template_check "$IOS_TEMPLATE" "iOS export template" \
-    "FORCE=1 gates/setup-godot-fork-ios.sh"
+# godot_fork_ios_ready above checked this second engine's provenance live, before
+# gate_cache_check, as well as the repaired simulator slice. The shared predicate
+# is also pre-merge's early refusal, so the two cannot disagree about readiness.
 
 # No local transpile happens here — the forked editor drives the whole pipeline
 # from the packaged toolchain — so the key is inputs-only: the self-hosted CLI,
