@@ -61,10 +61,17 @@
 #     only when a stamp disagrees, so a box whose cache is current pays a couple
 #     of tree hashes.
 #     The Web templates ride along because DN2CPP_REQUIRE_ALL=1 makes their
-#     absence a failure rather than a skip. The iOS template stays manual because
-#     its repair consumes Xcode and an official templates archive; its presence,
-#     provenance and host prerequisites are checked up front, so REQUIRE_ALL does
-#     not discover the manual work inside the suite.
+#     absence a failure rather than a skip, and the Emscripten SDK they need is
+#     unpacked here (gates/setup-emsdk.sh) when no mutable one resolves. The iOS
+#     template stays manual because its repair consumes Xcode and an official
+#     templates archive; its presence, provenance and host prerequisites are
+#     checked up front, so REQUIRE_ALL does not discover the manual work inside
+#     the suite. A HOST prerequisite this box lacks (no Xcode, no emcc even after
+#     the unpack) is not a refusal: the suites still run, the affected gates are
+#     red under REQUIRE_ALL, and the verdict lists the gaps. A suite red ONLY
+#     for such gates does not withhold the other configuration either; a suite
+#     with any other failure does. Only a repairable ARTIFACT — a stale or
+#     missing zip on a host that could build it — refuses.
 #
 # WHY THIS IS NOT A GATE. It runs the suite — twice. It lives beside
 # gates/verify-locks.sh and gates/measure-*.sh, outside the build-and-run-*.sh
@@ -83,11 +90,14 @@
 # lock machinery the suite itself runs under every time, and the console selfhost
 # harness emits what the suite's own gates transpile through, whereas nothing in
 # either suite can observe that a bucket's green was a fact about ja-JP.
-# gates/selfhost-emit.sh and the two gates/setup-godot-fork*.sh aids are in on a
-# different test again, and they are the only things that may be: they answer no
-# verdict at all — they produce the files the suites refuse to run without. That
-# is the whole entry condition, and "it is useful" is not it: dist/smoke-test.sh
-# is useful and stays out, because the suite already covers what it looks at.
+# gates/selfhost-emit.sh, the two gates/setup-godot-fork*.sh aids and
+# gates/setup-emsdk.sh are in on a different test again, and they are the only
+# things that may be: they answer no verdict at all — they produce the files the
+# suites refuse to run without. setup-emsdk.sh qualifies through the Web
+# templates: without the SDK they cannot be baked, and the suites refuse to run
+# without them. That is the whole entry condition, and "it is useful" is not it:
+# dist/smoke-test.sh is useful and stays out, because the suite already covers
+# what it looks at.
 #
 # WHY IT RE-DERIVES THE VERDICT INSTEAD OF TRUSTING THE EXIT CODE. The runner's
 # exit code and this script's verdict are not the same question, and the gap is
@@ -248,18 +258,21 @@ if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkweb" ]; then
     printf 'ok%s\n' "$probe_stale"
     exit 0
 fi
-# `=forkios` is a refusal probe, not a builder. The iOS template needs Xcode and
+# `=forkios` is a readiness probe, not a builder. The iOS template needs Xcode and
 # an official templates archive, so pre-merge never creates it; it does ensure a
 # REQUIRE_ALL run does not discover its absence or stale provenance hours later.
+# A `bad` answer carries the KIND godot_fork_ios_ready distinguishes — `artifact`
+# (repairable here) or `prerequisite` (this host cannot) — because the reader
+# refuses on one and continues red on the other.
 if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkios" ]; then
     source "$REPO/gates/_common.sh"
     source "$REPO/gates/_godot_fork.sh"
     godot_fork_resolve >/dev/null 2>&1 \
-        || { printf 'bad the fork worktree does not resolve\n'; exit 0; }
+        || { printf 'bad artifact the fork worktree does not resolve\n'; exit 0; }
     BASE_COMMIT="$(cat "$FORK_PIN_EXPECTED")"
     probe_ios="$FORK_ROOT/ios_template.zip"
     if ! godot_fork_ios_ready "$probe_ios"; then
-        printf 'bad %s\n' "$FORK_IOS_READY_WHY"
+        printf 'bad %s %s\n' "${FORK_IOS_READY_KIND:-artifact}" "$FORK_IOS_READY_WHY"
         exit 0
     fi
     printf 'ok current\n'
@@ -659,13 +672,27 @@ premerge_fork_web_state() {
 }
 
 # premerge_fork_ios_state — 0 when the manually-built iOS template and its host
-# prerequisites are ready, 1 with FORK_IOS_WHY otherwise.
+# prerequisites are ready, 1 with FORK_IOS_KIND (prerequisite|artifact) and
+# FORK_IOS_WHY otherwise. A probe that did not answer is read as `artifact`, the
+# refusing side: continuing on a guess is the failure this phase exists to avoid.
 premerge_fork_ios_state() {
-    local out="" tag="" why=""
+    local out="" tag="" kind="" why=""
     out=$(DN2CPP_PREMERGE_PROBE=forkios bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
-    read -r tag why <<<"$out" || :
+    read -r tag kind why <<<"$out" || :
+    FORK_IOS_KIND=${kind:-artifact}
     FORK_IOS_WHY=${why:-the iOS prerequisite probe returned nothing}
     [ "${tag:-}" = ok ]
+}
+
+# premerge_emsdk_argv — the pinned Emscripten SDK unpack, same shape and same
+# reason as premerge_fork_argv. It is idempotent and exits early once unpacked,
+# so running it is the cheap half of "does a mutable emcc resolve".
+premerge_emsdk_argv() {
+    PREMERGE_EMSDK_ARGV=()
+    if [ "${DN2CPP_PREMERGE_NO_CAFFEINATE:-0}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
+        PREMERGE_EMSDK_ARGV+=(caffeinate -i)
+    fi
+    PREMERGE_EMSDK_ARGV+=(bash "$REPO/gates/setup-emsdk.sh")
 }
 
 # ── the verdict, re-derived from the run's own artifacts ─────────────────────
@@ -673,13 +700,23 @@ premerge_fork_ios_state() {
 # premerge_verdict LABEL RC LOGDIR EXPECTED_GATES — 0 when the run is a genuine
 # green, 1 otherwise. Collects every problem rather than stopping at the first:
 # a run this long should hand back everything it knows in one pass.
+#
+# A red run is also classified. VERDICT_PREREQ_ONLY=1 when every problem is a
+# gate that called gate_skip under DN2CPP_REQUIRE_ALL=1 — its log carries
+# gate_skip's fixed FAIL marker — with the failed gates in VERDICT_PREREQ_GATES.
+# Such a run is still red (the merge needs a host that runs them), but it is not
+# the caller's reason to withhold the other configuration: those gates cannot go
+# green on this host whatever the tree says. A gate that failed for any other
+# reason, a skip, a cached record or a missing record makes the run plainly red.
 premerge_verdict() {
     local label="$1" rc="$2" logdir="$3" expected="$4"
     local timings="$logdir/_timings.txt"
     local skips="$logdir/_skips.txt"
     local fails="$logdir/_failures.txt"
-    local bad_count=0
+    local bad_count=0 plain_red=0 n_fail=0 n_prereq=0
     local n_lines n_ran n_other
+    VERDICT_PREREQ_ONLY=0
+    VERDICT_PREREQ_GATES=""
 
     if [ "$rc" -ne 0 ]; then
         bad "$label: the runner exited $rc."
@@ -693,8 +730,22 @@ premerge_verdict() {
     fi
 
     if [ -s "$fails" ]; then
-        bad "$label: $(wc -l < "$fails" | tr -d ' ') gate(s) FAILED:"
-        while IFS= read -r n; do note "failed: $n"; done < "$fails"
+        n_fail=$(wc -l < "$fails" | tr -d ' ')
+        bad "$label: $n_fail gate(s) FAILED:"
+        # run_gate names the gate's log after the gate: $LOGDIR/<gate>.log. A
+        # failure recorded without such a log (the runner's audit of gates that
+        # left no record) has no marker and is plainly red.
+        while IFS= read -r n; do
+            if grep -q '^FAIL: prerequisite absent, and DN2CPP_REQUIRE_ALL=1 demands every gate run:' \
+                "$logdir/$n.log" 2>/dev/null; then
+                note "failed: $n (prerequisite absent)"
+                n_prereq=$((n_prereq + 1))
+                VERDICT_PREREQ_GATES="${VERDICT_PREREQ_GATES:+$VERDICT_PREREQ_GATES, }$n"
+            else
+                note "failed: $n"
+                plain_red=1
+            fi
+        done < "$fails"
         bad_count=$((bad_count + 1))
     fi
 
@@ -726,6 +777,15 @@ premerge_verdict() {
     fi
 
     if [ "$bad_count" -ne 0 ]; then
+        # Prerequisite-only means: the failed gates all hit gate_skip, no skip
+        # or missing record, and the only non-'ran' records are those failures
+        # (a cached record would make n_other exceed them). The runner's own
+        # non-zero exit is the expected face of a failed gate, not extra news.
+        if [ "$n_fail" -gt 0 ] && [ "$plain_red" -eq 0 ] && [ "$n_prereq" -eq "$n_fail" ] \
+            && [ ! -s "$skips" ] && [ "$n_lines" -eq "$expected" ] && [ "$n_other" -eq "$n_fail" ]; then
+            VERDICT_PREREQ_ONLY=1
+            note "$label: prerequisite-only failures: $n_fail — every failed gate called gate_skip under REQUIRE_ALL."
+        fi
         return 1
     fi
     good "$label: $n_lines/$expected gates ran and passed, 0 skipped, 0 cached."
@@ -852,11 +912,28 @@ if [ "${DN2CPP_PREMERGE_SELFTEST:-0}" = "1" ]; then
     cat > "$FAKE/gates/run-all-gates.sh" <<'STUB'
 #!/usr/bin/env bash
 # Stub runner: records the config it was called with, writes the artifacts a
-# green suite writes, and exits the status this case asked for.
+# green suite writes, and exits the status this case asked for. With
+# DN2CPP_STUB_FAIL_<CONFIG>=prereq|mixed it fails gate02 the way run_gate records
+# a gate_skip under REQUIRE_ALL (the marker in $LOGDIR/gate02.log), and `mixed`
+# fails gate01 plainly beside it.
 mkdir -p "$LOGDIR"
 : > "$LOGDIR/_skips.txt"
 : > "$LOGDIR/_failures.txt"
-printf 'gate01 1 ran\ngate02 1 ran\n' > "$LOGDIR/_timings.txt"
+eval "fail_mode=\${DN2CPP_STUB_FAIL_$CONFIG:-}"
+case "$fail_mode" in
+    prereq|mixed)
+        printf 'FAIL: prerequisite absent, and DN2CPP_REQUIRE_ALL=1 demands every gate run: stub tool missing\n' > "$LOGDIR/gate02.log"
+        if [ "$fail_mode" = mixed ]; then
+            printf 'stub assertion failed\n' > "$LOGDIR/gate01.log"
+            printf 'gate01 1 failed\ngate02 1 failed\n' > "$LOGDIR/_timings.txt"
+            printf 'gate01\ngate02\n' > "$LOGDIR/_failures.txt"
+        else
+            printf 'gate01 1 ran\ngate02 1 failed\n' > "$LOGDIR/_timings.txt"
+            printf 'gate02\n' > "$LOGDIR/_failures.txt"
+        fi
+        ;;
+    *) printf 'gate01 1 ran\ngate02 1 ran\n' > "$LOGDIR/_timings.txt" ;;
+esac
 printf '%s\n' "$CONFIG" >> "$(dirname "$LOGDIR")/_stub_calls.txt"
 eval "exit \${DN2CPP_STUB_RC_$CONFIG:-0}"
 STUB
@@ -904,6 +981,18 @@ printf '%s\n' "$flavor" >> "${DN2CPP_STUB_FORKWEB_MARK:-/dev/null}"
 exit "${DN2CPP_STUB_FORKWEB_RC:-0}"
 WSTUB
     chmod +x "$FAKE/gates/setup-godot-fork-web.sh"
+    # Stub SDK unpack: records the call, and on success creates the READY file the
+    # stub resolver below reads — so a case can prove the phase re-probed after
+    # provisioning instead of trusting the unpack's exit 0.
+    cat > "$FAKE/gates/setup-emsdk.sh" <<'ESTUB'
+#!/usr/bin/env bash
+echo "stub emsdk unpack"
+printf 'called\n' >> "${DN2CPP_STUB_EMSDK_MARK:-/dev/null}"
+rc="${DN2CPP_STUB_EMSDK_RC:-0}"
+[ "$rc" != 0 ] || [ -z "${DN2CPP_STUB_EMSDK_READY:-}" ] || : > "$DN2CPP_STUB_EMSDK_READY"
+exit "$rc"
+ESTUB
+    chmod +x "$FAKE/gates/setup-emsdk.sh"
     # Stub HELPERS, not just stub scripts, and this pair is what lets the two fork
     # probes ANSWER inside the fake repo. The probes are the subject here — their
     # exit-code-to-state mapping is the thing under test — so the predicates
@@ -922,7 +1011,10 @@ cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
 DN2CPP_OS="${DN2CPP_STUB_OS:-linux}"
 EXE_EXT=
 first_line() { local x="$1"; printf '%s\n' "${x%%$'\n'*}"; }
-dn2cpp_emsdk_resolve() { return "${DN2CPP_STUB_EMSDK_RESOLVE:-0}"; }
+dn2cpp_emsdk_resolve() {
+    [ -n "${DN2CPP_STUB_EMSDK_READY:-}" ] && [ -f "$DN2CPP_STUB_EMSDK_READY" ] && return 0
+    return "${DN2CPP_STUB_EMSDK_RESOLVE:-0}"
+}
 emcc() { printf '%s\n' "${DN2CPP_STUB_EMCC_VERSION:-stub-emcc}"; }
 xcodebuild() { :; }
 lipo() { :; }
@@ -962,8 +1054,12 @@ godot_fork_web_template_fresh() {
 }
 godot_fork_ios_ready() {
     local zip="$1"
-    FORK_IOS_READY_KIND=artifact
+    FORK_IOS_READY_KIND="${DN2CPP_STUB_IOS_KIND:-artifact}"
     FORK_IOS_READY_WHY="the stub iOS template is not ready"
+    if [ "$FORK_IOS_READY_KIND" = prerequisite ]; then
+        FORK_IOS_READY_WHY="the stub host has no xcodebuild"
+        return 1
+    fi
     [ -f "$zip" ] \
         && [ "$(head -1 "$zip.provenance" 2>/dev/null || true)" = 'engine=stubengine base=stubbase' ]
 }
@@ -1000,6 +1096,8 @@ GFSTUB
         DN2CPP_GODOT_FORK_ROOT="${DN2CPP_STUB_FORKROOT:-$ST_FORKROOT}" \
         DN2CPP_STUB_FORK_MARK="$root/_fork_calls.txt" \
         DN2CPP_STUB_FORKWEB_MARK="$root/_forkweb_calls.txt" \
+        DN2CPP_STUB_EMSDK_MARK="$root/_emsdk_calls.txt" \
+        DN2CPP_STUB_EMSDK_READY="$root/_emsdk_ready" \
         DN2CPP_STUB_RC_Release="$rel_rc" \
         DN2CPP_STUB_RC_Debug="$dbg_rc" \
             bash "$FAKE/gates/pre-merge.sh" $extra >"$root/_out.txt" 2>&1 || rc=$?
@@ -1027,6 +1125,19 @@ GFSTUB
     e2e red-release  1 1 0 "Release,"
     e2e red-debug    1 0 1 "Release,Debug,"
     e2e keep-going   1 1 1 "Release,Debug," --keep-going
+
+    # A Release whose only failures are gate_skips under REQUIRE_ALL is red but
+    # does not withhold Debug: those gates cannot pass on this host, and the
+    # verdict lists them as a host gap. One plainly failed gate beside them
+    # withholds Debug as before.
+    DN2CPP_STUB_FAIL_Release=prereq e2e red-release-prereq-only 1 1 0 "Release,Debug,"
+    if grep -q 'host prerequisites absent here: Release: gate02 (prerequisite absent)' \
+        "$ST_TMP/e2e-red-release-prereq-only/_out.txt"; then
+        st_ok "red-release-prereq-only: the verdict lists the gate as a host gap"
+    else
+        st_bad "red-release-prereq-only: the verdict does not list gate02 as a host gap — see $ST_TMP/e2e-red-release-prereq-only/_out.txt"
+    fi
+    DN2CPP_STUB_FAIL_Release=mixed e2e red-release-mixed 1 1 0 "Release,"
 
     # Phase 0's three outcomes. The one that matters is the middle case: a red
     # culture harness must stop the suites BEFORE they run (empty call list), or
@@ -1154,20 +1265,61 @@ GFSTUB
         st_bad "fork-no-arm: refused without saying why — see $ST_TMP/e2e-fork-no-arm/_out.txt"
     fi
 
-    # The Web templates, on a box with no Emscripten SDK. The refusal is the
-    # branch that matters: DN2CPP_REQUIRE_ALL=1 makes an absent template a
-    # failure, this script does not provision SDKs, and a run that started the
-    # suites anyway would spend hours to reach the same answer.
+    # The iOS template's two not-ready shapes. A missing HOST prerequisite (no
+    # Xcode) continues: the suites run, forkios is red in the results, and the
+    # verdict names the gap — with no receipt, because red is red. A repairable
+    # ARTIFACT (the zip is absent on a host that could build it) keeps the exit 2
+    # refusal before the first suite.
+    DN2CPP_STUB_IOS_KIND=prerequisite e2e forkios-no-xcode 1 0 0 "Release,Debug,"
+    if grep -q 'forkios=RED' "$ST_TMP/e2e-forkios-no-xcode/_out.txt" \
+        && grep -q 'host prerequisites absent here' "$ST_TMP/e2e-forkios-no-xcode/_out.txt"; then
+        st_ok "forkios-no-xcode: suites ran, verdict names forkios=RED and the host gap"
+    else
+        st_bad "forkios-no-xcode: verdict lacks forkios=RED or the host gap — see $ST_TMP/e2e-forkios-no-xcode/_out.txt"
+    fi
+    ST_IOSLESS="$ST_TMP/forkroot-iosless"
+    mkdir -p "$ST_IOSLESS"
+    for f in web_template.zip web_template.zip.provenance web_template_cri.zip \
+            web_template_cri.zip.provenance web_emcc.txt web_emcc_cri.txt; do
+        cp "$ST_FORKROOT/$f" "$ST_IOSLESS/$f"
+    done
+    DN2CPP_STUB_FORKROOT="$ST_IOSLESS" e2e forkios-stale-artifact 2 0 0 ""
+    if grep -q 'setup-godot-fork-ios.sh' "$ST_TMP/e2e-forkios-stale-artifact/_out.txt"; then
+        st_ok "forkios-stale-artifact: refused naming the iOS aid, before the first suite"
+    else
+        st_bad "forkios-stale-artifact: refused without naming gates/setup-godot-fork-ios.sh"
+    fi
+
+    # The Web templates, on a box with no mutable Emscripten SDK. The SDK is
+    # provisioned, not refused: the phase runs gates/setup-emsdk.sh once, re-probes,
+    # and bakes. When the unpack fails the suites still run and forkweb is a red
+    # host gap at the verdict, not a withheld run.
     ST_WEBLESS="$ST_TMP/forkroot-webless"
     mkdir -p "$ST_WEBLESS"
     cp "$ST_FORKROOT/ios_template.zip" "$ST_WEBLESS/ios_template.zip"
     cp "$ST_FORKROOT/ios_template.zip.provenance" "$ST_WEBLESS/ios_template.zip.provenance"
     DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
-        e2e forkweb-no-emcc 1 0 0 ""
-    if grep -q 'setup-emsdk.sh' "$ST_TMP/e2e-forkweb-no-emcc/_out.txt"; then
-        st_ok "forkweb-no-emcc: refused naming the SDK aid, before the first suite"
+        e2e forkweb-provision 0 0 0 "Release,Debug,"
+    ST_EMSDK_CALLS="$(cat "$ST_TMP/e2e-forkweb-provision/_emsdk_calls.txt" 2>/dev/null | tr '\n' ',')"
+    ST_BAKED="$(cat "$ST_TMP/e2e-forkweb-provision/_forkweb_calls.txt" 2>/dev/null | tr '\n' ',')"
+    if [ "$ST_EMSDK_CALLS" = "called," ] && [ "$ST_BAKED" = "stock,cri," ]; then
+        st_ok "forkweb-provision: the SDK was unpacked once, then both flavors baked"
     else
-        st_bad "forkweb-no-emcc: refused without naming gates/setup-emsdk.sh"
+        st_bad "forkweb-provision: emsdk calls [$ST_EMSDK_CALLS] (want [called,]), bakes [$ST_BAKED] (want [stock,cri,])"
+    fi
+    if grep -q '^forkweb: rebaked' "$ST_TMP/e2e-forkweb-provision/_receipt.txt" 2>/dev/null; then
+        st_ok "forkweb-provision: the receipt records the rebake"
+    else
+        st_bad "forkweb-provision: the receipt does not record the rebake"
+    fi
+    DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_EMSDK_RC=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-provision-red 1 0 0 "Release,Debug,"
+    if grep -q 'forkweb=RED' "$ST_TMP/e2e-forkweb-provision-red/_out.txt" \
+        && grep -q 'host prerequisites absent here' "$ST_TMP/e2e-forkweb-provision-red/_out.txt" \
+        && grep -q '_emsdk.log' "$ST_TMP/e2e-forkweb-provision-red/_out.txt"; then
+        st_ok "forkweb-provision-red: suites ran, verdict names forkweb=RED, the host gap and _emsdk.log"
+    else
+        st_bad "forkweb-provision-red: verdict lacks forkweb=RED, the host gap or _emsdk.log — see $ST_TMP/e2e-forkweb-provision-red/_out.txt"
     fi
 
     # The bake arm itself, reachable on any host: EMSDK set is what the phase
@@ -1981,6 +2133,8 @@ if [ "$DRY_RUN" = "1" ]; then
         printf '\n  godot fork iOS template (manual prerequisite):\n'
         if premerge_fork_ios_state; then
             printf '    current and host prerequisites are available\n'
+        elif [ "$FORK_IOS_KIND" = prerequisite ]; then
+            printf '    %s — a host prerequisite; this run would continue, and the iOS gates go red at the verdict\n' "$FORK_IOS_WHY"
         else
             printf '    %s — this pre-merge run would refuse before its suites\n' "$FORK_IOS_WHY"
         fi
@@ -1989,6 +2143,12 @@ if [ "$DRY_RUN" = "1" ]; then
         if [ -z "$FORK_WEB_STALE" ]; then
             printf '    both flavors are baked from these engine sources — NOT rebaked\n'
         else
+            if [ "$FORK_WEB_SDK" != 1 ]; then
+                premerge_emsdk_argv
+                printf '    no mutable emcc resolves; this would run first, then bake:\n      '
+                printf '%s ' "${PREMERGE_EMSDK_ARGV[@]}"
+                printf '\n'
+            fi
             for flavor in $FORK_WEB_STALE; do
                 premerge_fork_web_argv "$flavor"
                 printf '    %s is absent or stale; this would run:\n      ' "$flavor"
@@ -2019,7 +2179,15 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 mkdir -p "$LOGROOT"
+# OVERALL is the verdict; INPUTS_RED is the narrower "may the suites start". They
+# part where a HOST prerequisite is missing: that makes the verdict red but is no
+# reason to withhold every gate this host can run. Only a broken suite INPUT —
+# culture, self-host binary, fork cache, a bake that failed — withholds them.
+# HOST_GAPS lists the missing prerequisites for the verdict.
 OVERALL=0
+INPUTS_RED=0
+SUITE_RED=0
+HOST_GAPS=""
 RESULTS=""
 T0=$(date +%s)
 
@@ -2056,6 +2224,7 @@ case "$CULTURE_RC" in
         note "is the driver pin the harness names; do not merge without it."
         RESULTS="${RESULTS}culture=RED "
         OVERALL=1
+        INPUTS_RED=1
         ;;
 esac
 
@@ -2089,6 +2258,7 @@ else
         bad "self-host: FAILED (exit $SELFHOST_RC) — see $LOGROOT/_selfhost.log"
         RESULTS="${RESULTS}selfhost=RED "
         OVERALL=1
+        INPUTS_RED=1
     fi
 fi
 
@@ -2156,24 +2326,40 @@ if [ "$FORK_RUN" = "1" ]; then
             note "$FORK_WHY"
             RESULTS="${RESULTS}fork=RED "
             OVERALL=1
+            INPUTS_RED=1
         fi
     else
         FORK_NOTE="FAILED (exit $FORK_RC)"
         bad "fork: FAILED (exit $FORK_RC) — see $LOGROOT/_fork.log"
         RESULTS="${RESULTS}fork=RED "
         OVERALL=1
+        INPUTS_RED=1
     fi
 fi
 
 # The iOS artifact stays manual: unlike desktop and Web, producing it needs an
-# official templates archive and an Xcode simulator toolchain. Refuse before the
-# suites rather than converting the iOS gate's late REQUIRE_ALL skip into an
-# hour-delayed surprise.
-if [ "$OVERALL" -eq 0 ] && ! premerge_fork_ios_state; then
-    bad "fork iOS template: $FORK_IOS_WHY"
-    note "Prepare it manually, then rerun pre-merge:"
-    note "  FORCE=1 ./gates/setup-godot-fork-ios.sh"
-    exit 2
+# official templates archive and an Xcode simulator toolchain. The two ways it
+# can be not ready are treated differently. A repairable ARTIFACT (stale or
+# missing zip on a host with Xcode) refuses before the suites, rather than
+# converting the iOS gate's late REQUIRE_ALL skip into an hour-delayed surprise
+# over minutes of manual work. A missing HOST prerequisite cannot be repaired
+# here, so refusing would withhold every other gate for nothing: the run
+# continues, the iOS gates go red under REQUIRE_ALL, and the verdict names the
+# gap. Red, never skipped — the merge still needs a host that can run them.
+if [ "$INPUTS_RED" -eq 0 ] && ! premerge_fork_ios_state; then
+    if [ "$FORK_IOS_KIND" = prerequisite ]; then
+        bad "fork iOS template: $FORK_IOS_WHY"
+        note "A host prerequisite, not a repairable artifact: the suites still run,"
+        note "and the iOS gates are reported red at the verdict."
+        RESULTS="${RESULTS}forkios=RED "
+        HOST_GAPS="${HOST_GAPS}iOS template ($FORK_IOS_WHY); "
+        OVERALL=1
+    else
+        bad "fork iOS template: $FORK_IOS_WHY"
+        note "Prepare it manually, then rerun pre-merge:"
+        note "  FORCE=1 ./gates/setup-godot-fork-ios.sh"
+        exit 2
+    fi
 fi
 
 # The Web export templates, on the same argument and with one difference: absent
@@ -2183,45 +2369,61 @@ fi
 # Only reached when the desktop cache is good, since the bake reads the fork
 # editor's version and the engine sources the provenance is taken over — baking
 # over a broken cache would stamp the zips against a tree the next step moves.
+# A missing iOS prerequisite is not such a reason: the Web bake does not read it.
 FORK_WEB_NOTE="not asked"
-if [ "$OVERALL" -eq 0 ]; then
+if [ "$INPUTS_RED" -eq 0 ]; then
     premerge_fork_web_state
+    FORK_WEB_BAKE=1
     if [ -z "$FORK_WEB_STALE" ]; then
         FORK_WEB_NOTE="reused (both flavors current)"
         good "fork web templates: both flavors are baked from these engine sources."
         RESULTS="${RESULTS}forkweb=reused "
+        FORK_WEB_BAKE=0
     elif [ "$FORK_WEB_SDK" != 1 ]; then
-        # Refused rather than attempted, and named as a HOST prerequisite: the bake
-        # needs an Emscripten SDK, and this script does not provision toolchains —
-        # growing it into dist/release-run.sh is what the junk-drawer rule above
-        # forbids. A refusal and not a skip, because the suite that follows demands
-        # both zips and DN2CPP_REQUIRE_ALL=1 leaves it no way to tolerate one.
-        FORK_WEB_NOTE="FAILED (no emcc; flavors due: $FORK_WEB_STALE)"
-        bad "fork web templates: $FORK_WEB_STALE must be baked, and the SDK resolver"
-        bad "cannot provide the mutable emcc that gates/setup-godot-fork-web.sh uses."
-        note "Provision the SDK first, then re-run this script:"
-        note "  ./gates/setup-emsdk.sh"
-        RESULTS="${RESULTS}forkweb=RED "
-        OVERALL=1
-    else
+        # Provisioned, not refused: the bake needs the mutable Emscripten SDK, and
+        # gates/setup-emsdk.sh unpacks the pinned one into the path the resolver
+        # searches. Asked once — a second miss after a successful unpack means the
+        # SDK is unusable on this host, which is a host gap, not a retry.
+        note "fork web templates: no mutable Emscripten SDK — unpacking the pinned one."
+        note "(gates/setup-emsdk.sh; the first run downloads the archive, later runs skip.)"
+        premerge_emsdk_argv
+        "${PREMERGE_EMSDK_ARGV[@]}" 2>&1 | tee "$LOGROOT/_emsdk.log"
+        rc_emsdk=${PIPESTATUS[0]}
+        [ "$rc_emsdk" -eq 0 ] && premerge_fork_web_state
+        if [ "$rc_emsdk" -ne 0 ] || [ "$FORK_WEB_SDK" != 1 ]; then
+            FORK_WEB_NOTE="FAILED (SDK provisioning; flavors due: $FORK_WEB_STALE)"
+            bad "fork web templates: gates/setup-emsdk.sh did not yield a usable emcc (exit $rc_emsdk)"
+            note "See $LOGROOT/_emsdk.log"
+            RESULTS="${RESULTS}forkweb=RED "
+            HOST_GAPS="${HOST_GAPS}Web templates (no emcc); "
+            OVERALL=1
+            FORK_WEB_BAKE=0
+        fi
+    fi
+    if [ "$FORK_WEB_BAKE" = 1 ]; then
         FORK_WEB_NOTE="rebaked ($FORK_WEB_STALE)"
+        bake_rc=0
         for flavor in $FORK_WEB_STALE; do
             note "fork web templates: baking the $flavor flavor."
             premerge_fork_web_argv "$flavor"
             "${PREMERGE_FORK_WEB_ARGV[@]}" 2>&1 | tee "$LOGROOT/_forkweb-$flavor.log"
             rc_web=${PIPESTATUS[0]}
             if [ "$rc_web" -ne 0 ]; then
+                # The zips are now a broken INPUT, not a host gap: the suites
+                # would fail over them, so they are withheld like a red fork cache.
                 FORK_WEB_NOTE="FAILED ($flavor, exit $rc_web)"
                 bad "fork web templates: the $flavor bake FAILED (exit $rc_web)"
                 note "See $LOGROOT/_forkweb-$flavor.log"
                 RESULTS="${RESULTS}forkweb=RED "
                 OVERALL=1
+                INPUTS_RED=1
+                bake_rc=1
                 break
             fi
         done
         # godot_fork_template_check is the one that re-asks, in every consumer,
         # for the reason written at the desktop arm above.
-        [ "$OVERALL" -eq 0 ] && {
+        [ "$bake_rc" -eq 0 ] && {
             good "fork web templates: rebaked $FORK_WEB_STALE."
             RESULTS="${RESULTS}forkweb=rebaked "
         }
@@ -2230,8 +2432,12 @@ fi
 
 for cfg in $CONFIGS; do
     logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
-    if [ "$OVERALL" -ne 0 ] && [ "$KEEP_GOING" != "1" ]; then
-        bad "$cfg: NOT RUN — an earlier run failed (pass --keep-going to run both regardless)."
+    # Withheld after a broken input or a plainly red suite, never for a host
+    # gap: a red Release already answers the merge question, but a Release whose
+    # only failures are gates this host lacks the prerequisites for says nothing
+    # about the gates it can run — so Debug runs, and the gap is listed instead.
+    if { [ "$INPUTS_RED" -ne 0 ] || [ "$SUITE_RED" -ne 0 ]; } && [ "$KEEP_GOING" != "1" ]; then
+        bad "$cfg: NOT RUN — an earlier input or suite failed (pass --keep-going to run both regardless)."
         RESULTS="$RESULTS$cfg=not-run "
         continue
     fi
@@ -2246,6 +2452,12 @@ for cfg in $CONFIGS; do
     else
         RESULTS="$RESULTS$cfg=RED "
         OVERALL=1
+        if [ "$VERDICT_PREREQ_ONLY" = 1 ]; then
+            note "$cfg: red only for prerequisites this host lacks; the other configuration is not withheld."
+            HOST_GAPS="${HOST_GAPS}$cfg: $VERDICT_PREREQ_GATES (prerequisite absent); "
+        else
+            SUITE_RED=1
+        fi
     fi
     note "$cfg elapsed: $(( $(date +%s) - t_cfg ))s   logs: $logdir"
 done
@@ -2293,6 +2505,10 @@ fi
 
 rm -f "$RECEIPT"
 bad "PRE-MERGE FAILED — do not merge."
+if [ -n "$HOST_GAPS" ]; then
+    note "host prerequisites absent here: $HOST_GAPS"
+    note "Those gates cannot pass on this host; the suites were not withheld for them."
+fi
 note "Per-gate logs: $LOGROOT/{release,debug}/<gate>.log"
 note "This run's own output: $TRANSCRIPT"
 exit 1

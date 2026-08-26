@@ -547,9 +547,11 @@ same base with unchanged engine sources, needs no separate cache procedure:
 `gates/pre-merge.sh` asks `godot_fork_cache_fresh` (`gates/_godot_fork.sh`)
 before its suites and refreshes the desktop cache and the two Web templates when
 a stamp disagrees. An engine edit also makes the iOS template stale. That repair
-stays manual because it consumes Xcode and an official templates archive;
-pre-merge refuses before its suites and names `gates/setup-godot-fork-ios.sh`
-rather than discovering the stale template inside the iOS gate.
+stays manual because it consumes Xcode and an official templates archive. On a
+host with Xcode, pre-merge refuses before its suites and names
+`gates/setup-godot-fork-ios.sh` rather than discovering the stale template
+inside the iOS gate; on a host without Xcode nothing can be repaired, so the
+suites run to completion and the iOS gates are reported red at the verdict.
 
 That predicate is also what makes forgetting *impossible* rather than merely
 unnecessary. `godot_fork_preflight` runs it inside every export gate, live and
