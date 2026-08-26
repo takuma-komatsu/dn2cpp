@@ -3365,6 +3365,132 @@ internal sealed partial class CppEmitter
     private string MemberTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums) =>
         t.IsVoid ? "&dn2cpp_void_type" : FieldTypeInfoExpr(t, emittedEnums);
 
+    // Runtime reflection handles intentionally retain only compact type-info
+    // pointers. Render the signature spelling here, while byref and generic
+    // substitution detail is still present in TypeDesc, and carry it on the row.
+    private string ReflectionSignatureType(TypeDesc t, bool qualifyPrimitive = false,
+        IReadOnlyList<string>? methodGenericNames = null)
+    {
+        if (t.IsVoid)
+            return "Void";
+        if (t.Kind == TypeKind.ByRef)
+            return ReflectionSignatureType(t.Element!, qualifyPrimitive, methodGenericNames) + "&";
+        if (t.Kind == TypeKind.Pointer)
+            return ReflectionSignatureType(t.Element!, qualifyPrimitive, methodGenericNames) + "*";
+        if (t.Kind == TypeKind.SZArray)
+            return ReflectionSignatureType(t.Element!, qualifyPrimitive, methodGenericNames) + "[]";
+        if (t.Kind == TypeKind.MDArray)
+            return ReflectionSignatureType(t.Element!, qualifyPrimitive, methodGenericNames)
+                + "[" + new string(',', t.Rank - 1) + "]";
+        if (t.Kind == TypeKind.Primitive)
+        {
+            string simple = t.Primitive.ToString();
+            if (t.Primitive is PrimitiveTypeCode.String or PrimitiveTypeCode.Object)
+                return "System." + simple;
+            return qualifyPrimitive ? "System." + simple : simple;
+        }
+        if (t.Kind == TypeKind.Class && t.Class is { } cls)
+        {
+            if (cls.Context.TypeArgs.Length == 0)
+                return Compilation.ReflectionTypeName(cls);
+            string def = MethodCompiler.OpenDefBacktickName(cls.Module, cls.Handle)
+                ?? Compilation.ReflectionTypeName(cls);
+            return def + "[" + string.Join(",", cls.Context.TypeArgs.Select(
+                a => ReflectionSignatureType(a, true, methodGenericNames))) + "]";
+        }
+        if (t.Kind == TypeKind.GenericVar && t.GenVarIsMethod
+            && methodGenericNames is not null && (uint)t.GenVarIndex < (uint)methodGenericNames.Count)
+            return methodGenericNames[t.GenVarIndex];
+        if (t.Kind is TypeKind.External or TypeKind.ExternalGeneric)
+            return t.ExternalName!;
+        return t.ToString();
+    }
+
+    /// <summary>The exact CLR display of a closed nested type. Nested generic
+    /// instantiations deliberately have no synthetic generic-definition handle, so their
+    /// type-info cannot compose this spelling from <c>genericDef</c>/<c>genericArgs</c>.
+    /// Task-family awaiters still need a precise per-instantiation ToString identity.</summary>
+    private string ClosedNestedTypeDisplay(ClassInfo cls)
+    {
+        var reader = cls.Module.Reader;
+        var handle = cls.Handle;
+        var parts = new List<string>();
+        while (!handle.IsNil)
+        {
+            var td = reader.GetTypeDefinition(handle);
+            string name = reader.GetString(td.Name);
+            string ns = reader.GetString(td.Namespace);
+            parts.Insert(0, string.IsNullOrEmpty(ns) ? name : ns + "." + name);
+            handle = td.GetDeclaringType();
+        }
+        return string.Join("+", parts) + "["
+            + string.Join(",", cls.Context.TypeArgs.Select(a => ReflectionSignatureType(a, true))) + "]";
+    }
+
+    private string ReflectionMethodDisplay(MethodInfo m)
+    {
+        string ret = ReflectionSignatureType(m.Signature.ReturnType);
+        string name = m.Name;
+        if (m.Context.MethodArgs.Length > 0)
+            name += "[" + string.Join(",", m.Context.MethodArgs.Select(
+                a => ReflectionSignatureType(a))) + "]";
+        string ps = string.Join(", ", m.Signature.ParameterTypes.Select(
+            p => p.Kind == TypeKind.ByRef
+                ? ReflectionSignatureType(p.Element!) + " ByRef"
+                : ReflectionSignatureType(p)));
+        return ret + " " + name + "(" + ps + ")";
+    }
+
+    private (string Method, string Return, string[] Parameters)?
+        ReflectionGenericMethodDefinitionDisplays(MethodInfo m,
+            IReadOnlyList<string?> parameterNames)
+    {
+        if (m.Context.MethodArgs.Length == 0 || m.Handle.IsNil)
+            return null;
+        try
+        {
+            var reader = m.Module.Reader;
+            var md = reader.GetMethodDefinition(m.Handle);
+            var names = new string[md.GetGenericParameters().Count];
+            foreach (var gph in md.GetGenericParameters())
+            {
+                var gp = reader.GetGenericParameter(gph);
+                names[gp.Index] = reader.GetString(gp.Name);
+            }
+            var open = md.DecodeSignature(_c.SigProvider,
+                new GenericContext(m.DeclaringClass.Context.TypeArgs, Array.Empty<TypeDesc>()));
+            string ret = ReflectionSignatureType(open.ReturnType, false, names);
+            string ps = string.Join(", ", open.ParameterTypes.Select(p =>
+                p.Kind == TypeKind.ByRef
+                    ? ReflectionSignatureType(p.Element!, false, names) + " ByRef"
+                    : ReflectionSignatureType(p, false, names)));
+            string[] parameters = new string[open.ParameterTypes.Length];
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                parameters[i] = ReflectionSignatureType(
+                    open.ParameterTypes[i], false, names);
+                if (parameterNames[i] is { Length: > 0 } parameterName)
+                    parameters[i] += " " + parameterName;
+            }
+            return (ret + " " + m.Name + "[" + string.Join(",", names) + "](" + ps + ")",
+                ret, parameters);
+        }
+        catch (Exception e) when (!Compilation.IsMustEscape(e))
+        {
+            return null;
+        }
+    }
+
+    private string ReflectionPropertyDisplay(string name, TypeDesc type,
+        IReadOnlyList<TypeDesc> indexParameters)
+    {
+        string result = ReflectionSignatureType(type) + " " + name;
+        if (indexParameters.Count > 0)
+            result += " [" + string.Join(", ", indexParameters.Select(
+                p => ReflectionSignatureType(p))) + "]";
+        return result;
+    }
+
     // ---- custom attributes ----
 
     private static readonly System.Globalization.CultureInfo AttrCI = System.Globalization.CultureInfo.InvariantCulture;
@@ -3379,13 +3505,74 @@ internal sealed partial class CppEmitter
         var rows = new List<string>();
         foreach (var da in _c.DecodeCustomAttributes(module, handles))
             if (RenderAttrCreate(sb, da) is { } createName)
-                rows.Add($"{{ {TypeInfoRef(da.AttrClass, "custom-attribute table row")}, &{createName} }}");
+                rows.Add($"{{ {TypeInfoRef(da.AttrClass, "custom-attribute table row")}, &{createName}, \"{CLiteral(RenderAttrDisplay(da))}\" }}");
         if (rows.Count == 0)
             return ("nullptr", 0);
         string tab = $"attrtab_{key}";
         sb.AppendLine($"static const Dn2CppAttrInfo {tab}[] = {{ {string.Join(", ", rows)} }};");
         return (tab, rows.Count);
     }
+
+    private string RenderAttrDisplay(Compilation.DecodedAttribute da)
+    {
+        var args = new List<string>();
+        for (int i = 0; i < da.Fixed.Length; i++)
+            args.Add(RenderAttrDisplayValue(da.Fixed[i].Type, da.Fixed[i].Value, true));
+        foreach (var named in da.Named)
+            args.Add((named.Name ?? "") + " = "
+                + RenderAttrDisplayValue(named.Type, named.Value, false));
+        string type = ReflectionSignatureType(TypeDesc.MakeClass(da.AttrClass), true);
+        return "[" + type + "(" + string.Join(", ", args) + ")]";
+    }
+
+    private string RenderAttrDisplayValue(TypeDesc type, object? value, bool typed)
+    {
+        if (type.Kind == TypeKind.SZArray)
+        {
+            if (value is null)
+                return typed ? "(" + ReflectionAttributeType(type) + ")null" : "null";
+            if (value is not System.Collections.Immutable.ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
+                return "null";
+            string elem = ReflectionAttributeType(type.Element!);
+            string values = string.Join(", ", items.Select(
+                x => RenderAttrDisplayValue(type.Element!, x.Value, false)));
+            return "new " + elem + "[" + items.Length + "] { " + values + " }";
+        }
+        if (IsTypeTarget(type))
+        {
+            if (value is null)
+                return typed ? "(Type)null" : "null";
+            return value is TypeDesc td
+                ? "typeof(" + ReflectionSignatureType(td, true) + ")"
+                : "null";
+        }
+        string rendered;
+        if (value is null)
+            rendered = "null";
+        else if (type.IsString)
+            rendered = "\"" + value + "\"";
+        else if (type.Kind == TypeKind.Class && type.Class!.IsEnum)
+            rendered = System.Convert.ToInt64(value, AttrCI).ToString(AttrCI);
+        else if (type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Boolean)
+            rendered = System.Convert.ToBoolean(value, AttrCI) ? "True" : "False";
+        else if (type.Kind == TypeKind.Primitive && type.Primitive == PrimitiveTypeCode.Char)
+            rendered = "'" + value.ToString()!.Replace("'", "\\'") + "'";
+        else
+            rendered = System.Convert.ToString(value, AttrCI) ?? "null";
+        // CustomAttributeData keeps the explicit type cast for scalar numeric/
+        // enum arguments, but a non-null string is already self-describing.
+        // A null string does keep its cast to disambiguate the blob type.
+        if (!typed || (type.IsString && value is not null))
+            return rendered;
+        return "(" + ReflectionAttributeType(type) + ")" + rendered;
+    }
+
+    private string ReflectionAttributeType(TypeDesc type) => type.Kind switch
+    {
+        TypeKind.Primitive => type.Primitive.ToString(),
+        TypeKind.SZArray => ReflectionAttributeType(type.Element!) + "[]",
+        _ => ReflectionSignatureType(type),
+    };
 
     /// <summary>Emits a create-function definition (into <paramref name="sb"/>, right
     /// before the attribute table that names it — the same TU, so the file-local

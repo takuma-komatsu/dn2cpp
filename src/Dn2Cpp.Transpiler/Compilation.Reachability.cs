@@ -498,6 +498,43 @@ internal sealed partial class Compilation
     private static MethodInfo? NonIntrinsic(MethodInfo? m) =>
         m is not null && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName) ? null : m;
 
+    /// <summary>Whether an intrinsic type declares its own parameterless
+    /// <c>ToString</c> override. Unlike <see cref="EffectiveToString"/>, this does not
+    /// discard intrinsic methods: callers use it to distinguish the default
+    /// <c>ValueType.ToString</c> type-name behavior from a formatter that must stay on
+    /// the intrinsic dispatch table.</summary>
+    internal bool DeclaresIntrinsicToStringOverride(ClassInfo c)
+    {
+        // Intrinsic generic specializations deliberately complete with an empty
+        // ClassInfo.Methods collection because none of their real bodies may be
+        // emitted. Read the declaring TypeDef instead, decoding in the closed
+        // context. A declaration is enough: an InternalCall is still a custom
+        // formatter that must remain on the loud intrinsic dispatch path.
+        try
+        {
+            var reader = c.Module.Reader;
+            var td = reader.GetTypeDefinition(c.Handle);
+            foreach (var mh in td.GetMethods())
+            {
+                var md = reader.GetMethodDefinition(mh);
+                if ((md.Attributes & System.Reflection.MethodAttributes.Static) != 0
+                    || reader.GetString(md.Name) != "ToString")
+                    continue;
+                var sig = md.DecodeSignature(SigProvider, c.Context);
+                if (sig.ParameterTypes.Length == 0 && sig.ReturnType.IsString)
+                    return true;
+            }
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // A decode failure cannot prove the type inherits ValueType's default.
+            // Keep it on intrinsic dispatch, whose unmapped diagnostic is loud, rather
+            // than silently changing a possible custom formatter into a type name.
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>The ToString() override (a 0-arg, string-returning instance method
     /// with a body) that an instance of <paramref name="c"/> dispatches — its own
     /// or the nearest base's — or null when none overrides Object.ToString (or the
@@ -963,6 +1000,10 @@ internal sealed partial class Compilation
         // helpers instead.
         if (MethodCompiler.IntrinsicValueTypeFn(t) is not null)
             return true;
+        // CancellationToken's emitted source pointer is its whole identity; its loaded
+        // fields and managed equality bodies are not emitted.
+        if (MethodCompiler.IsCancellationTokenValue(t))
+            return true;
         // Opaque pointer-backed handles compare and hash their entire representation;
         // their loaded managed fields do not describe the emitted runtime payload.
         if (MethodCompiler.IntrinsicPointerValueType(t) is not null)
@@ -1087,6 +1128,7 @@ internal sealed partial class Compilation
         // IsValueType test excludes them here as it does in the twin above.)
         if (t is not { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } fc }
             || MethodCompiler.IntrinsicValueTypeFn(t) is not null
+            || MethodCompiler.IsCancellationTokenValue(t)
             || MethodCompiler.IntrinsicPointerValueType(t) is not null)
             return;
         // The Object-virtual override ValueType.Equals/GetHashCode would dispatch through

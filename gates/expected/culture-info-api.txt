@@ -112,3 +112,8 @@ g-sv:PlatformNotSupportedException
   i fr fit c(cap=9)=True/9 u8(cap=13)=True/13
   i fr short c(cap=8)=False/0 u8(cap=12)=False/0
   i fr chars-as-bytes c(cap=9)=True/9 u8(cap=9)=False/0
+== TextInfo ToString ==
+  direct=TextInfo - de-DE
+  object=TextInfo - de-DE
+  generic=TextInfo - de-DE
+  interp=TextInfo - de-DE

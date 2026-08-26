@@ -344,8 +344,11 @@ layout; `EMSCRIPTEN_VERSION` then names the emsdk the path no longer does.
 Packaging and `Dn2CppExporter.BuildDropIn` spell
 those vars in two repositories with no shared constant, and a drift is fail-safe
 and therefore silent, so the three cross-target export gates each assert the
-adoption. What it buys is mostly CMake configure time, fixed per build slot; the
-drop-in is **byte-identical** either way.
+adoption. The host axis follows the same rule on macOS: packaging and the bundle
+smoke configure with `MACOS_DESKTOP_DEPLOYMENT_TARGET`, while the desktop export
+gate holds the selected architecture's preset value to that floor. What it buys
+is mostly CMake configure time, fixed per build slot; the drop-in is
+**byte-identical** either way.
 
 **Produced by** `dist/package-toolchain.sh` (runs the selfhost build, assembles
 under `artifacts/toolchain/`, tars; flags `--layout-only`, `--install-into

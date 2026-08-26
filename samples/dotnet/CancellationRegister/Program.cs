@@ -17,10 +17,12 @@ namespace CancellationRegister
             Contention.Program.__GateEntry();
             CancelAfterTimer.Program.__GateEntry();
             CancelAfterRoot.Program.__GateEntry();
-            // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
             StateTokenCallback.Program.__GateEntry();
             TernaryDefaultMerge.Program.__GateEntry();
             RegistrationToken.Program.__GateEntry();
+            CancellationIntrinsicToString.Program.__GateEntry();
+            // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
+            CancellationTokenHash.Program.__GateEntry();
         }
     }
 }

@@ -316,14 +316,11 @@ internal sealed partial class MethodCompiler
         // on the runtime STRUCT (IntrinsicCppName), never on a name: one struct serves many
         // names, which no per-name table can express.
         //
-        // The intrinsic Task-family awaiter structs, keyed on their runtime struct (every
-        // TaskAwaiter(<T>)/ValueTaskAwaiter(<T>)/Configured* form shares Dn2CppTaskAwaiter):
-        // a real async builder's AwaitUnsafeOnCompleted IL boxes its TAwaiter (Roslyn's
-        // `(object)default(TAwaiter) != null` value-type probe). The branch folds, but the
-        // box expression still renders, so these need a shared runtime handle rather than
-        // the never-emitted ti_*.
-        TypeKind.Class when t.Class!.IsValueType && t.Class.IntrinsicCppName == "Dn2CppTaskAwaiter"
-            => "&dn2cpp_task_awaiter_type",
+        // Task-family awaiters share one C++ layout, but not one CLR identity. A box or
+        // default ValueType.ToString must retain the exact closed type
+        // (TaskAwaiter<int>, ValueTaskAwaiter<string>, ...), so these deliberately fall
+        // through to the per-ClassInfo handle below. NoteTypeInfoUse makes the intrinsic
+        // metadata emitter define that otherwise body-less handle.
         TypeKind.Class when t.Class!.IsValueType && t.Class.IntrinsicCppName == "Dn2CppYieldAwaiter"
             => "&dn2cpp_yield_awaiter_type",
         // The non-generic Task owns the runtime handle every fresh Dn2CppTask starts with.

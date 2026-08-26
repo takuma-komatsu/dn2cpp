@@ -33,6 +33,7 @@
 // Real System.Private.CoreLib (-r), run vs .NET.
 using System;
 using System.Collections.Generic;
+using System.Threading;
 namespace ValueStructKeySubset;
 
 // Nothing overridden: every comparison of one of these is ValueType.Equals.
@@ -122,6 +123,20 @@ struct Stamped
     public decimal? Amount;
     public TimeSpan? Span;
     public Stamped(DateTime? w, decimal? a, TimeSpan? s) { When = w; Amount = a; Span = s; }
+}
+
+// Mirrors library option structs whose compiler-provided ValueType.GetHashCode walks a
+// CancellationToken field. The token's emitted payload is intrinsic even though the outer
+// struct is ordinary managed layout.
+struct CancellationStamped
+{
+    public int Iterations;
+    public CancellationToken CancellationToken;
+    public CancellationStamped(int iterations, CancellationToken cancellationToken)
+    {
+        Iterations = iterations;
+        CancellationToken = cancellationToken;
+    }
 }
 
 internal static class Program
@@ -270,5 +285,16 @@ internal static class Program
         var objSet = new HashSet<object> { bp1, bp2, new Plain(8, ab) };
         Console.WriteLine("objset count=" + objSet.Count);
         Console.WriteLine("objset contains=" + objSet.Contains(new Plain(8, ab2)));
+
+        // APPENDED LAST: direct GetHashCode reaches the synthesized outer field walk.
+        var cancellationSource = new CancellationTokenSource();
+        var otherCancellationSource = new CancellationTokenSource();
+        var cancellationStamped = new CancellationStamped(3, cancellationSource.Token);
+        var cancellationStampedCopy = cancellationStamped;
+        var otherCancellationStamped = new CancellationStamped(3, otherCancellationSource.Token);
+        Console.WriteLine("cancellation field="
+            + $"{cancellationStamped.Equals(cancellationStampedCopy)}"
+            + $":{!cancellationStamped.Equals(otherCancellationStamped)}"
+            + $":{cancellationStamped.GetHashCode() == cancellationStampedCopy.GetHashCode()}");
     }
 }

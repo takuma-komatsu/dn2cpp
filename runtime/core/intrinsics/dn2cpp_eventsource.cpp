@@ -351,6 +351,30 @@ void dn2cpp_eventsource_guid(Dn2CppObject* src, void* out16)
     dn2cpp_eventsource_type_guid(src->type, out16);
 }
 
+Dn2CppString* dn2cpp_eventsource_tostring(Dn2CppObject* src)
+{
+    uint8_t raw[16];
+    dn2cpp_eventsource_guid(src, raw);
+    uint32_t a;
+    uint16_t b, c;
+    std::memcpy(&a, raw, 4);
+    std::memcpy(&b, raw + 4, 2);
+    std::memcpy(&c, raw + 6, 2);
+    char guid[37];
+    std::snprintf(guid, sizeof(guid),
+        "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        (unsigned)a, (unsigned)b, (unsigned)c,
+        (unsigned)raw[8], (unsigned)raw[9], (unsigned)raw[10],
+        (unsigned)raw[11], (unsigned)raw[12], (unsigned)raw[13],
+        (unsigned)raw[14], (unsigned)raw[15]);
+    return dn2cpp_string_concat4(
+        dn2cpp_string_from_utf8("EventSource(", 12),
+        dn2cpp_eventsource_name(src),
+        dn2cpp_string_from_utf8(", ", 2),
+        dn2cpp_string_concat2(dn2cpp_string_from_utf8(guid, 36),
+            dn2cpp_string_from_utf8(")", 1)));
+}
+
 int32_t dn2cpp_eventsource_settings(Dn2CppObject* src)
 {
     if (src == nullptr)

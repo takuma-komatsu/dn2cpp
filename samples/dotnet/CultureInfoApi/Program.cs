@@ -210,7 +210,17 @@ namespace CultureInfoApi
             // Span TryFormat with provider != CurrentCulture — the one shape every
             // other bucket's pinned call sites cannot see. See that file's header.
             SpanTryFormatProviderSubset.Program.Run();
+
+            Console.WriteLine("== TextInfo ToString ==");
+            TextInfo deText = new CultureInfo("de-DE").TextInfo;
+            Console.WriteLine("  direct=" + deText.ToString());
+            object boxedText = deText;
+            Console.WriteLine("  object=" + boxedText.ToString());
+            Console.WriteLine("  generic=" + GenericToString(deText));
+            Console.WriteLine($"  interp={deText}");
         }
+
+        private static string GenericToString<T>(T value) => value!.ToString()!;
 
         // NumberGroupSizes spelled out. The three axes are one modeled array here and three
         // properties in .NET, so all three are printed: a row whose axes disagreed would be

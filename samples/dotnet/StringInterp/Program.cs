@@ -21,6 +21,7 @@ namespace StringInterp
             InterpolationNewobjSubset.Program.__GateEntry();
             AppendFormatSubset.Program.__GateEntry();
             CustomFormatSubset.Program.__GateEntry();
+            InterpHandlerSubset.Program.__ToStringGate();
         }
     }
 }

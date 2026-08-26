@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 static class Program
 {
     const int N = 1000;
+    static string Generic<T>(T value) => value!.ToString()!;
 
     static void Main()
     {
@@ -274,5 +275,7 @@ static class Program
         Console.WriteLine(rForEachListBreak.IsCompleted);                              // False
         Console.WriteLine(rForEachListBreak.LowestBreakIteration.GetValueOrDefault()); // 2
         Console.WriteLine(feListHitCount);                                             // 3
+
+        Console.WriteLine($"parallel result tostring={r1.ToString()}|{(object)r1}|{r1}|{Generic(r1)}");
     }
 }

@@ -295,6 +295,9 @@ unsafe class Program
         gh2.Free();
         GC.KeepAlive(ga);
         GC.KeepAlive(gb);
+
+        GCHandle empty = default;
+        Console.WriteLine($"gchandle tostring={empty.ToString()}|{(object)empty}|{empty}");
     }
 
     static long s_hiddenToken; // ~ToIntPtr of section 17's handle: not a pointer bit
