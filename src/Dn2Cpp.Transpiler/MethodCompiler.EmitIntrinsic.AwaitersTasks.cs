@@ -425,6 +425,20 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Struct, "Dn2CppTaskAwaiter", $"Dn2CppTaskAwaiter{{ {task} }}");
                 return true;
             }
+            case ("System.Threading.Tasks.ValueTask", "get_IsFaulted"):
+            {
+                var v = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status == DN2CPP_TASK_FAULTED ? 1 : 0)");
+                return true;
+            }
+            case ("System.Threading.Tasks.ValueTask", "get_IsCanceled"):
+            {
+                var v = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status == DN2CPP_TASK_CANCELED ? 1 : 0)");
+                return true;
+            }
             case ("System.Threading.Tasks.ValueTask", "get_IsCompletedSuccessfully"):
             {
                 var v = Pop();
