@@ -489,7 +489,7 @@ if [ "$DN2CPP_OS" = macos ]; then
 
     MACHO_DEPLOYMENT_TARGET="$(vtool -show-build "$DROPIN" 2>/dev/null \
         | awk '/^[[:space:]]*minos / { print $2 }')"
-    MACHO_EXPECTED_DEPLOYMENT_TARGET="${MACOS_DESKTOP_DEPLOYMENT_TARGET%0}"
+    MACHO_EXPECTED_DEPLOYMENT_TARGET="$MACOS_DESKTOP_DEPLOYMENT_TARGET"
     if [ "$MACHO_DEPLOYMENT_TARGET" != "$MACHO_EXPECTED_DEPLOYMENT_TARGET" ]; then
         echo "FAIL: $DROPIN records macOS minos" \
             "'${MACHO_DEPLOYMENT_TARGET:-<absent>}', expected" \

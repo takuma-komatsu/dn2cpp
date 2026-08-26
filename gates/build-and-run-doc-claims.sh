@@ -275,7 +275,7 @@ eq "docs/EDITOR-GUIDE.ja.md Web Stopwatch.Frequency vs the MonotonicClock assert
 guide_macos_floor=$(sed -nE 's/.*macOS ([0-9]+\.[0-9]+) 以降.*/\1/p' \
     docs/EDITOR-GUIDE.ja.md)
 eq "docs/EDITOR-GUIDE.ja.md macOS floor vs the shared deployment target" \
-   "$guide_macos_floor" "${MACOS_DESKTOP_DEPLOYMENT_TARGET%0}"
+   "$guide_macos_floor" "$MACOS_DESKTOP_DEPLOYMENT_TARGET"
 
 # Every platform/*/ implementation defines the whole seam. The pal-reference gate
 # asserts this too, and the duplication is deliberate: that gate builds a runtime
