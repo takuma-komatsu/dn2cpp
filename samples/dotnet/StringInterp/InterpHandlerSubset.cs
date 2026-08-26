@@ -5,6 +5,7 @@
 // takes. The handler is the growable Dn2CppISB, so provider/initialBuffer are discarded.
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 namespace InterpHandlerSubset;
 
 
@@ -31,6 +32,16 @@ class Program
         Console.WriteLine(new KeyValuePair<int, KeyValuePair<int, int>>(9, new KeyValuePair<int, int>(3, 4)));
 
         NonGenericAppendFormatted();
+    }
+
+    internal static void __ToStringGate()
+    {
+        var handler = new DefaultInterpolatedStringHandler(8, 0);
+        handler.AppendLiteral("kept");
+        Console.WriteLine("handler tostring 1=" + handler.ToString());
+        Console.WriteLine("handler tostring 2=" + handler.ToString());
+        Console.WriteLine("handler clear=" + handler.ToStringAndClear());
+        Console.WriteLine("handler after clear='" + handler.ToString() + "'");
     }
 
     // The handler's five NON-GENERIC AppendFormatted overloads: the C# compiler picks
