@@ -499,15 +499,18 @@ godot_editor_config_dir() {
 # off its single Godot.NET.Sdk.<version>.nupkg. A gate re-pins a THIRD-PARTY
 # sample's Sdk onto this rather than onto a literal nothing re-pins.
 godot_nuget_sdk_version() {
-    local pkg
-    for pkg in "$1"/Godot.NET.Sdk.*.nupkg; do
-        [ -f "$pkg" ] || continue
-        pkg="${pkg##*/Godot.NET.Sdk.}"
-        printf '%s\n' "${pkg%.nupkg}"
-        return 0
-    done
-    echo "error: no Godot.NET.Sdk.*.nupkg in $1" >&2
-    return 1
+    local pkgs pkg
+    pkgs=("$1"/Godot.NET.Sdk.*.nupkg)
+    if [ ! -f "${pkgs[0]}" ]; then
+        echo "error: no Godot.NET.Sdk.*.nupkg in $1" >&2
+        return 1
+    fi
+    if [ "${#pkgs[@]}" -ne 1 ]; then
+        echo "error: expected one Godot.NET.Sdk package in $1, found ${#pkgs[@]}" >&2
+        return 1
+    fi
+    pkg="${pkgs[0]##*/Godot.NET.Sdk.}"
+    printf '%s\n' "${pkg%.nupkg}"
 }
 
 godot_template_version_dir() {
