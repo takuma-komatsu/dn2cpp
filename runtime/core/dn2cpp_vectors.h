@@ -82,6 +82,28 @@ static inline void dn2cpp_vec_set(Dn2CppVec<N>& v, int i, T x) {
     std::memcpy(v.b + (size_t)i * sizeof(T), &x, sizeof(T));
 }
 
+// CopyTo validates the managed destination before forming the native store
+// address. The index-taking overload rejects the index before testing the
+// remaining capacity; the no-index overload reports an empty array as short.
+static inline void dn2cpp_vec_copy_array_check(
+    Dn2CppArray* destination, int32_t startIndex, int32_t count,
+    int32_t hasStartIndex)
+{
+    if (destination == nullptr)
+        dn2cpp_throw_null_reference();
+    if (hasStartIndex != 0
+        && static_cast<uint32_t>(startIndex) >= static_cast<uint32_t>(destination->length))
+        dn2cpp_throw_argument_out_of_range();
+    if (destination->length - startIndex < count)
+        dn2cpp_throw_argument();
+}
+
+static inline void dn2cpp_vec_copy_span_check(int32_t destinationLength, int32_t count)
+{
+    if (destinationLength < count)
+        dn2cpp_throw_argument();
+}
+
 // Render one portable-vector lane through the same culture-aware scalar
 // formatters used by numeric ToString. The vector families accept only numeric
 // element types, so the signed/floating split is exhaustive for supported T.

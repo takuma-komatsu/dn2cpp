@@ -738,19 +738,30 @@ internal sealed partial class MethodCompiler
             }
             case "CopyTo":
             {
-                if (ps.Length >= 1 && ps[0].Kind == TypeKind.SZArray)
+                // Vector<T> exposes instance CopyTo(destination[, index]); the fixed-width
+                // Vector64/128/256/512 facades expose extension helpers whose first explicit
+                // parameter is the vector. Normalize both signatures to the target position.
+                int targetArg = sig.Header.IsInstance ? 0 : 1;
+                bool hasVectorOperand = sig.Header.IsInstance
+                    || (ps.Length > 0 && IsVec(ps[0]));
+                if (hasVectorOperand && ps.Length >= targetArg + 1 && ps.Length <= targetArg + 2
+                    && ps[targetArg].Kind == TypeKind.SZArray)
                 {
-                    string idx = ps.Length == 2 ? Cast(Pop(), "int32_t") : "0";
+                    bool hasIndex = ps.Length == targetArg + 2;
+                    string idx = hasIndex ? Cast(Pop(), "int32_t") : "0";
                     var arr = Pop();
                     var v = Pop();
+                    Emit($"dn2cpp_vec_copy_array_check((Dn2CppArray*)({arr.Expr}), {idx}, {lanes}, {(hasIndex ? 1 : 0)});");
                     Emit($"{VecW("store")}({Val(v, vecCpp)}, {ArrayBase(arr, idx)});");
                     return true;
                 }
-                if (ps.Length == 1 && SpanCpp(ps[0]) is { } spanCt)
+                if (hasVectorOperand && ps.Length == targetArg + 1
+                    && SpanCpp(ps[targetArg]) is { } spanCt)
                 {
                     var span = Pop();
                     var v = Pop();
                     string sv = SpanValue(span, spanCt);
+                    Emit($"dn2cpp_vec_copy_span_check({sv}.f__length, {lanes});");
                     Emit($"{VecW("store")}({Val(v, vecCpp)}, (void*)({sv}.f__reference));");
                     return true;
                 }
