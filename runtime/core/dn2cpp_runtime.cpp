@@ -211,6 +211,8 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
         if (w != nullptr && w->name != nullptr)
             return dn2cpp_type_tostring(w);
     }
+    if (t != nullptr && t->eventSourceName != nullptr)
+        return dn2cpp_eventsource_tostring(obj);
     // Default Object.ToString: GetType().ToString().
     if (t == nullptr || t->name == nullptr)
         return dn2cpp_string_from_utf8("System.Object", 13);

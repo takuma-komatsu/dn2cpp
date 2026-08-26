@@ -1980,6 +1980,13 @@ internal sealed partial class CppEmitter
                     toStr = $"&{thunk}";
                 }
             }
+            else if (EventSourceIdentity(cls) is not null)
+            {
+                // EventSource itself is opaque/intrinsic, so its override has no emitted
+                // method body to wire. Every provider still carries modeled Name/Guid;
+                // give its dynamic type the standard EventSource display thunk.
+                toStr = "&dn2cpp_eventsource_tostring";
+            }
             // GetHashCode / Equals(object) overrides wired into the type-info slots
             // so dn2cpp_object_gethashcode / _equals dispatch them. Same shape
             // as the ToString slot: a reference type's impl receives the object

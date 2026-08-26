@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Diagnostics.Tracing;
 
 // The framework EventSource non-void provider fold, driven end to end.
 //
@@ -30,5 +31,17 @@ internal static class Program
         string host = Dns.GetHostName();
         Console.WriteLine("GetHostName non-empty: " + (host.Length > 0));
         Console.WriteLine("GetHostName is string: " + (host is string));
+
+        var provider = new ProbeEventSource();
+        Console.WriteLine("direct: " + provider.ToString());
+        EventSource asBase = provider;
+        Console.WriteLine("base: " + asBase.ToString());
+        object asObject = provider;
+        Console.WriteLine("object: " + asObject.ToString());
     }
+}
+
+[EventSource(Name = "Dn2Cpp.Probe", Guid = "11111111-2222-3333-4444-555555555555")]
+internal sealed class ProbeEventSource : EventSource
+{
 }

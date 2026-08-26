@@ -1,2 +1,5 @@
 GetHostName non-empty: True
 GetHostName is string: True
+direct: EventSource(Dn2Cpp.Probe, 11111111-2222-3333-4444-555555555555)
+base: EventSource(Dn2Cpp.Probe, 11111111-2222-3333-4444-555555555555)
+object: EventSource(Dn2Cpp.Probe, 11111111-2222-3333-4444-555555555555)

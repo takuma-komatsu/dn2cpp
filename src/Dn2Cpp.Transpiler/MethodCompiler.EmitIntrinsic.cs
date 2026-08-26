@@ -511,6 +511,14 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, CppTypes.Of(sig.ReturnType), $"dn2cpp_eventsource_name({recv})");
                 return true;
             }
+            case "ToString" when sig.ParameterTypes.Length == 0:
+            {
+                string recv = PopArgsThenReceiver();
+                NoteReferenceClass(sig.ReturnType);
+                Push(StackKind.Ref, CppTypes.Of(sig.ReturnType),
+                    $"dn2cpp_eventsource_tostring({recv})");
+                return true;
+            }
             // get_Guid: the explicit [EventSource(Guid=…)] or, failing that, the guid .NET
             // derives from the provider name (GenerateGuidFromName — SHA-1 over a fixed
             // namespace, reproduced in the runtime so the two agree).
