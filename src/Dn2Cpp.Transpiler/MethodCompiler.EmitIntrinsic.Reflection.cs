@@ -92,6 +92,17 @@ internal sealed partial class MethodCompiler
         }
         switch (declType, name)
         {
+            case ("System.Reflection.MemberInfo" or "System.Reflection.MethodBase"
+                    or "System.Reflection.MethodInfo" or "System.Reflection.ConstructorInfo"
+                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
+                    or "System.Reflection.ParameterInfo" or "System.Reflection.CustomAttributeData",
+                "ToString") when sig.ParameterTypes.Length == 0:
+            {
+                var member = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_reflection_handle_tostring({Cast(member, "Dn2CppObject*")})");
+                return true;
+            }
             case ("System.Reflection.MethodBase", "GetMethodFromHandle"):
             {
                 for (int i = 0; i < sig.ParameterTypes.Length; i++)

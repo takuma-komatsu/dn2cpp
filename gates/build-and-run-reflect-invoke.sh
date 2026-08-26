@@ -51,6 +51,9 @@
 # GetGenericMethodDefinition normalizes it away, a property's GetGetMethod
 # inherits the property handle's reflected type, and ParameterInfo.Member is the
 # very instance GetParameters was called on.
+# ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
+# ParameterInfo and CustomAttributeData signature display through typed, base, and
+# object dispatch, including byref, indexer, generic-method, and attribute arguments.
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
 source "$(dirname "$0")/_common.sh"

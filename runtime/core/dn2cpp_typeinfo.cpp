@@ -503,11 +503,11 @@ const Dn2CppTypeInfo dn2cpp_methodbase_type =
 const Dn2CppType dn2cpp_methodbase_type_obj = { { &dn2cpp_type_type }, &dn2cpp_methodbase_type };
 extern const Dn2CppType dn2cpp_fieldinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_fieldinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.FieldInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppFieldRef), nullptr, nullptr, 0 }, &dn2cpp_fieldinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.FieldInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppFieldRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_fieldinfo_type_obj);
 const Dn2CppType dn2cpp_fieldinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_fieldinfo_type };
 extern const Dn2CppType dn2cpp_methodinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_methodinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0 }, &dn2cpp_methodinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_methodinfo_type_obj);
 const Dn2CppType dn2cpp_methodinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_methodinfo_type };
 // A reflected constructor handle: the same Dn2CppMethodRef representation as a
 // method (wrapping a ctortab row), but its own header type so `is
@@ -525,19 +525,19 @@ static const Dn2CppFieldInfo dn2cpp_ownflds_ctorinfo[] = {
 };
 extern const Dn2CppType dn2cpp_constructorinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_constructorinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0, nullptr, nullptr, nullptr, 0, dn2cpp_ownflds_ctorinfo, 2 }, &dn2cpp_constructorinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, dn2cpp_ownflds_ctorinfo, 2 }, &dn2cpp_constructorinfo_type_obj);
 const Dn2CppType dn2cpp_constructorinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_constructorinfo_type };
 extern const Dn2CppType dn2cpp_parameterinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_parameterinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.ParameterInfo", nullptr, (int32_t)sizeof(Dn2CppParamRef), nullptr, nullptr, 0 }, &dn2cpp_parameterinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.ParameterInfo", nullptr, (int32_t)sizeof(Dn2CppParamRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_parameterinfo_type_obj);
 const Dn2CppType dn2cpp_parameterinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parameterinfo_type };
 extern const Dn2CppType dn2cpp_propertyinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_propertyinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.PropertyInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppPropRef), nullptr, nullptr, 0 }, &dn2cpp_propertyinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.PropertyInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppPropRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_propertyinfo_type_obj);
 const Dn2CppType dn2cpp_propertyinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_propertyinfo_type };
 extern const Dn2CppType dn2cpp_customattributedata_type_obj;
 const Dn2CppTypeInfo dn2cpp_customattributedata_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.CustomAttributeData", nullptr, (int32_t)sizeof(Dn2CppAttrDataRef), nullptr, nullptr, 0 }, &dn2cpp_customattributedata_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.CustomAttributeData", nullptr, (int32_t)sizeof(Dn2CppAttrDataRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_customattributedata_type_obj);
 const Dn2CppType dn2cpp_customattributedata_type_obj = { { &dn2cpp_type_type }, &dn2cpp_customattributedata_type };
 // System.Void, so a void method's MethodInfo.ReturnType reports Name "Void".
 extern const Dn2CppType dn2cpp_void_type_obj;

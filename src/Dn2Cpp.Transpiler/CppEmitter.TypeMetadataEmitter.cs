@@ -1404,9 +1404,12 @@ internal sealed partial class CppEmitter
                         ca = _e.BuildAttrTable(_sb, $"{en.CppName}_fld{rows.Count}", en.Module,
                             fd.GetCustomAttributes());
                     int fldToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(fdh);
+                    string fieldDisplayType = literal
+                        ? _e.ReflectionSignatureType(TypeDesc.MakeClass(en))
+                        : _e.ReflectionSignatureType(TypeDesc.MakePrimitive(en.EnumUnderlying));
                     rows.Add($"{{ \"{fname}\", {_e.TypeInfoRef(en, "enum field row's declaring type")}, {ftInfo}, {attrs}, {get}, nullptr, "
                         + $"{ca.Expr}, {ca.Count}, 0x{(int)fd.Attributes:X}, {fldToken}, "
-                        + $"(int64_t)0x{(ulong)lv:X}ULL }}");
+                        + $"(int64_t)0x{(ulong)lv:X}ULL, \"{CppEmitter.CLiteral(fieldDisplayType + " " + fname)}\" }}");
                 }
             }
             catch (System.Exception e) when (!Compilation.IsMustEscape(e))
@@ -1544,7 +1547,8 @@ internal sealed partial class CppEmitter
                             cls.Module.Reader.GetFieldDefinition(fdh).GetCustomAttributes());
                     fldToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(fdh);
                 }
-                rows.Add($"{{ \"{f.Name}\", {_e.TypeInfoRef(cls, "field row's declaring type")}, {ftInfo}, {attrs}, {get}, {set}, {ca.Expr}, {ca.Count}, 0x{(int)f.Attributes:X}, {fldToken} }}");
+                string display = CppEmitter.CLiteral(_e.ReflectionSignatureType(f.Type) + " " + f.Name);
+                rows.Add($"{{ \"{f.Name}\", {_e.TypeInfoRef(cls, "field row's declaring type")}, {ftInfo}, {attrs}, {get}, {set}, {ca.Expr}, {ca.Count}, 0x{(int)f.Attributes:X}, {fldToken}, 0, \"{display}\" }}");
             }
             _sb.AppendLine($"static const Dn2CppFieldInfo fldtab_{cls.CppName}[] = {{ {string.Join(", ", rows)} }};");
             _fieldTabs[cls] = ($"fldtab_{cls.CppName}", rows.Count);
@@ -1616,13 +1620,15 @@ internal sealed partial class CppEmitter
                 catch (Exception e) when (!Compilation.IsMustEscape(e))
                 { /* no decodable method metadata */ }
                 var ps = m.Signature.ParameterTypes;
+                var names = ParamNames(m, ps.Length);
+                var genericDefinitionDisplays =
+                    _e.ReflectionGenericMethodDefinitionDisplays(m, names);
                 var modifierSig = CustomModifiers(m);
                 bool modifiersKnown = modifierSig is not null
                     && modifierSig.ParameterTypes.Length == ps.Length;
                 string paramsExpr = "nullptr";
                 if (ps.Length > 0)
                 {
-                    var names = ParamNames(m, ps.Length);
                     var prows = new List<string>();
                     for (int i = 0; i < ps.Length; i++)
                     {
@@ -1644,8 +1650,12 @@ internal sealed partial class CppEmitter
                             req = RenderCustomModifiers(modifierSig!.ParameterTypes[i].Required);
                             opt = RenderCustomModifiers(modifierSig.ParameterTypes[i].Optional);
                         }
+                        string pdisplay = _e.ReflectionSignatureType(ps[i])
+                            + (names[i] is { Length: > 0 } pName ? " " + pName : "");
+                        string genericDefinitionDisplay = genericDefinitionDisplays is { } parameterDisplays
+                            ? $"\"{CppEmitter.CLiteral(parameterDisplays.Parameters[i])}\"" : "nullptr";
                         prows.Add($"{{ {ptInfo}, {nm}, {pca.Expr}, {pca.Count}, 0x{pAttrs:X}, "
-                            + $"{req.Expr}, {req.Count}, {opt.Expr}, {opt.Count}, {(modifiersKnown ? 1 : 0)} }}");
+                            + $"{req.Expr}, {req.Count}, {opt.Expr}, {opt.Count}, {(modifiersKnown ? 1 : 0)}, \"{CppEmitter.CLiteral(pdisplay)}\", {genericDefinitionDisplay} }}");
                     }
                     // Intern byte-identical parameter tables across the whole
                     // emission (first definition wins; explicit `extern` because
@@ -1757,8 +1767,12 @@ internal sealed partial class CppEmitter
                     retReq = RenderCustomModifiers(modifierSig!.ReturnType.Required);
                     retOpt = RenderCustomModifiers(modifierSig.ReturnType.Optional);
                 }
+                string defDisplay = genericDefinitionDisplays is { } gd
+                    ? $"\"{CppEmitter.CLiteral(gd.Method)}\"" : "nullptr";
+                string defReturnDisplay = genericDefinitionDisplays is { } grd
+                    ? $"\"{CppEmitter.CLiteral(grd.Return)}\"" : "nullptr";
                 rows.Add($"{{ \"{m.Name}\", {_e.TypeInfoRef(cls, "method/ctor row's declaring type")}, {retInfo}, {paramsExpr}, {ps.Length}, {attrs}, {m.VtableSlot}, {fnPtr}, {invoker}, {mca.Expr}, {mca.Count}, {sigShape}, 0x{(int)m.Attributes:X}, 0x{(int)m.ImplAttributes:X}, {mdToken}, {m.Context.MethodArgs.Length}, {genArgsExpr}, "
-                    + $"{retReq.Expr}, {retReq.Count}, {retOpt.Expr}, {retOpt.Count}, {(modifiersKnown ? 1 : 0)} }}");
+                    + $"{retReq.Expr}, {retReq.Count}, {retOpt.Expr}, {retOpt.Count}, {(modifiersKnown ? 1 : 0)}, \"{CppEmitter.CLiteral(_e.ReflectionMethodDisplay(m))}\", {defDisplay}, \"{CppEmitter.CLiteral(_e.ReflectionSignatureType(m.Signature.ReturnType))}\", {defReturnDisplay} }}");
             }
             // The trim can empty a table the member list did not. A zero-length array is
             // ill-formed, and no _memberAddr entry survives to point into it, so report
@@ -1817,7 +1831,11 @@ internal sealed partial class CppEmitter
                     if (_c.IsUserModule(cls.Module) && !_e.IsOpaque(cls))
                         pca = _e.BuildAttrTable(_sb, $"{cls.CppName}_prp{rows.Count}", cls.Module, pd.GetCustomAttributes());
                     int prpToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(ph);
-                    rows.Add($"{{ \"{name}\", {_e.TypeInfoRef(cls, "property row's declaring type")}, {propType}, {getterExpr}, {setterExpr}, {attrs}, {pca.Expr}, {pca.Count}, {prpToken} }}");
+                    IReadOnlyList<TypeDesc> indexParams = getter is not null
+                        ? getter.Signature.ParameterTypes
+                        : setter!.Signature.ParameterTypes.Take(setter.Signature.ParameterTypes.Length - 1).ToArray();
+                    string display = _e.ReflectionPropertyDisplay(name, psig.ReturnType, indexParams);
+                    rows.Add($"{{ \"{name}\", {_e.TypeInfoRef(cls, "property row's declaring type")}, {propType}, {getterExpr}, {setterExpr}, {attrs}, {pca.Expr}, {pca.Count}, {prpToken}, \"{CppEmitter.CLiteral(display)}\" }}");
                 }
             }
             catch (Exception e) when (!Compilation.IsMustEscape(e))

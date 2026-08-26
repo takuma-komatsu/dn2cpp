@@ -33,6 +33,7 @@ namespace ReflectInvoke
             MemberwiseCloneSubset.Program.Run();
             GetInterfaceSubset.Program.Run();
             ReflectedTypeSubset.Program.Run();
+            ReflectToStringSubset.Program.Run();
         }
     }
 }

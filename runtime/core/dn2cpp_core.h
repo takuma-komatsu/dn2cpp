@@ -967,6 +967,8 @@ struct Dn2CppParamInfo
     int32_t customModifiersKnown;
     // ParameterInfo.ToString display. See Dn2CppFieldInfo::display.
     const char* display;
+    // Open generic-method definition display over the same closed AOT row.
+    const char* genericDefinitionDisplay;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
