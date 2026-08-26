@@ -200,7 +200,38 @@ internal static class Program
         AsVector234Conversions();
         BoxedVectorIdentity();
         QuaternionPlaneReinterprets();
+        VectorToStrings();
     }
+
+    private static void VectorToStrings()
+    {
+        Console.WriteLine("-- vector tostring --");
+        Vector64<int> v64 = Vector64.Create(1, 2);
+        Vector128<float> v128 = Vector128.Create(1.5f, 2.5f, 3.5f, 4.5f);
+        Vector256<int> v256 = Vector256.Create(1, 2, 3, 4, 5, 6, 7, 8);
+        Vector512<int> v512 = Vector512.Create(1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16);
+        Console.WriteLine("v64=" + v64.ToString());
+        Console.WriteLine("v128=" + v128.ToString());
+        Console.WriteLine("v256=" + v256.ToString());
+        Console.WriteLine("v512=" + v512.ToString());
+
+        Vector<float> vn = new Vector<float>(1.5f);
+        Console.WriteLine("vn=" + vn.ToString());
+        Console.WriteLine("vn F2=" + vn.ToString("F2"));
+        Console.WriteLine("vn de=" + vn.ToString("F2", new CultureInfo("de-DE")));
+
+        object boxedFixed = v64;
+        object boxedNumerics = vn;
+        Console.WriteLine("boxed v64=" + boxedFixed.ToString());
+        Console.WriteLine("boxed vn=" + boxedNumerics.ToString());
+        Console.WriteLine("generic v64=" + GenericToString(v64));
+        Console.WriteLine("generic vn=" + GenericToString(vn));
+        Console.WriteLine($"interp v64={v64}");
+        Console.WriteLine($"interp vn={vn:F2}");
+    }
+
+    private static string GenericToString<T>(T value) => value!.ToString()!;
 
     // Quaternion/Plane.Equals pivot through the internal AsVector128 reinterpret and
     // the lane-wise ops return through AsQuaternion/AsPlane — both directions of the

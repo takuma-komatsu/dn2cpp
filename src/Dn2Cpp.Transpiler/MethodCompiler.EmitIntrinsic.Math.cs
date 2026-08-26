@@ -834,6 +834,18 @@ internal sealed partial class MethodCompiler
             return $"((void)({val.Expr}), dn2cpp_type_tostring({ti}))";
         }
         if (t is { Kind: TypeKind.Class,
+                Class: { IntrinsicCppName: "Dn2CppVector64" or "Dn2CppVector128"
+                    or "Dn2CppVector256" or "Dn2CppVector512" or "Dn2CppVectorT" } vector }
+            && vector.Context.TypeArgs is [var element])
+        {
+            string vecCpp = vector.IntrinsicCppName!;
+            string vec = val.Kind == StackKind.Ptr
+                ? $"(*({vecCpp}*)({val.Expr}))"
+                : Cast(val, vecCpp);
+            return $"dn2cpp_vec_tostring<{CppTypes.StorageOf(element)}, {VecWidthBytes(vecCpp)}>"
+                + $"({vec}, {formatExpr}, nullptr, {(vecCpp == "Dn2CppVectorT" ? 1 : 0)})";
+        }
+        if (t is { Kind: TypeKind.Class,
                 Class: { IntrinsicCppName: not null } intrinsic })
         {
             string intrinsicKey = _c.AdoptedAsyncKey(intrinsic)

@@ -576,6 +576,12 @@ internal sealed partial class CppEmitter
                 string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
                     && c.Context.TypeArgs.Length == 1
                         ? "&dn2cpp_valuetask_box_tostring"
+                    : c.IntrinsicCppName is "Dn2CppVector64" or "Dn2CppVector128"
+                        or "Dn2CppVector256" or "Dn2CppVector512" or "Dn2CppVectorT"
+                        && c.Context.TypeArgs.Length == 1
+                        ? $"&dn2cpp_vec_box_tostring<{CppTypes.StorageOf(c.Context.TypeArgs[0])}, "
+                            + $"{MethodCompiler.VecWidthBytes(c.IntrinsicCppName)}, "
+                            + $"{(c.IntrinsicCppName == "Dn2CppVectorT" ? 1 : 0)}>"
                         : "nullptr";
                 string genTail = "";
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))

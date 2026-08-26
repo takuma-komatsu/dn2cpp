@@ -27,7 +27,7 @@ internal sealed partial class MethodCompiler
         Module.AssemblyName == "System.Linq" ? "DN2CPP_SIMD_HW_ACCEL_LINQ" : "DN2CPP_SIMD_HW_ACCEL";
 
     /// <summary>The byte width of a software-vector C++ type.</summary>
-    private static int VecWidthBytes(string vecCpp) => vecCpp switch
+    internal static int VecWidthBytes(string vecCpp) => vecCpp switch
     {
         "Dn2CppVector64" => 8,
         "Dn2CppVector128" or "Dn2CppVectorT" => 16,
@@ -318,6 +318,30 @@ internal sealed partial class MethodCompiler
 
         switch (name)
         {
+            // Fixed-width intrinsic vectors use invariant lane formatting. The
+            // System.Numerics.Vector<T> family additionally exposes the format/provider
+            // overloads and uses the selected NumberGroupSeparator between lanes.
+            case "ToString":
+            {
+                string nfi = "nullptr";
+                string format = "nullptr";
+                for (int i = ps.Length - 1; i >= 0; i--)
+                {
+                    var arg = Pop();
+                    if (ps[i].IsString)
+                        format = Cast(arg, "Dn2CppString*");
+                    else
+                        nfi = Cast(arg, "const Dn2CppNumberFormatInfo*");
+                }
+                var v = Pop();
+                bool numericsVector = vecCpp == "Dn2CppVectorT";
+                if (!numericsVector && ps.Length != 0)
+                    throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: fixed-width vector ToString overload with arguments is not supported");
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_vec_tostring<{et}, {n}>({Val(v, vecCpp)}, {format}, {nfi}, {(numericsVector ? 1 : 0)})");
+                return true;
+            }
             // --- constants / nullary constructors ---
             case "get_Zero": PushVec($"{Vec("zero")}()"); return true;
             case "get_AllBitsSet": PushVec($"{Vec("all_bits_set")}()"); return true;

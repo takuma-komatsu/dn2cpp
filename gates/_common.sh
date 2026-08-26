@@ -2557,7 +2557,9 @@ corelib_subset_gate() {
 }
 
 # corelib_diff_gate PROJECT — corelib_subset_gate oracled by the program's own
-# real-.NET output (`dotnet $app`). Deterministic programs only.
+# real-.NET output (`dotnet $app`). Deterministic programs only. The optional
+# DN2CPP_ORACLE_DOTNET_ENABLE_AVX knob applies only to that oracle process; its
+# caller must include the resulting behavior axis in DN2CPP_GATE_EXTRA_CONTEXT.
 corelib_diff_gate() {
     local project="$1"; shift
     local out
@@ -2583,7 +2585,12 @@ corelib_diff_gate() {
     _gate_run_argv
     native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     _gate_run_argv
-    expected=$(run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
+        expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
+            run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    else
+        expected=$(run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    fi
     set -e
     _gate_scratch_cleanup
     assert_output "$native" "$expected"
