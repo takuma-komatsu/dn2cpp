@@ -573,6 +573,10 @@ internal sealed partial class CppEmitter
                 // Non-generic: stop at flags and let the trailing members 0-fill, so this
                 // row's text is what it always was. A closed generic has to spell the ten
                 // members between flags and genericDef to reach its positional slots.
+                string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
+                    && c.Context.TypeArgs.Length == 1
+                        ? "&dn2cpp_valuetask_box_tostring"
+                        : "nullptr";
                 string genTail = "";
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))
                     genTail = $", nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, {GenericArgVector(c)}, {c.Context.TypeArgs.Length}";
@@ -580,7 +584,7 @@ internal sealed partial class CppEmitter
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
-                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, nullptr, nullptr, nullptr, {flags}{genTail} }};");
+                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, {toString}, nullptr, nullptr, {flags}{genTail} }};");
             }
         }
 

@@ -118,6 +118,98 @@ Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type)
     return task;
 }
 
+static Dn2CppString* dn2cpp_task_result_tostring(Dn2CppTask* task,
+                                                  const Dn2CppTypeInfo* resultType)
+{
+    if (resultType == nullptr)
+        return dn2cpp_string_from_utf8("", 0);
+
+    if ((resultType->flags & DN2CPP_TF_VALUETYPE) == 0)
+        return dn2cpp_object_tostring(
+            reinterpret_cast<Dn2CppObject*>(static_cast<uintptr_t>(task->result)));
+
+    uint64_t bits = task->result;
+    if (resultType == &dn2cpp_single_type)
+    {
+        float value = static_cast<float>(dn2cpp_bits_r8(bits));
+        return dn2cpp_object_tostring(dn2cpp_box(resultType, &value, sizeof(value)));
+    }
+    if (resultType == &dn2cpp_double_type)
+    {
+        double value = dn2cpp_bits_r8(bits);
+        return dn2cpp_object_tostring(dn2cpp_box(resultType, &value, sizeof(value)));
+    }
+    if (resultType == &dn2cpp_bool_type || resultType == &dn2cpp_char_type
+        || resultType == &dn2cpp_byte_type || resultType == &dn2cpp_sbyte_type
+        || resultType == &dn2cpp_int16_type || resultType == &dn2cpp_uint16_type
+        || resultType == &dn2cpp_int32_type || resultType == &dn2cpp_uint32_type)
+    {
+        // The task slot carries every sub-word kind widened to I4, and normal
+        // boxing stores that full promoted payload. Preserve the sign extension:
+        // object_tostring intentionally reads all of these as int32_t.
+        int32_t value = static_cast<int32_t>(bits);
+        return dn2cpp_object_tostring(dn2cpp_box(resultType, &value, sizeof(value)));
+    }
+    const void* payload = &bits;
+    if ((resultType->flags & DN2CPP_TF_PRIMITIVE) == 0
+        && (resultType->flags & DN2CPP_TF_ENUM) == 0)
+    {
+        payload = reinterpret_cast<const void*>(static_cast<uintptr_t>(bits));
+        // default(ValueTask<TStruct>) has no task/result allocation at all, but its
+        // successful result is still default(TStruct). Materialize that zero value
+        // without waiting or mutating the shared sentinel.
+        if (payload == nullptr)
+            payload = dn2cpp_alloc(static_cast<size_t>(resultType->instanceSize));
+    }
+
+    // Nullable<T> is the one value type whose virtual ToString observes its boxing
+    // rule. Its generated field getters already know the concrete layout, so use
+    // them rather than guessing the value field's alignment here.
+    if (resultType->genericDef != nullptr && resultType->genericDef->name != nullptr
+        && std::strcmp(resultType->genericDef->name, "System.Nullable`1") == 0
+        && payload != nullptr)
+    {
+        Dn2CppObject* nullableBox = dn2cpp_box(resultType, payload, resultType->instanceSize);
+        const Dn2CppFieldInfo* hasValue = nullptr;
+        const Dn2CppFieldInfo* value = nullptr;
+        for (int32_t i = 0; i < resultType->fieldCount; i++)
+        {
+            if (std::strcmp(resultType->fields[i].name, "hasValue") == 0)
+                hasValue = &resultType->fields[i];
+            else if (std::strcmp(resultType->fields[i].name, "value") == 0)
+                value = &resultType->fields[i];
+        }
+        if (hasValue == nullptr || value == nullptr)
+            return dn2cpp_string_from_utf8("", 0);
+        Dn2CppObject* hasValueBox = hasValue->getter(nullableBox);
+        if (hasValueBox == nullptr
+            || *reinterpret_cast<int32_t*>(hasValueBox + 1) == 0)
+            return dn2cpp_string_from_utf8("", 0);
+        return dn2cpp_object_tostring(value->getter(nullableBox));
+    }
+
+    return dn2cpp_object_tostring(
+        dn2cpp_box(resultType, payload, resultType->instanceSize));
+}
+
+Dn2CppString* dn2cpp_valuetask_tostring(Dn2CppTaskAwaiter* valueTask,
+                                        const Dn2CppTypeInfo* resultType)
+{
+    Dn2CppTask* task = dn2cpp_vtask(valueTask != nullptr ? valueTask->task : nullptr);
+    if (task->status.load(std::memory_order_acquire) != DN2CPP_TASK_SUCCEEDED)
+        return dn2cpp_string_from_utf8("", 0);
+    return dn2cpp_task_result_tostring(task, resultType);
+}
+
+Dn2CppString* dn2cpp_valuetask_box_tostring(Dn2CppObject* valueTaskBox)
+{
+    const Dn2CppTypeInfo* valueTaskType = valueTaskBox != nullptr ? valueTaskBox->type : nullptr;
+    const Dn2CppTypeInfo* resultType = valueTaskType != nullptr
+        && valueTaskType->genericArgCount == 1 ? valueTaskType->genericArgs[0] : nullptr;
+    return dn2cpp_valuetask_tostring(
+        reinterpret_cast<Dn2CppTaskAwaiter*>(valueTaskBox + 1), resultType);
+}
+
 Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type)
 {
     if (task == nullptr || task == &dn2cpp_task_default_completed)

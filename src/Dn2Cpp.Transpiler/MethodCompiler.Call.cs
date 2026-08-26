@@ -766,6 +766,19 @@ internal sealed partial class MethodCompiler
                             && TryEmitVectorOp(pc.IntrinsicCppName, VecWidthBytes(pc.IntrinsicCppName),
                                 pc.Context.TypeArgs[0], mrName, pcSig, null))
                             return;
+                        if ((_c.AdoptedAsyncKey(pc) ?? _c.GenericDefFullName(pc))
+                                == "System.Threading.Tasks.ValueTask"
+                            && pc.Context.TypeArgs is [var resultType]
+                            && mrName == "ToString" && pcSig.ParameterTypes.Length == 0)
+                        {
+                            var receiver = Pop();
+                            string resultTi = TypeInfoExpr(resultType)
+                                ?? throw new NotSupportedException(
+                                    $"{_method.DeclaringClass.FullName}.{_method.Name}: ValueTask<{resultType}> result has no emitted type-info");
+                            Push(StackKind.Ref, "Dn2CppString*",
+                                $"dn2cpp_valuetask_tostring((Dn2CppTaskAwaiter*)({receiver.Expr}), {resultTi})");
+                            return;
+                        }
                         // An adopted third-party task type (GDTask<T>, its builder, its
                         // awaiter) answers to a BCL key; anything else is its own name.
                         EmitIntrinsic(_c.AdoptedAsyncKey(pc) ?? _c.GenericDefFullName(pc),
@@ -3685,6 +3698,18 @@ internal sealed partial class MethodCompiler
             // formatter must fail loudly instead of silently degrading to a type name.
             if (name == "ToString" && csig.ParameterTypes.Length == 0)
             {
+                string intrinsicKey = _c.AdoptedAsyncKey(ivc) ?? _c.GenericDefFullName(ivc);
+                if (intrinsicKey == "System.Threading.Tasks.ValueTask"
+                    && ivc.Context.TypeArgs is [var resultType])
+                {
+                    var receiver = Pop();
+                    string resultTi = TypeInfoExpr(resultType)
+                        ?? throw new NotSupportedException(
+                            $"{_method.DeclaringClass.FullName}.{_method.Name}: ValueTask<{resultType}> result has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"dn2cpp_valuetask_tostring((Dn2CppTaskAwaiter*)({receiver.Expr}), {resultTi})");
+                    return true;
+                }
                 if (!_c.DeclaresIntrinsicToStringOverride(ivc))
                 {
                     var receiver = Pop();

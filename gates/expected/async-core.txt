@@ -113,3 +113,10 @@ whenall struct refs: True,barrier-a|barrier-b
 awaiter tostring=System.Runtime.CompilerServices.TaskAwaiter|System.Runtime.CompilerServices.TaskAwaiter`1[System.Int32]|System.Runtime.CompilerServices.ValueTaskAwaiter`1[System.Int32]
 awaiter generic=System.Runtime.CompilerServices.TaskAwaiter`1[System.Int32]|System.Runtime.CompilerServices.ValueTaskAwaiter`1[System.Int32]
 awaiter configured=System.Runtime.CompilerServices.ConfiguredTaskAwaitable`1+ConfiguredTaskAwaiter[System.Int32]|System.Runtime.CompilerServices.ConfiguredValueTaskAwaitable`1+ConfiguredValueTaskAwaiter[System.Int32]
+valuetask success=42|42|42
+valuetask nongeneric=System.Threading.Tasks.ValueTask|System.Threading.Tasks.ValueTask|System.Threading.Tasks.ValueTask|System.Threading.Tasks.ValueTask
+valuetask numeric=-1|1.5
+valuetask virtual=display
+valuetask default struct=AsyncIntrinsicToStringSubset.Program+Plain
+valuetask null=<> pending=<>
+valuetask faulted=<> canceled=<>

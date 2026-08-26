@@ -836,6 +836,19 @@ internal sealed partial class MethodCompiler
         if (t is { Kind: TypeKind.Class,
                 Class: { IntrinsicCppName: not null } intrinsic })
         {
+            string intrinsicKey = _c.AdoptedAsyncKey(intrinsic)
+                ?? _c.GenericDefFullName(intrinsic);
+            if (intrinsicKey == "System.Threading.Tasks.ValueTask"
+                && intrinsic.Context.TypeArgs is [var resultType])
+            {
+                string ct = CppTypes.Of(t);
+                string tmp = NewTemp(ct);
+                Emit($"{tmp} = {Cast(val, ct)};");
+                string resultTi = TypeInfoExpr(resultType)
+                    ?? throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: ValueTask<{resultType}> result has no emitted type-info");
+                return $"dn2cpp_valuetask_tostring((Dn2CppTaskAwaiter*)(&{tmp}), {resultTi})";
+            }
             // ValueType/Object.ToString on an intrinsic with no declaration depends only
             // on exact CLR identity. This also covers intrinsic reference types represented
             // by-value in C++ (memory-map handles), which cannot use object-header dispatch.
