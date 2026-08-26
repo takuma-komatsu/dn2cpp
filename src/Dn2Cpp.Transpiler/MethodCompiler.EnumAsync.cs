@@ -52,6 +52,22 @@ internal sealed partial class MethodCompiler
     /// literals; no runtime metadata is read. The case-insensitive `Parse`/`TryParse`
     /// overloads (the trailing `bool ignoreCase`) fold case via the runtime flag through
     /// `dn2cpp_string_equals_ci`.</summary>
+    /// <summary>The Dn2CppString* expression for a generic Enum.Parse/TryParse source
+    /// argument: the string overloads pass it through, the ReadOnlySpan&lt;char&gt; overloads
+    /// (Enum.TryParse&lt;T&gt;(ReadOnlySpan&lt;char&gt;, bool, out T) — reached from
+    /// System.Text.Json's EnumConverter.TryParseEnumFromString) realize the span as a
+    /// string so the same dn2cpp_enum_parse worker serves both.</summary>
+    private string EnumParseSourceString(StackEntry s, TypeDesc paramType)
+    {
+        if (IsSpanOf(paramType, PrimitiveTypeCode.Char))
+        {
+            string sv = SpanValue(s, CppTypes.Of(paramType));
+            return $"dn2cpp_string_from_chars((const char16_t*){sv}.f__reference, {sv}.f__length)";
+        }
+
+        return Cast(s, "Dn2CppString*");
+    }
+
     private void TranslateEnumReflection(string name, MethodSpecificationHandle msh, TypeDesc[] methodArgs)
     {
         var t = methodArgs[0];
@@ -161,7 +177,7 @@ internal sealed partial class MethodCompiler
                 var s = Pop();
                 string st = NewTemp("Dn2CppString*");
                 string r = NewTemp(cty);
-                Emit($"{st} = {Cast(s, "Dn2CppString*")};");
+                Emit($"{st} = {EnumParseSourceString(s, sig.ParameterTypes[0])};");
                 EmitEnumParse(enumClass, members, wide, st, r, ic, onFail:
                     $"dn2cpp_throw_sr1(&dn2cpp_argument_exception_type, DN2CPP_SR_ENUM_VALUE_NOT_FOUND, {st});");
                 Push(wide ? StackKind.I8 : StackKind.I4, cty, r);
@@ -177,7 +193,7 @@ internal sealed partial class MethodCompiler
                 string st = NewTemp("Dn2CppString*");
                 string r = NewTemp(cty);            // the parsed value
                 string ok = NewTemp("int32_t");     // the bool result
-                Emit($"{st} = {Cast(s, "Dn2CppString*")};");
+                Emit($"{st} = {EnumParseSourceString(s, sig.ParameterTypes[0])};");
                 EmitEnumParse(enumClass, members, wide, st, r, ic, okVar: ok);
                 // Store through the `out T` ref at the enum's REAL underlying width:
                 // the ref can target a narrowed sub-word-underlying enum field (or a
