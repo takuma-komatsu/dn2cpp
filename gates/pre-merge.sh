@@ -3,18 +3,21 @@
 # merge to `main`, so that "which two commands, under which config, with which
 # environment" stops living in somebody's memory.
 #
-#     ./gates/pre-merge.sh                # the real thing (~1-2h, + a self-host build when one is due)
+#     ./gates/pre-merge.sh                # the real thing (~1-2h, plus a self-host
+#                                         # build or a fork-cache refresh when one is due)
 #     ./gates/pre-merge.sh --dry-run      # print the exact runs, execute nothing
 #     ./gates/pre-merge.sh --keep-going   # run Debug even after Release fails
 #     DN2CPP_PREMERGE_SELFTEST=1 ./gates/pre-merge.sh   # self-test, no suite run
 #
-# WHAT IT RUNS, AND WHY EXACTLY THIS. One harness, one build and two full
-# suites, in this order:
+# WHAT IT RUNS, AND WHY EXACTLY THIS. One harness, the inputs the suites cannot
+# run without, and two full suites, in this order:
 #
 #   0. gates/verify-culture-invariance.sh
 #   1. gates/selfhost-emit.sh — only when the binary no longer describes src/
-#   2. CONFIG=Release  DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
-#   3. CONFIG=Debug    DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
+#   2. gates/setup-godot-fork.sh (+ gates/setup-godot-fork-web.sh per flavor) —
+#      only when the fork cache no longer describes ../godot-dn2cpp
+#   3. CONFIG=Release  DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
+#   4. CONFIG=Debug    DN2CPP_REQUIRE_ALL=1  DN2CPP_GATE_CACHE=0
 #
 #   - REQUIRE_ALL, because "all N gates passed" must mean all N *ran*. Without
 #     it a machine missing a prerequisite reports green over a hole, which is
@@ -48,6 +51,20 @@
 #     turns into a failure; with a stale one they FAIL outright — and either way
 #     the news arrives hours into the run. It builds only when the stamp no longer
 #     matches src_tree_hash, so a tree whose binary is current pays nothing here.
+#   - The fork cache is here for the SAME reason and on the same terms, and it is
+#     what makes this script the ONE thing to run after updating ../godot-dn2cpp
+#     rather than the second thing. godot_fork_preflight demands a cache that
+#     describes the fork worktree as it is now, and a stale one is worse than an
+#     absent one: godot_fork_ctx's keys fingerprint the stale editor and
+#     GodotTools.dll THEMSELVES, so nothing moves and the fork gates replay a warm
+#     green over an editor that does not contain the edit under test. It refreshes
+#     only when a stamp disagrees, so a box whose cache is current pays a couple
+#     of tree hashes.
+#     The Web templates ride along because DN2CPP_REQUIRE_ALL=1 makes their
+#     absence a failure rather than a skip. The iOS template stays manual because
+#     its repair consumes Xcode and an official templates archive; its presence,
+#     provenance and host prerequisites are checked up front, so REQUIRE_ALL does
+#     not discover the manual work inside the suite.
 #
 # WHY THIS IS NOT A GATE. It runs the suite — twice. It lives beside
 # gates/verify-locks.sh and gates/measure-*.sh, outside the build-and-run-*.sh
@@ -66,9 +83,11 @@
 # lock machinery the suite itself runs under every time, and the console selfhost
 # harness emits what the suite's own gates transpile through, whereas nothing in
 # either suite can observe that a bucket's green was a fact about ja-JP.
-# gates/selfhost-emit.sh is in on a different test again, and it is the only thing
-# that may be: it answers no verdict at all — it produces a file the suites refuse
-# to run without.
+# gates/selfhost-emit.sh and the two gates/setup-godot-fork*.sh aids are in on a
+# different test again, and they are the only things that may be: they answer no
+# verdict at all — they produce the files the suites refuse to run without. That
+# is the whole entry condition, and "it is useful" is not it: dist/smoke-test.sh
+# is useful and stays out, because the suite already covers what it looks at.
 #
 # WHY IT RE-DERIVES THE VERDICT INSTEAD OF TRUSTING THE EXIT CODE. The runner's
 # exit code and this script's verdict are not the same question, and the gap is
@@ -122,18 +141,128 @@ set -uo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 
-# ── the self-host freshness probe (a child of this script, never a source) ────
-# The predicate is selfhost_bin_fresh (gates/_common.sh), and reaching it means
-# BEING the script that sources _common.sh: it cd's to its sourcer's parent and
-# turns on `set -euo pipefail`, so a `bash -c` sourcing it dies on its own `set
-# -u` and this script must not inherit either option. Hence a child of itself in
-# probe mode, printing `<0|1> <src-tree-hash> <binary path>` on one line.
-# Ahead of the self-test block on purpose: the self-test spawns this mode.
+# ── the freshness probes (children of this script, never a source) ────────────
+# The predicates are selfhost_bin_fresh and godot_fork_cache_fresh
+# (gates/_common.sh, gates/_godot_fork.sh), and reaching either means BEING the
+# script that sources _common.sh: it cd's to its sourcer's parent and turns on
+# `set -euo pipefail`, so a `bash -c` sourcing it dies on its own `set -u` and
+# this script must not inherit either option. Hence a child of itself in probe
+# mode. Ahead of the self-test block on purpose: the self-test spawns both modes.
+#
+# `=1` is the SELF-HOST probe and its output line is FROZEN — `<0|1>
+# <src-tree-hash> <binary path>` — because premerge_selfhost_state reads it
+# positionally and the self-test asserts the shape. `=fork` is the FORK-CACHE
+# probe: `<0|1|2|3> <fork-head> <engine-hash> <tools-hash> <reason…>` — 1 stale,
+# 2 no cache on this box, 3 this OS has no arm for the lane. Four answers and
+# not two because the phase acts differently on each: refresh, build, refuse.
+# Collapsing 2 into 1 would report a cold build as a refresh, and collapsing 3
+# into 2 would start a build that cannot succeed.
 if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "1" ]; then
     source "$REPO/gates/_common.sh"
     probe_rc=0
     selfhost_bin_fresh || probe_rc=1
     printf '%s %s %s\n' "$probe_rc" "$SELFHOST_SRC_NOW" "$SELFHOST_BIN_PATH"
+    exit 0
+fi
+if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "fork" ]; then
+    source "$REPO/gates/_common.sh"
+    source "$REPO/gates/_godot_fork.sh"
+    probe_rc=0
+    FORK_CACHE_HEAD=""
+    FORK_CACHE_ENGINE_NOW=""
+    FORK_CACHE_TOOLS_NOW=""
+    case "${DN2CPP_OS:-}" in
+        macos|windows|linux) ;;
+        *)
+            # 3, and the OS list must track gates/setup-godot-fork.sh's per-OS
+            # arms exactly — godot_fork_preflight's rule: anywhere else "run
+            # gates/setup-godot-fork.sh" is an instruction that cannot succeed,
+            # and the phase reading this has to refuse instead of starting a build.
+            probe_rc=3
+            FORK_CACHE_WHY="the Godot editor-export fork lane has no ${DN2CPP_OS:-non-desktop} arm"
+            ;;
+    esac
+    if [ "$probe_rc" = "0" ] && ! godot_fork_cache_complete; then
+        probe_rc=2
+        FORK_CACHE_WHY="no fork cache at $FORK_ROOT"
+        # An absent cache still has a fork it WOULD describe, and the phase prints
+        # it: "building a cache for <head>" is a different line from "building a
+        # cache", and only one of them lets a reader notice the wrong worktree
+        # before the scons run rather than after it.
+        if godot_fork_resolve >/dev/null 2>&1; then
+            FORK_CACHE_HEAD="$(git -C "$FORK" rev-parse --short HEAD 2>/dev/null || true)"
+        fi
+    elif [ "$probe_rc" = "0" ] && ! godot_fork_cache_fresh; then
+        probe_rc=1
+    fi
+    # The reason is LAST and unquoted on purpose: it is prose with spaces in it,
+    # and the reader (premerge_fork_state) takes it as the line's remainder.
+    printf '%s %s %s %s %s\n' "$probe_rc" "${FORK_CACHE_HEAD:-unknown}" \
+        "${FORK_CACHE_ENGINE_NOW:-unknown}" "${FORK_CACHE_TOOLS_NOW:-unknown}" \
+        "${FORK_CACHE_WHY:-current}"
+    exit 0
+fi
+# `=forkweb` names the Web template FLAVORS that have to be baked: `ok` alone when
+# both are current, `ok <flavor…>` otherwise. The `ok` is load-bearing — it is how
+# the reader tells "both current" from "the probe could not answer", which must
+# mean bake, not skip.
+#
+# A third probe rather than more fields on `=fork` because it asks about a
+# different artifact: the two zips can be stale while the desktop cache is current
+# (an interrupted re-bake) and current while it is stale (an engine edit not yet
+# built), so folding them into one answer would let either state hide the other.
+if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkweb" ]; then
+    source "$REPO/gates/_common.sh"
+    source "$REPO/gates/_godot_fork.sh"
+    # No fork worktree, no provenance to compare against. Silence, not `ok`: the
+    # reader then bakes, which is the safe half — and the `=fork` probe has
+    # already made this run refuse, so nothing reaches the bake anyway.
+    godot_fork_resolve >/dev/null 2>&1 || exit 0
+    # The builder resolves the unpacked, mutable SDK rather than accepting the
+    # frozen one bundled for exports. Use that exact resolver here: ambient
+    # `command -v emcc` can name another SDK and make the probe disagree with the
+    # build it decides whether to run.
+    dn2cpp_emsdk_resolve --no-bundled >/dev/null 2>&1 || exit 0
+    command -v emcc >/dev/null 2>&1 || exit 0
+    probe_emcc="$(first_line "$(emcc --version 2>/dev/null)")"
+    [ -n "$probe_emcc" ] || exit 0
+    BASE_COMMIT="$(cat "$FORK_PIN_EXPECTED")"
+    probe_want="$(godot_fork_engine_provenance)"
+    probe_stale=""
+    for probe_flavor in stock cri; do
+        case "$probe_flavor" in
+            stock)
+                probe_zip="$FORK_ROOT/web_template.zip"
+                probe_emcc_stamp="$FORK_ROOT/web_emcc.txt"
+                ;;
+            cri)
+                probe_zip="$FORK_ROOT/web_template_cri.zip"
+                probe_emcc_stamp="$FORK_ROOT/web_emcc_cri.txt"
+                ;;
+        esac
+        if ! godot_fork_web_template_fresh "$probe_zip" "$probe_flavor" \
+            "$probe_emcc_stamp" "$probe_emcc" "$probe_want"; then
+            probe_stale="$probe_stale $probe_flavor"
+        fi
+    done
+    printf 'ok%s\n' "$probe_stale"
+    exit 0
+fi
+# `=forkios` is a refusal probe, not a builder. The iOS template needs Xcode and
+# an official templates archive, so pre-merge never creates it; it does ensure a
+# REQUIRE_ALL run does not discover its absence or stale provenance hours later.
+if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkios" ]; then
+    source "$REPO/gates/_common.sh"
+    source "$REPO/gates/_godot_fork.sh"
+    godot_fork_resolve >/dev/null 2>&1 \
+        || { printf 'bad the fork worktree does not resolve\n'; exit 0; }
+    BASE_COMMIT="$(cat "$FORK_PIN_EXPECTED")"
+    probe_ios="$FORK_ROOT/ios_template.zip"
+    if ! godot_fork_ios_ready "$probe_ios"; then
+        printf 'bad %s\n' "$FORK_IOS_READY_WHY"
+        exit 0
+    fi
+    printf 'ok current\n'
     exit 0
 fi
 
@@ -144,7 +273,7 @@ for arg in "$@"; do
         --dry-run)    DRY_RUN=1 ;;
         --keep-going) KEEP_GOING=1 ;;
         -h|--help)
-            sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
@@ -452,6 +581,93 @@ premerge_selfhost_state() {
     SELFHOST_BIN=${bin:-artifacts/selfhost-fullcli/dn2cpp}
 }
 
+# premerge_fork_argv — the fork-cache setup's command line, same shape and same
+# reason as the three above. The desktop aid only: the Web arm is a separate argv
+# because it is conditional on a different artifact and needs a different
+# environment.
+premerge_fork_argv() {
+    PREMERGE_FORK_ARGV=()
+    if [ "${DN2CPP_PREMERGE_NO_CAFFEINATE:-0}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
+        PREMERGE_FORK_ARGV+=(caffeinate -i)
+    fi
+    PREMERGE_FORK_ARGV+=(bash "$REPO/gates/setup-godot-fork.sh")
+}
+
+# premerge_fork_web_argv FLAVOR — the Web template bake for `stock` or `cri`. The
+# flavor is an ENV variable to the same script (CRI=1), not an argument, because
+# that is the interface gates/setup-godot-fork-web.sh publishes and docs/RELEASE.md
+# drives it by.
+premerge_fork_web_argv() {
+    PREMERGE_FORK_WEB_ARGV=()
+    if [ "${DN2CPP_PREMERGE_NO_CAFFEINATE:-0}" != "1" ] && command -v caffeinate >/dev/null 2>&1; then
+        PREMERGE_FORK_WEB_ARGV+=(caffeinate -i)
+    fi
+    # CRI is pinned in BOTH arms, never merely set in one: a shell that exported
+    # CRI=1 for a hand-run bake would otherwise leak it into the stock bake, which
+    # then publishes a CRI-glued zip under the stock name — the one mislabel
+    # godot_fork_web_template_flavor exists to refuse downstream.
+    if [ "$1" = "cri" ]; then
+        PREMERGE_FORK_WEB_ARGV+=(env "CRI=1")
+    else
+        PREMERGE_FORK_WEB_ARGV+=(env "CRI=0")
+    fi
+    PREMERGE_FORK_WEB_ARGV+=(bash "$REPO/gates/setup-godot-fork-web.sh")
+}
+
+# premerge_fork_state — ask the fork probe, into FORK_STATE (0 current, 1 stale,
+# 2 absent), FORK_HEAD_SHORT, FORK_ENGINE, FORK_TOOLS and FORK_WHY. A probe that
+# cannot answer at all means STALE rather than absent: premerge_selfhost_state's
+# rule — never omit work on a guess — plus the narrower reading of the two, since
+# "absent" would let the phase claim it built a cache from nothing.
+premerge_fork_state() {
+    local out="" st="" head="" eng="" tools="" why=""
+    out=$(DN2CPP_PREMERGE_PROBE=fork bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
+    read -r st head eng tools why <<<"$out" || :
+    FORK_STATE=${st:-1}
+    FORK_HEAD_SHORT=${head:-unknown}
+    FORK_ENGINE=${eng:-unknown}
+    FORK_TOOLS=${tools:-unknown}
+    FORK_WHY=${why:-the fork-cache probe returned nothing}
+}
+
+# premerge_fork_web_state — which Web template flavors this run has to bake, as a
+# space-separated list in FORK_WEB_STALE (empty when both are current).
+#
+# Absent and stale are ONE answer here, unlike the desktop cache. Under
+# DN2CPP_REQUIRE_ALL=1 a missing Web template is not a skip — gate_skip converts
+# to a failure — and a present-but-stale one is godot_fork_template_check's hard
+# refusal. So both zips have to exist AND be stamped with the engine provenance
+# before the suite starts, and there is no third outcome to distinguish.
+#
+# The comparison is godot_fork_engine_provenance, the same string
+# godot_fork_template_check demands, asked through the probe rather than here:
+# this function holds no $FORK.
+premerge_fork_web_state() {
+    local out="" tag=""
+    out=$(DN2CPP_PREMERGE_PROBE=forkweb bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
+    read -r tag FORK_WEB_STALE <<<"$out" || :
+    if [ "${tag:-}" != "ok" ]; then
+        # The probe did not answer. Bake both rather than believe nothing is due:
+        # premerge_selfhost_state's rule — this phase must never omit work on a
+        # guess — and here the guess would be the one that lets the suite start.
+        FORK_WEB_STALE="stock cri"
+        FORK_WEB_SDK=0
+        return
+    fi
+    FORK_WEB_SDK=1
+    FORK_WEB_STALE=${FORK_WEB_STALE:-}
+}
+
+# premerge_fork_ios_state — 0 when the manually-built iOS template and its host
+# prerequisites are ready, 1 with FORK_IOS_WHY otherwise.
+premerge_fork_ios_state() {
+    local out="" tag="" why=""
+    out=$(DN2CPP_PREMERGE_PROBE=forkios bash "$REPO/gates/pre-merge.sh" 2>/dev/null) || out=""
+    read -r tag why <<<"$out" || :
+    FORK_IOS_WHY=${why:-the iOS prerequisite probe returned nothing}
+    [ "${tag:-}" = ok ]
+}
+
 # ── the verdict, re-derived from the run's own artifacts ─────────────────────
 
 # premerge_verdict LABEL RC LOGDIR EXPECTED_GATES — 0 when the run is a genuine
@@ -657,9 +873,9 @@ CSTUB
     chmod +x "$FAKE/gates/verify-culture-invariance.sh"
     # Stub self-host build, for the reason the culture stub exists — and one more:
     # the real one is a many-minute native link, and a self-test that could reach
-    # it is a self-test nobody runs. The fake repo carries no gates/_common.sh, so
-    # the freshness probe cannot answer there and every e2e case takes the rebuild
-    # arm, which is what makes this stub the ONLY selfhost-emit.sh reachable here.
+    # it is a self-test nobody runs. The fake repo's stub gates/_common.sh below
+    # answers the freshness probe STALE, so every e2e case takes the rebuild arm
+    # and this stub is the only selfhost-emit.sh reachable here.
     cat > "$FAKE/gates/selfhost-emit.sh" <<'SSTUB'
 #!/usr/bin/env bash
 echo "stub self-host build"
@@ -667,17 +883,123 @@ printf 'called\n' >> "${DN2CPP_STUB_SELFHOST_MARK:-/dev/null}"
 exit "${DN2CPP_STUB_SELFHOST_RC:-0}"
 SSTUB
     chmod +x "$FAKE/gates/selfhost-emit.sh"
+    # Stub fork setup aids, for the reason the culture and self-host stubs exist:
+    # the real ones drive scons and Emscripten. Each records that it was called,
+    # so a case can assert the phase built exactly when it should have.
+    cat > "$FAKE/gates/setup-godot-fork.sh" <<'FSTUB'
+#!/usr/bin/env bash
+echo "stub fork setup"
+printf 'called\n' >> "${DN2CPP_STUB_FORK_MARK:-/dev/null}"
+rc="${DN2CPP_STUB_FORK_RC:-0}"
+[ "$rc" != 0 ] || [ "${DN2CPP_STUB_FORK_NO_MARK:-0}" = 1 ] \
+    || : > "$DN2CPP_GODOT_FORK_ROOT/.stub-fork-fresh"
+exit "$rc"
+FSTUB
+    chmod +x "$FAKE/gates/setup-godot-fork.sh"
+    cat > "$FAKE/gates/setup-godot-fork-web.sh" <<'WSTUB'
+#!/usr/bin/env bash
+echo "stub web template bake (CRI=${CRI:-0})"
+if [ "${CRI:-0}" = "1" ]; then flavor=cri; else flavor=stock; fi
+printf '%s\n' "$flavor" >> "${DN2CPP_STUB_FORKWEB_MARK:-/dev/null}"
+exit "${DN2CPP_STUB_FORKWEB_RC:-0}"
+WSTUB
+    chmod +x "$FAKE/gates/setup-godot-fork-web.sh"
+    # Stub HELPERS, not just stub scripts, and this pair is what lets the two fork
+    # probes ANSWER inside the fake repo. The probes are the subject here — their
+    # exit-code-to-state mapping is the thing under test — so the predicates
+    # beneath them are what gets faked, exactly as run-all-gates.sh is faked
+    # beneath the suite phases.
+    #
+    # The self-host half stays deliberately STALE: every pre-existing e2e case
+    # asserts the rebuild arm ran the stub, and a stub that answered "fresh" would
+    # silently delete those assertions rather than fail them.
+    cat > "$FAKE/gates/_common.sh" <<'CMSTUB'
+# Stub _common.sh: only what gates/pre-merge.sh's probe arms read from it — the
+# cd to the repo root (which is how FORK_PIN_EXPECTED resolves), an OS name, and
+# the self-host freshness predicate.
+set -euo pipefail
+cd -P "$(dirname "${BASH_SOURCE[1]}")/.."
+DN2CPP_OS="${DN2CPP_STUB_OS:-linux}"
+EXE_EXT=
+first_line() { local x="$1"; printf '%s\n' "${x%%$'\n'*}"; }
+dn2cpp_emsdk_resolve() { return "${DN2CPP_STUB_EMSDK_RESOLVE:-0}"; }
+emcc() { printf '%s\n' "${DN2CPP_STUB_EMCC_VERSION:-stub-emcc}"; }
+xcodebuild() { :; }
+lipo() { :; }
+xcrun() { printf 'iPhone 16 (stub) (Booted)\n'; }
+selfhost_bin_fresh() {
+    SELFHOST_BIN_PATH="artifacts/selfhost-fullcli/dn2cpp"
+    SELFHOST_SRC_STAMPED="<no stamp>"
+    SELFHOST_SRC_NOW="stubsrc"
+    return 1
+}
+CMSTUB
+    cat > "$FAKE/gates/_godot_fork.sh" <<'GFSTUB'
+# Stub _godot_fork.sh: the two cache predicates the fork probes call, plus the
+# little the forkweb probe reads. Each answer is an env knob, so a case names the
+# state it wants instead of building a fork to have one.
+FORK_ROOT="${DN2CPP_GODOT_FORK_ROOT:-/nonexistent/stub-fork-root}"
+FORK_PIN_EXPECTED=gates/expected/godot-fork-pin.txt
+godot_fork_resolve() { FORK="${DN2CPP_STUB_FORK_CLONE:-/nonexistent/stub-fork}"; return "${DN2CPP_STUB_FORK_RESOLVE:-0}"; }
+godot_fork_engine_provenance() { printf 'engine=stubengine base=stubbase\n'; }
+godot_fork_cache_complete() {
+    [ -f "$FORK_ROOT/.stub-fork-fresh" ] && return 0
+    return "${DN2CPP_STUB_FORK_COMPLETE:-0}"
+}
+godot_fork_cache_fresh() {
+    FORK_CACHE_HEAD="${DN2CPP_STUB_FORK_HEAD:-deadbee}"
+    FORK_CACHE_ENGINE_NOW="${DN2CPP_STUB_FORK_ENGINE:-stubengine}"
+    FORK_CACHE_TOOLS_NOW="${DN2CPP_STUB_FORK_TOOLS:-stubtools}"
+    FORK_CACHE_WHY="${DN2CPP_STUB_FORK_WHY:-the stub says stale}"
+    [ -f "$FORK_ROOT/.stub-fork-fresh" ] && return 0
+    return "${DN2CPP_STUB_FORK_FRESH:-1}"
+}
+godot_fork_web_template_fresh() {
+    local zip="$1" flavor="$2" emcc_stamp="$3" emcc="$4" engine="$5"
+    [ -f "$zip" ] && [ "$(cat "$zip")" = "$flavor" ] \
+        && [ "$(head -1 "$emcc_stamp" 2>/dev/null || true)" = "$emcc" ] \
+        && [ "$(head -1 "$zip.provenance" 2>/dev/null || true)" = "$engine" ]
+}
+godot_fork_ios_ready() {
+    local zip="$1"
+    FORK_IOS_READY_KIND=artifact
+    FORK_IOS_READY_WHY="the stub iOS template is not ready"
+    [ -f "$zip" ] \
+        && [ "$(head -1 "$zip.provenance" 2>/dev/null || true)" = 'engine=stubengine base=stubbase' ]
+}
+GFSTUB
+
+    # A fork artifact root the forkweb probe can read for real. The probe logic is
+    # the subject — "which flavors are due" — so its INPUTS are faked and it runs
+    # unmodified: two zips, each stamped with the provenance the stub helper
+    # reports, which is the state "nothing due" looks like.
+    ST_FORKROOT="$ST_TMP/forkroot"
+    mkdir -p "$ST_FORKROOT" "$FAKE/gates/expected"
+    printf 'stubbase\n' > "$FAKE/gates/expected/godot-fork-pin.txt"
+    for z in web_template web_template_cri; do
+        [ "$z" = web_template ] && flavor=stock || flavor=cri
+        printf '%s\n' "$flavor" > "$ST_FORKROOT/$z.zip"
+        printf 'engine=stubengine base=stubbase\n' > "$ST_FORKROOT/$z.zip.provenance"
+    done
+    printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc.txt"
+    printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc_cri.txt"
+    printf 'not a real iOS template\n' > "$ST_FORKROOT/ios_template.zip"
+    printf 'engine=stubengine base=stubbase\n' > "$ST_FORKROOT/ios_template.zip.provenance"
 
     # e2e NAME EXPECT_RC RELEASE_RC DEBUG_RC EXPECT_CALLS [EXTRA_ARG] [CULTURE_RC] [SELFHOST_RC]
     e2e() {
         local name="$1" want_rc="$2" rel_rc="$3" dbg_rc="$4" want_calls="$5" extra="${6:-}" cult="${7:-0}" sh_rc="${8:-0}"
         local root="$ST_TMP/e2e-$name" rc=0 calls
         mkdir -p "$root"
+        rm -f "${DN2CPP_STUB_FORKROOT:-$ST_FORKROOT}/.stub-fork-fresh"
         DN2CPP_PREMERGE_SELFTEST=0 \
         DN2CPP_PREMERGE_LOGROOT="$root" \
         DN2CPP_STUB_CULTURE_RC="$cult" \
         DN2CPP_STUB_SELFHOST_RC="$sh_rc" \
         DN2CPP_STUB_SELFHOST_MARK="$root/_selfhost_calls.txt" \
+        DN2CPP_GODOT_FORK_ROOT="${DN2CPP_STUB_FORKROOT:-$ST_FORKROOT}" \
+        DN2CPP_STUB_FORK_MARK="$root/_fork_calls.txt" \
+        DN2CPP_STUB_FORKWEB_MARK="$root/_forkweb_calls.txt" \
         DN2CPP_STUB_RC_Release="$rel_rc" \
         DN2CPP_STUB_RC_Debug="$dbg_rc" \
             bash "$FAKE/gates/pre-merge.sh" $extra >"$root/_out.txt" 2>&1 || rc=$?
@@ -749,6 +1071,404 @@ SSTUB
     else
         st_bad "both-green: the receipt does not record the self-host build"
     fi
+
+    # ── phase 2, the fork cache ───────────────────────────────────────────────
+    # The state the stub helpers report is what each case names; the assertions
+    # are on the two things a reader of this phase depends on — whether the setup
+    # aid RAN, and what the verdict and receipt SAY it ran over. Both matter: a
+    # phase that rebuilds silently and a phase that reports a rebuild it skipped
+    # are the two ways this can be wrong, and only one of them is visible in the
+    # exit code.
+    #
+    # every pre-existing case above already exercised the STALE arm, because the
+    # stub answers stale by default — so what is left is the other three answers.
+    DN2CPP_STUB_FORK_FRESH=0 e2e fork-fresh 0 0 0 "Release,Debug,"
+    if [ -f "$ST_TMP/e2e-fork-fresh/_fork_calls.txt" ]; then
+        st_bad "fork-fresh: the phase rebuilt a cache it was told was current"
+    else
+        st_ok "fork-fresh: a current cache is not rebuilt"
+    fi
+    if grep -q '^fork:    reused' "$ST_TMP/e2e-fork-fresh/_receipt.txt" 2>/dev/null; then
+        st_ok "fork-fresh: the receipt records the cache as reused"
+    else
+        st_bad "fork-fresh: the receipt does not record the fork cache — see $ST_TMP/e2e-fork-fresh/_receipt.txt"
+    fi
+
+    # The stale arm's positive half, asserted where the default already puts us.
+    if [ -f "$ST_TMP/e2e-both-green/_fork_calls.txt" ]; then
+        st_ok "both-green: a stale cache is refreshed through the fake repo's stub"
+    else
+        st_bad "both-green: no fork-cache refresh was attempted at all"
+    fi
+    if grep -q '^fork:    rebuilt' "$ST_TMP/e2e-both-green/_receipt.txt" 2>/dev/null; then
+        st_ok "both-green: the receipt records the fork cache's provenance"
+    else
+        st_bad "both-green: the receipt does not record the fork rebuild"
+    fi
+    if grep -q '^forkweb: reused' "$ST_TMP/e2e-both-green/_receipt.txt" 2>/dev/null; then
+        st_ok "both-green: the receipt records the Web templates as current"
+    else
+        st_bad "both-green: the receipt does not record the Web templates"
+    fi
+
+    # A failed refresh must stop the suites, exactly as a failed self-host build
+    # does: an empty call list is the assertion, not a nicety.
+    DN2CPP_STUB_FORK_RC=1 e2e fork-red 1 0 0 ""
+    if grep -q 'fork=RED' "$ST_TMP/e2e-fork-red/_out.txt"; then
+        st_ok "fork-red: the verdict names fork=RED"
+    else
+        st_bad "fork-red: the verdict does not name fork=RED — see $ST_TMP/e2e-fork-red/_out.txt"
+    fi
+
+    # Absent is a DIFFERENT answer from stale, and the phase has to say so before
+    # spending tens of minutes: a reader who sees "refreshing" where the truth is
+    # "building from nothing" has no way to notice the wrong worktree.
+    DN2CPP_STUB_FORK_COMPLETE=1 e2e fork-absent 0 0 0 "Release,Debug,"
+    if grep -q 'no cache on this box yet' "$ST_TMP/e2e-fork-absent/_out.txt"; then
+        st_ok "fork-absent: the phase says it is building a cache, not refreshing one"
+    else
+        st_bad "fork-absent: an absent cache is reported as a stale one — see $ST_TMP/e2e-fork-absent/_out.txt"
+    fi
+    if grep -q '^fork:    rebuilt (fork deadbee, engine stubengine, tools stubtools)' \
+        "$ST_TMP/e2e-fork-absent/_receipt.txt" 2>/dev/null; then
+        st_ok "fork-absent: receipt carries post-build fork hashes"
+    else
+        st_bad "fork-absent: receipt retained pre-build unknowns"
+    fi
+
+    DN2CPP_STUB_FORK_NO_MARK=1 e2e fork-false-green 1 0 0 ""
+    if grep -q 'setup exited 0 but the rebuilt cache is not current' \
+        "$ST_TMP/e2e-fork-false-green/_out.txt"; then
+        st_ok "fork-false-green: setup exit 0 is re-probed and refused"
+    else
+        st_bad "fork-false-green: setup exit 0 was trusted without a fresh cache"
+    fi
+
+    # A host with no arm for the lane: refused up front with exit 2, the same
+    # status and the same reason as the SKIP_GODOT refusal. Not exit 1 — this is
+    # not a red merge gate, it is a run that cannot be performed here.
+    DN2CPP_STUB_OS=android e2e fork-no-arm 2 0 0 ""
+    if grep -q 'no pre-merge run on this host' "$ST_TMP/e2e-fork-no-arm/_out.txt"; then
+        st_ok "fork-no-arm: refused with the reason, before the first suite"
+    else
+        st_bad "fork-no-arm: refused without saying why — see $ST_TMP/e2e-fork-no-arm/_out.txt"
+    fi
+
+    # The Web templates, on a box with no Emscripten SDK. The refusal is the
+    # branch that matters: DN2CPP_REQUIRE_ALL=1 makes an absent template a
+    # failure, this script does not provision SDKs, and a run that started the
+    # suites anyway would spend hours to reach the same answer.
+    ST_WEBLESS="$ST_TMP/forkroot-webless"
+    mkdir -p "$ST_WEBLESS"
+    cp "$ST_FORKROOT/ios_template.zip" "$ST_WEBLESS/ios_template.zip"
+    cp "$ST_FORKROOT/ios_template.zip.provenance" "$ST_WEBLESS/ios_template.zip.provenance"
+    DN2CPP_STUB_EMSDK_RESOLVE=1 DN2CPP_STUB_FORKROOT="$ST_WEBLESS" \
+        e2e forkweb-no-emcc 1 0 0 ""
+    if grep -q 'setup-emsdk.sh' "$ST_TMP/e2e-forkweb-no-emcc/_out.txt"; then
+        st_ok "forkweb-no-emcc: refused naming the SDK aid, before the first suite"
+    else
+        st_bad "forkweb-no-emcc: refused without naming gates/setup-emsdk.sh"
+    fi
+
+    # The bake arm itself, reachable on any host: EMSDK set is what the phase
+    # reads as "an SDK is provisioned", and the stub records the CRI pin each
+    # flavor was invoked under — an ambient CRI=1 leaking into the stock bake
+    # (premerge_fork_web_argv's mislabel) would surface here as a wrong line.
+    DN2CPP_STUB_FORKROOT="$ST_WEBLESS" e2e forkweb-bake 0 0 0 "Release,Debug,"
+    ST_BAKED="$(cat "$ST_TMP/e2e-forkweb-bake/_forkweb_calls.txt" 2>/dev/null | tr '\n' ',')"
+    if [ "$ST_BAKED" = "stock,cri," ]; then
+        st_ok "forkweb-bake: both flavors baked, each under its own CRI pin"
+    else
+        st_bad "forkweb-bake: flavors recorded [$ST_BAKED] (want [stock,cri,])"
+    fi
+    if grep -q '^forkweb: rebaked' "$ST_TMP/e2e-forkweb-bake/_receipt.txt" 2>/dev/null; then
+        st_ok "forkweb-bake: the receipt records the rebake"
+    else
+        st_bad "forkweb-bake: the receipt does not record the rebake"
+    fi
+
+    # The forkweb probe must schedule exactly the flavor whose builder contract
+    # is broken: flavor, emcc and engine provenance are independent terms.
+    web_probe_case() {
+        local name="$1" root="$ST_TMP/webprobe-$1" want="$2" got
+        cp -R "$ST_FORKROOT" "$root"
+        case "$name" in
+            missing-emcc) rm -f "$root/web_emcc.txt" ;;
+            wrong-flavor) printf 'cri\n' > "$root/web_template.zip" ;;
+            stale-engine) printf 'engine=old base=stubbase\n' > "$root/web_template_cri.zip.provenance" ;;
+        esac
+        got="$(DN2CPP_GODOT_FORK_ROOT="$root" DN2CPP_PREMERGE_PROBE=forkweb \
+            bash "$FAKE/gates/pre-merge.sh" 2>/dev/null || true)"
+        if [ "$got" = "$want" ]; then
+            st_ok "forkweb $name -> [$got]"
+        else
+            st_bad "forkweb $name -> [$got] (wanted [$want])"
+        fi
+    }
+    web_probe_case missing-emcc "ok stock"
+    web_probe_case wrong-flavor "ok stock"
+    web_probe_case stale-engine "ok cri"
+
+    say "fork artifact freshness predicates (real helpers, synthetic artifacts)"
+
+    ST_WEB_REAL="$ST_TMP/web-real"
+    mkdir -p "$ST_WEB_REAL/good" "$ST_WEB_REAL/bad"
+    printf 'plain stock glue\n' > "$ST_WEB_REAL/good/godot.js"
+    printf '__cpp_exception\n' > "$ST_WEB_REAL/good/godot.wasm"
+    printf 'side\n' > "$ST_WEB_REAL/good/godot.side.wasm"
+    (cd "$ST_WEB_REAL/good" && zip -q "$ST_WEB_REAL/good.zip" godot.js godot.wasm godot.side.wasm)
+    printf 'plain stock glue\n' > "$ST_WEB_REAL/bad/godot.js"
+    printf '__cpp_exception\n' > "$ST_WEB_REAL/bad/godot.wasm"
+    (cd "$ST_WEB_REAL/bad" && zip -q "$ST_WEB_REAL/bad.zip" godot.js godot.wasm)
+    for z in good bad; do
+        printf 'stub-emcc\n' > "$ST_WEB_REAL/$z.emcc"
+        printf 'engine=stub base=stubbase\n' > "$ST_WEB_REAL/$z.zip.provenance"
+    done
+    web_real_fresh() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_WEB_REAL"
+            DN2CPP_OS=linux
+            source "$REPO/gates/_godot_fork.sh"
+            godot_fork_web_template_fresh "$ST_WEB_REAL/$1.zip" stock \
+                "$ST_WEB_REAL/$1.emcc" stub-emcc 'engine=stub base=stubbase'
+        )
+    }
+    if web_real_fresh good; then
+        st_ok "Web predicate accepts matching flavor/emcc/engine plus dlink/EH structure"
+    else
+        st_bad "Web predicate rejected a structurally current synthetic template"
+    fi
+    if web_real_fresh bad; then
+        st_bad "Web predicate accepted a template with no godot.side.wasm"
+    else
+        st_ok "Web predicate rejects a structurally incomplete template"
+    fi
+
+    ST_IOS_REAL="$ST_TMP/ios-real"
+    ST_IOS_SLICE=libgodot.ios.debug.xcframework/ios-arm64_x86_64-simulator/libgodot.a
+    mkdir -p "$ST_IOS_REAL/bad/$(dirname "$ST_IOS_SLICE")" \
+             "$ST_IOS_REAL/good/$(dirname "$ST_IOS_SLICE")"
+    printf 'X86_ONLY\n' > "$ST_IOS_REAL/bad/$ST_IOS_SLICE"
+    printf 'ARM64\n' > "$ST_IOS_REAL/good/$ST_IOS_SLICE"
+    (cd "$ST_IOS_REAL/bad" && zip -q -r "$ST_IOS_REAL/bad.zip" libgodot.ios.debug.xcframework)
+    (cd "$ST_IOS_REAL/good" && zip -q -r "$ST_IOS_REAL/good.zip" libgodot.ios.debug.xcframework)
+    for z in bad good; do
+        printf 'engine=stub base=stubbase\n' > "$ST_IOS_REAL/$z.zip.provenance"
+    done
+    ios_real_ready() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_IOS_REAL"
+            DN2CPP_OS=macos
+            xcodebuild() { :; }
+            xcrun() { printf 'iPhone 16 (stub) (Booted)\n'; }
+            lipo() {
+                local f="$2"
+                if grep -q ARM64 "$f"; then
+                    printf 'Architectures in the fat file: %s are: x86_64 arm64\n' "$f"
+                else
+                    printf 'Non-fat file: %s is architecture: x86_64\n' "$f"
+                fi
+            }
+            source "$REPO/gates/_godot_fork.sh"
+            godot_fork_engine_provenance() { printf 'engine=stub base=stubbase\n'; }
+            godot_fork_ios_ready "$ST_IOS_REAL/$1.zip"
+        )
+    }
+    if ios_real_ready bad; then
+        st_bad "iOS readiness accepts an x86_64-only simulator slice"
+    else
+        st_ok "iOS readiness rejects an unrepaired simulator template"
+    fi
+    if ios_real_ready good; then
+        st_ok "iOS readiness accepts a readable, current arm64 simulator template"
+    else
+        st_bad "iOS readiness rejected a repaired simulator template"
+    fi
+
+    ST_SDK_FORK="$ST_TMP/sdk-fork"
+    ST_SDK_ROOT="$ST_TMP/sdk-root"
+    mkdir -p "$ST_SDK_FORK" "$ST_SDK_ROOT/nuget"
+    cat > "$ST_SDK_FORK/version.py" <<'VERSION'
+major = 4
+minor = 8
+patch = 1
+status = "stable"
+VERSION
+    managed_version() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_SDK_ROOT"
+            DN2CPP_OS=linux
+            source "$REPO/gates/_godot_fork.sh"
+            FORK="$ST_SDK_FORK"
+            godot_fork_managed_package_version
+        )
+    }
+    sed 's/status = "stable"/status = "beta3"/' "$ST_SDK_FORK/version.py" \
+        > "$ST_SDK_FORK/version.py.tmp"
+    mv "$ST_SDK_FORK/version.py.tmp" "$ST_SDK_FORK/version.py"
+    if [ "$(managed_version)" = 4.8.1-beta.3 ]; then
+        st_ok "managed package version matches build_assemblies.py prerelease spelling"
+    else
+        st_bad "managed package version does not normalize beta3 to beta.3"
+    fi
+    sed 's/status = "beta3"/status = "stable"/' "$ST_SDK_FORK/version.py" \
+        > "$ST_SDK_FORK/version.py.tmp"
+    mv "$ST_SDK_FORK/version.py.tmp" "$ST_SDK_FORK/version.py"
+    managed_feed_fresh() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_SDK_ROOT"
+            DN2CPP_OS=linux
+            source "$REPO/gates/_godot_fork.sh"
+            FORK="$ST_SDK_FORK"
+            godot_fork_managed_feed_fresh
+        )
+    }
+    : > "$ST_SDK_ROOT/nuget/Godot.NET.Sdk.4.8.0.nupkg"
+    if managed_feed_fresh; then
+        st_bad "SDK feed accepts the wrong sole package"
+    else
+        st_ok "SDK feed rejects a stale sole package"
+    fi
+    : > "$ST_SDK_ROOT/nuget/Godot.NET.Sdk.4.8.1.nupkg"
+    if managed_feed_fresh; then
+        st_bad "SDK feed accepts mixed package versions"
+    else
+        st_ok "SDK feed rejects ambiguous package versions"
+    fi
+    rm -f "$ST_SDK_ROOT/nuget/Godot.NET.Sdk.4.8.0.nupkg"
+    for pkg in Godot.SourceGenerators GodotSharp GodotSharpEditor; do
+        : > "$ST_SDK_ROOT/nuget/$pkg.4.8.1.nupkg"
+    done
+    if managed_feed_fresh; then
+        st_ok "managed feed accepts one current package for all four products"
+    else
+        st_bad "managed feed rejected its four current packages"
+    fi
+    rm -f "$ST_SDK_ROOT/nuget/Godot.SourceGenerators.4.8.1.nupkg"
+    if managed_feed_fresh; then
+        st_bad "managed feed accepts a missing SourceGenerators sibling"
+    else
+        st_ok "managed feed rejects a missing SourceGenerators sibling"
+    fi
+    : > "$ST_SDK_ROOT/nuget/Godot.SourceGenerators.4.8.1.nupkg"
+    : > "$ST_SDK_ROOT/nuget/GodotSharpEditor.4.8.0.nupkg"
+    if managed_feed_fresh; then
+        st_bad "managed feed accepts mixed GodotSharpEditor versions"
+    else
+        st_ok "managed feed rejects mixed GodotSharpEditor versions"
+    fi
+    rm -f "$ST_SDK_ROOT/nuget/GodotSharpEditor.4.8.0.nupkg"
+    : > "$ST_SDK_ROOT/nuget/Godot.NET.Sdk.4.8.0.nupkg"
+    if (source "$REPO/gates/_common.sh"; godot_nuget_sdk_version "$ST_SDK_ROOT/nuget") \
+        >/dev/null 2>&1; then
+        st_bad "godot_nuget_sdk_version selected one package from an ambiguous feed"
+    else
+        st_ok "godot_nuget_sdk_version rejects an ambiguous feed"
+    fi
+
+    ST_CACHE_FORK="$ST_TMP/cache-fork"
+    ST_CACHE_ROOT="$ST_TMP/cache-root"
+    mkdir -p "$ST_CACHE_FORK/modules/mono/mono_gd" \
+             "$ST_CACHE_FORK/modules/mono/glue/GodotSharp/GodotSharp/Generated" \
+             "$ST_CACHE_FORK/bin/GodotSharp/Api/Release" \
+             "$ST_CACHE_FORK/bin/GodotSharp/Dn2Cpp" "$ST_CACHE_ROOT/nuget"
+    cp "$ST_SDK_FORK/version.py" "$ST_CACHE_FORK/version.py"
+    printf 'marker\n' > "$ST_CACHE_FORK/modules/mono/mono_gd/gd_mono.cpp"
+    printf 'bin/\nmodules/mono/glue/GodotSharp/GodotSharp/Generated/\n' > "$ST_CACHE_FORK/.gitignore"
+    git -C "$ST_CACHE_FORK" init -q
+    git -C "$ST_CACHE_FORK" add .
+    git -C "$ST_CACHE_FORK" -c user.name=stub -c user.email=stub@example.invalid commit -qm base
+    ST_CACHE_BASE="$(git -C "$ST_CACHE_FORK" rev-parse HEAD)"
+    printf '%s\n' "$ST_CACHE_BASE" > "$ST_CACHE_ROOT/pin.txt"
+    printf '%s\n' "$ST_CACHE_BASE" > "$ST_TMP/cache-pin.txt"
+    ST_CACHE_EDITOR="$ST_CACHE_FORK/bin/godot.linuxbsd.editor.x86_64.mono"
+    ST_CACHE_TEMPLATE="$ST_CACHE_FORK/bin/godot.linuxbsd.template_release.x86_64.mono"
+    printf '#!/bin/sh\n' > "$ST_CACHE_EDITOR"; chmod +x "$ST_CACHE_EDITOR"
+    printf '#!/bin/sh\n' > "$ST_CACHE_TEMPLATE"; chmod +x "$ST_CACHE_TEMPLATE"
+    printf '%s\n' "$ST_CACHE_EDITOR" > "$ST_CACHE_ROOT/editor.txt"
+    printf '%s\n' "$ST_CACHE_TEMPLATE" > "$ST_CACHE_ROOT/template.txt"
+    printf '%s\n' "$ST_CACHE_FORK" > "$ST_CACHE_ROOT/clone.txt"
+    printf 'api\n' > "$ST_CACHE_FORK/bin/GodotSharp/Api/Release/GodotSharp.dll"
+    printf '{}\n' > "$ST_CACHE_FORK/bin/GodotSharp/Dn2Cpp/manifest.json"
+    printf 'glue\n' > "$ST_CACHE_FORK/modules/mono/glue/GodotSharp/GodotSharp/Generated/GeneratedIncludes.props"
+    for pkg in Godot.NET.Sdk Godot.SourceGenerators GodotSharp GodotSharpEditor; do
+        : > "$ST_CACHE_ROOT/nuget/$pkg.4.8.1.nupkg"
+    done
+    cache_helper() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_CACHE_ROOT"
+            DN2CPP_OS=linux
+            source "$REPO/gates/_godot_fork.sh"
+            FORK_PIN_EXPECTED="$ST_TMP/cache-pin.txt"
+            "$@"
+        )
+    }
+    # Compute and stamp in one helper shell so FORK/BASE_COMMIT use the same
+    # dynamic-scope contract as the production predicate.
+    (
+        export DN2CPP_GODOT_FORK_ROOT="$ST_CACHE_ROOT"
+        DN2CPP_OS=linux
+        source "$REPO/gates/_godot_fork.sh"
+        FORK_PIN_EXPECTED="$ST_TMP/cache-pin.txt"
+        godot_fork_resolve >/dev/null
+        BASE_COMMIT="$ST_CACHE_BASE"
+        eng="$(godot_fork_engine_hash)"
+        tools="$(godot_fork_tools_hash)"
+        printf '%s\n' "$eng" > "$FORK_EDITOR.engine-hash"
+        printf '%s\n' "$eng" > "$FORK_TEMPLATE.engine-hash"
+        printf '%s\n' "$eng" > "$FORK/$FORK_GLUE_MARKER.engine-hash"
+        printf '%s\n' "$tools" > "$(godot_fork_tools_stamp)"
+        desktop="$(godot_fork_desktop_template "$FORK_ROOT")"
+        printf 'desktop\n' > "$desktop"
+        printf 'engine=%s base=%s\n' "$eng" "$BASE_COMMIT" > "$desktop.provenance"
+    )
+    if cache_helper godot_fork_cache_fresh; then
+        st_ok "fork cache predicate accepts a complete current synthetic cache"
+    else
+        st_bad "fork cache predicate rejected a complete current synthetic cache"
+    fi
+    ST_CACHE_DESKTOP="$ST_CACHE_ROOT/linux_template.$(cache_helper godot_fork_host_arch)"
+    rm -f "$ST_CACHE_DESKTOP.provenance"
+    if cache_helper godot_fork_cache_fresh; then
+        st_bad "fork cache predicate accepts an unstamped desktop template"
+    else
+        st_ok "fork cache predicate schedules repair for an unstamped desktop template"
+    fi
+
+    # ── the probes' own output shapes ─────────────────────────────────────────
+    # Against the REAL repo, because that is where the real predicates live. The
+    # self-host line is FROZEN: premerge_selfhost_state reads it positionally, and
+    # a field added in front of it would be read as the freshness verdict.
+    ST_PROBE="$(DN2CPP_PREMERGE_PROBE=1 bash "$0" 2>/dev/null || true)"
+    if [ "$(printf '%s\n' "$ST_PROBE" | wc -l | tr -d ' ')" = "1" ] \
+        && [ "$(printf '%s' "$ST_PROBE" | wc -w | tr -d ' ')" = "3" ]; then
+        st_ok "the self-host probe still prints one line of three fields"
+    else
+        st_bad "the self-host probe's frozen output shape changed: [$ST_PROBE]"
+    fi
+    case "$ST_PROBE" in
+        0\ *|1\ *) st_ok "the self-host probe's first field is a verdict" ;;
+        *)         st_bad "the self-host probe does not lead with 0 or 1: [$ST_PROBE]" ;;
+    esac
+    # The fork line carries prose last, so it is asserted on its FIRST fields
+    # only — the reason is deliberately unbounded.
+    ST_FPROBE="$(DN2CPP_PREMERGE_PROBE=fork bash "$0" 2>/dev/null || true)"
+    case "$ST_FPROBE" in
+        0\ *|1\ *|2\ *|3\ *) st_ok "the fork probe leads with one of its four states" ;;
+        *)                   st_bad "the fork probe's first field is not a state: [$ST_FPROBE]" ;;
+    esac
+    if [ "$(printf '%s' "$ST_FPROBE" | wc -w | tr -d ' ')" -ge 5 ]; then
+        st_ok "the fork probe prints its four fields and a reason"
+    else
+        st_bad "the fork probe printed fewer fields than its readers take: [$ST_FPROBE]"
+    fi
+    # An unanswerable Web probe must mean BAKE, never "nothing due": the wrong
+    # default here is the one that lets the suite start over an absent template.
+    ST_WEB_OUT="$(DN2CPP_PREMERGE_PROBE=forkweb bash "$0" 2>/dev/null || true)"
+    case "$ST_WEB_OUT" in
+        ok|ok\ *) st_ok "the forkweb probe answers with its ok sentinel" ;;
+        *)        st_ok "the forkweb probe could not answer here — the reader bakes both" ;;
+    esac
 
     # The transcript, and specifically its LAST line: a form that loses the tail
     # loses the verdict, which is the one line the transcript exists for.
@@ -1150,6 +1870,7 @@ OPTS
     mkdir -p "$SR_ROOT"
     SR_RC=0
     DN2CPP_PREMERGE_SELFTEST=0 DN2CPP_PREMERGE_LOGROOT="$SR_ROOT" \
+    DN2CPP_GODOT_FORK_ROOT="$ST_FORKROOT" \
     DN2CPP_STUB_RC_Release=0 DN2CPP_STUB_RC_Debug=0 \
         bash "$STALE_REPO/gates/pre-merge.sh" >"$SR_ROOT/_out.txt" 2>&1 || SR_RC=$?
     if [ "$SR_RC" = "0" ] && grep -q 'DN2CPP_ALPHA is cached OFF' "$SR_ROOT/_out.txt"; then
@@ -1238,6 +1959,43 @@ if [ "$DRY_RUN" = "1" ]; then
         printf '    %s does not describe src %s; this would run:\n      ' "$SELFHOST_BIN" "$SELFHOST_SRC"
         printf '%s ' "${PREMERGE_SELFHOST_ARGV[@]}"
         printf '\n'
+    fi
+    premerge_fork_state
+    printf '\n  godot fork cache:\n'
+    case "$FORK_STATE" in
+        0)
+            printf '    already describes fork %s (engine %s, tools %s) — NOT rebuilt\n' \
+                "$FORK_HEAD_SHORT" "$FORK_ENGINE" "$FORK_TOOLS"
+            ;;
+        3)
+            printf '    %s — this host has no pre-merge run at all (exit 2)\n' "$FORK_WHY"
+            ;;
+        *)
+            premerge_fork_argv
+            printf '    %s; this would run:\n      ' "$FORK_WHY"
+            printf '%s ' "${PREMERGE_FORK_ARGV[@]}"
+            printf '\n'
+            ;;
+    esac
+    if [ "$FORK_STATE" != "3" ]; then
+        printf '\n  godot fork iOS template (manual prerequisite):\n'
+        if premerge_fork_ios_state; then
+            printf '    current and host prerequisites are available\n'
+        else
+            printf '    %s — this pre-merge run would refuse before its suites\n' "$FORK_IOS_WHY"
+        fi
+        premerge_fork_web_state
+        printf '\n  godot fork web templates:\n'
+        if [ -z "$FORK_WEB_STALE" ]; then
+            printf '    both flavors are baked from these engine sources — NOT rebaked\n'
+        else
+            for flavor in $FORK_WEB_STALE; do
+                premerge_fork_web_argv "$flavor"
+                printf '    %s is absent or stale; this would run:\n      ' "$flavor"
+                printf '%s ' "${PREMERGE_FORK_WEB_ARGV[@]}"
+                printf '\n'
+            done
+        fi
     fi
     for cfg in $CONFIGS; do
         logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
@@ -1334,6 +2092,142 @@ else
     fi
 fi
 
+# ── phase 2: the fork cache the Godot lane requires ──────────────────────────
+# Phase 1's argument, for the other input the fork gates demand, and AFTER it
+# because it consumes it: step 3 of gates/setup-godot-fork.sh packages the
+# self-hosted CLI into the export toolchain the editor runs.
+#
+# The reuse condition here MUST be godot_fork_preflight's accept condition, for
+# the same reason phase 1 shares selfhost_bin_fresh: a refresh this phase skips
+# and the fork gates then refuse is hours of green followed by a REQUIRE_ALL
+# failure over a cache this run could have rebuilt first.
+say "godot fork cache (gates/setup-godot-fork.sh)"
+premerge_fork_state
+FORK_NOTE="(unset)"
+FORK_RUN=0
+case "$FORK_STATE" in
+    0)
+        FORK_NOTE="reused (fork $FORK_HEAD_SHORT, engine $FORK_ENGINE, tools $FORK_TOOLS)"
+        good "fork: the cache already describes fork $FORK_HEAD_SHORT."
+        note "engine $FORK_ENGINE, tools $FORK_TOOLS — nothing to rebuild."
+        RESULTS="${RESULTS}fork=reused "
+        ;;
+    3)
+        # Refused before the first suite, not discovered inside it. This box
+        # cannot produce a fork cache at all, and DN2CPP_REQUIRE_ALL=1 turns the
+        # seventeen Godot gates' skips into failures — so there is no pre-merge
+        # run here, and saying so now costs nothing where saying it later costs
+        # the whole Release suite.
+        bad "fork: $FORK_WHY."
+        bad "There is no pre-merge run on this host: gates/setup-godot-fork.sh"
+        bad "builds an engine only for macOS, Windows and Linux, and the merge gate"
+        bad "demands every Godot gate run. Use a desktop host."
+        exit 2
+        ;;
+    2)
+        note "fork: no cache on this box yet — building one for fork ${FORK_HEAD_SHORT}."
+        note "($FORK_WHY. A cold build is tens of minutes when the fork edits engine C++.)"
+        FORK_RUN=1
+        ;;
+    *)
+        note "fork: the cache no longer describes fork ${FORK_HEAD_SHORT} — refreshing it."
+        note "($FORK_WHY)"
+        FORK_RUN=1
+        ;;
+esac
+if [ "$FORK_RUN" = "1" ]; then
+    premerge_fork_argv
+    "${PREMERGE_FORK_ARGV[@]}" 2>&1 | tee "$LOGROOT/_fork.log"
+    FORK_RC=${PIPESTATUS[0]}
+    if [ "$FORK_RC" -eq 0 ]; then
+        # Re-ask before the suites, both to prove setup's exit 0 produced the
+        # promised cache and to record POST-build hashes. A cold-cache probe has
+        # no engine/tools values, so reusing its fields would put `unknown` in the
+        # receipt that exists to identify what the green ran over.
+        premerge_fork_state
+        if [ "$FORK_STATE" = 0 ]; then
+            FORK_NOTE="rebuilt (fork $FORK_HEAD_SHORT, engine $FORK_ENGINE, tools $FORK_TOOLS)"
+            good "fork: rebuilt the cache for fork $FORK_HEAD_SHORT."
+            note "engine $FORK_ENGINE, tools $FORK_TOOLS — post-build freshness verified."
+            RESULTS="${RESULTS}fork=rebuilt "
+        else
+            FORK_NOTE="FAILED (setup exited 0; post-build probe: $FORK_WHY)"
+            bad "fork: setup exited 0 but the rebuilt cache is not current."
+            note "$FORK_WHY"
+            RESULTS="${RESULTS}fork=RED "
+            OVERALL=1
+        fi
+    else
+        FORK_NOTE="FAILED (exit $FORK_RC)"
+        bad "fork: FAILED (exit $FORK_RC) — see $LOGROOT/_fork.log"
+        RESULTS="${RESULTS}fork=RED "
+        OVERALL=1
+    fi
+fi
+
+# The iOS artifact stays manual: unlike desktop and Web, producing it needs an
+# official templates archive and an Xcode simulator toolchain. Refuse before the
+# suites rather than converting the iOS gate's late REQUIRE_ALL skip into an
+# hour-delayed surprise.
+if [ "$OVERALL" -eq 0 ] && ! premerge_fork_ios_state; then
+    bad "fork iOS template: $FORK_IOS_WHY"
+    note "Prepare it manually, then rerun pre-merge:"
+    note "  FORCE=1 ./gates/setup-godot-fork-ios.sh"
+    exit 2
+fi
+
+# The Web export templates, on the same argument and with one difference: absent
+# and stale are ONE answer, because under DN2CPP_REQUIRE_ALL=1 a missing template
+# is no longer a skip. premerge_fork_web_state says why.
+#
+# Only reached when the desktop cache is good, since the bake reads the fork
+# editor's version and the engine sources the provenance is taken over — baking
+# over a broken cache would stamp the zips against a tree the next step moves.
+FORK_WEB_NOTE="not asked"
+if [ "$OVERALL" -eq 0 ]; then
+    premerge_fork_web_state
+    if [ -z "$FORK_WEB_STALE" ]; then
+        FORK_WEB_NOTE="reused (both flavors current)"
+        good "fork web templates: both flavors are baked from these engine sources."
+        RESULTS="${RESULTS}forkweb=reused "
+    elif [ "$FORK_WEB_SDK" != 1 ]; then
+        # Refused rather than attempted, and named as a HOST prerequisite: the bake
+        # needs an Emscripten SDK, and this script does not provision toolchains —
+        # growing it into dist/release-run.sh is what the junk-drawer rule above
+        # forbids. A refusal and not a skip, because the suite that follows demands
+        # both zips and DN2CPP_REQUIRE_ALL=1 leaves it no way to tolerate one.
+        FORK_WEB_NOTE="FAILED (no emcc; flavors due: $FORK_WEB_STALE)"
+        bad "fork web templates: $FORK_WEB_STALE must be baked, and the SDK resolver"
+        bad "cannot provide the mutable emcc that gates/setup-godot-fork-web.sh uses."
+        note "Provision the SDK first, then re-run this script:"
+        note "  ./gates/setup-emsdk.sh"
+        RESULTS="${RESULTS}forkweb=RED "
+        OVERALL=1
+    else
+        FORK_WEB_NOTE="rebaked ($FORK_WEB_STALE)"
+        for flavor in $FORK_WEB_STALE; do
+            note "fork web templates: baking the $flavor flavor."
+            premerge_fork_web_argv "$flavor"
+            "${PREMERGE_FORK_WEB_ARGV[@]}" 2>&1 | tee "$LOGROOT/_forkweb-$flavor.log"
+            rc_web=${PIPESTATUS[0]}
+            if [ "$rc_web" -ne 0 ]; then
+                FORK_WEB_NOTE="FAILED ($flavor, exit $rc_web)"
+                bad "fork web templates: the $flavor bake FAILED (exit $rc_web)"
+                note "See $LOGROOT/_forkweb-$flavor.log"
+                RESULTS="${RESULTS}forkweb=RED "
+                OVERALL=1
+                break
+            fi
+        done
+        # godot_fork_template_check is the one that re-asks, in every consumer,
+        # for the reason written at the desktop arm above.
+        [ "$OVERALL" -eq 0 ] && {
+            good "fork web templates: rebaked $FORK_WEB_STALE."
+            RESULTS="${RESULTS}forkweb=rebaked "
+        }
+    fi
+fi
+
 for cfg in $CONFIGS; do
     logdir="$LOGROOT/$(printf '%s' "$cfg" | tr 'A-Z' 'a-z')"
     if [ "$OVERALL" -ne 0 ] && [ "$KEEP_GOING" != "1" ]; then
@@ -1377,6 +2271,12 @@ if [ "$OVERALL" -eq 0 ]; then
         # Which sources the binary the fork lane ran on was built from: a green
         # produced over somebody else's self-host binary is a different claim.
         printf 'selfhost: %s\n' "$SELFHOST_NOTE"
+        # And which FORK the Godot lane ran on. The editor drives that whole
+        # pipeline, so a green produced over another fork head — or over a cache
+        # that predates this one — is likewise a different claim, and the fork's
+        # head is in no other line of this receipt.
+        printf 'fork:    %s\n' "$FORK_NOTE"
+        printf 'forkweb: %s\n' "$FORK_WEB_NOTE"
         printf 'runs:    %s\n' "$RESULTS"
         printf 'elapsed: %ss\n' "$ELAPSED"
         # What the green was produced over. A reader who was not there cannot
