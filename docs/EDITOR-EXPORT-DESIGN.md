@@ -504,7 +504,7 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
    | that clone's glue and assemblies + feed (steps 2, 3) | `clone_tree_hash` (pin plus working-tree dirt), stamped in the gitignored `…/Generated/GeneratedIncludes.props.clone-hash` and `bin/GodotSharp/.clone-hash` |
    | the fork's editor + release template (`gates/setup-godot-fork.sh` steps 1, 5) | `godot_fork_engine_hash`, stamped `<binary>.engine-hash` |
    | the fork's mono glue (step 2) | the same engine hash — the glue is the editor's output |
-   | the fork's assemblies + feed + toolchain (step 4) | `tools_tree_hash` over the managed trees `build_assemblies.py` compiles |
+   | the fork's assemblies + feed + toolchain (step 4) | `godot_fork_tools_hash` over the managed trees `build_assemblies.py` compiles |
    | the fork's desktop export template (step 5) | `<template>.provenance`, `godot_fork_engine_provenance` |
    | the fork's iOS simulator library (`gates/setup-godot-fork-ios.sh` step 3) | `<library>.provenance`, `godot_fork_engine_provenance` plus the complete SCons argument vector |
 
@@ -539,6 +539,25 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
    re-freeze.
 3. Bump the pin constant in the gates, rebase `dn2cpp/main`, rebuild the fork
    cache, update `gates/expected/godot-fork-pin.txt`, re-run all Godot gates.
+
+### Ordinary fork updates are not a procedure
+
+The list above is for moving the *base*. A GodotTools edit, or a rebase onto the
+same base with unchanged engine sources, needs no separate cache procedure:
+`gates/pre-merge.sh` asks `godot_fork_cache_fresh` (`gates/_godot_fork.sh`)
+before its suites and refreshes the desktop cache and the two Web templates when
+a stamp disagrees. An engine edit also makes the iOS template stale. That repair
+stays manual because it consumes Xcode and an official templates archive;
+pre-merge refuses before its suites and names `gates/setup-godot-fork-ios.sh`
+rather than discovering the stale template inside the iOS gate.
+
+That predicate is also what makes forgetting *impossible* rather than merely
+unnecessary. `godot_fork_preflight` runs it inside every export gate, live and
+upstream of `gate_cache_check`, so a stale cache fails there with the
+disagreeing stamp named. Without it the gates read `Tools/GodotTools.dll` as
+their subject *and* hash that same DLL into their key, so an uncompiled
+GodotTools edit moves no key and the suite replays a warm green over the old
+exporter.
 
 ## 8. Risks
 
