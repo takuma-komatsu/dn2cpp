@@ -1214,6 +1214,13 @@ internal sealed partial class MethodCompiler
                 Pop(); // the TextInfo receiver
                 Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(","));
                 return true;
+            case ("System.Globalization.TextInfo", "ToString"):
+            {
+                var recv = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_textinfo_tostring({Cast(recv, "const Dn2CppNumberFormatInfo*")})");
+                return true;
+            }
             // TextInfo casing — the TextInfo model is the invariant culture pointer (see
             // get_TextInfo), so these lower to the same invariant BMP case maps as
             // string.ToUpperInvariant; exact for the invariant culture and any culture
@@ -1512,8 +1519,8 @@ internal sealed partial class MethodCompiler
                 // dispatch below would read garbage): route through the interned
                 // wrapper, whose header dispatches the .NET answer — the culture NAME
                 // for the CultureInfo identity (the fold the CultureInfo.ToString case
-                // above makes), the full type name for NumberFormatInfo/TextInfo (no
-                // override in .NET).
+                // above makes), the full type name for NumberFormatInfo, and TextInfo's
+                // culture-bearing standard display.
                 if (IsNfiCppType(o.CppType))
                 {
                     // dn2cpp_nfi_wrap passes a null pointer through as a null

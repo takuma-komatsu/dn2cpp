@@ -174,11 +174,8 @@ internal static partial class CoreIntrinsics
         "System.Globalization.NumberFormatInfo",
         "System.Globalization.DateTimeFormatInfo",
         "System.IFormatProvider",
-        // TextInfo — only its ListSeparator is reached (a throw helper joins the
-        // missing required-property names with CurrentUICulture.TextInfo.ListSeparator).
-        // The real type is ICU-backed; model it as the same invariant culture pointer
-        // and intercept the one member. Its casing methods (ToUpper/ToLower/ToTitleCase)
-        // stay carve-outs (Char already maps casing to ASCII/invariant inline).
+        // TextInfo rides the culture pointer for ListSeparator and its culture-bearing
+        // ToString display. Its ICU-backed casing methods stay bounded carve-outs.
         "System.Globalization.TextInfo",
         // System.Buffers.SearchValues — the arity-0 static factory (Create). The generic
         // instance type SearchValues<T> is in s_intrinsicGenericCpp below (same split as
@@ -2094,7 +2091,7 @@ internal static partial class CoreIntrinsics
         ["System.Globalization.CultureInfo"] = "const Dn2CppNumberFormatInfo*",
         ["System.Globalization.NumberFormatInfo"] = "const Dn2CppNumberFormatInfo*",
         ["System.IFormatProvider"] = "const Dn2CppNumberFormatInfo*",
-        // TextInfo carries the same invariant culture pointer (only ListSeparator read).
+        // TextInfo carries the same culture pointer for ListSeparator and ToString.
         ["System.Globalization.TextInfo"] = "const Dn2CppNumberFormatInfo*",
         // System.Decimal: an intrinsic value type backed by the runtime 96-bit
         // Dn2CppDecimal (no trailing '*' -> IsValueType, passed by value).

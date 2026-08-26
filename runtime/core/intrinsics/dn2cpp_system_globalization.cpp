@@ -374,6 +374,14 @@ Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c)
     return c->cultureName;
 }
 
+Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c)
+{
+    if (c == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_string_concat2(
+        dn2cpp_string_from_utf8("TextInfo - ", 11), dn2cpp_culture_name(c));
+}
+
 // `new NumberFormatInfo()` — a mutable GC-heap copy of the invariant; the object
 // initializer / property setters then customize. Tagged isNfi so an escape to
 // `object` through an erased IFormatProvider slot recovers the NumberFormatInfo
@@ -402,13 +410,17 @@ const Dn2CppNumberFormatInfo* dn2cpp_nfi_invariant_info()
 // The managed types lower to the headerless `const Dn2CppNumberFormatInfo*`,
 // so an escape into an `object` context allocates a real managed object around
 // the pointer (Dn2CppNfiBox, dn2cpp_core.h). ToString on the CultureInfo form
-// is the culture NAME ("" for invariant), matching CultureInfo.ToString;
-// NumberFormatInfo/TextInfo have no override, so their null tostring slot
-// falls through to dn2cpp_object_tostring's default (the full type name),
-// which is what .NET prints for them.
+// is the culture NAME ("" for invariant), matching CultureInfo.ToString.
+// NumberFormatInfo keeps the default type-name display; TextInfo's slot
+// preserves its culture-bearing "TextInfo - {culture}" display after wrapping.
 static Dn2CppString* dn2cpp_cultureinfo_box_tostring(Dn2CppObject* o)
 {
     return dn2cpp_culture_name(reinterpret_cast<Dn2CppNfiBox*>(o)->nfi);
+}
+
+static Dn2CppString* dn2cpp_textinfo_box_tostring(Dn2CppObject* o)
+{
+    return dn2cpp_textinfo_tostring(reinterpret_cast<Dn2CppNfiBox*>(o)->nfi);
 }
 
 const Dn2CppTypeInfo dn2cpp_cultureinfo_type =
@@ -417,7 +429,8 @@ const Dn2CppTypeInfo dn2cpp_cultureinfo_type =
 const Dn2CppTypeInfo dn2cpp_numberformatinfo_type =
     { "System.Globalization.NumberFormatInfo", &dn2cpp_object_type, (int32_t)sizeof(Dn2CppNfiBox), nullptr, nullptr, 0 };
 const Dn2CppTypeInfo dn2cpp_textinfo_type =
-    { "System.Globalization.TextInfo", &dn2cpp_object_type, (int32_t)sizeof(Dn2CppNfiBox), nullptr, nullptr, 0 };
+    { "System.Globalization.TextInfo", &dn2cpp_object_type, (int32_t)sizeof(Dn2CppNfiBox), nullptr, nullptr, 0,
+      dn2cpp_textinfo_box_tostring };
 
 // True when the header word of `o` names one of the wrapper type-infos. Safe
 // on a RAW Dn2CppNumberFormatInfo* that flowed through an erased context: the
