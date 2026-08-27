@@ -867,7 +867,8 @@ internal sealed partial class MethodCompiler
             {
                 var e = Pop();
                 var b = Pop();
-                Emit($"dn2cpp_task_set_exception(((Dn2CppAsyncBuilder*)({b.Expr}))->task, (Dn2CppObject*)({e.Expr}));");
+                EmitCanceledExcRegistration();
+                Emit($"dn2cpp_task_set_exception_or_canceled(((Dn2CppAsyncBuilder*)({b.Expr}))->task, (Dn2CppObject*)({e.Expr}));");
                 return true;
             }
             // The machine calls SetStateMachine during setup; we start the machine

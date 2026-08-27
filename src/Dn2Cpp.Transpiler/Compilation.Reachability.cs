@@ -5121,6 +5121,12 @@ internal sealed partial class Compilation
                         if (CallTargetTypeName(module, handle) is "System.Threading.CancellationTokenSource"
                             or "System.Threading.CancellationToken")
                             ReachCancellationException();
+                        // Async Task/ValueTask builders turn an OperationCanceledException
+                        // passed to SetException into a CANCELED task. The lowering tests
+                        // against the real exception type-info, so force-reach/register it
+                        // even when cancellation is produced without a token API call.
+                        if (IsAsyncTaskBuilderSetException(module, handle, m.Context))
+                            ReachCancellationException();
                         // TaskCompletionSource(<T>).SetCanceled/TrySetCanceled builds the
                         // same runtime OperationCanceledException — same force-reach. The
                         // generic TCS<T> is a TypeSpec MemberRef (invisible to

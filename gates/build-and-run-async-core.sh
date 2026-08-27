@@ -3,6 +3,9 @@
 # completed awaits, Task.Yield suspension, exceptions thrown across awaits,
 # ValueTask, a struct-returning async Task, an IValueTaskSource<TStruct> result
 # through the managed int32 ABI used for its short version token,
+# ValueTask status properties over direct, Task-backed, source-backed, and
+# async-builder-backed representations, including a source that recycles its
+# version token from GetResult,
 # incremental-GC preservation of references copied by Task.WhenAll<TStruct>,
 # task state, a suspended state machine
 # rooted only by per-thread scheduler state, and a continuation handed to the

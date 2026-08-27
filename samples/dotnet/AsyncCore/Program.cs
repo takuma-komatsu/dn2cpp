@@ -32,8 +32,9 @@ namespace AsyncCore
             TaskSchedulerSyncContextSubset.Program.__GateEntry();
             ValueTaskSourceStructSubset.Program.__GateEntry();
             StructTaskReferenceBarrierSubset.Program.__GateEntry();
-            // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
             AsyncIntrinsicToStringSubset.Program.__GateEntry();
+            // APPENDED LAST (the prove-it-ran prefix rule, AGENTS.md).
+            ValueTaskStatusSubset.Program.__GateEntry();
         }
     }
 }

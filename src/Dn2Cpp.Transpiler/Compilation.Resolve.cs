@@ -1631,33 +1631,37 @@ internal sealed partial class Compilation
         NoteReferencedType(itf);
     }
 
-    /// <summary>The <c>GetResult(short)</c> / <c>OnCompleted(Action&lt;object&gt;,
-    /// object, short, flags)</c> pair of a (closed) <c>IValueTaskSource(&lt;T&gt;)</c>
+    /// <summary>The <c>GetStatus(short)</c> / <c>GetResult(short)</c> /
+    /// <c>OnCompleted(Action&lt;object&gt;, object, short, flags)</c> members of a
+    /// (closed) <c>IValueTaskSource(&lt;T&gt;)</c>
     /// interface, or null when the shape doesn't match. Shared by the
     /// IValueTaskSource-backed <c>new ValueTask(source, token)</c> bridge's reach
     /// (<see cref="ReachValueTaskSourceBridge"/>) and emit sides.</summary>
-    internal (MethodInfo GetResult, MethodInfo OnCompleted)? ValueTaskSourceMembers(ClassInfo itf)
+    internal (MethodInfo GetStatus, MethodInfo GetResult, MethodInfo OnCompleted)? ValueTaskSourceMembers(ClassInfo itf)
     {
         if (itf.GenericArity > 0)
             EnsureCompleted(itf);
+        var getStatus = itf.Methods.FirstOrDefault(m =>
+            m.Name == "GetStatus" && !m.IsStatic && m.Signature.ParameterTypes.Length == 1);
         var getResult = itf.Methods.FirstOrDefault(m =>
             m.Name == "GetResult" && !m.IsStatic && m.Signature.ParameterTypes.Length == 1);
         var onCompleted = itf.Methods.FirstOrDefault(m =>
             m.Name == "OnCompleted" && !m.IsStatic && m.Signature.ParameterTypes.Length == 4
             && m.Signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class.IsDelegate: true });
-        if (getResult is null || onCompleted is null
-            || getResult.VtableSlot < 0 || onCompleted.VtableSlot < 0)
+        if (getStatus is null || getResult is null || onCompleted is null
+            || getStatus.VtableSlot < 0 || getResult.VtableSlot < 0 || onCompleted.VtableSlot < 0)
             return null;
-        return (getResult, onCompleted);
+        return (getStatus, getResult, onCompleted);
     }
 
     /// <summary>For an IValueTaskSource-backed <c>new ValueTask(&lt;T&gt;)(source,
     /// token)</c> — a TypeSpec-parented MemberRef (the generic form) or a MethodDef
     /// on the non-generic ValueTask — the emit bridges the source onto a pending
-    /// runtime task whose completion path dispatches the interface's GetResult /
-    /// OnCompleted through the source's interface table and invokes a runtime-built
+    /// runtime task whose status and completion paths dispatch the interface's
+    /// GetStatus / GetResult / OnCompleted through the source's interface table and
+    /// invoke a runtime-built
     /// Action&lt;object&gt;-shaped continuation delegate. None of those edges is an
-    /// IL call site, so reach them here: the two interface slots (so every allocated
+    /// IL call site, so reach them here: the three interface slots (so every allocated
     /// source type wires + reaches its impls) and the Action&lt;object&gt; delegate
     /// type as allocated (the runtime stamps its type-info on the bridge delegate,
     /// and the source's own continuation-invoke IL calls through it).</summary>
@@ -1698,8 +1702,10 @@ internal sealed partial class Compilation
             return;
         if (ValueTaskSourceMembers(itf) is not { } members)
             return;
+        ReachUsedVirtual(members.GetStatus);
         ReachUsedVirtual(members.GetResult);
         ReachUsedVirtual(members.OnCompleted);
+        ReachCancellationException();
         NoteReferencedType(itf);
         if (members.OnCompleted.Signature.ParameterTypes[0] is { Kind: TypeKind.Class, Class: { } action })
         {
@@ -1709,6 +1715,50 @@ internal sealed partial class Compilation
                 Reach(inv);
             ReachAllocatedType(action);
         }
+    }
+
+    /// <summary>Whether a call is a Task or ValueTask builder's
+    /// <c>SetException(Exception)</c>. A generic builder's MemberRef parent is a
+    /// TypeSpec, so the plain parent-name helper cannot identify it.</summary>
+    private bool IsAsyncTaskBuilderSetException(
+        Module module, EntityHandle handle, GenericContext ctx)
+    {
+        if (CallTargetMethodName(module, handle) != "SetException")
+            return false;
+        string? name = CallTargetTypeName(module, handle);
+        if (name is "System.Runtime.CompilerServices.AsyncTaskMethodBuilder"
+            or "System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder"
+            or "System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder")
+            return true;
+        ClassInfo? cls = null;
+        if (handle.Kind == HandleKind.MemberReference)
+        {
+            var mr = module.Reader.GetMemberReference((MemberReferenceHandle)handle);
+            cls = mr.Parent.Kind switch
+            {
+                HandleKind.TypeReference =>
+                    ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class,
+                HandleKind.TypeSpecification =>
+                    module.Reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                        .DecodeSignature(SigProvider, ctx).Class,
+                _ => null,
+            };
+        }
+        else if (handle.Kind == HandleKind.MethodDefinition)
+        {
+            var md = module.Reader.GetMethodDefinition((MethodDefinitionHandle)handle);
+            module.ClassMap.TryGetValue(md.GetDeclaringType(), out cls);
+        }
+        if (cls is null)
+            return false;
+        if (GenericDefFullName(cls) is
+                "System.Runtime.CompilerServices.AsyncTaskMethodBuilder"
+                or "System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder"
+                or "System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder")
+            return true;
+        return HasAdoptedAsync && AdoptedAsyncKey(cls) is
+            "System.Runtime.CompilerServices.AsyncTaskMethodBuilder"
+            or "System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder";
     }
 
     /// <summary>The body a <c>constrained.&lt;cls&gt; callvirt callee</c> on a value type
