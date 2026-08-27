@@ -10,6 +10,47 @@ internal sealed partial class MethodCompiler
     /// compares the value directly; the object form first implements IComparable's
     /// null / exact-box-type contract. Keeping both here makes the intrinsic-type and
     /// selectively intercepted primitive families answer from one shape table.</summary>
+    /// <summary>
+    /// <c>Int32.Equals(object)</c> and its primitive siblings: true only when the argument is
+    /// a box of the very same primitive type whose payload equals the receiver (the real
+    /// <c>Equals(object)</c> semantics — no cross-type numeric comparison). Reached by
+    /// UnitGenerator-style value-object wrappers whose <c>Equals(object)</c> forwards
+    /// to the wrapped primitive's.
+    /// </summary>
+    private bool TryEmitPrimitiveEqualsObject(string declType, MethodSignature<TypeDesc> sig)
+    {
+        if (Compilation.WellKnownPrimitive(declType) is not
+                { Kind: TypeKind.Primitive, Primitive: var code } prim
+            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+                or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double
+            || !sig.Header.IsInstance
+            || sig.ParameterTypes.Length != 1
+            || !sig.ParameterTypes[0].IsObject)
+            return false;
+
+        string compareCt = code switch
+        {
+            PrimitiveTypeCode.UIntPtr => "uintptr_t",
+            PrimitiveTypeCode.IntPtr => "intptr_t",
+            PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
+            _ => CppTypes.Of(prim),
+        };
+        string receiverCt = CppTypes.StorageOf(prim);
+        string boxed = NewTemp("Dn2CppObject*");
+        Emit($"{boxed} = {Cast(Pop(), "Dn2CppObject*")};");
+        string selfObj = NewTemp(compareCt);
+        Emit($"{selfObj} = ({compareCt})({DerefReceiver(receiverCt)});");
+        string result = NewTemp("int32_t");
+        Emit($"{result} = 0;");
+        string ti = TypeInfoExpr(prim)!;
+        string payloadCt = CppTypes.Of(prim);
+        Emit($"if ({boxed} != nullptr && {boxed}->type == {ti}) {{");
+        Emit($"    {result} = (({compareCt})(*({payloadCt}*)({boxed} + 1)) == {selfObj}) ? 1 : 0;");
+        Emit("}");
+        Push(StackKind.I4, "int32_t", result);
+        return true;
+    }
+
     private bool TryEmitPrimitiveCompareTo(string declType, MethodSignature<TypeDesc> sig)
     {
         if (Compilation.WellKnownPrimitive(declType) is not
@@ -85,6 +126,8 @@ internal sealed partial class MethodCompiler
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         if (name == "CompareTo" && TryEmitPrimitiveCompareTo(declType, sig))
+            return true;
+        if (name == "Equals" && TryEmitPrimitiveEqualsObject(declType, sig))
             return true;
 
         switch (declType, name)
