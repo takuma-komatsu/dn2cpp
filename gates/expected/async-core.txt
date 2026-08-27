@@ -110,3 +110,38 @@ installed: NotSupportedException: TaskScheduler.FromCurrentSynchronizationContex
 value-task-source struct: 17,struct-vts
 value-task-source tokens: -32477,-32477
 whenall struct refs: True,barrier-a|barrier-b
+default: completed=True ok=True faulted=False canceled=False
+default-t: completed=True ok=True faulted=False canceled=False
+completed: completed=True ok=True faulted=False canceled=False
+from-result: completed=True ok=True faulted=False canceled=False
+faulted: completed=True ok=False faulted=True canceled=False
+faulted-t: completed=True ok=False faulted=True canceled=False
+canceled: completed=True ok=False faulted=False canceled=True
+canceled-t: completed=True ok=False faulted=False canceled=True
+task-pending: completed=False ok=False faulted=False canceled=False
+task-pending-t: completed=False ok=False faulted=False canceled=False
+task-completed: completed=True ok=True faulted=False canceled=False
+task-completed-t: completed=True ok=True faulted=False canceled=False
+task-faulted: completed=True ok=False faulted=True canceled=False
+task-faulted-t: completed=True ok=False faulted=True canceled=False
+task-canceled: completed=True ok=False faulted=False canceled=True
+task-canceled-t: completed=True ok=False faulted=False canceled=True
+source-faulted-pending: completed=False ok=False faulted=False canceled=False
+source-faulted-t-pending: completed=False ok=False faulted=False canceled=False
+source-faulted-status: completed=True ok=False faulted=True canceled=False
+source-faulted-t-status: completed=True ok=False faulted=True canceled=False
+source-faulted-signaled: completed=True ok=False faulted=True canceled=False
+source-faulted-t-signaled: completed=True ok=False faulted=True canceled=False
+source-canceled-pending: completed=False ok=False faulted=False canceled=False
+source-canceled-t-pending: completed=False ok=False faulted=False canceled=False
+source-canceled-status: completed=True ok=False faulted=False canceled=True
+source-canceled-t-status: completed=True ok=False faulted=False canceled=True
+source-canceled-signaled: completed=True ok=False faulted=False canceled=True
+source-canceled-t-signaled: completed=True ok=False faulted=False canceled=True
+source-getresult: fault,fault,canceled,canceled counts=1,1,1,1
+async-canceled: completed=True ok=False faulted=False canceled=True
+async-canceled-t: completed=True ok=False faulted=False canceled=True
+async-task-canceled: completed=True ok=False faulted=False canceled=True
+async-task-canceled-t: completed=True ok=False faulted=False canceled=True
+value-task-status token: -32477
+value-task-status: ran

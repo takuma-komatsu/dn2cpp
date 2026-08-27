@@ -2130,7 +2130,7 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The IValueTaskSource-backed <c>new ValueTask(&lt;T&gt;)(source,
     /// token)</c> lowering: pop (source, token), resolve the closed interface's
-    /// GetResult/OnCompleted implementations through the source's interface table,
+    /// GetStatus/GetResult/OnCompleted implementations through the source's interface table,
     /// and push a {task} struct over the pending task dn2cpp_vts_task returns
     /// (completed by a runtime continuation registered via OnCompleted; the
     /// result kind tells the runtime how to read GetResult's return into the
@@ -2164,6 +2164,7 @@ internal sealed partial class MethodCompiler
         var actionCls = members.OnCompleted.Signature.ParameterTypes[0].Class!;
         _c.NoteReferencedType(itf);
         _c.NoteReferencedType(actionCls);
+        EmitCanceledExcRegistration();
         var token = Pop();  // short token
         var src = Pop();    // IValueTaskSource(<T>) receiver
         string vts = NewTemp("Dn2CppObject*");
@@ -2182,7 +2183,8 @@ internal sealed partial class MethodCompiler
               $"return (uint64_t)(uintptr_t)dn2cpp_struct_result_box(&__result, (int32_t)sizeof({CppTypes.Of(rt)})); }}"
             : "nullptr";
         string bridge = $"dn2cpp_vts_task({vts}, (int16_t)({token.Expr}), " +
-               $"{slots}[{members.GetResult.VtableSlot}], {slots}[{members.OnCompleted.VtableSlot}], " +
+               $"{slots}[{members.GetStatus.VtableSlot}], {slots}[{members.GetResult.VtableSlot}], " +
+               $"{slots}[{members.OnCompleted.VtableSlot}], " +
                $"&{actionCls.CppTypeInfoName}, {kind}, {structResult})";
         return $"Dn2CppTaskAwaiter{{ {StampTask(bridge, taskType)} }}";
     }

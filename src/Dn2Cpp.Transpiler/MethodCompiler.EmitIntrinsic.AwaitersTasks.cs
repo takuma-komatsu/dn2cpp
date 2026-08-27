@@ -193,7 +193,7 @@ internal sealed partial class MethodCompiler
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({a.Expr}))->task)->status != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({a.Expr}))->task) != DN2CPP_TASK_PENDING ? 1 : 0)");
                 return true;
             }
             case ("ConfiguredValueTaskAwaiter", "GetResult"):
@@ -275,7 +275,8 @@ internal sealed partial class MethodCompiler
             {
                 var e = Pop();
                 var b = Pop();
-                Emit($"dn2cpp_task_set_exception(((Dn2CppAsyncBuilder*)({b.Expr}))->task, (Dn2CppObject*)({e.Expr}));");
+                EmitCanceledExcRegistration();
+                Emit($"dn2cpp_task_set_exception_or_canceled(((Dn2CppAsyncBuilder*)({b.Expr}))->task, (Dn2CppObject*)({e.Expr}));");
                 return true;
             }
             case ("System.Runtime.CompilerServices.AsyncValueTaskMethodBuilder", "SetStateMachine"):
@@ -376,7 +377,7 @@ internal sealed partial class MethodCompiler
             {
                 var v = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({v.Expr}))->task) != DN2CPP_TASK_PENDING ? 1 : 0)");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "get_Result"):
@@ -429,28 +430,28 @@ internal sealed partial class MethodCompiler
             {
                 var v = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status == DN2CPP_TASK_FAULTED ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({v.Expr}))->task) == DN2CPP_TASK_FAULTED ? 1 : 0)");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "get_IsCanceled"):
             {
                 var v = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status == DN2CPP_TASK_CANCELED ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({v.Expr}))->task) == DN2CPP_TASK_CANCELED ? 1 : 0)");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "get_IsCompletedSuccessfully"):
             {
                 var v = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({v.Expr}))->task)->status == DN2CPP_TASK_SUCCEEDED ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({v.Expr}))->task) == DN2CPP_TASK_SUCCEEDED ? 1 : 0)");
                 return true;
             }
             case ("System.Runtime.CompilerServices.ValueTaskAwaiter", "get_IsCompleted"):
             {
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_vtask(((Dn2CppTaskAwaiter*)({a.Expr}))->task)->status != DN2CPP_TASK_PENDING ? 1 : 0)");
+                    $"(dn2cpp_vtask_status(((Dn2CppTaskAwaiter*)({a.Expr}))->task) != DN2CPP_TASK_PENDING ? 1 : 0)");
                 return true;
             }
             case ("System.Runtime.CompilerServices.ValueTaskAwaiter", "GetResult"):

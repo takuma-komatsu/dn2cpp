@@ -722,6 +722,7 @@ struct Dn2CppWhenAllState
 };
 
 static void dn2cpp_task_set_canceled(Dn2CppTask* t);
+static Dn2CppObject* dn2cpp_make_task_canceled_exception();
 
 // What a settled-but-failed task contributes to an aggregate built over it: its
 // Task.Exception's inner set if it has one, else the single stored exception. .NET's
@@ -730,6 +731,8 @@ static void dn2cpp_task_set_canceled(Dn2CppTask* t);
 // inners, not two. A canceled task never mints the wrapper, so it contributes one.
 static int32_t dn2cpp_task_fault_inner_count(Dn2CppTask* t)
 {
+    if (t->status == DN2CPP_TASK_CANCELED)
+        return 1;
     if (t->exceptionAggregate == nullptr)
         return 1;
     return dn2cpp_aggregate_inner_exceptions(t->exceptionAggregate, nullptr)->length;
@@ -738,6 +741,13 @@ static int32_t dn2cpp_task_fault_inner_count(Dn2CppTask* t)
 // Append that set at `k`, answering the next free index.
 static int32_t dn2cpp_task_fault_inners_copy(Dn2CppTask* t, Dn2CppArrayRef* out, int32_t k)
 {
+    // Async builders retain the original OCE for await, but blocking waits expose a
+    // TaskCanceledException inside their AggregateException, as real .NET does.
+    if (t->status == DN2CPP_TASK_CANCELED)
+    {
+        dn2cpp_gc_store_ref(&out->data[k++], dn2cpp_make_task_canceled_exception());
+        return k;
+    }
     if (t->exceptionAggregate == nullptr)
     {
         dn2cpp_gc_store_ref(&out->data[k++], t->exception);
@@ -1044,12 +1054,13 @@ extern const Dn2CppType dn2cpp_operation_canceled_exception_type_obj;
 static const Dn2CppTypeInfo dn2cpp_operation_canceled_exception_type =
     dn2cpp_ti_with_typeobject({ "System.OperationCanceledException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_operation_canceled_exception_type_obj);
 const Dn2CppType dn2cpp_operation_canceled_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_operation_canceled_exception_type };
-static const Dn2CppTypeInfo* s_canceled_exc_type = &dn2cpp_operation_canceled_exception_type;
+static std::atomic<const Dn2CppTypeInfo*> s_canceled_exc_type{
+    &dn2cpp_operation_canceled_exception_type };
 
 void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti)
 {
     if (ti != nullptr)
-        s_canceled_exc_type = ti;
+        s_canceled_exc_type.store(ti, std::memory_order_release);
 }
 
 // The real TaskCanceledException type-info, registered beside the OCE one: a CANCELED
@@ -1057,12 +1068,12 @@ void dn2cpp_set_canceled_exception_type(const Dn2CppTypeInfo* ti)
 // Task.Delay / TCS.SetCanceled all do), while the token-side throw keeps the plain
 // OperationCanceledException. Null until registered — the fallback is the OCE identity
 // above, so a program whose CoreLib never carried the type still works.
-static const Dn2CppTypeInfo* s_task_canceled_exc_type = nullptr;
+static std::atomic<const Dn2CppTypeInfo*> s_task_canceled_exc_type{ nullptr };
 
 void dn2cpp_set_task_canceled_exception_type(const Dn2CppTypeInfo* ti)
 {
     if (ti != nullptr)
-        s_task_canceled_exc_type = ti;
+        s_task_canceled_exc_type.store(ti, std::memory_order_release);
 }
 
 static Dn2CppObject* dn2cpp_make_canceled_exception_of(const Dn2CppTypeInfo* ti,
@@ -1084,13 +1095,14 @@ static Dn2CppObject* dn2cpp_make_canceled_exception_of(const Dn2CppTypeInfo* ti,
 // The token-side OCE (ThrowIfCancellationRequested).
 static Dn2CppObject* dn2cpp_make_canceled_exception()
 {
-    return dn2cpp_make_canceled_exception_of(s_canceled_exc_type, "The operation was canceled.");
+    return dn2cpp_make_canceled_exception_of(
+        s_canceled_exc_type.load(std::memory_order_acquire), "The operation was canceled.");
 }
 
 // The task-side TCE (every CANCELED task transition below).
 static Dn2CppObject* dn2cpp_make_task_canceled_exception()
 {
-    const Dn2CppTypeInfo* ti = s_task_canceled_exc_type;
+    const Dn2CppTypeInfo* ti = s_task_canceled_exc_type.load(std::memory_order_acquire);
     if (ti == nullptr)
         return dn2cpp_make_canceled_exception();
     return dn2cpp_make_canceled_exception_of(ti, "A task was canceled.");
@@ -1104,6 +1116,15 @@ static Dn2CppObject* dn2cpp_make_task_canceled_exception()
 static void dn2cpp_task_set_canceled(Dn2CppTask* t)
 {
     dn2cpp_task_complete(t, DN2CPP_TASK_CANCELED, t->result, dn2cpp_make_task_canceled_exception());
+}
+
+void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception)
+{
+    int32_t status = exception != nullptr
+        && dn2cpp_isinst(exception,
+            s_canceled_exc_type.load(std::memory_order_acquire)) != nullptr
+        ? DN2CPP_TASK_CANCELED : DN2CPP_TASK_FAULTED;
+    dn2cpp_task_complete(t, status, t->result, exception);
 }
 
 // Task.FromCanceled(<T>) / ValueTask.FromCanceled(<T>): a pre-completed CANCELED
@@ -1940,9 +1961,9 @@ Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
 // for ALL of them before throwing and reports every failure in one AggregateException
 // (a single faulted input still gets a wrapper), so the drain loop must not re-raise as
 // it goes — it settles first and collects after. Cancellation counts as a failure, like
-// .NET's WaitAllCore. Every FAULTED/CANCELED task carries an exception object by
-// construction (the three CANCELED transitions all install
-// dn2cpp_make_task_canceled_exception), so the collected array holds no nulls.
+// .NET's WaitAllCore. A canceled task contributes a TaskCanceledException minted
+// for the blocking wait, while its stored exception remains the original OCE that
+// await rethrows.
 void dn2cpp_task_wait_all(Dn2CppArrayRef* tasks)
 {
     if (tasks == nullptr)
@@ -3584,6 +3605,7 @@ struct Dn2CppVtsBridge
     Dn2CppObject header;
     Dn2CppObject* vts;      // the IValueTaskSource receiver
     Dn2CppTask* task;       // the pending task the ValueTask wraps
+    const void* getStatusFn; // resolved GetStatus impl: int32_t (*)(receiver, int32_t)
     const void* getResultFn; // resolved GetResult impl: R (*)(receiver, int32_t)
     int16_t version;        // the source's token for this operation
     int32_t resultKind;     // 0=void 1=int32 2=int64 3=reference 4=struct
@@ -3599,6 +3621,23 @@ extern const Dn2CppType dn2cpp_vts_bridge_type_obj;
 static const Dn2CppTypeInfo dn2cpp_vts_bridge_type =
     dn2cpp_ti_with_typeobject({ "dn2cpp.ValueTaskSourceBridge", nullptr, (int32_t)sizeof(Dn2CppVtsBridge), nullptr, nullptr, 0 }, &dn2cpp_vts_bridge_type_obj);
 const Dn2CppType dn2cpp_vts_bridge_type_obj = { { &dn2cpp_type_type }, &dn2cpp_vts_bridge_type };
+
+static int32_t dn2cpp_vts_get_status(Dn2CppVtsBridge* b)
+{
+    // ValueTaskSourceStatus and DN2CPP_TASK_* share Pending/Succeeded/Faulted/Canceled
+    // values 0..3. Returning the managed enum raw keeps one comparison contract.
+    return reinterpret_cast<int32_t (*)(Dn2CppObject*, int32_t)>(
+        const_cast<void*>(b->getStatusFn))(b->vts, b->version);
+}
+
+int32_t dn2cpp_vtask_status(Dn2CppTask* t)
+{
+    if (t == nullptr)
+        return DN2CPP_TASK_SUCCEEDED;
+    auto* b = reinterpret_cast<Dn2CppVtsBridge*>(t->vtsBridge);
+    return b != nullptr ? dn2cpp_vts_get_status(b)
+                        : t->status.load(std::memory_order_seq_cst);
+}
 
 // The one call to the source's GetResult, packed into the task's 8-byte slot by kind.
 // Shared by the continuation and the early synchronous read, which the claim word keeps
@@ -3652,16 +3691,15 @@ static void dn2cpp_vts_continuation(Dn2CppObject* target, Dn2CppObject* /*state*
     }
     catch (const Dn2CppException& e)
     {
-        dn2cpp_task_set_exception(b->task, e.obj); // rooted via the task
+        dn2cpp_task_set_exception_or_canceled(b->task, e.obj); // rooted via the task
         dn2cpp_exc_inflight_pop(e.obj);
     }
     dn2cpp_principal_left(g_inflight_async_tasks);
 }
 
-// The invariant: the source's GetResult is consumed exactly once per operation, the
-// claim word arbitrating between the registered continuation and an early synchronous
-// read — and a read that THREW hands the claim back, because the operation it was
-// refused is still live and the continuation must still consume it.
+// The source's GetResult is consumed exactly once per operation. The claim word
+// arbitrates between the continuation and a synchronous read: a PENDING refusal hands
+// the claim back, while a terminal exception settles the task and consumes the claim.
 Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
 {
     if (t->status.load(std::memory_order_seq_cst) != DN2CPP_TASK_PENDING)
@@ -3677,11 +3715,32 @@ Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
     {
         r = dn2cpp_vts_get_result(b);
     }
+    catch (const Dn2CppException& e)
+    {
+        // A pending source refused an early read, so leave its operation live for the
+        // registered continuation. A terminal source has consumed GetResult already;
+        // settle the bridge before publishing claim==2 so that continuation skips it.
+        int32_t sourceStatus;
+        try
+        {
+            sourceStatus = dn2cpp_vts_get_status(b);
+        }
+        catch (...)
+        {
+            b->claim.store(0, std::memory_order_release);
+            throw;
+        }
+        if (sourceStatus == DN2CPP_TASK_PENDING)
+            b->claim.store(0, std::memory_order_release);
+        else
+        {
+            dn2cpp_task_set_exception_or_canceled(t, e.obj);
+            b->claim.store(2, std::memory_order_release);
+        }
+        throw;
+    }
     catch (...)
     {
-        // The refusal the CLR gives a premature read, raised by the source itself. A
-        // fault raised by an already-completed source lands here too, and releasing is
-        // still right: only a program that reads the same ValueTask twice can tell.
         b->claim.store(0, std::memory_order_release);
         throw;
     }
@@ -3694,7 +3753,8 @@ Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
 }
 
 Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
-                            const void* getResultFn, const void* onCompletedFn,
+                            const void* getStatusFn, const void* getResultFn,
+                            const void* onCompletedFn,
                             const Dn2CppTypeInfo* actionTi, int32_t resultKind,
                             uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t))
 {
@@ -3703,6 +3763,7 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     b->vts = vts;
     Dn2CppTask* t = dn2cpp_task_alloc();
     dn2cpp_gc_store_ref(&b->task, t);
+    b->getStatusFn = getStatusFn;
     b->getResultFn = getResultFn;
     b->version = version;
     b->resultKind = resultKind;

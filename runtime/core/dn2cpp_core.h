@@ -4644,15 +4644,17 @@ inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
 // site resolved through the receiver's interface table (void (*)(receiver)).
 int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn);
 // `new ValueTask(<T>)(IValueTaskSource(<T>) source, short token)` — bridge the
-// source onto a pending task completed via the source's OnCompleted/GetResult
-// (both implementations resolved by the call site through the source's interface
-// table). `actionTi` is the Action<object> type-info stamped on the runtime-built
+// source onto a pending task completed via the source's OnCompleted/GetResult.
+// GetStatus remains the authority for every ValueTask status read, even after the
+// bridge task settles. All three implementations are resolved through the source's
+// interface table. `actionTi` is the Action<object> type-info stamped on the runtime-built
 // continuation delegate; `resultKind` packs GetResult's return into the task's
 // result slot (0=void 1=int32 2=int64 3=reference 4=struct). A struct's ABI is
 // known only at the call site, so `getStructResult` invokes the typed method and
 // heap-copies its result into the slot.
 Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
-                            const void* getResultFn, const void* onCompletedFn,
+                            const void* getStatusFn, const void* getResultFn,
+                            const void* onCompletedFn,
                             const Dn2CppTypeInfo* actionTi, int32_t resultKind,
                             uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t));
 
@@ -6140,6 +6142,10 @@ Dn2CppObject* dn2cpp_task_exception(Dn2CppTask* t);
 // SetException intrinsics route here so awaiters resume).
 void dn2cpp_task_set_result(Dn2CppTask* t, uint64_t result);
 void dn2cpp_task_set_exception(Dn2CppTask* t, Dn2CppObject* exception);
+// Async Task/ValueTask builders and source-backed bridges classify
+// OperationCanceledException (and derived exceptions) as cancellation while
+// preserving the thrown object for await.
+void dn2cpp_task_set_exception_or_canceled(Dn2CppTask* t, Dn2CppObject* exception);
 // Register a resumption to run when `t` completes (the suspension path). If `t`
 // is already complete the resumption is posted immediately.
 void dn2cpp_task_on_completed(Dn2CppTask* t, void (*fn)(void*), void* state);
@@ -6246,6 +6252,9 @@ Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t);
 // it refuse. So route that case there instead of sleeping until somebody settles it —
 // the exception is then the source's own, which is the only way its text can match.
 Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t);
+// ValueTask status reads use the source's GetStatus(token) when source-backed;
+// Task-/builder-backed values use the task state, and default(ValueTask) succeeds.
+int32_t dn2cpp_vtask_status(Dn2CppTask* t);
 // The BLOCKING-WAIT flavor of the same drain: Task.Wait()/Wait(timeout)/
 // Task<T>.Result wrap a fault or cancellation in an AggregateException, like real
 // .NET — the wrap is the contract of the blocking wait, not of the task, which is
