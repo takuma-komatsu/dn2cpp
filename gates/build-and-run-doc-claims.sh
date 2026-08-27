@@ -269,6 +269,14 @@ sample_freq=$(sed -nE '1s/.*Frequency == ([0-9_]+).*/\1/p' \
 eq "docs/EDITOR-GUIDE.ja.md Web Stopwatch.Frequency vs the MonotonicClock assert" \
    "$guide_freq" "$sample_freq"
 
+# The host floor is also the deployment floor of the editor-built drop-in. Keep
+# the public requirement bound to the value that packaging, prebuilt lookup and
+# the Mach-O assertion all consume from _common.sh.
+guide_macos_floor=$(sed -nE 's/.*macOS ([0-9]+\.[0-9]+) 以降.*/\1/p' \
+    docs/EDITOR-GUIDE.ja.md)
+eq "docs/EDITOR-GUIDE.ja.md macOS floor vs the shared deployment target" \
+   "$guide_macos_floor" "$MACOS_DESKTOP_DEPLOYMENT_TARGET"
+
 # Every platform/*/ implementation defines the whole seam. The pal-reference gate
 # asserts this too, and the duplication is deliberate: that gate builds a runtime
 # and this one runs in milliseconds with no toolchain, so on a machine where the

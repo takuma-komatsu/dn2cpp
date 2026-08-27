@@ -174,11 +174,8 @@ internal static partial class CoreIntrinsics
         "System.Globalization.NumberFormatInfo",
         "System.Globalization.DateTimeFormatInfo",
         "System.IFormatProvider",
-        // TextInfo — only its ListSeparator is reached (a throw helper joins the
-        // missing required-property names with CurrentUICulture.TextInfo.ListSeparator).
-        // The real type is ICU-backed; model it as the same invariant culture pointer
-        // and intercept the one member. Its casing methods (ToUpper/ToLower/ToTitleCase)
-        // stay carve-outs (Char already maps casing to ASCII/invariant inline).
+        // TextInfo rides the culture pointer for ListSeparator and its culture-bearing
+        // ToString display. Its ICU-backed casing methods stay bounded carve-outs.
         "System.Globalization.TextInfo",
         // System.Buffers.SearchValues — the arity-0 static factory (Create). The generic
         // instance type SearchValues<T> is in s_intrinsicGenericCpp below (same split as
@@ -860,6 +857,26 @@ internal static partial class CoreIntrinsics
             && name is "ToString" or "Parse" or "TryParse" or "TryFormat")
         || (name == "CompareTo" && IsScalarPrimitive(fullTypeName));
 
+    /// <summary>A non-floating primitive value type's <c>Equals(object)</c> overload.
+    /// Shape-keyed so the typed <c>Equals(T)</c> sibling keeps its ordinary route.</summary>
+    public static bool LoweredPrimitiveEqualsObject(string? fullTypeName, string name,
+        Func<MethodSignature<TypeDesc>> sig)
+    {
+        if (name != "Equals" || fullTypeName is null
+            || Compilation.WellKnownPrimitive(fullTypeName) is not
+                { Kind: TypeKind.Primitive, Primitive: var code }
+            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+                or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double)
+            return false;
+
+        var shape = sig();
+        return shape.Header.IsInstance
+            && shape.GenericParameterCount == 0
+            && shape.ReturnType is
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && shape.ParameterTypes is [{ IsObject: true }];
+    }
+
     private static bool IsScalarPrimitive(string? fullTypeName) =>
         fullTypeName is not null
         && Compilation.WellKnownPrimitive(fullTypeName) is { Kind: TypeKind.Primitive } p
@@ -1372,6 +1389,9 @@ internal static partial class CoreIntrinsics
         ["System.Threading.CancellationTokenSource"] = "&dn2cpp_cancel_source_type",
         ["System.Threading.Tasks.ParallelLoopState"] = "&dn2cpp_parallel_loop_state_type",
         ["System.Threading.Tasks.ParallelOptions"] = "&dn2cpp_parallel_options_type",
+        // ParallelLoopResult is the by-value peer of the two runtime parallel objects.
+        // Its box must carry the runtime struct's size and exact public CLR identity.
+        ["System.Threading.Tasks.ParallelLoopResult"] = "&dn2cpp_parallel_loop_result_type",
         // The event family: four CLR types over one Dn2CppEvent — but, unlike the
         // Task/ThreadLocal families next door, NOT instantiations of one type, so a single
         // shared handle would be merely lossy. One row each, on the real base chain the
@@ -1425,7 +1445,6 @@ internal static partial class CoreIntrinsics
     /// namespace could match.</para></summary>
     private static readonly Dictionary<string, string> s_runtimeTypeInfoNotRowed = new()
     {
-        ["dn2cpp_task_awaiter_type"] = "erasure: every TaskAwaiter(<T>)/ValueTaskAwaiter/Configured* form shares Dn2CppTaskAwaiter",
         ["dn2cpp_yield_awaiter_type"] = "erasure: YieldAwaitable+YieldAwaiter is nested, and its FullName is the bare \"YieldAwaiter\"",
         ["dn2cpp_threadlocal_type"] = "erasure: every ThreadLocal<T> shares one handle (T rides as data, not in the header)",
         ["dn2cpp_blockingcollection_type"] = "erasure: every BlockingCollection<T> shares one handle, ditto",
@@ -2092,7 +2111,7 @@ internal static partial class CoreIntrinsics
         ["System.Globalization.CultureInfo"] = "const Dn2CppNumberFormatInfo*",
         ["System.Globalization.NumberFormatInfo"] = "const Dn2CppNumberFormatInfo*",
         ["System.IFormatProvider"] = "const Dn2CppNumberFormatInfo*",
-        // TextInfo carries the same invariant culture pointer (only ListSeparator read).
+        // TextInfo carries the same culture pointer for ListSeparator and ToString.
         ["System.Globalization.TextInfo"] = "const Dn2CppNumberFormatInfo*",
         // System.Decimal: an intrinsic value type backed by the runtime 96-bit
         // Dn2CppDecimal (no trailing '*' -> IsValueType, passed by value).

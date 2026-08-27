@@ -8,6 +8,8 @@
 # and hash identity, distinct handles remain unequal, and concurrent register/cancel stays
 # data-race-free. Every cross-thread Cancel() is joined before printing, so the
 # program is deterministic and diffed exact vs real .NET.
+# CancellationTokenHash.cs pins the token's source identity through its direct,
+# EqualityComparer, Dictionary, record, boxed, and constrained equality/hash paths.
 #
 # Plus the CancelAfter timer, which is the one part of this surface that runs on a
 # real OS clock rather than the scheduler's virtual one: CancelAfter reschedules a

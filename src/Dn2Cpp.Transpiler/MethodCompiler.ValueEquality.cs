@@ -110,6 +110,9 @@ internal sealed partial class MethodCompiler
         // loaded CoreLib fields do not describe the emitted runtime payload.
         if (IntrinsicPointerValueType(t) is not null)
             return TryEqualityEqualsLValue(t, x, y);
+        // CancellationToken wraps its opaque identity in a one-field value struct.
+        if (IsCancellationTokenValue(t))
+            return TryEqualityEqualsLValue(t, x, y);
         // A System.Enum-typed field holds a BOXED reference (CppTypes.Of -> Dn2CppObject*),
         // not a value-struct layout, so it must NOT take this arm's `&field` value-type call.
         // Modeled as a reference type, it fails the IsValueType test and falls through to
@@ -166,6 +169,9 @@ internal sealed partial class MethodCompiler
         }
         // Keep the hash twin on the same raw-handle representation as equality.
         if (IntrinsicPointerValueType(t) is not null)
+            return EqualityHashExpr(t, x);
+        // Keep the struct-wrapped token on the same source identity as equality.
+        if (IsCancellationTokenValue(t))
             return EqualityHashExpr(t, x);
         // System.Enum-typed field: a boxed reference, not a value struct — see the equality
         // twin. Falls through to EqualityHashExpr, which routes it to

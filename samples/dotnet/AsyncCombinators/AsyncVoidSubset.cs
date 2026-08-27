@@ -11,14 +11,9 @@ namespace AsyncVoidSubset
     // synchronously-completing async void (an already-completed await never suspends, so
     // the body runs straight through before the call returns) and a suspending one (await
     // Task.Delay -> AwaitUnsafeOnCompleted boxes the state machine and resumes it on a
-    // later clock turn), each recording its effect in a shared log observed after the
-    // scheduler has drained.
-    //
-    // Exactly ONE fire-and-forget chain is in flight at a time and it is drained by a much
-    // longer awaited delay before the next write: real .NET resumes async void
-    // continuations on the ThreadPool, so two concurrently-suspended async voids appending
-    // to one string would race the oracle. A single serial chain, well separated in time,
-    // is deterministic on both the ThreadPool and dn2cpp's cooperative virtual clock.
+    // later clock turn), each recording its effect in a shared log. The suspending chain
+    // settles a separate promise after its final write, preserving the async-void shape
+    // while giving the exact-output oracle an explicit completion to await.
     internal static class Program
     {
         private static string s_log = "";
@@ -29,12 +24,13 @@ namespace AsyncVoidSubset
             s_log += "S" + x;
         }
 
-        private static async void FireSuspend(int x)
+        private static async void FireSuspend(int x, TaskCompletionSource<int> completion)
         {
             await Task.Delay(x);               // suspends; resumes on a later clock turn
             s_log += "D" + x;
             await Task.Delay(x);               // a second suspension in the same chain
             s_log += "E" + x;
+            completion.SetResult(x);
         }
 
         private static async Task Run()
@@ -42,8 +38,9 @@ namespace AsyncVoidSubset
             FireSync(7);                       // runs synchronously to completion here
             s_log += "|";
 
-            FireSuspend(20);                   // single fire-and-forget chain
-            await Task.Delay(200);             // drain well past 2*20ms
+            var completion = new TaskCompletionSource<int>();
+            FireSuspend(20, completion);       // still no Task returned by async void
+            await completion.Task;             // observe its final logged effect explicitly
             s_log += "|done";
         }
 

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Consolidated Convert/Parse gate: Convert.To* surface, base conversions, Base64,
 # Convert from object, Convert.ChangeType (+ extended + UInt64 TypeCode), and
-# primitive Parse. Also System.Uri basics (TryCreate/ctor + component
+# primitive Parse, including UTF-8 and span float parsing across fast, slow,
+# subnormal, and overflow paths. Also System.Uri basics (TryCreate/ctor + component
 # properties, ASCII hosts), transpiled from the real System.Private.Uri —
 # hence the extra BCL reference. Also the System.ComponentModel TypeConverter
 # surface (ArrayConverter / CollectionConverter ConvertTo + the
@@ -39,7 +40,7 @@
 # Diffed exactly vs real .NET.
 # Former gates: convert, convert-base, convert-base64, convert-object,
 # convert-changetype, convert-changetype-ext, convert-changetype-uint64, parse,
-# try-format-subset.
+# try-format-subset, float-parse-format-info.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter

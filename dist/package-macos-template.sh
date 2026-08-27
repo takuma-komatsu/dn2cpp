@@ -138,10 +138,17 @@ MACOS_DIR="$APP/Contents/MacOS"
 for cfg in release debug; do
     fat="$MACOS_DIR/godot_macos_$cfg.universal"
     [ -f "$fat" ] || die "$SRC carries no godot_macos_$cfg.universal"
-    lipo -thin arm64 "$fat" -output "$MACOS_DIR/godot_macos_$cfg.arm64" \
+    thin="$MACOS_DIR/godot_macos_$cfg.arm64"
+    lipo -thin arm64 "$fat" -output "$thin" \
         || die "godot_macos_$cfg.universal holds no arm64 slice"
-    chmod +x "$MACOS_DIR/godot_macos_$cfg.arm64"
+    chmod +x "$thin"
     rm -f "$fat"
+    # lipo changes every signed page while retaining the source slice's code
+    # signature. Replace that invalid seal before the template can be exported.
+    codesign --force --sign - --timestamp=none "$thin" \
+        || die "failed to ad-hoc sign the thinned $cfg template"
+    codesign --verify --strict --verbose=2 "$thin" \
+        || die "the thinned $cfg template has an invalid code signature"
 done
 
 # ── 5. The template says what it is ───────────────────────────────────────────
@@ -182,6 +189,12 @@ for cfg in release debug; do
     [ -x "$bin" ] || die "the unpacked godot_macos_$cfg.arm64 lost its executable bit"
     archs="$(lipo -archs "$bin")"
     [ "$archs" = arm64 ] || die "the unpacked godot_macos_$cfg.arm64 is '$archs', not arm64"
+    codesign --verify --strict --verbose=2 "$bin" \
+        || die "the unpacked godot_macos_$cfg.arm64 has an invalid code signature"
+    exported="$RT/exported-$cfg"
+    cp "$bin" "$exported"
+    codesign --verify --strict --verbose=2 "$exported" \
+        || die "the renamed godot_macos_$cfg.arm64 signature is bound to its template bundle"
 done
 rm -rf "$RT"
 

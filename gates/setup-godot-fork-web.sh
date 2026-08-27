@@ -313,10 +313,11 @@ echo "== 1/3 scons: the Web template ($WANT) =="
 built_emcc="$(cat "$BUILT_STAMP" 2>/dev/null || echo '<no stamp>')"
 built_engine="$(head -1 "$BUILT_ENGINE_STAMP" 2>/dev/null || echo '<no stamp>')"
 [ -n "$built_engine" ] || built_engine='<no stamp>'
-if [ "$(godot_fork_web_template_flavor "$BUILT")" = "$WANT" ] && [ "$built_emcc" = "$EMCC_VERSION" ] \
-    && [ "$built_engine" = "$ENGINE_PROVENANCE" ] && [ "$FORCE" != 1 ]; then
+if godot_fork_web_template_fresh "$BUILT" "$WANT" "$BUILT_STAMP" \
+    "$EMCC_VERSION" "$ENGINE_PROVENANCE" && [ "$FORCE" != 1 ]; then
     echo "skip: already built ($WANT, by this emcc, from these engine sources): $BUILT"
 else
+    [ "$FORCE" = 1 ] || echo "-- $FORK_WEB_TEMPLATE_WHY"
     if [ -f "$BUILT" ] && [ "$(godot_fork_web_template_flavor "$BUILT")" = "$WANT" ] \
         && [ "$built_emcc" != "$EMCC_VERSION" ]; then
         echo "-- the $WANT zip in bin/ was not built by this emcc"

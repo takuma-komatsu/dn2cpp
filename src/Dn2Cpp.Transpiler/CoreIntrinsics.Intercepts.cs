@@ -141,8 +141,9 @@ internal enum InterceptEmitArm
     /// <summary>The System.Environment surface — <c>EmitIntrinsic</c> under the
     /// literal type key.</summary>
     EnvIntrinsic,
-    /// <summary>The sub-word integer members of
-    /// <see cref="CoreIntrinsics.IsInlineLoweredPrimitiveMember"/> —
+    /// <summary>Selectively inline-lowered primitive members from
+    /// <see cref="CoreIntrinsics.IsInlineLoweredPrimitiveMember"/> and
+    /// <see cref="CoreIntrinsics.LoweredPrimitiveEqualsObject"/> —
     /// <c>EmitIntrinsic</c> under the declaring type.</summary>
     InlinePrimitive,
     /// <summary>System.Collections.Comparer.Compare — <c>EmitIntrinsic</c> (lowers
@@ -645,6 +646,15 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.InlinePrimitive,
         extra: static mi => IsInlineLoweredPrimitiveMember(mi.DeclaringClass.FullName, mi.Name));
 
+    /// <summary>A non-floating primitive value type's <c>Equals(object)</c>
+    /// (<see cref="LoweredPrimitiveEqualsObject"/>), lowered inline without admitting
+    /// the typed <c>Equals(T)</c> sibling.</summary>
+    public static readonly MethodDefIntercept MdPrimitiveEqualsObject = new(
+        InterceptCutKind.Cut, InterceptEmitArm.InlinePrimitive,
+        nameGate: "Equals",
+        extra: static mi => LoweredPrimitiveEqualsObject(
+            mi.DeclaringClass.FullName, mi.Name, () => mi.Signature));
+
     /// <summary>System.Collections.Comparer.Compare(object, object)
     /// (<see cref="LoweredComparerCompare"/>) — body-intercepted to
     /// dn2cpp_object_compare.</summary>
@@ -709,6 +719,7 @@ internal static partial class CoreIntrinsics
         MdDeserializationGuard,
         MdEnvMember,
         MdInlinePrimitive,
+        MdPrimitiveEqualsObject,
         MdComparerCompare,
         MdExecutionContextCapture,
         MdExecutionContextRun,
@@ -783,6 +794,14 @@ internal static partial class CoreIntrinsics
     public static readonly MemberRefIntercept MrInlinePrimitive = new(
         InterceptCutKind.Cut, InterceptEmitArm.InlinePrimitive,
         extra: static (dt, n, _) => IsInlineLoweredPrimitiveMember(dt, n));
+
+    /// <summary>A non-floating primitive value type's <c>Equals(object)</c>
+    /// (<see cref="LoweredPrimitiveEqualsObject"/>) — the MemberRef twin of
+    /// <see cref="MdPrimitiveEqualsObject"/>.</summary>
+    public static readonly MemberRefIntercept MrPrimitiveEqualsObject = new(
+        InterceptCutKind.Cut, InterceptEmitArm.InlinePrimitive,
+        nameGate: "Equals",
+        extra: static (dt, n, sig) => LoweredPrimitiveEqualsObject(dt, n, sig));
 
     /// <summary>System.Collections.Comparer.Compare(object, object)
     /// (<see cref="LoweredComparerCompare"/>) — the MemberRef twin of
@@ -1018,6 +1037,7 @@ internal static partial class CoreIntrinsics
         MrIoMember,
         MrEnvMember,
         MrInlinePrimitive,
+        MrPrimitiveEqualsObject,
         MrComparerCompare,
         MrWideIntTryFormat,
         MrConstFoldedGetter,

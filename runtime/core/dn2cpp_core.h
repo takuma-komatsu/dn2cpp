@@ -905,6 +905,10 @@ struct Dn2CppFieldInfo
     // Same trailing 0-fill convention — non-enum rows leave it 0 and keep the
     // null-thunk InvalidOperationException behavior.
     int64_t literalValue;
+    // FieldInfo.ToString display, pre-rendered while the full metadata signature
+    // (including byref/generic spelling) is still available. Trailing for source
+    // compatibility with hand-written runtime rows.
+    const char* display;
 };
 
 // Dn2CppFieldInfo::attrs bits. PUBLIC/PRIVATE mirror the CLR field
@@ -961,6 +965,10 @@ struct Dn2CppParamInfo
     const Dn2CppTypeInfo* const* optionalCustomModifiers;
     int32_t optionalCustomModifierCount;
     int32_t customModifiersKnown;
+    // ParameterInfo.ToString display. See Dn2CppFieldInfo::display.
+    const char* display;
+    // Open generic-method definition display over the same closed AOT row.
+    const char* genericDefinitionDisplay;
 };
 
 // Reflection method metadata. One entry per declared method in a type's
@@ -1020,6 +1028,13 @@ struct Dn2CppMethodInfo
     const Dn2CppTypeInfo* const* returnOptionalCustomModifiers;
     int32_t returnOptionalCustomModifierCount;
     int32_t returnCustomModifiersKnown;
+    // MethodInfo/ConstructorInfo.ToString display. See Dn2CppFieldInfo::display.
+    const char* display;
+    // Open generic-method definition display over the same closed AOT row.
+    const char* genericDefinitionDisplay;
+    // ParameterInfo.ToString display for the synthesized ReturnParameter.
+    const char* returnDisplay;
+    const char* genericDefinitionReturnDisplay;
 };
 
 // Dn2CppMethodInfo::attrs bits; identical layout to DN2CPP_FLDA_* so the
@@ -1094,6 +1109,8 @@ struct Dn2CppPropInfo
     int32_t customAttrCount;
     // The property's metadata token (MemberInfo.MetadataToken); 0-fill trailing.
     int32_t metadataToken;
+    // PropertyInfo.ToString display. See Dn2CppFieldInfo::display.
+    const char* display;
 };
 
 // A reflected property handle wrapping a Dn2CppPropInfo* entry; backs
@@ -1752,6 +1769,9 @@ struct Dn2CppAttrInfo
 {
     const Dn2CppTypeInfo* attrType;
     Dn2CppObject* (*create)();
+    // CustomAttributeData.ToString display, rendered from the same decoded
+    // fixed/named arguments used by create. No visibility boundary is widened.
+    const char* display;
 };
 
 // MemberInfo/ParameterInfo.GetCustomAttributes([attrType,] inherit) and
@@ -1942,6 +1962,10 @@ Dn2CppArrayRef* dn2cpp_member_custom_attributes_data(Dn2CppObject* member);
 Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name);
 // CustomAttributeData.AttributeType.
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d);
+
+// Reflection-handle ToString. The header-dispatched entry is also installed in
+// every handle type-info's tostring slot, so direct/base/object paths converge.
+Dn2CppString* dn2cpp_reflection_handle_tostring(Dn2CppObject* member);
 
 // ---- reflection long-tail (flags/properties over the raw ECMA words) ----
 
@@ -2168,14 +2192,10 @@ extern const Dn2CppTypeInfo dn2cpp_double_type;
 // (object o = someDecimal;) names this shared handle, and dn2cpp_object_tostring/
 // _equals/_gethashcode read the Dn2CppDecimal payload back from it.
 extern const Dn2CppTypeInfo dn2cpp_decimal_type;
-// Boxed type-infos for the intrinsic Task-family awaiter structs. A real
-// (un-adopted) async builder's AwaitUnsafeOnCompleted IL carries Roslyn's
-// `(object)default(TAwaiter) != null` value-type probe, whose `box TAwaiter`
-// names the awaiter's type-info even though the branch itself folds. Every
-// awaiter that lowers to Dn2CppTaskAwaiter (TaskAwaiter(<T>), ValueTaskAwaiter(<T>),
-// the Configured* forms) shares the first handle; YieldAwaiter the second.
-extern const Dn2CppTypeInfo dn2cpp_task_awaiter_type;
+// Boxed type-info for YieldAwaiter. Task-family awaiters use precise emitted
+// identities even though they share the Dn2CppTaskAwaiter C++ layout.
 extern const Dn2CppTypeInfo dn2cpp_yield_awaiter_type;
+extern const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type;
 extern const Dn2CppTypeInfo dn2cpp_type_type;
 extern const Dn2CppTypeInfo dn2cpp_exception_type;
 // The fixed set of exception types the runtime *itself* raises (the trap helpers
@@ -3298,6 +3318,7 @@ Dn2CppString* dn2cpp_stackframe_tostring(Dn2CppObject* sf);
 // dn2cpp_eventsource_ctor records per instance.
 Dn2CppString* dn2cpp_eventsource_name(Dn2CppObject* src);
 void dn2cpp_eventsource_guid(Dn2CppObject* src, void* out16);
+Dn2CppString* dn2cpp_eventsource_tostring(Dn2CppObject* src);
 int32_t dn2cpp_eventsource_settings(Dn2CppObject* src);
 // The base-ctor overloads that carry identity: `name` is null when the overload supplies
 // none, `settings` is the raw EventSourceSettings the overload passes (validated here as
@@ -6119,6 +6140,12 @@ Dn2CppTask* dn2cpp_task_from_result(uint64_t result);
 // default(ValueTask)'s shared sentinel is cloned before stamping.
 Dn2CppTask* dn2cpp_task_stamp(Dn2CppTask* task, const Dn2CppTypeInfo* type);
 Dn2CppTask* dn2cpp_vtask_as_task(Dn2CppTask* task, const Dn2CppTypeInfo* type);
+// ValueTask<T>.ToString is a non-consuming observation: only a successful task
+// formats its result; pending/faulted/canceled tasks return an empty string without
+// waiting or rethrowing. The boxed mouth discovers T from the ValueTask<T> type-info.
+Dn2CppString* dn2cpp_valuetask_tostring(Dn2CppTaskAwaiter* valueTask,
+                                        const Dn2CppTypeInfo* resultType);
+Dn2CppString* dn2cpp_valuetask_box_tostring(Dn2CppObject* valueTaskBox);
 Dn2CppTaskCompletionSource* dn2cpp_tcs_alloc(const Dn2CppTypeInfo* type,
                                               const Dn2CppTypeInfo* taskType);
 // TaskAwaiter.GetResult: re-raise the stored exception if the task faulted,
@@ -6457,6 +6484,7 @@ const Dn2CppNumberFormatInfo* dn2cpp_culture_current_ui();
 void dn2cpp_culture_set_current_ui(const Dn2CppNumberFormatInfo* c);
 const Dn2CppNumberFormatInfo* dn2cpp_culture_installed_ui();
 Dn2CppString* dn2cpp_culture_name(const Dn2CppNumberFormatInfo* c);
+Dn2CppString* dn2cpp_textinfo_tostring(const Dn2CppNumberFormatInfo* c);
 // CultureInfo.LCID (see Dn2CppNumberFormatInfo::lcid for the three answers), and
 // the reverse lookup CultureInfo.GetCultureInfo(int) needs. The reverse lookup
 // returns NULL for an LCID no modeled culture carries — including 4096 itself,
@@ -7158,6 +7186,9 @@ double dn2cpp_char_get_numeric_value(char16_t c);
 bool dn2cpp_is_ws(char16_t c);
 // Finalize: produce the Dn2CppString and release the builder's buffer.
 Dn2CppString* dn2cpp_isb_to_string(Dn2CppISB* h);
+// Copy the accumulated content without clearing the handler. This is
+// DefaultInterpolatedStringHandler.ToString; ToStringAndClear uses the finalizer above.
+Dn2CppString* dn2cpp_isb_copy_to_string(const Dn2CppISB* h);
 
 // System.Text.StringBuilder — a heap (reference) growable UTF-16 buffer, modeled
 // as an intrinsic rather than transpiling the real chunked corelib type (whose

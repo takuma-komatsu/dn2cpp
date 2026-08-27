@@ -2069,9 +2069,17 @@ Dn2CppArrayRef* dn2cpp_methodref_get_parameters(Dn2CppMethodRef* m)
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
     {
+        const Dn2CppParamInfo* param = &m->method->parameters[i];
+        if (m->isGenericDefView != 0 && param->genericDefinitionDisplay != nullptr)
+        {
+            auto* openParam = static_cast<Dn2CppParamInfo*>(dn2cpp_alloc(sizeof(Dn2CppParamInfo)));
+            *openParam = *param;
+            openParam->display = param->genericDefinitionDisplay;
+            param = openParam;
+        }
         auto* p = static_cast<Dn2CppParamRef*>(dn2cpp_alloc(sizeof(Dn2CppParamRef)));
         p->type = &dn2cpp_parameterinfo_type;
-        p->param = &m->method->parameters[i];
+        p->param = param;
         p->position = i;
         p->owner = m->method;
         p->ownerReflected = m->reflectedType;
@@ -2092,6 +2100,9 @@ Dn2CppObject* dn2cpp_methodref_return_parameter(Dn2CppMethodRef* m)
     pi->optionalCustomModifiers = m->method->returnOptionalCustomModifiers;
     pi->optionalCustomModifierCount = m->method->returnOptionalCustomModifierCount;
     pi->customModifiersKnown = m->method->returnCustomModifiersKnown;
+    pi->display = m->isGenericDefView != 0
+        && m->method->genericDefinitionReturnDisplay != nullptr
+        ? m->method->genericDefinitionReturnDisplay : m->method->returnDisplay;
     auto* p = static_cast<Dn2CppParamRef*>(dn2cpp_alloc(sizeof(Dn2CppParamRef)));
     p->type = &dn2cpp_parameterinfo_type;
     p->param = pi;
@@ -3730,6 +3741,30 @@ Dn2CppArrayRef* dn2cpp_assembly_custom_attributes_data(const char* name)
 Dn2CppType* dn2cpp_attrdata_attribute_type(Dn2CppAttrDataRef* d)
 {
     return dn2cpp_get_type_from_handle(dn2cpp_attrdataref_require(d)->attrType);
+}
+
+Dn2CppString* dn2cpp_reflection_handle_tostring(Dn2CppObject* member)
+{
+    dn2cpp_memberref_require(member);
+    const char* display = nullptr;
+    if (member->type == &dn2cpp_fieldinfo_type)
+        display = dn2cpp_fieldref_require(reinterpret_cast<Dn2CppFieldRef*>(member))->display;
+    else if (dn2cpp_is_methodref_header(member->type))
+    {
+        auto* m = reinterpret_cast<Dn2CppMethodRef*>(member);
+        const Dn2CppMethodInfo* mi = dn2cpp_methodref_require(m);
+        display = m->isGenericDefView != 0 && mi->genericDefinitionDisplay != nullptr
+            ? mi->genericDefinitionDisplay : mi->display;
+    }
+    else if (member->type == &dn2cpp_propertyinfo_type)
+        display = dn2cpp_propref_require(reinterpret_cast<Dn2CppPropRef*>(member))->display;
+    else if (member->type == &dn2cpp_parameterinfo_type)
+        display = dn2cpp_paramref_require(reinterpret_cast<Dn2CppParamRef*>(member))->param->display;
+    else if (member->type == &dn2cpp_customattributedata_type)
+        display = dn2cpp_attrdataref_require(reinterpret_cast<Dn2CppAttrDataRef*>(member))->display;
+    if (display == nullptr)
+        return dn2cpp_type_tostring(member->type);
+    return dn2cpp_string_from_utf8(display, static_cast<int32_t>(std::strlen(display)));
 }
 
 // ---- reflection long-tail: raw ECMA attribute words + Type completion ----

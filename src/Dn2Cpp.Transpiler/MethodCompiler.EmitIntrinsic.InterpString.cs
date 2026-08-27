@@ -149,6 +149,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_isb_to_string((Dn2CppISB*)({self.Expr}))");
                 return true;
             }
+            case ("System.Runtime.CompilerServices.DefaultInterpolatedStringHandler", "ToString"):
+            {
+                var self = Pop();
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_isb_copy_to_string((Dn2CppISB*)({self.Expr}))");
+                return true;
+            }
 
             // ---- StringBuilder.AppendInterpolatedStringHandler ----
             // The handler the C# compiler lowers `sb.Append($"...")` through. It is

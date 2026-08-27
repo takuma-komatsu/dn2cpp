@@ -89,16 +89,32 @@ expected=
 expected_code=
 native=
 native_code=
+native_stderr="$log_dir/native.log"
 
 gate_run_diagnostics() {
-    gate_run_diag "R3 native" "$native_code" "$native" "$log_dir/native.log"
+    gate_run_diag "R3 native" "$native_code" "$native" "$native_stderr"
     gate_run_diag "R3 oracle" "$expected_code" "$expected" "$log_dir/oracle.log"
 }
 
 set +e
 expected=$(run_bounded dotnet "$app" 2>"$log_dir/oracle.log"); expected_code=$?
-native=$(run_bounded "./$out/$project" 2>"$log_dir/native.log"); native_code=$?
 set -e
+for native_attempt in 1 2 3; do
+    native_attempt_stderr="$log_dir/native.attempt$native_attempt.log"
+    set +e
+    native=$(run_bounded "./$out/$project" 2>"$native_attempt_stderr"); native_code=$?
+    set -e
+    cp "$native_attempt_stderr" "$native_stderr"
+
+    # Windows can sporadically fail to create the process without reaching the
+    # binary; retry only that shell-level failure and retain every stderr account.
+    if [ "$DN2CPP_OS" != windows ] || [ "$native_code" -ne 127 ] \
+        || [ "$native_attempt" -eq 3 ]; then
+        break
+    fi
+    echo "note: R3 native launch attempt $native_attempt exited 127 on Windows; retrying in ${native_attempt}s (stderr: $native_attempt_stderr)" >&2
+    sleep "$native_attempt"
+done
 assertions_failed=0
 assert_output "$native" "$expected" || assertions_failed=1
 assert_exit_code "$native_code" "$expected_code" || assertions_failed=1

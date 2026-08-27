@@ -871,6 +871,11 @@ internal static class CppTypes
         // the two Of arms agree, whereas the stack kind is arm-divergent (a loaded
         // Class-kind RuntimeTypeHandle is IsValueType -> Struct above).
         TypeKind.External when t.ExternalName == "System.RuntimeTypeHandle" => StackKind.Ptr,
+        // ParallelLoopResult lives in the optional Parallel facade, so a CoreLib-only
+        // transpile sees an External TypeRef. Its special C++ mapping is still a by-value
+        // struct; treating it as Ref makes box a no-op and exposes raw fields as a header.
+        TypeKind.External when t.ExternalName == "System.Threading.Tasks.ParallelLoopResult"
+            => StackKind.Struct,
         TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray => StackKind.Ref,
         TypeKind.ByRef or TypeKind.Pointer => StackKind.Ptr,
         _ => throw new NotSupportedException(t.ToString()),

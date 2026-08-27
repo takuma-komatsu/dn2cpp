@@ -200,7 +200,92 @@ internal static class Program
         AsVector234Conversions();
         BoxedVectorIdentity();
         QuaternionPlaneReinterprets();
+        VectorToStrings();
+        // APPENDED LAST: the earlier gate output remains an unchanged prefix.
+        VectorCopyTargets();
     }
+
+    private static void VectorCopyTargets()
+    {
+        Console.WriteLine("-- vector copy targets --");
+        Vector128<ushort> words = Vector128.Create(
+            (ushort)0x0102, 0x0304, 0x0506, 0x0708, 0x090A, 0x0B0C, 0x0D0E, 0x0F10);
+
+        // Fixed-width vectors spell CopyTo as static extension helpers, so their IL
+        // includes the vector as the first explicit argument.
+        ushort[] plain = new ushort[8];
+        words.CopyTo(plain);
+        Console.WriteLine("array=" + plain[0] + "," + plain[3] + "," + plain[7]);
+
+        ushort[] offset = new ushort[10];
+        words.CopyTo(offset, 1);
+        Console.WriteLine("offset=" + offset[0] + "," + offset[1] + "," + offset[8] + "," + offset[9]);
+
+        byte[] span = new byte[20];
+        words.AsByte().CopyTo(span.AsSpan(2, 16));
+        Console.WriteLine("span=" + span[0] + "," + span[2] + "," + span[17] + "," + span[19]);
+
+        // Keep the pre-existing System.Numerics instance signature covered too.
+        Vector<int> numerics = new Vector<int>(7);
+        int[] instance = new int[Vector<int>.Count + 1];
+        numerics.CopyTo(instance, 1);
+        Console.WriteLine("instance=" + instance[0] + "," + instance[1] + "," + instance[instance.Length - 1]);
+
+        Console.WriteLine("-- vector copy faults --");
+        CopyFault("v64 array short", () => Vector64.Create(1, 2).CopyTo(new int[1]));
+        CopyFault("v128 array null", () => words.CopyTo((ushort[])null!));
+        CopyFault("v256 offset negative", () => Vector256.Create(1).CopyTo(new int[8], -1));
+        CopyFault("v256 offset short", () => Vector256.Create(1).CopyTo(new int[8], 1));
+        CopyFault("v512 span short", () => Vector512.Create(1).CopyTo(new int[15].AsSpan()));
+
+        CopyFault("numerics array short", () => numerics.CopyTo(new int[Vector<int>.Count - 1]));
+        CopyFault("numerics offset negative", () => numerics.CopyTo(instance, -1));
+        CopyFault("numerics offset short", () => numerics.CopyTo(instance, 2));
+        CopyFault("numerics span short", () => numerics.CopyTo(new int[Vector<int>.Count - 1].AsSpan()));
+    }
+
+    private static void CopyFault(string label, Action action)
+    {
+        try
+        {
+            action();
+            Console.WriteLine(label + "=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(label + "=" + ex.GetType().Name);
+        }
+    }
+
+    private static void VectorToStrings()
+    {
+        Console.WriteLine("-- vector tostring --");
+        Vector64<int> v64 = Vector64.Create(1, 2);
+        Vector128<float> v128 = Vector128.Create(1.5f, 2.5f, 3.5f, 4.5f);
+        Vector256<int> v256 = Vector256.Create(1, 2, 3, 4, 5, 6, 7, 8);
+        Vector512<int> v512 = Vector512.Create(1, 2, 3, 4, 5, 6, 7, 8,
+            9, 10, 11, 12, 13, 14, 15, 16);
+        Console.WriteLine("v64=" + v64.ToString());
+        Console.WriteLine("v128=" + v128.ToString());
+        Console.WriteLine("v256=" + v256.ToString());
+        Console.WriteLine("v512=" + v512.ToString());
+
+        Vector<float> vn = new Vector<float>(1.5f);
+        Console.WriteLine("vn=" + vn.ToString());
+        Console.WriteLine("vn F2=" + vn.ToString("F2"));
+        Console.WriteLine("vn de=" + vn.ToString("F2", new CultureInfo("de-DE")));
+
+        object boxedFixed = v64;
+        object boxedNumerics = vn;
+        Console.WriteLine("boxed v64=" + boxedFixed.ToString());
+        Console.WriteLine("boxed vn=" + boxedNumerics.ToString());
+        Console.WriteLine("generic v64=" + GenericToString(v64));
+        Console.WriteLine("generic vn=" + GenericToString(vn));
+        Console.WriteLine($"interp v64={v64}");
+        Console.WriteLine($"interp vn={vn:F2}");
+    }
+
+    private static string GenericToString<T>(T value) => value!.ToString()!;
 
     // Quaternion/Plane.Equals pivot through the internal AsVector128 reinterpret and
     // the lane-wise ops return through AsQuaternion/AsPlane — both directions of the

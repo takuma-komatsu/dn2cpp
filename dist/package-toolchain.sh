@@ -1179,11 +1179,10 @@ if [ "$WITH_PREBUILT" -eq 1 ]; then
     # into two flags (`pb_axis_argv` splits on newlines alone).
     #
     # Each row's args must be spelled EXACTLY as Dn2CppExporter.BuildDropIn spells
-    # them, deployment target and API level included — the two repositories cannot
-    # share a constant, and a drift is silent AND fail-safe (the key stops
-    # matching, the export builds from source), which is why the three
-    # gates/build-and-run-godot-editor-export-{ios,android,web}.sh assert the
-    # adoption.
+    # them, deployment target and API level included. The cross-target values live
+    # in two repositories, so their export gates assert adoption. The macOS host
+    # value is shared with the desktop gate and bundle smoke through _common.sh;
+    # those two also hold the sample preset and the staged key to it.
     pb_add_axis() {   # pb_add_axis NAME LAUNCHER [EXTRA_CMAKE_ARG...]
         local row="$1" a
         shift
@@ -1200,8 +1199,9 @@ if [ "$WITH_PREBUILT" -eq 1 ]; then
     ANDROID_ABI_PB=arm64-v8a
     ANDROID_PLATFORM_PB=android-24
     pb_specs=()
-    pb_add_axis host -
     if [ "$HOST_OS" = macos ]; then
+        pb_add_axis host - \
+            "-DCMAKE_OSX_DEPLOYMENT_TARGET=$MACOS_DESKTOP_DEPLOYMENT_TARGET"
         if xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1 \
            && xcrun --sdk iphonesimulator --show-sdk-path >/dev/null 2>&1; then
             pb_ios=(-DCMAKE_SYSTEM_NAME=iOS "-DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET")
@@ -1214,6 +1214,8 @@ if [ "$WITH_PREBUILT" -eq 1 ]; then
         else
             echo "-- prebuilt runtime: no iOS SDK (xcrun); the three iOS axes are not staged"
         fi
+    else
+        pb_add_axis host -
     fi
     # Android. Resolved as Dn2CppExporter.ResolveAndroidNdk resolves it — the two
     # environment variables first, then the newest NDK under the SDK — and tested

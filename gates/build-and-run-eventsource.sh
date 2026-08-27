@@ -28,7 +28,9 @@
 # (Compilation.IsRuntimeProvidedPInvokeModule) — ws2_32 direct-links like
 # kernel32/ntdll/ole32, needing no dn2cpp-side shim, but unlike them it is
 # outside MSVC's default link set, so runtime/CMakeLists.txt links it explicitly
-# on the WIN32 arm.
+# on the WIN32 arm. The final two lines additionally parse a named IPv6 scope:
+# POSIX reaches SystemNative_InterfaceNameToIndex and if_nametoindex(3), while
+# Windows direct-links the already-marshalled iphlpapi.dll conversion calls.
 source "$(dirname "$0")/_common.sh"
 
 # System.Net.Primitives carries the SocketError enum that the Windows arm's

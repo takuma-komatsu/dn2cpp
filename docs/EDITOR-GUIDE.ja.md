@@ -53,7 +53,7 @@ Godot-dn2cpp.console.exe
 
 ### 対応ホスト
 
-- **macOS 13 以降 / Apple Silicon（arm64）。** universal ビルドも x86_64 ビルドもありません。
+- **macOS 13.3 以降 / Apple Silicon（arm64）。** universal ビルドも x86_64 ビルドもありません。
 - **Windows 10 / 11 の x86_64。** arm64 ビルドはありません。
 
 ### エクスポート先ごとに必要なもの

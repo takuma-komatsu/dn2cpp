@@ -607,6 +607,25 @@ internal sealed partial class MethodCompiler
                     $"((((Dn2CppCancelToken*)({self.Expr}))->source) == (({other.Expr}).source) ? 1 : 0)");
                 return true;
             }
+            case ("System.Threading.CancellationToken", "Equals")
+                when sig.ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var self = Pop();
+                var token = Comp.FindClassByFullName("System.Threading.CancellationToken")
+                    ?? throw new InvalidOperationException(
+                        "System.Threading.CancellationToken is not loaded");
+                string tokenTypeInfo = TypeInfoExpr(TypeDesc.MakeClass(token))
+                    ?? throw new InvalidOperationException(
+                        "System.Threading.CancellationToken has no type-info");
+                string boxed = NewTemp("Dn2CppObject*");
+                Emit($"{boxed} = {Cast(other, "Dn2CppObject*")};");
+                Push(StackKind.I4, "int32_t",
+                    $"(({boxed}) != nullptr && ({boxed})->type == {tokenTypeInfo} "
+                    + $"&& ((Dn2CppCancelToken*)(({boxed}) + 1))->source == "
+                    + $"((Dn2CppCancelToken*)({self.Expr}))->source ? 1 : 0)");
+                return true;
+            }
             case ("System.Threading.CancellationToken", "GetHashCode"):
             {
                 var t = Pop();

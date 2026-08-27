@@ -211,6 +211,8 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
         if (w != nullptr && w->name != nullptr)
             return dn2cpp_type_tostring(w);
     }
+    if (t != nullptr && t->eventSourceName != nullptr)
+        return dn2cpp_eventsource_tostring(obj);
     // Default Object.ToString: GetType().ToString().
     if (t == nullptr || t->name == nullptr)
         return dn2cpp_string_from_utf8("System.Object", 13);
@@ -1008,12 +1010,18 @@ int32_t dn2cpp_char_is_symbol(char16_t c)
 
 Dn2CppString* dn2cpp_isb_to_string(Dn2CppISB* h)
 {
+    Dn2CppString* s = dn2cpp_isb_copy_to_string(h);
+    h->buf = nullptr;
+    h->length = 0;
+    h->capacity = 0;
+    return s;
+}
+
+Dn2CppString* dn2cpp_isb_copy_to_string(const Dn2CppISB* h)
+{
     char16_t* dst;
     Dn2CppString* s = dn2cpp_string_alloc(&dst, h->length);
     if (h->length > 0)
         std::memcpy(dst, h->buf, static_cast<size_t>(h->length) * sizeof(char16_t));
-    h->buf = nullptr;
-    h->length = 0;
-    h->capacity = 0;
     return s;
 }

@@ -43,6 +43,11 @@ internal sealed partial class Compilation
                 // nothing, and emits nothing. Widening this cut to the route's
                 // two-part test leaves the emitted output byte-identical; widen it
                 // only if the drain's guard ever moves.
+                // Non-floating primitive Equals(object) is lowered inline. Ask its
+                // shape-aware row before the broad intrinsic-type cut so MethodDef
+                // calls use the same predicate as their emit route.
+                if (CoreIntrinsics.MdPrimitiveEqualsObject.Matches(mi))
+                    return null;
                 if (CoreIntrinsics.MdIntrinsicType.Matches(mi))
                     return null;
                 // The sub-word integers' ToString/Parse/TryParse/TryFormat are lowered inline
@@ -530,6 +535,9 @@ internal sealed partial class Compilation
                 // cut exists to avoid — so the emit table covers the whole .NET 10 surface and
                 // an overload beyond it fails loudly, naming the shape.
                 if (CoreIntrinsics.MrInlinePrimitive.Matches(mrParent, mrName, Sig))
+                    return null;
+                // Non-floating primitive Equals(object), shape-keyed so Equals(T) is not cut.
+                if (CoreIntrinsics.MrPrimitiveEqualsObject.Matches(mrParent, mrName, Sig))
                     return null;
                 // System.Collections.Comparer.Compare — body-intercepted, cut here so the real
                 // IL's `x as IComparable`/CompareInfo/throw subtree is not a reachability edge; the

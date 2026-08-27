@@ -27,7 +27,7 @@ internal sealed partial class MethodCompiler
         Module.AssemblyName == "System.Linq" ? "DN2CPP_SIMD_HW_ACCEL_LINQ" : "DN2CPP_SIMD_HW_ACCEL";
 
     /// <summary>The byte width of a software-vector C++ type.</summary>
-    private static int VecWidthBytes(string vecCpp) => vecCpp switch
+    internal static int VecWidthBytes(string vecCpp) => vecCpp switch
     {
         "Dn2CppVector64" => 8,
         "Dn2CppVector128" or "Dn2CppVectorT" => 16,
@@ -318,6 +318,30 @@ internal sealed partial class MethodCompiler
 
         switch (name)
         {
+            // Fixed-width intrinsic vectors use invariant lane formatting. The
+            // System.Numerics.Vector<T> family additionally exposes the format/provider
+            // overloads and uses the selected NumberGroupSeparator between lanes.
+            case "ToString":
+            {
+                string nfi = "nullptr";
+                string format = "nullptr";
+                for (int i = ps.Length - 1; i >= 0; i--)
+                {
+                    var arg = Pop();
+                    if (ps[i].IsString)
+                        format = Cast(arg, "Dn2CppString*");
+                    else
+                        nfi = Cast(arg, "const Dn2CppNumberFormatInfo*");
+                }
+                var v = Pop();
+                bool numericsVector = vecCpp == "Dn2CppVectorT";
+                if (!numericsVector && ps.Length != 0)
+                    throw new NotSupportedException(
+                        $"{Method.DeclaringClass.FullName}.{Method.Name}: fixed-width vector ToString overload with arguments is not supported");
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_vec_tostring<{et}, {n}>({Val(v, vecCpp)}, {format}, {nfi}, {(numericsVector ? 1 : 0)})");
+                return true;
+            }
             // --- constants / nullary constructors ---
             case "get_Zero": PushVec($"{Vec("zero")}()"); return true;
             case "get_AllBitsSet": PushVec($"{Vec("all_bits_set")}()"); return true;
@@ -714,19 +738,30 @@ internal sealed partial class MethodCompiler
             }
             case "CopyTo":
             {
-                if (ps.Length >= 1 && ps[0].Kind == TypeKind.SZArray)
+                // Vector<T> exposes instance CopyTo(destination[, index]); the fixed-width
+                // Vector64/128/256/512 facades expose extension helpers whose first explicit
+                // parameter is the vector. Normalize both signatures to the target position.
+                int targetArg = sig.Header.IsInstance ? 0 : 1;
+                bool hasVectorOperand = sig.Header.IsInstance
+                    || (ps.Length > 0 && IsVec(ps[0]));
+                if (hasVectorOperand && ps.Length >= targetArg + 1 && ps.Length <= targetArg + 2
+                    && ps[targetArg].Kind == TypeKind.SZArray)
                 {
-                    string idx = ps.Length == 2 ? Cast(Pop(), "int32_t") : "0";
+                    bool hasIndex = ps.Length == targetArg + 2;
+                    string idx = hasIndex ? Cast(Pop(), "int32_t") : "0";
                     var arr = Pop();
                     var v = Pop();
+                    Emit($"dn2cpp_vec_copy_array_check((Dn2CppArray*)({arr.Expr}), {idx}, {lanes}, {(hasIndex ? 1 : 0)});");
                     Emit($"{VecW("store")}({Val(v, vecCpp)}, {ArrayBase(arr, idx)});");
                     return true;
                 }
-                if (ps.Length == 1 && SpanCpp(ps[0]) is { } spanCt)
+                if (hasVectorOperand && ps.Length == targetArg + 1
+                    && SpanCpp(ps[targetArg]) is { } spanCt)
                 {
                     var span = Pop();
                     var v = Pop();
                     string sv = SpanValue(span, spanCt);
+                    Emit($"dn2cpp_vec_copy_span_check({sv}.f__length, {lanes});");
                     Emit($"{VecW("store")}({Val(v, vecCpp)}, (void*)({sv}.f__reference));");
                     return true;
                 }

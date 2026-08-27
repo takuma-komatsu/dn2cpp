@@ -64,6 +64,15 @@ detect_os() {
 }
 DN2CPP_OS=${DN2CPP_OS:-$(detect_os)}
 
+# The deployment floor shared by host-built macOS drop-ins and the prebuilt
+# runtime they import. Keep it explicit: leaving either configure unset makes
+# clang adopt the packaging machine's SDK version, and their prebuilt keys then
+# disagree on the next SDK. libc++ exposes the runtime's floating-point
+# std::to_chars path from macOS 13.3, which is therefore the published floor.
+# The editor-export gate pins the sample preset to this value at both the
+# CMake-cache and Mach-O boundaries.
+MACOS_DESKTOP_DEPLOYMENT_TARGET=13.3
+
 # Windows's host toolchain is MSVC, so name it rather than making every caller
 # do it: unset, cmake dies on its own "No CMAKE_CXX_COMPILER could be found"
 # instead of reaching ensure_msvc_env's vcvarsall import. Anything else on
@@ -490,15 +499,18 @@ godot_editor_config_dir() {
 # off its single Godot.NET.Sdk.<version>.nupkg. A gate re-pins a THIRD-PARTY
 # sample's Sdk onto this rather than onto a literal nothing re-pins.
 godot_nuget_sdk_version() {
-    local pkg
-    for pkg in "$1"/Godot.NET.Sdk.*.nupkg; do
-        [ -f "$pkg" ] || continue
-        pkg="${pkg##*/Godot.NET.Sdk.}"
-        printf '%s\n' "${pkg%.nupkg}"
-        return 0
-    done
-    echo "error: no Godot.NET.Sdk.*.nupkg in $1" >&2
-    return 1
+    local pkgs pkg
+    pkgs=("$1"/Godot.NET.Sdk.*.nupkg)
+    if [ ! -f "${pkgs[0]}" ]; then
+        echo "error: no Godot.NET.Sdk.*.nupkg in $1" >&2
+        return 1
+    fi
+    if [ "${#pkgs[@]}" -ne 1 ]; then
+        echo "error: expected one Godot.NET.Sdk package in $1, found ${#pkgs[@]}" >&2
+        return 1
+    fi
+    pkg="${pkgs[0]##*/Godot.NET.Sdk.}"
+    printf '%s\n' "${pkg%.nupkg}"
 }
 
 godot_template_version_dir() {
@@ -2557,7 +2569,9 @@ corelib_subset_gate() {
 }
 
 # corelib_diff_gate PROJECT — corelib_subset_gate oracled by the program's own
-# real-.NET output (`dotnet $app`). Deterministic programs only.
+# real-.NET output (`dotnet $app`). Deterministic programs only. The optional
+# DN2CPP_ORACLE_DOTNET_ENABLE_AVX knob applies only to that oracle process; its
+# caller must include the resulting behavior axis in DN2CPP_GATE_EXTRA_CONTEXT.
 corelib_diff_gate() {
     local project="$1"; shift
     local out
@@ -2583,7 +2597,12 @@ corelib_diff_gate() {
     _gate_run_argv
     native=$(run_bounded "./$out/$project" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); native_code=$?
     _gate_run_argv
-    expected=$(run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    if [ -n "${DN2CPP_ORACLE_DOTNET_ENABLE_AVX:-}" ]; then
+        expected=$(DOTNET_EnableAVX="$DN2CPP_ORACLE_DOTNET_ENABLE_AVX" \
+            run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    else
+        expected=$(run_bounded dotnet "$_CG_APP" ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+    fi
     set -e
     _gate_scratch_cleanup
     assert_output "$native" "$expected"

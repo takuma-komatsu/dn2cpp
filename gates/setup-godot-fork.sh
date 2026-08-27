@@ -30,9 +30,14 @@
 # the glue is the editor's own output, so the engine sources are its input), the
 # desktop export template on godot_fork_engine_provenance (step 5's artifact, the
 # same `<template>.provenance` line the Web and iOS zips carry), and the managed
-# assemblies + feed on tools_tree_hash (step 4). The two source sets partition the
-# fork, so the GodotTools edit-test loop rebuilds the assemblies without triggering
-# a scons run, and an engine edit does the reverse.
+# assemblies + feed on godot_fork_tools_hash (step 4). The two source sets
+# partition the fork, so the GodotTools edit-test loop rebuilds the assemblies
+# without triggering a scons run, and an engine edit does the reverse.
+#
+# godot_fork_cache_fresh (gates/_godot_fork.sh) reads exactly those stamps, which
+# is what lets an export gate and gates/pre-merge.sh tell a current cache from a
+# stale one WITHOUT running this script — the question this script answers by
+# doing the work.
 #
 # Why no engine rebuild in the common case
 # ----------------------------------------
@@ -162,9 +167,10 @@ SCONS="$(godot_fork_scons "$PY")"
 
 EDITOR_REL="bin/godot.$SCONS_PLATFORM.editor.$ARCH.mono$FORK_EXE"
 TEMPLATE_REL="bin/godot.$SCONS_PLATFORM.template_release.$ARCH.mono$FORK_EXE"
-GLUE_MARKER=modules/mono/glue/GodotSharp/GodotSharp/Generated/GeneratedIncludes.props
-API_RELEASE_REL=bin/GodotSharp/Api/Release/GodotSharp.dll
-TOOLCHAIN_MARKER=bin/GodotSharp/Dn2Cpp/manifest.json
+# The three stamped products are FORK_GLUE_MARKER / FORK_API_RELEASE_REL /
+# FORK_TOOLCHAIN_MARKER (gates/_godot_fork.sh), not local names: this script
+# WRITES the stamps and godot_fork_cache_fresh READS them, and a second spelling
+# of one of those paths is a predicate that quietly answers about nothing.
 
 echo "== 0/6 Verifying the fork =="
 if [ ! -e "$FORK/.git" ]; then
@@ -225,56 +231,13 @@ echo "interop ABI fingerprints OK (fork is drop-in compatible)"
 ENGINE_HASH="$(godot_fork_engine_hash)"
 CACHE="$ROOT/bin-cache/$ENGINE_HASH"
 
-# The COMPLEMENT of FORK_OWNED: the managed trees step 4's build_assemblies.py
-# compiles, which is exactly what the engine hash excludes so that the fork's
-# edit-test loop does not trigger a scons run. The two hashes partition the fork's
-# sources by which product they describe — this one keys GodotSharp/{Tools,Api,
-# Dn2Cpp} and the local nuget feed, the engine one keys the two engine binaries.
-#
-# Derived from what build_assemblies.py's build_all actually reads, not from the
-# exclusion list: generate_sdk_package_versions (version.py -> the gitignored
-# SdkPackageVersions.props), build_godot_api (the GodotSharp glue sources ->
-# Api/Release/GodotSharp.dll), GodotTools.sln (-> Tools/GodotTools.dll) and
-# Godot.NET.Sdk (-> the nupkgs pushed to the feed). So it is a superset of the
-# complement: version.py and modules/mono/glue/GodotSharp are FORK_OWNED too, and
-# feed BOTH hashes, because they feed both products.
-#
-# `modules/mono/editor` is deliberately NOT taken whole — that directory also
-# holds engine C++ (editor_internal_calls.cpp, bindings_generator.cpp), which is
-# the engine hash's and whose change already forces a scons build.
-TOOLS_OWNED=(
-    'version.py'
-    'modules/mono/build_scripts'
-    'modules/mono/editor/GodotTools'
-    'modules/mono/editor/Godot.NET.Sdk'
-    'modules/mono/glue/GodotSharp'
-)
-
-# tools_tree_hash — godot_fork_engine_hash's twin over TOOLS_OWNED, same rules and for
-# the same reasons: content rather than git state (so staging or committing a
-# GodotTools edit is not a rebuild, and reaching the same sources from another
-# branch is not either), --binary so a modified binary file is fingerprinted by
-# content, and untracked files hashed in. Everything build_assemblies.py *writes*
-# is gitignored (bin/, obj/, SdkPackageVersions.props, the generated glue and
-# source-generator constants), so its own products cannot feed the hash that keys
-# them — which is what keeps the stamp from moving on every build.
-tools_tree_hash() {
-    (
-        cd "$FORK"
-        printf 'base %s\n' "$BASE_COMMIT"
-        git diff --no-ext-diff --no-textconv --no-color --no-renames --binary \
-            "$BASE_COMMIT" -- "${TOOLS_OWNED[@]}"
-        # Not `xargs`, for godot_fork_engine_hash's reason: with no untracked
-        # file GNU xargs still runs shasum, which hashes its own stdin, and the
-        # same tree would then key a different cache entry per host flavour.
-        git ls-files --others --exclude-standard -z -- "${TOOLS_OWNED[@]}" \
-            | while IFS= read -r -d '' f; do shasum -a 256 "$f"; done
-    ) | shasum -a 256 | cut -c1-16
-}
-TOOLS_HASH="$(tools_tree_hash)"
-# Beside the tree it describes, under the fork's gitignored bin/ — the same
-# placement and the same rule as an engine binary's .engine-hash stamp.
-TOOLS_STAMP="$FORK/bin/GodotSharp/.tools-hash"
+# TOOLS_OWNED (the managed complement of FORK_OWNED) and godot_fork_tools_hash
+# were written here too, and moved to gates/_godot_fork.sh for the same reason:
+# godot_fork_cache_fresh there answers "does this cache describe the fork as it
+# is now" for the export gates and for gates/pre-merge.sh, and it must ask the
+# question this step keys its work on — not a second spelling of it.
+TOOLS_HASH="$(godot_fork_tools_hash)"
+TOOLS_STAMP="$(godot_fork_tools_stamp)"
 
 engine_drift="$(
     git -C "$FORK" diff --name-only "$BASE_COMMIT" -- "${FORK_OWNED[@]}"
@@ -380,19 +343,19 @@ echo "== 2/6 Mono glue =="
 # ENGINE_HASH nor TOOLS_HASH (both hash only tracked deltas and *non-ignored*
 # untracked files), which is what keeps a stamp from moving the hash that keys
 # it. Same placement rule as an engine binary's .engine-hash.
-GLUE_STAMP="$FORK/$GLUE_MARKER.engine-hash"
-if [ -f "$FORK/$GLUE_MARKER" ] && [ -f "$GLUE_STAMP" ] \
+GLUE_STAMP="$FORK/$FORK_GLUE_MARKER.engine-hash"
+if [ -f "$FORK/$FORK_GLUE_MARKER" ] && [ -f "$GLUE_STAMP" ] \
     && [ "$(cat "$GLUE_STAMP")" = "$ENGINE_HASH" ]; then
-    echo "skip: glue already generated from these engine sources: $FORK/$GLUE_MARKER"
+    echo "skip: glue already generated from these engine sources: $FORK/$FORK_GLUE_MARKER"
 else
-    if [ -f "$FORK/$GLUE_MARKER" ]; then
+    if [ -f "$FORK/$FORK_GLUE_MARKER" ]; then
         echo "-- the glue in the fork predates the current engine sources"
     fi
     # Removed before the run and written after it, for install_binary's reason: an
     # interrupted generation must leave a glue nothing calls current.
     rm -f "$GLUE_STAMP"
     (cd "$FORK" && "./$EDITOR_REL" --headless --generate-mono-glue modules/mono/glue)
-    [ -f "$FORK/$GLUE_MARKER" ] || { echo "error: glue generation produced no $GLUE_MARKER" >&2; exit 1; }
+    [ -f "$FORK/$FORK_GLUE_MARKER" ] || { echo "error: glue generation produced no $FORK_GLUE_MARKER" >&2; exit 1; }
     printf '%s\n' "$ENGINE_HASH" > "$GLUE_STAMP"
 fi
 
@@ -423,17 +386,24 @@ echo "== 4/6 Managed assemblies + nuget feed + toolchain install =="
 # The dn2cpp bundle installed by --bundle-dn2cpp is NOT in this hash — it is a
 # dn2cpp-side product, and the gates re-package and re-stage it every run
 # (stage_editor_toolchain), so this stamp has no business claiming it is current.
-if compgen -G "$ROOT/nuget/Godot.NET.Sdk.*.nupkg" >/dev/null && [ -f "$FORK/$API_RELEASE_REL" ] \
-    && [ -f "$FORK/$TOOLCHAIN_MARKER" ] \
+if godot_fork_managed_feed_fresh && [ -f "$FORK/$FORK_API_RELEASE_REL" ] \
+    && [ -f "$FORK/$FORK_TOOLCHAIN_MARKER" ] \
     && [ -f "$TOOLS_STAMP" ] && [ "$(cat "$TOOLS_STAMP")" = "$TOOLS_HASH" ]; then
     echo "skip: assemblies + feed + toolchain already built from these managed sources: $FORK/bin/GodotSharp"
 else
-    if [ -f "$FORK/$API_RELEASE_REL" ] && [ -f "$TOOLS_STAMP" ] \
+    if [ -f "$FORK/$FORK_API_RELEASE_REL" ] && [ -f "$TOOLS_STAMP" ] \
         && [ "$(cat "$TOOLS_STAMP")" != "$TOOLS_HASH" ]; then
         echo "-- the assemblies in the fork predate the current managed sources"
         echo "   stamped $(cat "$TOOLS_STAMP") != $TOOLS_HASH"
     fi
     mkdir -p "$ROOT/nuget"
+    # The feed is one coherent build, not an archive across pins. Retaining the
+    # old packages makes an `any nupkg` guard pass after the current SDK package
+    # is deleted and lets NuGet resolve siblings from different Godot versions.
+    rm -f "$ROOT"/nuget/Godot.NET.Sdk.*.nupkg \
+          "$ROOT"/nuget/Godot.SourceGenerators.*.nupkg \
+          "$ROOT"/nuget/GodotSharp.*.nupkg "$ROOT"/nuget/GodotSharp.*.snupkg \
+          "$ROOT"/nuget/GodotSharpEditor.*.nupkg "$ROOT"/nuget/GodotSharpEditor.*.snupkg
     # $PY, never a bare `python3` — see resolve_python at the top of this file for
     # what that name resolves to on a stock Windows box.
     # shellcheck disable=SC2086
@@ -442,8 +412,9 @@ else
         --godot-platform="$SCONS_PLATFORM" \
         --push-nupkgs-local "$ROOT/nuget" \
         --bundle-dn2cpp "$LAYOUT")
-    [ -f "$FORK/$API_RELEASE_REL" ] || { echo "error: build_assemblies produced no $API_RELEASE_REL" >&2; exit 1; }
-    [ -f "$FORK/$TOOLCHAIN_MARKER" ] || { echo "error: --bundle-dn2cpp installed no $TOOLCHAIN_MARKER" >&2; exit 1; }
+    [ -f "$FORK/$FORK_API_RELEASE_REL" ] || { echo "error: build_assemblies produced no $FORK_API_RELEASE_REL" >&2; exit 1; }
+    [ -f "$FORK/$FORK_TOOLCHAIN_MARKER" ] || { echo "error: --bundle-dn2cpp installed no $FORK_TOOLCHAIN_MARKER" >&2; exit 1; }
+    godot_fork_managed_feed_fresh || { echo "error: $FORK_MANAGED_FEED_WHY" >&2; exit 1; }
     # Written LAST, after both products are asserted, for the same reason
     # install_binary stamps last: an interrupted build must not leave a stamp
     # standing behind a half-written GodotSharp tree.
@@ -566,7 +537,7 @@ echo "template:      $FORK_ABS/$TEMPLATE_REL (recorded in $ROOT/template.txt)"
 echo "desktop tmpl:  $TEMPLATE_ARTIFACT"
 echo "GodotSharp:    $FORK_ABS/bin/GodotSharp (beside the editor)"
 echo "fork clone:    $ROOT/clone.txt ($FORK_ABS)"
-echo "toolchain:     $FORK/$TOOLCHAIN_MARKER"
+echo "toolchain:     $FORK/$FORK_TOOLCHAIN_MARKER"
 echo "nuget feed:    $ROOT/nuget (${sdk_nupkg:-Godot.NET.Sdk nupkg MISSING})"
 echo "base pin:      $ROOT/pin.txt ($BASE_COMMIT)"
 echo "fork head:     $ROOT/fork_head.txt ($FORK_HEAD)"

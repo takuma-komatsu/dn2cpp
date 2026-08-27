@@ -347,9 +347,36 @@ internal sealed partial class MethodCompiler
         // struct pointer would otherwise reach dn2cpp_object_tostring.
         if (isCallvirt && _constrained is { } cn
             && (cn.Kind == TypeKind.Primitive || cn is { Kind: TypeKind.Class, Class.IsEnum: true }
-                || cn is { Kind: TypeKind.Class, Class.IsValueType: true })
+                || cn is { Kind: TypeKind.Class, Class.IsValueType: true }
+                || IsDefaultNameExternalIntrinsic(cn))
             && TryEmitValueConstrained(handle, cn))
             return;
+        // A generic/interpolation constrained call can close over an intrinsic CLR
+        // reference type that is represented by-value in C++ (memory-map handles).
+        // There is no object pointer to dereference or box; inherited ToString depends
+        // only on the exact CLR type. Keep a declared override on normal intrinsic
+        // dispatch so an unmodeled custom formatter remains loud.
+        if (isCallvirt && _constrained is { Kind: TypeKind.Class,
+                Class: { IsValueType: false, IntrinsicCppName: not null } vrr } vrc
+            && CppTypes.KindOf(vrc) == StackKind.Struct
+            && !_c.DeclaresIntrinsicToStringOverride(vrr)
+            && (handle.Kind switch
+                {
+                    HandleKind.MemberReference => _reader.GetString(_reader.GetMemberReference((MemberReferenceHandle)handle).Name),
+                    HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
+                    _ => "",
+                }) == "ToString"
+            && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
+        {
+            var receiver = Pop();
+            string ti = TypeInfoExpr(vrc)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {vrc} has no emitted type-info");
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+            _constrained = null;
+            return;
+        }
         // constrained. callvirt on a *reference* class/interface — a generic
         // parameter (e.g. ConcurrentDictionary<TKey,…>'s TKey) instantiated as a
         // reference type. Per ECMA III.2.1, the managed-pointer receiver is
@@ -477,6 +504,10 @@ internal sealed partial class MethodCompiler
                 // EmitManagedCall and names a body the cut deleted — not a transpile error
                 // but an undefined symbol at C++ LINK time.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdInlinePrimitive, callee))
+                    return;
+                // Non-floating primitive Equals(object), using the same shape predicate as
+                // the reachability cut. Equals(T) deliberately falls through.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdPrimitiveEqualsObject, callee))
                     return;
                 // System.Collections.Comparer.Compare — body-intercepted: a direct call lowers
                 // to dn2cpp_object_compare (the same lowering the synthesized body and the interface
@@ -739,6 +770,19 @@ internal sealed partial class MethodCompiler
                             && TryEmitVectorOp(pc.IntrinsicCppName, VecWidthBytes(pc.IntrinsicCppName),
                                 pc.Context.TypeArgs[0], mrName, pcSig, null))
                             return;
+                        if ((_c.AdoptedAsyncKey(pc) ?? _c.GenericDefFullName(pc))
+                                == "System.Threading.Tasks.ValueTask"
+                            && pc.Context.TypeArgs is [var resultType]
+                            && mrName == "ToString" && pcSig.ParameterTypes.Length == 0)
+                        {
+                            var receiver = Pop();
+                            string resultTi = TypeInfoExpr(resultType)
+                                ?? throw new NotSupportedException(
+                                    $"{_method.DeclaringClass.FullName}.{_method.Name}: ValueTask<{resultType}> result has no emitted type-info");
+                            Push(StackKind.Ref, "Dn2CppString*",
+                                $"dn2cpp_valuetask_tostring((Dn2CppTaskAwaiter*)({receiver.Expr}), {resultTi})");
+                            return;
+                        }
                         // An adopted third-party task type (GDTask<T>, its builder, its
                         // awaiter) answers to a BCL key; anything else is its own name.
                         EmitIntrinsic(_c.AdoptedAsyncKey(pc) ?? _c.GenericDefFullName(pc),
@@ -934,6 +978,10 @@ internal sealed partial class MethodCompiler
                 // one — as do the constrained static-virtual dispatch and its reach twin. No
                 // second list to drift.
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrInlinePrimitive, mr, mrParent, mrName, Sig))
+                    return;
+                // Non-floating primitive Equals(object), using the reachability cut's row.
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrPrimitiveEqualsObject,
+                    mr, mrParent, mrName, Sig))
                     return;
                 // System.Collections.Comparer.Compare — body-intercepted, lowered inline to
                 // dn2cpp_object_compare. Same predicate as the reachability cut (ResolveCallTarget).
@@ -1673,6 +1721,18 @@ internal sealed partial class MethodCompiler
                     && Compilation.ContainsCanonPlaceholder(_constrained))))
             ThrowSharedTaint("static-virtual", callee.DeclaringClass.FullName + "." + callee.Name);
 
+        // constrained. + call to System.IBinaryFloatParseAndFormatInfo<TSelf> with TSelf
+        // closed to double/float: the CoreLib-internal parse shape constants
+        // (namespace System, so the generic-math table never sees them). Double and
+        // Single implement these members as explicit static interface impls, invisible
+        // to the static-virtual resolver below, which then reports the interface
+        // declaration as a bodyless InternalCall. Reached from Number.NumberToFloat
+        // (Utf8Parser.TryParse(double/float) behind Utf8JsonReader.GetDouble/GetSingle).
+        if (!isCallvirt && callee.IsStatic && callee.DeclaringClass.IsInterface
+            && _constrained is { Kind: TypeKind.Primitive }
+            && TryEmitBinaryFloatParseAndFormatInfoIntrinsic(callee))
+            return;
+
         // The constrained type is the concrete TSelf; resolve to its implementing
         // static method and call it directly. This covers value-type structs — e.g.
         // Linq's IMinMaxCalc<T> Min/Max comparer structs, whose Compare devirtualizes
@@ -2108,6 +2168,75 @@ internal sealed partial class MethodCompiler
             default:
                 return TryEmitGenericMathIntrinsic(callee);
         }
+    }
+
+    /// <summary>
+    /// Lowers the <c>IBinaryFloatParseAndFormatInfo&lt;TSelf&gt;</c> members reached by
+    /// <c>System.Number</c> parsing for TSelf = double/float.
+    /// </summary>
+    private bool TryEmitBinaryFloatParseAndFormatInfoIntrinsic(MethodInfo callee)
+    {
+        if (_c.GenericDefFullName(callee.DeclaringClass) != "System.IBinaryFloatParseAndFormatInfo")
+            return false;
+        if (callee.DeclaringClass.Context.TypeArgs is not [{ Kind: TypeKind.Primitive } self])
+            return false;
+        bool isDouble = self.Primitive == PrimitiveTypeCode.Double;
+        if (!isDouble && self.Primitive != PrimitiveTypeCode.Single)
+            return false;
+
+        var ps = callee.Signature.ParameterTypes;
+        var rt = callee.Signature.ReturnType;
+        string ct = CppTypes.Of(rt);
+        if (ps.Length == 1 && callee.Name == "BitsToFloat")
+        {
+            var bits = Pop();
+            Push(CppTypes.KindOf(rt), ct, isDouble
+                ? $"dn2cpp_bits_r8((uint64_t)({bits.Expr}))"
+                : $"(({ct})dn2cpp_bits_r4((uint32_t)({bits.Expr})))");
+            return true;
+        }
+
+        if (ps.Length == 1 && callee.Name == "FloatToBits")
+        {
+            var value = Pop();
+            Push(CppTypes.KindOf(rt), ct, isDouble
+                ? $"dn2cpp_r8_bits((double)({value.Expr}))"
+                : $"((uint64_t)dn2cpp_r4_bits((float)({value.Expr})))");
+            return true;
+        }
+
+        if (ps.Length != 0)
+            return false;
+
+        string? konst = callee.Name switch
+        {
+            "get_NumberBufferLength" => isDouble ? "769" : "114",
+            "get_ZeroBits" => "UINT64_C(0)",
+            "get_InfinityBits" => isDouble ? "UINT64_C(0x7FF0000000000000)" : "UINT64_C(0x7F800000)",
+            "get_NormalMantissaMask" => isDouble ? "UINT64_C(0x001FFFFFFFFFFFFF)" : "UINT64_C(0x00FFFFFF)",
+            "get_DenormalMantissaMask" => isDouble ? "UINT64_C(0x000FFFFFFFFFFFFF)" : "UINT64_C(0x007FFFFF)",
+            "get_MinBinaryExponent" => isDouble ? "-1022" : "-126",
+            "get_MaxBinaryExponent" => isDouble ? "1023" : "127",
+            "get_MinDecimalExponent" => isDouble ? "-324" : "-45",
+            "get_MaxDecimalExponent" => isDouble ? "309" : "39",
+            "get_ExponentBias" => isDouble ? "1023" : "127",
+            "get_ExponentBits" => isDouble ? "11" : "8",
+            "get_OverflowDecimalExponent" => isDouble ? "376" : "58",
+            "get_InfinityExponent" => isDouble ? "0x7FF" : "0xFF",
+            "get_NormalMantissaBits" => isDouble ? "53" : "24",
+            "get_DenormalMantissaBits" => isDouble ? "52" : "23",
+            "get_MinFastFloatDecimalExponent" => isDouble ? "-342" : "-65",
+            "get_MaxFastFloatDecimalExponent" => isDouble ? "308" : "38",
+            "get_MinExponentRoundToEven" => isDouble ? "-4" : "-17",
+            "get_MaxExponentRoundToEven" => isDouble ? "23" : "10",
+            "get_MaxExponentFastPath" => isDouble ? "22" : "10",
+            "get_MaxMantissaFastPath" => isDouble ? "UINT64_C(0x0020000000000000)" : "UINT64_C(0x01000000)",
+            _ => null,
+        };
+        if (konst is null)
+            return false;
+        Push(CppTypes.KindOf(rt), ct, $"(({ct})({konst}))");
+        return true;
     }
 
     /// <summary>System.Numerics generic-math interface methods (INumberBase&lt;T&gt;,
@@ -3127,6 +3256,12 @@ internal sealed partial class MethodCompiler
             }
             : null;
 
+    /// <summary>CancellationToken is an intrinsic value struct whose equality is the
+    /// identity of its source. It is neither pointer-modeled nor orderable, so it does not
+    /// belong to the generic pointer or <see cref="IntrinsicValueTypeFn"/> arms.</summary>
+    internal static bool IsCancellationTokenValue(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { IsValueType: true, FullName: "System.Threading.CancellationToken" } };
+
     private string EqualityHashExpr(TypeDesc keyType, StackEntry key)
     {
         if (keyType.IsCanonPlaceholder && !keyType.IsObject)
@@ -3137,6 +3272,8 @@ internal sealed partial class MethodCompiler
             return PrimitiveHashExpr(keyType, key);
         if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
             return $"(int32_t)({Cast(key, "int32_t")})";
+        if (IsCancellationTokenValue(keyType))
+            return $"(int32_t)(uintptr_t)(({Cast(key, "Dn2CppCancelToken")}).source)";
         // A reference-type key (a record/class with value equality, System.Type for
         // a record's EqualityContract, or plain object identity) dispatches its
         // GetHashCode override via the type-info slot, else an identity hash.
@@ -3281,6 +3418,7 @@ internal sealed partial class MethodCompiler
         || t is { Kind: TypeKind.Class, Class.IsEnum: true }
         || IsReferenceKeyType(t)
         || IntrinsicValueTypeFn(t) is not null
+        || IsCancellationTokenValue(t)
         || IntrinsicPointerValueType(t) is not null
         || (EqualityStructArm(t) is { } sc
             && (Compilation.EffectiveTypedEquals(sc) is not null
@@ -3326,6 +3464,8 @@ internal sealed partial class MethodCompiler
             string ect = CppTypes.Of(keyType);
             return $"(({Cast(a, ect)}) == ({Cast(b, ect)}) ? 1 : 0)";
         }
+        if (IsCancellationTokenValue(keyType))
+            return $"((({Cast(a, "Dn2CppCancelToken")}).source == ({Cast(b, "Dn2CppCancelToken")}).source) ? 1 : 0)";
         // A reference-type key dispatches its Equals(object) override via the
         // type-info slot, else reference equality.
         if (IsReferenceKeyType(keyType))
@@ -3630,6 +3770,17 @@ internal sealed partial class MethodCompiler
             HandleKind.MethodDefinition => _reader.GetString(_reader.GetMethodDefinition((MethodDefinitionHandle)handle).Name),
             _ => "",
         };
+        if (IsDefaultNameExternalIntrinsic(c) && name == "ToString"
+            && ConstrainedCalleeSig(handle).ParameterTypes.Length == 0)
+        {
+            var receiver = Pop();
+            string ti = TypeInfoExpr(c)
+                ?? throw new NotSupportedException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {c} has no runtime type-info");
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+            return true;
+        }
         // An intrinsic value type (Decimal / TimeSpan / DateTime) overriding an Object
         // virtual (ToString/GetHashCode/Equals) or a typed IEquatable/IComparable via
         // `constrained. callvirt`: its real corelib body is intrinsic and never emitted,
@@ -3640,6 +3791,36 @@ internal sealed partial class MethodCompiler
             var csig = handle.Kind == HandleKind.MemberReference
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
                 : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+            // ValueType.ToString on an intrinsic with no override is still observable:
+            // it returns the exact CLR type name. These values may be ref structs or
+            // pointer-represented handles, so boxing is neither legal nor necessary.
+            // Keep types with a real override on the intrinsic table: an unclassified
+            // formatter must fail loudly instead of silently degrading to a type name.
+            if (name == "ToString" && csig.ParameterTypes.Length == 0)
+            {
+                string intrinsicKey = _c.AdoptedAsyncKey(ivc) ?? _c.GenericDefFullName(ivc);
+                if (intrinsicKey == "System.Threading.Tasks.ValueTask"
+                    && ivc.Context.TypeArgs is [var resultType])
+                {
+                    var receiver = Pop();
+                    string resultTi = TypeInfoExpr(resultType)
+                        ?? throw new NotSupportedException(
+                            $"{_method.DeclaringClass.FullName}.{_method.Name}: ValueTask<{resultType}> result has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"dn2cpp_valuetask_tostring((Dn2CppTaskAwaiter*)({receiver.Expr}), {resultTi})");
+                    return true;
+                }
+                if (!_c.DeclaresIntrinsicToStringOverride(ivc))
+                {
+                    var receiver = Pop();
+                    string ti = TypeInfoExpr(c)
+                        ?? throw new NotSupportedException(
+                            $"{_method.DeclaringClass.FullName}.{_method.Name}: constrained ToString on {c} has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({receiver.Expr}), dn2cpp_type_tostring({ti}))");
+                    return true;
+                }
+            }
             // A vector struct virtual reached via `constrained. callvirt` (e.g.
             // IEquatable<Vector128<T>>.Equals): dispatch with the closed element, like the
             // TypeSpec member path. Equals(object)/GetHashCode/ToString fall through.
@@ -3769,7 +3950,9 @@ internal sealed partial class MethodCompiler
         }
         switch (name)
         {
-            case "GetHashCode" when c.Kind == TypeKind.Primitive || c is { Kind: TypeKind.Class, Class.IsEnum: true }:
+            case "GetHashCode" when c.Kind == TypeKind.Primitive
+                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                || IsCancellationTokenValue(c):
             {
                 var receiver = Pop(); // managed pointer to the constrained primitive
                 string ct = CppTypes.Of(c);
@@ -3785,6 +3968,7 @@ internal sealed partial class MethodCompiler
             // mirrors the struct ToString devirtualization. ReachConstrainedImpl
             // pulls the impl into the tree).
             case "GetHashCode" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } ghs }
+                && !IsCancellationTokenValue(c)
                 && Compilation.EffectiveGetHashCode(ghs) is { } ghImpl:
             {
                 var receiver = Pop();
@@ -3799,6 +3983,7 @@ internal sealed partial class MethodCompiler
             // multi-word struct like SRM's Symbolic.BitVector) is excluded: it falls
             // through to EmitConstrainedCall, which devirtualizes to Equals(T).
             case "Equals" when c is { Kind: TypeKind.Class, Class: { IsValueType: true } eqs }
+                && !IsCancellationTokenValue(c)
                 && Compilation.EffectiveEquals(eqs) is { } eqImpl
                 && !(IsTypedItfConstrained(handle, "System.IEquatable")
                      && Compilation.EffectiveTypedEquals(eqs) is not null):
@@ -3817,7 +4002,8 @@ internal sealed partial class MethodCompiler
             // instead. Distinguish the typed Equals (the value is on the stack) from
             // Object::Equals(object) (a boxed reference arg), which the arm below claims.
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
-                                || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                                || IsCancellationTokenValue(c))
                 && _stack.Count >= 2 && _stack[^1].Kind != StackKind.Ref:
             {
                 var arg = Pop();      // the other value (y)
@@ -3832,7 +4018,8 @@ internal sealed partial class MethodCompiler
             // dn2cpp_object_equals a managed pointer whose pointee it would read as an
             // object header (the struct twin below, for the same reason).
             case "Equals" when ((c.Kind == TypeKind.Primitive && !c.IsObject && !c.IsString)
-                                || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                || c is { Kind: TypeKind.Class, Class.IsEnum: true }
+                                || IsCancellationTokenValue(c))
                 && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
             {
                 var other = Pop();
@@ -3995,6 +4182,10 @@ internal sealed partial class MethodCompiler
                 return false;
         }
     }
+
+    private static bool IsDefaultNameExternalIntrinsic(TypeDesc t) =>
+        t is { Kind: TypeKind.External,
+            ExternalName: "System.Threading.Tasks.ParallelLoopResult" };
 
     /// <summary>The decoded signature of a <c>constrained.</c> callvirt's callee, from
     /// either token shape — used to tell the parameterless <c>object::ToString()</c> apart

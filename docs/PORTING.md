@@ -127,11 +127,11 @@ user identity, and the low-level monitor.
 **This surface is a POSIX-family obligation, not a universal one.**
 
 - **Windows has no `system_native` file at all.** The win-x64 CoreLib's Interop
-  layer P/Invokes `kernel32`, `ntdll`, `ole32`, `ws2_32`, `advapi32` directly in
-  already-blittable shapes, so those calls direct-link once the modules are
-  admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port is a line in
-  the transpiler and a `target_link_libraries` row.
-- **wasm defines 28.** They live in
+  layer P/Invokes `kernel32`, `ntdll`, `ole32`, `ws2_32`, `iphlpapi`, `advapi32`
+  directly in already-blittable shapes, so those calls direct-link once the
+  modules are admitted to `Compilation.IsRuntimeProvidedPInvokeModule`. The port
+  is a line in the transpiler and a `target_link_libraries` row.
+- **wasm defines 29.** They live in
   `runtime/core/platform/wasm/dn2cpp_system_native_wasm.cpp`, in three groups.
   The **non-file** entries are there each for their own reason:
   `SystemNative_GetCryptographicallySecureRandomBytes`, whose caller is not a
@@ -141,7 +141,9 @@ user identity, and the low-level monitor.
   `Marshal`/`NativeMemory` surface never reaches but the BSTR allocators and the
   in-CoreLib marshaller stubs do; and the `pal_time.c` clocks behind
   `Stopwatch.GetTimestamp` and `Environment.TickCount64`. Both user calls resolve
-  from MemberReferences to real CoreLib bodies and reach P/Invokes. An in-CoreLib
+  from MemberReferences to real CoreLib bodies and reach P/Invokes; and
+  `SystemNative_InterfaceNameToIndex`, whose named IPv6-scope caller gets zero
+  because a browser exposes no host interface namespace. An in-CoreLib
   MethodDefinition call to `TickCount64` can instead take the
   `dn2cpp_tickcount64` intrinsic. The timestamp-resolution entry has no
   counterpart here because `Stopwatch.Frequency` is a constant on this CoreLib.

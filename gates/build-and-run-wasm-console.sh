@@ -99,7 +99,7 @@ for thunk in \
 done
 echo "PAL reach OK: MonotonicClock still lowers both clocks to libSystem.Native"
 
-wasm_corelib_diff_gate PalSurface
+wasm_corelib_diff_gate PalSurface System.Net.Primitives
 
 # Same reason as the clock assert above: the section's output is identical whether or
 # not it still reaches these, so only the emitted call set can say it does. The
@@ -109,6 +109,7 @@ for thunk in \
     dn2cpp_pinvoke_SystemNative_Malloc \
     dn2cpp_pinvoke_SystemNative_Free \
     dn2cpp_pinvoke_SystemNative_Write \
+    dn2cpp_pinvoke_SystemNative_InterfaceNameToIndex \
     dn2cpp_pinvoke_SystemNative_GetErrNo \
     dn2cpp_pinvoke_SystemNative_SetErrNo \
     dn2cpp_pinvoke_SystemNative_Open \

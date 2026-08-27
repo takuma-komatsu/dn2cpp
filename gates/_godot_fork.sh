@@ -13,18 +13,22 @@
 # (gate_skip, file_sig, file_sig_deref, file_hash, file_text, src_tree_hash) are
 # only called by gates, which source _common.sh first. The repo-root-relative
 # paths (gates/expected/..., artifacts/...) rely on _common.sh's cd-to-repo-root;
-# the setup aids only call godot_fork_resolve, which reads nothing but $FORK_ROOT.
+# the setup aids call only the functions that need neither — godot_fork_resolve,
+# the two tree hashes and the two cache predicates, which read $FORK_ROOT and
+# the fork worktree and nothing else.
 #
 # CACHE-KEY CONSTRAINT: no function here may affect gate behavior past
 # gate_cache_check. This file's own CONTENT is in every key (_gate_helpers_hash
 # in gates/_common.sh folds the whole gates/_*.sh set in), but what these
-# functions INSPECT is not: the ARTIFACTS under $FORK_ROOT (engine sources,
-# export template zips, their .provenance stamps). A gate's `tmpl=` term
-# fingerprints the stale zip ITSELF, so it holds still precisely while the
-# artifact is wrong, and the engine sources a stamp is compared against are in no
-# key at all — a template can go stale with every key unmoved and a warm green
-# replayed over it. So everything here runs live BEFORE the check: the preflight
-# and the pin/ABI tripwire assert on the spot, and godot_fork_ctx's output lands
+# functions INSPECT is not: the ARTIFACTS under $FORK_ROOT and in the fork's own
+# bin/ (the engine binaries, the GodotSharp tree, the export template zips, and
+# every .engine-hash / .tools-hash / .provenance stamp beside them). A gate's
+# `tmpl=`, `editor=` and `tools=` terms fingerprint the stale ARTIFACT ITSELF, so
+# they hold still precisely while it is wrong, and the fork sources a stamp is
+# compared against are in no key at all — a template or a whole fork cache can go
+# stale with every key unmoved and a warm green replayed over it. So everything
+# here runs live BEFORE the check: the preflight, the pin/ABI tripwire and the
+# freshness predicates assert on the spot, and godot_fork_ctx's output lands
 # verbatim in the CONTEXT string.
 
 FORK_ROOT="${DN2CPP_GODOT_FORK_ROOT:-$HOME/.cache/dn2cpp-godot-fork}"
@@ -238,6 +242,123 @@ godot_fork_engine_provenance() {
     printf 'engine=%s base=%s\n' "$(godot_fork_engine_hash)" "$BASE_COMMIT"
 }
 
+# ── Tools provenance ─────────────────────────────────────────────────────────
+# The MANAGED half of the fork: what build_assemblies.py compiles. TOOLS_OWNED
+# and FORK_OWNED partition the fork, and that partition is what lets the
+# GodotTools edit-test loop rebuild the assemblies without triggering a scons run
+# and an engine edit do the reverse. Both halves are defined here, in one file,
+# for FORK_OWNED's reason: a second copy of "which sources are which" is what
+# drifts, and gates/setup-godot-fork.sh is no longer the only asker — the fork
+# cache's own freshness is a question a gate and gates/pre-merge.sh both put.
+#
+# The membership is derived from what build_assemblies.py's build_all actually
+# READS, not from FORK_OWNED's exclusion list: generate_sdk_package_versions
+# (version.py -> the gitignored SdkPackageVersions.props), build_godot_api (the
+# GodotSharp glue sources -> Api/Release/GodotSharp.dll), GodotTools.sln
+# (-> Tools/GodotTools.dll) and Godot.NET.Sdk (-> the nupkgs pushed to the feed).
+# So it is a SUPERSET of the complement: version.py and modules/mono/glue/GodotSharp
+# are FORK_OWNED too and feed BOTH hashes, because they feed both products.
+#
+# `modules/mono/editor` is deliberately NOT taken whole — that directory also
+# holds engine C++ (editor_internal_calls.cpp, bindings_generator.cpp), which is
+# the engine hash's and whose change already forces a scons build.
+TOOLS_OWNED=(
+    'version.py'
+    'modules/mono/build_scripts'
+    'modules/mono/editor/GodotTools'
+    'modules/mono/editor/Godot.NET.Sdk'
+    'modules/mono/glue/GodotSharp'
+)
+
+# godot_fork_tools_hash — godot_fork_engine_hash's twin over TOOLS_OWNED, same
+# rules and for the same reasons: content rather than git state (so staging or
+# committing a GodotTools edit is not a rebuild, and reaching the same sources
+# from another branch is not either), --binary so a modified binary file is
+# fingerprinted by content, and untracked files hashed in. Everything
+# build_assemblies.py *writes* is gitignored (bin/, obj/, SdkPackageVersions.props,
+# the generated glue and source-generator constants), so its own products cannot
+# feed the hash that keys them — which is what keeps the stamp from moving on
+# every build.
+#
+# Reads $FORK (godot_fork_resolve) and $BASE_COMMIT, like its twin.
+godot_fork_tools_hash() {
+    (
+        cd "$FORK"
+        printf 'base %s\n' "$BASE_COMMIT"
+        git diff --no-ext-diff --no-textconv --no-color --no-renames --binary \
+            "$BASE_COMMIT" -- "${TOOLS_OWNED[@]}"
+        # Not `xargs`, for godot_fork_engine_hash's reason: with no untracked
+        # file GNU xargs still runs shasum, which hashes its own stdin, and the
+        # same tree would then key a different cache entry per host flavour.
+        git ls-files --others --exclude-standard -z -- "${TOOLS_OWNED[@]}" \
+            | while IFS= read -r -d '' f; do shasum -a 256 "$f"; done
+    ) | shasum -a 256 | cut -c1-16
+}
+
+# godot_fork_tools_stamp — where godot_fork_tools_hash is recorded: beside the
+# tree it describes, under the fork's gitignored bin/, the same placement and the
+# same rule as an engine binary's .engine-hash stamp. A function rather than a
+# variable because it reads $FORK, which is resolved per caller.
+godot_fork_tools_stamp() {
+    printf '%s/bin/GodotSharp/.tools-hash\n' "$FORK"
+}
+
+# godot_fork_managed_package_version — the version build_assemblies.py gives all
+# four managed packages in the fork feed. Its generated
+# SdkPackageVersions.props assigns this same godotsharp_version_str to
+# Godot.NET.Sdk, Godot.SourceGenerators, GodotSharp and GodotSharpEditor (the
+# latter reads PackageVersion_GodotSharp). Read version.py rather than a sample:
+# the feed is a fork product, and a re-pin can move it before samples move.
+godot_fork_managed_package_version() {
+    local major minor patch status label digits
+    major="$(sed -n 's/^major = //p' "$FORK/version.py")"
+    minor="$(sed -n 's/^minor = //p' "$FORK/version.py")"
+    patch="$(sed -n 's/^patch = //p' "$FORK/version.py")"
+    status="$(sed -n 's/^status = "\([^"]*\)"/\1/p' "$FORK/version.py")"
+    [ -n "$major" ] && [ -n "$minor" ] && [ -n "$patch" ] && [ -n "$status" ] || return 1
+    if [ "$status" = stable ]; then
+        printf '%s.%s.%s\n' "$major" "$minor" "$patch"
+        return 0
+    fi
+    label="$status"
+    digits=""
+    if [[ "$status" =~ ^([^0-9]*)([0-9]+)$ ]]; then
+        label="${BASH_REMATCH[1]}"
+        digits=".${BASH_REMATCH[2]}"
+    fi
+    printf '%s.%s.%s-%s%s\n' "$major" "$minor" "$patch" "$label" "$digits"
+}
+
+# godot_fork_managed_feed_fresh — exactly one current nupkg for every package
+# build_assemblies.py pushes. Checking only the SDK package admits a feed whose
+# SourceGenerators or GodotSharp dependency comes from another pin.
+# Sets FORK_MANAGED_FEED_WHY for the two callers' diagnostics.
+godot_fork_managed_feed_fresh() {
+    FORK_MANAGED_FEED_WHY=""
+    local version id expected files
+    version="$(godot_fork_managed_package_version)" || {
+        FORK_MANAGED_FEED_WHY="the fork's managed package version could not be read from version.py"
+        return 1
+    }
+    for id in Godot.NET.Sdk Godot.SourceGenerators GodotSharp GodotSharpEditor; do
+        expected="$FORK_ROOT/nuget/$id.$version.nupkg"
+        files=("$FORK_ROOT"/nuget/"$id".*.nupkg)
+        if [ ! -f "${files[0]}" ]; then
+            FORK_MANAGED_FEED_WHY="the managed feed has no $id package (wanted $(basename "$expected"))"
+            return 1
+        fi
+        if [ "${#files[@]}" -ne 1 ]; then
+            FORK_MANAGED_FEED_WHY="the managed feed is ambiguous for $id (${#files[@]} packages; wanted only $(basename "$expected"))"
+            return 1
+        fi
+        if [ "${files[0]}" != "$expected" ]; then
+            FORK_MANAGED_FEED_WHY="the managed feed contains $(basename "${files[0]}"), wanted $(basename "$expected")"
+            return 1
+        fi
+    done
+    return 0
+}
+
 # godot_fork_template_check PATH WHAT REMEDY — refuse an export template that
 # was not baked from the engine sources now in the fork. Reads $FORK and
 # $BASE_COMMIT, so a gate calls it after godot_fork_pin_abi_check and BEFORE
@@ -353,6 +474,41 @@ godot_fork_web_template_flavor() {
     fi
 }
 
+# godot_fork_web_template_fresh ZIP FLAVOR EMCC_STAMP EMCC ENGINE — the exact
+# skip predicate shared by the Web builder and pre-merge. The published emcc
+# stamp has a different name from the built zip's, so its path is explicit.
+# Sets FORK_WEB_TEMPLATE_WHY instead of printing: a probe's stdout is its return
+# protocol, while the builder has its own progress language.
+godot_fork_web_template_fresh() {
+    local zip="$1" want_flavor="$2" emcc_stamp="$3" want_emcc="$4" want_engine="$5"
+    local got_flavor got_emcc got_engine
+    FORK_WEB_TEMPLATE_WHY=""
+    if [ ! -f "$zip" ]; then
+        FORK_WEB_TEMPLATE_WHY="$zip is missing"
+        return 1
+    fi
+    got_flavor="$(godot_fork_web_template_flavor "$zip")"
+    if [ "$got_flavor" != "$want_flavor" ]; then
+        FORK_WEB_TEMPLATE_WHY="$zip is flavor $got_flavor, wanted $want_flavor"
+        return 1
+    fi
+    got_emcc="$(head -1 "$emcc_stamp" 2>/dev/null || true)"
+    if [ "$got_emcc" != "$want_emcc" ]; then
+        FORK_WEB_TEMPLATE_WHY="$emcc_stamp is ${got_emcc:-<empty>}, wanted $want_emcc"
+        return 1
+    fi
+    got_engine="$(head -1 "$zip.provenance" 2>/dev/null || true)"
+    if [ "$got_engine" != "$want_engine" ]; then
+        FORK_WEB_TEMPLATE_WHY="$zip.provenance is ${got_engine:-<empty>}, wanted $want_engine"
+        return 1
+    fi
+    if ! godot_fork_web_template_structural_fresh "$zip"; then
+        FORK_WEB_TEMPLATE_WHY="$FORK_WEB_TEMPLATE_STRUCTURAL_WHY"
+        return 1
+    fi
+    return 0
+}
+
 # godot_fork_web_template_assert ZIP — refuse a Web template the mono drop-in
 # cannot load. Two structural properties, neither of which announces itself at
 # export time:
@@ -367,23 +523,100 @@ godot_fork_web_template_flavor() {
 #     would recognise.
 #
 # Exits 1 on either: the artifact is WRONG, not missing.
-godot_fork_web_template_assert() {
+godot_fork_web_template_structural_fresh() {
     local zip="$1" tmp
+    FORK_WEB_TEMPLATE_STRUCTURAL_WHY=""
     tmp="$(mktemp -d)"
-    unzip -q "$zip" -d "$tmp"
-    if [ ! -f "$tmp/godot.side.wasm" ]; then
-        echo "error: $zip carries no godot.side.wasm -- this is not a dlink build" >&2
+    if ! unzip -q "$zip" -d "$tmp"; then
+        FORK_WEB_TEMPLATE_STRUCTURAL_WHY="$zip is not a readable template zip"
         rm -rf "$tmp"
-        exit 1
+        return 1
+    fi
+    if [ ! -f "$tmp/godot.side.wasm" ]; then
+        FORK_WEB_TEMPLATE_STRUCTURAL_WHY="$zip carries no godot.side.wasm -- this is not a dlink build"
+        rm -rf "$tmp"
+        return 1
     fi
     if ! grep -aq '__cpp_exception' "$tmp/godot.wasm"; then
-        echo "error: $zip's main module does not export the C++ exception tag" >&2
-        echo "       (rebuild with disable_exceptions=no cxxflags/linkflags=-fwasm-exceptions)" >&2
+        FORK_WEB_TEMPLATE_STRUCTURAL_WHY="$zip's main module does not export the C++ exception tag"
         rm -rf "$tmp"
-        exit 1
+        return 1
     fi
     rm -rf "$tmp"
+    return 0
+}
+
+godot_fork_web_template_assert() {
+    local zip="$1"
+    if ! godot_fork_web_template_structural_fresh "$zip"; then
+        echo "error: $FORK_WEB_TEMPLATE_STRUCTURAL_WHY" >&2
+        case "$FORK_WEB_TEMPLATE_STRUCTURAL_WHY" in
+            *"C++ exception tag"*)
+                echo "       (rebuild with disable_exceptions=no cxxflags/linkflags=-fwasm-exceptions)" >&2
+                ;;
+        esac
+        exit 1
+    fi
     echo "ok: godot.side.wasm present (dlink), main module exports __cpp_exception"
+}
+
+# godot_fork_ios_ready ZIP — the complete readiness predicate shared by the iOS
+# gate and pre-merge: host tools, a readable template, current engine provenance,
+# an available iPhone simulator and the repaired arm64 debug simulator slice.
+# Nothing is built. Sets FORK_IOS_READY_WHY and FORK_IOS_READY_KIND
+# (`prerequisite` or `artifact`) instead of printing, so each caller can phrase
+# the same fact for its own verdict.
+godot_fork_ios_ready() {
+    local zip="$1" tool want stamped devices listing entries entry tmp archs
+    FORK_IOS_READY_WHY=""
+    FORK_IOS_READY_KIND=prerequisite
+    for tool in xcodebuild xcrun lipo unzip; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            FORK_IOS_READY_WHY="$tool is required by the iOS editor-export gate"
+            return 1
+        fi
+    done
+    if [ ! -f "$zip" ]; then
+        FORK_IOS_READY_WHY="$zip is missing — run gates/setup-godot-fork-ios.sh"
+        return 1
+    fi
+    FORK_IOS_READY_KIND=artifact
+    if ! listing="$(unzip -l "$zip" 2>/dev/null)"; then
+        FORK_IOS_READY_WHY="$zip is not a readable template zip — re-run gates/setup-godot-fork-ios.sh"
+        return 1
+    fi
+    want="$(godot_fork_engine_provenance)"
+    stamped="$(head -1 "$zip.provenance" 2>/dev/null || true)"
+    if [ "$stamped" != "$want" ]; then
+        FORK_IOS_READY_WHY="$zip was built from ${stamped:-<no stamp>}, wanted $want — re-run FORCE=1 gates/setup-godot-fork-ios.sh"
+        return 1
+    fi
+    devices="$(xcrun simctl list devices available 2>/dev/null || true)"
+    if ! grep -q iPhone <<<"$devices"; then
+        FORK_IOS_READY_KIND=prerequisite
+        FORK_IOS_READY_WHY="no available iPhone simulator device"
+        return 1
+    fi
+    entries="$(printf '%s\n' "$listing" \
+        | grep -oE 'libgodot\.ios\.debug\.xcframework/ios-[a-z0-9_]*-simulator/libgodot\.a' || true)"
+    entry="${entries%%$'\n'*}"
+    if [ -z "$entry" ]; then
+        FORK_IOS_READY_WHY="$zip has no debug simulator slice — re-run gates/setup-godot-fork-ios.sh"
+        return 1
+    fi
+    tmp="$(mktemp -d)"
+    if ! unzip -q "$zip" "$entry" -d "$tmp" 2>/dev/null; then
+        FORK_IOS_READY_WHY="$zip's debug simulator slice is unreadable — re-run gates/setup-godot-fork-ios.sh"
+        rm -rf "$tmp"
+        return 1
+    fi
+    archs="$(lipo -info "$tmp/$entry" 2>/dev/null | LC_ALL=C sed 's/^.*: //')"
+    rm -rf "$tmp"
+    if ! grep -q arm64 <<<"$archs"; then
+        FORK_IOS_READY_WHY="$zip has no arm64 debug simulator slice — re-run gates/setup-godot-fork-ios.sh"
+        return 1
+    fi
+    return 0
 }
 
 # godot_fork_web_template_emcc_assert BUNDLE_EMCC OUT_DIR VERSION — refuse an
@@ -428,29 +661,154 @@ godot_fork_web_template_emcc_assert() {
     echo "web template:  emcc matches the bundled toolchain ($origin)"
 }
 
+# ── Is the fork cache current? ────────────────────────────────────────────────
+# The three products of gates/setup-godot-fork.sh that carry a stamp inside the
+# fork worktree, named here rather than only in that script because two readers
+# now exist: the script that WRITES the stamps and the predicate that decides
+# whether they still describe the tree. A second spelling of a stamp's path is a
+# predicate that silently answers about nothing.
+FORK_GLUE_MARKER=modules/mono/glue/GodotSharp/GodotSharp/Generated/GeneratedIncludes.props
+FORK_API_RELEASE_REL=bin/GodotSharp/Api/Release/GodotSharp.dll
+FORK_TOOLCHAIN_MARKER=bin/GodotSharp/Dn2Cpp/manifest.json
+
+# godot_fork_cache_complete — the artifact root holds the four things every
+# consumer needs at all: the editor, the pin, the GodotSharp tree beside it, and
+# a Godot.NET.Sdk nupkg in the feed. Says nothing about whether any of them is
+# CURRENT — that is godot_fork_cache_fresh. Split out because "absent" and
+# "wrong" are different answers with different remedies, and because the
+# preflight and gates/pre-merge.sh both have to put the first question.
+godot_fork_cache_complete() {
+    [ -x "$FORK_EDITOR" ] || return 1
+    [ -f "$FORK_ROOT/pin.txt" ] || return 1
+    [ -d "$FORK_GODOTSHARP" ] || return 1
+    compgen -G "$FORK_ROOT/nuget/Godot.NET.Sdk.*.nupkg" >/dev/null || return 1
+}
+
+# godot_fork_cache_fresh — 0 when the fork cache was built from the fork worktree
+# as it is NOW, 1 when gates/setup-godot-fork.sh has to run again. Reports
+# nothing and sets FORK_CACHE_WHY (one line naming which stamp disagrees) plus
+# the raw terms instead, for selfhost_bin_fresh's reason: the askers phrase the
+# same fact differently, and a rebuild one of them skips is a rebuild another
+# demands.
+#
+# WHY THIS PREDICATE HAS TO EXIST OUTSIDE THAT SCRIPT. Until it did, the only way
+# to ask was to run the script, and the failure shape of not asking is the worst
+# one available: godot_fork_ctx's `editor=` and `tools=` terms fingerprint the
+# STALE PRODUCTS THEMSELVES, so a GodotTools edit that never got compiled leaves
+# every key unmoved and the export gates replay a warm green over an editor that
+# does not contain it — the gates assert the old exporter's behavior against the
+# old exporter. Neither the pin nor the ABI tripwire can help: both fingerprint
+# the clone's SOURCES, which are correct.
+#
+# A MISSING stamp is unknown provenance, not a pass — selfhost_bin_fresh's rule,
+# and here it is also what catches an interrupted setup run: every stamp is
+# removed before its product is rebuilt and written after, so a half-written
+# product carries no stamp rather than an old one.
+#
+# The desktop export artifact IS checked here even though its consumer checks it
+# again. The two checks answer different questions: this predicate lets
+# pre-merge repair an interrupted assembly before the suites; the consumer's
+# live check keeps a stale artifact from passing on a warm gate cache.
+#
+# Sets FORK and BASE_COMMIT through godot_fork_resolve, so a caller that holds
+# them already gets the same values back.
+godot_fork_cache_fresh() {
+    FORK_CACHE_WHY=""
+    FORK_CACHE_HEAD=""
+    FORK_CACHE_ENGINE_NOW=""
+    FORK_CACHE_TOOLS_NOW=""
+
+    godot_fork_resolve || { FORK_CACHE_WHY="the fork worktree does not resolve"; return 1; }
+    BASE_COMMIT="$(cat "$FORK_PIN_EXPECTED")"
+    # One word, never '<no head>': the pre-merge probe prints this as a
+    # whitespace-separated field and a space here would shift every field after it.
+    FORK_CACHE_HEAD="$(git -C "$FORK" rev-parse --short HEAD 2>/dev/null || echo '<no-head>')"
+
+    local rootpin
+    rootpin="$(head -1 "$FORK_ROOT/pin.txt" 2>/dev/null || true)"
+    if [ "$rootpin" != "$BASE_COMMIT" ]; then
+        FORK_CACHE_WHY="$FORK_ROOT/pin.txt is ${rootpin:-<empty>}, the checked-in pin is $BASE_COMMIT"
+        return 1
+    fi
+
+    FORK_CACHE_ENGINE_NOW="$(godot_fork_engine_hash)"
+    FORK_CACHE_TOOLS_NOW="$(godot_fork_tools_hash)"
+
+    if ! godot_fork_managed_feed_fresh; then
+        FORK_CACHE_WHY="$FORK_MANAGED_FEED_WHY"
+        return 1
+    fi
+
+    # _fork_stamp_is FILE WANT WHAT — 0 when FILE's first line is WANT. Local to
+    # this predicate: every caller of it is right here, and the message it builds
+    # is FORK_CACHE_WHY's whole content.
+    _fork_stamp_is() {
+        local stamped
+        stamped="$(head -1 "$1" 2>/dev/null || true)"
+        [ -n "$stamped" ] || stamped='<no stamp>'
+        [ "$stamped" = "$2" ] && return 0
+        FORK_CACHE_WHY="the $3 was built from $stamped, the fork's sources are $2"
+        return 1
+    }
+
+    _fork_stamp_is "$FORK_EDITOR.engine-hash" "$FORK_CACHE_ENGINE_NOW" "editor binary" || return 1
+    _fork_stamp_is "$FORK_TEMPLATE.engine-hash" "$FORK_CACHE_ENGINE_NOW" "release template" || return 1
+    _fork_stamp_is "$FORK/$FORK_GLUE_MARKER.engine-hash" "$FORK_CACHE_ENGINE_NOW" "mono glue" || return 1
+    _fork_stamp_is "$(godot_fork_tools_stamp)" "$FORK_CACHE_TOOLS_NOW" "managed assemblies + feed" || return 1
+
+    local desktop want_provenance stamped_provenance
+    desktop="$(godot_fork_desktop_template "$FORK_ROOT")" || {
+        FORK_CACHE_WHY="the desktop export template path cannot be resolved for ${DN2CPP_OS:-unknown}"
+        return 1
+    }
+    want_provenance="engine=$FORK_CACHE_ENGINE_NOW base=$BASE_COMMIT"
+    if [ ! -f "$desktop" ]; then
+        FORK_CACHE_WHY="the desktop export template is missing at $desktop"
+        return 1
+    fi
+    stamped_provenance="$(head -1 "$desktop.provenance" 2>/dev/null || true)"
+    if [ "$stamped_provenance" != "$want_provenance" ]; then
+        FORK_CACHE_WHY="the desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
+        return 1
+    fi
+
+    # The products the tools stamp vouches for, asserted separately: the stamp is
+    # written last, but a root reassembled by hand can hold the stamp without the
+    # tree it describes.
+    if [ ! -f "$FORK/$FORK_API_RELEASE_REL" ]; then
+        FORK_CACHE_WHY="the managed assemblies are stamped current but $FORK_API_RELEASE_REL is missing"
+        return 1
+    fi
+    if [ ! -f "$FORK/$FORK_TOOLCHAIN_MARKER" ]; then
+        FORK_CACHE_WHY="the managed assemblies are stamped current but the dn2cpp bundle marker $FORK_TOOLCHAIN_MARKER is missing"
+        return 1
+    fi
+    return 0
+}
+
 # godot_fork_preflight — the skip-or-proceed test every editor-export gate runs
 # first: the fork cache must be complete (editor, pin, GodotSharp, Sdk feed) and
 # the self-hosted native CLI must exist AND be built from the sources now in the
 # tree. Per-gate prerequisites (a platform template, Xcode, an NDK) stay in the
 # gate, each with its own gate_skip.
 #
-# The staleness test is a hard FAIL, and it lives HERE rather than in either
-# other candidate home. dist/package-toolchain.sh honours an explicit
-# --dn2cpp-bin as given, unchecked, by stated contract, and every gate reaches it
-# through stage_editor_toolchain naming $SELFHOST_BIN explicitly — so its own
-# stamp check protects hand-run packaging and never a gate. stage_editor_toolchain
-# runs AFTER gate_cache_check in every consumer, where godot_fork_ctx's keys
-# fingerprint the stale binary itself and a rerun reports "cached green" BECAUSE
-# nothing changed. The preflight is upstream of the cache check in all six
-# consumers, which is what lets a stale binary fail even on a warm cache, and is
-# what the CACHE-KEY CONSTRAINT in this file's header demands of any assert here.
+# There are TWO staleness tests here — the self-hosted CLI against src/, the fork
+# cache against the fork worktree — and both are a hard FAIL, and both live HERE
+# rather than in either other candidate home. dist/package-toolchain.sh honours an
+# explicit --dn2cpp-bin as given, unchecked, by stated contract, and every gate
+# reaches it through stage_editor_toolchain naming $SELFHOST_BIN explicitly — so
+# its own stamp check protects hand-run packaging and never a gate.
+# stage_editor_toolchain runs AFTER gate_cache_check in every consumer, where
+# godot_fork_ctx's keys fingerprint the stale artifact itself and a rerun reports
+# "cached green" BECAUSE nothing changed. The preflight is upstream of the cache
+# check in all six consumers, which is what lets a stale input fail even on a warm
+# cache, and is what the CACHE-KEY CONSTRAINT in this file's header demands of any
+# assert here.
 #
 # FAIL rather than gate_skip: a skip is for what the box cannot carry, which is
-# certainly the wrong reading for a binary the tree builds itself.
+# certainly the wrong reading for inputs the tree and the fork build themselves.
 godot_fork_preflight() {
-    if [ ! -x "$FORK_EDITOR" ] || [ ! -f "$FORK_ROOT/pin.txt" ] \
-        || [ ! -d "$FORK_GODOTSHARP" ] \
-        || ! compgen -G "$FORK_ROOT/nuget/Godot.NET.Sdk.*.nupkg" >/dev/null; then
+    if ! godot_fork_cache_complete; then
         # Name the remedy only on the host where the remedy exists. This list
         # must track gates/setup-godot-fork.sh's per-OS arms exactly: anywhere
         # else "run gates/setup-godot-fork.sh" is an instruction that cannot
@@ -479,6 +837,17 @@ godot_fork_preflight() {
         echo "FAIL: $SELFHOST_BIN predates the current sources" >&2
         echo "      stamped $SELFHOST_SRC_STAMPED != $SELFHOST_SRC_NOW (src_tree_hash of src/ runtime/ third_party/)" >&2
         echo "      Rebuild the self-hosted CLI: gates/selfhost-emit.sh" >&2
+        exit 1
+    fi
+    # The same judgement about the OTHER input, and a FAIL for the same reason:
+    # the cache is complete, so this box carries the input — it carries a WRONG
+    # one. godot_fork_cache_fresh states above what makes a stale cache worse
+    # than an absent one, and why nothing downstream of gate_cache_check can see
+    # it at all.
+    if ! godot_fork_cache_fresh; then
+        echo "FAIL: the fork cache at $FORK_ROOT no longer describes the fork" >&2
+        echo "      $FORK_CACHE_WHY" >&2
+        echo "      Rebuild it: gates/setup-godot-fork.sh" >&2
         exit 1
     fi
 }

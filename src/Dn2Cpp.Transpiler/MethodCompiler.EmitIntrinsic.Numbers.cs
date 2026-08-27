@@ -6,10 +6,40 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
-    /// <summary>The two CompareTo siblings on every scalar primitive. The typed form
-    /// compares the value directly; the object form first implements IComparable's
-    /// null / exact-box-type contract. Keeping both here makes the intrinsic-type and
-    /// selectively intercepted primitive families answer from one shape table.</summary>
+    /// <summary><c>Int32.Equals(object)</c> and its non-floating primitive value-type
+    /// siblings: true only for an equal payload boxed as the receiver's exact type.</summary>
+    private bool TryEmitPrimitiveEqualsObject(string declType, MethodSignature<TypeDesc> sig)
+    {
+        if (!CoreIntrinsics.LoweredPrimitiveEqualsObject(declType, "Equals", () => sig)
+            || Compilation.WellKnownPrimitive(declType) is not
+                { Kind: TypeKind.Primitive, Primitive: var code } prim)
+            return false;
+
+        string compareCt = code switch
+        {
+            PrimitiveTypeCode.UIntPtr => "uintptr_t",
+            PrimitiveTypeCode.IntPtr => "intptr_t",
+            PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
+            _ => CppTypes.Of(prim),
+        };
+        string receiverCt = CppTypes.StorageOf(prim);
+        string boxed = NewTemp("Dn2CppObject*");
+        Emit($"{boxed} = {Cast(Pop(), "Dn2CppObject*")};");
+        string selfObj = NewTemp(compareCt);
+        Emit($"{selfObj} = ({compareCt})({DerefReceiver(receiverCt)});");
+        string result = NewTemp("int32_t");
+        Emit($"{result} = 0;");
+        string ti = TypeInfoExpr(prim)!;
+        string payloadCt = CppTypes.Of(prim);
+        Emit($"if ({boxed} != nullptr && {boxed}->type == {ti}) {{");
+        Emit($"    {result} = (({compareCt})(*({payloadCt}*)({boxed} + 1)) == {selfObj}) ? 1 : 0;");
+        Emit("}");
+        Push(StackKind.I4, "int32_t", result);
+        return true;
+    }
+
+    /// <summary>The two <c>CompareTo</c> siblings on every scalar primitive. The
+    /// object form adds null and exact-box-type checks around the typed order.</summary>
     private bool TryEmitPrimitiveCompareTo(string declType, MethodSignature<TypeDesc> sig)
     {
         if (Compilation.WellKnownPrimitive(declType) is not
@@ -85,6 +115,8 @@ internal sealed partial class MethodCompiler
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         if (name == "CompareTo" && TryEmitPrimitiveCompareTo(declType, sig))
+            return true;
+        if (name == "Equals" && TryEmitPrimitiveEqualsObject(declType, sig))
             return true;
 
         switch (declType, name)
@@ -1214,6 +1246,13 @@ internal sealed partial class MethodCompiler
                 Pop(); // the TextInfo receiver
                 Push(StackKind.Ref, "Dn2CppString*", Literals.GetOrAdd(","));
                 return true;
+            case ("System.Globalization.TextInfo", "ToString"):
+            {
+                var recv = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_textinfo_tostring({Cast(recv, "const Dn2CppNumberFormatInfo*")})");
+                return true;
+            }
             // TextInfo casing — the TextInfo model is the invariant culture pointer (see
             // get_TextInfo), so these lower to the same invariant BMP case maps as
             // string.ToUpperInvariant; exact for the invariant culture and any culture
@@ -1512,8 +1551,8 @@ internal sealed partial class MethodCompiler
                 // dispatch below would read garbage): route through the interned
                 // wrapper, whose header dispatches the .NET answer — the culture NAME
                 // for the CultureInfo identity (the fold the CultureInfo.ToString case
-                // above makes), the full type name for NumberFormatInfo/TextInfo (no
-                // override in .NET).
+                // above makes), the full type name for NumberFormatInfo, and TextInfo's
+                // culture-bearing standard display.
                 if (IsNfiCppType(o.CppType))
                 {
                     // dn2cpp_nfi_wrap passes a null pointer through as a null
@@ -1538,6 +1577,40 @@ internal sealed partial class MethodCompiler
                     Push(StackKind.Ref, "Dn2CppString*", isModule
                         ? $"dn2cpp_module_name({o.Expr})"
                         : $"dn2cpp_assembly_full_name({o.Expr})");
+                    return true;
+                }
+                // These CLR reference types are headerless by-value runtime handles. A
+                // direct Object.ToString call can lose StaticType at the call boundary,
+                // but the C++ representation remains unambiguous. Disposed/default handles
+                // are still non-null managed objects and retain this identity.
+                string? byValueReferenceName = o.CppType switch
+                {
+                    "Dn2CppMappedFile" => "System.IO.MemoryMappedFiles.MemoryMappedFile",
+                    "Dn2CppMappedView" => "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor",
+                    "Dn2CppMappedSafeHandle" => "Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle",
+                    _ => null,
+                };
+                if (byValueReferenceName is not null)
+                {
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({o.Expr}), {Literals.GetOrAdd(byValueReferenceName)})");
+                    return true;
+                }
+                // Some intrinsic CLR reference types are represented by-value in C++
+                // (the memory-map handles). They have no object header to dispatch
+                // through and no nullable representation to preserve. Their inherited
+                // Object.ToString is the static CLR type name; a declared override stays
+                // out so its intrinsic arm remains the only possible answer.
+                if (o.StaticType is { Kind: TypeKind.Class,
+                        Class: { IsValueType: false, IntrinsicCppName: not null } ir }
+                    && CppTypes.KindOf(o.StaticType) == StackKind.Struct
+                    && !_c.DeclaresIntrinsicToStringOverride(ir))
+                {
+                    string ti = TypeInfoExpr(o.StaticType)
+                        ?? throw new NotSupportedException(
+                            $"{Method.DeclaringClass.FullName}.{Method.Name}: ToString on {o.StaticType} has no emitted type-info");
+                    Push(StackKind.Ref, "Dn2CppString*",
+                        $"((void)({o.Expr}), dn2cpp_type_tostring({ti}))");
                     return true;
                 }
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})");
