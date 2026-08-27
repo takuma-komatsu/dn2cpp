@@ -39,8 +39,10 @@ namespace ConvertParse
             ConvertT2Subset.Program.__GateEntry();
             // Integer-primitive TryFormat (+ the "B"/"b" binary specifier, the UTF-8
             // IUtf8SpanFormattable twin and the float overload), driven from its own
-            // tail. Kept last: it pins CurrentCulture for its own duration.
+            // tail. It pins CurrentCulture for its own duration.
             TryFormatSubset.Program.__GateEntry();
+            // Appended so the consolidated gate's prior output remains a prefix.
+            FloatParseFormatInfoSubset.Program.__GateEntry();
         }
     }
 }

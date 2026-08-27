@@ -15,6 +15,8 @@ public class Item
 {
     [JsonPropertyName("name")] public string Name { get; set; }
     [JsonPropertyName("hash")] public long Hash { get; set; }
+    [JsonPropertyName("ratio")] public double Ratio { get; set; }
+    [JsonPropertyName("weight")] public float Weight { get; set; }
 }
 
 public class Root
@@ -31,8 +33,23 @@ public static class Program
 {
     public static int Main()
     {
-        Root r = JsonSerializer.Deserialize("{\"items\":[{\"name\":\"a\",\"hash\":1}]}", ProbeCtx.Default.Root);
-        System.Console.WriteLine(r.Items[0].Name + " " + r.Items[0].Hash);
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+
+        const string json =
+            "{\"items\":[{\"name\":\"a\",\"hash\":1," +
+            "\"ratio\":1.25,\"weight\":-2.5}]}";
+        Root root = JsonSerializer.Deserialize(json, ProbeCtx.Default.Root);
+        Item item = root.Items[0];
+        bool ratioMatches = System.BitConverter.DoubleToInt64Bits(item.Ratio) ==
+            System.BitConverter.DoubleToInt64Bits(1.25);
+        bool weightMatches = System.BitConverter.SingleToInt32Bits(item.Weight) ==
+            System.BitConverter.SingleToInt32Bits(-2.5f);
+
+        System.Console.WriteLine(item.Name + " " + item.Hash);
+        System.Console.WriteLine("-- System.Text.Json floating point --");
+        System.Console.WriteLine(ratioMatches);
+        System.Console.WriteLine(weightMatches);
         return 0;
     }
 }

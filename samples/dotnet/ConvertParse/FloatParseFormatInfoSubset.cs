@@ -3,14 +3,8 @@ using System.Buffers.Text;
 using System.Globalization;
 using System.Text;
 
-namespace FloatParseFormatInfo
+namespace FloatParseFormatInfoSubset
 {
-    // Gate driver: the UTF-8 float parser (System.Buffers.Text.Utf8Parser) and the
-    // span-based double/float Parse family. Both reach Number.NumberToFloatingPointBits
-    // over TFloat : IBinaryFloatParseAndFormatInfo<TFloat>, whose static abstract
-    // constants are explicit impls on Double/Single. Every value is printed with the
-    // shortest round-trip format so the native side must agree bit-for-bit with real
-    // .NET, including subnormals, overflow to infinity and the slow (big-integer) path.
     internal static class Program
     {
         private static readonly string[] Inputs =
@@ -23,9 +17,9 @@ namespace FloatParseFormatInfo
             "NaN", "Infinity", "-Infinity", "abc", "",
         };
 
-        private static void Main()
+        internal static void __GateEntry()
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            Console.WriteLine("-- binary float parse/format info --");
             foreach (string text in Inputs)
             {
                 byte[] utf8 = Encoding.UTF8.GetBytes(text);
@@ -40,8 +34,6 @@ namespace FloatParseFormatInfo
                     + $"|spanf:{okSpanF}:{sf.ToString("R", CultureInfo.InvariantCulture)}");
             }
 
-            // The bit-reinterpreting members (BitsToFloat / FloatToBits) are reached by
-            // the same parser on the slow path; pin them directly as well.
             Console.WriteLine(BitConverter.DoubleToUInt64Bits(double.Parse("1e-320", CultureInfo.InvariantCulture)).ToString("X16"));
             Console.WriteLine(BitConverter.SingleToUInt32Bits(float.Parse("1e-42", CultureInfo.InvariantCulture)).ToString("X8"));
         }

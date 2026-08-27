@@ -1714,9 +1714,9 @@ internal sealed partial class MethodCompiler
             ThrowSharedTaint("static-virtual", callee.DeclaringClass.FullName + "." + callee.Name);
 
         // constrained. + call to System.IBinaryFloatParseAndFormatInfo<TSelf> with TSelf
-        // closed to double/float: the CoreLib-internal parse/format shape constants
+        // closed to double/float: the CoreLib-internal parse shape constants
         // (namespace System, so the generic-math table never sees them). Double and
-        // Single implement every member as an explicit static property impl, invisible
+        // Single implement these members as explicit static interface impls, invisible
         // to the static-virtual resolver below, which then reports the interface
         // declaration as a bodyless InternalCall. Reached from Number.NumberToFloat
         // (Utf8Parser.TryParse(double/float) behind Utf8JsonReader.GetDouble/GetSingle).
@@ -2162,15 +2162,9 @@ internal sealed partial class MethodCompiler
         }
     }
 
-    /// <summary>System.Numerics generic-math interface methods (INumberBase&lt;T&gt;,
-    /// IComparisonOperators&lt;…&gt;, …) are [Intrinsic] and bodyless. They are reached
-    /// pervasively through the BCL's `ArgumentOutOfRangeException.ThrowIf*` argument
-    /// guards (e.g. a collection capacity/index check). Emit the primitive op for a
-    /// concrete numeric operand; the static-abstract dispatch already closed T to the
-    /// primitive.</summary>
     /// <summary>
-    /// Lowers <c>System.IBinaryFloatParseAndFormatInfo&lt;TSelf&gt;</c> members for TSelf = double/float
-    /// to the .NET 10 CoreLib values of the explicit impls on <c>Double</c>/<c>Single</c>.
+    /// Lowers the <c>IBinaryFloatParseAndFormatInfo&lt;TSelf&gt;</c> members reached by
+    /// <c>System.Number</c> parsing for TSelf = double/float.
     /// </summary>
     private bool TryEmitBinaryFloatParseAndFormatInfoIntrinsic(MethodInfo callee)
     {
@@ -2229,8 +2223,6 @@ internal sealed partial class MethodCompiler
             "get_MaxExponentRoundToEven" => isDouble ? "23" : "10",
             "get_MaxExponentFastPath" => isDouble ? "22" : "10",
             "get_MaxMantissaFastPath" => isDouble ? "UINT64_C(0x0020000000000000)" : "UINT64_C(0x01000000)",
-            "get_MaxRoundTripDigits" => isDouble ? "17" : "9",
-            "get_MaxPrecisionCustomFormat" => isDouble ? "15" : "7",
             _ => null,
         };
         if (konst is null)
@@ -2239,6 +2231,12 @@ internal sealed partial class MethodCompiler
         return true;
     }
 
+    /// <summary>System.Numerics generic-math interface methods (INumberBase&lt;T&gt;,
+    /// IComparisonOperators&lt;…&gt;, …) are [Intrinsic] and bodyless. They are reached
+    /// pervasively through the BCL's `ArgumentOutOfRangeException.ThrowIf*` argument
+    /// guards (e.g. a collection capacity/index check). Emit the primitive op for a
+    /// concrete numeric operand; the static-abstract dispatch already closed T to the
+    /// primitive.</summary>
     private bool TryEmitGenericMathIntrinsic(MethodInfo callee)
     {
         if (!callee.DeclaringClass.Namespace.StartsWith("System.Numerics"))
