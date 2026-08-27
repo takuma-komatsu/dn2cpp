@@ -1713,6 +1713,18 @@ internal sealed partial class MethodCompiler
                     && Compilation.ContainsCanonPlaceholder(_constrained))))
             ThrowSharedTaint("static-virtual", callee.DeclaringClass.FullName + "." + callee.Name);
 
+        // constrained. + call to System.IBinaryFloatParseAndFormatInfo<TSelf> with TSelf
+        // closed to double/float: the CoreLib-internal parse/format shape constants
+        // (namespace System, so the generic-math table never sees them). Double and
+        // Single implement every member as an explicit static property impl, invisible
+        // to the static-virtual resolver below, which then reports the interface
+        // declaration as a bodyless InternalCall. Reached from Number.NumberToFloat
+        // (Utf8Parser.TryParse(double/float) behind Utf8JsonReader.GetDouble/GetSingle).
+        if (!isCallvirt && callee.IsStatic && callee.DeclaringClass.IsInterface
+            && _constrained is { Kind: TypeKind.Primitive }
+            && TryEmitBinaryFloatParseAndFormatInfoIntrinsic(callee))
+            return;
+
         // The constrained type is the concrete TSelf; resolve to its implementing
         // static method and call it directly. This covers value-type structs — e.g.
         // Linq's IMinMaxCalc<T> Min/Max comparer structs, whose Compare devirtualizes
@@ -2156,6 +2168,77 @@ internal sealed partial class MethodCompiler
     /// guards (e.g. a collection capacity/index check). Emit the primitive op for a
     /// concrete numeric operand; the static-abstract dispatch already closed T to the
     /// primitive.</summary>
+    /// <summary>
+    /// Lowers <c>System.IBinaryFloatParseAndFormatInfo&lt;TSelf&gt;</c> members for TSelf = double/float
+    /// to the .NET 10 CoreLib values of the explicit impls on <c>Double</c>/<c>Single</c>.
+    /// </summary>
+    private bool TryEmitBinaryFloatParseAndFormatInfoIntrinsic(MethodInfo callee)
+    {
+        if (_c.GenericDefFullName(callee.DeclaringClass) != "System.IBinaryFloatParseAndFormatInfo")
+            return false;
+        if (callee.DeclaringClass.Context.TypeArgs is not [{ Kind: TypeKind.Primitive } self])
+            return false;
+        bool isDouble = self.Primitive == PrimitiveTypeCode.Double;
+        if (!isDouble && self.Primitive != PrimitiveTypeCode.Single)
+            return false;
+
+        var ps = callee.Signature.ParameterTypes;
+        var rt = callee.Signature.ReturnType;
+        string ct = CppTypes.Of(rt);
+        if (ps.Length == 1 && callee.Name == "BitsToFloat")
+        {
+            var bits = Pop();
+            Push(CppTypes.KindOf(rt), ct, isDouble
+                ? $"dn2cpp_bits_r8((uint64_t)({bits.Expr}))"
+                : $"(({ct})dn2cpp_bits_r4((uint32_t)({bits.Expr})))");
+            return true;
+        }
+
+        if (ps.Length == 1 && callee.Name == "FloatToBits")
+        {
+            var value = Pop();
+            Push(CppTypes.KindOf(rt), ct, isDouble
+                ? $"dn2cpp_r8_bits((double)({value.Expr}))"
+                : $"((uint64_t)dn2cpp_r4_bits((float)({value.Expr})))");
+            return true;
+        }
+
+        if (ps.Length != 0)
+            return false;
+
+        string? konst = callee.Name switch
+        {
+            "get_NumberBufferLength" => isDouble ? "769" : "114",
+            "get_ZeroBits" => "UINT64_C(0)",
+            "get_InfinityBits" => isDouble ? "UINT64_C(0x7FF0000000000000)" : "UINT64_C(0x7F800000)",
+            "get_NormalMantissaMask" => isDouble ? "UINT64_C(0x001FFFFFFFFFFFFF)" : "UINT64_C(0x00FFFFFF)",
+            "get_DenormalMantissaMask" => isDouble ? "UINT64_C(0x000FFFFFFFFFFFFF)" : "UINT64_C(0x007FFFFF)",
+            "get_MinBinaryExponent" => isDouble ? "-1022" : "-126",
+            "get_MaxBinaryExponent" => isDouble ? "1023" : "127",
+            "get_MinDecimalExponent" => isDouble ? "-324" : "-45",
+            "get_MaxDecimalExponent" => isDouble ? "309" : "39",
+            "get_ExponentBias" => isDouble ? "1023" : "127",
+            "get_ExponentBits" => isDouble ? "11" : "8",
+            "get_OverflowDecimalExponent" => isDouble ? "376" : "58",
+            "get_InfinityExponent" => isDouble ? "0x7FF" : "0xFF",
+            "get_NormalMantissaBits" => isDouble ? "53" : "24",
+            "get_DenormalMantissaBits" => isDouble ? "52" : "23",
+            "get_MinFastFloatDecimalExponent" => isDouble ? "-342" : "-65",
+            "get_MaxFastFloatDecimalExponent" => isDouble ? "308" : "38",
+            "get_MinExponentRoundToEven" => isDouble ? "-4" : "-17",
+            "get_MaxExponentRoundToEven" => isDouble ? "23" : "10",
+            "get_MaxExponentFastPath" => isDouble ? "22" : "10",
+            "get_MaxMantissaFastPath" => isDouble ? "UINT64_C(0x0020000000000000)" : "UINT64_C(0x01000000)",
+            "get_MaxRoundTripDigits" => isDouble ? "17" : "9",
+            "get_MaxPrecisionCustomFormat" => isDouble ? "15" : "7",
+            _ => null,
+        };
+        if (konst is null)
+            return false;
+        Push(CppTypes.KindOf(rt), ct, $"(({ct})({konst}))");
+        return true;
+    }
+
     private bool TryEmitGenericMathIntrinsic(MethodInfo callee)
     {
         if (!callee.DeclaringClass.Namespace.StartsWith("System.Numerics"))
