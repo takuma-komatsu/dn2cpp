@@ -9,8 +9,7 @@ namespace BoxingPrimitives
     // Each section keeps its own namespace so any name-sensitive output stays
     // identical to the standalone gate it came from; each is run in order below.
     //
-    // Three of the five assert something other than "boxing works", and the header is
-    // the only place that says so — prune this bucket by theme and you delete them:
+    // Sections that assert something other than "boxing works":
     //   * BoxedComparableSubset's tail is a DEVIRTUALIZATION test (the unconstrained
     //     `(IComparable<T>)box.CompareTo` form, and the Comparer<T>.Default ordering
     //     real .NET routes through ObjectComparer<T>), ending in the one case that
@@ -36,6 +35,8 @@ namespace BoxingPrimitives
     //     own bits read as a type-info. Every T kind that reaches the prefix.
     //   * PrimitiveObjectCompareSubset covers both primitive CompareTo siblings:
     //     typed order and the object overload's null/type checks.
+    //   * PrimitiveEqualsObjectSubset covers exact-type boxed payload equality for
+    //     every non-floating primitive value type; typed Equals(T) stays separate.
     //   * MouthAgreementSubset is a MOUTH-AGREEMENT test over three surfaces
     //     that are not boxing at heart: a boxed enum's cut ISpanFormattable.TryFormat
     //     against its IFormattable text, the self-instantiated IComparable<T>/
@@ -62,6 +63,7 @@ namespace BoxingPrimitives
             BoxedNegativeItfSubset.Program.Run();
             ConstrainedObjectEqualsSubset.Program.Run();
             PrimitiveObjectCompareSubset.Program.Run();
+            PrimitiveEqualsObjectSubset.Program.Run();
         }
     }
 }

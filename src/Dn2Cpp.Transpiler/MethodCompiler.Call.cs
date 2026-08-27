@@ -505,6 +505,10 @@ internal sealed partial class MethodCompiler
                 // but an undefined symbol at C++ LINK time.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdInlinePrimitive, callee))
                     return;
+                // Non-floating primitive Equals(object), using the same shape predicate as
+                // the reachability cut. Equals(T) deliberately falls through.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdPrimitiveEqualsObject, callee))
+                    return;
                 // System.Collections.Comparer.Compare — body-intercepted: a direct call lowers
                 // to dn2cpp_object_compare (the same lowering the synthesized body and the interface
                 // slot use). Same predicate as the reachability cut (ResolveCallTarget), so the two
@@ -974,6 +978,10 @@ internal sealed partial class MethodCompiler
                 // one — as do the constrained static-virtual dispatch and its reach twin. No
                 // second list to drift.
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrInlinePrimitive, mr, mrParent, mrName, Sig))
+                    return;
+                // Non-floating primitive Equals(object), using the reachability cut's row.
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrPrimitiveEqualsObject,
+                    mr, mrParent, mrName, Sig))
                     return;
                 // System.Collections.Comparer.Compare — body-intercepted, lowered inline to
                 // dn2cpp_object_compare. Same predicate as the reachability cut (ResolveCallTarget).

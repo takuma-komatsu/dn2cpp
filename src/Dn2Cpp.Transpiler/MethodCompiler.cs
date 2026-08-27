@@ -3178,7 +3178,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // following brtrue/brfalse fold the constant branch — the JIT does the
                 // same — which drops the dead reference-type comparand path the C#
                 // compiler emits for generic `default(T) == null ? … : x.CompareTo(y)`.
-                _stack[^1] = _stack[^1] with { NonNull = true };
+                _stack[^1] = _stack[^1] with { StaticType = target, NonNull = true };
                 break;
             }
             case ILOpCode.Unbox:
@@ -3367,6 +3367,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 if (SharedTrial && Compilation.IsGvmCall(m))
                     ThrowSharedTaint("gvm", m.DeclaringClass.FullName + "." + m.Name);
                 var obj = Pop();
+                var virtualTarget = PrimitiveObjectEqualsVirtualTarget(m, obj);
                 // An INTERFACE method has no vtable slot; its implementation is found in
                 // the receiver type's own interface table, exactly as a callvirt on an
                 // interface does (see TranslateCall). Same bookkeeping too: an interface
@@ -3410,6 +3411,17 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // dispatcher (registered for ldvirtftn too) has the same
                     // (receiver, args) shape, so a delegate binds to it directly.
                     expr = $"(void*)&{Compilation.GvmDispatchName(m)}";
+                }
+                else if (CoreIntrinsics.MdPrimitiveEqualsObject.Matches(virtualTarget))
+                {
+                    // The synthesized wrapper takes an unboxed primitive receiver, while
+                    // a virtual method group keeps its boxed receiver in the target slot.
+                    var impl = virtualTarget.Emittable;
+                    NoteFtnTargetBody(impl);
+                    _c.NoteNamedBodySymbol(_method, impl);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), "
+                        + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
+                        + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
                 else if (m.DeclaringClass.IsInterface)
                 {

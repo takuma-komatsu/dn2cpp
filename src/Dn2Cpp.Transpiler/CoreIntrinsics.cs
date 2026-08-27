@@ -857,6 +857,26 @@ internal static partial class CoreIntrinsics
             && name is "ToString" or "Parse" or "TryParse" or "TryFormat")
         || (name == "CompareTo" && IsScalarPrimitive(fullTypeName));
 
+    /// <summary>A non-floating primitive value type's <c>Equals(object)</c> overload.
+    /// Shape-keyed so the typed <c>Equals(T)</c> sibling keeps its ordinary route.</summary>
+    public static bool LoweredPrimitiveEqualsObject(string? fullTypeName, string name,
+        Func<MethodSignature<TypeDesc>> sig)
+    {
+        if (name != "Equals" || fullTypeName is null
+            || Compilation.WellKnownPrimitive(fullTypeName) is not
+                { Kind: TypeKind.Primitive, Primitive: var code }
+            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+                or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double)
+            return false;
+
+        var shape = sig();
+        return shape.Header.IsInstance
+            && shape.GenericParameterCount == 0
+            && shape.ReturnType is
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            && shape.ParameterTypes is [{ IsObject: true }];
+    }
+
     private static bool IsScalarPrimitive(string? fullTypeName) =>
         fullTypeName is not null
         && Compilation.WellKnownPrimitive(fullTypeName) is { Kind: TypeKind.Primitive } p

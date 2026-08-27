@@ -1901,6 +1901,50 @@ internal sealed partial class MethodCompiler
             _c.NoteInterceptFtnTarget(target);
     }
 
+    /// <summary>A boxed primitive's Object.Equals slot must bind to the primitive
+    /// override even though the ldvirtftn token names System.Object.</summary>
+    private MethodInfo PrimitiveObjectEqualsVirtualTarget(MethodInfo declared, StackEntry receiver)
+    {
+        if (!declared.IsVirtual
+            || declared.DeclaringClass.FullName != "System.Object"
+            || declared.Name != "Equals")
+            return declared;
+
+        var shape = declared.Signature;
+        if (!shape.Header.IsInstance
+            || shape.GenericParameterCount != 0
+            || shape.ReturnType is not
+                { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
+            || shape.ParameterTypes is not [{ IsObject: true }]
+            || receiver.StaticType is not
+                { Kind: TypeKind.Primitive, Primitive: var code }
+            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
+                or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double)
+            return declared;
+
+        string? name = code switch
+        {
+            PrimitiveTypeCode.Boolean => "System.Boolean",
+            PrimitiveTypeCode.Char => "System.Char",
+            PrimitiveTypeCode.SByte => "System.SByte",
+            PrimitiveTypeCode.Byte => "System.Byte",
+            PrimitiveTypeCode.Int16 => "System.Int16",
+            PrimitiveTypeCode.UInt16 => "System.UInt16",
+            PrimitiveTypeCode.Int32 => "System.Int32",
+            PrimitiveTypeCode.UInt32 => "System.UInt32",
+            PrimitiveTypeCode.Int64 => "System.Int64",
+            PrimitiveTypeCode.UInt64 => "System.UInt64",
+            PrimitiveTypeCode.IntPtr => "System.IntPtr",
+            PrimitiveTypeCode.UIntPtr => "System.UIntPtr",
+            _ => null,
+        };
+        var cls = name is null ? null : _c.FindClassByFullName(name);
+        return cls is not null && declared.VtableSlot >= 0 && declared.VtableSlot < cls.Vtable.Count
+            && cls.Vtable[declared.VtableSlot] is { } target
+                ? target
+                : declared;
+    }
+
     /// <summary>The namespace-qualified name of a delegate parameter type (External
     /// TypeRef or a transpiled Class), for distinguishing Task.Run(Action) from
     /// Task.Run(Func&lt;Task&gt;). Empty for shapes we don't name.</summary>

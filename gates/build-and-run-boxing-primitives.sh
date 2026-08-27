@@ -49,10 +49,34 @@
 #   * PrimitiveObjectCompareSubset — both CompareTo siblings on every scalar primitive:
 #     typed ordering, plus the object overload's null, exact-box and foreign-type paths.
 #     Sub-word integers and Char pin their raw difference directly and via IComparable.
+#   * PrimitiveEqualsObjectSubset — Equals(object) over every non-floating primitive
+#     value type: same-type payload, sub-word/pointer edge cases, wrapper structs, and
+#     virtual method groups over boxed byte/int/nint receivers.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
 # csproj's own PropertyGroup, where the absence would otherwise read as an oversight).
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" managed
+    for managed in Byte SByte Int16 UInt16 IntPtr UIntPtr; do
+        if awk -v managed="$managed" '
+                BEGIN {
+                    sig = "m_System_" managed "_Equals_[0-9]+\\(t_System_" managed "\\* [^,]+, Dn2CppObject\\*"
+                }
+                $0 == "// System." managed "::Equals" { real_body = 1; next }
+                real_body {
+                    if ($0 ~ sig) found = 1
+                    real_body = 0
+                }
+                END { exit !found }
+            ' "$out/generated.h" "$out"/generated*.cpp; then
+            echo "FAIL: real System.${managed}.Equals(object) body remained emitted" >&2
+            return 1
+        fi
+    done
+    echo "sub-word and pointer Equals(object) real bodies are absent: OK"
+}
 
 corelib_diff_gate BoxingPrimitives
