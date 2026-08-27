@@ -3702,10 +3702,10 @@ struct Dn2CppVtsBridge
     int16_t version;        // the source's token for this operation
     int32_t resultKind;     // 0=void 1=int32 2=int64 3=reference 4=struct
     uint64_t (*getStructResult)(const void*, Dn2CppObject*, int16_t);
-    // Who consumes the source's GetResult, which answers once per operation:
-    // 0 unclaimed, 1 held by an early synchronous read, 2 consumed. An early read
-    // stores 2 only AFTER settling the task, which is what lets the continuation
-    // treat an observed 2 as fully settled and just decrement.
+    // Who accesses the source operation: 0 unclaimed, 1 held by an early
+    // synchronous GetResult, 2 consumed, 3 held by GetStatus. GetStatus and
+    // GetResult exclude each other because GetResult may reset and recycle the
+    // source token before it returns.
     std::atomic<int32_t> claim;
 };
 
@@ -3727,8 +3727,42 @@ int32_t dn2cpp_vtask_status(Dn2CppTask* t)
     if (t == nullptr)
         return DN2CPP_TASK_SUCCEEDED;
     auto* b = reinterpret_cast<Dn2CppVtsBridge*>(t->vtsBridge);
-    return b != nullptr ? dn2cpp_vts_get_status(b)
-                        : t->status.load(std::memory_order_seq_cst);
+    if (b == nullptr)
+        return t->status.load(std::memory_order_seq_cst);
+
+    for (;;)
+    {
+        int32_t status = t->status.load(std::memory_order_seq_cst);
+        if (status != DN2CPP_TASK_PENDING)
+            return status;
+
+        int32_t expected = 0;
+        if (!b->claim.compare_exchange_strong(expected, 3, std::memory_order_acq_rel))
+        {
+            // A GetResult owns the operation or another status read is about to
+            // release it. GetResult is non-blocking by contract, so this wait is
+            // bounded and prevents a stale-token call after it resets the source.
+            std::this_thread::yield();
+            continue;
+        }
+
+        try
+        {
+            // The bridge may have settled between the first task-state read and
+            // the claim. Once settled, its saved state is authoritative because
+            // the source token may already name a later operation.
+            status = t->status.load(std::memory_order_seq_cst);
+            if (status == DN2CPP_TASK_PENDING)
+                status = dn2cpp_vts_get_status(b);
+        }
+        catch (...)
+        {
+            b->claim.store(0, std::memory_order_release);
+            throw;
+        }
+        b->claim.store(0, std::memory_order_release);
+        return status;
+    }
 }
 
 // The one call to the source's GetResult, packed into the task's 8-byte slot by kind.
@@ -3800,8 +3834,25 @@ Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
     if (b == nullptr)
         return dn2cpp_task_block(t); // Task- or builder-backed: the CLR blocks here too
     int32_t expected = 0;
-    if (!b->claim.compare_exchange_strong(expected, 1, std::memory_order_acq_rel))
-        return dn2cpp_task_block(t); // the continuation or a concurrent read holds the claim: wait for the settle
+    while (!b->claim.compare_exchange_strong(expected, 1, std::memory_order_acq_rel))
+    {
+        if (expected != 3)
+            return dn2cpp_task_block(t); // a continuation or another result read will settle it
+        std::this_thread::yield();
+        expected = 0;
+    }
+    int32_t sourceStatus;
+    try
+    {
+        // Read before GetResult: a terminal GetResult may Reset() a pooled source,
+        // making this operation's token invalid before it throws or returns.
+        sourceStatus = dn2cpp_vts_get_status(b);
+    }
+    catch (...)
+    {
+        b->claim.store(0, std::memory_order_release);
+        throw;
+    }
     uint64_t r;
     try
     {
@@ -3812,16 +3863,6 @@ Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t)
         // A pending source refused an early read, so leave its operation live for the
         // registered continuation. A terminal source has consumed GetResult already;
         // settle the bridge before publishing claim==2 so that continuation skips it.
-        int32_t sourceStatus;
-        try
-        {
-            sourceStatus = dn2cpp_vts_get_status(b);
-        }
-        catch (...)
-        {
-            b->claim.store(0, std::memory_order_release);
-            throw;
-        }
         if (sourceStatus == DN2CPP_TASK_PENDING)
             b->claim.store(0, std::memory_order_release);
         else

@@ -118,6 +118,51 @@ namespace ValueTaskStatusSubset
             }
         }
 
+        private sealed class ResettingSource<T> : IValueTaskSource<T>
+        {
+            private ManualResetValueTaskSourceCore<T> _core;
+            private Action<object> _continuation;
+            private object _state;
+
+            public short Version => _core.Version;
+
+            public ValueTask<T> CreateTask() => new ValueTask<T>(this, _core.Version);
+
+            public void SetResult(T result) => _core.SetResult(result);
+
+            public void SetException(Exception exception) => _core.SetException(exception);
+
+            public void Signal()
+            {
+                Action<object> continuation = _continuation;
+                object state = _state;
+                _continuation = null;
+                _state = null;
+                continuation?.Invoke(state);
+            }
+
+            public ValueTaskSourceStatus GetStatus(short token) => _core.GetStatus(token);
+
+            public T GetResult(short token)
+            {
+                try
+                {
+                    return _core.GetResult(token);
+                }
+                finally
+                {
+                    _core.Reset();
+                }
+            }
+
+            public void OnCompleted(Action<object> continuation, object state,
+                short token, ValueTaskSourceOnCompletedFlags flags)
+            {
+                _continuation = continuation;
+                _state = state;
+            }
+        }
+
         private static void Print(string label, ValueTask task)
         {
             Console.WriteLine($"{label}: completed={task.IsCompleted} ok={task.IsCompletedSuccessfully} faulted={task.IsFaulted} canceled={task.IsCanceled}");
@@ -277,6 +322,36 @@ namespace ValueTaskStatusSubset
             Console.WriteLine($"source-getresult: {fault},{faultT},{cancel},{cancelT} counts={faulted.GetResultCount},{faultedT.GetResultCount},{canceled.GetResultCount},{canceledT.GetResultCount}");
         }
 
+        private static void PrintResettingSource()
+        {
+            var succeeded = new ResettingSource<int>();
+            short successVersion = succeeded.Version;
+            ValueTask<int> successTask = succeeded.CreateTask();
+            succeeded.SetResult(17);
+            succeeded.Signal();
+            bool completed = successTask.IsCompletedSuccessfully;
+            int result = successTask.GetAwaiter().GetResult();
+            Console.WriteLine($"reset-source-success: completed={completed} result={result} version={successVersion}->{succeeded.Version}");
+
+            var faulted = new ResettingSource<int>();
+            short faultVersion = faulted.Version;
+            ValueTask<int> faultedTask = faulted.CreateTask();
+            faulted.SetException(new InvalidOperationException("reset source fault"));
+            string message;
+            try
+            {
+                faultedTask.GetAwaiter().GetResult();
+                message = "none";
+            }
+            catch (InvalidOperationException e)
+            {
+                message = e.Message;
+            }
+            faulted.Signal();
+            Console.WriteLine($"reset-source-fault: {message} version={faultVersion}->{faulted.Version}");
+            Console.WriteLine("reset-source-token: ran");
+        }
+
         public static void __GateEntry()
         {
             CancellationToken canceledToken = new CancellationToken(true);
@@ -313,6 +388,7 @@ namespace ValueTaskStatusSubset
             Print("async-task-canceled-t", CancelTaskAsyncT());
             Console.WriteLine($"value-task-status token: {Token}");
             Console.WriteLine("value-task-status: ran");
+            PrintResettingSource();
         }
     }
 }

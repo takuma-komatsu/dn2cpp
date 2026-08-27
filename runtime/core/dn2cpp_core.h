@@ -4666,9 +4666,10 @@ inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
 int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn);
 // `new ValueTask(<T>)(IValueTaskSource(<T>) source, short token)` — bridge the
 // source onto a pending task completed via the source's OnCompleted/GetResult.
-// GetStatus remains the authority for every ValueTask status read, even after the
-// bridge task settles. All three implementations are resolved through the source's
-// interface table. `actionTi` is the Action<object> type-info stamped on the runtime-built
+// GetStatus remains the authority while the bridge is pending; after GetResult
+// settles it, the saved task state avoids querying a token the source may have
+// recycled. All three implementations are resolved through the source's interface
+// table. `actionTi` is the Action<object> type-info stamped on the runtime-built
 // continuation delegate; `resultKind` packs GetResult's return into the task's
 // result slot (0=void 1=int32 2=int64 3=reference 4=struct). A struct's ABI is
 // known only at the call site, so `getStructResult` invokes the typed method and
@@ -6279,8 +6280,8 @@ Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t);
 // it refuse. So route that case there instead of sleeping until somebody settles it —
 // the exception is then the source's own, which is the only way its text can match.
 Dn2CppTask* dn2cpp_vts_block(Dn2CppTask* t);
-// ValueTask status reads use the source's GetStatus(token) when source-backed;
-// Task-/builder-backed values use the task state, and default(ValueTask) succeeds.
+// Pending source-backed ValueTask status reads use GetStatus(token). Settled
+// bridges and Task-/builder-backed values use task state; default(ValueTask) succeeds.
 int32_t dn2cpp_vtask_status(Dn2CppTask* t);
 // The BLOCKING-WAIT flavor of the same drain: Task.Wait()/Wait(timeout)/
 // Task<T>.Result wrap a fault or cancellation in an AggregateException, like real
