@@ -348,11 +348,13 @@ if [ "$SMOKE" -eq 1 ]; then
     # editor.txt is the whole point: the gates run the .app's own binary, and
     # derive GodotSharp beside it.
     printf '%s\n' "$(cd "$APP/Contents/MacOS" && pwd)/Godot" > "$SMOKE_ROOT/editor.txt"
+    cp "$FORK_EDITOR.engine-hash" "$APP/Contents/MacOS/Godot.engine-hash"
 
     DN2CPP_GODOT_FORK_ROOT="$SMOKE_ROOT" DN2CPP_GATE_CACHE=0 \
         ./gates/build-and-run-godot-editor-export.sh
     DN2CPP_GODOT_FORK_ROOT="$SMOKE_ROOT" DN2CPP_GATE_CACHE=0 \
         ./gates/build-and-run-godot-editor-export-web.sh
+    rm -f "$APP/Contents/MacOS/Godot.engine-hash"
     rm -rf "$SMOKE_ROOT"
 else
     echo "== 8/13 smoke skipped (--no-smoke) =="
