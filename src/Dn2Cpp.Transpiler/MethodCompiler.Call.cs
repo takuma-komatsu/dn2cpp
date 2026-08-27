@@ -410,6 +410,9 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
+                if (TryEmitSafeWaitHandleBase(callee.DeclaringClass.FullName,
+                        callee.Name, callee.Signature))
+                    return;
                 // The intra-CoreLib runtime primitives reached only via in-CoreLib MethodDef
                 // calls: GC's finalizer/collect/KeepAlive entry points, SpanHelpers.Memmove,
                 // Marshal's errno slot + UTF-8 decoder, NativeLibrary.GetSymbol,
@@ -834,6 +837,8 @@ internal sealed partial class MethodCompiler
                 string? mrParent = _c.MemberRefParentTypeName(_module, (MemberReferenceHandle)handle);
                 MethodSignature<TypeDesc>? mrSig = null;
                 MethodSignature<TypeDesc> Sig() => mrSig ??= mr.DecodeMethodSignature(_c.SigProvider, _method.Context);
+                if (TryEmitSafeWaitHandleBase(mrParent, mrName, Sig()))
+                    return;
                 // Non-generic Enum reflection statics taking a runtime Type
                 // (GetNames/GetName/IsDefined/Parse/TryParse/GetUnderlyingType/GetValues) —
                 // the per-enum runtime table; the generic Enum.*<T> forms are a
@@ -1111,6 +1116,22 @@ internal sealed partial class MethodCompiler
             default:
                 throw new NotSupportedException($"Call target kind {handle.Kind} is not supported");
         }
+    }
+
+    private bool TryEmitSafeWaitHandleBase(string? declaringType, string name,
+        MethodSignature<TypeDesc> sig)
+    {
+        if (declaringType != "System.Runtime.InteropServices.SafeHandle"
+            || name is not ("DangerousGetHandle" or "DangerousAddRef" or "DangerousRelease"
+                or "get_IsInvalid" or "get_IsClosed" or "Dispose" or "Close"))
+            return false;
+        int receiverIndex = _stack.Count - 1 - sig.ParameterTypes.Length;
+        if (receiverIndex < 0
+            || _stack[receiverIndex].StaticType is not
+                { Kind: TypeKind.Class, Class.FullName: "Microsoft.Win32.SafeHandles.SafeWaitHandle" })
+            return false;
+        EmitIntrinsic("Microsoft.Win32.SafeHandles.SafeWaitHandle", name, sig);
+        return true;
     }
 
     /// <summary>calli: an indirect call through a function pointer that sits on top

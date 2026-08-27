@@ -645,6 +645,16 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     return e;
 }
 
+Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult)
+{
+    if (hresult >= 0)
+        return nullptr;
+    auto* ex = reinterpret_cast<Dn2CppExceptionObject*>(
+        dn2cpp_exception_new(&dn2cpp_exception_type, nullptr, nullptr));
+    ex->hresult = hresult;
+    return ex;
+}
+
 // Exception.get_InnerException on an object dn2cpp_exception_new produced.
 Dn2CppObject* dn2cpp_exception_inner(Dn2CppObject* ex)
 {
@@ -1534,4 +1544,3 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
         a->type = arrTi;
     return a;
 }
-

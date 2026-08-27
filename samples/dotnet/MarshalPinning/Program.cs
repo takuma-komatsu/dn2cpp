@@ -26,6 +26,7 @@ namespace MarshalPinning
             StructMarshalOffsetOfSubset.Program.__GateEntry();
             AlignedAllocSubset.Program.__GateEntry();   // was aligned-alloc-subset
             MarshalNullFaultSubset.Program.__GateEntry();
+            MarshalHResultSubset.Program.__GateEntry();
             NativeMemoryOverflowSubset.Program.__GateEntry();
             // GCHandlePinSubset stays LAST: its sections 13 and 17 assert
             // aggregate heap facts and storm the allocator, so nothing may

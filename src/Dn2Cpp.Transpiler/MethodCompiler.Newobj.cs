@@ -1103,6 +1103,19 @@ internal sealed partial class MethodCompiler
                 $"dn2cpp_event_new({ewhInit.Expr}, {mode.Expr}, &dn2cpp_event_type)");
             return;
         }
+        // new SafeWaitHandle(IntPtr handle, bool ownsHandle). Runtime events lazily mint
+        // an alias wrapper in get_SafeWaitHandle; this constructor is the distinct route
+        // for an OS handle later attached through WaitHandle.set_SafeWaitHandle.
+        if (NewobjTypeName(handle) == "Microsoft.Win32.SafeHandles.SafeWaitHandle"
+            && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition
+            && DecodeCtorSignature(handle).ParameterTypes.Length == 2)
+        {
+            var owns = Pop();
+            var raw = Pop();
+            Push(StackKind.Ref, "Dn2CppObject*",
+                $"dn2cpp_safewaithandle_new((intptr_t)({raw.Expr}), (int32_t)({owns.Expr}))");
+            return;
+        }
         // new CountdownEvent(int initialCount) — a real countdown latch (Signal counts
         // down; Wait blocks until it reaches zero). initialCount == 0 starts already set.
         //

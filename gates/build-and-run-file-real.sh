@@ -25,7 +25,8 @@
 #   FileAsyncEnumSubset File.ReadLinesAsync — IAsyncEnumerable<string>, `await foreach`
 #   PalIdentitySubset   the same PAL BEYOND file I/O: process id and the passwd
 #                       lookup (Environment.ProcessId / Environment.UserName ->
-#                       SystemNative_{GetPid,GetEUid,GetPwUidR}), plus
+#                       SystemNative_{GetPid,GetEUid,GetPwUidR} on Unix and
+#                       GetCurrentProcessId/GetUserNameExW on Windows), plus
 #                       System.Diagnostics.Process for the two entries no
 #                       CoreLib-only closure can name (HasExited ->
 #                       SystemNative_Kill, SessionId -> SystemNative_GetSid).
@@ -220,17 +221,19 @@ undefined_syms="$out/pal-undefined-syms.txt"
 dump_object_symbols_undefined "$out/.cmake" > "$undefined_syms"
 if [ "$DN2CPP_OS" = windows ]; then
     # Interop.Sys IS the Unix PAL — on Windows the same CoreLib properties bind to
-    # different modules entirely, so there is no SystemNative_* symbol to look for
-    # and the defined half below has no object to read (the Windows PAL is
-    # platform/windows/, and dn2cpp_system_native.cpp is not in that build). The
-    # step still asserts rather than stepping aside: Environment.ProcessId is the
-    # one half that IS portable, lowering to kernel32's GetCurrentProcessId, so
-    # this arm checks that. The passwd half is compiled out of the sample on this
-    # host (FileReal.csproj) because secur32.dll has no lowering at all.
-    grep -qE '^_?GetCurrentProcessId$' "$undefined_syms" || {
-        echo "FAIL: no app object references GetCurrentProcessId — PalIdentitySubset stopped reaching Environment.ProcessId" >&2
+    # kernel32 and secur32 directly, so there is no SystemNative_* symbol to look for
+    # and the defined half below has no object to read. Assert both Windows entry
+    # points from the generated objects.
+    for sym in GetCurrentProcessId GetUserNameExW; do
+        grep -qE "^_?$sym\$" "$undefined_syms" || {
+            echo "FAIL: no app object references $sym — PalIdentitySubset stopped reaching the Windows identity PAL" >&2
+            exit 1; }
+    done
+    grep -q -- '/bigobj' "$out/.cmake/build.ninja" || {
+        echo "FAIL: the MSVC app compile lost /bigobj — large generated registry objects can exceed COFF's section limit" >&2
         exit 1; }
-    echo "OK: the app names GetCurrentProcessId (Interop.Sys is Unix-only; nothing else to assert here)"
+    echo "OK: the app names GetCurrentProcessId and GetUserNameExW"
+    echo "OK: MSVC app objects compile with /bigobj"
 else
     # Non-vacuity first: an empty dump would pass every check below while proving
     # nothing (a stripped artifact, changed mangling, the wrong directory).

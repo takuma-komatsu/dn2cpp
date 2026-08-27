@@ -507,10 +507,9 @@ internal sealed partial class MethodCompiler
     /// <c>std::memmove</c>. The managed entry's body is a hand-unrolled Unsafe.* copy loop
     /// that also calls the SpanHelpers::memmove InternalCall fallback; mapping the managed
     /// entry closes both.</item>
-    /// <item><c>System.Runtime.InteropServices.Marshal::GetLastPInvokeError</c> → the
-    /// per-thread errno slot (dn2cpp_marshal_get_last_error). The MemberRef form routes
-    /// through TryEmitMarshalIntrinsic; this routes the in-CoreLib MethodDef form the same
-    /// way.</item>
+    /// <item><c>System.Runtime.InteropServices.Marshal</c> primitives route to the same
+    /// lowering as their MemberRef forms, including the cached P/Invoke error slot and
+    /// HRESULT conversion.</item>
     /// </list></summary>
     private bool TryEmitGcMemmoveMarshalPrimitive(MethodInfo callee)
     {
@@ -627,6 +626,8 @@ internal sealed partial class MethodCompiler
             // body reaches String.CreateStringFromEncoding, the UTF-8-decode subtree).
             case ("System.Runtime.InteropServices.Marshal", "PtrToStringUTF8")
                 when callee.IsStatic:
+            case ("System.Runtime.InteropServices.Marshal", "GetExceptionForHRInternal")
+                when callee.Signature.ParameterTypes.Length == 2 && callee.IsStatic:
                 EmitIntrinsic(callee.DeclaringClass.FullName, callee.Name, callee.Signature);
                 return true;
         }
@@ -984,11 +985,20 @@ internal sealed partial class MethodCompiler
     /// unmanaged-heap allocators (AllocHGlobal/FreeHGlobal and the CoTaskMem aliases), the
     /// string encode/decode pairs, Copy (memcpy between a managed blittable array and a
     /// native pointer, both directions), the typed Read*/Write* accessors, and the
-    /// layout-dependent Type-based forms (OffsetOf/SizeOf/PtrToStructure/StructureToPtr).</summary>
+    /// layout-dependent Type-based forms (OffsetOf/SizeOf/PtrToStructure/StructureToPtr),
+    /// plus the CoreLib HRESULT-to-exception primitive.</summary>
     private bool TryEmitMarshalIntrinsic(string name, MethodSignature<TypeDesc> sig)
     {
         switch (name)
         {
+            case "GetExceptionForHRInternal" when sig.ParameterTypes.Length == 2:
+            {
+                Pop(); // errorInfo — COM IErrorInfo is not modeled
+                var hr = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_exception_for_hresult((int32_t)({hr.Expr}))");
+                return true;
+            }
             case "AllocHGlobal": // AllocHGlobal(int cb) | AllocHGlobal(IntPtr cb) -> IntPtr
             {
                 var cb = Pop();

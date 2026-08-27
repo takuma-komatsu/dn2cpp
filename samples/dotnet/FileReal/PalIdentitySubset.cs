@@ -1,12 +1,11 @@
 #nullable enable
 using System;
 
-// The libSystem.Native PAL beyond file I/O — process and passwd identity
-// (SystemNative_GetPid, GetEUid, GetPwUidR, plus GetSid and Kill through
-// System.Diagnostics.Process). Nothing on this path is intercepted: Environment.UserName
-// is `GetUserNameFromPasswd(GetEUid())`, verbatim real CoreLib IL over a
-// [DllImport("libSystem.Native")] lowered to dn2cpp's shim in
-// runtime/core/platform/posix/dn2cpp_system_native.cpp.
+// The platform identity PAL beyond file I/O. Nothing on this path is intercepted:
+// Environment.UserName runs verbatim real CoreLib IL over either libSystem.Native's
+// GetEUid/GetPwUidR or secur32's GetUserNameExW. The Unix symbols lower to dn2cpp's
+// shim in runtime/core/platform/posix/dn2cpp_system_native.cpp; the Windows symbol
+// direct-links to the OS import library.
 //
 // A regression here is a C++ LINK error rather than wrong output, so a section that merely
 // REACHES these symbols is already an assertion.
@@ -32,15 +31,7 @@ static class Program
         Console.WriteLine("positive: " + (pid > 0));
         Console.WriteLine("stable: " + (pid == Environment.ProcessId));
 
-#if DN2CPP_HOST_WINDOWS
-        // Environment.ProcessId above is portable — on Windows it lowers to
-        // kernel32's GetCurrentProcessId, a module dn2cpp does provide. The passwd
-        // lookup is not: see FileReal.csproj for why this is a compile-time arm and
-        // not a runtime one. Real .NET prints this same line, so the diff holds.
-        Console.WriteLine("-- Environment.UserName: Interop.Sys is Unix-only, not exercised here --");
-        Console.WriteLine("-- System.Diagnostics.Process: the Unix PAL entries, not exercised here --");
-#else
-        Console.WriteLine("-- Environment.UserName (SystemNative_GetEUid + GetPwUidR) --");
+        Console.WriteLine("-- Environment.UserName (platform identity PAL) --");
         string user = Environment.UserName;
         Console.WriteLine("UserName: " + user);
         Console.WriteLine("non-empty: " + (user.Length > 0));
@@ -53,7 +44,7 @@ static class Program
         bool clean = user.Length > 0;
         foreach (char c in user)
         {
-            if (char.IsControl(c) || c == '/')
+            if (char.IsControl(c) || c == '/' || c == '\\')
             {
                 clean = false;
             }
@@ -61,6 +52,9 @@ static class Program
 
         Console.WriteLine("printable, no separator: " + clean);
 
+#if DN2CPP_HOST_WINDOWS
+        Console.WriteLine("-- System.Diagnostics.Process: the Unix PAL entries, not exercised here --");
+#else
         // ---- System.Diagnostics.Process: SystemNative_Kill and SystemNative_GetSid ----
         // The two PAL entries no CoreLib-only closure can name (they are declared in
         // System.Diagnostics.Process.dll). This is a real round-trip, not a symbol probe:

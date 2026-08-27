@@ -5,6 +5,7 @@
 # read/write through the raw pointer aliasing the managed backing store (byte[],
 # int[], double[], struct[]); Alloc(obj)/Target/IsAllocated; Marshal native-heap
 # struct marshalling (AllocHGlobal + StructureToPtr/PtrToStructure round-trip,
+# HRESULT conversion (successful values return null; failures preserve HResult),
 # generic and non-generic Type-based forms, mutate-through-buffer = real memcpy);
 # SizeOf/OffsetOf exactly matching real .NET (including the
 # [StructLayout(Size=N)] floor rows — Size is never rounded up to the alignment,

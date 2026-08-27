@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using Microsoft.Win32.SafeHandles;
 
 // Type identity across the four CLR event types the runtime serves with one Dn2CppEvent.
 // Each needs its own type-info: they stand in a real inheritance relation (MRE/ARE are
@@ -70,5 +71,19 @@ internal static class Program
         Console.WriteLine("work slim initial=" + s.IsSet);
         s.Set();
         Console.WriteLine("work slim after-set=" + s.IsSet);
+
+        // SafeWaitHandle is a distinct object even when it aliases this runtime's
+        // condition-variable event. Reattaching that alias must redirect the target
+        // WaitHandle to the donor's signal, as the OS-handle property does on .NET.
+        SafeWaitHandle safe = m.SafeWaitHandle;
+        Console.WriteLine("safe type=" + safe.GetType()
+            + " invalid=" + safe.IsInvalid + " closed=" + safe.IsClosed);
+        Console.WriteLine("safe stable=" + ReferenceEquals(safe, m.SafeWaitHandle)
+            + " raw=" + (safe.DangerousGetHandle() != IntPtr.Zero));
+        SafeWaitHandle emptySafe = Activator.CreateInstance<SafeWaitHandle>();
+        Console.WriteLine("safe activator invalid=" + emptySafe.IsInvalid);
+        var donor = new ManualResetEvent(true);
+        var attached = new ManualResetEvent(false) { SafeWaitHandle = donor.SafeWaitHandle };
+        Console.WriteLine("safe attached=" + attached.WaitOne(0));
     }
 }

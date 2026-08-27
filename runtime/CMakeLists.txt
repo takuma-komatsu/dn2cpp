@@ -913,7 +913,7 @@ else()
         # set (Windows-MSVC.cmake / Windows-GNU.cmake set
         # CMAKE_C_STANDARD_LIBRARIES_INIT to kernel32 user32 gdi32 winspool shell32
         # ole32 oleaut32 uuid comdlg32 advapi32 — so kernel32/ole32/advapi32 need no
-        # explicit link, but ws2_32 and iphlpapi do), and without these the lowered
+        # explicit link, but ws2_32, iphlpapi and secur32 do), and without these the lowered
         # call sites fail at link time with unresolved imports and nothing naming
         # the owning library as the cause. ntdll and BCrypt are outside that
         # default set too: they are on IsRuntimeProvidedPInvokeModule's allowlist
@@ -921,10 +921,11 @@ else()
         # has needed the link yet — a reachable one would fail here exactly as
         # winsock did.
         # PUBLIC so the app's generated*.cpp — whose lowered P/Invoke call sites
-        # reference the platform symbols directly — inherit the link. iphlpapi is
+        # reference the platform symbols directly — inherit the link. secur32 supplies
+        # CoreLib's Environment.UserName primitive GetUserNameExW. iphlpapi is
         # not allowed to arrive incidentally through the optional libcurl target:
         # named IPv6 scopes remain supported with DN2CPP_USE_CURL=OFF.
-        target_link_libraries(dn2cpp_runtime PUBLIC ws2_32 iphlpapi)
+        target_link_libraries(dn2cpp_runtime PUBLIC ws2_32 iphlpapi secur32)
     endif()
     if(DN2CPP_USE_GC)
         # PUBLIC so the app's generated*.cpp inherit the GC define + gc.h include too.
@@ -1201,6 +1202,11 @@ if(DN2CPP_APP_DIR)
         endif()
     endif()
     _dn2cpp_compile_options_warn(${DN2CPP_APP_NAME})
+    # The registry/metadata TU can contain enough COMDAT sections to exceed the
+    # default COFF object limit even though method bodies are split across TUs.
+    if(MSVC)
+        target_compile_options(${DN2CPP_APP_NAME} PRIVATE /bigobj)
+    endif()
     # generated.h lives next to the sources; dn2cpp.h comes from the runtime include
     # dir (also carried transitively, but listed for the from-source build too).
     target_include_directories(${DN2CPP_APP_NAME} PRIVATE

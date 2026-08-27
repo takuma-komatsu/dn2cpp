@@ -558,6 +558,12 @@ internal sealed partial class MethodCompiler
                         Push(StackKind.Ref, "Dn2CppStringBuilder*", "dn2cpp_sb_new()");
                         return;
                     }
+                    if (cls.FullName == "Microsoft.Win32.SafeHandles.SafeWaitHandle")
+                    {
+                        Push(StackKind.Ref, "Dn2CppObject*",
+                            "dn2cpp_safewaithandle_new((intptr_t)0, 0)");
+                        return;
+                    }
                     // No modeled parameterless construction for any other intrinsic
                     // reference type; throw at transpile rather than fall through and name
                     // the cut ctor. StringBuilder is the only one the corpus reaches;

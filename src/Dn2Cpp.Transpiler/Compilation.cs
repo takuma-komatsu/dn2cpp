@@ -5718,7 +5718,9 @@ internal sealed partial class Compilation
     /// <c>gethostname</c> primitive Dns.GetHostName bottoms out in, behind
     /// Interop.Winsock's WSAStartup init; the Windows counterpart of the POSIX
     /// PAL's <c>SystemNative_GetHostName</c>). <c>iphlpapi.dll</c> supplies the
-    /// interface-name-to-index conversion used by named IPv6 scope parsing. Each string
+    /// interface-name-to-index conversion used by named IPv6 scope parsing, and
+    /// <c>secur32.dll</c> supplies <c>Environment.UserName</c>'s
+    /// <c>GetUserNameExW</c>. Each string
     /// is the exact
     /// <c>ModuleRef</c> spelling — matched case-sensitively, so <c>BCrypt.dll</c> is
     /// not lowercase — as it appears in the win-x64 assembly that declares the
@@ -5729,7 +5731,7 @@ internal sealed partial class Compilation
     /// <c>ntdll</c> and
     /// <c>BCrypt</c> are outside CMake's default Windows link set (which covers
     /// <c>kernel32</c>/<c>ole32</c>), so <c>runtime/CMakeLists.txt</c> links
-    /// <c>ws2_32</c> and <c>iphlpapi</c> explicitly on the WIN32 arm — without that
+    /// <c>ws2_32</c>, <c>iphlpapi</c> and <c>secur32</c> explicitly on the WIN32 arm — without that
     /// the lowered call sites resolve here and then fail at C++ link time. Nothing
     /// reaches an <c>ntdll</c> / <c>BCrypt</c> call today; one that did would need
     /// the same explicit link.
@@ -5795,7 +5797,7 @@ internal sealed partial class Compilation
             or "libSystem.Security.Cryptography.Native.OpenSsl"
             or "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation"
             or "kernel32.dll" or "ntdll.dll" or "ole32.dll" or "BCrypt.dll"
-            or "ws2_32.dll" or "advapi32.dll" or "iphlpapi.dll"
+            or "ws2_32.dll" or "advapi32.dll" or "iphlpapi.dll" or "secur32.dll"
             or "System.IO.Compression.Native"
             // The libcurl-backed HTTP transport (runtime/core/intrinsics/dn2cpp_http2_stream.cpp,
             // under DN2CPP_USE_CURL): the DnHttp shim's [DllImport("dn2cpp_http")] direct-links

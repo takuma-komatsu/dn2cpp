@@ -2167,6 +2167,7 @@ extern const Dn2CppTypeInfo dn2cpp_event_type;
 extern const Dn2CppTypeInfo dn2cpp_manualresetevent_type;
 extern const Dn2CppTypeInfo dn2cpp_autoresetevent_type;
 extern const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type;
+extern const Dn2CppTypeInfo dn2cpp_safewaithandle_type;
 extern const Dn2CppTypeInfo dn2cpp_array_i4_type;
 extern const Dn2CppTypeInfo dn2cpp_array_ref_type;
 extern const Dn2CppTypeInfo dn2cpp_array_n_type;
@@ -3149,6 +3150,7 @@ struct Dn2CppShadowFrame
 // approximation, since .NET's per-derived-type defaults live in resource strings
 // dn2cpp never reads.
 Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* message, Dn2CppObject* inner);
+Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult);
 // System.Exception.get_Message on an object dn2cpp_exception_new produced, with virtual
 // dispatch: calls a derived get_Message override through the vtable
 // (dn2cpp_exception_get_message_slot) when one is present, else the stored message. This
@@ -4778,6 +4780,13 @@ int32_t dn2cpp_semaphore_count(Dn2CppObject* s);             // SemaphoreSlim.Cu
 // the worker pool and the task completes when a Release hands over a token.
 Dn2CppTask* dn2cpp_semaphore_wait_async(Dn2CppObject* s);
 Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2CppTypeInfo* ti);
+Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle);
+Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle);
+void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle);
+intptr_t dn2cpp_safewaithandle_get(Dn2CppObject* safeHandle);
+int32_t dn2cpp_safewaithandle_is_invalid(Dn2CppObject* safeHandle);
+int32_t dn2cpp_safewaithandle_is_closed(Dn2CppObject* safeHandle);
+void dn2cpp_safewaithandle_close(Dn2CppObject* safeHandle);
 void dn2cpp_event_set(Dn2CppObject* e);                      // Set()
 void dn2cpp_event_reset(Dn2CppObject* e);                    // Reset()
 int32_t dn2cpp_event_wait(Dn2CppObject* e);                  // WaitOne()/Wait() (returns 1)

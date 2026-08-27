@@ -320,14 +320,11 @@ internal static partial class CoreIntrinsics
         "System.Threading.AutoResetEvent",
         "System.Threading.EventWaitHandle",
         "System.Threading.WaitHandle",
-        // The handle OF one of the above, and in this model it IS one of the above: the
-        // WaitHandle family is backed by an opaque runtime mutex+condvar object, never by
-        // an OS handle, so the safe handle maps to the very same Dn2CppObject* and
-        // WaitHandle.SafeWaitHandle is the identity. Transpiling the real type does not
-        // stay small: ReleaseHandle is Interop.Kernel32.CloseHandle over a Win32 HANDLE
-        // this runtime never mints, and the base SafeHandle drags its
-        // CriticalFinalizerObject refcount state machine in to guard a resource that does
-        // not exist.
+        // The handle OF one of the above. Runtime-created events wrap their native event
+        // object, while WaitHandle.set_SafeWaitHandle can attach a real OS handle (the
+        // ProcessWaitHandle path). Transpiling the real type does not stay small:
+        // ReleaseHandle and the base SafeHandle refcount state machine are replaced by the
+        // runtime wrapper that distinguishes those two resources.
         "Microsoft.Win32.SafeHandles.SafeWaitHandle",
         // CountdownEvent (Signal counts down; Wait blocks until zero) and Barrier (a
         // cyclic phase barrier; each phase releases when all participants have signaled,
@@ -1093,7 +1090,8 @@ internal static partial class CoreIntrinsics
         // String.CreateStringFromEncoding — an intrinsic-type member with no mapping, i.e.
         // the UTF-8-decode + SIMD subtree.
         "System.Runtime.InteropServices.Marshal" =>
-            name is "GetLastPInvokeError" or "SetLastPInvokeError" or "PtrToStringUTF8",
+            name is "GetLastPInvokeError" or "SetLastPInvokeError" or "PtrToStringUTF8"
+                or "GetExceptionForHRInternal",
         // NativeLibrary.GetSymbol -> dn2cpp_native_library_get_symbol. Its real body is the
         // raw compiler-generated `<GetSymbol>g____PInvoke` QCall stub — module "QCall", no
         // managed implementation to link against.
@@ -1406,6 +1404,7 @@ internal static partial class CoreIntrinsics
         ["System.Threading.ManualResetEvent"] = "&dn2cpp_manualresetevent_type",
         ["System.Threading.AutoResetEvent"] = "&dn2cpp_autoresetevent_type",
         ["System.Threading.ManualResetEventSlim"] = "&dn2cpp_manualreseteventslim_type",
+        ["Microsoft.Win32.SafeHandles.SafeWaitHandle"] = "&dn2cpp_safewaithandle_type",
     };
 
     // A nested ClassInfo.FullName is only the simple name, so runtime-owned nested types are

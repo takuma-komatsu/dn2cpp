@@ -733,6 +733,10 @@ extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
 const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
+extern const Dn2CppType dn2cpp_safewaithandle_type_obj;
+const Dn2CppTypeInfo dn2cpp_safewaithandle_type =
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_safewaithandle_type_obj);
+const Dn2CppType dn2cpp_safewaithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safewaithandle_type };
 
 struct Dn2CppSemaphore : Dn2CppObject
 {
@@ -749,6 +753,17 @@ struct Dn2CppEvent : Dn2CppObject
     bool signaled;
     bool manualReset;
 };
+
+struct Dn2CppSafeWaitHandle : Dn2CppObject
+{
+    intptr_t handle;
+    bool ownsHandle;
+    bool managedEvent;
+    bool closed;
+};
+
+static std::mutex g_wait_handle_mutex;
+static std::unordered_map<Dn2CppObject*, Dn2CppObject*> g_wait_safe_handles;
 
 Dn2CppObject* dn2cpp_semaphore_new(int32_t initial, int32_t maxCount)
 {
@@ -849,9 +864,143 @@ Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2Cp
     return e;
 }
 
+static Dn2CppSafeWaitHandle* dn2cpp_as_safe_handle(Dn2CppObject* o)
+{
+    if (o == nullptr)
+        dn2cpp_throw_null_reference();
+    return static_cast<Dn2CppSafeWaitHandle*>(o);
+}
+
+Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle)
+{
+    auto* safe = new Dn2CppSafeWaitHandle();
+    safe->type = &dn2cpp_safewaithandle_type;
+    safe->handle = handle;
+    safe->ownsHandle = ownsHandle != 0;
+    safe->managedEvent = false;
+    safe->closed = false;
+    return safe;
+}
+
+Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
+{
+    if (waitHandle == nullptr)
+        dn2cpp_throw_null_reference();
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    auto it = g_wait_safe_handles.find(waitHandle);
+    if (it == g_wait_safe_handles.end())
+    {
+        auto* safe = static_cast<Dn2CppSafeWaitHandle*>(
+            dn2cpp_safewaithandle_new(reinterpret_cast<intptr_t>(waitHandle), 0));
+        safe->managedEvent = true;
+        it = g_wait_safe_handles.emplace(waitHandle, safe).first;
+    }
+    return it->second;
+}
+
+void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle)
+{
+    if (waitHandle == nullptr)
+        dn2cpp_throw_null_reference();
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    g_wait_safe_handles[waitHandle] = safeHandle;
+}
+
+intptr_t dn2cpp_safewaithandle_get(Dn2CppObject* safeHandle)
+{
+    return dn2cpp_as_safe_handle(safeHandle)->handle;
+}
+
+int32_t dn2cpp_safewaithandle_is_invalid(Dn2CppObject* safeHandle)
+{
+    if (safeHandle == nullptr)
+        return 1;
+    auto* safe = static_cast<Dn2CppSafeWaitHandle*>(safeHandle);
+    return safe->handle == 0 || safe->handle == static_cast<intptr_t>(-1) ? 1 : 0;
+}
+
+int32_t dn2cpp_safewaithandle_is_closed(Dn2CppObject* safeHandle)
+{
+    return dn2cpp_as_safe_handle(safeHandle)->closed ? 1 : 0;
+}
+
+void dn2cpp_safewaithandle_close(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    if (safe->closed)
+        return;
+#ifdef _WIN32
+    if (safe->ownsHandle && !safe->managedEvent && safe->handle != 0
+        && safe->handle != static_cast<intptr_t>(-1))
+        ::CloseHandle(reinterpret_cast<HANDLE>(safe->handle));
+#endif
+    safe->closed = true;
+    safe->handle = 0;
+}
+
+static Dn2CppEvent* dn2cpp_event_from_operand(Dn2CppObject* o,
+    Dn2CppSafeWaitHandle** external)
+{
+    if (o == nullptr)
+        dn2cpp_throw_null_reference();
+    if (o->type == &dn2cpp_safewaithandle_type)
+    {
+        auto* safe = static_cast<Dn2CppSafeWaitHandle*>(o);
+        if (safe->managedEvent)
+            return reinterpret_cast<Dn2CppEvent*>(safe->handle);
+        *external = safe;
+        return nullptr;
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+        auto it = g_wait_safe_handles.find(o);
+        if (it != g_wait_safe_handles.end())
+        {
+            auto* safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
+            if (safe->managedEvent)
+                return reinterpret_cast<Dn2CppEvent*>(safe->handle);
+            *external = safe;
+            return nullptr;
+        }
+    }
+    if (o->type == &dn2cpp_waithandle_type)
+    {
+        dn2cpp_throw_invalid_operation();
+    }
+    return static_cast<Dn2CppEvent*>(o);
+}
+
+static int32_t dn2cpp_external_wait(Dn2CppSafeWaitHandle* safe, int32_t ms)
+{
+#ifdef _WIN32
+    DWORD timeout = ms < 0 ? INFINITE : static_cast<DWORD>(ms);
+    DWORD result = ::WaitForSingleObject(reinterpret_cast<HANDLE>(safe->handle), timeout);
+    if (result == WAIT_OBJECT_0)
+        return 1;
+    if (result == WAIT_TIMEOUT)
+        return 0;
+    dn2cpp_throw_invalid_operation();
+#else
+    (void)safe;
+    (void)ms;
+    dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+}
+
 void dn2cpp_event_set(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+    {
+#ifdef _WIN32
+        if (::SetEvent(reinterpret_cast<HANDLE>(external->handle)) == 0)
+            dn2cpp_throw_invalid_operation();
+        return;
+#else
+        dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+    }
     {
         std::lock_guard<std::mutex> lk(e->m);
         e->signaled = true;
@@ -865,14 +1014,28 @@ void dn2cpp_event_set(Dn2CppObject* o)
 
 void dn2cpp_event_reset(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+    {
+#ifdef _WIN32
+        if (::ResetEvent(reinterpret_cast<HANDLE>(external->handle)) == 0)
+            dn2cpp_throw_invalid_operation();
+        return;
+#else
+        dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+    }
     std::lock_guard<std::mutex> lk(e->m);
     e->signaled = false;
 }
 
 int32_t dn2cpp_event_wait(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+        return dn2cpp_external_wait(external, -1);
     std::unique_lock<std::mutex> lk(e->m);
     e->cv.wait(lk, [e] { return e->signaled; });
     if (!e->manualReset)
@@ -887,7 +1050,10 @@ int32_t dn2cpp_event_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
     if (ms < 0)
         return dn2cpp_event_wait(o);
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+        return dn2cpp_external_wait(external, ms);
     std::unique_lock<std::mutex> lk(e->m);
     if (!e->cv.wait_for(lk, std::chrono::milliseconds(ms), [e] { return e->signaled; }))
         return 0;
