@@ -18,6 +18,8 @@
 # Exception split a name-path fall-through erases — and then read a boxed enum's payload
 # width back off a run-time type handle (Activator / GetUninitializedObject / ToObject),
 # which is what sizes the allocation.
+# Generic Enum.Parse/TryParse cover all four ReadOnlySpan<char> overloads; each
+# must honor the active slice bounds before consulting the enum member table.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
