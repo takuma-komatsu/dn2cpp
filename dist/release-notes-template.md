@@ -18,7 +18,7 @@
 - [PR #69](https://github.com/takuma-komatsu/dn2cpp/pull/69) および [PR #68](https://github.com/takuma-komatsu/dn2cpp/pull/68) で、Windows 上での R3 実行および async void ゲートの完了待機を安定化させました
 - [PR #62](https://github.com/takuma-komatsu/dn2cpp/pull/62) で、ToString() の組み込みルーティング拡充（ValueTask、Vector、TextInfo、EventSource、リフレクションメタデータ等）、補間文字列ハンドラーの保持、固定長 Vector.CopyTo、CancellationToken の値ハッシュ、IPv6 スコープ対応、macOS デプロイメントターゲットの整合を行いました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/4be3443bac325eb54b7e488243cbb635b01013d1...5e8435528828f8045610e74f63c87e28aa41d6db> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/4be3443bac325eb54b7e488243cbb635b01013d1...170be524673898a3e7efcbef70a931a742ea3b2f> を参照してください。
 
 ## アセット
 
