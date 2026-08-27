@@ -45,16 +45,9 @@ internal sealed partial class MethodCompiler
     private static string ByteWidthExpr(int byteWidth) =>
         byteWidth == 0 ? "(int32_t)sizeof(intptr_t)" : byteWidth.ToString();
 
-    /// <summary>Enum reflection-lite: lower the generic `System.Enum` statics
-    /// (GetValues/GetNames/GetName/Parse/TryParse/IsDefined) inline from the type
-    /// argument's (name, value) table, at the enum's model width — int32, or int64 for a
-    /// long/ulong underlying — so values are integer constants and member names are string
-    /// literals; no runtime metadata is read. The case-insensitive `Parse`/`TryParse`
-    /// overloads (the trailing `bool ignoreCase`) fold case via the runtime flag through
-    /// `dn2cpp_string_equals_ci`.</summary>
     /// <summary>The Dn2CppString* expression for a generic Enum.Parse/TryParse source
     /// argument: the string overloads pass it through, the ReadOnlySpan&lt;char&gt; overloads
-    /// (Enum.TryParse&lt;T&gt;(ReadOnlySpan&lt;char&gt;, bool, out T) — reached from
+    /// (Enum.TryParse&lt;T&gt;(ReadOnlySpan&lt;char&gt;, out T) — reached from
     /// System.Text.Json's EnumConverter.TryParseEnumFromString) realize the span as a
     /// string so the same dn2cpp_enum_parse worker serves both.</summary>
     private string EnumParseSourceString(StackEntry s, TypeDesc paramType)
@@ -68,6 +61,13 @@ internal sealed partial class MethodCompiler
         return Cast(s, "Dn2CppString*");
     }
 
+    /// <summary>Enum reflection-lite: lower the generic `System.Enum` statics
+    /// (GetValues/GetNames/GetName/Parse/TryParse/IsDefined) inline from the type
+    /// argument's (name, value) table, at the enum's model width — int32, or int64 for a
+    /// long/ulong underlying — so values are integer constants and member names are string
+    /// literals; no runtime metadata is read. The case-insensitive `Parse`/`TryParse`
+    /// overloads (the trailing `bool ignoreCase`) fold case via the runtime flag through
+    /// `dn2cpp_string_equals_ci`.</summary>
     private void TranslateEnumReflection(string name, MethodSpecificationHandle msh, TypeDesc[] methodArgs)
     {
         var t = methodArgs[0];

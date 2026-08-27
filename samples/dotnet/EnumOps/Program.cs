@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 namespace EnumOps
 {
@@ -9,6 +10,8 @@ namespace EnumOps
     {
         private static void Main()
         {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
             EnumFlagsSubset.Program.__GateEntry();
             EnumInterpSubset.Program.__GateEntry();
             EnumToStringSubset.Program.__GateEntry();
@@ -24,6 +27,8 @@ namespace EnumOps
             EnumUnboxCompatSubset.Program.__GateEntry();
             EnumCctorRuntimeTypeSubset.Program.__GateEntry();
             EnumWide64Subset.Program.__GateEntry();
+            // APPENDED LAST: the preceding output remains an unchanged prefix.
+            EnumParseSpanSubset.Program.__GateEntry();
         }
     }
 }
