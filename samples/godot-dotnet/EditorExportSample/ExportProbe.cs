@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -10,6 +11,9 @@ using Godot;
 // packaged runs inside a real exported .app with no .NET runtime beside it.
 public partial class ExportProbe : Node
 {
+    [DllImport("libSystem.Security.Cryptography.Native.Apple", EntryPoint = "AppleCryptoNative_GetRandomBytes")]
+    private static extern unsafe int AppleCryptoNativeGetRandomBytes(byte* buffer, int length, int* status);
+
     // Overridden by the scene: reaching the C# instance through the engine's Set
     // bridge proves the script instance is tied to the native object.
     [Export]
@@ -45,8 +49,67 @@ public partial class ExportProbe : Node
         _tickAtReady = System.Environment.TickCount64;
         _stampAtReady = Stopwatch.GetTimestamp();
 
+        ProbeCsprng();
         ProbeInterop();
         _ = ProbeSignalAsync();
+    }
+
+    // The direct call pins the exact native ABI that the Apple flavor of the real
+    // BCL imports. The public calls prove RandomNumberGenerator reaches the same
+    // real-entropy path. Report only derived properties so the log is deterministic.
+    private static unsafe void ProbeCsprng()
+    {
+        const int Length = 32;
+        byte* directFirst = stackalloc byte[Length];
+        byte* directSecond = stackalloc byte[Length];
+        int firstStatus = -1;
+        int secondStatus = -1;
+        int firstResult = AppleCryptoNativeGetRandomBytes(directFirst, Length, &firstStatus);
+        int secondResult = AppleCryptoNativeGetRandomBytes(directSecond, Length, &secondStatus);
+
+        bool native = firstResult == 1 && secondResult == 1
+            && firstStatus == 0 && secondStatus == 0;
+        bool directEntropy = HasNonZeroByte(directFirst, Length)
+            && HasNonZeroByte(directSecond, Length)
+            && !BuffersEqual(directFirst, directSecond, Length);
+
+        byte[] publicFirst = System.Security.Cryptography.RandomNumberGenerator.GetBytes(Length);
+        byte[] publicSecond = System.Security.Cryptography.RandomNumberGenerator.GetBytes(Length);
+        bool publicEntropy = HasNonZeroByte(publicFirst)
+            && HasNonZeroByte(publicSecond)
+            && !publicFirst.AsSpan().SequenceEqual(publicSecond);
+
+        Console.WriteLine($"DN2CPP_EXPORT_CSPRNG native={native} directEntropy={directEntropy} publicEntropy={publicEntropy}");
+    }
+
+    private static unsafe bool HasNonZeroByte(byte* buffer, int length)
+    {
+        for (int i = 0; i < length; i++)
+        {
+            if (buffer[i] != 0)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasNonZeroByte(byte[] buffer)
+    {
+        for (int i = 0; i < buffer.Length; i++)
+        {
+            if (buffer[i] != 0)
+                return true;
+        }
+        return false;
+    }
+
+    private static unsafe bool BuffersEqual(byte* left, byte* right, int length)
+    {
+        for (int i = 0; i < length; i++)
+        {
+            if (left[i] != right[i])
+                return false;
+        }
+        return true;
     }
 
     // Both calls below return the engine's `Error` — int-width in C++, `: long`

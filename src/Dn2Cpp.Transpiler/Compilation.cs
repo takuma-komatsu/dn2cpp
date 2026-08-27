@@ -5696,9 +5696,12 @@ internal sealed partial class Compilation
     /// referenced module stays on the intrinsic/throw boundary (runtime-internal QCalls,
     /// Windows-only libraries). <c>libSystem.Security.Cryptography.Native.Apple</c> is
     /// the <c>AppleCryptoNative_*</c> digest/HMAC/random surface implemented portably in
-    /// <c>runtime/core/intrinsics/dn2cpp_apple_crypto_digest.cpp</c> (+ the posix random
-    /// PAL); the CoreFoundation framework path (Interop.AppleCrypto's cctor) resolves to
-    /// the real framework via <c>-framework CoreFoundation</c>.
+    /// <c>runtime/core/intrinsics/dn2cpp_apple_crypto_digest.cpp</c> plus the
+    /// SystemNative-ABI-only random adapter in
+    /// <c>runtime/core/platform/posix/dn2cpp_apple_crypto_random.cpp</c>. The adapter is
+    /// reused on Web with the wasm entropy backend despite its source-tree location;
+    /// the CoreFoundation framework path (Interop.AppleCrypto's cctor) resolves to the
+    /// real framework via <c>-framework CoreFoundation</c> on Apple hosts.
     /// <c>libSystem.Security.Cryptography.Native.OpenSsl</c> is the same surface for the
     /// Linux RID of the assembly — the <c>CryptoNative_*</c> digest/HMAC/RNG entry points
     /// implemented over the identical portable cores in

@@ -1,8 +1,9 @@
 // dn2cpp_apple_crypto_random.cpp — AppleCryptoNative_GetRandomBytes, the
 // entropy source behind System.Security.Cryptography.RandomNumberGenerator
 // on the Apple flavor of the real BCL (which does NOT route through
-// SystemNative_*). Backed by the same real-entropy backend Stage 1 added for
-// Guid.NewGuid (pal_random.c mirror in dn2cpp_system_native.cpp).
+// SystemNative_* itself). This adapter depends only on the portable
+// SystemNative_GetCryptographicallySecureRandomBytes ABI, not on a POSIX API,
+// so the Emscripten source set reuses it with the wasm getentropy backend.
 //
 // ABI (decoded from the real net10 System.Security.Cryptography.dll):
 //   int32_t AppleCryptoNative_GetRandomBytes(uint8_t* buf, int32_t num,
