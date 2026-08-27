@@ -86,10 +86,12 @@ uint32_t SystemNative_InterfaceNameToIndex(char* interfaceName)
 }
 
 // pal_random.c SystemNative_GetCryptographicallySecureRandomBytes: the entropy
-// source behind Guid.NewGuid / RandomNumberGenerator. Returns 0 on success, -1 on
-// failure — the managed forwarder (Interop.GetCryptographicallySecureRandomBytes)
-// throws CryptographicException on nonzero. The contract is the POSIX one,
-// verbatim; only the backend differs.
+// source behind Guid.NewGuid / RandomNumberGenerator. The portable
+// dn2cpp_apple_crypto_random.cpp adapter also consumes this ABI when the real
+// BCL reaches RandomNumberGenerator through AppleCryptoNative_GetRandomBytes.
+// Returns 0 on success, -1 on failure — the managed forwarder
+// (Interop.GetCryptographicallySecureRandomBytes) throws CryptographicException
+// on nonzero. The contract is the POSIX one, verbatim; only the backend differs.
 //
 // Real randomness is required, and Emscripten supplies it: its musl getentropy
 // is backed by the host CSPRNG (crypto.getRandomValues in a browser,

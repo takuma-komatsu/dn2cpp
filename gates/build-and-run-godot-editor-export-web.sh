@@ -645,11 +645,13 @@ else
         "DN2CPP_EXPORT_INTEROP resizeOk=True sized=True" \
         "DN2CPP_EXPORT_SIGNAL awaited=True" \
         "DN2CPP_EXPORT_CLOCK ticks=True elapsed=True" \
+        "DN2CPP_EXPORT_CSPRNG native=True directEntropy=True publicEntropy=True" \
         "DN2CPP_EXPORT_DONE"; do
         grep -qF "$marker" "$LOG" || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
     done
     for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" \
-        "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_CLOCK" "DN2CPP_EXPORT_DONE"; do
+        "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_CLOCK" "DN2CPP_EXPORT_CSPRNG" \
+        "DN2CPP_EXPORT_DONE"; do
         n="$(grep -c "$once" "$LOG" || true)"
         [ "$n" -eq 1 ] || { echo "FAIL: marker $once appeared $n times (expected exactly 1)" >&2; exit 1; }
     done

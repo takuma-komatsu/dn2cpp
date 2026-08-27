@@ -845,10 +845,15 @@ else()
             list(APPEND DN2CPP_PLATFORM_SRCS ${DN2CPP_PLATFORM_POSIX_REST})
         endif()
     elseif(EMSCRIPTEN)
-        # WASM PAL, plus the POSIX mmap unit as-is: Emscripten's musl provides
-        # open/fstat/mmap/msync against MEMFS, so that TU needs no port.
+        # WASM PAL, plus two portable POSIX-directory adapters. The mmap unit
+        # uses Emscripten's musl open/fstat/mmap/msync against MEMFS. The Apple
+        # crypto random adapter depends only on the SystemNative entropy ABI,
+        # whose wasm implementation is backed by getentropy; it uses no POSIX
+        # platform API despite its source-tree location.
         file(GLOB DN2CPP_PLATFORM_SRCS CONFIGURE_DEPENDS "${DN2CPP_ROOT}/runtime/core/platform/wasm/*.cpp")
-        list(APPEND DN2CPP_PLATFORM_SRCS "${DN2CPP_ROOT}/runtime/core/platform/posix/dn2cpp_mmap_posix.cpp")
+        list(APPEND DN2CPP_PLATFORM_SRCS
+            "${DN2CPP_ROOT}/runtime/core/platform/posix/dn2cpp_mmap_posix.cpp"
+            "${DN2CPP_ROOT}/runtime/core/platform/posix/dn2cpp_apple_crypto_random.cpp")
     elseif(WIN32)
         # Win32/CRT PAL, including dn2cpp_mmap_windows.cpp
         # (CreateFileMappingA/MapViewOfFile instead of POSIX mmap) — picked up
