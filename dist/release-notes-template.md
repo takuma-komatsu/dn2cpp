@@ -8,15 +8,17 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot 4.7.2 ベースへ更新しました
-- [PR #61](https://github.com/takuma-komatsu/dn2cpp/pull/61) で、YetAnotherHttpHandler のサポートとエンドツーエンド検証ゲートの追加、NuGet パッケージ同梱ネイティブバイナリの自動配置・ロード対応、スレッド登録や Task 結果保持の改善を行いました
-- [PR #59](https://github.com/takuma-komatsu/dn2cpp/pull/59) で、MagicOnion クライアントのサポートと検証ゲートを追加し、共有ボディ・閉じたジェネリックにおける Task の識別性保持を改善しました
-- [PR #58](https://github.com/takuma-komatsu/dn2cpp/pull/58) で、MessagePack-CSharp のリグレッション検証ゲートを追加しました
-- [PR #57](https://github.com/takuma-komatsu/dn2cpp/pull/57) で、MasterMemory の互換性検証ゲートを追加しました
-- [PR #56](https://github.com/takuma-komatsu/dn2cpp/pull/56) で、Decimal のフィールドレイアウトおよび負のゼロ表現を .NET 準拠に修正し、ValueTask 早期読み出し拒否や Task.Run のキャンセル処理などランタイムコントラクトの乖離を解消しました
-- [PR #55](https://github.com/takuma-komatsu/dn2cpp/pull/55) で、MemoryPack の検証ゲートを追加しました
+- Godot フォークにおいて macOS deployment target の指定を反映するように修正しました
+- [PR #76](https://github.com/takuma-komatsu/dn2cpp/pull/76) で、ValueTask / ValueTask<T> における IValueTaskSource のステータス管理（IsFaulted / IsCanceled）およびトークンの適切な検証に対応しました
+- [PR #74](https://github.com/takuma-komatsu/dn2cpp/pull/74) で、Web (Wasm) プラットフォームにおける乱数生成（RNG）の Apple インポートを修正しました
+- [PR #73](https://github.com/takuma-komatsu/dn2cpp/pull/73) および [PR #67](https://github.com/takuma-komatsu/dn2cpp/pull/67) で、ジェネリック Enum.Parse<T> / Enum.TryParse<T> における ReadOnlySpan<char> 引数の処理を実装しました
+- [PR #72](https://github.com/takuma-komatsu/dn2cpp/pull/72) および [PR #65](https://github.com/takuma-komatsu/dn2cpp/pull/65) で、整数プリミティブ型の Equals(object) 組み込みを追加し、オブジェクト比較のルーティングを整合させました
+- [PR #71](https://github.com/takuma-komatsu/dn2cpp/pull/71) および [PR #64](https://github.com/takuma-komatsu/dn2cpp/pull/64) で、double / float に対する IBinaryFloatParseAndFormatInfo static メソッドのローワリングに対応しました
+- [PR #70](https://github.com/takuma-komatsu/dn2cpp/pull/70) で、検証ゲートにおける Godot fork キャッシュと成果物の鮮度検証を強化しました
+- [PR #69](https://github.com/takuma-komatsu/dn2cpp/pull/69) および [PR #68](https://github.com/takuma-komatsu/dn2cpp/pull/68) で、Windows 上での R3 実行および async void ゲートの完了待機を安定化させました
+- [PR #62](https://github.com/takuma-komatsu/dn2cpp/pull/62) で、ToString() の組み込みルーティング拡充（ValueTask、Vector、TextInfo、EventSource、リフレクションメタデータ等）、補間文字列ハンドラーの保持、固定長 Vector.CopyTo、CancellationToken の値ハッシュ、IPv6 スコープ対応、macOS デプロイメントターゲットの整合を行いました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/bab0cc5c557fde07f327f17ba4fee2268f84446d...b04c70d38cd4154a2311e7915822e2bf2b055509> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/4be3443bac325eb54b7e488243cbb635b01013d1...HEAD> を参照してください。
 
 ## アセット
 
