@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
+#if GODOT_WEB
 using System.Runtime.InteropServices;
+#endif
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -11,8 +13,10 @@ using Godot;
 // packaged runs inside a real exported .app with no .NET runtime beside it.
 public partial class ExportProbe : Node
 {
+#if GODOT_WEB
     [DllImport("libSystem.Security.Cryptography.Native.Apple", EntryPoint = "AppleCryptoNative_GetRandomBytes")]
     private static extern unsafe int AppleCryptoNativeGetRandomBytes(byte* buffer, int length, int* status);
+#endif
 
     // Overridden by the scene: reaching the C# instance through the engine's Set
     // bridge proves the script instance is tied to the native object.
@@ -54,12 +58,13 @@ public partial class ExportProbe : Node
         _ = ProbeSignalAsync();
     }
 
-    // The direct call pins the exact native ABI that the Apple flavor of the real
-    // BCL imports. The public calls prove RandomNumberGenerator reaches the same
-    // real-entropy path. Report only derived properties so the log is deterministic.
+    // The Web-only direct call pins the exact native ABI that its POSIX-flavoured
+    // BCL imports. The public calls prove each target's RandomNumberGenerator reaches
+    // a real-entropy path. Report only derived properties so the log is deterministic.
     private static unsafe void ProbeCsprng()
     {
         const int Length = 32;
+#if GODOT_WEB
         byte* directFirst = stackalloc byte[Length];
         byte* directSecond = stackalloc byte[Length];
         int firstStatus = -1;
@@ -72,6 +77,7 @@ public partial class ExportProbe : Node
         bool directEntropy = HasNonZeroByte(directFirst, Length)
             && HasNonZeroByte(directSecond, Length)
             && !BuffersEqual(directFirst, directSecond, Length);
+#endif
 
         byte[] publicFirst = System.Security.Cryptography.RandomNumberGenerator.GetBytes(Length);
         byte[] publicSecond = System.Security.Cryptography.RandomNumberGenerator.GetBytes(Length);
@@ -79,9 +85,14 @@ public partial class ExportProbe : Node
             && HasNonZeroByte(publicSecond)
             && !publicFirst.AsSpan().SequenceEqual(publicSecond);
 
+#if GODOT_WEB
         Console.WriteLine($"DN2CPP_EXPORT_CSPRNG native={native} directEntropy={directEntropy} publicEntropy={publicEntropy}");
+#else
+        Console.WriteLine($"DN2CPP_EXPORT_CSPRNG publicEntropy={publicEntropy}");
+#endif
     }
 
+#if GODOT_WEB
     private static unsafe bool HasNonZeroByte(byte* buffer, int length)
     {
         for (int i = 0; i < length; i++)
@@ -91,6 +102,7 @@ public partial class ExportProbe : Node
         }
         return false;
     }
+#endif
 
     private static bool HasNonZeroByte(byte[] buffer)
     {
@@ -102,6 +114,7 @@ public partial class ExportProbe : Node
         return false;
     }
 
+#if GODOT_WEB
     private static unsafe bool BuffersEqual(byte* left, byte* right, int length)
     {
         for (int i = 0; i < length; i++)
@@ -111,6 +124,7 @@ public partial class ExportProbe : Node
         }
         return true;
     }
+#endif
 
     // Both calls below return the engine's `Error` — int-width in C++, `: long`
     // in C# because the bindings generator widens every core enum. wasm32 checks
