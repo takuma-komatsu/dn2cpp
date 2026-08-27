@@ -335,6 +335,7 @@ for marker in \
     "DN2CPP_EXPORT_INTEROP resizeOk=True sized=True" \
     "DN2CPP_EXPORT_SIGNAL awaited=True" \
     "DN2CPP_EXPORT_CLOCK ticks=True elapsed=True" \
+    "DN2CPP_EXPORT_CSPRNG publicEntropy=True" \
     "DN2CPP_EXPORT_DONE"; do
     n="$(grep -cF "$marker" "$SIM_LOG" || true)"
     [ "$n" -eq 1 ] || { echo "FAIL: marker \"$marker\" appeared $n times (expected exactly 1)" >&2; exit 1; }
