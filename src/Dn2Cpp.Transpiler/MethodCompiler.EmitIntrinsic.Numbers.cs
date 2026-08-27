@@ -6,26 +6,13 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
-    /// <summary>The two CompareTo siblings on every scalar primitive. The typed form
-    /// compares the value directly; the object form first implements IComparable's
-    /// null / exact-box-type contract. Keeping both here makes the intrinsic-type and
-    /// selectively intercepted primitive families answer from one shape table.</summary>
-    /// <summary>
-    /// <c>Int32.Equals(object)</c> and its primitive siblings: true only when the argument is
-    /// a box of the very same primitive type whose payload equals the receiver (the real
-    /// <c>Equals(object)</c> semantics — no cross-type numeric comparison). Reached by
-    /// UnitGenerator-style value-object wrappers whose <c>Equals(object)</c> forwards
-    /// to the wrapped primitive's.
-    /// </summary>
+    /// <summary><c>Int32.Equals(object)</c> and its non-floating primitive value-type
+    /// siblings: true only for an equal payload boxed as the receiver's exact type.</summary>
     private bool TryEmitPrimitiveEqualsObject(string declType, MethodSignature<TypeDesc> sig)
     {
-        if (Compilation.WellKnownPrimitive(declType) is not
-                { Kind: TypeKind.Primitive, Primitive: var code } prim
-            || code is PrimitiveTypeCode.String or PrimitiveTypeCode.Object
-                or PrimitiveTypeCode.Single or PrimitiveTypeCode.Double
-            || !sig.Header.IsInstance
-            || sig.ParameterTypes.Length != 1
-            || !sig.ParameterTypes[0].IsObject)
+        if (!CoreIntrinsics.LoweredPrimitiveEqualsObject(declType, "Equals", () => sig)
+            || Compilation.WellKnownPrimitive(declType) is not
+                { Kind: TypeKind.Primitive, Primitive: var code } prim)
             return false;
 
         string compareCt = code switch
@@ -51,6 +38,8 @@ internal sealed partial class MethodCompiler
         return true;
     }
 
+    /// <summary>The two <c>CompareTo</c> siblings on every scalar primitive. The
+    /// object form adds null and exact-box-type checks around the typed order.</summary>
     private bool TryEmitPrimitiveCompareTo(string declType, MethodSignature<TypeDesc> sig)
     {
         if (Compilation.WellKnownPrimitive(declType) is not
