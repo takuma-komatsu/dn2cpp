@@ -208,11 +208,17 @@ the other lanes from the rendered notes and checksum claims.
     --publish --dry-run
 ```
 
-Require all uploaded lanes to match GitHub's served digest and the published
-metadata in the draft. Read `artifacts/release/RELEASE-NOTES.md`; require the
-correct previous-release heading, all four lane sections, and no `@@` or
-`<!--` markers. A leftover handoff must fail this stage rather than being
-silently published.
+Require all uploaded lanes to match GitHub's served digest and the public
+provenance values still present in the draft. Metadata-only values remain
+part of the required schema; applicable artifact, checksum, and cross-lane
+validation remains in force, but schema-only records are not reconstructed from
+the public body. Read
+`artifacts/release/RELEASE-NOTES.md`; require the correct previous-release
+heading, exactly the four headings overview, changes, download, and Provenance,
+no asset table or trailing blockquote, exactly two fixed guide links (the guide
+root and its download-verification section), and no `@@` or `<!--` markers. The
+Windows-missing warning from the Mac draft must be absent. A leftover handoff
+must fail this stage rather than being silently published.
 
 ## Phase C-6/D: publish and verify
 
@@ -240,9 +246,10 @@ gh release view "$V" --repo "$REPO" --json body --jq .body
 
 Require `isDraft: false`, the fork commit as `targetCommitish`, exactly five
 assets (two editors, two templates, and `SHA256SUMS.txt`), no internal handoff,
-and no `@@` or `<!--` markers. Check every guide URL in the body at the fixed
-dn2cpp commit, then download and verify the release once if the host is also
-the consumer.
+and no `@@` or `<!--` markers. Check both guide URLs in the body at the fixed
+dn2cpp commit, including that the verification fragment names an existing
+heading, then download and verify the release once if the host is also the
+consumer.
 
 ## Stop conditions
 

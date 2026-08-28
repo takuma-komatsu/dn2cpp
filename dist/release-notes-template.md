@@ -1,89 +1,32 @@
 ## 概要
 
-本リリースは、Godot @@BASE_VER@@ のエディタに **dn2cpp .NET エクスポートバックエンド**を組み込んだものです。C# ゲームの IL を C++ にトランスパイルし、エンジンが直接ロードするネイティブライブラリへビルドします。したがってエクスポートされたゲームは **.NET ランタイムを同梱しません**。エディタにはこのバックエンドに加え、ヘッドレスエクスポートでエクスポートプラグインのエラーを失敗として扱う変更があります。このエラー判定はすべてのエクスポートバックエンドに適用されます。プロジェクトと C# ソースコードは本家（upstream）との互換性を維持しています。
-
-<!--lane:web-->**upstream の Godot は C# ゲームを Web にエクスポートできません**。本エディタではエクスポートできます。
-
-トランスパイラと C++ ランタイムは別プロジェクトとして公開されています: <https://github.com/takuma-komatsu/dn2cpp>
+- Godot @@BASE_VER@@ のフォークです
+- dn2cpp は Unity IL2CPP 相当の機能を提供する独立したオープンソースプロジェクトで、C# ゲームをネイティブコードへ変換します。詳細とバグ報告は <https://github.com/takuma-komatsu/dn2cpp> を参照してください
+<!--lane:web-->- upstream の Godot では対応していない C# ゲームの Web エクスポートにも対応しています
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークにおいて macOS deployment target の指定を反映するように修正しました
-- [PR #76](https://github.com/takuma-komatsu/dn2cpp/pull/76) で、ValueTask / ValueTask<T> における IValueTaskSource のステータス管理（IsFaulted / IsCanceled）およびトークンの適切な検証に対応しました
-- [PR #74](https://github.com/takuma-komatsu/dn2cpp/pull/74) で、Web (Wasm) プラットフォームにおける乱数生成（RNG）の Apple インポートを修正しました
-- [PR #73](https://github.com/takuma-komatsu/dn2cpp/pull/73) および [PR #67](https://github.com/takuma-komatsu/dn2cpp/pull/67) で、ジェネリック Enum.Parse<T> / Enum.TryParse<T> における ReadOnlySpan<char> 引数の処理を実装しました
-- [PR #72](https://github.com/takuma-komatsu/dn2cpp/pull/72) および [PR #65](https://github.com/takuma-komatsu/dn2cpp/pull/65) で、整数プリミティブ型の Equals(object) 組み込みを追加し、オブジェクト比較のルーティングを整合させました
-- [PR #71](https://github.com/takuma-komatsu/dn2cpp/pull/71) および [PR #64](https://github.com/takuma-komatsu/dn2cpp/pull/64) で、double / float に対する IBinaryFloatParseAndFormatInfo static メソッドのローワリングに対応しました
-- [PR #70](https://github.com/takuma-komatsu/dn2cpp/pull/70) で、検証ゲートにおける Godot fork キャッシュと成果物の鮮度検証を強化しました
-- [PR #69](https://github.com/takuma-komatsu/dn2cpp/pull/69) および [PR #68](https://github.com/takuma-komatsu/dn2cpp/pull/68) で、Windows 上での R3 実行および async void ゲートの完了待機を安定化させました
-- [PR #62](https://github.com/takuma-komatsu/dn2cpp/pull/62) で、ToString() の組み込みルーティング拡充（ValueTask、Vector、TextInfo、EventSource、リフレクションメタデータ等）、補間文字列ハンドラーの保持、固定長 Vector.CopyTo、CancellationToken の値ハッシュ、IPv6 スコープ対応、macOS デプロイメントターゲットの整合を行いました
+- Godot フォークで macOS deployment target の設定がビルドへ反映されるようにしました
+- [PR #76](https://github.com/takuma-komatsu/dn2cpp/pull/76) で、`ValueTask` / `ValueTask<T>` の `IValueTaskSource` ステータス管理とトークン検証を修正しました
+- [PR #74](https://github.com/takuma-komatsu/dn2cpp/pull/74) で、Web の乱数生成が誤って Apple 向け実装を参照する問題を修正しました
+- [PR #73](https://github.com/takuma-komatsu/dn2cpp/pull/73)、[PR #67](https://github.com/takuma-komatsu/dn2cpp/pull/67)、[PR #71](https://github.com/takuma-komatsu/dn2cpp/pull/71)、[PR #64](https://github.com/takuma-komatsu/dn2cpp/pull/64) で、`Enum.Parse` / `Enum.TryParse` と浮動小数点数の Parse 系 API の対応を拡充しました
+- [PR #72](https://github.com/takuma-komatsu/dn2cpp/pull/72)、[PR #65](https://github.com/takuma-komatsu/dn2cpp/pull/65)、[PR #62](https://github.com/takuma-komatsu/dn2cpp/pull/62) で、プリミティブ型の比較、`ToString`、補間文字列、`Vector`、`CancellationToken` などの BCL 互換性を改善しました
 
 全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/4be3443bac325eb54b7e488243cbb635b01013d1...170be524673898a3e7efcbef70a931a742ea3b2f> を参照してください。
 
-## アセット
+## ダウンロード
 
-| ファイル | 内容 | SHA-256 |
-|---|---|---|
-<!--lane:editor-macos-->| `@@ASSET_EDITOR_MACOS@@` | macOS エディタ（ad-hoc 署名） | `@@ASSET_EDITOR_MACOS_SHA256@@` |
-<!--lane:editor-windows-->| `@@ASSET_EDITOR_WINDOWS@@` | Windows エディタ（x86_64、未署名） | `@@ASSET_EDITOR_WINDOWS_SHA256@@` |
-<!--lane:web-->| `@@ASSET_WEB@@` | Web エクスポートテンプレート（Web に必須。後述） | `@@ASSET_WEB_SHA256@@` |
-<!--lane:macos-->| `@@ASSET_MACOS@@` | macOS arm64 エクスポートテンプレート（macOS に必須。後述） | `@@ASSET_MACOS_SHA256@@` |
-| `SHA256SUMS.txt` | 上記アセットのハッシュ（`shasum` 形式） | — |
+配布ファイルは、このページ下部の **Assets** 一覧からダウンロードしてください。`SHA256SUMS.txt` と照合する手順は[ダウンロードファイルの検証](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#ダウンロードファイルの検証)にあります。
 
 <!--lane:!editor-windows-->このリリースには **Windows エディタが含まれていません**。ホストプラットフォームとしてはバックエンド自体が対応しています。
 
-展開する前に、ダウンロードしたファイルを検証してください:
-
-```
-shasum -a 256 -c SHA256SUMS.txt
-```
-
-<!--lane:editor-windows-->
-Windows には `shasum` がないため、PowerShell で次のコマンドを実行してください:
-
-```
-Get-FileHash @@ASSET_EDITOR_WINDOWS@@ -Algorithm SHA256
-```
-
-出力は大文字の 16 進表記です。`SHA256SUMS.txt` の該当行とは大文字小文字を無視して照合してください。
-<!--/lane-->
-
-## エディタ利用ガイド
-
-インストール手順・動作要件・各プラットフォームへのエクスポート手順・トラブルシューティング・既知の制限・ライセンスは、リリース間で変わらないため**エディタ利用ガイド**にまとめてあります。以下のリンクは本リリースを切った時点のコミットに固定してあります。
-
-- [インストール](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#インストール)
-- [動作要件](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#動作要件)
-- [dn2cpp バックエンドの使い方](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#dn2cpp-バックエンドの使い方)
-- [エクスポートテンプレート](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#エクスポートテンプレート)
-- [Windows へのエクスポート](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#windows-へのエクスポート)
-- [macOS へのエクスポート](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#macos-へのエクスポート)
-- [Web へのエクスポート](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#web-へのエクスポート)
-- [Android へのエクスポート](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#android-へのエクスポート)
-- [トラブルシューティング](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#トラブルシューティング)
-- [既知の制限](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#既知の制限)
-- [ライセンス](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#ライセンス)
+インストール、動作要件、エクスポート手順、トラブルシューティング、既知の制限、ライセンスは[エディタ利用ガイド](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md)を参照してください。リンク先は本リリースを切った時点のコミットに固定されています。
 
 ## Provenance
 
 | | |
 |---|---|
-| fork のコミット | `@@FORK_COMMIT@@` |
-| upstream ベース | `@@BASE_PIN@@`（Godot @@BASE_VER@@） |
 | エンジンの provenance | `@@ENGINE_PROVENANCE@@` |
-| .NET SDK（対象フレームワーク） | `@@CORELIB_FRAMEWORK@@` |
 | dn2cpp のコミット | `@@DN2CPP_COMMIT@@` |
-<!--lane:editor-macos-->| macOS エディタの `--version` | `@@EDITOR_VERSION_STRING_MACOS@@` |
-<!--lane:editor-macos-->| macOS エディタのツールチェーン content hash | `@@TOOLCHAIN_CONTENT_HASH_MACOS@@` |
-<!--lane:editor-macos-->| macOS エディタの prebuilt ランタイム軸 | `@@PREBUILT_AXES_MACOS@@` |
-<!--lane:editor-macos-->| macOS エディタの同梱ビルドツール | cmake `@@CMAKE_VERSION_MACOS@@` + ninja `@@NINJA_VERSION_MACOS@@` |
-<!--lane:editor-macos-->| macOS エディタ同梱 Emscripten の Node.js | `@@NODE_VERSION_MACOS@@` |
-<!--lane:editor-windows-->| Windows エディタの `--version` | `@@EDITOR_VERSION_STRING_WINDOWS@@` |
-<!--lane:editor-windows-->| Windows エディタのツールチェーン content hash | `@@TOOLCHAIN_CONTENT_HASH_WINDOWS@@` |
-<!--lane:editor-windows-->| Windows エディタの prebuilt ランタイム軸 | `@@PREBUILT_AXES_WINDOWS@@` |
-<!--lane:editor-windows-->| Windows エディタの同梱ビルドツール | cmake `@@CMAKE_VERSION_WINDOWS@@` + ninja `@@NINJA_VERSION_WINDOWS@@` |
-<!--lane:editor-windows-->| Windows エディタ同梱 Emscripten の Node.js | `@@NODE_VERSION_WINDOWS@@` |
 <!--lane:web-->| Web テンプレートのビルドに使用 | emcc `@@EMCC@@`（Emscripten `@@EMSDK_VERSION@@`） |
 <!--lane:macos-->| macOS テンプレートの抽出元 | upstream `macos.zip`、sha256 `@@UPSTREAM_MACOS_SHA256@@` |
-
-> エディタの `--version` 文字列が示すのは、そのバイナリが**リンクされた**ときのコミットです。エンジンのソースに変更が無いツリーは再リンクされないため、このコミットはタグのコミットより古いことがあります。どちらも同じバイナリを指しています。バグ報告は <https://github.com/takuma-komatsu/dn2cpp/issues> へ、この文字列をそのまま貼り付けてください — エンジン（フォーク）側の問題もそちらで受け付けます。フォークのリポジトリは issue を無効にしてあります。エディタはそれぞれ別のホストでパッケージされるので、エディタ名の付いた行はホストごとの値です。`fork のコミット` と `dn2cpp のコミット` は両エディタ共通で、食い違ったままリリースを作ることはできません。

@@ -441,6 +441,16 @@ unbound=$(comm -23 <(printf '%s\n' "$used") <(printf '%s\n' "$bound") | tr '\n' 
 eq "$TPL placeholders no lane row in $RG binds" "none" "${unbound:-none}" \
    "add the binding to that lane's row, or keep the line out of a cut without the lane"
 
+# Public notes intentionally expose only the values a downloader needs. Keep
+# this set narrower than the metadata schema: the full schema stays required,
+# and applicable artifact, checksum, and cross-lane validation still runs
+# without every recorded value becoming release prose.
+public_placeholders=$(printf '%s\n' \
+    BASE_VER DOCS_REF DN2CPP_COMMIT EMCC EMSDK_VERSION ENGINE_PROVENANCE PREV_VERSION \
+    UPSTREAM_MACOS_SHA256 | sort -u)
+set_eq "$TPL public placeholder contract" "the template" "$used" \
+       "the simplified notes" "$public_placeholders"
+
 # A marker is consumed only at the start of a line; one further in survives the
 # render into the published notes, which is exactly what $RG's own stray-comment
 # check refuses — but it sees only the lanes that cut is publishing.
@@ -450,7 +460,28 @@ eq "$TPL HTML comments that are not a line-initial lane marker" "none" "${stray_
 
 tpl_lanes=$(grep -oE '<!--lane:!?[a-z0-9-]+-->' "$TPL" | sed -E 's/^<!--lane:!?//; s/-->$//' | sort -u)
 known_lanes=$(sed -nE 's/^LANES_KNOWN="(.*)"$/\1/p' "$RG" | tr ' ' '\n' | sort -u)
-set_eq "$TPL lane markers vs LANES_KNOWN" "the template" "$tpl_lanes" "$RG" "$known_lanes"
+unknown_lanes=$(comm -23 <(printf '%s\n' "$tpl_lanes") <(printf '%s\n' "$known_lanes") | tr '\n' ' ')
+eq "$TPL lane markers absent from LANES_KNOWN" "none" "${unknown_lanes:-none}"
+public_lanes=$(printf '%s\n' editor-windows macos web | sort -u)
+set_eq "$TPL lane markers used by the simplified notes" "the template" "$tpl_lanes" \
+       "the public contract" "$public_lanes"
+
+tpl_h2_all=$(sed -n 's/^## //p' "$TPL" | sort)
+tpl_h2=$(printf '%s\n' "$tpl_h2_all" | sort -u)
+public_h2=$(printf '%s\n' \
+    'Provenance' \
+    'ダウンロード' \
+    '前回リリース（@@PREV_VERSION@@）からの変更' \
+    '概要' | sort -u)
+set_eq "$TPL public section contract" "the template" "$tpl_h2" \
+       "the simplified notes" "$public_h2"
+duplicate_h2=$(printf '%s\n' "$tpl_h2_all" | uniq -d | tr '\n' ' ')
+eq "$TPL duplicate level-two headings" "none" "${duplicate_h2:-none}"
+
+asset_table=$(grep -nF '| ファイル | 内容 | SHA-256 |' "$TPL" | tr '\n' ' ' || true)
+eq "$TPL legacy asset table" "none" "${asset_table:-none}"
+blockquotes=$(grep -n '^>' "$TPL" | tr '\n' ' ' || true)
+eq "$TPL trailing explanatory blockquote" "none" "${blockquotes:-none}"
 
 # The notes carry only what changes per release; the standing text lives in a
 # guide the notes link at a pinned sha. Three ways that split rots, none of them
@@ -472,6 +503,18 @@ for g in $tpl_guide; do
 done
 rg_guide=$(sed -nE 's/^GUIDE=["'"'"']?([^"'"'"']*)["'"'"']?$/\1/p' "$RG" | sort -u)
 set_eq "$TPL guide links vs $RG's GUIDE=" "linked by the template" "$tpl_guide" "GUIDE= in $RG" "$rg_guide"
+
+guide_urls=$(grep -oE 'https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE\.ja\.md(#[^ )]+)?' "$TPL" \
+             | sort -u || true)
+expected_guide_urls=$(printf '%s\n' \
+    'https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md' \
+    'https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md#ダウンロードファイルの検証' \
+    | sort -u)
+set_eq "$TPL fixed guide URLs" "the template" "$guide_urls" \
+       "the simplified notes" "$expected_guide_urls"
+guide_url_count=$(grep -oE 'https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE\.ja\.md(#[^ )]+)?' "$TPL" \
+                  | wc -l | tr -d ' ')
+eq "$TPL fixed guide URL occurrences" "2" "$guide_url_count"
 
 # (B) and (C) read the linked files, so they have a subject only once (A) holds.
 if [ -n "${guide_files// }" ]; then
@@ -498,7 +541,6 @@ if [ -n "${guide_files// }" ]; then
     # (C) The one way the split itself rots is a section written on both sides and
     # corrected on one. Sharing a `## ` heading is that state, whichever copy is
     # stale, so the two top-level heading sets must be disjoint.
-    tpl_h2=$(sed -n 's/^## //p' "$TPL" | sort -u)
     guide_h2=$(sed -n 's/^## //p' $guide_files | sort -u)
     shared_h2=$(comm -12 <(printf '%s\n' "$tpl_h2") <(printf '%s\n' "$guide_h2") | tr '\n' ' ')
     eq "sections written in both $TPL and the guide" "none" "${shared_h2:-none}" \
@@ -535,10 +577,11 @@ for spec in "$EMSDK_PIN:2" "$NODE_PIN:2" "$BUILDTOOLS_PIN:3"; do
 done
 
 # A version is written once. A doc that spells it holds a second copy with
-# nothing to reconcile it against; the release notes take each from the release
-# metadata as a placeholder instead. README.md's `cmake ≥ 3.20` is a different
-# claim and stays legal — it is the floor the REPOSITORY's own build needs, not
-# the exact version a bundle carries.
+# nothing to reconcile it against. The one bundled-tool version retained in the
+# public notes is derived from metadata; versions omitted from the notes remain
+# metadata-only. README.md's `cmake ≥ 3.20` is a different claim and stays
+# legal — it is the floor the REPOSITORY's own build needs, not the exact version
+# a bundle carries.
 #
 # dist/licenses/ is deliberately outside the doc set: a vendored licence records
 # the tag it was fetched at, and that provenance is the one place the version
@@ -554,7 +597,7 @@ for spec in "$EMSDK_PIN:version:Emscripten:EMSDK_VERSION" \
     spelled=$(grep -lF "$ver" docs/*.md README.md CLAUDE.md AGENTS.md dist/*.md 2>/dev/null \
               | tr '\n' ' ' || true)
     eq "prose spelling the pinned $what version instead of deriving it" "none" "${spelled:-none}" \
-       "$pin is the single source; the notes bind @@$ph@@ from the lane metadata"
+       "$pin and lane metadata are the single source; only retained public provenance is bound into the notes"
 done
 
 # ninja's release archives hold the executable and nothing else, so the licence

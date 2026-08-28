@@ -13,7 +13,7 @@
 # `gate_skip` and deliberately takes no result cache — the same reasoning as
 # gates/build-and-run-doc-claims.sh, whose shape this copies.
 #
-# Three fixtures, because the subjects ask different questions:
+# Four fixtures, because the subjects ask different questions:
 #   * a throwaway git repository for `dn2cpp_commit_pin_resolve`, which asks
 #     about the tree it is run in. Asking it about THIS tree would mean dirtying
 #     the tree the rest of the suite is hashing, and would answer differently
@@ -23,11 +23,13 @@
 #     ambient, which is what lets a fixture supply both sides.
 #   * a synthetic artifacts directory of `<lane>.metadata` + empty assets for
 #     dist/release-github.sh, whose agreement checks read nothing else.
+#   * a complete synthetic release with stubbed git and gh views, which reaches
+#     uploaded-lane verification and the notes renderer without network access.
 #
-# The `gh` stub is part of the second fixture, not a convenience: section 1 of
-# the release script demands an authenticated gh, and every arm below dies in
-# sections 2-3, before a release is read. A stub that refuses everything else
-# keeps that true — an arm that ever ran past those sections fails loudly here
+# The first `gh` stub belongs to the cross-lane fixture, not the operator's
+# environment: section 1 of the release script demands an authenticated gh, and
+# every arm in section 4 dies before a release is read. A stub that refuses
+# everything else keeps that true — an arm that runs too far fails loudly here
 # instead of reaching GitHub from a gate.
 source "$(dirname "$0")/_common.sh"
 
@@ -62,8 +64,8 @@ refused() {
     fi
 }
 
-# ── 1/4 the pin resolver's arms ──────────────────────────────────────────────
-echo "== 1/4 dn2cpp_commit_pin_resolve — against a throwaway repository =="
+# ── 1/5 the pin resolver's arms ──────────────────────────────────────────────
+echo "== 1/5 dn2cpp_commit_pin_resolve — against a throwaway repository =="
 FIX="$WORK/pinrepo"
 mkdir -p "$FIX/src" "$FIX/runtime" "$FIX/third_party"
 # src_tree_hash enumerates exactly these three, and a git checkout is its own
@@ -148,13 +150,13 @@ refused "an untracked file, in a repo configured to hide untracked files" \
 fixture_git config --unset status.showUntrackedFiles
 rm -f "$FIX/src/stray.txt"
 
-# ── 2/4 the pinned bundle's own CLI ──────────────────────────────────────────
+# ── 2/5 the pinned bundle's own CLI ──────────────────────────────────────────
 # The tree being the pinned commit says nothing about a binary built elsewhere,
 # and under --dn2cpp-bin the stamp beside it is the only witness. Driven against
 # a fixture rather than the real artifacts/: asking about the real one needs this
 # tree to be clean AND at the pin, which a suite run cannot promise — and an
 # assertion that runs only when it happens to be both is the fail-open shape.
-echo "== 2/4 dn2cpp_pin_bin_assert — a named binary's stamp =="
+echo "== 2/5 dn2cpp_pin_bin_assert — a named binary's stamp =="
 BINFIX="$WORK/bin"
 mkdir -p "$BINFIX"
 : > "$BINFIX/dn2cpp"
@@ -193,12 +195,12 @@ else
     bad "dist/package-toolchain.sh no longer calls dn2cpp_pin_bin_assert on its --dn2cpp-bin — a pinned bundle would carry an unvouched-for CLI"
 fi
 
-# ── 3/4 the editor packagers demand a pin at all ─────────────────────────────
+# ── 3/5 the editor packagers demand a pin at all ─────────────────────────────
 # The arm that makes the rest reachable: without the flag there is no pin to
 # verify, and the metadata falls back to whatever HEAD said. Both scripts exit
 # on it before touching a fork, a host check or a file, so this costs nothing
 # and runs on either host.
-echo "== 3/4 the editor packagers' required --dn2cpp-commit =="
+echo "== 3/5 the editor packagers' required --dn2cpp-commit =="
 V=4.7.1-dn2cpp.3.1
 for lane in macos windows; do
     out="$(bash "dist/package-editor-$lane.sh" --version "$V" 2>&1)" && rc=0 || rc=$?
@@ -210,8 +212,8 @@ for lane in macos windows; do
         "--dn2cpp-commit is required" "$hint"
 done
 
-# ── 4/4 dist/release-github.sh's cross-lane agreement ────────────────────────
-echo "== 4/4 dist/release-github.sh — one value per release, across the lanes =="
+# ── 4/5 dist/release-github.sh's cross-lane agreement ────────────────────────
+echo "== 4/5 dist/release-github.sh — one value per release, across the lanes =="
 STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/gh" <<'STUBEOF'
@@ -251,7 +253,7 @@ for lane in editor-macos editor-windows web macos; do
                 printf 'toolchain_content_hash=stubhash\ncorelib_framework=10.0.0\n'
                 printf 'prebuilt_axes=host\ncmake_version=0.0.0\nninja_version=0.0.0\nnode_version=0.0.0\n' ;;
             web)
-                printf 'engine_provenance=stub engine\nemcc=0.0.0\nemsdk_version=0.0.0\n' ;;
+                printf 'engine_provenance=stub engine\nemcc=stub emcc 6.0.5-git (abcdef)\nemsdk_version=6.0.5\n' ;;
             macos)
                 printf 'base_pin=%s\nupstream_template=stubsha\n' "$BASE_SHA" ;;
         esac
@@ -315,6 +317,222 @@ meta_set "$REL/editor-windows.metadata" corelib_framework 9.9.9
 rel_try
 refused "two .NET SDKs" "$REL_RC" "$REL_OUT" \
     "disagree on corelib_framework" "re-package the stale one"
+
+# ── 5/5 uploaded lanes and the simplified public notes ───────────────────────
+# This fixture reaches the read-only GitHub view and renderer. git supplies the
+# two repository identities the release script asks about; gh serves one draft,
+# its asset digests and its body. Any command outside that read-only vocabulary
+# is a gate failure, so --dry-run cannot accidentally mutate external state.
+echo "== 5/5 dist/release-github.sh — uploaded lanes and public-note bindings =="
+FULL_STUB="$WORK/full-stub"
+FULL_FORK_ROOT="$WORK/full-fork-root"
+FULL_FORK="$WORK/full-fork"
+FULL_BODY="$WORK/release-body.md"
+mkdir -p "$FULL_STUB" "$FULL_FORK_ROOT" "$FULL_FORK/modules/mono/mono_gd"
+: > "$FULL_FORK/modules/mono/mono_gd/gd_mono.cpp"
+printf '%s\n' "$FULL_FORK" > "$FULL_FORK_ROOT/clone.txt"
+
+cat > "$FULL_STUB/git" <<'GITEOF'
+#!/bin/sh
+repo=dn2cpp
+if [ "$1" = -C ]; then
+    repo="$2"
+    shift 2
+fi
+case "$1" in
+    rev-parse)
+        case "$*" in
+            *refs/tags/*) exit 1 ;;
+            *--short*)
+                if [ "$repo" = "$TEST_FORK_DIR" ]; then
+                    printf '%.7s\n' "$TEST_FORK_SHA"
+                else
+                    printf '%.7s\n' "$TEST_DN2_SHA"
+                fi ;;
+            *)
+                if [ "$repo" = "$TEST_FORK_DIR" ]; then
+                    printf '%s\n' "$TEST_FORK_SHA"
+                else
+                    printf '%s\n' "$TEST_DN2_SHA"
+                fi ;;
+        esac ;;
+    status) exit 0 ;;
+    merge-base) exit 0 ;;
+    ls-remote)
+        case " $* " in
+            *' --tags '*) exit 0 ;;
+            *' refs/heads/dn2cpp/main '*)
+                printf '%s\trefs/heads/dn2cpp/main\n' "$TEST_FORK_SHA" ;;
+            *' refs/heads/main '*)
+                printf '%s\trefs/heads/main\n' "$TEST_DN2_SHA" ;;
+            *)
+                echo "stub git: unsupported ls-remote: $*" >&2
+                exit 1 ;;
+        esac ;;
+    *)
+        echo "stub git: this dry-run must not execute: git $*" >&2
+        exit 1 ;;
+esac
+GITEOF
+
+cat > "$FULL_STUB/gh" <<'GHEOF'
+#!/bin/sh
+if [ "$1 $2" = "auth status" ]; then
+    echo "stub gh: authenticated"
+    exit 0
+fi
+if [ "$1 $2" != "release view" ]; then
+    echo "stub gh: this dry-run must only view the release; got: gh $*" >&2
+    exit 1
+fi
+case " $* " in
+    *' --json isDraft '*) printf 'true\n' ;;
+    *' --json assets '*)
+        while IFS= read -r row; do
+            hash="${row%%  *}"
+            name="${row#*  }"
+            if [ "${TEST_BAD_DIGEST_ASSET:-}" = "$name" ]; then
+                hash=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            fi
+            printf '%s\tsha256:%s\n' "$name" "$hash"
+        done < "$TEST_RELEASE_DIR/SHA256SUMS.txt" ;;
+    *' --json body '*)
+        cat "$TEST_RELEASE_BODY" ;;
+    *) exit 0 ;;
+esac
+GHEOF
+chmod +x "$FULL_STUB/git" "$FULL_STUB/gh"
+
+public_body_write() {
+    {
+        printf 'engine provenance: stub engine\n'
+        printf 'dn2cpp commit: %s\n' "$DN2_SHA"
+        printf 'Web emcc: stub emcc 6.0.5-git (abcdef)\n'
+        printf 'Web Emscripten: 6.0.5\n'
+        printf 'macOS upstream template sha256: stubsha\n'
+    } > "$FULL_BODY"
+}
+
+public_body_drop() {
+    grep -vF "$1" "$FULL_BODY" > "$FULL_BODY.new" || true
+    mv -f "$FULL_BODY.new" "$FULL_BODY"
+}
+
+full_reset() {
+    rel_reset
+    # macos is an uploaded-only lane: its checksum row and metadata remain here,
+    # but only GitHub's digest can speak for the absent asset bytes. Web stays
+    # local so the same fixture also exercises shasum and lane_zip validation.
+    rm -f "$REL/$(lane_asset_name macos)"
+    public_body_write
+    FULL_BAD_DIGEST=
+}
+
+full_try() {
+    FULL_OUT="$(TEST_FORK_DIR="$FULL_FORK" TEST_FORK_SHA="$FORK_SHA" \
+        TEST_DN2_SHA="$DN2_SHA" TEST_RELEASE_DIR="$REL" \
+        TEST_RELEASE_BODY="$FULL_BODY" TEST_BAD_DIGEST_ASSET="$FULL_BAD_DIGEST" \
+        DN2CPP_GODOT_FORK_ROOT="$FULL_FORK_ROOT" \
+        DN2CPP_GODOT_FORK_CLONE="$FULL_FORK" PATH="$FULL_STUB:$PATH" \
+        bash dist/release-github.sh --dry-run --version "$V" \
+        --prev-version 4.7.1-dn2cpp.3 --out "$REL" \
+        --uploaded-lane editor-macos --uploaded-lane editor-windows \
+        --uploaded-lane web --uploaded-lane macos 2>&1)" \
+        && FULL_RC=0 || FULL_RC=$?
+}
+
+# Values retained in metadata for packaging and tag integrity are intentionally
+# absent from the public body. Make the host-local ones differ as well: if the
+# uploaded check regresses to all required keys, this positive control fails.
+full_reset
+meta_set "$REL/editor-macos.metadata" editor_version_string macos-editor-version
+meta_set "$REL/editor-windows.metadata" editor_version_string windows-editor-version
+meta_set "$REL/editor-macos.metadata" toolchain_content_hash macos-toolchain-hash
+meta_set "$REL/editor-windows.metadata" toolchain_content_hash windows-toolchain-hash
+meta_set "$REL/editor-macos.metadata" prebuilt_axes macos-axes
+meta_set "$REL/editor-windows.metadata" prebuilt_axes windows-axes
+full_try
+if [ "$FULL_RC" -eq 0 ] && [[ "$FULL_OUT" == *"every precondition passed"* ]] \
+        && [[ "$FULL_OUT" == *"3 row(s) checked against the files here, 1 against the release's digests"* ]]; then
+    ok "an uploaded draft regenerates notes without body witnesses for internal metadata"
+else
+    bad "the simplified uploaded draft did not regenerate: rc=$FULL_RC"
+    printf '%s\n' "$FULL_OUT" | sed 's/^/        | /' >&2
+fi
+
+rendered="$REL/RELEASE-NOTES.md"
+render_faults=
+[ -f "$rendered" ] || render_faults="$render_faults missing output"
+if [ -f "$rendered" ]; then
+    grep -nE '@@|<!--|^## アセット$|^>' "$rendered" > "$WORK/render-faults" || true
+    [ ! -s "$WORK/render-faults" ] || render_faults="$render_faults $(tr '\n' ' ' < "$WORK/render-faults")"
+fi
+if [ -z "$render_faults" ]; then
+    ok "rendered notes contain no placeholders, lane markers, asset table or trailing blockquote"
+else
+    bad "rendered notes retain removed or unrendered material:$render_faults"
+fi
+
+# Every value still published has the existing body as its uploaded-lane
+# witness. Web provenance is one public item backed by two scalar metadata
+# values, and both must remain visible.
+for spec in \
+    "engine provenance:stub engine:engine_provenance=stub engine" \
+    "dn2cpp commit:$DN2_SHA:dn2cpp_commit=$DN2_SHA" \
+    "Web emcc:stub emcc 6.0.5-git (abcdef):emcc=stub emcc 6.0.5-git (abcdef)" \
+    "macOS template:stubsha:upstream_template=stubsha"; do
+    label="${spec%%:*}"
+    rest="${spec#*:}"
+    value="${rest%%:*}"
+    needle="${rest#*:}"
+    full_reset
+    public_body_drop "$value"
+    full_try
+    refused "$label missing from an uploaded release body" "$FULL_RC" "$FULL_OUT" "$needle"
+done
+
+full_reset
+meta_set "$REL/web.metadata" emsdk_version 9.9.9
+full_try
+refused "an uploaded Web lane whose Emscripten value differs" "$FULL_RC" "$FULL_OUT" \
+    "emsdk_version=9.9.9"
+
+full_reset
+FULL_BAD_DIGEST="$(lane_asset_name macos)"
+full_try
+refused "an uploaded asset whose GitHub digest differs" "$FULL_RC" "$FULL_OUT" \
+    "release $V serves '$(lane_asset_name macos)' as sha256:ffffffff" \
+    "macos.metadata says asset_sha256="
+
+# With the remote digest changed to the same value as metadata, the byte witness
+# passes and the independent checksum-file row must be what refuses the lane.
+full_reset
+remote_wrong=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+meta_set "$REL/macos.metadata" asset_sha256 "$remote_wrong"
+FULL_BAD_DIGEST="$(lane_asset_name macos)"
+full_try
+refused "an uploaded-only lane whose checksum row differs from metadata" \
+    "$FULL_RC" "$FULL_OUT" \
+    "SHA256SUMS.txt gives '$(lane_asset_name macos)' as" \
+    "macos.metadata says $remote_wrong"
+
+full_reset
+web_asset="$(lane_asset_name web)"
+web_sha="$(awk -v n="$web_asset" '$2 == n { print $1 }' "$REL/SHA256SUMS.txt")"
+wrong_sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+awk -v n="$web_asset" -v h="$wrong_sha" '$2 == n { print h "  " n; next } { print }' \
+    "$REL/SHA256SUMS.txt" > "$REL/SHA256SUMS.txt.new"
+mv -f "$REL/SHA256SUMS.txt.new" "$REL/SHA256SUMS.txt"
+full_try
+refused "SHA256SUMS.txt whose hash differs from a local asset" "$FULL_RC" "$FULL_OUT" \
+    "SHA256SUMS.txt does not describe the files in $REL" "FAILED"
+[ -n "$web_sha" ] || bad "the Web fixture had no checksum row"
+
+full_reset
+meta_set "$REL/web.metadata" asset_sha256 "$wrong_sha"
+full_try
+refused "metadata whose SHA-256 differs from its asset" "$FULL_RC" "$FULL_OUT" \
+    "web.metadata says asset_sha256=$wrong_sha" "hashes to"
 
 echo
 if [ "$FAILS" -ne 0 ]; then

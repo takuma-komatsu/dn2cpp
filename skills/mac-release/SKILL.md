@@ -158,12 +158,15 @@ Run the dry run and inspect the rendered notes:
 ~~~
 
 Read artifacts/release/RELEASE-NOTES.md. Require no @@ placeholders or HTML
-comments, the three active lanes editor-macos, web, and macos, and the correct
-previous-release heading. If this fails, rerun the packager that produced the
-odd metadata without changing the committed tree. If the committed source or
-template needs correction, restart Phase 0: commit and push it, reconfirm the
-merge gate for the new HEAD, rerun Phase A, and then repeat the dry run. Do not
-edit rendered notes to bypass a check.
+comments; exactly the four headings overview, changes, download, and
+Provenance; the correct previous-release heading; no asset table or trailing
+blockquote; and exactly two fixed guide links (the guide root and its
+download-verification section). The Mac-only draft must retain the short
+warning that no Windows editor is included. If this fails, rerun the packager
+that produced the odd metadata without changing the committed tree. If the
+committed source or template needs correction, restart Phase 0: commit and push
+it, reconfirm the merge gate for the new HEAD, rerun Phase A, and then repeat
+the dry run. Do not edit rendered notes to bypass a check.
 
 Create the draft without --publish:
 
@@ -179,8 +182,9 @@ gh release view "$V" --repo "$REPO" --json body --jq .body
 ~~~
 
 Require isDraft: true, the fork commit as targetCommitish, four initial assets
-(three lane assets plus SHA256SUMS.txt), and a body without @@ or <!--. Do not
-publish from Mac and do not add a Windows checksum row.
+(three lane assets plus SHA256SUMS.txt), and a body without @@ or <!--. Confirm
+the body has the same four-section structure and two guide links as the dry
+run. Do not publish from Mac and do not add a Windows checksum row.
 
 ## Phase B: mandatory Windows handoff
 

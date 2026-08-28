@@ -383,8 +383,8 @@ With no `--lane` at all the default is exactly the macOS host's three lanes
 renders the notes, prints the git / gh commands it would have run, and stops.
 
 **The rendered notes are written for real under `--dry-run`**, so this is where
-you read the body and follow its links to `docs/EDITOR-GUIDE.ja.md` before
-anyone else can.
+you read the body and follow both fixed links to `docs/EDITOR-GUIDE.ja.md`
+(the guide itself and its download-verification section) before anyone else can.
 
 **When two accounts of the state disagree, run this instead of arguing.** The
 line that fails is the cause.
@@ -417,8 +417,8 @@ seven.
 
 | item | why |
 |---|---|
-| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` reads metadata **from the local `<out>/<lane>.metadata`**, and checks it against the published notes body — never rewrite these by hand |
-| `SHA256SUMS.txt` (3 rows) | the Windows packager appends the fourth; all four rows are the input to the final rendering |
+| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` reads metadata **from the local `<out>/<lane>.metadata`**; the full schema remains required, public provenance is checked against the draft body, and applicable integrity and cross-lane checks still run — never rewrite these by hand |
+| `SHA256SUMS.txt` (3 rows) | the Windows packager appends the fourth; all four rows are checked against the final active-lane asset set |
 | `godot-$V-web-template.zip` | needed in the flesh: the Windows editor's smoke exports with **the release** template |
 | `godot-$V-web-template.zip.provenance` | that same smoke reads the engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
 | `web_emcc.txt` from the fork root | one of the files `dist/package-editor-windows.sh`'s smoke copies into the smoke root; absent, it dies with `the fork root has no web_emcc.txt`. **Only `gates/setup-godot-fork-web.sh` writes it**, and Windows does not run that (C-1), so the macOS copy is the only source |
@@ -444,8 +444,9 @@ On the producing side (macOS):
 - **The macOS editor zip and the macOS template zip** (hundreds of MB between
   them). `--uploaded-lane` waives exactly two things — uploading, and the asset
   being present in `--out`. **It waives no verification**: the bytes are checked
-  against the digest GitHub serves, and every metadata value against the
-  published notes body.
+  against the digest GitHub serves, public provenance against the draft body,
+  the full metadata schema remains required, and applicable integrity and
+  cross-lane checks still run.
 - **This is why the host order is fixed.** Reversed, the Windows host would need
   the macOS assets themselves on disk.
 
@@ -583,8 +584,8 @@ Idempotent — it prints a line and exits 0 when the asset is not there.
 - Every uploaded lane must report
   `on the release as ..., digest and published notes agree`.
 - This host renders the notes that get published, so read the rendered body and
-  its `docs/EDITOR-GUIDE.ja.md` links here — under `--dry-run` they are written
-  for real.
+  both fixed `docs/EDITOR-GUIDE.ja.md` links here — under `--dry-run` they are
+  written for real.
 
 ### C-6. The real run, and publish
 
@@ -628,12 +629,12 @@ gh release view "$V" --repo "$REPO" --json body --jq .body \
   | xargs -n1 curl -sfI -o /dev/null -w '%{http_code} %{url_effective}\n'   # → 200 each
 ```
 
-These are the notes' only outbound links, and every check before publication was
-made against the local tree — nothing so far has asked GitHub whether it serves
-that path at that commit. Fragments never reach the server, so a 200 says
-the page exists and nothing about where the anchor lands; the slug rules
-`gates/build-and-run-doc-claims.sh` checks them against are an approximation, so
-open one and look.
+This selects the notes' two commit-fixed guide links. Every check before
+publication was made against the local tree — nothing so far has asked GitHub
+whether it serves that path at that commit. Fragments never reach the server, so
+a 200 says the page exists and nothing about where the anchor lands; the slug
+rules `gates/build-and-run-doc-claims.sh` checks them against are an
+approximation, so open the verification link and look.
 
 Finally, download and unpack it once for real: verify against `SHA256SUMS.txt`,
 then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
@@ -645,21 +646,27 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
 - **The original is `dist/release-notes-template.md` (in Japanese).** Never edit
   the release page body directly; only re-running `dist/release-github.sh`
   changes it.
-- **The published body carries only** an overview, what changed since the
-  previous release, the assets, a link to the guide and provenance. Everything
-  a downloader does next — installing, host requirements, exporting to each
-  platform, troubleshooting, the known limits, the licence terms — is
-  `docs/EDITOR-GUIDE.ja.md`, which the notes link at a fixed commit so that a
-  published link keeps saying what it said the day it was published.
+- **The published body has four sections only:** an overview, changes since the
+  previous release, download guidance, and minimal provenance. The download
+  section points readers to GitHub's Assets list, `SHA256SUMS.txt`, the guide,
+  and the guide's verification section instead of repeating an asset table or
+  verification commands. Everything a downloader does next — installing, host
+  requirements, exporting to each platform, troubleshooting, the known limits,
+  and the licence terms — is `docs/EDITOR-GUIDE.ja.md`, linked at a fixed commit
+  so that a published link keeps saying what it said the day it was published.
 - **"Changes since the previous release" is the only section written by hand**,
   and only its bullet list and its compare URL: the version in the heading is
-  `@@PREV_VERSION@@`, bound from `--prev-version`. Everything else is bound from
-  the lane metadata or is prose that does not move. Nothing detects a stale
-  list: leave it untouched and the notes render happily, still describing the
-  release before this one.
-- **The guide is edited when the editor's behaviour changes, not when a release
-  is cut.** It names no version of its own; a value that moves per release stays
-  in the notes, and the guide points at the provenance table for it.
+  `@@PREV_VERSION@@`, bound from `--prev-version`. Other dynamic values are
+  derived from the checked-out trees or from the public subset of lane metadata.
+  Nothing detects a stale list: leave it untouched and the notes render happily,
+  still describing the release before this one.
+- Public provenance is limited to engine provenance, the dn2cpp commit, Web's
+  emcc/Emscripten information, and the source SHA of the macOS template. The
+  Web and macOS rows appear only when their lanes are active.
+- **The guide is edited when the editor's behaviour or standing requirements
+  change, not when a release is cut.** Per-release tool versions do not belong
+  there. Concrete bundled-tool versions omitted from public provenance remain
+  available in the lane metadata and packaged records.
 - `@@DOCS_REF@@` is this repository's `HEAD` at the moment of the cut, so
   **commit and push a guide edit before cutting.** `dist/release-github.sh`
   otherwise dies — on the sha not being reachable from `origin/main`, whose
@@ -669,7 +676,11 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
 - **GitHub renders a single newline inside a paragraph as a line break.** So the
   template is written **one paragraph per line**. Wrap it and the published body
   fills with line breaks.
-- The `@@KEY@@` set must be a **subset** of what the lane table binds. One
+- Metadata requirements and public bindings are separate contracts. Lane rows
+  still require their full schema, including records not printed in the body;
+  applicable artifact, hash, and cross-lane checks remain unchanged. Removing a
+  value from the public notes does not remove its metadata key. The template's
+  `@@KEY@@` set must be a **subset** of the smaller public binding set. One
   unbound `@@KEY@@` left over and the rendering dies.
 - `<!--lane:NAME-->` at the start of a line drops that one line if body follows
   it, or everything up to `<!--/lane-->` if it stands alone, from a cut without
@@ -677,10 +688,10 @@ then `xattr -dr com.apple.quarantine` on macOS, or unblock the zip on Windows.
   outer marker early and the remainder reaches the release page as body. An
   unknown lane name dies.
 - Do not spell an Emscripten / Node.js / cmake / ninja version into the markdown
-  under `dist/`, nor into `docs/EDITOR-GUIDE.ja.md`. The pin is the single source
-  and the notes receive it through a placeholder such as `@@EMSDK_VERSION@@`; the
-  guide names the pinned thing and sends the reader to the notes' provenance
-  table for the number. A spelled-out version fails
+  under `dist/`, nor into `docs/EDITOR-GUIDE.ja.md`. Pins and metadata remain the
+  single source. The only bundled-tool version retained in the public body is
+  Web's Emscripten information, received through placeholders; cmake, ninja,
+  and Node.js stay out of the body. A spelled-out version fails
   `gates/build-and-run-doc-claims.sh`.
 
 ---
@@ -705,7 +716,7 @@ There is nothing to argue about when accounts of the state disagree.
 | `... has uncommitted changes, and the notes would link ...` | commit and push the guide first. Only the guide is checked, so unrelated work in progress is not the cause |
 | `the guide the notes link is missing: ...` | run from the dn2cpp checkout, not the fork's; or the guide was renamed without renaming `GUIDE=` in `dist/release-github.sh`, which would 404 every past release's links too |
 | `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` means the previous version's artifacts are still in `--out` (§0-D). Otherwise you forgot to name a lane, or added a row ahead of time |
-| `the notes on release ... do not mention KEY=...` | the local metadata disagrees with the published notes. **Do not fix it by hand** — re-copy it from the packaging host |
+| `the notes on release ... do not mention KEY=...` | the local metadata's public provenance disagrees with the published notes. **Do not fix it by hand** — re-copy it from the packaging host |
 | `no working Python 3 interpreter found` | Windows; install a host Python 3 |
 | `the staged toolchain carries no prebuilt/host` | on Windows suspect an unset `CMAKE_CXX_COMPILER=cl` first. The real cause is in `dist/package-toolchain.sh`'s log (`prebuilt-host-configure.log`) |
 | `missing prebuilt axes: android-arm64-v8a ...` | no NDK / emsdk / Xcode. Installing it is the answer |
@@ -768,8 +779,8 @@ metadata files and the four-row `SHA256SUMS.txt` to be present locally.
 
 - **The macOS editor is ad-hoc signed only, and not notarized.** Downloaded
   through a browser it picks up the quarantine attribute and refuses to launch.
-  The notes carry the `xattr -dr com.apple.quarantine` step. (Do not advise
-  `spctl --master-disable`.)
+  The linked editor guide carries the `xattr -dr com.apple.quarantine` step.
+  (Do not advise `spctl --master-disable`.)
 - **The Windows editor is unsigned.** SmartScreen reports an unknown publisher.
   The only things vouching for identity are `SHA256SUMS.txt` and the
   `RELEASE.txt` inside the package.

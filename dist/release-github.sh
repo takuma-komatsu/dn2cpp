@@ -88,17 +88,20 @@ die() { echo "error: $*" >&2; exit 1; }
 # ── The lane table ────────────────────────────────────────────────────────────
 # One row per lane, and the only place a lane is described: its KIND (`editor`
 # is the kind a tag's fork_commit is checked against), the metadata keys it must
-# carry, and the `PLACEHOLDER:key` bindings its part of the notes needs. The row
-# is what holds lane name = metadata file name = notes placeholder suffix
-# together; adding a lane is adding a row here and a block in the template.
+# carry, and the much smaller `PLACEHOLDER:key` set the public notes render.
+# Required metadata remains the machine-readable release contract even when a
+# value no longer belongs in the public body. The row is what holds lane name =
+# metadata file name = notes placeholder suffix together; adding a lane is
+# adding a row here and, only when it has public prose, a block in the template.
 LANES_KNOWN="editor-macos editor-windows web macos"
 
-# editor_row SUFFIX — both editors carry the same keys and bind the same
-# placeholders; only the suffix that keeps their notes rows apart differs.
+# editor_row SUFFIX — both editors carry the same keys. Their only remaining
+# public binding is the shared dn2cpp commit; the named suffixes still make the
+# two host rows explicit to the template-contract check.
 editor_row() {
     printf 'editor|%s|%s\n' \
         "release_version asset asset_sha256 fork_commit base_pin engine_provenance editor_version_string dn2cpp_commit toolchain_content_hash corelib_framework prebuilt_axes cmake_version ninja_version node_version" \
-        "ASSET_EDITOR$1:asset ASSET_EDITOR$1_SHA256:asset_sha256 EDITOR_VERSION_STRING$1:editor_version_string DN2CPP_COMMIT:dn2cpp_commit TOOLCHAIN_CONTENT_HASH$1:toolchain_content_hash PREBUILT_AXES$1:prebuilt_axes CMAKE_VERSION$1:cmake_version NINJA_VERSION$1:ninja_version NODE_VERSION$1:node_version"
+        "DN2CPP_COMMIT:dn2cpp_commit"
 }
 
 lane_row() {
@@ -107,16 +110,16 @@ lane_row() {
         editor-windows) editor_row _WINDOWS ;;
         web)   printf 'template|%s|%s\n' \
                    "release_version asset asset_sha256 engine_provenance emcc emsdk_version" \
-                   "ASSET_WEB:asset ASSET_WEB_SHA256:asset_sha256 EMCC:emcc EMSDK_VERSION:emsdk_version" ;;
+                   "EMCC:emcc EMSDK_VERSION:emsdk_version" ;;
         macos) printf 'template|%s|%s\n' \
                    "release_version asset asset_sha256 base_pin upstream_template" \
-                   "ASSET_MACOS:asset ASSET_MACOS_SHA256:asset_sha256 UPSTREAM_MACOS_SHA256:upstream_template" ;;
+                   "UPSTREAM_MACOS_SHA256:upstream_template" ;;
     esac
 }
 
 lane_kind()     { local r; r="$(lane_row "$1")"; printf '%s\n' "${r%%|*}"; }
 lane_keys()     { local r; r="$(lane_row "$1")"; r="${r#*|}"; printf '%s\n' "${r%%|*}"; }
-lane_bindings() { local r; r="$(lane_row "$1")"; printf '%s\n' "${r##*|}"; }
+lane_note_bindings() { local r; r="$(lane_row "$1")"; printf '%s\n' "${r##*|}"; }
 lane_meta()     { printf '%s/%s.metadata\n' "$OUT" "$1"; }
 
 # lane_has KEY LANE — whether the lane's row demands KEY at all, i.e. whether
@@ -173,8 +176,11 @@ meta_get() {
     awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$1"
 }
 
-# meta_req FILE KEY — the same, but a missing or empty value is fatal. Every
-# value here reaches the published notes, so an empty one is a lie, not a blank.
+# meta_req FILE KEY — the same, but a missing or empty value is fatal. The full
+# metadata schema remains the durable release contract; integrity checks,
+# cross-lane checks and public-note bindings each consume their applicable
+# subset. ENGINE_PROVENANCE is the shared public value mapped separately from
+# lane_note_bindings.
 meta_req() {
     local v
     v="$(meta_get "$1" "$2")"
@@ -278,13 +284,14 @@ lane_agree() {
 # One release names ONE engine tree, and the notes publish a single provenance
 # line for all of it — a template baked from another tree would ship under a line
 # saying it was not. base_pin is the same statement one level down: the macOS
-# export template is upstream's own binary, so its pin IS its whole identity.
+# export template is upstream's own binary, so its pin IS its whole identity,
+# even though the public body now leaves that internal pin to the metadata.
 ENGINE_PROVENANCE="$(lane_agree engine_provenance \
     "Re-package the odd one out from the same fork tree, e.g.: dist/package-web-template.sh --version $VERSION")"
 BASE_PIN="$(lane_agree base_pin \
     "Re-cut the odd one out, e.g.: dist/package-macos-template.sh --version $VERSION")"
 [ -n "$ENGINE_PROVENANCE" ] || die "no active lane carries engine_provenance, which the notes publish unconditionally"
-[ -n "$BASE_PIN" ] || die "no active lane carries base_pin, which the notes publish unconditionally"
+[ -n "$BASE_PIN" ] || die "no active lane carries base_pin, which the release integrity checks require"
 echo "-- engine_provenance: $ENGINE_PROVENANCE (every lane that has one agrees)"
 
 # The editors are prerequisites for the same .NET SDK, so two spellings of it
@@ -372,7 +379,7 @@ else
     echo "-- origin/$FORK_BRANCH: contains the tagged commit; no tag $TAG on origin"
 fi
 
-# The same question one repository over: the notes print each editor's
+# The same question one repository over: the notes publish the editors' shared
 # dn2cpp_commit beside a link to the dn2cpp repository, so a sha that repository
 # cannot reach is a dead reference, and the release was cut from a tree nobody
 # pushed. The remote is `origin`, the repository the notes link — `archive`
@@ -450,8 +457,9 @@ $sums_out"
 fi
 echo "-- SHA256SUMS.txt: $n_here row(s) checked against the files here, $n_remote against the release's digests"
 
-# The notes publish the metadata's hashes, so those are what has to be true —
-# SHA256SUMS.txt agreeing with the files says nothing about the metadata.
+# The metadata's hashes remain part of the release integrity contract even
+# though the simplified notes point readers to SHA256SUMS.txt instead of
+# repeating them. That file agreeing with the assets says nothing about metadata.
 for lane in $ACTIVE_LANES; do
     zip="$(lane_zip "$lane")"
     [ -n "$zip" ] || continue
@@ -501,14 +509,21 @@ $rel_assets
             "$OUT/SHA256SUMS.txt gives '$asset' as ${row:-no row at all}, but $(lane_meta "$lane") says $want"
 
         # The safety net for metadata reconstructed by hand on another host. A
-        # digest speaks for the bytes and for nothing else, so an emcc version, an
-        # editor --version, a dn2cpp commit or a toolchain hash has only one
-        # witness left: the notes GitHub is already showing. Match value by value
-        # rather than line by line, so editing the template cannot turn this red.
-        for binding in $(lane_bindings "$lane"); do
+        # digest speaks for the bytes and for nothing else, so the provenance
+        # values this release publishes have one witness left: the notes GitHub
+        # is already showing. Metadata retained only for integrity or cross-lane
+        # checks deliberately has no body witness. Match value by value rather
+        # than line by line, so editing the template cannot turn this red.
+        public_keys=
+        if lane_has engine_provenance "$lane"; then
+            public_keys=engine_provenance
+        fi
+        for binding in $(lane_note_bindings "$lane"); do
             key="${binding#*:}"
+            public_keys="$public_keys $key"
+        done
+        for key in $public_keys; do
             v="$(lane_val "$lane" "$key")"
-            if [ "$key" = asset ]; then v="$asset"; fi
             case "$rel_body" in
                 *"$v"*) ;;
                 *) die "the notes on release $TAG do not mention $key=$v (lane $lane)
@@ -547,23 +562,18 @@ MAP="$WORK/notes.map"
 : > "$MAP"
 map_put() { printf '%s\t%s\n' "$1" "$2" >> "$MAP"; }
 
-map_put VERSION           "$VERSION"
 map_put PREV_VERSION      "$PREV_VERSION"
 map_put BASE_VER          "$BASE_VER"
-map_put FORK_COMMIT       "$COMMIT"
-map_put BASE_PIN          "$BASE_PIN"
 map_put ENGINE_PROVENANCE "$ENGINE_PROVENANCE"
-map_put CORELIB_FRAMEWORK "$CORELIB_FRAMEWORK"
 map_put DOCS_REF          "$DOCS_REF"
 
 # The lane rows say which placeholder each value binds, so the notes gain a lane
 # by gaining a row and a template block — never a second list here.
 for lane in $ACTIVE_LANES; do
-    for binding in $(lane_bindings "$lane"); do
+    for binding in $(lane_note_bindings "$lane"); do
         placeholder="${binding%%:*}"
         key="${binding#*:}"
         value="$(lane_val "$lane" "$key")"
-        if [ "$key" = asset ]; then value="$(lane_asset "$lane")"; fi
         map_put "$placeholder" "$value"
     done
 done

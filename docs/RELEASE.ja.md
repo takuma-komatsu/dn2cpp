@@ -373,7 +373,8 @@ SHA256SUMS.txt                          ← この時点で 3 行
 ノートをレンダリングし、実行するはずだった git / gh コマンドを印字して終わる。
 
 **`--dry-run` でもノート本文は実際に書き出される。**誰の目にも触れる前に本文を
-読み、`docs/EDITOR-GUIDE.ja.md` へのリンクを辿るのはここ。
+読み、`docs/EDITOR-GUIDE.ja.md` への固定リンク 2 本（ガイド本体とダウンロード
+ファイルの検証節）を辿るのはここ。
 
 **認識が食い違ったら議論せずこれを回す。** 落ちた行がそのまま原因。
 
@@ -404,8 +405,8 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 
 | 渡すもの | なぜ |
 |---|---|
-| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` はメタデータを**ローカルの `<out>/<lane>.metadata` から読む**。公開中のノート本文が照合先になるので、手で書き直してはいけない |
-| `SHA256SUMS.txt`（3 行） | Windows のパッケージャが 4 行目を追記する。全 4 行が最終レンダリングの入力 |
+| `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` はメタデータを**ローカルの `<out>/<lane>.metadata` から読む**。全スキーマを引き続き必須とし、公開 Provenance は draft 本文と照合し、該当する整合性・レーン間一致検査も維持するので、手で書き直してはいけない |
+| `SHA256SUMS.txt`（3 行） | Windows のパッケージャが 4 行目を追記する。全 4 行を最終的なアクティブレーンのアセット集合と照合する |
 | `godot-$V-web-template.zip` | 実体が要る。Windows エディタの smoke が**リリース版の**テンプレートでエクスポートするため |
 | `godot-$V-web-template.zip.provenance` | 同 smoke がエンジンの provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
 | フォークルートの `web_emcc.txt` | `dist/package-editor-windows.sh` の smoke が smoke-root へコピーする必須ファイルの 1 つで、無ければ `the fork root has no web_emcc.txt` で die する。**書くのは `gates/setup-godot-fork-web.sh` だけ**で、Windows はそれを走らせない（C-1）ので macOS 側のものを置くしかない |
@@ -430,8 +431,9 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 - **macOS エディタの zip と macOS テンプレートの zip**（合わせて数百 MB）。
   `--uploaded-lane` は「アップロードすること」と「アセットが `--out` に
   あること」の 2 つだけを免除する。**検証は 1 つも免除しない** ——
-  バイトは GitHub が配信している digest と、メタデータの各値は公開中の
-  ノート本文と、それぞれ照合される。
+  バイトは GitHub が配信している digest と、公開 Provenance は draft 本文と、
+  それぞれ照合する。metadata の全スキーマは引き続き必須で、該当する整合性・
+  レーン間一致検査も通常どおり走る。
 - **これが 2 ホストの順序が固定である理由。** 逆順にすると、Windows ホストに
   macOS のアセット実体を置かなければならなくなる。
 
@@ -566,8 +568,8 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 - 各 uploaded レーンについて
   `on the release as ..., digest and published notes agree` が出ること。
 - 公開されるノートをレンダリングするのはこのホスト。`--dry-run` でも本文は
-  実際に書き出されるので、本文と `docs/EDITOR-GUIDE.ja.md` へのリンクはここで
-  読む。
+  実際に書き出されるので、本文と `docs/EDITOR-GUIDE.ja.md` への固定リンク 2 本は
+  ここで読む。
 
 ### C-6. 本番 + 公開
 
@@ -610,12 +612,12 @@ gh release view "$V" --repo "$REPO" --json body --jq .body \
   | xargs -n1 curl -sfI -o /dev/null -w '%{http_code} %{url_effective}\n'   # → すべて 200
 ```
 
-ノートから外へ出るリンクはこれだけで、公開前の検査はすべてローカルのツリーに
-対して行われている —— そのコミットでそのパスを GitHub が配信するかを尋ねた
-ものは、ここまで 1 つも無い。フラグメントはサーバへ送られないので、200 は
-ページの存在を言うだけでアンカーの着地点については何も言わない。照合先の
-スラグ規則は `gates/build-and-run-doc-claims.sh` の近似なので、1 つ開いて
-目で見ること。
+この抽出対象は、ノートにあるコミット固定のガイドリンク 2 本。公開前の検査は
+すべてローカルのツリーに対して行われている —— そのコミットでそのパスを GitHub
+が配信するかを尋ねたものは、ここまで 1 つも無い。フラグメントはサーバへ
+送られないので、200 はページの存在を言うだけでアンカーの着地点については何も
+言わない。照合先のスラグ規則は `gates/build-and-run-doc-claims.sh` の近似なので、
+検証節へのリンクを開いて目で見ること。
 
 最後に、実際にダウンロードして展開できることを 1 度だけ確認する:
 `SHA256SUMS.txt` の照合 → macOS なら `xattr -dr com.apple.quarantine`、
@@ -627,21 +629,26 @@ Windows なら zip のブロック解除。
 
 - **原本は `dist/release-notes-template.md`（日本語）。** リリースページの本文を
   直接編集してはいけない。`dist/release-github.sh` の再実行だけが本文を変える。
-- **公開本文に載るのは**概要、前回リリースからの変更、アセット、ガイドへの
-  リンク、Provenance **だけ**。ダウンロードした人が次にやること
-  —— インストール、動作要件、各プラットフォームへのエクスポート、
-  トラブルシューティング、既知の制限、ライセンス条項 —— は
+- **公開本文は 4 節だけ:** 概要、前回リリースからの変更、ダウンロード、最小限の
+  Provenance。ダウンロード節はアセット表や検証コマンドを重複掲載せず、GitHub の
+  Assets 一覧、`SHA256SUMS.txt`、ガイド本体、ガイドの検証節を案内する。
+  ダウンロードした人が次にやること —— インストール、動作要件、各プラットフォーム
+  へのエクスポート、トラブルシューティング、既知の制限、ライセンス条項 —— は
   `docs/EDITOR-GUIDE.ja.md` にあり、ノートはそれをコミット固定でリンクする。
   公開した日に言っていたことを、リンクが以後も言い続けるため。
 - **リリースごとに手で書くのは「前回リリースからの変更」だけ**で、そのうちでも
   箇条書き本文と compare の URL だけ。見出しのバージョン名は
-  `@@PREV_VERSION@@` で、`--prev-version` から bind される。残りはすべて
-  レーンの metadata から bind されるか、リリース間で動かない文章。**箇条書きが
-  古いままなのを検出する仕組みは無い** —— 手を入れ忘れてもノートは何事もなく
-  レンダリングされ、1 つ前のリリースの内容を説明したまま公開される。
-- **ガイドを直すのはエディタの挙動が変わったときで、リリースを切るときでは
-  ない。**ガイド自身はバージョンを持たない。リリースごとに動く値はノート側に
-  置き、ガイドは Provenance 表を指す。
+  `@@PREV_VERSION@@` で、`--prev-version` から bind される。他の動的な値は、検査済み
+  のチェックアウトから導出するか、レーン metadata の公開用部分集合から bind する。
+  **箇条書きが古いままなのを検出する仕組みは無い** —— 手を入れ忘れてもノートは
+  何事もなくレンダリングされ、1 つ前のリリースの内容を説明したまま公開される。
+- 公開 Provenance は、エンジンの provenance、dn2cpp commit、Web の
+  emcc/Emscripten 情報、macOS テンプレート抽出元の SHA に限定する。Web と macOS の
+  行は、そのレーンがアクティブなときだけ出る。
+- **ガイドを直すのはエディタの挙動や固定的な利用要件が変わったときで、リリースを
+  切るときではない。**リリースごとに変わる同梱ツールの具体的なバージョンは
+  ガイドに置かない。公開 Provenance から省いた値も、レーン metadata と成果物内の
+  記録には残る。
 - `@@DOCS_REF@@` はリリースを切る時点のこのリポジトリの `HEAD`。だから
   **ガイドを直したら commit して push してから切る。**さもないと
   `dist/release-github.sh` が die する —— その sha が `origin/main` から
@@ -650,16 +657,19 @@ Windows なら zip のブロック解除。
   `--dry-run` でも実走する。
 - **GitHub は段落内の単一改行を改行として描画する。**したがってテンプレートは
   **1 段落 = 1 行**で書く。折り返すと公開本文が改行だらけになる。
-- `@@KEY@@` は、レーン表が bind している集合の**部分集合**でなければならない。
-  未 bind の `@@KEY@@` が 1 つでも残るとレンダリングが die する。
+- metadata の必須キーと公開本文の binding は別の契約。レーン表は、本文に出さない
+  記録も含む全スキーマを引き続き必須とし、該当するアセット・hash・レーン間整合性
+  の検査も変えない。公開本文から値を消しても metadata キーは消さない。
+  テンプレートの `@@KEY@@` は、それより小さい公開 binding 集合の**部分集合**で
+  なければならない。未 bind の `@@KEY@@` が 1 つでも残るとレンダリングが die する。
 - `<!--lane:NAME-->` は、行頭に置いて後ろに本文があればその 1 行、単独なら
   `<!--/lane-->` までのブロックを、そのレーンを含まない構成では丸ごと落とす。
   `!NAME` は否定。**入れ子にはできない**（内側の `-->` が外側を早く閉じ、
   残りが本文としてリリースページに出る）。存在しないレーン名は die。
 - `dist/` の md にも `docs/EDITOR-GUIDE.ja.md` にも、Emscripten / Node.js /
-  cmake / ninja のバージョンを直書きしない。ピンが唯一の出所で、ノートは
-  `@@EMSDK_VERSION@@` などのプレースホルダで受け取る。ガイドは対象の名前だけを
-  書き、数字はノートの Provenance 表を見に行かせる。直書きは
+  cmake / ninja のバージョンを直書きしない。ピンと metadata が唯一の出所。
+  公開本文に残す同梱ツール版は Web の Emscripten 情報だけで、プレースホルダから
+  受け取る。cmake / ninja / Node.js は本文に載せない。直書きは
   `gates/build-and-run-doc-claims.sh` が落とす。
 
 ---
@@ -684,7 +694,7 @@ Windows なら zip のブロック解除。
 | `... has uncommitted changes, and the notes would link ...` | ガイドを先に commit して push する。検査対象はガイド 1 ファイルだけなので、無関係な作業中の変更は原因ではない |
 | `the guide the notes link is missing: ...` | フォークではなく dn2cpp のチェックアウトで実行する。あるいは `dist/release-github.sh` の `GUIDE=` を直さずにガイドを rename した（過去の全リリースのリンクも 404 になる） |
 | `SHA256SUMS.txt does not describe exactly the active lanes' assets` | `rows for no active lane` なら前バージョンの資産が `--out` に残っている（§0-D）。それ以外はレーンの名指し忘れか、先回りして足した行 |
-| `the notes on release ... do not mention KEY=...` | 手元の metadata が公開中のノートと食い違う。**手で直さず**、パッケージしたホストからコピーし直す |
+| `the notes on release ... do not mention KEY=...` | 手元の metadata の公開 Provenance が公開中のノートと食い違う。**手で直さず**、パッケージしたホストからコピーし直す |
 | `no working Python 3 interpreter found` | Windows。ホストに Python 3 を入れる |
 | `the staged toolchain carries no prebuilt/host` | Windows なら `CMAKE_CXX_COMPILER=cl` の未設定をまず疑う。`dist/package-toolchain.sh` のログ（`prebuilt-host-configure.log`）に本当の原因がある |
 | `missing prebuilt axes: android-arm64-v8a ...` | NDK / emsdk / Xcode が無い。入れるのが本筋 |
@@ -747,7 +757,7 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
 
 - **macOS エディタは ad-hoc 署名のみで、公証（notarize）されていない。**
   ブラウザ経由でダウンロードすると quarantine 属性が付き、起動を拒否される。
-  ノートには `xattr -dr com.apple.quarantine` の手順が入っている。
+  リンク先のエディタ利用ガイドに `xattr -dr com.apple.quarantine` の手順がある。
   （`spctl --master-disable` を案内しないこと。）
 - **Windows エディタは未署名。** SmartScreen が発行元不明と報告する。
   身元を保証するのは `SHA256SUMS.txt` とパッケージ内の `RELEASE.txt` だけ。

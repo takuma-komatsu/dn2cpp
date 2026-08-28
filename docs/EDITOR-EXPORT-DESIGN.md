@@ -855,11 +855,13 @@ An editor can only be packaged on the platform it runs on, so the lane set is an
 argument (`--lane`) rather than a constant: a host cuts the lanes it can bake and
 declares the rest with `--uploaded-lane`, re-entering the same script against the
 same tag. **Declaring a lane uploaded subtracts the upload and the demand that
-its asset sit in the asset directory — it subtracts no verification.** The bytes
-are checked against the digest GitHub is serving them under, and the lane's
-metadata value by value against the notes already published: once the file is on
-another machine those two are the only witnesses left for a hash, a `--version`
-string or a toolchain content hash.
+its asset sit in the asset directory, but preserves the release contract.** The
+bytes are checked against the digest GitHub serves and the lane's
+`SHA256SUMS.txt` row. The full metadata schema remains required, and applicable
+integrity and cross-lane checks still run. Only the provenance values retained
+in the public notes are checked against the body already on the draft; schema
+records such as an editor `--version` string or toolchain content hash remain in
+metadata without requiring a public-body witness.
 
 - **The macOS export template is upstream's binary, not a fork build.** Export
   templates do not compile `editor/`, and with `WEB_ENABLED` undefined the
