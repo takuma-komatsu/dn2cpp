@@ -12,7 +12,7 @@
 - [PR #80](https://github.com/takuma-komatsu/dn2cpp/pull/80) で、Web 環境における入れ子呼び出し引数の GC 保護および文字列診断処理の堅牢化を行いました
 - [PR #78](https://github.com/takuma-komatsu/dn2cpp/pull/78) で、Windows 上でのプロセス待機ハンドル・スレッド同期プリミティブ・HRESULT 変換などの互換性を改善しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6600b909fb8359a11f4ca2ff95016cba1ad6d823...ef936a146445582f3ef23b7b65fc95aa8cefc499> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6600b909fb8359a11f4ca2ff95016cba1ad6d823...45edcbd89cf5e0622557e4e1329aee5d7a641198> を参照してください。
 
 ## ダウンロード
 
