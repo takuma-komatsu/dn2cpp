@@ -1,8 +1,8 @@
 ## 概要
 
-- Godot @@BASE_VER@@ のフォークです
-- dn2cpp は Unity IL2CPP 相当の機能を提供する独立したオープンソースプロジェクトで、C# ゲームをネイティブコードへ変換します。詳細とバグ報告は <https://github.com/takuma-komatsu/dn2cpp> を参照してください
-<!--lane:web-->- upstream の Godot では対応していない C# ゲームの Web エクスポートにも対応しています
+本リリースは、Godot @@BASE_VER@@ に [dn2cpp](https://github.com/takuma-komatsu/dn2cpp)（Unity の IL2CPP 相当の機能を提供する独立したオープンソースプロジェクト）による C# ゲームのネイティブビルド機能を追加したカスタムビルドです。本家（upstream）の Godot では非対応となっている **C# ゲームの Web エクスポートにも対応しています。**
+
+※ 詳細とバグ報告は [dn2cpp リポジトリ](https://github.com/takuma-komatsu/dn2cpp) を参照してください。
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
