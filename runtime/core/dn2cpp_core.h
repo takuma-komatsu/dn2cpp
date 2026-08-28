@@ -2219,6 +2219,9 @@ extern const Dn2CppTypeInfo dn2cpp_exception_type;
 extern Dn2CppTypeInfo dn2cpp_overflow_exception_type;
 extern Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_exception_type;
+// System.Runtime.InteropServices.COMException. Marshal.GetExceptionForHR uses
+// this for HRESULT failures that have no more specific managed exception.
+extern Dn2CppTypeInfo dn2cpp_com_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_out_of_range_exception_type;
 extern Dn2CppTypeInfo dn2cpp_argument_null_exception_type;
 extern Dn2CppTypeInfo dn2cpp_invalid_operation_exception_type;
@@ -2300,6 +2303,11 @@ extern const Dn2CppTypeInfo dn2cpp_aggregate_exception_type;
 // enum, because dn2cpp_resolve_interface_walk consults the base chain and the
 // per-enum type-infos deliberately carry no rows of their own.
 extern Dn2CppTypeInfo dn2cpp_enum_type;
+// SafeHandle's stable runtime handle receives its emitted metadata at startup. The
+// SafeWaitHandle wrapper's intermediate base has the same binding posture, preserving
+// the complete SafeWaitHandle -> SafeHandleZeroOrMinusOneIsInvalid -> SafeHandle chain.
+extern Dn2CppTypeInfo dn2cpp_safehandle_type;
+extern Dn2CppTypeInfo dn2cpp_safehandle_zero_or_minus_one_type;
 // Installs the shared boxed-enum interface-dispatch map (IComparable/IFormattable/
 // IConvertible/ISpanFormattable rows whose slots are System.Enum's transpiled impls —
 // the model makes System.Enum a reference type, so they take the box pointer directly).
@@ -4783,10 +4791,14 @@ Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2Cp
 Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle);
 Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle);
 void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle);
+void dn2cpp_waithandle_close(Dn2CppObject* waitHandle);
 intptr_t dn2cpp_safewaithandle_get(Dn2CppObject* safeHandle);
 int32_t dn2cpp_safewaithandle_is_invalid(Dn2CppObject* safeHandle);
 int32_t dn2cpp_safewaithandle_is_closed(Dn2CppObject* safeHandle);
 void dn2cpp_safewaithandle_close(Dn2CppObject* safeHandle);
+void dn2cpp_safewaithandle_set_invalid(Dn2CppObject* safeHandle);
+int32_t dn2cpp_safewaithandle_addref(Dn2CppObject* safeHandle);
+void dn2cpp_safewaithandle_release(Dn2CppObject* safeHandle);
 void dn2cpp_event_set(Dn2CppObject* e);                      // Set()
 void dn2cpp_event_reset(Dn2CppObject* e);                    // Reset()
 int32_t dn2cpp_event_wait(Dn2CppObject* e);                  // WaitOne()/Wait() (returns 1)

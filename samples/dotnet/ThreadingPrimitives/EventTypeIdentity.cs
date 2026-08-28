@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32.SafeHandles;
 
@@ -11,6 +12,21 @@ namespace EventTypeIdentity;
 
 internal static class Program
 {
+    private sealed class AttachedWaitHandle : WaitHandle
+    {
+        internal AttachedWaitHandle(SafeWaitHandle handle)
+        {
+            SafeWaitHandle = handle;
+        }
+
+        protected override void Dispose(bool explicitDisposing)
+        {
+            if (explicitDisposing)
+                SafeWaitHandle = null;
+            base.Dispose(explicitDisposing);
+        }
+    }
+
     private static void Probe(string label, object o)
     {
         Console.WriteLine($"{label} type={o.GetType()}");
@@ -85,5 +101,73 @@ internal static class Program
         var donor = new ManualResetEvent(true);
         var attached = new ManualResetEvent(false) { SafeWaitHandle = donor.SafeWaitHandle };
         Console.WriteLine("safe attached=" + attached.WaitOne(0));
+
+        // Put the donor beside its alias. The runtime must resolve the alias before
+        // scanning the donor itself: returning index 1 proves WaitAny read the target
+        // object's stale local event instead of its attached SafeWaitHandle.
+        var anyDonor = new ManualResetEvent(true);
+        var anyAttached = new ManualResetEvent(false) { SafeWaitHandle = anyDonor.SafeWaitHandle };
+        Console.WriteLine("safe waitany attached="
+            + WaitHandle.WaitAny(new WaitHandle[] { anyAttached, anyDonor }));
+
+        // The nullable setter clears the association. Its getter lazily supplies an
+        // invalid wrapper rather than returning null, and that wrapper remains a normal
+        // SafeHandle for close/ref-count operations.
+        anyAttached.SafeWaitHandle = null!;
+        SafeWaitHandle cleared = anyAttached.SafeWaitHandle!;
+        Console.WriteLine("safe cleared nonnull=" + (cleared is not null)
+            + " invalid=" + cleared!.IsInvalid + " closed=" + cleared.IsClosed);
+        bool addRef = false;
+        cleared.DangerousAddRef(ref addRef);
+        cleared.DangerousRelease();
+        Console.WriteLine("safe addref=" + addRef);
+        cleared.Close();
+        Console.WriteLine("safe close invalid=" + cleared.IsInvalid
+            + " closed=" + cleared.IsClosed);
+
+        // WaitHandle.Dispose owns the attached SafeWaitHandle lifetime. This is
+        // observable without waiting on a disposed primitive (which would throw).
+        var disposed = new ManualResetEvent(false);
+        SafeWaitHandle disposedSafe = disposed.SafeWaitHandle;
+        disposed.Dispose();
+        Console.WriteLine("safe wait dispose closed=" + disposedSafe.IsClosed);
+
+        // A managed WaitHandle subclass borrows the donor's managed-event alias.
+        // Disposing the borrower detaches it; the donor remains independently usable.
+        var subclassDonor = new ManualResetEvent(true);
+        var subclass = new AttachedWaitHandle(subclassDonor.SafeWaitHandle);
+        subclass.Dispose();
+        Console.WriteLine("safe subclass dispose keeps donor=" + subclassDonor.WaitOne(0));
+
+        object boxedSafe = donor.SafeWaitHandle;
+        Console.WriteLine("safe boxed is base=" + (boxedSafe is SafeHandle));
+        Console.WriteLine("safe boxed is zero-minus="
+            + (boxedSafe is SafeHandleZeroOrMinusOneIsInvalid));
+        Console.WriteLine("safe runtime base=" + donor.SafeWaitHandle.GetType().BaseType);
+        SafeHandle baseSafe = donor.SafeWaitHandle;
+        Console.WriteLine("safe base raw="
+            + (baseSafe.DangerousGetHandle() == donor.SafeWaitHandle.DangerousGetHandle()));
+        bool baseAddRef = false;
+        baseSafe.DangerousAddRef(ref baseAddRef);
+        baseSafe.DangerousRelease();
+        Console.WriteLine("safe base addref=" + baseAddRef);
+
+        var closedRaw = new SafeWaitHandle((IntPtr)123, ownsHandle: false);
+        SafeHandle closedRawBase = closedRaw;
+        closedRawBase.Close();
+        Console.WriteLine("safe base close raw=" + closedRawBase.DangerousGetHandle().ToInt64()
+            + " closed=" + closedRawBase.IsClosed + " invalid=" + closedRawBase.IsInvalid);
+
+        var invalidated = new SafeWaitHandle((IntPtr)124, ownsHandle: false);
+        SafeHandle invalidatedBase = invalidated;
+        bool invalidatedAddRef = false;
+        invalidatedBase.DangerousAddRef(ref invalidatedAddRef);
+        invalidatedBase.SetHandleAsInvalid();
+        invalidatedBase.DangerousRelease();
+        Console.WriteLine("safe base invalidated raw="
+            + invalidatedBase.DangerousGetHandle().ToInt64()
+            + " closed=" + invalidatedBase.IsClosed
+            + " invalid=" + invalidatedBase.IsInvalid
+            + " addref=" + invalidatedAddRef);
     }
 }

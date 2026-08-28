@@ -410,8 +410,7 @@ internal sealed partial class MethodCompiler
             case HandleKind.MethodDefinition:
             {
                 var callee = ResolveMethodDef((MethodDefinitionHandle)handle);
-                if (TryEmitSafeWaitHandleBase(callee.DeclaringClass.FullName,
-                        callee.Name, callee.Signature))
+                if (TryEmitSafeWaitHandleBase(callee, isCallvirt))
                     return;
                 // The intra-CoreLib runtime primitives reached only via in-CoreLib MethodDef
                 // calls: GC's finalizer/collect/KeepAlive entry points, SpanHelpers.Memmove,
@@ -837,7 +836,10 @@ internal sealed partial class MethodCompiler
                 string? mrParent = _c.MemberRefParentTypeName(_module, (MemberReferenceHandle)handle);
                 MethodSignature<TypeDesc>? mrSig = null;
                 MethodSignature<TypeDesc> Sig() => mrSig ??= mr.DecodeMethodSignature(_c.SigProvider, _method.Context);
-                if (TryEmitSafeWaitHandleBase(mrParent, mrName, Sig()))
+                if (mrParent == "System.Runtime.InteropServices.SafeHandle"
+                    && TryEmitSafeWaitHandleBase(
+                        _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context),
+                        isCallvirt))
                     return;
                 // Non-generic Enum reflection statics taking a runtime Type
                 // (GetNames/GetName/IsDefined/Parse/TryParse/GetUnderlyingType/GetValues) —
@@ -1118,19 +1120,91 @@ internal sealed partial class MethodCompiler
         }
     }
 
-    private bool TryEmitSafeWaitHandleBase(string? declaringType, string name,
-        MethodSignature<TypeDesc> sig)
+    /// <summary>Routes inherited SafeHandle calls against the runtime-owned
+    /// SafeWaitHandle layout without applying that layout to SafeFileHandle or a user
+    /// subclass. The receiver is consumed once; the non-wrapper arm remains the ordinary
+    /// CoreLib body/virtual dispatch, so its reachability and layout stay unchanged.</summary>
+    private bool TryEmitSafeWaitHandleBase(MethodInfo callee, bool isCallvirt)
     {
-        if (declaringType != "System.Runtime.InteropServices.SafeHandle"
-            || name is not ("DangerousGetHandle" or "DangerousAddRef" or "DangerousRelease"
-                or "get_IsInvalid" or "get_IsClosed" or "Dispose" or "Close"))
+        string name = callee.Name;
+        int parameterCount = callee.Signature.ParameterTypes.Length;
+        if (callee.DeclaringClass.FullName != "System.Runtime.InteropServices.SafeHandle"
+            || name switch
+            {
+                "DangerousGetHandle" or "DangerousRelease" or "get_IsInvalid"
+                    or "get_IsClosed" or "Close" or "SetHandleAsInvalid" => parameterCount != 0,
+                "DangerousAddRef" => parameterCount != 1,
+                "Dispose" => parameterCount is not (0 or 1),
+                _ => true,
+            })
             return false;
-        int receiverIndex = _stack.Count - 1 - sig.ParameterTypes.Length;
-        if (receiverIndex < 0
-            || _stack[receiverIndex].StaticType is not
-                { Kind: TypeKind.Class, Class.FullName: "Microsoft.Win32.SafeHandles.SafeWaitHandle" })
+
+        int receiverIndex = _stack.Count - 1 - parameterCount;
+        if (receiverIndex >= 0 && _stack[receiverIndex].CppType == "Dn2CppMappedSafeHandle")
+            // SafeMemoryMappedViewHandle is a by-value intrinsic with its own inherited
+            // SafeBuffer/SafeHandle route below; it has no Dn2CppObject header to guard.
             return false;
-        EmitIntrinsic("Microsoft.Win32.SafeHandles.SafeWaitHandle", name, sig);
+
+        var args = PopArgs(callee, hasThis: true);
+        string receiverExpr = args[0];
+        if (isCallvirt)
+            receiverExpr = $"dn2cpp_null_check({receiverExpr})";
+        string receiver = NewTemp("Dn2CppObject*");
+        Emit($"{receiver} = (Dn2CppObject*)({receiverExpr});");
+        args[0] = $"({callee.DeclaringClass.CppStructName}*){receiver}";
+
+        string wrapperCall = name switch
+        {
+            "DangerousGetHandle" => $"dn2cpp_safewaithandle_get({receiver})",
+            "DangerousAddRef" => $"*(uint8_t*)({args[1]}) = (uint8_t)dn2cpp_safewaithandle_addref({receiver})",
+            "DangerousRelease" => $"dn2cpp_safewaithandle_release({receiver})",
+            "get_IsInvalid" => $"dn2cpp_safewaithandle_is_invalid({receiver})",
+            "get_IsClosed" => $"dn2cpp_safewaithandle_is_closed({receiver})",
+            "SetHandleAsInvalid" => $"dn2cpp_safewaithandle_set_invalid({receiver})",
+            "Dispose" or "Close" => $"dn2cpp_safewaithandle_close({receiver})",
+            _ => throw new InvalidOperationException("unreachable SafeHandle lowering"),
+        };
+
+        string fallbackCall;
+        if (isCallvirt && callee.IsVirtual)
+        {
+            if (!callee.DeclaringClass.IsValueType
+                && callee.DeclaringClass.IntrinsicCppName is null)
+                NoteReferencedType(callee.DeclaringClass);
+            NoteDispatchSignatureTypes(callee);
+            NfiWrapErasedCallArgs(callee, args);
+            fallbackCall = $"(({FnPtrType(callee)})({receiver}->type->vtable[{callee.VtableSlot}]))"
+                + $"({string.Join(", ", args)})";
+        }
+        else
+        {
+            fallbackCall = DirectCall(callee, args.ToList());
+        }
+
+        Emit($"if (dn2cpp_isinst({receiver}, &dn2cpp_safewaithandle_type) != nullptr)");
+        Emit("{");
+        if (callee.Signature.ReturnType.IsVoid)
+        {
+            Emit($"    {wrapperCall};");
+            Emit("}");
+            Emit("else");
+            Emit("{");
+            Emit($"    {fallbackCall};");
+            Emit("}");
+        }
+        else
+        {
+            string resultType = CppTypes.Of(callee.Signature.ReturnType);
+            string result = NewTemp(resultType);
+            Emit($"    {result} = {wrapperCall};");
+            Emit("}");
+            Emit("else");
+            Emit("{");
+            Emit($"    {result} = {fallbackCall};");
+            Emit("}");
+            EmitCallResult(callee, result);
+        }
+        EmitByRefSlotFixups();
         return true;
     }
 

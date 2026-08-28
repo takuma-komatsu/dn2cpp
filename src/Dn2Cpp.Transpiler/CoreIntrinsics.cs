@@ -483,10 +483,9 @@ internal static partial class CoreIntrinsics
         ["System.Threading.AutoResetEvent"] = "Dn2CppObject*",
         ["System.Threading.EventWaitHandle"] = "Dn2CppObject*",
         ["System.Threading.WaitHandle"] = "Dn2CppObject*",
-        // Deliberately the SAME C++ type as WaitHandle above: the safe handle and the
-        // handle it guards are one object here, which is what makes
-        // WaitHandle.get_SafeWaitHandle an identity and lets the static
-        // EventWaitHandle.Set(SafeWaitHandle) reuse the instance Set arm unchanged.
+        // Both are opaque runtime references at generated call sites, but a
+        // SafeWaitHandle is a distinct wrapper carrying either a runtime-event alias or
+        // an OS handle. The runtime helpers resolve that wrapper before operating.
         ["Microsoft.Win32.SafeHandles.SafeWaitHandle"] = "Dn2CppObject*",
         ["System.Threading.CountdownEvent"] = "Dn2CppObject*",
         ["System.Threading.Barrier"] = "Dn2CppObject*",
@@ -1197,6 +1196,10 @@ internal static partial class CoreIntrinsics
         ["System.OverflowException"] = "&dn2cpp_overflow_exception_type",
         ["System.IndexOutOfRangeException"] = "&dn2cpp_index_out_of_range_exception_type",
         ["System.ArgumentException"] = "&dn2cpp_argument_exception_type",
+        // Marshal.GetExceptionForHR's fallback for a failed HRESULT with no more
+        // specific managed mapping. The stable handle keeps catch (COMException)
+        // aligned with the object the runtime helper creates.
+        ["System.Runtime.InteropServices.COMException"] = "&dn2cpp_com_exception_type",
         ["System.ArgumentOutOfRangeException"] = "&dn2cpp_argument_out_of_range_exception_type",
         ["System.ArgumentNullException"] = "&dn2cpp_argument_null_exception_type",
         ["System.InvalidOperationException"] = "&dn2cpp_invalid_operation_exception_type",
@@ -1500,8 +1503,8 @@ internal static partial class CoreIntrinsics
             .Distinct();
 
     /// <summary>The CLR types whose runtime handle is a STUB the emitted metadata fills in
-    /// — the non-exception half of the <c>dn2cpp_type_binds</c> family. One row today:
-    /// System.Enum, whose handle every emitted enum's <c>base</c> points at while
+    /// — the non-exception half of the <c>dn2cpp_type_binds</c> family. System.Enum's
+    /// handle is where every emitted enum's <c>base</c> points while
     /// <c>typeof(Enum)</c> named the emitted <c>ti_System_Enum</c>, so
     /// <c>typeof(E).BaseType == typeof(Enum)</c> was false. Binding rather than owning is
     /// forced by which side knows more: the emitted metadata carries System.Enum's real
@@ -1509,10 +1512,15 @@ internal static partial class CoreIntrinsics
     /// none of it, so owning would DELETE an answer typeof already gives.
     /// (<c>dn2cpp_enum_set_interfaces</c> runs after <c>dn2cpp_runtime_init</c> in the
     /// generated prologue, so the interface rows it installs survive the bind's whole-struct
-    /// copy.)</summary>
+    /// copy.) SafeHandle follows the same ownership split: the runtime wrapper needs a
+    /// stable base chain through SafeHandleZeroOrMinusOneIsInvalid, while emitted CoreLib
+    /// metadata supplies both types' layout, vtable and ancestors.</summary>
     private static readonly Dictionary<string, string> s_runtimeBoundTypeInfo = new()
     {
         ["System.Enum"] = "&dn2cpp_enum_type",
+        ["System.Runtime.InteropServices.SafeHandle"] = "&dn2cpp_safehandle_type",
+        ["Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid"] =
+            "&dn2cpp_safehandle_zero_or_minus_one_type",
     };
 
     static CoreIntrinsics()
