@@ -559,6 +559,19 @@ Dn2CppTypeInfo dn2cpp_enum_type =
     dn2cpp_ti_with_typeobject({ "System.Enum", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_enum_type_obj);
 const Dn2CppType dn2cpp_enum_type_obj = { { &dn2cpp_type_type }, &dn2cpp_enum_type };
 
+// SafeWaitHandle is runtime-allocated, but its inherited SafeHandle methods and
+// reflection metadata are emitted from CoreLib. Keep one stable base handle and let
+// dn2cpp_type_binds replace this stub with that complete emitted metadata at startup.
+extern const Dn2CppType dn2cpp_safehandle_type_obj;
+Dn2CppTypeInfo dn2cpp_safehandle_type =
+    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.SafeHandle", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_safehandle_type_obj);
+const Dn2CppType dn2cpp_safehandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safehandle_type };
+extern const Dn2CppType dn2cpp_safehandle_zero_or_minus_one_type_obj;
+Dn2CppTypeInfo dn2cpp_safehandle_zero_or_minus_one_type =
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid", &dn2cpp_safehandle_type, 0, nullptr, nullptr, 0 }, &dn2cpp_safehandle_zero_or_minus_one_type_obj);
+const Dn2CppType dn2cpp_safehandle_zero_or_minus_one_type_obj =
+    { { &dn2cpp_type_type }, &dn2cpp_safehandle_zero_or_minus_one_type };
+
 void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count)
 {
     dn2cpp_enum_type.interfaces = entries;
@@ -583,6 +596,10 @@ extern const Dn2CppType dn2cpp_argument_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_exception_type =
     dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_argument_exception_type_obj);
 const Dn2CppType dn2cpp_argument_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_exception_type };
+extern const Dn2CppType dn2cpp_com_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_com_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_com_exception_type_obj);
+const Dn2CppType dn2cpp_com_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_com_exception_type };
 extern const Dn2CppType dn2cpp_argument_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_out_of_range_exception_type =
     dn2cpp_ti_with_typeobject({ "System.ArgumentOutOfRangeException", &dn2cpp_argument_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_argument_out_of_range_exception_type_obj);

@@ -645,6 +645,24 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     return e;
 }
 
+Dn2CppObject* dn2cpp_exception_for_hresult(int32_t hresult)
+{
+    if (hresult >= 0)
+        return nullptr;
+
+    const Dn2CppTypeInfo* ti = &dn2cpp_com_exception_type;
+    switch (static_cast<uint32_t>(hresult))
+    {
+        case 0x80070057u: ti = &dn2cpp_argument_exception_type; break;
+        case 0x8007000Eu: ti = &dn2cpp_out_of_memory_exception_type; break;
+        case 0x80070005u: ti = &dn2cpp_unauthorized_access_exception_type; break;
+    }
+    auto* ex = reinterpret_cast<Dn2CppExceptionObject*>(
+        dn2cpp_exception_new(ti, dn2cpp_default_message(ti), nullptr));
+    ex->hresult = hresult;
+    return ex;
+}
+
 // Exception.get_InnerException on an object dn2cpp_exception_new produced.
 Dn2CppObject* dn2cpp_exception_inner(Dn2CppObject* ex)
 {
@@ -1534,4 +1552,3 @@ Dn2CppArrayRef* dn2cpp_aggregate_inner_exceptions(Dn2CppObject* ex, const Dn2Cpp
         a->type = arrTi;
     return a;
 }
-

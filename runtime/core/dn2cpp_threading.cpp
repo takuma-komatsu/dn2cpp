@@ -733,6 +733,10 @@ extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
 const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
+extern const Dn2CppType dn2cpp_safewaithandle_type_obj;
+const Dn2CppTypeInfo dn2cpp_safewaithandle_type =
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", &dn2cpp_safehandle_zero_or_minus_one_type, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_safewaithandle_type_obj);
+const Dn2CppType dn2cpp_safewaithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safewaithandle_type };
 
 struct Dn2CppSemaphore : Dn2CppObject
 {
@@ -748,7 +752,21 @@ struct Dn2CppEvent : Dn2CppObject
     std::condition_variable cv;
     bool signaled;
     bool manualReset;
+    bool closed;
 };
+
+struct Dn2CppSafeWaitHandle : Dn2CppObject
+{
+    std::mutex m;
+    intptr_t handle;
+    bool ownsHandle;
+    bool managedEvent;
+    bool closed;
+    uint32_t dangerousRefs;
+};
+
+static std::mutex g_wait_handle_mutex;
+static std::unordered_map<Dn2CppObject*, Dn2CppObject*> g_wait_safe_handles;
 
 Dn2CppObject* dn2cpp_semaphore_new(int32_t initial, int32_t maxCount)
 {
@@ -846,14 +864,276 @@ Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2Cp
     e->type = ti != nullptr ? ti : &dn2cpp_event_type;
     e->signaled = initial != 0;
     e->manualReset = manualReset != 0;
+    e->closed = false;
     return e;
+}
+
+static Dn2CppSafeWaitHandle* dn2cpp_as_safe_handle(Dn2CppObject* o)
+{
+    if (o == nullptr)
+        dn2cpp_throw_null_reference();
+    return static_cast<Dn2CppSafeWaitHandle*>(o);
+}
+
+Dn2CppObject* dn2cpp_safewaithandle_new(intptr_t handle, int32_t ownsHandle)
+{
+    auto* safe = new Dn2CppSafeWaitHandle();
+    safe->type = &dn2cpp_safewaithandle_type;
+    safe->handle = handle;
+    safe->ownsHandle = ownsHandle != 0;
+    safe->managedEvent = false;
+    safe->closed = false;
+    safe->dangerousRefs = 0;
+    return safe;
+}
+
+static Dn2CppSafeWaitHandle* dn2cpp_managed_event_safe(Dn2CppObject* waitHandle)
+{
+    auto* safe = static_cast<Dn2CppSafeWaitHandle*>(
+        dn2cpp_safewaithandle_new(reinterpret_cast<intptr_t>(waitHandle), 0));
+    safe->managedEvent = true;
+    return safe;
+}
+
+Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
+{
+    if (waitHandle == nullptr)
+        dn2cpp_throw_null_reference();
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    auto it = g_wait_safe_handles.find(waitHandle);
+    if (it == g_wait_safe_handles.end())
+    {
+        auto* safe = dn2cpp_managed_event_safe(waitHandle);
+        it = g_wait_safe_handles.emplace(waitHandle, safe).first;
+    }
+    return it->second;
+}
+
+void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle)
+{
+    if (waitHandle == nullptr)
+        dn2cpp_throw_null_reference();
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    // SafeWaitHandle's nullable setter uses null to clear the OS handle. The next
+    // getter returns a real invalid wrapper rather than null; retaining a null map
+    // value would make every event operation dereference it.
+    g_wait_safe_handles[waitHandle] = safeHandle != nullptr
+        ? safeHandle : dn2cpp_safewaithandle_new(0, 0);
+}
+
+intptr_t dn2cpp_safewaithandle_get(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    return safe->handle;
+}
+
+int32_t dn2cpp_safewaithandle_is_invalid(Dn2CppObject* safeHandle)
+{
+    if (safeHandle == nullptr)
+        return 1;
+    auto* safe = static_cast<Dn2CppSafeWaitHandle*>(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    return safe->handle == 0 || safe->handle == static_cast<intptr_t>(-1) ? 1 : 0;
+}
+
+int32_t dn2cpp_safewaithandle_is_closed(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    return safe->closed ? 1 : 0;
+}
+
+static void dn2cpp_safewaithandle_release_locked(Dn2CppSafeWaitHandle* safe)
+{
+    if (safe->handle == 0 || safe->handle == static_cast<intptr_t>(-1))
+        return;
+    if (safe->managedEvent)
+    {
+        auto* e = reinterpret_cast<Dn2CppEvent*>(safe->handle);
+        {
+            std::lock_guard<std::mutex> lk(e->m);
+            e->closed = true;
+        }
+        e->cv.notify_all();
+    }
+#ifdef _WIN32
+    else if (safe->ownsHandle)
+        ::CloseHandle(reinterpret_cast<HANDLE>(safe->handle));
+#endif
+}
+
+void dn2cpp_safewaithandle_close(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    if (safe->closed)
+        return;
+    safe->closed = true;
+    // Close becomes visible immediately, but an OS handle protected by
+    // DangerousAddRef stays live until the matching DangerousRelease.
+    if (safe->dangerousRefs == 0)
+        dn2cpp_safewaithandle_release_locked(safe);
+}
+
+void dn2cpp_safewaithandle_set_invalid(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    // SafeHandle.SetHandleAsInvalid suppresses release without changing the raw
+    // handle. IsClosed becomes true immediately; IsInvalid remains a property of
+    // the handle value (zero or minus one for SafeWaitHandle).
+    safe->closed = true;
+    safe->ownsHandle = false;
+    safe->managedEvent = false;
+}
+
+int32_t dn2cpp_safewaithandle_addref(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    if (safe->closed)
+        dn2cpp_throw_object_disposed();
+    safe->dangerousRefs++;
+    return 1;
+}
+
+void dn2cpp_safewaithandle_release(Dn2CppObject* safeHandle)
+{
+    auto* safe = dn2cpp_as_safe_handle(safeHandle);
+    std::lock_guard<std::mutex> lk(safe->m);
+    if (safe->dangerousRefs == 0)
+        dn2cpp_throw_invalid_operation();
+    safe->dangerousRefs--;
+    if (safe->closed && safe->dangerousRefs == 0)
+        dn2cpp_safewaithandle_release_locked(safe);
+}
+
+void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
+{
+    if (waitHandle == nullptr)
+        dn2cpp_throw_null_reference();
+    Dn2CppSafeWaitHandle* safe = nullptr;
+    bool runtimeEvent = waitHandle->type == &dn2cpp_event_type
+        || waitHandle->type == &dn2cpp_manualresetevent_type
+        || waitHandle->type == &dn2cpp_autoresetevent_type;
+    {
+        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+        auto it = g_wait_safe_handles.find(waitHandle);
+        if (it != g_wait_safe_handles.end())
+        {
+            safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
+            // A managed WaitHandle subclass can borrow another runtime event's
+            // SafeWaitHandle. Disposing the borrower detaches that alias; it must not
+            // close the donor event that still owns the condition variable.
+            if (!runtimeEvent)
+            {
+                std::lock_guard<std::mutex> slk(safe->m);
+                if (safe->managedEvent)
+                {
+                    it->second = dn2cpp_safewaithandle_new(0, 0);
+                    safe = nullptr;
+                }
+            }
+        }
+        else if (runtimeEvent)
+        {
+            safe = dn2cpp_managed_event_safe(waitHandle);
+            g_wait_safe_handles.emplace(waitHandle, safe);
+        }
+    }
+    if (safe != nullptr)
+        dn2cpp_safewaithandle_close(safe);
+}
+
+static Dn2CppEvent* dn2cpp_event_from_operand(Dn2CppObject* o,
+    Dn2CppSafeWaitHandle** external)
+{
+    if (o == nullptr)
+        dn2cpp_throw_null_reference();
+    if (o->type == &dn2cpp_safewaithandle_type)
+    {
+        auto* safe = static_cast<Dn2CppSafeWaitHandle*>(o);
+        std::lock_guard<std::mutex> lk(safe->m);
+        if (safe->closed)
+            dn2cpp_throw_object_disposed();
+        if (safe->managedEvent)
+        {
+            if (safe->handle == 0)
+                dn2cpp_throw_object_disposed();
+            return reinterpret_cast<Dn2CppEvent*>(safe->handle);
+        }
+        *external = safe;
+        return nullptr;
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+        auto it = g_wait_safe_handles.find(o);
+        if (it != g_wait_safe_handles.end())
+        {
+            auto* safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
+            std::lock_guard<std::mutex> slk(safe->m);
+            if (safe->closed)
+                dn2cpp_throw_object_disposed();
+            if (safe->managedEvent)
+            {
+                if (safe->handle == 0)
+                    dn2cpp_throw_object_disposed();
+                return reinterpret_cast<Dn2CppEvent*>(safe->handle);
+            }
+            *external = safe;
+            return nullptr;
+        }
+    }
+    if (o->type == &dn2cpp_waithandle_type)
+    {
+        dn2cpp_throw_invalid_operation();
+    }
+    return static_cast<Dn2CppEvent*>(o);
+}
+
+static int32_t dn2cpp_external_wait(Dn2CppSafeWaitHandle* safe, int32_t ms)
+{
+#ifdef _WIN32
+    dn2cpp_safewaithandle_addref(safe);
+    intptr_t raw = dn2cpp_safewaithandle_get(safe);
+    DWORD timeout = ms < 0 ? INFINITE : static_cast<DWORD>(ms);
+    DWORD result = ::WaitForSingleObject(reinterpret_cast<HANDLE>(raw), timeout);
+    dn2cpp_safewaithandle_release(safe);
+    if (result == WAIT_OBJECT_0)
+        return 1;
+    if (result == WAIT_TIMEOUT)
+        return 0;
+    dn2cpp_throw_invalid_operation();
+#else
+    (void)safe;
+    (void)ms;
+    dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
 }
 
 void dn2cpp_event_set(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+    {
+#ifdef _WIN32
+        dn2cpp_safewaithandle_addref(external);
+        intptr_t raw = dn2cpp_safewaithandle_get(external);
+        BOOL result = ::SetEvent(reinterpret_cast<HANDLE>(raw));
+        dn2cpp_safewaithandle_release(external);
+        if (result == 0)
+            dn2cpp_throw_invalid_operation();
+        return;
+#else
+        dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+    }
     {
         std::lock_guard<std::mutex> lk(e->m);
+        if (e->closed)
+            dn2cpp_throw_object_disposed();
         e->signaled = true;
     }
     // A manual-reset event releases all waiters; an auto-reset event releases one.
@@ -865,16 +1145,38 @@ void dn2cpp_event_set(Dn2CppObject* o)
 
 void dn2cpp_event_reset(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+    {
+#ifdef _WIN32
+        dn2cpp_safewaithandle_addref(external);
+        intptr_t raw = dn2cpp_safewaithandle_get(external);
+        BOOL result = ::ResetEvent(reinterpret_cast<HANDLE>(raw));
+        dn2cpp_safewaithandle_release(external);
+        if (result == 0)
+            dn2cpp_throw_invalid_operation();
+        return;
+#else
+        dn2cpp_throw_platform_not_supported("OS-backed WaitHandle is only available on Windows");
+#endif
+    }
     std::lock_guard<std::mutex> lk(e->m);
+    if (e->closed)
+        dn2cpp_throw_object_disposed();
     e->signaled = false;
 }
 
 int32_t dn2cpp_event_wait(Dn2CppObject* o)
 {
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+        return dn2cpp_external_wait(external, -1);
     std::unique_lock<std::mutex> lk(e->m);
-    e->cv.wait(lk, [e] { return e->signaled; });
+    e->cv.wait(lk, [e] { return e->signaled || e->closed; });
+    if (e->closed)
+        dn2cpp_throw_object_disposed();
     if (!e->manualReset)
         e->signaled = false; // auto-reset consumes the signal on release
     return 1;                // WaitOne()/Wait() report success (signaled)
@@ -887,10 +1189,16 @@ int32_t dn2cpp_event_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
     if (ms < 0)
         return dn2cpp_event_wait(o);
-    auto* e = static_cast<Dn2CppEvent*>(o);
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+        return dn2cpp_external_wait(external, ms);
     std::unique_lock<std::mutex> lk(e->m);
-    if (!e->cv.wait_for(lk, std::chrono::milliseconds(ms), [e] { return e->signaled; }))
+    if (!e->cv.wait_for(lk, std::chrono::milliseconds(ms),
+            [e] { return e->signaled || e->closed; }))
         return 0;
+    if (e->closed)
+        dn2cpp_throw_object_disposed();
     if (!e->manualReset)
         e->signaled = false;
     return 1;
@@ -900,15 +1208,33 @@ int32_t dn2cpp_event_is_set(Dn2CppObject* o)
 {
     auto* e = static_cast<Dn2CppEvent*>(o);
     std::lock_guard<std::mutex> lk(e->m);
+    if (e->closed)
+        dn2cpp_throw_object_disposed();
     return e->signaled ? 1 : 0;
 }
 
+static int32_t dn2cpp_event_try_wait(Dn2CppObject* o)
+{
+    Dn2CppSafeWaitHandle* external = nullptr;
+    auto* e = dn2cpp_event_from_operand(o, &external);
+    if (external != nullptr)
+        return dn2cpp_external_wait(external, 0);
+    std::lock_guard<std::mutex> lk(e->m);
+    if (e->closed)
+        dn2cpp_throw_object_disposed();
+    if (!e->signaled)
+        return 0;
+    if (!e->manualReset)
+        e->signaled = false;
+    return 1;
+}
+
 // WaitHandle.WaitAny(WaitHandle[]): block until ANY handle is signaled, returning its
-// index. Each handle is a native Dn2CppEvent (ManualResetEvent/AutoResetEvent, both
-// derive WaitHandle). A round-robin non-blocking scan checks each event's signaled flag —
-// consuming it for an auto-reset event, exactly like a single dn2cpp_event_wait — and
-// returns the first ready index; when none is ready it sleeps briefly and retries (a
-// polling wait: there is no shared condition variable to block on across the whole set).
+// index. A round-robin non-blocking scan resolves each operand through the same
+// SafeWaitHandle mapping as WaitOne, then consumes an auto-reset signal exactly once.
+// Windows OS handles use WaitForSingleObject(0); runtime events use their mutex. When
+// none is ready the loop sleeps briefly and retries (there is no shared condition
+// variable across the heterogeneous set).
 // Argument checks match real .NET: a null array or a null element throws
 // ArgumentNullException, an empty array throws ArgumentException. The timed
 // WaitAny(..., int/TimeSpan) overloads stay unmapped.
@@ -925,14 +1251,8 @@ int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
     {
         for (int32_t i = 0; i < handles->length; i++)
         {
-            auto* e = static_cast<Dn2CppEvent*>(handles->data[i]);
-            std::lock_guard<std::mutex> lk(e->m);
-            if (e->signaled)
-            {
-                if (!e->manualReset)
-                    e->signaled = false; // auto-reset consumes the signal, like dn2cpp_event_wait
+            if (dn2cpp_event_try_wait(handles->data[i]))
                 return i;
-            }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

@@ -362,9 +362,8 @@ internal sealed partial class MethodCompiler
             // bool; the Slim ones return void.
             //
             // The Set arm also serves the internal STATIC EventWaitHandle.Set(SafeWaitHandle)
-            // without a case of its own: a SafeWaitHandle is the same Dn2CppObject* as the
-            // event it guards (see the SafeWaitHandle block below), so there is one operand
-            // either way and popping "the receiver" pops the handle.
+            // without a case of its own. Both shapes carry one opaque operand; the runtime
+            // resolves whether it is an event or its distinct SafeWaitHandle wrapper.
             case ("System.Threading.ManualResetEventSlim", "Set"):
             case ("System.Threading.EventWaitHandle", "Set"):
             {
@@ -430,33 +429,55 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_event_wait_any((Dn2CppArrayRef*)({arr.Expr}))");
                 return true;
             }
-            // Dispose/Close on these primitives are no-ops (the native object lives for
-            // the program, like the monitor table).
-            case ("System.Threading.SemaphoreSlim", "Dispose"):
-            case ("System.Threading.ManualResetEventSlim", "Dispose"):
-            case ("System.Threading.WaitHandle", "Dispose"):
-            case ("System.Threading.WaitHandle", "Close"):
-            // The safe handle is the same never-closed runtime object (see the
-            // SafeWaitHandle block below), so its Dispose/Close are the same no-op.
-            case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Dispose"):
-            case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Close"):
+            // A managed subclass such as ProcessWaitHandle allocates its own object and
+            // attaches an OS SafeWaitHandle through the property setter. The intrinsic
+            // base has no instance fields for its constructor to initialize.
+            case ("System.Threading.WaitHandle", ".ctor"):
             {
                 Pop(); // this
                 return true;
             }
-            // ---- SafeWaitHandle: the handle of a WaitHandle, which here IS the WaitHandle ----
-            // dn2cpp models the WaitHandle family as an opaque runtime mutex+condvar
-            // object rather than as an OS handle, so the SafeWaitHandle wrapping one is
-            // mapped to that same Dn2CppObject* (CoreIntrinsics.s_intrinsicCppTypes) and
-            // this getter is the identity. The real getter's lazy
-            // `new SafeWaitHandle(InvalidHandle, ownsHandle: false)` fallback needs no
-            // counterpart: it exists for a WaitHandle whose _waitHandle field is null, and
-            // every WaitHandle this model can produce is built by dn2cpp_event_new
-            // (MethodCompiler.Newobj) with the object in hand.
+            // The native SemaphoreSlim/Slim objects live for the program. WaitHandle
+            // disposal is different: a managed subclass can own an attached Windows
+            // HANDLE, and closing the WaitHandle must release that SafeWaitHandle.
+            case ("System.Threading.SemaphoreSlim", "Dispose"):
+            case ("System.Threading.ManualResetEventSlim", "Dispose"):
+            {
+                Pop(); // this
+                return true;
+            }
+            case ("System.Threading.WaitHandle", "Dispose"):
+            case ("System.Threading.WaitHandle", "Close"):
+            {
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    Pop();
+                var o = Pop(); // this
+                Emit($"dn2cpp_waithandle_close((Dn2CppObject*)({o.Expr}));");
+                return true;
+            }
+            case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Dispose"):
+            case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "Close"):
+            {
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    Pop();
+                var o = Pop(); // this
+                Emit($"dn2cpp_safewaithandle_close((Dn2CppObject*)({o.Expr}));");
+                return true;
+            }
+            // ---- SafeWaitHandle: runtime event alias or an attached OS handle ----
             case ("System.Threading.WaitHandle", "get_SafeWaitHandle"):
             {
                 var o = Pop(); // this
-                Push(StackKind.Ref, "Dn2CppObject*", $"((Dn2CppObject*)({o.Expr}))");
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_waithandle_get_safe((Dn2CppObject*)({o.Expr}))");
+                return true;
+            }
+            case ("System.Threading.WaitHandle", "set_SafeWaitHandle"):
+            {
+                var handle = Pop();
+                var o = Pop(); // this
+                Emit($"dn2cpp_waithandle_set_safe((Dn2CppObject*)({o.Expr}), "
+                    + $"(Dn2CppObject*)({handle.Expr}));");
                 return true;
             }
             // The raw handle value. It must be a value DISTINCT from 0 and from -1 for
@@ -467,41 +488,45 @@ internal sealed partial class MethodCompiler
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "DangerousGetHandle"):
             {
                 var o = Pop(); // this
-                Push(StackKind.I8, "intptr_t", $"(intptr_t)({o.Expr})");
+                Push(StackKind.I8, "intptr_t",
+                    $"dn2cpp_safewaithandle_get((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
-            // DangerousAddRef(ref bool success) / DangerousRelease — the refcount that
-            // keeps an OS handle alive across a P/Invoke. There is no OS handle and the
-            // object is GC-owned for the life of the program (Dispose/Close above are
-            // already no-ops), so the count has nothing to protect: the add always
-            // succeeds and the release is a no-op — the answer a live, never-closed handle
-            // gives in real .NET too. The low-byte write mirrors Monitor.Enter's ref-bool
-            // store above.
+            // Keep a closeable OS handle alive across the protected native operation.
+            // The low-byte write mirrors Monitor.Enter's ref-bool store above.
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "DangerousAddRef"):
             {
                 var success = Pop(); // ref bool success
-                Pop();               // this
-                Emit($"*(uint8_t*)({success.Expr}) = 1;");
+                var o = Pop();       // this
+                Emit($"*(uint8_t*)({success.Expr}) = (uint8_t)"
+                    + $"dn2cpp_safewaithandle_addref((Dn2CppObject*)({o.Expr}));");
                 return true;
             }
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "DangerousRelease"):
             {
-                Pop(); // this
+                var o = Pop(); // this
+                Emit($"dn2cpp_safewaithandle_release((Dn2CppObject*)({o.Expr}));");
                 return true;
             }
-            // IsInvalid comes from SafeHandleZeroOrMinusOneIsInvalid (handle is 0 or -1);
-            // here the only unrepresentable handle is the null object. IsClosed is always
-            // false for the same reason DangerousRelease is a no-op.
+            case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "SetHandleAsInvalid"):
+            {
+                var o = Pop(); // this
+                Emit($"dn2cpp_safewaithandle_set_invalid((Dn2CppObject*)({o.Expr}));");
+                return true;
+            }
+            // IsInvalid follows SafeHandleZeroOrMinusOneIsInvalid (handle is 0 or -1).
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "get_IsInvalid"):
             {
                 var o = Pop(); // this
-                Push(StackKind.I4, "int32_t", $"((({o.Expr}) == nullptr) ? 1 : 0)");
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_safewaithandle_is_invalid((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
             case ("Microsoft.Win32.SafeHandles.SafeWaitHandle", "get_IsClosed"):
             {
-                Pop(); // this
-                Push(StackKind.I4, "int32_t", "0");
+                var o = Pop(); // this
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_safewaithandle_is_closed((Dn2CppObject*)({o.Expr}))");
                 return true;
             }
             // ---- CountdownEvent (real countdown latch) ----

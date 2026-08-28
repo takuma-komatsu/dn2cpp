@@ -1998,7 +1998,7 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I8, "intptr_t", $"(intptr_t)dn2cpp_gchandle_addr({GCHVal(r)})");
                 return true;
             }
-            case "Free":
+            case "Free" or "Dispose":
             {
                 var r = Pop();
                 // A local/field receiver arrives by address (ldloca/ldflda) — free
