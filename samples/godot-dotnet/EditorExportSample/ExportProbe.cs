@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-#if GODOT_WEB
+#if GODOT_WEB || GODOT_WINDOWS
 using System.Runtime.InteropServices;
 #endif
 using System.Threading;
@@ -16,6 +16,11 @@ public partial class ExportProbe : Node
 #if GODOT_WEB
     [DllImport("libSystem.Security.Cryptography.Native.Apple", EntryPoint = "AppleCryptoNative_GetRandomBytes")]
     private static extern unsafe int AppleCryptoNativeGetRandomBytes(byte* buffer, int length, int* status);
+#endif
+
+#if GODOT_WINDOWS
+    [DllImport("dn2cpp_editor_export_dependency", EntryPoint = "dn2cpp_editor_export_dependency_value")]
+    private static extern int EditorExportDependencyValue();
 #endif
 
     // Overridden by the scene: reaching the C# instance through the engine's Set
@@ -53,6 +58,9 @@ public partial class ExportProbe : Node
         _tickAtReady = System.Environment.TickCount64;
         _stampAtReady = Stopwatch.GetTimestamp();
 
+#if GODOT_WINDOWS
+        Console.WriteLine($"DN2CPP_EXPORT_DEPENDENCY value={EditorExportDependencyValue() == 73}");
+#endif
         ProbeCsprng();
         ProbeInterop();
         _ = ProbeSignalAsync();

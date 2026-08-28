@@ -672,8 +672,8 @@ optimization changed no results. All are on by default except
   build compiles in parallel.
 - **Highway SIMD backend** (CMake `DN2CPP_USE_HIGHWAY`) behind the
   portable-SIMD surface; `-DDN2CPP_USE_HIGHWAY=OFF` returns to the scalar
-  emulation, byte-identically in behavior. dn2cpp never emits hardware
-  intrinsics itself — see *Permanent non-goals*.
+  emulation, byte-identically in behavior. Platform-specific hardware
+  intrinsics are not emitted yet — see *Transient limitations*.
 - **`--trim-reflection`** drops the member tables of types the program
   cannot plausibly reflect over (the Godot Web export turns it on). The
   analysis is unsound by nature, so a stripped type **throws** rather than
@@ -757,10 +757,6 @@ it does not come back as a ticket.
   `ReflectRuntimeInstantiationSubset`); everything else stays the boundary.
 - **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
   signatures. IL2CPP does not support them either.
-- **Real SIMD code generation.** The transpiler never emits hardware
-  intrinsics; portable-SIMD operations are backed by the Highway backend
-  (`DN2CPP_USE_HIGHWAY`, default on, single static ISA), with the scalar
-  emulation as the byte-identical opt-out.
 - **`res://` / `user://` translation inside `System.IO` (Godot lane).**
   Convert first with `ProjectSettings.GlobalizePath(...)`, or take the
   writable root from `OS.GetUserDataDir()`. A transparent translation is
@@ -840,7 +836,10 @@ authoritative list**. Representative examples as of now: the forked
 editor's distributable `.app` is ad-hoc signed and not notarized. iOS
 *device* execution is likewise unverified (provisioning required) — the
 simulator lane is E2E-verified and the device build path is exercised
-headlessly.
+headlessly. Platform-specific `System.Runtime.Intrinsics` families also remain
+unsupported: their `IsSupported` getters stay false so the BCL selects software
+fallbacks until the matching instruction bodies and target-CPU feature checks
+can be enabled together. Portable SIMD remains available through Highway.
 
 ### Runtime quirks
 

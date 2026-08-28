@@ -17,12 +17,12 @@
 # the .exe on Windows).
 #
 # The claims it pins down:
-#   1. Zero engine/template changes. The exported game runs on an export template
-#      built from the *pinned base commit* (setup-godot-fork.sh reuses the
-#      pristine clone's binary when the fork's engine sources are byte-identical).
-#      Its GDMono only reaches try_load_native_aot_library because no hostfxr and
-#      no coreclr sit next to the game — so the data dir holding exactly one file
-#      is a load-bearing assertion, not tidiness.
+#   1. The exported game runs on a template built from the fork's pinned engine
+#      provenance. Its GDMono only reaches try_load_native_aot_library because no
+#      hostfxr and no coreclr sit next to the game. On Windows the drop-in links a
+#      fixture DLL staged only beside it, proving that the NativeAOT load call
+#      admits PE dependencies from the data directory without changing every
+#      dynamic-library open in the engine.
 #   2. The bundle is the whole toolchain. The toolchain is re-packaged from the
 #      *working tree* and installed into the fork editor before the export, so a
 #      dn2cpp runtime or transpiler regression fails here. Including the build
@@ -67,6 +67,8 @@ source "$(dirname "$0")/_godot_fork.sh"
 
 OUT=gates/out-godot-editor-export
 SAMPLE=samples/godot-dotnet/EditorExportSample
+WINDOWS_DEPENDENCY_FIXTURE=gates/fixtures/godot-editor-export-windows-dependency
+WINDOWS_DEPENDENCY_NAME=dn2cpp_editor_export_dependency
 PROJECT_NAME=EditorExportSample
 ARCH="$(godot_fork_host_arch)"
 
@@ -178,6 +180,7 @@ if gate_cache_check "$OUT" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
+    "$WINDOWS_DEPENDENCY_FIXTURE" \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -197,6 +200,39 @@ echo "== 3/13 Staging the sample project =="
 PROJ="$OUT/project"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
+
+# Windows's loader fix is observable only when the drop-in has a PE import whose
+# DLL exists beside the drop-in and nowhere in the executable's normal search
+# path. Build that dependency before import, then declare its import library,
+# staging path and P/Invoke module through the same project settings a real game
+# uses. The source is Windows-conditional, so the other desktop targets retain
+# their one-library fixture.
+if [ "$DN2CPP_OS" = windows ]; then
+    WINDOWS_DEPENDENCY_BUILD="$OUT/windows-dependency"
+    mkdir -p "$WINDOWS_DEPENDENCY_BUILD"
+    _cmake_step "$WINDOWS_DEPENDENCY_BUILD/configure.log" \
+        "configuring the Windows drop-in dependency fixture" \
+        "$CMAKE" -S "$WINDOWS_DEPENDENCY_FIXTURE" -B "$WINDOWS_DEPENDENCY_BUILD" -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER="${CMAKE_CXX_COMPILER}" || exit 1
+    _cmake_step "$WINDOWS_DEPENDENCY_BUILD/build.log" \
+        "building the Windows drop-in dependency fixture" \
+        "$CMAKE" --build "$WINDOWS_DEPENDENCY_BUILD" || exit 1
+
+    mkdir -p "$PROJ/native"
+    cp "$WINDOWS_DEPENDENCY_BUILD/$WINDOWS_DEPENDENCY_NAME.dll" "$PROJ/native/"
+    cp "$WINDOWS_DEPENDENCY_BUILD/$WINDOWS_DEPENDENCY_NAME.lib" "$PROJ/native/"
+
+    project_tmp="$(mktemp)"
+    awk -v dependency="$WINDOWS_DEPENDENCY_NAME" '
+        { print }
+        $0 == "project/assembly_name=\"EditorExportSample\"" {
+            print "dn2cpp/extra_transpile_args=PackedStringArray(\"--pinvoke-module\", \"" dependency "\")"
+            print "dn2cpp/extra_link_libs=PackedStringArray(\"res://native/" dependency ".lib\")"
+            print "dn2cpp/extra_shared_objects=PackedStringArray(\"res://native/" dependency ".dll\")"
+        }
+    ' "$PROJ/project.godot" > "$project_tmp"
+    mv "$project_tmp" "$PROJ/project.godot"
+fi
 
 cat > "$PROJ/nuget.config" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -271,8 +307,8 @@ echo "== 5/13 Exporting with dotnet/export_backend = dn2cpp =="
 # The data dir is wiped explicitly: on macOS it lives inside the bundle so
 # `rm -rf "$APP"` covers it, but on Windows it sits BESIDE the .exe in the
 # never-wiped work dir — a previous run's copy would let a broken staging
-# stale-pass (last run's drop-in still found) or false-fail the
-# holds-only-$DROPIN_NAME assert below.
+# stale-pass (last run's drop-in still found) or false-fail the expected native
+# library set asserted below.
 APP="$EXPORT_TARGET"
 godot_editor_export_layout "$APP"
 rm -rf "$APP" "$DATA_DIR"
@@ -327,7 +363,7 @@ godot_fork_assert_bundled_buildtools "$OUT/export.log" "$EXPORTER_LOG" \
 # of a 40-line marker list is what drifts.
 assert_export_artifact_and_run() {
     local LOG="$1"
-    local DROPIN_NAME staged rc n marker once bad
+    local DROPIN_NAME expected_staged staged rc n marker once bad
     DROPIN_NAME="$(basename "$DROPIN")"
     [ -f "$DROPIN" ] || { echo "FAIL: no drop-in library at $DROPIN" >&2; ls -R "$(dirname "$DATA_DIR")" >&2; exit 1; }
     # grep without -q so it drains dump_exports's output: under `set -o pipefail`,
@@ -340,10 +376,21 @@ assert_export_artifact_and_run() {
     # GDMono only falls through to try_load_native_aot_library when it finds neither
     # hostfxr nor coreclr next to the game. A stray runtime here would silently route
     # the exported game back to .NET and make the rest of this gate prove nothing.
-    staged="$(ls "$DATA_DIR")"
-    if [ "$staged" != "$DROPIN_NAME" ]; then
-        echo "FAIL: the project data dir must hold only $DROPIN_NAME, but holds:" >&2
+    expected_staged="$DROPIN_NAME"
+    if [ "$DN2CPP_OS" = windows ]; then
+        expected_staged="$expected_staged
+$WINDOWS_DEPENDENCY_NAME.dll"
+    fi
+    staged="$(LC_ALL=C ls -1 "$DATA_DIR" | LC_ALL=C sort)"
+    expected_staged="$(printf '%s\n' "$expected_staged" | LC_ALL=C sort)"
+    if [ "$staged" != "$expected_staged" ]; then
+        echo "FAIL: the project data dir does not hold the expected native libraries:" >&2
+        printf 'expected:\n%s\nactual:\n' "$expected_staged" >&2
         printf '%s\n' "$staged" >&2
+        exit 1
+    fi
+    if [ "$DN2CPP_OS" = windows ] && [ -e "$(dirname "$GAME_EXE")/$WINDOWS_DEPENDENCY_NAME.dll" ]; then
+        echo "FAIL: $WINDOWS_DEPENDENCY_NAME.dll was copied beside the executable" >&2
         exit 1
     fi
 
@@ -370,6 +417,10 @@ assert_export_artifact_and_run() {
         "DN2CPP_EXPORT_DONE"; do
         grep -qF "$marker" "$LOG" || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
     done
+    if [ "$DN2CPP_OS" = windows ]; then
+        grep -qF "DN2CPP_EXPORT_DEPENDENCY value=True" "$LOG" \
+            || { echo "FAIL: the drop-in did not call its data-directory dependency" >&2; exit 1; }
+    fi
     for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" \
         "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_CLOCK" "DN2CPP_EXPORT_CSPRNG" \
         "DN2CPP_EXPORT_DONE"; do
