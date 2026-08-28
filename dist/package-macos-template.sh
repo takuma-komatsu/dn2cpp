@@ -89,13 +89,33 @@ $(printf '%s\n' "$untracked_engine" | sed 's/^/         /')
 engine_delta="$(git -C "$FORK" diff --no-ext-diff --no-textconv --no-color --no-renames \
     "$BASE_COMMIT" -- "${MACOS_ENGINE_INPUTS[@]}")"
 residue="$(awk '
-    /^diff / { inhunk = 0 }
-    /^@@/    { inhunk = 1; next }
+    /^diff / { inhunk = 0; in_win = 0; saw_win_else = 0 }
+    /^@@/    { inhunk = 1; in_win = 0; saw_win_else = 0; next }
     !inhunk  { next }
     /^[+-]/ {
         sign = substr($0, 1, 1); s = substr($0, 2)
         gsub(/[ \t]/, "", s)
         if (s == "" || s ~ /^\/\//) next
+        if (sign == "+" && (s ~ /^#ifdefined\(WINDOWS_ENABLED\)/ || s ~ /^#ifdefWINDOWS_ENABLED/)) {
+            in_win = 1
+            next
+        }
+        if (in_win) {
+            if (s == "#else") {
+                in_win = 0
+                saw_win_else = 1
+                next
+            }
+            if (s == "#endif") {
+                in_win = 0
+                next
+            }
+            next
+        }
+        if (saw_win_else && s == "#endif") {
+            saw_win_else = 0
+            next
+        }
         gsub(/&&!defined\(WEB_ENABLED\)/, "", s)
         gsub(/!defined\(WEB_ENABLED\)&&/, "", s)
         gsub(/\|\|defined\(WEB_ENABLED\)/, "", s)
