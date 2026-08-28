@@ -781,6 +781,23 @@ per-assembly narrowing was measured and rejected, since no site presents a
 constant receiver (`IEvalStack.Push` spills every value to a temporary, so the
 analysis returns "all").
 
+Web diagnostic symbols are a separate, link-only lever. The Web export option
+`dotnet/dn2cpp/keep_symbols` defaults to `false`; when enabled,
+`Dn2CppExporter.BuildDropIn` appends `-g2` to `DN2CPP_APP_LINK_FLAGS`, after any
+project-declared `dotnet/dn2cpp/extra_link_flags`. This keeps the wasm name
+section so browser stack traces can show generated managed function names, at
+the cost of a larger side module. The complete effective flag string is passed
+on every configure, including the empty/default form, because the CMake build
+directory persists and an earlier enabled export must not leak `-g2` into a
+later disabled one.
+
+This option is Web-only and independent of Godot's debug/release export choice
+(`--export-debug` versus `--export-release`). It does not change
+`DN2CPP_STRIP` or `DN2CPP_DEAD_STRIP`: both already exclude Emscripten, which
+has no native symbol table to strip here. `SIDE_MODULE=2` and its dead-code
+elimination remain enabled; only names for the functions that survive the link
+are retained.
+
 ### Upgrading a project that exported for Web before the GC change
 
 The exporter no longer forces `-DDN2CPP_USE_GC=OFF` for Web; Web takes the CMake

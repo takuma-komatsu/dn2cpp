@@ -108,6 +108,37 @@ while i < len(b):
 PY
 }
 
+# Set the C# export plugin's Web-only symbol option without depending on its
+# position among the other plugin options. The staged preset starts without the
+# key so the first export also proves the declared default.
+set_web_keep_symbols() {
+    local value="$1" tmp
+    tmp="$(mktemp)"
+    awk -v value="$value" '
+        /^\[preset\./ { inweb = ($0 ~ /^\[preset\.3[.\]]/) }
+        inweb && /^dotnet\/dn2cpp\/keep_symbols=/ {
+            print "dotnet/dn2cpp/keep_symbols=" value
+            found = 1
+            next
+        }
+        inweb && /^dotnet\/export_backend=/ {
+            print
+            if (!found) {
+                print "dotnet/dn2cpp/keep_symbols=" value
+                found = 1
+            }
+            next
+        }
+        { print }
+        END { if (!found) exit 1 }
+    ' "$PROJ/export_presets.cfg" > "$tmp" || {
+        rm -f "$tmp"
+        echo "FAIL: could not set dotnet/dn2cpp/keep_symbols in the Web preset" >&2
+        exit 1
+    }
+    mv "$tmp" "$PROJ/export_presets.cfg"
+}
+
 echo "== 1/9 Fork pin + interop-ABI tripwire =="
 # This lane is the first to change engine C++ at all, so the ABI surfaces the
 # mono-module handshake hard-codes assumptions about matter MORE here, not less:
@@ -186,6 +217,17 @@ PROJ="$OUT/project"
 rm -rf "$PROJ"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
+
+# A harmless project link flag makes the symbol arm prove composition as well as
+# toggling: keep_symbols must append -g2, then remove only -g2 when switched off.
+project_tmp="$(mktemp)"
+awk '
+    { print }
+    /^project\/assembly_name=/ {
+        print "dn2cpp/extra_link_flags=PackedStringArray(\"-sASSERTIONS=0\")"
+    }
+' "$PROJ/project.godot" > "$project_tmp"
+mv "$project_tmp" "$PROJ/project.godot"
 
 cat > "$PROJ/nuget.config" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
@@ -286,6 +328,81 @@ STAGED_EMSDK="$FORK_GODOTSHARP/Dn2Cpp/emsdk"
     echo "      used:   $EMSDK_USED" >&2
     echo "      staged: $STAGED_EMSDK" >&2
     exit 1; }
+
+# The build directory is deliberately reused across all three exports below.
+# CMake caches DN2CPP_APP_LINK_FLAGS, so false -> true -> false is the regression
+# shape: the last export must actively overwrite the cached -g2 rather than inherit
+# it. The project flag stays present in every arm to prove the option composes with
+# user-supplied flags instead of replacing them.
+LINK_CACHE="$(first_line "$(find "$PROJ/.godot/mono/dn2cpp/build" -path '*/web-ExportRelease-*/CMakeCache.txt' -type f -print)")"
+[ -n "$LINK_CACHE" ] || {
+    echo "FAIL: no persistent Web CMakeCache.txt after the first export" >&2
+    exit 1
+}
+BASE_LINK_FLAGS='DN2CPP_APP_LINK_FLAGS:STRING=-sASSERTIONS=0'
+grep -qxF -- "$BASE_LINK_FLAGS" "$LINK_CACHE" || {
+    echo "FAIL: default keep_symbols export did not preserve only the project link flags" >&2
+    grep '^DN2CPP_APP_LINK_FLAGS' "$LINK_CACHE" >&2 || true
+    exit 1
+}
+DEFAULT_DROPIN="$WEBDIR/$PROJECT_NAME.so"
+node gates/_wasm_symbols.js sections "$DEFAULT_DROPIN" > "$OUT/default-sections.txt"
+if grep -qx 'custom:name' "$OUT/default-sections.txt"; then
+    echo "FAIL: keep_symbols defaults false, but the default Web drop-in has a name section" >&2
+    exit 1
+fi
+
+set_web_keep_symbols true
+SYMBOL_WEBDIR="$PWD/$OUT/web-symbols"
+rm -rf "$SYMBOL_WEBDIR"
+mkdir -p "$SYMBOL_WEBDIR"
+if ! godot_export_step 2400 "$OUT/export-symbols.log" "$SYMBOL_WEBDIR/index.html" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-release dn2cpp-web "$SYMBOL_WEBDIR/index.html"; then
+    echo "FAIL: Web export with keep_symbols=true failed" >&2
+    cat "$OUT/export-symbols.log" >&2
+    exit 1
+fi
+grep -qxF 'DN2CPP_APP_LINK_FLAGS:STRING=-sASSERTIONS=0 -g2' "$LINK_CACHE" || {
+    echo "FAIL: keep_symbols=true did not append -g2 to the persistent link flags" >&2
+    grep '^DN2CPP_APP_LINK_FLAGS' "$LINK_CACHE" >&2 || true
+    exit 1
+}
+SYMBOL_DROPIN="$SYMBOL_WEBDIR/$PROJECT_NAME.so"
+node gates/_wasm_symbols.js sections "$SYMBOL_DROPIN" > "$OUT/symbol-sections.txt"
+grep -qx 'custom:name' "$OUT/symbol-sections.txt" || {
+    echo "FAIL: keep_symbols=true produced no wasm name section" >&2
+    exit 1
+}
+node gates/_wasm_symbols.js names "$SYMBOL_DROPIN" > "$OUT/symbol-names.txt"
+grep -q 'm_ExportProbe__Ready_4' "$OUT/symbol-names.txt" || {
+    echo "FAIL: the wasm name section does not name ExportProbe._Ready" >&2
+    awk '/ExportProbe/ { print; if (++matches == 20) exit }' \
+        "$OUT/symbol-names.txt" >&2
+    exit 1
+}
+
+set_web_keep_symbols false
+rm -rf "$WEBDIR"
+mkdir -p "$WEBDIR"
+if ! godot_export_step 2400 "$OUT/export-symbols-off.log" "$WEBDIR/index.html" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-release dn2cpp-web "$WEBDIR/index.html"; then
+    echo "FAIL: Web re-export with keep_symbols=false failed" >&2
+    cat "$OUT/export-symbols-off.log" >&2
+    exit 1
+fi
+grep -qxF -- "$BASE_LINK_FLAGS" "$LINK_CACHE" || {
+    echo "FAIL: keep_symbols=false left -g2 in the persistent CMake cache" >&2
+    grep '^DN2CPP_APP_LINK_FLAGS' "$LINK_CACHE" >&2 || true
+    exit 1
+}
+node gates/_wasm_symbols.js sections "$WEBDIR/$PROJECT_NAME.so" > "$OUT/final-sections.txt"
+if grep -qx 'custom:name' "$OUT/final-sections.txt"; then
+    echo "FAIL: false after true left the wasm name section in the rebuilt drop-in" >&2
+    exit 1
+fi
+echo "Web diagnostic symbols OK: false -> true -> false reused one CMake slot; project flags survived and -g2 did not"
 
 echo "== 6/9 Asserting the artifacts =="
 DROPIN="$WEBDIR/$PROJECT_NAME.so"
