@@ -39,15 +39,16 @@
 # stale one WITHOUT running this script — the question this script answers by
 # doing the work.
 #
-# Why no engine rebuild in the common case
-# ----------------------------------------
+# Why engine rebuilds are content-keyed
+# --------------------------------------
 # GodotTools is a *managed* assembly that the editor loads from
 # GodotSharp/Tools/ at run time (godotsharp_dirs.cpp resolves it next to the
-# executable), and the fork's whole contract is that it changes GodotTools,
-# build_scripts and docs — never engine C++. So a fork whose engine sources are
-# byte-identical to the base commit can reuse the pristine clone's already-built
-# editor and template binaries, and re-running build_assemblies.py is the entire
-# edit-test loop. Step 0 *verifies* that invariant instead of assuming it.
+# executable), so most exporter edits need only rebuild the managed assemblies.
+# The fork also carries narrow load-path changes in engine C++. A fork whose
+# engine sources are byte-identical to the base commit can reuse the pristine
+# clone's already-built editor and template binaries; one whose bytes differ
+# must use an engine binary stamped from that content. Step 0 measures the tree
+# rather than assuming either case.
 #
 # A fork that *does* edit engine C++ gets a scons build (tens of minutes each —
 # run this in the background, never inside a gate). Which of the two happens is

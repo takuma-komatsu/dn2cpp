@@ -6,7 +6,7 @@ packaging dn2cpp into the distributable editor. The dn2cpp side consumes the
 shipped mono-module drop-in lane (`--dotnet-module`). Open rows are in
 `docs/STATUS.md`.
 
-## 1. Why this works without touching the engine runtime
+## 1. Why the existing engine load path is enough
 
 Godot already loads a NativeAOT-exported C# game through a **drop-in native
 library** path: `GDMono::initialize()` falls through to
@@ -16,11 +16,14 @@ library** path: `GDMono::initialize()` falls through to
 `api_assemblies_dir = {exe_dir}/data_{csprojname}_{platform}_{arch}`
 (`modules/mono/godotsharp_dirs.cpp`).
 
-`--dotnet-module` emits exactly that shape, so the backend needs **no change to
-the engine runtime or to export templates**. The fork's work is the export side
-(GodotTools, C#) plus assembling the editor distribution. The **Web** (§10) is
-the one exception, and only around the load path: three engine files change
-there because upstream never compiled the C# module for wasm32.
+`--dotnet-module` emits exactly that shape and adds no new engine ABI. The fork's
+main work is the export side (GodotTools, C#) plus assembling the editor
+distribution. Two load-path adjustments remain in engine code. Web (§10)
+enables the existing path for wasm32. On Windows,
+`try_load_native_aot_library` passes `OS::GDExtensionData` with
+`also_set_library_path = true` for its one `open_dynamic_library` call, so a PE
+drop-in resolves dependencies staged beside it in the data directory. The flag
+does not change any other dynamic-library open or any non-Windows target.
 
 ### ABI no-touch list (fork invariant)
 
@@ -36,10 +39,11 @@ The drop-in lane's ABI is pinned by a fingerprint over three engine surfaces
   type from the managed signature, so a widened parameter or return type is a
   re-audit and not a re-freeze.
 
-**The fork must never modify these three.** All fork changes live in
-`modules/mono/editor/GodotTools/**` (C#), `modules/mono/build_scripts/**` and
-docs. Leaving all three surfaces byte-identical keeps the fingerprint and keeps
-the fork drop-in compatible; the fork gates re-check the same fingerprint.
+**The fork must never modify these three.** The Windows and Web load-path edits
+live outside them in `modules/mono/mono_gd/gd_mono.cpp` and do not widen the
+interop contract. Leaving all three surfaces byte-identical keeps the
+fingerprint and keeps the fork drop-in compatible; the fork gates re-check the
+same fingerprint.
 
 ## 2. Fork strategy
 
@@ -128,10 +132,13 @@ through `PublishProjectBlocking`.
 4. **Stage**: copy the produced library as `{Assembly}.{soExt}` into a fresh
    staging dir and point the existing `RecursePublishContents` /
    `AddSharedObject` at it, so it lands in
-   `data_{csprojname}_{platform}_{arch}/`. The staging dir holds *only* that
-   library: `try_load_native_aot_library` runs only after `load_hostfxr` and
-   `load_coreclr` both fail, so a stray runtime beside the game routes it back
-   to the .NET host.
+   `data_{csprojname}_{platform}_{arch}/`. Project-declared
+   `dotnet/dn2cpp/extra_shared_objects` land beside it; no managed runtime may
+   enter this directory because `try_load_native_aot_library` runs only after
+   `load_hostfxr` and `load_coreclr` both fail. On Windows the NativeAOT load
+   call adds this directory to the dependency search only while opening the
+   drop-in, which is what makes those native siblings usable without copying
+   them beside the executable.
 
 **Error surfacing.** stdout/stderr tee to
 `{ProjectBaseOutputPath}/dn2cpp/logs/export-<ts>.log`; the tail and log path go
@@ -147,7 +154,9 @@ say a transpile failed, because the exported page comes from the template.
 desktop targets. Windows differs only in the output name, and that is the
 platform's rule: MSVC/lld write `<name>.dll` with **no `lib` prefix**, and the
 `WINDOWS_ENABLED` branch of `try_load_native_aot_library` opens exactly
-`<Assembly>.dll`. **iOS** cross-builds each RID (`ios-arm64`,
+`<Assembly>.dll`. That branch also requests the DLL's containing directory for
+PE dependency lookup; the shared `OS_Windows::open_dynamic_library` default is
+unchanged. **iOS** cross-builds each RID (`ios-arm64`,
 `iossimulator-arm64/-x64`) via `-DCMAKE_SYSTEM_NAME=iOS`; the existing
 `_aot.xcframework` tail of `_ExportBeginImpl` lipos and embeds the results
 unchanged, reading one `{Assembly}.dylib` per entry of the export's output-path
@@ -418,13 +427,13 @@ checkout.
   `gates/expected/godot-fork-pin.txt`, recording the **base** commit
   (`dn2cpp/main` must descend from it) and not the fork's moving HEAD; fork to
   dn2cpp via the bundled `manifest.json`.
-- **No engine rebuild, and that is checked.** GodotTools is a *managed* assembly
-  the editor loads from `GodotSharp/Tools/` at run time, and the fork changes
-  only GodotTools, `build_scripts` and docs. `gates/setup-godot-fork.sh` diffs
-  the fork against the base commit outside those paths; with no drift it
-  **copies the pristine clone's already-built editor and template binaries**
-  into the fork's `bin/` instead of running scons, falling back to a real scons
-  build the moment an engine source drifts. Copies, not symlinks: macOS resolves
+- **Engine rebuilds are content-keyed.** GodotTools is a *managed* assembly the
+  editor loads from `GodotSharp/Tools/` at run time, while the Windows and Web
+  load-path adjustments are engine sources. `gates/setup-godot-fork.sh` hashes
+  the engine-owned tree against the base commit: an identical tree reuses the
+  pristine binaries, and a changed tree takes a matching cached binary or runs
+  scons. The hash is stamped beside the editor and template so a pre-populated
+  `bin/` cannot hide an engine edit. Copies, not symlinks: macOS resolves
   `OS::get_executable_path()` through `proc_pidpath()`, so an editor launched
   through a symlink looks for `GodotSharp/` beside the link *target*.
 - **The artifact root records paths and materializes no links** — setup writes
@@ -441,8 +450,9 @@ checkout.
 Gates, all in the dn2cpp repo:
 
 - `gates/setup-godot-fork.sh` — sibling of `gates/setup-godot-dotnet.sh`: verify
-  fork base-ancestry, ABI fingerprint and the engine-unchanged invariant;
-  provide editor, glue, assemblies and template; install the toolchain bundle
+  fork base-ancestry and the ABI fingerprint, then reuse or rebuild each engine
+  artifact from its content provenance; provide editor, glue, assemblies and
+  template; install the toolchain bundle
   into `bin/GodotSharp/Dn2Cpp/`; assemble `~/.cache/dn2cpp-godot-fork`. It
   carries **one arm per host OS whose engine it can build** (macOS, Windows),
   refuses an unported host up front rather than deep into a scons run, and
@@ -900,9 +910,11 @@ string or a toolchain content hash.
   it, so `dist/package-editor-macos.sh` refuses a bundle whose `emcc_version` is
   not the one the template is stamped with — re-bake with
   `FORCE=1 gates/setup-godot-fork-web.sh` and re-cut when they disagree.
-- **Only Web needs a fork-built template.** The fork's sole non-Web engine change
-  is a `WEB_ENABLED` guard in `modules/mono/mono_gd/gd_mono.cpp`, so desktop and
-  mobile exports take the stock Godot .NET templates of the same version.
+- **Web and Windows need fork-built templates.** Web enables the mono module and
+  dynamic loader for wasm32. Windows passes the data-directory search request
+  at the NativeAOT load call. Other desktop and mobile exports can use stock
+  Godot .NET templates of the same version, though the setup cache still stamps
+  every selected template against the fork's engine provenance.
 - **A release is identified by the tag, the fork commit, the engine provenance
   and the dn2cpp commit — not by the toolchain's `content_hash`**, which moves
   between runs because the prebuilt rebuild is not bit-reproducible.

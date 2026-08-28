@@ -1278,6 +1278,10 @@ if(DN2CPP_APP_DIR)
     file(WRITE "${_dn2cpp_publish_native_manifest}" "")
     file(WRITE "${_dn2cpp_publish_native_generation_manifest}" "")
 
+    if(DN2CPP_APP_LINK_LIBS)
+        separate_arguments(DN2CPP_APP_LINK_LIBS_LIST NATIVE_COMMAND "${DN2CPP_APP_LINK_LIBS}")
+    endif()
+
     if(EXISTS "${DN2CPP_APP_DIR}/pinvoke-libs.txt"
             AND NOT (EMSCRIPTEN AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE)))
         file(STRINGS "${DN2CPP_APP_DIR}/pinvoke-libs.txt" DN2CPP_PINVOKE_LIBS)
@@ -1741,6 +1745,40 @@ extern "C" const PfnDliHook __pfnDliNotifyHook2 = dn2cpp_delay_hook;
             endif()
             set(DN2CPP_PINVOKE_LIBS ${_dn2cpp_unresolved_pinvoke_libs})
         endif()
+        # On Windows, an explicit archive or import-library path is the project's
+        # resolution of the matching P/Invoke module. Do not also hand MSVC the
+        # bare module token: that asks for the same .lib in the build directory
+        # and fails even though its absolute path is present later on the line.
+        if(WIN32 AND DN2CPP_PINVOKE_LIBS AND DN2CPP_APP_LINK_LIBS_LIST)
+            set(_dn2cpp_unresolved_explicit_pinvoke_libs "")
+            foreach(_dn2cpp_pinvoke_lib IN LISTS DN2CPP_PINVOKE_LIBS)
+                set(_dn2cpp_explicit_pinvoke_match "")
+                foreach(_dn2cpp_app_link_lib IN LISTS DN2CPP_APP_LINK_LIBS_LIST)
+                    get_filename_component(_dn2cpp_app_link_name "${_dn2cpp_app_link_lib}" NAME)
+                    if(_dn2cpp_app_link_name MATCHES "\\.(so(\\..*)?|dylib|bundle|[dD][lL][lL]|[lL][iI][bB]|a)$")
+                        string(REGEX REPLACE "\\.so(\\..*)?$" "" _dn2cpp_app_link_key "${_dn2cpp_app_link_name}")
+                        string(REGEX REPLACE "\\.(dylib|bundle|[dD][lL][lL]|[lL][iI][bB]|a)$" "" _dn2cpp_app_link_key "${_dn2cpp_app_link_key}")
+                        string(REGEX REPLACE "^lib" "" _dn2cpp_app_link_key "${_dn2cpp_app_link_key}")
+                        set(_dn2cpp_pinvoke_key "${_dn2cpp_pinvoke_lib}")
+                        if(WIN32)
+                            string(TOLOWER "${_dn2cpp_app_link_key}" _dn2cpp_app_link_key)
+                            string(TOLOWER "${_dn2cpp_pinvoke_key}" _dn2cpp_pinvoke_key)
+                        endif()
+                        if(_dn2cpp_app_link_key STREQUAL _dn2cpp_pinvoke_key)
+                            set(_dn2cpp_explicit_pinvoke_match "${_dn2cpp_app_link_lib}")
+                            break()
+                        endif()
+                    endif()
+                endforeach()
+                if(_dn2cpp_explicit_pinvoke_match)
+                    message(STATUS
+                        "dn2cpp: P/Invoke ${_dn2cpp_pinvoke_lib} -> explicit ${_dn2cpp_explicit_pinvoke_match}")
+                else()
+                    list(APPEND _dn2cpp_unresolved_explicit_pinvoke_libs "${_dn2cpp_pinvoke_lib}")
+                endif()
+            endforeach()
+            set(DN2CPP_PINVOKE_LIBS ${_dn2cpp_unresolved_explicit_pinvoke_libs})
+        endif()
         if(DN2CPP_PINVOKE_LIBS)
             target_link_libraries(${DN2CPP_APP_NAME} PRIVATE ${DN2CPP_PINVOKE_LIBS})
         endif()
@@ -1758,8 +1796,7 @@ extern "C" const PfnDliHook __pfnDliNotifyHook2 = dn2cpp_delay_hook;
     # before the object files on the link line, where a static archive cannot
     # resolve anything the objects reference; libraries land after them, in
     # order, after the pinvoke-libs.txt tokens above.
-    if(DN2CPP_APP_LINK_LIBS)
-        separate_arguments(DN2CPP_APP_LINK_LIBS_LIST NATIVE_COMMAND "${DN2CPP_APP_LINK_LIBS}")
+    if(DN2CPP_APP_LINK_LIBS_LIST)
         target_link_libraries(${DN2CPP_APP_NAME} PRIVATE ${DN2CPP_APP_LINK_LIBS_LIST})
     endif()
 
