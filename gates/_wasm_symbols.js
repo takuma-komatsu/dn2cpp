@@ -19,6 +19,9 @@
 //                             count as provided (see below).
 //   maxfunc FILE            — "SIZE NAME" of the largest function body in the code
 //                             section (NAME needs --profiling-funcs at link, else "?")
+//   sections FILE           — one section name per line (custom sections include
+//                             their name, e.g. custom:name)
+//   names FILE              — one function name per line from the name section
 //
 // `unsatisfied` is the interesting one. Emscripten resolves a side module's imports
 // against the main module's combined symbol table, so "what the main module can
@@ -107,7 +110,7 @@ function parse(file) {
     // The name section indexes the FULL function space (imports first); `funcs`
     // indexes only the defined ones. Imported functions are the offset between them.
     const importedFuncs = imports.filter(i => i.kind === 'func').length;
-    return { imports, exports, funcs, names, importedFuncs };
+    return { imports, exports, funcs, names, importedFuncs, secs };
 }
 
 // glueWasmImports — the keys of an Emscripten glue file's `wasmImports = {...}`
@@ -357,7 +360,12 @@ if (cmd === 'exports') {
     let best = -1, at = -1;
     m.funcs.forEach((sz, i) => { if (sz > best) { best = sz; at = i; } });
     console.log(`${best} ${m.names[at + m.importedFuncs] ?? '?'}`);
+} else if (cmd === 'sections') {
+    for (const s of parse(a).secs) console.log(s.name);
+} else if (cmd === 'names') {
+    const names = parse(a).names;
+    for (const i of Object.keys(names).map(Number).sort((x, y) => x - y)) console.log(names[i]);
 } else {
-    console.error('usage: _wasm_symbols.js exports|imports|maxfunc FILE | unsatisfied SIDE MAIN [MAINJS]');
+    console.error('usage: _wasm_symbols.js exports|imports|maxfunc|sections|names FILE | unsatisfied SIDE MAIN [MAINJS]');
     process.exit(2);
 }

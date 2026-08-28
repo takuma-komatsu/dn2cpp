@@ -77,6 +77,16 @@ wasm_corelib_diff_gate NestedFinallySubset
 wasm_corelib_diff_gate Finalizers
 gate_expected_partial "FinalizerSuppressQueuedSubset's post-enqueue window never opens here: this build never collects an object first named inside a finalizer body while that frame is live, so nothing is observed queued and no setting on either side changes it — the section runs and folds the window into its booleans, and gates/build-and-run-finalizers.sh asserts that surface for real."
 wasm_corelib_diff_gate WeakReferences
+pending_barriers=$(awk '
+    /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
+    in_method && /^\/\/ / { in_method = 0 }
+    in_method && /DN2CPP_WEB_GC_LIVENESS\(/ { count++ }
+    END { print count + 0 }
+' "$_CG_OUT/generated.h" "$_CG_OUT"/generated*.cpp)
+if [ "$pending_barriers" -ne 1 ]; then
+    echo "FAIL: wasm WeakReferences emitted $pending_barriers pending-reference liveness barriers, expected 1" >&2
+    exit 1
+fi
 wasm_corelib_diff_gate MonotonicClock
 
 # The section's booleans prove clocks ran; they do not prove they were THESE two.

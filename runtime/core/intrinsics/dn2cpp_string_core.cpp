@@ -9,6 +9,28 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
+
+void dn2cpp_validate_string_shape(Dn2CppString* s)
+{
+    if (s == nullptr)
+        return;
+    if (s->type != &dn2cpp_string_type)
+        dn2cpp_fail("managed string has a non-string type");
+    if (s->length < 0)
+        dn2cpp_fail("managed string has a negative length");
+    if (s->length != 0 && s->chars == nullptr)
+        dn2cpp_fail("managed string has no character buffer");
+}
+
+int32_t dn2cpp_string_checked_length(int64_t length)
+{
+    if (length < 0)
+        dn2cpp_fail("managed string result has a negative length");
+    if (length > std::numeric_limits<int32_t>::max())
+        dn2cpp_throw_out_of_memory();
+    return static_cast<int32_t>(length);
+}
 
 Dn2CppString* dn2cpp_string_literal(const char16_t* chars, int32_t length)
 {
@@ -40,6 +62,12 @@ Dn2CppString* dn2cpp_string_literal(const char16_t* chars, int32_t length)
 // memset to match .NET's zeroed GC memory.
 Dn2CppString* dn2cpp_string_alloc(char16_t** outBuf, int32_t length)
 {
+    if (length < 0)
+        dn2cpp_fail("managed string allocator received a negative length");
+    constexpr size_t kTerminator = 1;
+    if (static_cast<size_t>(length) >
+        std::numeric_limits<size_t>::max() / sizeof(char16_t) - kTerminator)
+        dn2cpp_throw_out_of_memory();
     char16_t* buf = static_cast<char16_t*>(
         dn2cpp_alloc_atomic((static_cast<size_t>(length) + 1) * sizeof(char16_t)));
     buf[length] = u'\0';
@@ -136,11 +164,12 @@ Dn2CppArrayN* dn2cpp_string_to_chararray(Dn2CppString* s, const Dn2CppTypeInfo* 
 // String.Concat overloads; a null/empty operand contributes nothing.
 static Dn2CppString* dn2cpp_concat_spanchars(const char16_t* const* ptrs, const int32_t* lens, int count)
 {
-    int32_t total = 0;
+    int64_t total = 0;
     for (int i = 0; i < count; i++)
         if (lens[i] > 0) total += lens[i];
+    int32_t resultLength = dn2cpp_string_checked_length(total);
     char16_t* buf;
-    Dn2CppString* s = dn2cpp_string_alloc(&buf, total);
+    Dn2CppString* s = dn2cpp_string_alloc(&buf, resultLength);
     int32_t pos = 0;
     for (int i = 0; i < count; i++)
         if (lens[i] > 0 && ptrs[i] != nullptr)
@@ -266,7 +295,7 @@ Dn2CppString* dn2cpp_string_from_utf8(const char* utf8, int32_t byteLength)
 // ANSI PAL seam.
 int32_t dn2cpp_utf16_to_utf8(const char16_t* src, int32_t len, char* buf, int32_t bufSize)
 {
-    int32_t bytes = 0;
+    int64_t bytes = 0;
     for (int32_t i = 0; i < len; i++)
     {
         char32_t cp = src[i];
@@ -320,16 +349,17 @@ int32_t dn2cpp_utf16_to_utf8(const char16_t* src, int32_t len, char* buf, int32_
         }
         for (int k = 0; k < n; k++)
         {
-            if (buf != nullptr && bytes < bufSize)
-                buf[bytes] = static_cast<char>(enc[k]);
+            if (buf != nullptr && bytes < static_cast<int64_t>(bufSize))
+                buf[static_cast<size_t>(bytes)] = static_cast<char>(enc[k]);
             bytes++;
         }
     }
-    return bytes;
+    return dn2cpp_string_checked_length(bytes);
 }
 
 int32_t dn2cpp_string_to_utf8(Dn2CppString* s, char* buf, int32_t bufSize)
 {
+    dn2cpp_validate_string_shape(s);
     return dn2cpp_utf16_to_utf8(s != nullptr ? s->chars : nullptr,
                                 s != nullptr ? s->length : 0, buf, bufSize);
 }
@@ -340,6 +370,7 @@ int32_t dn2cpp_string_to_utf8(Dn2CppString* s, char* buf, int32_t bufSize)
 // cores above, so on Unix this is byte-identical to the UTF-8 path (Ansi == UTF-8 there).
 int32_t dn2cpp_string_to_ansi(Dn2CppString* s, char* buf, int32_t bufSize, int32_t bestFit)
 {
+    dn2cpp_validate_string_shape(s);
     return dn2cpp_pal_ansi_encode(s != nullptr ? s->chars : nullptr,
                                   s != nullptr ? s->length : 0, buf, bufSize, bestFit);
 }

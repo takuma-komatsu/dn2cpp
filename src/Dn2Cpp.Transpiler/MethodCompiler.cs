@@ -847,7 +847,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             // exactly the stack the branch continues with.
             if (_liveness?.ElidedAt(insn.Offset) == true)
                 continue;
-            Translate(insn);
+            TranslateWithPendingReferenceBarriers(insn);
         }
 
         var sb = new StringBuilder();
@@ -3492,6 +3492,56 @@ internal sealed partial class MethodCompiler : IEvalStack
             default:
                 throw new NotSupportedException(
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: opcode {op} is not supported yet");
+        }
+    }
+
+    /// <summary>Translates an instruction that may reach the collector, then keeps
+    /// every reference which was already waiting below that instruction's operands
+    /// live across it on Web. Optimized wasm can otherwise rebuild a nested call as
+    /// <c>Outer(First(), Second())</c> and leave <c>First()</c>'s result only on the
+    /// wasm operand stack while <c>Second()</c> collects; Binaryen's pointer spiller
+    /// cannot root a value it no longer sees as live across that call.
+    ///
+    /// <para>Object identity is load-bearing. A reference recorded before the
+    /// instruction receives a barrier only when that exact stack entry remains
+    /// afterwards. Arguments consumed by this instruction are gone, while a newly
+    /// pushed return value is a different entry, so neither is extended.</para></summary>
+    private void TranslateWithPendingReferenceBarriers(Instruction insn)
+    {
+        if (insn.OpCode is not (ILOpCode.Call or ILOpCode.Callvirt or ILOpCode.Calli
+                or ILOpCode.Newobj or ILOpCode.Newarr or ILOpCode.Box or ILOpCode.Ldstr)
+            || _stack.Count == 0)
+        {
+            Translate(insn);
+            return;
+        }
+
+        List<StackEntry>? pending = null;
+        foreach (var entry in _stack)
+        {
+            if (entry.Kind != StackKind.Ref)
+                continue;
+            pending ??= new List<StackEntry>();
+            pending.Add(entry);
+        }
+
+        Translate(insn);
+        if (pending is null)
+            return;
+
+        foreach (var entry in pending)
+        {
+            bool remains = false;
+            foreach (var current in _stack)
+            {
+                if (ReferenceEquals(entry, current))
+                {
+                    remains = true;
+                    break;
+                }
+            }
+            if (remains)
+                Emit($"DN2CPP_WEB_GC_LIVENESS({entry.Expr});");
         }
     }
 

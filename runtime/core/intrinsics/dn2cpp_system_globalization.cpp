@@ -658,12 +658,15 @@ Dn2CppString* dn2cpp_bool_to_string(int32_t v)
 
 Dn2CppString* dn2cpp_string_concat_n(Dn2CppString** parts, int n)
 {
-    int32_t total = 0;
+    int64_t total = 0;
     for (int i = 0; i < n; i++)
+    {
+        dn2cpp_validate_string_shape(parts[i]);
         total += parts[i] != nullptr ? parts[i]->length : 0;
+    }
 
     char16_t* buf;
-    Dn2CppString* s = dn2cpp_string_alloc(&buf, total);
+    Dn2CppString* s = dn2cpp_string_alloc(&buf, dn2cpp_string_checked_length(total));
     int32_t pos = 0;
     for (int i = 0; i < n; i++)
     {

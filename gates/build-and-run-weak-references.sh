@@ -18,7 +18,9 @@
 # Array.Copy of a reference-bearing struct array in the corpus — the two inline
 # fast paths that bypass the barriered runtime helpers. InternBarrier covers
 # string.Intern / IsInterned over a run-time-built string, whose only root is the
-# intern cell. Former gates: none (new area).
+# intern cell. PendingCallArgument keeps a Dictionary/string graph on the IL
+# evaluation stack while the next nested-call argument forces collection.
+# Former gates: none (new area).
 source "$(dirname "$0")/_common.sh"
 
 project=WeakReferences
@@ -39,7 +41,18 @@ do
     fi
 done
 
-ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+memmove-refs"
+pending_barriers=$(awk '
+    /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
+    in_method && /^\/\/ / { in_method = 0 }
+    in_method && /DN2CPP_WEB_GC_LIVENESS\(/ { count++ }
+    END { print count + 0 }
+' "$out/generated.h" "$out"/generated*.cpp)
+if [ "$pending_barriers" -ne 1 ]; then
+    echo "FAIL: pending nested-call regression emitted $pending_barriers Web liveness barriers, expected 1" >&2
+    exit 1
+fi
+
+ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+memmove-refs+pending-web-liveness"
 ctx="$ctx$(_gate_ctx_extras)"
 if _corelib_gate_check "$out" "$ctx"; then
     gate_cache_hit_msg

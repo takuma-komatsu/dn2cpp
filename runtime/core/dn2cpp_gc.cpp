@@ -2110,11 +2110,14 @@ void dn2cpp_gc_reregister_for_finalize(Dn2CppObject* obj)
 #endif
 }
 
-void dn2cpp_keep_alive(Dn2CppObject* obj)
+DN2CPP_NOINLINE void dn2cpp_keep_alive(const void* obj)
 {
-    // The out-of-line call is the barrier (no LTO in the build); the empty asm
-    // additionally pins `obj` as read even if a future build inlines this.
-#if defined(__GNUC__) && !defined(__EMSCRIPTEN__)
+    // The volatile Web use keeps the marker observable through wasm optimization;
+    // elsewhere the out-of-line call is the barrier (the build does no LTO).
+#if defined(__EMSCRIPTEN__)
+    const void* volatile observed = obj;
+    (void)observed;
+#elif defined(__GNUC__)
     __asm__ __volatile__("" : : "r"(obj) : "memory");
 #else
     (void)obj;
