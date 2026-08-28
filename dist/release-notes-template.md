@@ -6,13 +6,13 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークで macOS deployment target の設定がビルドへ反映されるようにしました
-- [PR #76](https://github.com/takuma-komatsu/dn2cpp/pull/76) で、`ValueTask` / `ValueTask<T>` の `IValueTaskSource` ステータス管理とトークン検証を修正しました
-- [PR #74](https://github.com/takuma-komatsu/dn2cpp/pull/74) で、Web の乱数生成が誤って Apple 向け実装を参照する問題を修正しました
-- [PR #73](https://github.com/takuma-komatsu/dn2cpp/pull/73)、[PR #67](https://github.com/takuma-komatsu/dn2cpp/pull/67)、[PR #71](https://github.com/takuma-komatsu/dn2cpp/pull/71)、[PR #64](https://github.com/takuma-komatsu/dn2cpp/pull/64) で、`Enum.Parse` / `Enum.TryParse` と浮動小数点数の Parse 系 API の対応を拡充しました
-- [PR #72](https://github.com/takuma-komatsu/dn2cpp/pull/72)、[PR #65](https://github.com/takuma-komatsu/dn2cpp/pull/65)、[PR #62](https://github.com/takuma-komatsu/dn2cpp/pull/62) で、プリミティブ型の比較、`ToString`、補間文字列、`Vector`、`CancellationToken` などの BCL 互換性を改善しました
+- Godot フォークで Web エクスポート時の診断シンボル保持オプション（`dotnet/dn2cpp/keep_symbols`）に対応しました（[godot-dn2cpp PR #5](https://github.com/takuma-komatsu/godot-dn2cpp/pull/5)）
+- Godot フォークで Windows エクスポート時の NativeAOT 依存 DLL 探索処理を修正しました（[godot-dn2cpp PR #6](https://github.com/takuma-komatsu/godot-dn2cpp/pull/6)）
+- [PR #81](https://github.com/takuma-komatsu/dn2cpp/pull/81) で、Windows 上での NativeAOT 依存ライブラリのリンクおよび探索パス解決に対応しました
+- [PR #80](https://github.com/takuma-komatsu/dn2cpp/pull/80) で、Web 環境における入れ子呼び出し引数の GC 保護および文字列診断処理の堅牢化を行いました
+- [PR #78](https://github.com/takuma-komatsu/dn2cpp/pull/78) で、Windows 上でのプロセス待機ハンドル・スレッド同期プリミティブ・HRESULT 変換などの互換性を改善しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/4be3443bac325eb54b7e488243cbb635b01013d1...170be524673898a3e7efcbef70a931a742ea3b2f> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6600b909fb8359a11f4ca2ff95016cba1ad6d823...ef936a146445582f3ef23b7b65fc95aa8cefc499> を参照してください。
 
 ## ダウンロード
 
