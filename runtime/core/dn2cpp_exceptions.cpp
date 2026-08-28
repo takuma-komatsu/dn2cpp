@@ -1039,6 +1039,16 @@ int dn2cpp_boundary_sink_installed()
 // "NullReferenceException" without the message names a class of bug rather than
 // a bug. The wording keeps the "unhandled managed exception" phrase every
 // existing consumer greps for.
+static void dn2cpp_report_boundary_tostring_failure(Dn2CppObject* exc, const char* where)
+{
+    const char* type = exc->type != nullptr && exc->type->name != nullptr
+        ? exc->type->name : "<unknown>";
+    std::fprintf(stderr,
+        "[dn2cpp] unhandled managed exception in %s: %s (its ToString threw)\n",
+        where, type);
+    std::fflush(stderr);
+}
+
 static void dn2cpp_report_boundary_stderr(Dn2CppObject* exc, const char* where)
 {
     if (exc == nullptr)
@@ -1059,8 +1069,13 @@ static void dn2cpp_report_boundary_stderr(Dn2CppObject* exc, const char* where)
     catch (Dn2CppException& nested)
     {
         dn2cpp_exc_inflight_pop(nested.obj);
-        text = exc->type != nullptr && exc->type->name != nullptr ? exc->type->name : "<unknown>";
-        text += " (its ToString threw)";
+        dn2cpp_report_boundary_tostring_failure(exc, where);
+        return;
+    }
+    catch (...)
+    {
+        dn2cpp_report_boundary_tostring_failure(exc, where);
+        return;
     }
     std::fprintf(stderr, "[dn2cpp] unhandled managed exception in %s: %s\n", where, text.c_str());
     std::fflush(stderr);

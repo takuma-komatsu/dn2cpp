@@ -57,6 +57,16 @@
 #define DN2CPP_NOINLINE [[gnu::noinline]]
 #endif
 
+// A use after a potential collection keeps an earlier nested-call operand live
+// across that collection. Binaryen's SpillPointers pass can then move the wasm
+// operand-stack value into GC-scanned linear memory. Native collectors already
+// scan registers and stacks directly, so the marker compiles away there.
+#if defined(__EMSCRIPTEN__) && defined(DN2CPP_USE_BOEHM_GC)
+#define DN2CPP_WEB_GC_LIVENESS(obj) dn2cpp_keep_alive((const void*)(obj))
+#else
+#define DN2CPP_WEB_GC_LIVENESS(obj) ((void)0)
+#endif
+
 // ---- MSVC-compat overflow-checked arithmetic ----
 // The *.ovf lowering emits bare __builtin_{add,sub,mul}_overflow(T, T, T*) into
 // generated code. cl.exe has no such builtins, so these same-named,
@@ -668,6 +678,12 @@ struct Dn2CppString : Dn2CppObject
     int32_t length;
     const char16_t* chars;
 };
+
+// Checks the part of a managed string that can be trusted without knowing the
+// backing buffer's allocation extent. A corrupt string is an invariant failure,
+// not a managed exception: diagnostic paths call this before deriving an
+// allocation size from the object.
+void dn2cpp_validate_string_shape(Dn2CppString* s);
 
 // The trace captured when an exception was thrown: a tag plus the entries,
 // innermost first, allocated at the exact needed size in pointer-free
@@ -2481,7 +2497,7 @@ void dn2cpp_gc_drain_finalizers();
 // in the runtime TU (the build does no LTO), so the optimizer must assume the
 // callee reads `obj` — the reference stays live at the call site, which is the
 // entire contract of the API. The real BCL body is empty and would be erased.
-void dn2cpp_keep_alive(Dn2CppObject* obj);
+DN2CPP_NOINLINE void dn2cpp_keep_alive(const void* obj);
 // System.GC.GetTotalMemory(bool forceFullCollection): approximate bytes currently in
 // use on the managed heap. Also the only reliable way to observe weak references
 // working: the conservative collector can retain an individual referent via a stray
@@ -3637,6 +3653,10 @@ Dn2CppString* dn2cpp_string_create_buffer(int32_t length, char16_t** outBuf);
 // builders; shared so per-namespace intrinsic units (e.g. DateTime formatting) can
 // materialize result strings without re-implementing allocation.
 Dn2CppString* dn2cpp_string_alloc(char16_t** outBuf, int32_t length);
+// Narrows a computed result length only after proving it fits System.String's
+// int32 length field. Oversized, otherwise-valid results raise the catchable
+// OutOfMemoryException used by the other pre-allocation size guards.
+int32_t dn2cpp_string_checked_length(int64_t length);
 // String.FastAllocateString(length): an uninitialized writable string the
 // caller then fills through GetRawStringData (Guid.ToString and friends).
 // Expression-shaped wrapper over dn2cpp_string_alloc.
