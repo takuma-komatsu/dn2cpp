@@ -844,7 +844,11 @@ instruction surface lowers, a promotion
 table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
 family answers false, so the BCL software fallback runs, and calling one of
 its instructions throws `PlatformNotSupportedException` exactly as .NET does
-when `IsSupported` is false. `Wasm.PackedSimd` lowers, but a wasm module
+when `IsSupported` is false. The whole `Arm.*` surface lowers, and on x86 so
+do `X86Base`, `X86Serialize` and the SSE families through `Sse42` with
+`Ssse3`, `Popcnt`, `Pclmulqdq` and `Aes`; `Lzcnt`, `Bmi1` and `Bmi2` are
+mapped but wait for the AVX families they imply, which are open work with
+everything above them. `Wasm.PackedSimd` lowers, but a wasm module
 either carries SIMD instructions or can load on an engine without them, so
 it answers true only in a `DN2CPP_WASM_SIMD` (`-msimd128`) build; the default
 console build and the Godot Web export stay non-SIMD and answer false, and
