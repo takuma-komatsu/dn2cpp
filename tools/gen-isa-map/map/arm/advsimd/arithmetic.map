@@ -1,0 +1,16 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — element-wise arithmetic. AdvSimd is the
+# AArch64 baseline, so no target attribute. The 64-bit-element forms live on the
+# Arm64 nested type.
+Abs(v{W}{T}) = vabs{q}_{neon}($0) for W in 64,128 for T in i8,i16,i32,f32
+Add(v{W}{T},v{W}{T}) = vadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Add(v128{T},v128{T}) = vaddq_{neon}($0, $1) for T in i64,u64
+AddSaturate(v{W}{T},v{W}{T}) = vqadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+AddSaturate(v128{T},v128{T}) = vqaddq_{neon}($0, $1) for T in i64,u64
+Max(v{W}{T},v{W}{T}) = vmax{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Min(v{W}{T},v{W}{T}) = vmin{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Multiply(v{W}{T},v{W}{T}) = vmul{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Negate(v{W}{T}) = vneg{q}_{neon}($0) for W in 64,128 for T in i8,i16,i32,f32
+Subtract(v{W}{T},v{W}{T}) = vsub{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Subtract(v128{T},v128{T}) = vsubq_{neon}($0, $1) for T in i64,u64
+SubtractSaturate(v{W}{T},v{W}{T}) = vqsub{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+SubtractSaturate(v128{T},v128{T}) = vqsubq_{neon}($0, $1) for T in i64,u64

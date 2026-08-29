@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — comparisons; the all-ones/all-zeros mask
+# comes back typed unsigned and is stored as the operand type's bits. CMTST has
+# no float form: the float overload tests the bit patterns.
+CompareEqual(v{W}{T},v{W}{T}) = vceq{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+CompareGreaterThan(v{W}{T},v{W}{T}) = vcgt{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+CompareGreaterThanOrEqual(v{W}{T},v{W}{T}) = vcge{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+CompareLessThan(v{W}{T},v{W}{T}) = vclt{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+CompareLessThanOrEqual(v{W}{T},v{W}{T}) = vcle{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+CompareTest(v{W}{T},v{W}{T}) = vtst{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+CompareTest(v{W}f32,v{W}f32) = vtst{q}_u32($0:u32, $1:u32) for W in 64,128

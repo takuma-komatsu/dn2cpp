@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.Rdm — SQRDMLAH/SQRDMLSH, whole-vector and by a
+# selected lane of the third operand.
+target = +rdm
+MultiplyRoundedDoublingAndAddSaturateHigh(v{W}{T},v{W}{T},v{W}{T}) = vqrdmlah{q}_{neon}($0, $1, $2) for W in 64,128 for T in i16,i32
+MultiplyRoundedDoublingAndSubtractSaturateHigh(v{W}{T},v{W}{T},v{W}{T}) = vqrdmlsh{q}_{neon}($0, $1, $2) for W in 64,128 for T in i16,i32
+MultiplyRoundedDoublingBySelectedScalarAndAddSaturateHigh(v{W}{T},v{W}{T},v128{T},u8) @imm[0..{N128}) = vqrdmlah{q}_laneq_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,i32
+MultiplyRoundedDoublingBySelectedScalarAndAddSaturateHigh(v{W}{T},v{W}{T},v64{T},u8) @imm[0..{N64}) = vqrdmlah{q}_lane_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,i32
+MultiplyRoundedDoublingBySelectedScalarAndSubtractSaturateHigh(v{W}{T},v{W}{T},v128{T},u8) @imm[0..{N128}) = vqrdmlsh{q}_laneq_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,i32
+MultiplyRoundedDoublingBySelectedScalarAndSubtractSaturateHigh(v{W}{T},v{W}{T},v64{T},u8) @imm[0..{N64}) = vqrdmlsh{q}_lane_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,i32

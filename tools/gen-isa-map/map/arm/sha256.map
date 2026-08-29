@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.Arm.Sha256 — SHA256H/H2/SU0/SU1.
+target = +sha2
+HashUpdate1(v128u32,v128u32,v128u32) = vsha256hq_u32($0, $1, $2)
+HashUpdate2(v128u32,v128u32,v128u32) = vsha256h2q_u32($0, $1, $2)
+ScheduleUpdate0(v128u32,v128u32) = vsha256su0q_u32($0, $1)
+ScheduleUpdate1(v128u32,v128u32,v128u32) = vsha256su1q_u32($0, $1, $2)

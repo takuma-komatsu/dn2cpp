@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — horizontal reductions (ADDV,
+# SMAXV/UMAXV/FMAXV, SMINV/UMINV/FMINV): the scalar lands in lane 0 of a
+# Vector64 whose other lanes are zero.
+AddAcross(v{W}{T}) = dn2cpp_isa_lane0<8>(vaddv{q}_{neon}($0)) for W in 64,128 for T in i8,u8,i16,u16
+AddAcross(v128{T}) = dn2cpp_isa_lane0<8>(vaddvq_{neon}($0)) for T in i32,u32
+MaxAcross(v{W}{T}) = dn2cpp_isa_lane0<8>(vmaxv{q}_{neon}($0)) for W in 64,128 for T in i8,u8,i16,u16
+MaxAcross(v128{T}) = dn2cpp_isa_lane0<8>(vmaxvq_{neon}($0)) for T in i32,u32,f32
+MinAcross(v{W}{T}) = dn2cpp_isa_lane0<8>(vminv{q}_{neon}($0)) for W in 64,128 for T in i8,u8,i16,u16
+MinAcross(v128{T}) = dn2cpp_isa_lane0<8>(vminvq_{neon}($0)) for T in i32,u32,f32

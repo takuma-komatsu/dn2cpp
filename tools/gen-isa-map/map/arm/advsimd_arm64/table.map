@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — TBL/TBX with a 128-bit index vector.
+VectorTableLookup(v128{T},v128{T}) = vqtbl1q_{neon}($0, $1:u8) for T in i8,u8
+VectorTableLookup(t2v128{T},v128{T}) = vqtbl2q_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookup(t3v128{T},v128{T}) = vqtbl3q_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookup(t4v128{T},v128{T}) = vqtbl4q_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookupExtension(v128{T},v128{T},v128{T}) = vqtbx1q_{neon}($0, $1, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v128{T},t2v128{T},v128{T}) = vqtbx2q_{neon}($0, $1.*, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v128{T},t3v128{T},v128{T}) = vqtbx3q_{neon}($0, $1.*, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v128{T},t4v128{T},v128{T}) = vqtbx4q_{neon}($0, $1.*, $2:u8) for T in i8,u8

@@ -9,10 +9,18 @@
 // Every header is included on every target: the foreign-arch stubs must exist so that a
 // dead `#if` arm in generated code still compiles.
 #include "dn2cpp_isa_common.h"
+#include "arm/dn2cpp_isa_arm_advsimd.h"
+#include "arm/dn2cpp_isa_arm_advsimd_arm64.h"
+#include "arm/dn2cpp_isa_arm_aes.h"
 #include "arm/dn2cpp_isa_arm_armbase.h"
 #include "arm/dn2cpp_isa_arm_armbase_arm64.h"
 #include "arm/dn2cpp_isa_arm_crc32.h"
 #include "arm/dn2cpp_isa_arm_crc32_arm64.h"
+#include "arm/dn2cpp_isa_arm_dp.h"
+#include "arm/dn2cpp_isa_arm_rdm.h"
+#include "arm/dn2cpp_isa_arm_rdm_arm64.h"
+#include "arm/dn2cpp_isa_arm_sha1.h"
+#include "arm/dn2cpp_isa_arm_sha256.h"
 #include "x86/dn2cpp_isa_x86_bmi1.h"
 #include "x86/dn2cpp_isa_x86_bmi1_x64.h"
 #include "x86/dn2cpp_isa_x86_bmi2.h"

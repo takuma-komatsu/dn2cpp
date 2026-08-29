@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — lane access by immediate index.
+DuplicateSelectedScalarToVector128(v64{T},u8) @imm[0..{N64}) = vdupq_lane_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32
+DuplicateSelectedScalarToVector128(v128{T},u8) @imm[0..{N128}) = vdupq_laneq_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32
+DuplicateSelectedScalarToVector64(v64{T},u8) @imm[0..{N64}) = vdup_lane_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32
+DuplicateSelectedScalarToVector64(v128{T},u8) @imm[0..{N128}) = vdup_laneq_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32
+Extract(v{W}{T},u8) @imm[0..{N}) = vget{q}_lane_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Extract(v128{T},u8) @imm[0..2) = vgetq_lane_{neon}($0, $1) for T in i64,u64,f64
+Insert(v{W}{T},u8,{T}) @imm$1[0..{N}) = vset{q}_lane_{neon}($2, $0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+Insert(v128{T},u8,{T}) @imm$1[0..2) = vsetq_lane_{neon}($2, $0, $1) for T in i64,u64,f64

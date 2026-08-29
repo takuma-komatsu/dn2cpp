@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — shifts by an immediate. A left shift
+# takes 0..bits-1 and a right shift 1..bits, the encodable ranges; .NET throws
+# ArgumentOutOfRangeException outside them. USHR on a signed operand is the
+# unsigned intrinsic over the same bits. The 32-bit left shift exists only at 64
+# bits (signed) and 128 bits (unsigned).
+ShiftLeftLogical(v{W}{T},u8) @imm[0..{bits}) = vshl{q}_n_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,u32
+ShiftLeftLogical(v64i32,u8) @imm[0..32) = vshl_n_s32($0, $1)
+ShiftLeftLogical(v128{T},u8) @imm[0..64) = vshlq_n_{neon}($0, $1) for T in i64,u64
+ShiftRightArithmetic(v{W}{T},u8) @imm[1..{bits}] = vshr{q}_n_{neon}($0, $1) for W in 64,128 for T in i8,i16,i32
+ShiftRightArithmetic(v128i64,u8) @imm[1..64] = vshrq_n_s64($0, $1)
+ShiftRightLogical(v{W}{T},u8) @imm[1..{bits}] = vshr{q}_n_{uT}($0:{uT}, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+ShiftRightLogical(v128{T},u8) @imm[1..64] = vshrq_n_{uT}($0:{uT}, $1) for T in i64,u64

@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.Arm.Aes — AESE/AESD/AESMC/AESIMC, and the 64-bit
+# polynomial multiply (PMULL/PMULL2) that .NET files under Aes because both are
+# FEAT_AES. vmull_p64 returns poly128_t, whose sixteen bytes are the result.
+target = +aes
+Decrypt(v128u8,v128u8) = vaesdq_u8($0, $1)
+Encrypt(v128u8,v128u8) = vaeseq_u8($0, $1)
+InverseMixColumns(v128u8) = vaesimcq_u8($0)
+MixColumns(v128u8) = vaesmcq_u8($0)
+PolynomialMultiplyWideningLower(v64{T},v64{T}) = vmull_p64((poly64_t)vget_lane_u64($0:u64, 0), (poly64_t)vget_lane_u64($1:u64, 0)) for T in i64,u64
+PolynomialMultiplyWideningUpper(v128{T},v128{T}) = vmull_high_p64(vreinterpretq_p64_u64($0:u64), vreinterpretq_p64_u64($1:u64)) for T in i64,u64

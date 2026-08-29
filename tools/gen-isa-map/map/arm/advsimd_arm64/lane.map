@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — 64-bit-element lane duplication
+# and the two-immediate INS Vd.T[lane1], Vn.T[lane2].
+DuplicateSelectedScalarToVector128(v128{T},u8) @imm[0..2) = vdupq_laneq_{neon}($0, $1) for T in i64,u64,f64
+InsertSelectedScalar(v{W}{T},u8,v128{T},u8) @imm$1[0..{N}) @imm$3[0..{N128}) = vcopy{q}_laneq_{neon}($0, $1, $2, $3) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+InsertSelectedScalar(v{W}{T},u8,v64{T},u8) @imm$1[0..{N}) @imm$3[0..{N64}) = vcopy{q}_lane_{neon}($0, $1, $2, $3) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+InsertSelectedScalar(v128{T},u8,v128{T},u8) @imm$1[0..2) @imm$3[0..2) = vcopyq_laneq_{neon}($0, $1, $2, $3) for T in i64,u64,f64

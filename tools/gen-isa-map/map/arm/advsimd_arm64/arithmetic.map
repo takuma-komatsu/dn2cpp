@@ -1,0 +1,14 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — the 64-bit-element arithmetic and
+# the mixed-sign saturating adds (SUQADD: signed accumulator, unsigned addend;
+# USQADD the reverse).
+Abs(v128{T}) = vabsq_{neon}($0) for T in i64,f64
+Add(v128f64,v128f64) = vaddq_f64($0, $1)
+AddSaturate(v{W}{T},v{W}{uT}) = vuqadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,i16,i32
+AddSaturate(v128i64,v128u64) = vuqaddq_s64($0, $1)
+AddSaturate(v{W}{T},v{W}{sT}) = vsqadd{q}_{neon}($0, $1) for W in 64,128 for T in u8,u16,u32
+AddSaturate(v128u64,v128i64) = vsqaddq_u64($0, $1)
+Max(v128f64,v128f64) = vmaxq_f64($0, $1)
+Min(v128f64,v128f64) = vminq_f64($0, $1)
+Multiply(v128f64,v128f64) = vmulq_f64($0, $1)
+Negate(v128{T}) = vnegq_{neon}($0) for T in i64,f64
+Subtract(v128f64,v128f64) = vsubq_f64($0, $1)
