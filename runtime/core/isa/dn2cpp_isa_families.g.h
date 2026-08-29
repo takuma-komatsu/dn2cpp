@@ -24,6 +24,7 @@
 #include "wasm/dn2cpp_isa_wasm_packedsimd.h"
 #include "x86/dn2cpp_isa_x86_aes.h"
 #include "x86/dn2cpp_isa_x86_avx.h"
+#include "x86/dn2cpp_isa_x86_avx2.h"
 #include "x86/dn2cpp_isa_x86_avxvnni.h"
 #include "x86/dn2cpp_isa_x86_bmi1.h"
 #include "x86/dn2cpp_isa_x86_bmi1_x64.h"

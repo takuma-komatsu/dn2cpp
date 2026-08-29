@@ -1,0 +1,19 @@
+# System.Runtime.Intrinsics.X86.Avx2 — shifts. A shift count at or above the lane width
+# saturates — zero for a logical shift, the sign fill for an arithmetic one — and .NET keeps
+# that for a non-constant count rather than masking it as the portable operators do, so every
+# byte immediate is valid and the references spell the saturation. The register-count forms
+# read the low 64 bits of the count operand. The per-lane Variable forms saturate the same way
+# lane by lane. The 128-bit-lane forms shift whole bytes within each half; 16 or more gives
+# zero.
+target = avx2
+ShiftLeftLogical(v256{T},u8) @imm8 @ref($1 < {bits} ? Vector256.ShiftLeft($0, $1) : Vector256<{cs}>.Zero) = _mm256_slli_{epi}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogical(v256{T},u8) @imm8 @ref($1 < {bits} ? Vector256.ShiftRightLogical($0, $1) : Vector256<{cs}>.Zero) = _mm256_srli_{epi}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightArithmetic(v256{T},u8) @imm8 @ref(Vector256.ShiftRightArithmetic($0, Math.Min((int)$1, {bits} - 1))) = _mm256_srai_{epi}($0, $1) for T in i16,i32
+ShiftLeftLogical(v256{T},v128{T}) @ref($1.AsUInt64().GetElement(0) < {bits} ? Vector256.ShiftLeft($0, (int)$1.AsUInt64().GetElement(0)) : Vector256<{cs}>.Zero) = _mm256_sll_{epi}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogical(v256{T},v128{T}) @ref($1.AsUInt64().GetElement(0) < {bits} ? Vector256.ShiftRightLogical($0, (int)$1.AsUInt64().GetElement(0)) : Vector256<{cs}>.Zero) = _mm256_srl_{epi}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightArithmetic(v256{T},v128{T}) @ref(Vector256.ShiftRightArithmetic($0, (int)Math.Min($1.AsUInt64().GetElement(0), (ulong)({bits} - 1)))) = _mm256_sra_{epi}($0, $1) for T in i16,i32
+ShiftLeftLogical128BitLane(v256{T},u8) @imm8 = _mm256_slli_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+ShiftRightLogical128BitLane(v256{T},u8) @imm8 = _mm256_srli_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+ShiftLeftLogicalVariable(v{W}{T},v{W}{uT}) = {mm}_sllv_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+ShiftRightLogicalVariable(v{W}{T},v{W}{uT}) = {mm}_srlv_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+ShiftRightArithmeticVariable(v{W}i32,v{W}u32) = {mm}_srav_epi32($0, $1) for W in 128,256

@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Avx2 — blends. VPBLENDW takes one control bit per 16-bit lane
+# of each 128-bit lane, the same byte for both; VPBLENDD one per 32-bit lane (four bits at 128
+# bits, where the compiler intrinsic accepts only those, eight at 256). Every byte is valid in
+# .NET. The variable blend reads the top bit of each byte of the mask.
+target = avx2
+Blend(v128{T},v128{T},u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1)).As<int, {cs}>(), $1, $0)) = _mm_blend_epi32($0, $1, $2 & 15) for T in i32,u32
+Blend(v256{T},v256{T},u8) @imm8 @ref(Vector256.ConditionalSelect(Vector256.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1), -(($2 >> 4) & 1), -(($2 >> 5) & 1), -(($2 >> 6) & 1), -(($2 >> 7) & 1)).As<int, {cs}>(), $1, $0)) = _mm256_blend_epi32($0, $1, $2) for T in i32,u32
+Blend(v256{T},v256{T},u8) @imm8 @ref(Vector256.ConditionalSelect(Vector256.Create((short)-($2 & 1), (short)-(($2 >> 1) & 1), (short)-(($2 >> 2) & 1), (short)-(($2 >> 3) & 1), (short)-(($2 >> 4) & 1), (short)-(($2 >> 5) & 1), (short)-(($2 >> 6) & 1), (short)-(($2 >> 7) & 1), (short)-($2 & 1), (short)-(($2 >> 1) & 1), (short)-(($2 >> 2) & 1), (short)-(($2 >> 3) & 1), (short)-(($2 >> 4) & 1), (short)-(($2 >> 5) & 1), (short)-(($2 >> 6) & 1), (short)-(($2 >> 7) & 1)).As<short, {cs}>(), $1, $0)) = _mm256_blend_epi16($0, $1, $2) for T in i16,u16
+BlendVariable(v256{T},v256{T},v256{T}) @ref(Vector256.ConditionalSelect(Vector256.LessThan($2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, {cs}>(), $1, $0)) = _mm256_blendv_epi8($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64

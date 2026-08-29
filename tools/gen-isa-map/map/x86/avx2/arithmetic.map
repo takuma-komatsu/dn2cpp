@@ -1,0 +1,34 @@
+# System.Runtime.Intrinsics.X86.Avx2 — 256-bit integer arithmetic: the Sse2 / Ssse3 / Sse41
+# operations at twice the width. The horizontal pairs, like every AVX2 lane operation, work
+# within each 128-bit lane (the low four results from the first operand's low lane, then the
+# second's, then the high lanes); Abs returns the unsigned element type as .NET declares it;
+# PMULDQ / PMULUDQ multiply the even 32-bit lanes into 64-bit products; PSIGN passes, negates
+# or zeroes each lane by the sign of the second operand's lane.
+target = avx2
+Abs(v256i8) @ref(Vector256.Abs($0).AsByte()) = _mm256_abs_epi8($0)
+Abs(v256i16) @ref(Vector256.Abs($0).AsUInt16()) = _mm256_abs_epi16($0)
+Abs(v256i32) @ref(Vector256.Abs($0).AsUInt32()) = _mm256_abs_epi32($0)
+Add(v256{T},v256{T}) @ref(Vector256.Add($0, $1)) = _mm256_add_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+AddSaturate(v256{T},v256{T}) @ref(Vector256.AddSaturate($0, $1)) = _mm256_adds_{ep}($0, $1) for T in i8,u8,i16,u16
+Subtract(v256{T},v256{T}) @ref(Vector256.Subtract($0, $1)) = _mm256_sub_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+SubtractSaturate(v256{T},v256{T}) @ref(Vector256.SubtractSaturate($0, $1)) = _mm256_subs_{ep}($0, $1) for T in i8,u8,i16,u16
+Average(v256u8,v256u8) @ref(Vector256.Narrow(Vector256.ShiftRightLogical(Vector256.WidenLower($0) + Vector256.WidenLower($1) + Vector256<ushort>.One, 1), Vector256.ShiftRightLogical(Vector256.WidenUpper($0) + Vector256.WidenUpper($1) + Vector256<ushort>.One, 1))) = _mm256_avg_epu8($0, $1)
+Average(v256u16,v256u16) @ref(Vector256.Narrow(Vector256.ShiftRightLogical(Vector256.WidenLower($0) + Vector256.WidenLower($1) + Vector256<uint>.One, 1), Vector256.ShiftRightLogical(Vector256.WidenUpper($0) + Vector256.WidenUpper($1) + Vector256<uint>.One, 1))) = _mm256_avg_epu16($0, $1)
+HorizontalAdd(v256i16,v256i16) @ref(Vector256.Create((short)($0.GetElement(0) + $0.GetElement(1)), (short)($0.GetElement(2) + $0.GetElement(3)), (short)($0.GetElement(4) + $0.GetElement(5)), (short)($0.GetElement(6) + $0.GetElement(7)), (short)($1.GetElement(0) + $1.GetElement(1)), (short)($1.GetElement(2) + $1.GetElement(3)), (short)($1.GetElement(4) + $1.GetElement(5)), (short)($1.GetElement(6) + $1.GetElement(7)), (short)($0.GetElement(8) + $0.GetElement(9)), (short)($0.GetElement(10) + $0.GetElement(11)), (short)($0.GetElement(12) + $0.GetElement(13)), (short)($0.GetElement(14) + $0.GetElement(15)), (short)($1.GetElement(8) + $1.GetElement(9)), (short)($1.GetElement(10) + $1.GetElement(11)), (short)($1.GetElement(12) + $1.GetElement(13)), (short)($1.GetElement(14) + $1.GetElement(15)))) = _mm256_hadd_epi16($0, $1)
+HorizontalAdd(v256i32,v256i32) @ref(Vector256.Create($0.GetElement(0) + $0.GetElement(1), $0.GetElement(2) + $0.GetElement(3), $1.GetElement(0) + $1.GetElement(1), $1.GetElement(2) + $1.GetElement(3), $0.GetElement(4) + $0.GetElement(5), $0.GetElement(6) + $0.GetElement(7), $1.GetElement(4) + $1.GetElement(5), $1.GetElement(6) + $1.GetElement(7))) = _mm256_hadd_epi32($0, $1)
+HorizontalAddSaturate(v256i16,v256i16) = _mm256_hadds_epi16($0, $1)
+HorizontalSubtract(v256i16,v256i16) @ref(Vector256.Create((short)($0.GetElement(0) - $0.GetElement(1)), (short)($0.GetElement(2) - $0.GetElement(3)), (short)($0.GetElement(4) - $0.GetElement(5)), (short)($0.GetElement(6) - $0.GetElement(7)), (short)($1.GetElement(0) - $1.GetElement(1)), (short)($1.GetElement(2) - $1.GetElement(3)), (short)($1.GetElement(4) - $1.GetElement(5)), (short)($1.GetElement(6) - $1.GetElement(7)), (short)($0.GetElement(8) - $0.GetElement(9)), (short)($0.GetElement(10) - $0.GetElement(11)), (short)($0.GetElement(12) - $0.GetElement(13)), (short)($0.GetElement(14) - $0.GetElement(15)), (short)($1.GetElement(8) - $1.GetElement(9)), (short)($1.GetElement(10) - $1.GetElement(11)), (short)($1.GetElement(12) - $1.GetElement(13)), (short)($1.GetElement(14) - $1.GetElement(15)))) = _mm256_hsub_epi16($0, $1)
+HorizontalSubtract(v256i32,v256i32) @ref(Vector256.Create($0.GetElement(0) - $0.GetElement(1), $0.GetElement(2) - $0.GetElement(3), $1.GetElement(0) - $1.GetElement(1), $1.GetElement(2) - $1.GetElement(3), $0.GetElement(4) - $0.GetElement(5), $0.GetElement(6) - $0.GetElement(7), $1.GetElement(4) - $1.GetElement(5), $1.GetElement(6) - $1.GetElement(7))) = _mm256_hsub_epi32($0, $1)
+HorizontalSubtractSaturate(v256i16,v256i16) = _mm256_hsubs_epi16($0, $1)
+Max(v256{T},v256{T}) @ref(Vector256.Max($0, $1)) = _mm256_max_{ep}($0, $1) for T in i8,u8,i16,u16,i32,u32
+Min(v256{T},v256{T}) @ref(Vector256.Min($0, $1)) = _mm256_min_{ep}($0, $1) for T in i8,u8,i16,u16,i32,u32
+Multiply(v256i32,v256i32) @ref(Vector256.Create((long)$0.GetElement(0) * $1.GetElement(0), (long)$0.GetElement(2) * $1.GetElement(2), (long)$0.GetElement(4) * $1.GetElement(4), (long)$0.GetElement(6) * $1.GetElement(6))) = _mm256_mul_epi32($0, $1)
+Multiply(v256u32,v256u32) @ref(Vector256.Create((ulong)$0.GetElement(0) * $1.GetElement(0), (ulong)$0.GetElement(2) * $1.GetElement(2), (ulong)$0.GetElement(4) * $1.GetElement(4), (ulong)$0.GetElement(6) * $1.GetElement(6))) = _mm256_mul_epu32($0, $1)
+MultiplyAddAdjacent(v256i16,v256i16) = _mm256_madd_epi16($0, $1)
+MultiplyAddAdjacent(v256u8,v256i8) = _mm256_maddubs_epi16($0, $1)
+MultiplyHigh(v256{T},v256{T}) = _mm256_mulhi_{ep}($0, $1) for T in i16,u16
+MultiplyHighRoundScale(v256i16,v256i16) = _mm256_mulhrs_epi16($0, $1)
+MultiplyLow(v256{T},v256{T}) @ref(Vector256.Multiply($0, $1)) = _mm256_mullo_epi16($0, $1) for T in i16,u16
+MultiplyLow(v256{T},v256{T}) @ref(Vector256.Multiply($0, $1)) = _mm256_mullo_epi32($0, $1) for T in i32,u32
+Sign(v256{T},v256{T}) @ref(Vector256.ConditionalSelect(Vector256.Equals($1, Vector256<{cs}>.Zero), Vector256<{cs}>.Zero, Vector256.ConditionalSelect(Vector256.LessThan($1, Vector256<{cs}>.Zero), Vector256.Negate($0), $0))) = _mm256_sign_{epi}($0, $1) for T in i8,i16,i32
+SumAbsoluteDifferences(v256u8,v256u8) = _mm256_sad_epu8($0, $1)

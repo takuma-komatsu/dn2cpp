@@ -1,0 +1,14 @@
+# System.Runtime.Intrinsics.X86.Avx2 — MOVNTDQA at 256 bits (aligned, as in .NET; the
+# exercise aligns its buffers to 32 bytes on both sides) and the integer masked loads and
+# stores: a lane is read or written where its mask lane has the sign bit set, a load's other
+# lanes are zero. Older intrinsic headers take the stream-load pointer non-const.
+target = avx2
+LoadAlignedVector256NonTemporal(p{T}) @ref(Vector256.Load($0)) = _mm256_stream_load_si256((__m256i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+MaskLoad(p{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.LessThan($1.As<{cs}, {scs}>(), Vector128<{scs}>.Zero).As<{scs}, {cs}>(), Vector128.Load($0), Vector128<{cs}>.Zero)) = _mm_maskload_epi32((const int*)$0, $1) for T in i32,u32
+MaskLoad(p{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.LessThan($1.As<{cs}, {scs}>(), Vector128<{scs}>.Zero).As<{scs}, {cs}>(), Vector128.Load($0), Vector128<{cs}>.Zero)) = _mm_maskload_epi64((const long long*)$0, $1) for T in i64,u64
+MaskLoad(p{T},v256{T}) @ref(Vector256.ConditionalSelect(Vector256.LessThan($1.As<{cs}, {scs}>(), Vector256<{scs}>.Zero).As<{scs}, {cs}>(), Vector256.Load($0), Vector256<{cs}>.Zero)) = _mm256_maskload_epi32((const int*)$0, $1) for T in i32,u32
+MaskLoad(p{T},v256{T}) @ref(Vector256.ConditionalSelect(Vector256.LessThan($1.As<{cs}, {scs}>(), Vector256<{scs}>.Zero).As<{scs}, {cs}>(), Vector256.Load($0), Vector256<{cs}>.Zero)) = _mm256_maskload_epi64((const long long*)$0, $1) for T in i64,u64
+MaskStore(p{T},v128{T},v128{T}) = _mm_maskstore_epi32((int*)$0, $1, $2) for T in i32,u32
+MaskStore(p{T},v128{T},v128{T}) = _mm_maskstore_epi64((long long*)$0, $1, $2) for T in i64,u64
+MaskStore(p{T},v256{T},v256{T}) = _mm256_maskstore_epi32((int*)$0, $1, $2) for T in i32,u32
+MaskStore(p{T},v256{T},v256{T}) = _mm256_maskstore_epi64((long long*)$0, $1, $2) for T in i64,u64
