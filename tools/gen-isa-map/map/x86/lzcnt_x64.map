@@ -1,0 +1,3 @@
+# System.Runtime.Intrinsics.X86.Lzcnt+X64
+target = lzcnt
+LeadingZeroCount(u64) = _lzcnt_u64($0)

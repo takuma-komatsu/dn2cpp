@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Bmi2+X64
+target = bmi2
+MultiplyNoFlags(u64,u64) = dn2cpp_isa_umulh64($0, $1)
+MultiplyNoFlags(u64,u64,pu64) = dn2cpp_isa_mulx64($0, $1, $2)
+ParallelBitDeposit(u64,u64) = _pdep_u64($0, $1)
+ParallelBitExtract(u64,u64) = _pext_u64($0, $1)
+ZeroHighBits(u64,u64) = _bzhi_u64($0, $1)

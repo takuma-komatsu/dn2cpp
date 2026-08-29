@@ -1,0 +1,3 @@
+# System.Runtime.Intrinsics.X86.Popcnt
+target = popcnt
+PopCount(u32) = (uint32_t)_mm_popcnt_u32($0)

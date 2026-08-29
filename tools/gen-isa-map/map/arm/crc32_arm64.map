@@ -1,0 +1,4 @@
+# System.Runtime.Intrinsics.Arm.Crc32+Arm64
+target = +crc
+ComputeCrc32(u32,u64) = __crc32d($0, $1)
+ComputeCrc32C(u32,u64) = __crc32cd($0, $1)

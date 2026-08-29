@@ -46,8 +46,8 @@
 //   In the expression, $0 $1 ... name the parameters. A vector parameter arrives converted to
 //   the arch's native vector type (dn2cpp_isa_bits<...>); a vector return is wrapped back
 //   (dn2cpp_isa_vec<...>). $k.j names item j (1-based) of a tuple parameter k; $r1 $r2 ... name
-//   the out-pointer items of a tuple return, already dereferenced. Scalars and pointers pass
-//   through unchanged.
+//   the out-pointer items of a tuple return, already dereferenced, and &$r1 &$r2 ... the
+//   out-pointers themselves. Scalars and pointers pass through unchanged.
 //
 //   Annotations, written between the closing ')' and '=':
 //     @imm8            the LAST parameter is an immediate in [0..256); the body becomes
@@ -58,9 +58,11 @@
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
 //
-// Every helper is emitted inside `#if DN2CPP_TARGET_<ARCH>` with the real body, and `#else`
-// with a [[noreturn]] stub calling dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"), so a
-// foreign-arch dead arm in generated code still compiles against a declaration.
+// Every helper is emitted inside `#if DN2CPP_TARGET_<ARCH>` with the real body — which first
+// tests the family's IsSupported token through dn2cpp_isa_require, throwing
+// PlatformNotSupportedException as .NET does for a call made while IsSupported is false — and
+// `#else` with a [[noreturn]] stub calling dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"),
+// so a foreign-arch dead arm in generated code still compiles against a declaration.
 
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -895,6 +897,7 @@ static class Emit
     public static readonly UTF8Encoding Utf8NoBom = new(false);
     const string Regenerate = "dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>";
 
+    static readonly Regex OutItemAddr = new(@"&\$r(\d+)", RegexOptions.Compiled);
     static readonly Regex OutItem = new(@"\$r(\d+)", RegexOptions.Compiled);
     static readonly Regex Param = new(@"\$(\d+)(?:\.(\d+))?", RegexOptions.Compiled);
 
@@ -1070,7 +1073,18 @@ static class Emit
         }
 
         int immIndex = row.ImmRange != 0 ? m.Params.Length - 1 : -1;
-        string expr = OutItem.Replace(row.Expression, x => "(*item" + x.Groups[1].Value + ")");
+        string OutItemIndex(Match x)
+        {
+            if (m.Return.Kind != TyKind.Tuple)
+                throw new ContractException($"{row.SourceLine}: {x.Value} but {m.Key} does not return a tuple");
+            int j = int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture);
+            if (j < 1 || j > m.Return.Items.Length)
+                throw new ContractException($"{row.SourceLine}: {x.Value} is outside the returned tuple's items");
+            return x.Groups[1].Value;
+        }
+        // The address form first, so `&$r1` is the pointer itself rather than `&(*item1)`.
+        string expr = OutItemAddr.Replace(row.Expression, x => "item" + OutItemIndex(x));
+        expr = OutItem.Replace(expr, x => "(*item" + OutItemIndex(x) + ")");
         expr = Param.Replace(expr, x =>
         {
             int k = int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture);
@@ -1117,7 +1131,9 @@ static class Emit
         sb.Append('\n');
         sb.Append("#if ").Append(Contract.TargetMacro(f.Arch)).Append('\n');
         sb.Append(attr).Append("DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
-          .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n    ").Append(body).Append("\n}\n");
+          .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n")
+          .Append("    dn2cpp_isa_require(").Append(f.Token).Append(", \"").Append(display).Append("\");\n")
+          .Append("    ").Append(body).Append("\n}\n");
         sb.Append("#else\n");
         sb.Append("[[noreturn]] DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
           .Append('(').Append(string.Join(", ", stubDecls)).Append(")\n{\n    dn2cpp_isa_not_lowered(\"")

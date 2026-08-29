@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.Arm.ArmBase — the AArch64 baseline, no target attribute.
+LeadingZeroCount(i32) = dn2cpp_isa_clz32((uint32_t)$0)
+LeadingZeroCount(u32) = dn2cpp_isa_clz32($0)
+ReverseElementBits(i32) = (int32_t)dn2cpp_isa_rbit32((uint32_t)$0)
+ReverseElementBits(u32) = dn2cpp_isa_rbit32($0)
+Yield() = dn2cpp_isa_arm_yield()

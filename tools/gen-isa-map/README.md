@@ -97,15 +97,19 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
 - `$k` is parameter `k`; a vector arrives converted to the native register type through
   `dn2cpp_isa_bits<...>`, and a vector result is wrapped back through `dn2cpp_isa_vec<...>`.
   `$k.j` is item `j` of a tuple parameter; `$r1`, `$r2`, … are the dereferenced out-pointers
-  of a tuple return.
+  of a tuple return and `&$r1`, `&$r2`, … the out-pointers themselves.
 - `@imm8` and `@imm[0..N)` (N in 2, 4, 8, 16, 32, 64) mark the last parameter as an
   immediate; the body becomes `DN2CPP_ISA_IMM8_SWITCH` or `DN2CPP_ISA_IMM_SWITCH_N` and
   the expression names the constant `DN2CPP_IMM`. `@target("...")` overrides the
   family-level `target =`.
   `@throws` documents a faulting intrinsic and changes nothing.
+- A family whose only public static member is `IsSupported` (`X86Serialize.X64`) has no map
+  file: it is covered vacuously and lowered with its enclosing family.
 
-Every helper is emitted under `#if DN2CPP_TARGET_<ARCH>` with its body, and under `#else`
-as a `[[noreturn]]` stub calling `dn2cpp_isa_not_lowered`, so a foreign-arch dead arm in
+Every helper is emitted under `#if DN2CPP_TARGET_<ARCH>` with its body, which first tests
+the family's `IsSupported` token through `dn2cpp_isa_require` (a call made while the token
+is false throws PlatformNotSupportedException, as in .NET), and under `#else` as a
+`[[noreturn]]` stub calling `dn2cpp_isa_not_lowered`, so a foreign-arch dead arm in
 generated code still compiles. The macros come from `runtime/core/isa/dn2cpp_isa_common.h`.
 
 ## Lowered is derived
