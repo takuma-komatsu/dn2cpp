@@ -923,6 +923,19 @@ static class Maps
             ["i32"] = "epi32", ["u32"] = "epi32", ["i64"] = "epi64", ["u64"] = "epi64",
         },
         ["ps|pd"] = new() { ["f32"] = "ps", ["f64"] = "pd" },
+        // The unsigned SSE integer suffix whatever the element (_mm_max_epu8 serves the
+        // byte overload alone), and the suffix in the element's own signedness for an
+        // instruction that has both forms (_mm_cvtepi8_epi16 / _mm_cvtepu8_epi16).
+        ["epu"] = new()
+        {
+            ["i8"] = "epu8", ["u8"] = "epu8", ["i16"] = "epu16", ["u16"] = "epu16",
+            ["i32"] = "epu32", ["u32"] = "epu32", ["i64"] = "epu64", ["u64"] = "epu64",
+        },
+        ["ep"] = new()
+        {
+            ["i8"] = "epi8", ["u8"] = "epu8", ["i16"] = "epi16", ["u16"] = "epu16",
+            ["i32"] = "epi32", ["u32"] = "epu32", ["i64"] = "epi64", ["u64"] = "epu64",
+        },
         ["neon"] = new()
         {
             ["i8"] = "s8", ["u8"] = "u8", ["i16"] = "s16", ["u16"] = "u16",
@@ -1187,7 +1200,7 @@ static class Maps
     static (bool T, bool W) Dependency(string name, string where) => name switch
     {
         "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "wT" or "nT" or "unT" or "hbits"
-            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "ps|pd"
+            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "epu" or "ep" or "ps|pd"
             or "lane" or "slane" or "ulane" or "wlane" or "swlane" or "uwlane"
             or "cs" or "scs" or "ucs" => (true, false),
         "W" or "q" => (false, true),

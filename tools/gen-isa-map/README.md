@@ -123,7 +123,8 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{wneon}` `{nneon}` | T | the ACLE suffix of the twice- / half-width element |
   | `{hbits}` | T | half the element width in bits: a narrowing shift's range |
   | `{bhsd}` | T | the scalar-register letter of a one-lane intrinsic (`vqrdmlahh_s16`) |
-  | `{epi}` `{ps\|pd}` | T | the SSE integer / float suffix |
+  | `{epi}` `{epu}` `{ep}` | T | the SSE integer suffix in the signed spelling, the unsigned spelling, and the element's own (`_mm_add_epi8` serves both byte overloads; `_mm_max_epu8` one; `_mm_cvtepi8_epi16` / `_mm_cvtepu8_epi16` each their own) |
+  | `{ps\|pd}` | T | the SSE float suffix |
   | `{lane}` | T | the wasm lane shape in the element's signedness (`u8x16`; a native-integer lane is `i32x4` / `u32x4`) |
   | `{slane}` `{ulane}` | T | the signed / unsigned wasm lane shape whatever the element's (`wasm_i8x16_add` serves both `sbyte` and `byte`) |
   | `{wlane}` `{swlane}` `{uwlane}` | T | the twice-width lane shape in the element's, the signed and the unsigned spelling (`i8` → `i16x8`; `u8` → `u16x8` / `i16x8` / `u16x8`) |
