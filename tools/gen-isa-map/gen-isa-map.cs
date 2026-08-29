@@ -920,6 +920,33 @@ static class Maps
             ["i32"] = "i32", ["u32"] = "i32", ["i64"] = "i64", ["u64"] = "i64",
             ["f32"] = "i32", ["f64"] = "i64",
         },
+        // The element of twice / half the width (widening and narrowing operations), the
+        // unsigned element of half the width (SQXTUN, SQSHRUN), and their ACLE suffixes.
+        ["wT"] = new()
+        {
+            ["i8"] = "i16", ["u8"] = "u16", ["i16"] = "i32", ["u16"] = "u32", ["i32"] = "i64", ["u32"] = "u64",
+        },
+        ["nT"] = new()
+        {
+            ["i16"] = "i8", ["u16"] = "u8", ["i32"] = "i16", ["u32"] = "u16", ["i64"] = "i32", ["u64"] = "u32",
+        },
+        ["unT"] = new()
+        {
+            ["i16"] = "u8", ["u16"] = "u8", ["i32"] = "u16", ["u32"] = "u16", ["i64"] = "u32", ["u64"] = "u32",
+        },
+        ["wneon"] = new()
+        {
+            ["i8"] = "s16", ["u8"] = "u16", ["i16"] = "s32", ["u16"] = "u32", ["i32"] = "s64", ["u32"] = "u64",
+        },
+        ["nneon"] = new()
+        {
+            ["i16"] = "s8", ["u16"] = "u8", ["i32"] = "s16", ["u32"] = "u16", ["i64"] = "s32", ["u64"] = "u32",
+        },
+        // Half the element width: the shift range of a narrowing shift.
+        ["hbits"] = new()
+        {
+            ["i16"] = "8", ["u16"] = "8", ["i32"] = "16", ["u32"] = "16", ["i64"] = "32", ["u64"] = "32",
+        },
         // The scalar-register letter of a one-lane ACLE intrinsic (vqrdmlahh_s16, vqaddd_s64).
         ["bhsd"] = new()
         {
@@ -1065,7 +1092,8 @@ static class Maps
     // Which loop variables a placeholder reads: (element, width).
     static (bool T, bool W) Dependency(string name, string where) => name switch
     {
-        "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "neon" or "bhsd" or "epi" or "ps|pd" or "lane" => (true, false),
+        "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "wT" or "nT" or "unT" or "hbits"
+            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "ps|pd" or "lane" => (true, false),
         "W" or "q" => (false, true),
         "N" or "ntype" => (true, true),
         _ => throw new ContractException($"{where}: unknown placeholder '{{{name}}}'"),
@@ -1570,10 +1598,10 @@ static class Exercises
                     args.Add(Literal(p, Lane(k, 0, p.Code)));
                     break;
                 case TyKind.Vector:
-                    args.Add(VectorLiteral(p, k));
+                    args.Add(VectorLiteral(p, k, IndexModulus(m, k)));
                     break;
                 case TyKind.Tuple:
-                    args.Add("(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j))) + ")");
+                    args.Add("(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j, 0))) + ")");
                     break;
                 case TyKind.Pointer:
                     sb.Append($"{inner}byte* p{k} = stackalloc byte[{BufferBytes}];\n");
@@ -1690,11 +1718,28 @@ static class Exercises
         return t.CsEnum is null ? s : $"({t.CsEnum}){s}";
     }
 
-    static string VectorLiteral(Ty v, int k)
+    // The index operand of a table lookup (the last parameter of VectorTableLookup*) is
+    // read as byte indices into 16 bytes per table register; the fixed lane pattern is
+    // folded to a few values past the table so most lanes select an entry and the rest
+    // exercise the out-of-range lane (zero for TBL, the default operand for TBX).
+    static int IndexModulus(Method m, int k)
+    {
+        if (!m.Name.StartsWith("VectorTableLookup", StringComparison.Ordinal) || k != m.Params.Length - 1)
+            return 0;
+        var table = m.Params[m.Name.EndsWith("Extension", StringComparison.Ordinal) ? 1 : 0];
+        int registers = table.Kind == TyKind.Tuple ? table.Items.Length : 1;
+        return 16 * registers + 3;
+    }
+
+    static string VectorLiteral(Ty v, int k, int modulus)
     {
         string elem = v.Elem!.Code;
         int lanes = v.Bits / Codes.ElemBits(elem);
-        var items = Enumerable.Range(0, lanes).Select(i => Literal(v.Elem, Lane(k, i, elem)));
+        var items = Enumerable.Range(0, lanes).Select(i =>
+        {
+            long value = Lane(k, i, elem);
+            return Literal(v.Elem, modulus == 0 ? value : ((value % modulus) + modulus) % modulus);
+        });
         return $"Vector{v.Bits}.Create({string.Join(", ", items)})";
     }
 }

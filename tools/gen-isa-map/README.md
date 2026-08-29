@@ -119,6 +119,9 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{neon}` | T | the ACLE type suffix (`s8`, `u8`, `f32`) |
   | `{ntype}` | W, T | the NEON vector type (`int8x16_t`) |
   | `{uT}` `{sT}` | T | the same-width unsigned / signed element code (`f32` → `u32` / `i32`) |
+  | `{wT}` `{nT}` `{unT}` | T | the element of twice / half the width, and the unsigned one of half the width (`i16` → `i32` / `i8` / `u8`) |
+  | `{wneon}` `{nneon}` | T | the ACLE suffix of the twice- / half-width element |
+  | `{hbits}` | T | half the element width in bits: a narrowing shift's range |
   | `{bhsd}` | T | the scalar-register letter of a one-lane intrinsic (`vqrdmlahh_s16`) |
   | `{epi}` `{ps\|pd}` | T | the SSE integer / float suffix |
   | `{lane}` | T | the wasm lane shape (`i8x16`) |
