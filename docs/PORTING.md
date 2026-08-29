@@ -237,11 +237,16 @@ on Darwin arm64, `IsProcessorFeaturePresent` on Windows. A target that supplies
 none of these is not broken — every family answers false and the BCL's software
 fallback runs — but it has left the hardware paths on the table.
 
-Detection is a **run-time** fact, never a build-time one. The binary that runs
+Detection is a **run-time** fact, never a build-time one. AVX10.2 retains that
+raw fact but follows .NET 10's default-off policy: only
+`DN2CPP_ENABLE_AVX10V2=1` permits its detected bits, and the compiler must also
+provide the generated helper intrinsics. This positive policy precedes
+`DN2CPP_CPU_FEATURES`, so the mask remains narrowing-only and cannot opt in.
+The binary that runs
 under Rosetta on an iOS-simulator lane was compiled for x86-64 and executes on an
 arm64 machine whose CPUID emulation exposes a feature set no shipping CPU has;
 a build-time answer would be wrong on either side of that line. The same rule
-gives the tests their handle: `DN2CPP_CPU_FEATURES` intersects the detected set
+gives the tests their handle: `DN2CPP_CPU_FEATURES` intersects the policy set
 and never widens it, so `none` is the software-fallback build of the same
 binary.
 

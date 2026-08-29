@@ -86,11 +86,11 @@
 //                      layer is an independent implementation, which is what checks a family
 //                      whose gate output is frozen because no host .NET can be its oracle.
 //
-// Every helper is emitted inside the arch's `#if` (Contract.HelperCondition: the target macro,
-// and for wasm also __wasm_simd128__, since SIMD is a property of the whole module) with the
-// real body — which first tests the family's IsSupported token through dn2cpp_isa_require,
-// throwing PlatformNotSupportedException as .NET does for a call made while IsSupported is
-// false — and `#else` with a [[noreturn]] stub calling
+// Every helper is emitted inside its target and compiler-capability `#if`
+// (Contract.HelperCondition; wasm also tests __wasm_simd128__, since SIMD is a property of the
+// whole module) with the real body — which first tests the family's IsSupported token through
+// dn2cpp_isa_require, throwing PlatformNotSupportedException as .NET does for a call made while
+// IsSupported is false — and `#else` with a [[noreturn]] stub calling
 // dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"), so a foreign-arch dead arm in generated
 // code still compiles against a declaration.
 
@@ -300,14 +300,26 @@ static class Contract
         _ => "DN2CPP_TARGET_WASM32",
     };
 
-    // The `#if` a helper's real body sits under. x86-64 and AArch64 compilers always accept
-    // their intrinsic headers (the target attribute widens one helper); wasm SIMD is a
-    // module-wide property (-msimd128, DN2CPP_WASM_SIMD) — a module carrying one SIMD
-    // instruction cannot instantiate on an engine without them — so the body exists only
-    // in a SIMD build and a default wasm build compiles the stubs, which is consistent
-    // with its detector answering false.
-    public static string HelperCondition(string arch) =>
-        arch == "wasm" ? TargetMacro(arch) + " && defined(__wasm_simd128__)" : TargetMacro(arch);
+    // The compiler capability is part of IsSupported: a mapped family cannot answer true when
+    // the compiler that consumes the generated headers has no spelling for its instructions.
+    // Families whose bit set includes AVX10V2 share that capability with their nested V512
+    // surfaces, including the V512 AvxVnniInt families whose instructions AVX10.2 introduces.
+    public static string CompilerCondition(Family family) =>
+        family.Bits.Any(bit => bit is "X86_AVX10V2" or "X86_AVX10V2_512")
+            ? "DN2CPP_HAS_X86_AVX10V2_INTRINSICS"
+            : "1";
+
+    // The `#if` a helper's real body sits under. wasm SIMD is a module-wide property
+    // (-msimd128, DN2CPP_WASM_SIMD), while a compiler capability selects either the mapped
+    // body or the same throwing stub used on a foreign architecture.
+    public static string HelperCondition(Family family)
+    {
+        string target = family.Arch == "wasm"
+            ? TargetMacro(family.Arch) + " && defined(__wasm_simd128__)"
+            : TargetMacro(family.Arch);
+        string compiler = CompilerCondition(family);
+        return compiler == "1" ? target : target + " && " + compiler;
+    }
 
     public static string Token(string qualifiedName) =>
         "DN2CPP_ISA_" + qualifiedName.Substring(IntrinsicsPrefix.Length).Replace('.', '_').Replace('+', '_');
@@ -1450,10 +1462,10 @@ static class Emit
         var sb = new StringBuilder();
         sb.Append(CppBanner("One IsSupported token per hardware-intrinsics family, as the transpiler emits it."));
         sb.Append("""
-            // On the family's own target the token asks the feature detector for every bit the family
-            // requires; on every other target it is the literal 0, so the guarded arm is dead code the
-            // compiler drops. Nested X64/Arm64 types share their enclosing type's bits: every target
-            // here is 64-bit.
+            // On the family's own target, with every required compiler intrinsic available, the token
+            // asks the feature detector for every bit the family requires. Otherwise it is false, so
+            // the guarded arm is dead code the compiler drops. Nested X64/Arm64 types share their
+            // enclosing type's bits: every target here is 64-bit.
             #include "dn2cpp_cpu_features.h"
 
             """);
@@ -1466,8 +1478,14 @@ static class Emit
             {
                 sb.Append("#if ").Append(Contract.TargetMacro(arch)).Append('\n');
                 foreach (var f in own)
-                    sb.Append("#define ").Append(f.Token).Append(" (dn2cpp_cpu_has_all(")
+                {
+                    string compiler = Contract.CompilerCondition(f);
+                    sb.Append("#define ").Append(f.Token).Append(" (");
+                    if (compiler != "1")
+                        sb.Append(compiler).Append(" && ");
+                    sb.Append("dn2cpp_cpu_has_all(")
                       .Append(string.Join(" | ", f.Bits.Select(b => "DN2CPP_CPU_" + b))).Append("))\n");
+                }
                 sb.Append("#else\n");
                 foreach (var f in own)
                     sb.Append("#define ").Append(f.Token).Append(" 0\n");
@@ -1591,7 +1609,7 @@ static class Emit
         string display = f.QualifiedName + "." + m.Name;
 
         sb.Append('\n');
-        sb.Append("#if ").Append(Contract.HelperCondition(f.Arch)).Append('\n');
+        sb.Append("#if ").Append(Contract.HelperCondition(f)).Append('\n');
         if (m.Row is null)
         {
             // A previewed family's unmapped method: throws on the native target too.

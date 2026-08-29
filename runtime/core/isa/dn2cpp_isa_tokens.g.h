@@ -6,10 +6,10 @@
 //
 //     dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>
 //
-// On the family's own target the token asks the feature detector for every bit the family
-// requires; on every other target it is the literal 0, so the guarded arm is dead code the
-// compiler drops. Nested X64/Arm64 types share their enclosing type's bits: every target
-// here is 64-bit.
+// On the family's own target, with every required compiler intrinsic available, the token
+// asks the feature detector for every bit the family requires. Otherwise it is false, so
+// the guarded arm is dead code the compiler drops. Nested X64/Arm64 types share their
+// enclosing type's bits: every target here is 64-bit.
 #include "dn2cpp_cpu_features.h"
 
 // System.Runtime.Intrinsics.X86
@@ -74,15 +74,15 @@
 #define DN2CPP_ISA_X86_Avx10v1_V512 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V1_512))
 #define DN2CPP_ISA_X86_Avx10v1_V512_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V1_512))
 #define DN2CPP_ISA_X86_Avx10v1_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V1))
-#define DN2CPP_ISA_X86_Avx10v2 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2))
-#define DN2CPP_ISA_X86_Avx10v2_V512 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2_512))
-#define DN2CPP_ISA_X86_Avx10v2_V512_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2_512))
-#define DN2CPP_ISA_X86_Avx10v2_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2))
+#define DN2CPP_ISA_X86_Avx10v2 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2))
+#define DN2CPP_ISA_X86_Avx10v2_V512 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2_512))
+#define DN2CPP_ISA_X86_Avx10v2_V512_X64 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2_512))
+#define DN2CPP_ISA_X86_Avx10v2_X64 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVX10V2))
 #define DN2CPP_ISA_X86_AvxVnniInt8 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT8))
-#define DN2CPP_ISA_X86_AvxVnniInt8_V512 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT8 | DN2CPP_CPU_X86_AVX10V2_512))
+#define DN2CPP_ISA_X86_AvxVnniInt8_V512 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT8 | DN2CPP_CPU_X86_AVX10V2_512))
 #define DN2CPP_ISA_X86_AvxVnniInt8_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT8))
 #define DN2CPP_ISA_X86_AvxVnniInt16 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT16))
-#define DN2CPP_ISA_X86_AvxVnniInt16_V512 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT16 | DN2CPP_CPU_X86_AVX10V2_512))
+#define DN2CPP_ISA_X86_AvxVnniInt16_V512 (DN2CPP_HAS_X86_AVX10V2_INTRINSICS && dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT16 | DN2CPP_CPU_X86_AVX10V2_512))
 #define DN2CPP_ISA_X86_AvxVnniInt16_X64 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_AVXVNNIINT16))
 #define DN2CPP_ISA_X86_Gfni (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_GFNI))
 #define DN2CPP_ISA_X86_Gfni_V256 (dn2cpp_cpu_has_all(DN2CPP_CPU_X86_GFNI | DN2CPP_CPU_X86_AVX))

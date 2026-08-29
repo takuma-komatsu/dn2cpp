@@ -14,7 +14,9 @@ namespace PlatformIsaProbe;
 // beside a portable reference; nothing machine-dependent is printed.
 internal static class X86Sections
 {
-    internal static void RegisterExercises(Dictionary<string, Action> exercises)
+    internal static void RegisterExercises(
+        Dictionary<string, Action> exercises,
+        Dictionary<string, Action> nestedProbes)
     {
         exercises["X86.X86Base"] = X86BaseExercise;
         exercises["X86.Lzcnt"] = LzcntExercise;
@@ -23,6 +25,9 @@ internal static class X86Sections
         exercises["X86.Bmi2"] = Bmi2Exercise;
         exercises["X86.X86Serialize"] = X86SerializeExercise;
         Exercises.RegisterX86(exercises);
+        nestedProbes["X86.Avx10v2.V512"] = ProbeAvx10v2V512;
+        nestedProbes["X86.AvxVnniInt8.V512"] = ProbeAvxVnniInt8V512;
+        nestedProbes["X86.AvxVnniInt16.V512"] = ProbeAvxVnniInt16V512;
     }
 
     internal static void ProbeX86Base() { _ = X86Base.CpuId(0, 0); }
@@ -51,8 +56,11 @@ internal static class X86Sections
     internal static void ProbeAvx512Vbmi2() { _ = Avx512Vbmi2.Compress(Vector512<byte>.Zero, Vector512<byte>.Zero, Vector512<byte>.Zero); }
     internal static void ProbeAvx10v1() { _ = Avx10v1.Abs(Vector128<long>.Zero); }
     internal static void ProbeAvx10v2() { _ = Avx10v2.ConvertToByteWithSaturationAndZeroExtendToInt32(Vector128<float>.Zero); }
+    internal static void ProbeAvx10v2V512() { _ = Avx10v2.V512.ConvertToByteWithSaturationAndZeroExtendToInt32(Vector512<float>.Zero); }
     internal static void ProbeAvxVnniInt8() { _ = AvxVnniInt8.MultiplyWideningAndAdd(Vector128<int>.Zero, Vector128<sbyte>.Zero, Vector128<sbyte>.Zero); }
+    internal static void ProbeAvxVnniInt8V512() { _ = AvxVnniInt8.V512.MultiplyWideningAndAdd(Vector512<int>.Zero, Vector512<sbyte>.Zero, Vector512<sbyte>.Zero); }
     internal static void ProbeAvxVnniInt16() { _ = AvxVnniInt16.MultiplyWideningAndAdd(Vector128<int>.Zero, Vector128<short>.Zero, Vector128<ushort>.Zero); }
+    internal static void ProbeAvxVnniInt16V512() { _ = AvxVnniInt16.V512.MultiplyWideningAndAdd(Vector512<int>.Zero, Vector512<short>.Zero, Vector512<ushort>.Zero); }
     internal static void ProbeGfni() { _ = Gfni.GaloisFieldMultiply(Vector128<byte>.Zero, Vector128<byte>.Zero); }
 
     // CPUID answers are machine facts, so only shape facts every x86-64 CPU

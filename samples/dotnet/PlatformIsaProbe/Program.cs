@@ -21,7 +21,9 @@ namespace PlatformIsaProbe;
 // family's exercise (registered by the *Sections classes; a family without
 // one prints a header-only section), otherwise it calls one representative
 // instruction, which must throw PlatformNotSupportedException as it does in
-// .NET. A successful probe prints nothing.
+// .NET. Selected unsupported nested rows with a registered probe do the same,
+// covering capabilities narrower than their supported enclosing family. A
+// successful probe prints nothing.
 //
 // Never print Vector128/256/512.IsHardwareAccelerated or Vector<T>.Count: they
 // flip under DOTNET_EnableHWIntrinsic=0, which is the oracle for the masked run.
@@ -167,13 +169,18 @@ internal static class Program
     // with an entry runs it inside its section; the *Sections classes register.
     private static readonly Dictionary<string, Action> Exercises = new(StringComparer.Ordinal);
 
+    // A nested facade normally rides inside its top-level exercise. A compiler
+    // capability can leave just the nested facade unsupported, so representative
+    // nested calls live here and prove that false still routes to a throwing helper.
+    private static readonly Dictionary<string, Action> NestedProbes = new(StringComparer.Ordinal);
+
     private static int Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
-        X86Sections.RegisterExercises(Exercises);
+        X86Sections.RegisterExercises(Exercises, NestedProbes);
         ArmSections.RegisterExercises(Exercises);
         WasmSections.RegisterExercises(Exercises);
 
@@ -196,6 +203,11 @@ internal static class Program
             Family family = row.TopLevel;
             if (family is null)
             {
+                if (!row.IsSupported() && NestedProbes.TryGetValue(row.Name, out Action nestedProbe))
+                {
+                    Console.WriteLine("== " + row.Name + " ==");
+                    PrintProbe(nestedProbe);
+                }
                 continue;
             }
             Console.WriteLine("== " + family.RowName + " ==");
@@ -208,18 +220,23 @@ internal static class Program
             }
             else
             {
-                try
-                {
-                    family.Probe();
-                    Console.WriteLine("probe=returned");
-                }
-                catch (PlatformNotSupportedException)
-                {
-                    Console.WriteLine("probe=PlatformNotSupportedException");
-                }
+                PrintProbe(family.Probe);
             }
         }
         return 0;
+    }
+
+    private static void PrintProbe(Action probe)
+    {
+        try
+        {
+            probe();
+            Console.WriteLine("probe=returned");
+        }
+        catch (PlatformNotSupportedException)
+        {
+            Console.WriteLine("probe=PlatformNotSupportedException");
+        }
     }
 
     private static List<Row> Select(string selection)

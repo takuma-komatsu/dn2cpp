@@ -184,14 +184,16 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   file: it is covered vacuously and lowered with its enclosing family.
 
 Every helper is emitted under the arch's `#if` — `DN2CPP_TARGET_X64`, `DN2CPP_TARGET_ARM64`,
-or `DN2CPP_TARGET_WASM32 && defined(__wasm_simd128__)` — with its body, which first tests
-the family's `IsSupported` token through `dn2cpp_isa_require` (a call made while the token
-is false throws PlatformNotSupportedException, as in .NET), and under `#else` as a
-`[[noreturn]]` stub calling `dn2cpp_isa_not_lowered`, so a foreign-arch dead arm in
-generated code still compiles. wasm SIMD is a property of the whole module (the CMake
-option `DN2CPP_WASM_SIMD` adds `-msimd128` everywhere), so a default wasm build compiles the
-stubs and its detector answers false. The macros come from
-`runtime/core/isa/dn2cpp_isa_common.h`.
+or `DN2CPP_TARGET_WASM32 && defined(__wasm_simd128__)` — and any compiler-intrinsic
+capability its family requires. The real body first tests the family's `IsSupported` token
+through `dn2cpp_isa_require` (a call made while the token is false throws
+PlatformNotSupportedException, as in .NET), and the `#else` is a `[[noreturn]]` stub calling
+`dn2cpp_isa_not_lowered`, so a foreign-arch or compiler-unavailable dead arm in generated
+code still compiles. The same compiler capability is part of the token, preserving the
+contract that a true getter always has a real helper body. wasm SIMD is a property of the
+whole module (the CMake option `DN2CPP_WASM_SIMD` adds `-msimd128` everywhere), so a default
+wasm build compiles the stubs and its detector answers false. The macros come from
+`runtime/core/dn2cpp_cpu_features.h` and `runtime/core/isa/dn2cpp_isa_common.h`.
 
 ## Lowered is derived
 

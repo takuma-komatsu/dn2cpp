@@ -59,6 +59,22 @@ platform_isa_host_arch() {
     esac
 }
 
+# platform_isa_avx10v2_compiler_capable — whether the configured native C++
+# compiler makes DN2CPP_HAS_X86_AVX10V2_INTRINSICS true. Keep this predicate in
+# lockstep with runtime/core/dn2cpp_cpu_features.h: the oracle opt-in is enabled
+# only when our generated helper bodies can exist.
+platform_isa_avx10v2_compiler_capable() {
+    local cxx="${CMAKE_CXX_COMPILER:-${CXX:-c++}}" version first major
+    version=$("$cxx" --version 2>/dev/null || true)
+    first="${version%%$'\n'*}"
+    case "$first" in
+        *clang\ version*) ;;
+        *) return 1 ;;
+    esac
+    major=$(sed -nE 's/.*clang version ([0-9]+).*/\1/p' <<<"$first")
+    [ -n "$major" ] && [ "$major" -ge 21 ]
+}
+
 # platform_isa_join SEP ITEM... — ITEMs joined by SEP; empty when none.
 platform_isa_join() {
     local sep="$1"; shift
@@ -120,6 +136,9 @@ platform_isa_set_eq() {
 #      Witnesses: no `=True`, and exactly one `effective=(none)` diag line.
 #   P  native host, Lowered rows only, the partial mask vs the oracle's knobs.
 #      Witnesses: PLATFORM_ISA_P_TRUE stays true, PLATFORM_ISA_P_FALSE goes false.
+#   O  native x86 host, the AVX10.2 policy rows under the positive opt-in. The
+#      oracle opts in only when the configured compiler has the helper surface;
+#      otherwise both sides stay false and the nested throwing stubs are called.
 # Rows that are not Lowered fold to false on our side whatever the CPU, so S
 # and P select the Lowered set only; F and M expect false everywhere anyway.
 platform_isa_native_gate() {
@@ -135,9 +154,20 @@ platform_isa_native_gate() {
     : "${PLATFORM_ISA_P_TRUE:?the gate must set PLATFORM_ISA_P_TRUE}"
     : "${PLATFORM_ISA_P_FALSE:?the gate must set PLATFORM_ISA_P_FALSE}"
 
-    # An inherited mask would narrow the unmasked runs and, through the cache
-    # key, record that narrowed answer as this gate's green.
-    unset DN2CPP_CPU_FEATURES DN2CPP_CPU_FEATURES_DIAG
+    # An inherited runtime or JIT knob would narrow or widen the default runs.
+    # Clear both .NET prefixes: COMPlus_ remains a supported alias for these
+    # legacy runtime configuration keys.
+    unset DN2CPP_CPU_FEATURES DN2CPP_CPU_FEATURES_DIAG DN2CPP_ENABLE_AVX10V2
+    unset DOTNET_EnableHWIntrinsic COMPlus_EnableHWIntrinsic
+    unset DOTNET_EnableAVX10v2 COMPlus_EnableAVX10v2
+    local knob variable
+    for knob in $PLATFORM_ISA_P_KNOBS; do
+        variable="${knob%%=*}"
+        unset "$variable"
+        case "$variable" in
+            DOTNET_*) unset "COMPlus_${variable#DOTNET_}" ;;
+        esac
+    done
 
     local project="$PLATFORM_ISA_PROJECT" out host_arch
     out="$(_corelib_gate_out "$project")-isa-$arch"
@@ -156,14 +186,19 @@ platform_isa_native_gate() {
     all_csv=$(platform_isa_join , "${all[@]}")
     lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
 
-    local native_host=0
+    local native_host=0 avx10v2_compiler=0
     [ "$host_arch" = "$arch" ] && native_host=1
+    if [ "$host_arch" = x86 ] && platform_isa_avx10v2_compiler_capable; then
+        avx10v2_compiler=1
+    fi
 
-    local ctx="platform_isa|$arch|host:${host_arch:-other}|$_CG_CORELIB"
+    local optin_ctx="" ctx="platform_isa|$arch|host:${host_arch:-other}|$_CG_CORELIB"
+    [ "$arch" = x86 ] && optin_ctx="+O"
     ctx="$ctx|families:$all_csv|lowered:$lowered_csv"
-    ctx="$ctx|runs:F+S+M+P|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|runs:F+S+M+P$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
     ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
-    ctx="$ctx|assert:foreign-all-false+base-true+mask-diag$(_gate_ctx_extras)"
+    ctx="$ctx|avx10v2-compiler:$avx10v2_compiler|O=DN2CPP_ENABLE_AVX10V2=1"
+    ctx="$ctx|assert:foreign-all-false+base-true+avx10v2-default-off+apple-avx512-false+mask-diag$(_gate_ctx_extras)"
     if _corelib_gate_check "$out" "$ctx"; then
         gate_cache_hit_msg
         return 0
@@ -244,6 +279,40 @@ platform_isa_native_gate() {
                 _pi_require_count S 1 "$n" "'$base=True' line (the base family is Lowered and this IS an $isa host)"
                 ;;
         esac
+        if [ "$arch" = x86 ]; then
+            block=$(platform_isa_contract_block "$_PI_OURS")
+            n=$(grep -Ec '^X86\.(Avx10v2(\.(V512(\.X64)?|X64))?|AvxVnniInt(8|16)\.V512)=False$' <<<"$block" || true)
+            _pi_require_count S 6 "$n" "AVX10.2 policy rows reported False without DN2CPP_ENABLE_AVX10V2=1"
+        fi
+        # .NET deliberately reports AVX-512 unavailable on macOS: the OS enables
+        # its register state lazily per thread, and VEX-encoded mask moves do not
+        # trigger that enablement. Keep every family that needs that state false,
+        # even on an Intel Mac whose CPUID advertises it.
+        if [ "$arch" = x86 ] && [ "$(uname -s)" = Darwin ]; then
+            block=$(platform_isa_contract_block "$_PI_OURS")
+            n=$(grep -Ec '^X86\.(Avx512.*|Avx10.*|Pclmulqdq\.V512|Gfni\.V512|AvxVnniInt(8|16)\.V512)=True$' <<<"$block" || true)
+            _pi_require_count S 0 "$n" "AVX-512-state rows reported True on macOS"
+        fi
+    fi
+
+    if [ "$native_host" -eq 1 ] && [ "$arch" = x86 ]; then
+        local optin_rows oracle_optin nested
+        optin_rows="X86.Avx10v2,X86.Avx10v2.V512,X86.Avx10v2.V512.X64,X86.Avx10v2.X64,X86.AvxVnniInt8,X86.AvxVnniInt8.V512,X86.AvxVnniInt16,X86.AvxVnniInt16.V512"
+        oracle_optin="DOTNET_EnableAVX10v2=0"
+        [ "$avx10v2_compiler" -eq 1 ] && oracle_optin="DOTNET_EnableAVX10v2=1"
+        _pi_run O "$optin_rows" "DN2CPP_ENABLE_AVX10V2=1" "$oracle_optin"
+        if [ "$avx10v2_compiler" -eq 0 ]; then
+            block=$(platform_isa_contract_block "$_PI_OURS")
+            n=$(grep -Ec '^X86\.(Avx10v2(\.(V512(\.X64)?|X64))?|AvxVnniInt(8|16)\.V512)=False$' <<<"$block" || true)
+            _pi_require_count O 6 "$n" "AVX10.2 rows kept False by the compiler capability"
+            for nested in X86.Avx10v2.V512 X86.AvxVnniInt8.V512 X86.AvxVnniInt16.V512; do
+                n=$(awk -v header="== $nested ==" '
+                    $0 == header { getline; if ($0 == "probe=PlatformNotSupportedException") found++ }
+                    END { print found + 0 }
+                ' <<<"$_PI_OURS")
+                _pi_require_count O 1 "$n" "'$nested' compiler-unavailable stub reached PlatformNotSupportedException"
+            done
+        fi
     fi
 
     _pi_run M "$all_csv" "DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1" "DOTNET_EnableHWIntrinsic=0"
@@ -272,10 +341,13 @@ platform_isa_native_gate() {
     fi
 
     if [ "$native_host" -eq 0 ]; then
-        local rosetta=""
-        [ "$arch" = x86 ] && rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
+        local rosetta="" native_runs="S and P"
+        if [ "$arch" = x86 ]; then
+            native_runs="S, O and P"
+            rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
+        fi
         # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
-        gate_expected_partial "runs S and P (the $isa families' supported and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-$arch.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where S and P run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
+        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-$arch.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where $native_runs run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
     fi
 
     gate_cache_commit

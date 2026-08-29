@@ -310,9 +310,14 @@ capability contract, not a set of independent constants:
   PUBLIC on the runtime so every TU agrees with the detector) is what makes
   `PackedSimd.IsSupported` true. The helpers' real bodies exist only under that
   macro; a default wasm build compiles their throwing stubs.
-- **The mask intersects detection.** `DN2CPP_CPU_FEATURES` narrows the detected
-  set (the effective set is the implication closure of detected ∩ allowed) and
-  can never make a getter true that detection left false.
+- **AVX10.2 needs a positive policy decision.** Raw CPUID detection retains the
+  hardware fact, but `Avx10v2` and the V512 `AvxVnniInt8` / `AvxVnniInt16`
+  surface enter the effective set only under `DN2CPP_ENABLE_AVX10V2=1`, matching
+  .NET 10's default-off policy. The compiler-capability guard is an independent
+  requirement, so the opt-in cannot expose helpers the compiler cannot build.
+- **The mask intersects policy.** `DN2CPP_CPU_FEATURES` narrows the post-policy
+  detected set (the effective set is the implication closure of policy ∩ allowed)
+  and can never opt into AVX10.2 or make a getter true that detection left false.
 
 #### Adopting a third-party async task type
 
@@ -544,7 +549,7 @@ that answer a fault differently are directly observable by a hot-update program.
 | Runtime-instantiation templates (`MakeGenericType` over a typeof-only definition, any argument) | `Compilation.BuildRuntimeInstantiationTemplates` (trigger + `$CnAny` rooting + shape bound), `Compilation.JudgeRuntimeTemplates` (per-body/per-slot eligibility), `CppEmitter.EmitRuntimeTemplates` (the `dn2cpp_runtime_templates` rows), `runtime/core/intrinsics/dn2cpp_system_reflection.cpp` (`dn2cpp_try_synthesize_generic`: clone, intern, rgctx fill) |
 | Reachability tree-shake | `Compilation` (walks call/newobj/ldftn from roots). Unreached bodies are never decoded |
 | Const-folded capability getters + dead-arm pruning | `CoreIntrinsics.ConstFoldedGetter` (the oracle: add a `(type, method) → bool` entry), `BranchLiveness` (per-body live-offset walk shared by the reachability scanner and `MethodCompiler`, so a dead arm's icalls/P-Invokes never enter the tree), `Compilation.ResolveCallTarget` (the getter's own body edge is cut) |
-| Platform ISA contract (`X86.*` / `Arm.*` / `Wasm.*` `IsSupported` and instructions) | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` (the generated family table: token, enclosing family, Lowered), the `MdPlatformIsa` intercept row keyed on the `ClassInfo.PlatformIsa` stamp, `runtime/core/dn2cpp_cpu_features.h` + `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` (detection, the `DN2CPP_CPU_FEATURES` mask), `runtime/core/isa/` (tokens and per-family helpers, written by `tools/gen-isa-map`) |
+| Platform ISA contract (`X86.*` / `Arm.*` / `Wasm.*` `IsSupported` and instructions) | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` (the generated family table: token, enclosing family, Lowered), the `MdPlatformIsa` intercept row keyed on the `ClassInfo.PlatformIsa` stamp, `runtime/core/dn2cpp_cpu_features.h` + `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` (detection, AVX10.2 opt-in policy, the `DN2CPP_CPU_FEATURES` mask), `runtime/core/isa/` (tokens and per-family helpers, written by `tools/gen-isa-map`) |
 | Multi-assembly | the `Module` abstraction + `ResolveTypeRef` (cross-assembly TypeRef/MemberRef resolution) |
 | Exception handling | `MethodCompiler` (structural EH-region reconstruction → nested C++ try/catch, `isinst` dispatch) |
 | vtables / interfaces | `Compilation` (slot assignment), `CppEmitter` (vtable/interface table emission) |

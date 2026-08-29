@@ -2306,9 +2306,10 @@ gate_cache_check() {
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
             # So must every RUN-TIME knob the runtime reads that changes a
             # program's output when a gate inherits it (DN2CPP_CPU_FEATURES
-            # narrows every IsSupported answer): a green recorded under an
-            # inherited knob would replay for the unmasked run.
-            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            # narrows every IsSupported answer, and the AVX10.2 opt-in permits
+            # that policy-disabled family): a green recorded under an inherited
+            # knob would replay for the default run.
+            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
                 "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" "${DN2CPP_WASM_SIMD:-}" \
                 "${IOS_SIM:-}" "${IOS_DEV:-}" "${ANDROID:-}" "${DN2CPP_NO_GC:-}" \
                 "${DN2CPP_GC_BACKEND:-}" \
@@ -2318,7 +2319,7 @@ gate_cache_check() {
                 "${DN2CPP_EXTRA_LINK_FLAGS:-}" "${DN2CPP_EXTRA_LINK_LIBS:-}" \
                 "${DN2CPP_HIGHWAY_ARCH:-}" \
                 "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}" \
-                "${DN2CPP_CPU_FEATURES:-}"
+                "${DN2CPP_CPU_FEATURES:-}" "${DN2CPP_ENABLE_AVX10V2:-}"
             printf 'os:%s\n' "$(uname -sm)"
             printf 'cc:%s\n' "$(first_line "$(cc --version 2>/dev/null)")"
             if [ -n "${WASM:-}" ]; then

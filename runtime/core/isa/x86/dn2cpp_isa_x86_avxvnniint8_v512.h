@@ -8,7 +8,7 @@
 //
 #include "../dn2cpp_isa_common.h"
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandadd_v512i32_v512i8_v512i8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAdd");
@@ -21,7 +21,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandadd_v512i32_v512i8_v512u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAdd");
@@ -34,7 +34,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandadd_v512u32_v512u8_v512u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAdd");
@@ -47,7 +47,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandaddsaturate_v512i32_v512i8_v512i8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAddSaturate");
@@ -60,7 +60,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandaddsaturate_v512i32_v512i8_v512u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAddSaturate");
@@ -73,7 +73,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avxvnniint8_v512_multiplywideningandaddsaturate_v512u32_v512u8_v512u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, const Dn2CppVector512& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_AvxVnniInt8_V512, "System.Runtime.Intrinsics.X86.AvxVnniInt8+V512.MultiplyWideningAndAddSaturate");

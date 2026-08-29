@@ -1,10 +1,10 @@
-// dn2cpp_cpu_features.cpp — CPU feature detection and the DN2CPP_CPU_FEATURES
-// mask behind every hardware-intrinsic IsSupported getter.
+// dn2cpp_cpu_features.cpp — CPU feature detection, positive ISA policy, and the
+// DN2CPP_CPU_FEATURES narrowing mask behind every intrinsic IsSupported getter.
 //
-// The mask is the DOTNET_Enable<ISA> knob in one variable: a family the mask
-// excludes reports IsSupported == false together with every family that
-// implies it, and nothing the mask names can be widened beyond what the
-// hardware and OS provide.
+// The mask collects .NET's narrowing DOTNET_Enable<ISA> knobs in one variable:
+// a family it excludes reports IsSupported == false together with every family
+// that implies it. AVX10.2's positive opt-in is separate, and neither control
+// can widen beyond what the hardware and OS provide.
 #include "dn2cpp_cpu_features.h"
 #include "platform/dn2cpp_pal.h"
 
@@ -165,7 +165,13 @@ uint64_t dn2cpp_cpu_detect()
     bool osxsave = (l1.ecx & (1u << 27)) != 0;
     uint64_t xcr0 = osxsave ? dn2cpp_xgetbv0() : 0;
     bool avxState = (xcr0 & 0x6) == 0x6;
+#if defined(__APPLE__)
+    // Match .NET's contract: macOS enables AVX-512 state lazily per thread,
+    // and VEX-encoded mask moves do not trigger that enablement.
+    bool avx512State = false;
+#else
     bool avx512State = avxState && (xcr0 & 0xE0) == 0xE0;
+#endif
 
     bool avx = avxState && (l1.ecx & (1u << 28)) != 0;
     if (avx)
@@ -523,13 +529,21 @@ uint64_t dn2cpp_cpu_features_resolve()
     if (cached != 0)
         return cached;
     uint64_t detected = dn2cpp_cpu_detect();
+    uint64_t policy = detected;
+    const char* avx10v2 = dn2cpp_pal_getenv("DN2CPP_ENABLE_AVX10V2");
+    // .NET 10 keeps AVX10.2 and its V512 VNNI set behind the positive
+    // EnableAVX10v2 switch. Only the explicit value 1 opts in here; the
+    // narrowing mask below cannot turn a policy-disabled family back on.
+    if (avx10v2 == nullptr || std::strcmp(avx10v2, "1") != 0)
+        policy &= ~(DN2CPP_CPU_X86_AVX10V2 | DN2CPP_CPU_X86_AVX10V2_512);
+    policy = dn2cpp_closure(policy);
     const char* spec = dn2cpp_pal_getenv("DN2CPP_CPU_FEATURES");
 #if defined(DN2CPP_CPU_FEATURES_DEFAULT)
     if (spec == nullptr || spec[0] == '\0')
         spec = DN2CPP_CPU_FEATURES_DEFAULT;
 #endif
     uint64_t allowed = (spec == nullptr || spec[0] == '\0') ? g_all_bits : dn2cpp_parse_mask(spec);
-    uint64_t effective = dn2cpp_closure(detected & allowed);
+    uint64_t effective = dn2cpp_closure(policy & allowed);
     const char* diag = dn2cpp_pal_getenv("DN2CPP_CPU_FEATURES_DIAG");
     if (diag != nullptr && diag[0] != '\0')
         dn2cpp_print_diag(detected, allowed, effective);

@@ -2,11 +2,11 @@
 // dn2cpp_cpu_features.h — the runtime's answer to every
 // System.Runtime.Intrinsics.X86/.Arm/.Wasm `IsSupported` getter.
 //
-// One bit per ISA family, resolved once from the CPU (and OS) plus an optional
-// mask (DN2CPP_CPU_FEATURES, see dn2cpp_cpu_features.cpp). The generated code
-// tests these bits through the DN2CPP_ISA_* tokens included at the end, so this
-// header is part of every generated TU and deliberately pulls in no intrinsic
-// header.
+// One bit per ISA family, resolved once from the CPU (and OS), the positive
+// AVX10.2 policy opt-in, and an optional narrowing mask (DN2CPP_CPU_FEATURES;
+// see dn2cpp_cpu_features.cpp). The generated code tests these bits through the
+// DN2CPP_ISA_* tokens included at the end, so this header is part of every
+// generated TU and deliberately pulls in no intrinsic header.
 
 #include <stdint.h>
 #include <atomic>
@@ -31,6 +31,17 @@
 #define DN2CPP_TARGET_OTHER 0
 #else
 #define DN2CPP_TARGET_OTHER 1
+#endif
+
+// The AVX10.2 map uses the intrinsic spellings exposed by current Clang
+// headers. GCC and MSVC expose a different or incomplete surface, while older
+// Clang headers do not declare it. Generated tokens and helper bodies both use
+// this capability: an unsupported compiler reports the affected families as
+// unavailable and compiles their PlatformNotSupportedException stubs.
+#if DN2CPP_TARGET_X64 && defined(__clang__) && __clang_major__ >= 21
+#define DN2CPP_HAS_X86_AVX10V2_INTRINSICS 1
+#else
+#define DN2CPP_HAS_X86_AVX10V2_INTRINSICS 0
 #endif
 
 // X(ID, "Name", ARCH, parentsMask). Name is the .NET type name and the token
@@ -104,12 +115,12 @@ enum : uint64_t {
 
 static_assert(DN2CPP_CPU_FEATURE_COUNT < 63, "feature bits must stay below DN2CPP_CPU_RESOLVED");
 
-// Detect, apply the mask, publish into the cache and return the result (with
-// DN2CPP_CPU_RESOLVED set); once resolved, return the cached word without
-// recomputing, so the DN2CPP_CPU_FEATURES diagnostics print once per process
-// whichever caller comes first. A computed value is a pure function of the
-// CPU and the environment, so first callers racing on a cold cache are
-// benign. dn2cpp_runtime_init calls it at startup.
+// Detect, apply the positive policy and narrowing mask, publish into the cache
+// and return the result (with DN2CPP_CPU_RESOLVED set); once resolved, return
+// the cached word without recomputing, so the DN2CPP_CPU_FEATURES diagnostics
+// print once per process whichever caller comes first. A computed value is a
+// pure function of the CPU and the environment, so first callers racing on a
+// cold cache are benign. dn2cpp_runtime_init calls it at startup.
 uint64_t dn2cpp_cpu_features_resolve();
 
 extern std::atomic<uint64_t> dn2cpp_cpu_features_cache;

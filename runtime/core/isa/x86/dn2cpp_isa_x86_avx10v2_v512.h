@@ -8,7 +8,7 @@
 //
 #include "../dn2cpp_isa_common.h"
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttobytewithsaturationandzeroextendtoint32_v512f32(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToByteWithSaturationAndZeroExtendToInt32");
@@ -21,7 +21,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttobytewithsaturationandzeroextendtoint32_v512f32_u8(const Dn2CppVector512& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToByteWithSaturationAndZeroExtendToInt32");
@@ -34,7 +34,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttobytewithtruncatedsaturationandzeroextendtoint32_v512f32(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToByteWithTruncatedSaturationAndZeroExtendToInt32");
@@ -47,7 +47,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttosbytewithsaturationandzeroextendtoint32_v512f32(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToSByteWithSaturationAndZeroExtendToInt32");
@@ -60,7 +60,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttosbytewithsaturationandzeroextendtoint32_v512f32_u8(const Dn2CppVector512& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToSByteWithSaturationAndZeroExtendToInt32");
@@ -73,7 +73,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_converttosbytewithtruncatedsaturationandzeroextendtoint32_v512f32(const Dn2CppVector512& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.ConvertToSByteWithTruncatedSaturationAndZeroExtendToInt32");
@@ -86,7 +86,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_minmax_v512f32_v512f32_u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.MinMax");
@@ -99,7 +99,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_minmax_v512f64_v512f64_u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.MinMax");
@@ -112,7 +112,7 @@ DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x8
 }
 #endif
 
-#if DN2CPP_TARGET_X64
+#if DN2CPP_TARGET_X64 && DN2CPP_HAS_X86_AVX10V2_INTRINSICS
 DN2CPP_ISA_TARGET("avx10.2-512") DN2CPP_ISA_INLINE Dn2CppVector512 dn2cpp_isa_x86_avx10v2_v512_multiplesumabsolutedifferences_v512u8_v512u8_u8(const Dn2CppVector512& a0, const Dn2CppVector512& a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx10v2_V512, "System.Runtime.Intrinsics.X86.Avx10v2+V512.MultipleSumAbsoluteDifferences");
