@@ -6,9 +6,11 @@
 //   runtime/core/isa/dn2cpp_isa_manifest.txt                every lowered helper name, sorted
 //   runtime/core/isa/<arch>/dn2cpp_isa_<arch>_<family>.h    one per family that has map rows
 //   src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs   the family table the transpiler reads
+//   samples/dotnet/PlatformIsaProbe/Exercises.g.cs          one exercise per generated-lowered family
 //
 //   Run from the repository root:
 //     dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll> [--check] [--root <repo>]
+//                                                    [--lowered-preview <Arch.Family,...>]
 //
 // A .NET 10 file-based program, like gen-culture-table: a manual aid, not a build step, not
 // transpiled by the self-host, and referenced by nothing the CLI ships. `--check` regenerates
@@ -35,32 +37,41 @@
 // that throw. A family with no methods of its own is vacuously covered; a family with no
 // feature bits (Sve, Sve2) is never lowered, whatever its maps say.
 //
+// `--lowered-preview` names families to treat as covered while their maps are incomplete: the
+// unmapped methods get throwing native stubs, and the exercise file exercises the mapped ones,
+// so a partial map can be run against real .NET before the family is complete. Every output
+// carries a PREVIEW banner; the mode refuses --check and is never a checked-in state.
 //
-// MAP GRAMMAR — tools/gen-isa-map/map/<arch>/<familypath>.map, one file per family, where
-// <familypath> is the lowercase type path below the arch namespace with '+' as '_'
-// (sse2.map, sse2_x64.map, avx512f_vl.map, advsimd_arm64.map, packedsimd.map).
+// MAP GRAMMAR — tools/gen-isa-map/map/<arch>/<familypath>.map, or a directory
+// map/<arch>/<familypath>/ of *.map files read in ordinal name order, where <familypath> is the
+// lowercase type path below the arch namespace with '+' as '_' (sse2.map, sse2_x64.map,
+// avx512f_vl.map, advsimd/arithmetic.map, packedsimd.map).
 //
 //   # comment                                blank lines and '#' lines are ignored
 //   target = sse4.2                          family-level default for DN2CPP_ISA_TARGET(...)
 //   Method(codes) [@ann ...] = expression    exact row: codes are the helper-name argument codes
-//   Method(v128{T},v128{T}) = expr for T in i8,u8,i16
-//                                            pattern row: {T} in the codes and the expression is
-//                                            replaced per listed element code; the expression may
-//                                            also use {epi} {ps|pd} {neon} {lane}, spelled per T
-//                                            by the tables at the bottom of this file
+//   Method(v{W}{T},v{W}{T}) = vadd{q}_{neon}($0,$1) for W in 64,128 for T in i8,u8
+//                                            pattern row: repeated per width W and element T;
+//                                            {…} placeholders are spelled per combination by the
+//                                            tables in Maps.Substitute, in the codes, the
+//                                            annotations and the expression alike
 //
 //   In the expression, $0 $1 ... name the parameters. A vector parameter arrives converted to
-//   the arch's native vector type (dn2cpp_isa_bits<...>); a vector return is wrapped back
-//   (dn2cpp_isa_vec<...>). $k.j names item j (1-based) of a tuple parameter k; $r1 $r2 ... name
-//   the out-pointer items of a tuple return, already dereferenced, and &$r1 &$r2 ... the
-//   out-pointers themselves. Scalars and pointers pass through unchanged.
+//   the arch's native vector type (dn2cpp_isa_bits<...>); `$k:u8` converts it to the same-width
+//   vector of another element instead. A vector return is wrapped back (dn2cpp_isa_vec<...>).
+//   $k.j names item j (1-based) of a tuple parameter k, `$k.*` the whole tuple as the NEON
+//   multi-register aggregate (int8x16x2_t); $r1 $r2 ... name the out-pointer items of a tuple
+//   return, already dereferenced, &$r1 &$r2 ... the out-pointers themselves and `&$r*` all of
+//   them in order. Scalars and pointers pass through unchanged.
 //
 //   Annotations, written between the closing ')' and '=':
 //     @imm8            the LAST parameter is an immediate in [0..256); the body becomes
 //                      DN2CPP_ISA_IMM8_SWITCH(<param>, <expression>) and the expression refers
 //                      to the immediate as DN2CPP_IMM (its $k is rewritten to that name)
-//     @imm[0..N)       same, in [0..N) for N in 2,4,8,16,32,64 (a lane or element index),
-//                      through DN2CPP_ISA_IMM_SWITCH_N(N, <param>, <expression>)
+//     @imm[lo..hi)     same, valid in [lo, hi) — or [lo..hi] inclusive — for a count that is a
+//                      power of two up to 256, through DN2CPP_ISA_IMM_RANGE_SWITCH
+//     @imm$k[lo..hi)   the immediate is parameter k; two such annotations make a two-immediate
+//                      helper (DN2CPP_IMM and DN2CPP_IMM2 in parameter order, at most 256 cases)
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
 //
@@ -85,6 +96,7 @@ CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 string? corelibPath = null;
 string root = Directory.GetCurrentDirectory();
 bool check = false;
+string[] preview = Array.Empty<string>();
 for (int i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -98,15 +110,23 @@ for (int i = 0; i < args.Length; i++)
         case "--check":
             check = true;
             break;
+        case "--lowered-preview" when i + 1 < args.Length:
+            preview = args[++i].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            break;
         default:
             Console.Error.WriteLine($"error: unknown or incomplete argument '{args[i]}'");
-            Console.Error.WriteLine("usage: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll> [--check] [--root <repo>]");
+            Console.Error.WriteLine("usage: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll> [--check] [--root <repo>] [--lowered-preview <Arch.Family,...>]");
             return 2;
     }
 }
 if (corelibPath is null || !File.Exists(corelibPath))
 {
     Console.Error.WriteLine("error: --corelib <System.Private.CoreLib.dll> is required and must exist");
+    return 2;
+}
+if (check && preview.Length > 0)
+{
+    Console.Error.WriteLine("error: --lowered-preview writes a preview tree and cannot be combined with --check");
     return 2;
 }
 string toolDir = Path.Combine(root, "tools", "gen-isa-map");
@@ -124,6 +144,15 @@ try
     var md = pe.GetMetadataReader();
     Surface.Populate(md, families);
     Maps.Apply(toolDir, families);
+    Emit.Preview = preview.Length > 0 ? string.Join(",", preview) : null;
+    foreach (string name in preview)
+    {
+        var f = families.FirstOrDefault(x => Contract.Display(x.QualifiedName) == name)
+            ?? throw new ContractException($"--lowered-preview: no family is named '{name}' (use the display name, e.g. Arm.AdvSimd)");
+        if (f.NeverLowered)
+            throw new ContractException($"--lowered-preview: {name} has no feature bits and is never lowered");
+        f.Preview = true;
+    }
     Lowering.Settle(families, cpu);
 
     var outputs = Emit.All(families);
@@ -223,6 +252,8 @@ static void Report(string corelibPath, List<Family> families)
         Console.Error.WriteLine($"             {string.Join(" ", lowered)}");
     foreach (string h in held)
         Console.Error.WriteLine($"  covered, not lowered: {h}");
+    if (Emit.Preview is not null)
+        Console.Error.WriteLine($"  PREVIEW    {Emit.Preview}: unmapped methods stubbed; not a checked-in state");
 }
 
 // ---------------------------------------------------------------------------------------
@@ -240,14 +271,6 @@ static class Contract
         "arm" => IntrinsicsPrefix + "Arm",
         "wasm" => IntrinsicsPrefix + "Wasm",
         _ => throw new ContractException($"unknown arch '{arch}'"),
-    };
-
-    public static string ArchOfNamespace(string ns) => ns switch
-    {
-        IntrinsicsPrefix + "X86" => "x86",
-        IntrinsicsPrefix + "Arm" => "arm",
-        IntrinsicsPrefix + "Wasm" => "wasm",
-        _ => throw new ContractException($"namespace '{ns}' is not an intrinsics arch namespace"),
     };
 
     public static string IsaArch(string arch) => arch switch
@@ -270,7 +293,6 @@ static class Contract
     // The display name the gates and the probe use: X86.Lzcnt.X64.
     public static string Display(string qualifiedName) =>
         qualifiedName.Substring(IntrinsicsPrefix.Length).Replace('+', '.');
-
 
     // The type path below the arch namespace: "Sse2+X64" for System.Runtime.Intrinsics.X86.Sse2+X64.
     public static string TypePath(string qualifiedName, string arch) =>
@@ -361,8 +383,10 @@ sealed class Family
     public bool NeverLowered => Bits.Length == 0;
     public List<Method> Methods = new();
     public string? Target;
-    public bool HasRows => Methods.Any(m => m.Row is not null);
-    public bool Covered => !NeverLowered && Methods.All(m => m.Row is not null);
+    public string? TargetSource;
+    public bool Preview;
+    public bool HasRows => Methods.Any(m => m.Row is not null) || (Preview && Methods.Count > 0);
+    public bool Covered => !NeverLowered && (Preview || Methods.All(m => m.Row is not null));
     public bool Lowered;
     // The families this one implies: every family whose bits lie in the closure of this one's.
     public List<Family> Implied = new();
@@ -379,7 +403,10 @@ sealed class Method
     public MapRow? Row;
 }
 
-sealed record MapRow(string Expression, string? Target, int ImmRange /* 0 = none */, string SourceLine);
+// One immediate parameter: valid values are [Lo, Lo + Count).
+sealed record ImmSpec(int Param, int Lo, int Count);
+
+sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string SourceLine);
 
 static class Lowering
 {
@@ -412,19 +439,20 @@ static class Lowering
     }
 }
 
-
 enum TyKind { Void, Scalar, Vector, Pointer, ByRef, Tuple, VectorDef, TupleDef, Unsupported }
 
-// A decoded signature type. Scalar carries the helper-name code and the C++ spelling; Vector
-// carries the width in bits and its scalar element; Pointer/ByRef wrap an element (null for
-// void*); Tuple carries its items. VectorDef/TupleDef are the open generic markers the
-// signature provider hands back before instantiation, and Unsupported names what it could
-// not model so the failure message points at the offending member.
-sealed record Ty(TyKind Kind, string Code = "", string Cpp = "", int Bits = 0, Ty? Elem = null, ImmutableArray<Ty> Items = default, string Describe = "")
+// A decoded signature type. Scalar carries the helper-name code and the C++ spelling (and,
+// for an enum, the enum's C# name so an exercise can spell the argument); Vector carries the
+// width in bits and its scalar element; Pointer/ByRef wrap an element (null for void*); Tuple
+// carries its items. VectorDef/TupleDef are the open generic markers the signature provider
+// hands back before instantiation, and Unsupported names what it could not model so the
+// failure message points at the offending member.
+sealed record Ty(TyKind Kind, string Code = "", string Cpp = "", int Bits = 0, Ty? Elem = null, ImmutableArray<Ty> Items = default, string Describe = "", string? CsEnum = null)
 {
     public static readonly Ty Void = new(TyKind.Void, Describe: "void");
     public static Ty Scalar(string code, string cpp) => new(TyKind.Scalar, code, cpp, Describe: code);
     public static Ty Unsupported(string what) => new(TyKind.Unsupported, Describe: what);
+    public static Ty Vector(int bits, string elem) => new(TyKind.Vector, Bits: bits, Elem: Codes.ScalarOf(elem));
 
     public override string ToString() => Kind switch
     {
@@ -625,20 +653,20 @@ sealed class TyProvider : ISignatureTypeProvider<Ty, object?>
     public Ty GetPrimitiveType(PrimitiveTypeCode code) => code switch
     {
         PrimitiveTypeCode.Void => Ty.Void,
-        PrimitiveTypeCode.SByte => Ty.Scalar("i8", "int8_t"),
-        PrimitiveTypeCode.Byte => Ty.Scalar("u8", "uint8_t"),
-        PrimitiveTypeCode.Int16 => Ty.Scalar("i16", "int16_t"),
-        PrimitiveTypeCode.UInt16 => Ty.Scalar("u16", "uint16_t"),
-        PrimitiveTypeCode.Int32 => Ty.Scalar("i32", "int32_t"),
-        PrimitiveTypeCode.UInt32 => Ty.Scalar("u32", "uint32_t"),
-        PrimitiveTypeCode.Int64 => Ty.Scalar("i64", "int64_t"),
-        PrimitiveTypeCode.UInt64 => Ty.Scalar("u64", "uint64_t"),
-        PrimitiveTypeCode.Single => Ty.Scalar("f32", "float"),
-        PrimitiveTypeCode.Double => Ty.Scalar("f64", "double"),
-        PrimitiveTypeCode.IntPtr => Ty.Scalar("nint", "intptr_t"),
-        PrimitiveTypeCode.UIntPtr => Ty.Scalar("nuint", "uintptr_t"),
-        PrimitiveTypeCode.Boolean => Ty.Scalar("bool", "bool"),
-        PrimitiveTypeCode.Char => Ty.Scalar("char", "uint16_t"),
+        PrimitiveTypeCode.SByte => Codes.ScalarOf("i8"),
+        PrimitiveTypeCode.Byte => Codes.ScalarOf("u8"),
+        PrimitiveTypeCode.Int16 => Codes.ScalarOf("i16"),
+        PrimitiveTypeCode.UInt16 => Codes.ScalarOf("u16"),
+        PrimitiveTypeCode.Int32 => Codes.ScalarOf("i32"),
+        PrimitiveTypeCode.UInt32 => Codes.ScalarOf("u32"),
+        PrimitiveTypeCode.Int64 => Codes.ScalarOf("i64"),
+        PrimitiveTypeCode.UInt64 => Codes.ScalarOf("u64"),
+        PrimitiveTypeCode.Single => Codes.ScalarOf("f32"),
+        PrimitiveTypeCode.Double => Codes.ScalarOf("f64"),
+        PrimitiveTypeCode.IntPtr => Codes.ScalarOf("nint"),
+        PrimitiveTypeCode.UIntPtr => Codes.ScalarOf("nuint"),
+        PrimitiveTypeCode.Boolean => Codes.ScalarOf("bool"),
+        PrimitiveTypeCode.Char => Codes.ScalarOf("char"),
         _ => Ty.Unsupported(code.ToString()),
     };
 
@@ -675,7 +703,7 @@ sealed class TyProvider : ISignatureTypeProvider<Ty, object?>
         {
             var f = md.GetFieldDefinition(fh);
             if (md.GetString(f.Name) == "value__")
-                return f.DecodeSignature(this, null);
+                return f.DecodeSignature(this, null) with { CsEnum = enumName };
         }
         return Ty.Unsupported(enumName + " (enum without value__)");
     }
@@ -710,11 +738,28 @@ sealed class TyProvider : ISignatureTypeProvider<Ty, object?>
 }
 
 // ---------------------------------------------------------------------------------------
-// Argument codes and C++ spellings.
+// Argument codes and C++ / C# spellings.
 // ---------------------------------------------------------------------------------------
 
 static class Codes
 {
+    // code -> (C++ spelling, C# spelling)
+    static readonly Dictionary<string, (string Cpp, string Cs)> Scalars = new(StringComparer.Ordinal)
+    {
+        ["i8"] = ("int8_t", "sbyte"), ["u8"] = ("uint8_t", "byte"),
+        ["i16"] = ("int16_t", "short"), ["u16"] = ("uint16_t", "ushort"),
+        ["i32"] = ("int32_t", "int"), ["u32"] = ("uint32_t", "uint"),
+        ["i64"] = ("int64_t", "long"), ["u64"] = ("uint64_t", "ulong"),
+        ["f32"] = ("float", "float"), ["f64"] = ("double", "double"),
+        ["nint"] = ("intptr_t", "nint"), ["nuint"] = ("uintptr_t", "nuint"),
+        ["bool"] = ("bool", "bool"), ["char"] = ("uint16_t", "char"),
+    };
+
+    public static Ty ScalarOf(string code) =>
+        Scalars.TryGetValue(code, out var s) ? Ty.Scalar(code, s.Cpp) : throw new ContractException($"'{code}' is not a scalar code");
+
+    public static string Cs(string code) => Scalars[code].Cs;
+
     // The helper-name code of a parameter. The surface is finite, so anything outside the
     // vocabulary is a contract change and fails naming the member.
     public static string Arg(Ty t, string member)
@@ -736,8 +781,8 @@ static class Codes
                     return "r" + t.Elem.Code;
                 break;
             case TyKind.Tuple:
-                // Only homogeneous vector tuples occur (multi-register stores); the code is the
-                // arity followed by the shared item code.
+                // Only homogeneous vector tuples occur (multi-register loads and stores); the
+                // code is the arity followed by the shared item code.
                 if (t.Items.Length >= 2 && t.Items.All(i => i.Kind == TyKind.Vector && i.ToString() == t.Items[0].ToString()))
                     return $"t{t.Items.Length}{Arg(t.Items[0], member)}";
                 break;
@@ -793,12 +838,22 @@ static class Codes
             case "arm":
                 if (v.Bits is not (64 or 128))
                     throw new ContractException($"arm has no native {v.Bits}-bit vector");
-                return $"{Neon[e]}x{v.Bits / ElemBits(e)}_t";
+                return NeonType(v.Bits, e);
             default:
                 if (v.Bits != 128)
                     throw new ContractException($"wasm has no native {v.Bits}-bit vector");
                 return "v128_t";
         }
+    }
+
+    public static string NeonType(int bits, string elem) => $"{Neon[elem]}x{bits / ElemBits(elem)}_t";
+
+    // The NEON multi-register aggregate of `arity` vectors: int8x16x2_t.
+    public static string NativeTuple(string arch, Ty item, int arity)
+    {
+        if (arch != "arm")
+            throw new ContractException($"{arch} has no multi-register vector aggregate for a tuple parameter");
+        return $"{Neon[item.Elem!.Code]}x{item.Bits / ElemBits(item.Elem.Code)}x{arity}_t";
     }
 
     public static int ElemBits(string code) => code switch
@@ -809,6 +864,8 @@ static class Codes
         "i64" or "u64" or "f64" => 64,
         _ => throw new ContractException($"'{code}' is not a vector element code"),
     };
+
+    public static bool IsVectorElem(string code) => Neon.ContainsKey(code);
 
     public static readonly Dictionary<string, string> Neon = new(StringComparer.Ordinal)
     {
@@ -825,11 +882,11 @@ static class Codes
 static class Maps
 {
     static readonly Regex RowStart = new(@"^([A-Za-z_][A-Za-z0-9_]*)\((.*?)\)\s*(.*)$", RegexOptions.Compiled);
-    static readonly Regex ForClause = new(@"\s+for\s+T\s+in\s+([a-z0-9]+(?:\s*,\s*[a-z0-9]+)*)\s*$", RegexOptions.Compiled);
-    static readonly Regex ImmRange = new(@"^@imm\[0\.\.(\d+)\)$", RegexOptions.Compiled);
+    static readonly Regex ForClause = new(@"\s+for\s+([WT])\s+in\s+([a-z0-9]+(?:\s*,\s*[a-z0-9]+)*)\s*$", RegexOptions.Compiled);
+    static readonly Regex ImmAnn = new(@"^@imm(?:\$(\d+))?\[(\d+)\.\.(\d+)([\)\]])$", RegexOptions.Compiled);
     static readonly Regex TargetAnn = new(@"^@target\(""([^""]+)""\)$", RegexOptions.Compiled);
     // Only identifier-like braces are placeholders, so C++ brace initializers in an
-    // expression ({ $1.1, $1.2 } for a NEON multi-register struct) pass through.
+    // expression pass through.
     static readonly Regex Placeholder = new(@"\{([A-Za-z][A-Za-z0-9|]*)\}", RegexOptions.Compiled);
 
     // Per-element spellings a pattern row may use. Missing entries are deliberate: an integer
@@ -848,6 +905,28 @@ static class Maps
             ["i32"] = "s32", ["u32"] = "u32", ["i64"] = "s64", ["u64"] = "u64",
             ["f32"] = "f32", ["f64"] = "f64",
         },
+        // The same-width unsigned element: the operand type of a NEON select mask or
+        // table index, and the result type of a comparison.
+        ["uT"] = new()
+        {
+            ["i8"] = "u8", ["u8"] = "u8", ["i16"] = "u16", ["u16"] = "u16",
+            ["i32"] = "u32", ["u32"] = "u32", ["i64"] = "u64", ["u64"] = "u64",
+            ["f32"] = "u32", ["f64"] = "u64",
+        },
+        // The same-width signed element (the right operand of USQADD).
+        ["sT"] = new()
+        {
+            ["i8"] = "i8", ["u8"] = "i8", ["i16"] = "i16", ["u16"] = "i16",
+            ["i32"] = "i32", ["u32"] = "i32", ["i64"] = "i64", ["u64"] = "i64",
+            ["f32"] = "i32", ["f64"] = "i64",
+        },
+        // The scalar-register letter of a one-lane ACLE intrinsic (vqrdmlahh_s16, vqaddd_s64).
+        ["bhsd"] = new()
+        {
+            ["i8"] = "b", ["u8"] = "b", ["i16"] = "h", ["u16"] = "h",
+            ["i32"] = "s", ["u32"] = "s", ["i64"] = "d", ["u64"] = "d",
+            ["f32"] = "s", ["f64"] = "d",
+        },
         ["lane"] = new()
         {
             ["i8"] = "i8x16", ["u8"] = "u8x16", ["i16"] = "i16x8", ["u16"] = "u16x8",
@@ -860,7 +939,7 @@ static class Maps
     {
         var byPath = new Dictionary<string, Family>(StringComparer.Ordinal);
         foreach (var f in families)
-            byPath[$"{f.Arch}/{f.HelperPath}.map"] = f;
+            byPath[$"{f.Arch}/{f.HelperPath}"] = f;
 
         string mapDir = Path.Combine(toolDir, "map");
         if (!Directory.Exists(mapDir))
@@ -868,13 +947,19 @@ static class Maps
         foreach (string file in Directory.GetFiles(mapDir, "*.map", SearchOption.AllDirectories).OrderBy(p => p, StringComparer.Ordinal))
         {
             string rel = Path.GetRelativePath(mapDir, file).Replace('\\', '/');
-            if (!byPath.TryGetValue(rel, out var family))
-                throw new ContractException($"{file}: no family has the map path '{rel}'");
+            // arch/family.map, or arch/family/topic.map
+            string noExt = rel.Substring(0, rel.Length - ".map".Length);
+            string dir = Path.GetDirectoryName(rel)!.Replace('\\', '/');
+            Family? family;
+            if (!byPath.TryGetValue(noExt, out family) && !byPath.TryGetValue(dir, out family))
+                throw new ContractException($"{file}: no family has the map path '{noExt}' or the directory '{dir}'");
             if (family.NeverLowered)
                 throw new ContractException($"{file}: {family.QualifiedName} has no feature bits and is never lowered");
             Parse(file, family);
         }
     }
+
+    sealed record RowSpec(string Method, string[] Codes, string[] Annotations, string Expression, string[] Widths, string[] Elems, string Where);
 
     static void Parse(string file, Family family)
     {
@@ -891,94 +976,174 @@ static class Maps
                 int eq = line.IndexOf('=');
                 if (eq < 0)
                     throw new ContractException($"{where}: expected 'target = <isa>'");
-                family.Target = line.Substring(eq + 1).Trim();
-                if (family.Target.Length == 0)
+                string target = line.Substring(eq + 1).Trim();
+                if (target.Length == 0)
                     throw new ContractException($"{where}: empty target");
+                if (family.Target is not null && family.Target != target)
+                    throw new ContractException($"{where}: target '{target}' disagrees with '{family.Target}' at {family.TargetSource}; a family has one target");
+                family.Target = target;
+                family.TargetSource = where;
                 continue;
             }
 
-            var m = RowStart.Match(line);
-            if (!m.Success)
-                throw new ContractException($"{where}: expected 'Method(codes) [@annotation ...] = expression'");
-            string method = m.Groups[1].Value;
-            string[] codes = m.Groups[2].Value.Length == 0
-                ? Array.Empty<string>()
-                : m.Groups[2].Value.Split(',').Select(c => c.Trim()).ToArray();
-            string rest = m.Groups[3].Value;
-
-            int immRange = 0;
-            string? target = null;
-            while (rest.StartsWith('@'))
+            var spec = ParseRow(line, where);
+            foreach (string w in spec.Widths.Length == 0 ? new[] { "" } : spec.Widths)
             {
-                int end = rest.IndexOf(' ');
-                string ann = end < 0 ? rest : rest.Substring(0, end);
-                rest = end < 0 ? "" : rest.Substring(end + 1).TrimStart();
-                if (ann == "@imm8")
-                    immRange = 256;
-                else if (ImmRange.Match(ann) is { Success: true } r)
-                {
-                    immRange = int.Parse(r.Groups[1].Value, CultureInfo.InvariantCulture);
-                    if (immRange is not (2 or 4 or 8 or 16 or 32 or 64))
-                        throw new ContractException($"{where}: DN2CPP_ISA_IMM_SWITCH_N dispatches 2, 4, 8, 16, 32 or 64 values, not {immRange}");
-                }
-                else if (TargetAnn.Match(ann) is { Success: true } t)
-                    target = t.Groups[1].Value;
-                else if (ann != "@throws")
-                    throw new ContractException($"{where}: unknown annotation '{ann}'");
-            }
-            if (!rest.StartsWith('='))
-                throw new ContractException($"{where}: expected '=' after the signature and annotations");
-            string expression = rest.Substring(1).Trim();
-            if (expression.Length == 0)
-                throw new ContractException($"{where}: empty expression");
-
-            string[] elems = Array.Empty<string>();
-            var fc = ForClause.Match(expression);
-            if (fc.Success)
-            {
-                elems = fc.Groups[1].Value.Split(',').Select(e => e.Trim()).ToArray();
-                expression = expression.Substring(0, fc.Index).TrimEnd();
-            }
-
-            bool isPattern = codes.Any(c => c.Contains("{T}")) || Placeholder.IsMatch(expression);
-            if (isPattern && elems.Length == 0)
-                throw new ContractException($"{where}: a row with {{...}} placeholders needs 'for T in ...'");
-            if (!isPattern && elems.Length > 0)
-                throw new ContractException($"{where}: 'for T in ...' on a row without {{T}} placeholders");
-
-            foreach (string elem in elems.Length == 0 ? new[] { "" } : elems)
-            {
-                string[] cs = codes.Select(c => c.Replace("{T}", elem)).ToArray();
-                string key = method + "(" + string.Join(",", cs) + ")";
-                if (!byKey.TryGetValue(key, out var mm))
-                {
-                    var overloads = family.Methods.Where(x => x.Name == method).Select(x => x.Key).OrderBy(x => x, StringComparer.Ordinal).ToList();
-                    string hint = overloads.Count == 0 ? "" : "; its overloads are " + string.Join(" ", overloads);
-                    throw new ContractException($"{where}: {family.QualifiedName} has no method {key}{hint}");
-                }
-                if (mm.Row is not null)
-                    throw new ContractException($"{where}: {key} already has a row ({mm.Row.SourceLine})");
-                if (immRange != 0)
-                {
-                    if (mm.Params.Length == 0 || mm.Params[^1].Kind != TyKind.Scalar)
-                        throw new ContractException($"{where}: @imm needs a scalar last parameter on {key}");
-                }
-                string expr = Substitute(expression, elem, where);
-                mm.Row = new MapRow(expr, target, immRange, where);
+                foreach (string t in spec.Elems.Length == 0 ? new[] { "" } : spec.Elems)
+                    Instantiate(spec, w, t, family, byKey);
             }
         }
     }
 
-    static string Substitute(string expression, string elem, string where) =>
-        Placeholder.Replace(expression, m =>
+    static RowSpec ParseRow(string line, string where)
+    {
+        var m = RowStart.Match(line);
+        if (!m.Success)
+            throw new ContractException($"{where}: expected 'Method(codes) [@annotation ...] = expression'");
+        string method = m.Groups[1].Value;
+        string[] codes = m.Groups[2].Value.Length == 0
+            ? Array.Empty<string>()
+            : m.Groups[2].Value.Split(',').Select(c => c.Trim()).ToArray();
+        string rest = m.Groups[3].Value;
+
+        var annotations = new List<string>();
+        while (rest.StartsWith('@'))
+        {
+            int end = rest.IndexOf(' ');
+            annotations.Add(end < 0 ? rest : rest.Substring(0, end));
+            rest = end < 0 ? "" : rest.Substring(end + 1).TrimStart();
+        }
+        if (!rest.StartsWith('='))
+            throw new ContractException($"{where}: expected '=' after the signature and annotations");
+        string expression = rest.Substring(1).Trim();
+
+        string[] widths = Array.Empty<string>();
+        string[] elems = Array.Empty<string>();
+        for (var fc = ForClause.Match(expression); fc.Success; fc = ForClause.Match(expression))
+        {
+            string[] values = fc.Groups[2].Value.Split(',').Select(e => e.Trim()).ToArray();
+            if (fc.Groups[1].Value == "W")
+            {
+                if (widths.Length > 0)
+                    throw new ContractException($"{where}: two 'for W in' clauses");
+                if (values.Any(v => v is not ("64" or "128" or "256" or "512")))
+                    throw new ContractException($"{where}: 'for W in' takes vector widths (64, 128, 256, 512)");
+                widths = values;
+            }
+            else
+            {
+                if (elems.Length > 0)
+                    throw new ContractException($"{where}: two 'for T in' clauses");
+                if (values.Any(v => !Codes.IsVectorElem(v)))
+                    throw new ContractException($"{where}: 'for T in' takes vector element codes");
+                elems = values;
+            }
+            expression = expression.Substring(0, fc.Index).TrimEnd();
+        }
+        if (expression.Length == 0)
+            throw new ContractException($"{where}: empty expression");
+
+        string all = string.Join(" ", codes) + " " + string.Join(" ", annotations) + " " + expression;
+        bool usesT = false, usesW = false;
+        foreach (Match p in Placeholder.Matches(all))
+        {
+            (bool t, bool w) = Dependency(p.Groups[1].Value, where);
+            usesT |= t;
+            usesW |= w;
+        }
+        if (usesT && elems.Length == 0)
+            throw new ContractException($"{where}: a row with element placeholders needs 'for T in ...'");
+        if (!usesT && elems.Length > 0)
+            throw new ContractException($"{where}: 'for T in ...' on a row without element placeholders");
+        if (usesW && widths.Length == 0)
+            throw new ContractException($"{where}: a row with width placeholders needs 'for W in ...'");
+        if (!usesW && widths.Length > 0)
+            throw new ContractException($"{where}: 'for W in ...' on a row without width placeholders");
+        return new RowSpec(method, codes, annotations.ToArray(), expression, widths, elems, where);
+    }
+
+    // Which loop variables a placeholder reads: (element, width).
+    static (bool T, bool W) Dependency(string name, string where) => name switch
+    {
+        "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "neon" or "bhsd" or "epi" or "ps|pd" or "lane" => (true, false),
+        "W" or "q" => (false, true),
+        "N" or "ntype" => (true, true),
+        _ => throw new ContractException($"{where}: unknown placeholder '{{{name}}}'"),
+    };
+
+    static void Instantiate(RowSpec spec, string w, string t, Family family, Dictionary<string, Method> byKey)
+    {
+        string where = spec.Where + (t.Length > 0 || w.Length > 0 ? $" [{string.Join(" ", new[] { w.Length > 0 ? "W=" + w : "", t.Length > 0 ? "T=" + t : "" }.Where(s => s.Length > 0))}]" : "");
+        string[] cs = spec.Codes.Select(c => Substitute(c, w, t, where)).ToArray();
+        string key = spec.Method + "(" + string.Join(",", cs) + ")";
+        if (!byKey.TryGetValue(key, out var mm))
+        {
+            var overloads = family.Methods.Where(x => x.Name == spec.Method).Select(x => x.Key).OrderBy(x => x, StringComparer.Ordinal).ToList();
+            string hint = overloads.Count == 0 ? "" : "; its overloads are " + string.Join(" ", overloads);
+            throw new ContractException($"{where}: {family.QualifiedName} has no method {key}{hint}");
+        }
+        if (mm.Row is not null)
+            throw new ContractException($"{where}: {key} already has a row ({mm.Row.SourceLine})");
+
+        string? target = null;
+        var imms = new List<ImmSpec>();
+        foreach (string raw in spec.Annotations)
+        {
+            string ann = Substitute(raw, w, t, where);
+            if (ann == "@imm8")
+                imms.Add(new ImmSpec(mm.Params.Length - 1, 0, 256));
+            else if (ImmAnn.Match(ann) is { Success: true } r)
+            {
+                int param = r.Groups[1].Success ? int.Parse(r.Groups[1].Value, CultureInfo.InvariantCulture) : mm.Params.Length - 1;
+                int lo = int.Parse(r.Groups[2].Value, CultureInfo.InvariantCulture);
+                int hi = int.Parse(r.Groups[3].Value, CultureInfo.InvariantCulture);
+                int count = hi - lo + (r.Groups[4].Value == "]" ? 1 : 0);
+                if (count < 1 || count > 256 || (count & (count - 1)) != 0)
+                    throw new ContractException($"{where}: {ann} spans {count} values; the dispatch takes a power of two up to 256");
+                imms.Add(new ImmSpec(param, lo, count));
+            }
+            else if (TargetAnn.Match(ann) is { Success: true } ta)
+                target = ta.Groups[1].Value;
+            else if (ann != "@throws")
+                throw new ContractException($"{where}: unknown annotation '{ann}'");
+        }
+        imms.Sort((a, b) => a.Param.CompareTo(b.Param));
+        foreach (var imm in imms)
+        {
+            if (imm.Param < 0 || imm.Param >= mm.Params.Length || mm.Params[imm.Param].Kind != TyKind.Scalar)
+                throw new ContractException($"{where}: @imm needs a scalar parameter; ${imm.Param} of {key} is not one");
+        }
+        if (imms.Select(i => i.Param).Distinct().Count() != imms.Count)
+            throw new ContractException($"{where}: one parameter annotated as an immediate twice");
+        if (imms.Count > 2)
+            throw new ContractException($"{where}: at most two immediates per helper");
+        if (imms.Count == 2 && imms[0].Count * imms[1].Count > 256)
+            throw new ContractException($"{where}: two immediates spanning {imms[0].Count * imms[1].Count} cases; the bound is 256");
+
+        string expr = Substitute(spec.Expression, w, t, where);
+        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), where);
+    }
+
+    static string Substitute(string text, string w, string t, string where) =>
+        Placeholder.Replace(text, m =>
         {
             string name = m.Groups[1].Value;
-            if (name == "T")
-                return elem;
-            if (!Tables.TryGetValue(name, out var table))
-                throw new ContractException($"{where}: unknown placeholder '{{{name}}}'");
-            if (!table.TryGetValue(elem, out string? spelled))
-                throw new ContractException($"{where}: '{{{name}}}' has no spelling for element code '{elem}'");
+            (bool needT, bool needW) = Dependency(name, where);
+            if (needT && t.Length == 0 || needW && w.Length == 0)
+                throw new ContractException($"{where}: '{{{name}}}' needs a loop variable this row does not bind");
+            switch (name)
+            {
+                case "T": return t;
+                case "W": return w;
+                case "q": return w == "64" ? "" : "q";
+                case "bits": return Codes.ElemBits(t).ToString(CultureInfo.InvariantCulture);
+                case "N64": return (64 / Codes.ElemBits(t)).ToString(CultureInfo.InvariantCulture);
+                case "N128": return (128 / Codes.ElemBits(t)).ToString(CultureInfo.InvariantCulture);
+                case "N": return (int.Parse(w, CultureInfo.InvariantCulture) / Codes.ElemBits(t)).ToString(CultureInfo.InvariantCulture);
+                case "ntype": return Codes.NeonType(int.Parse(w, CultureInfo.InvariantCulture), t);
+            }
+            if (!Tables[name].TryGetValue(t, out string? spelled))
+                throw new ContractException($"{where}: '{{{name}}}' has no spelling for element code '{t}'");
             return spelled;
         });
 }
@@ -991,10 +1156,12 @@ static class Emit
 {
     public static readonly UTF8Encoding Utf8NoBom = new(false);
     const string Regenerate = "dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>";
+    public static string? Preview;
 
+    static readonly Regex OutItemsAddr = new(@"&\$r\*", RegexOptions.Compiled);
     static readonly Regex OutItemAddr = new(@"&\$r(\d+)", RegexOptions.Compiled);
     static readonly Regex OutItem = new(@"\$r(\d+)", RegexOptions.Compiled);
-    static readonly Regex Param = new(@"\$(\d+)(?:\.(\d+))?", RegexOptions.Compiled);
+    static readonly Regex Param = new(@"\$(\d+)(?:\.(\d+|\*))?(?::([iuf](?:8|16|32|64)))?", RegexOptions.Compiled);
 
     public static Dictionary<string, string> All(List<Family> families)
     {
@@ -1004,11 +1171,15 @@ static class Emit
             ["runtime/core/isa/dn2cpp_isa_families.g.h"] = FamiliesHeader(families),
             ["runtime/core/isa/dn2cpp_isa_manifest.txt"] = Manifest(families),
             ["src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs"] = FamilyTable(families),
+            ["samples/dotnet/PlatformIsaProbe/Exercises.g.cs"] = Exercises.File(families),
         };
         foreach (var f in families.Where(f => f.HasRows))
             outputs[f.HeaderRelPath] = FamilyHeader(f);
         return outputs;
     }
+
+    static string PreviewLine(string comment) =>
+        Preview is null ? "" : $"{comment} PREVIEW of {Preview}: unmapped methods are stubs; not a checked-in state.\n";
 
     static string CppBanner(string what) => $"""
         #pragma once
@@ -1019,7 +1190,15 @@ static class Emit
         //
         //     {Regenerate}
         //
+        {PreviewLine("//")}
+        """;
 
+    public static string CsBanner(string what) => $"""
+        // <auto-generated/>
+        // {what}
+        // Generated by tools/gen-isa-map from System.Private.CoreLib; regenerate with
+        //   {Regenerate}
+        {PreviewLine("//")}
         """;
 
     static string Tokens(List<Family> families)
@@ -1076,9 +1255,12 @@ static class Emit
         return sb.ToString();
     }
 
+    // A method's helper is defined when it has a row, or when its family is previewed (a stub).
+    public static bool HasHelper(Family f, Method m) => m.Row is not null || f.Preview;
+
     static string Manifest(List<Family> families)
     {
-        var names = families.SelectMany(f => f.Methods.Where(m => m.Row is not null).Select(m => m.HelperName))
+        var names = families.SelectMany(f => f.Methods.Where(m => HasHelper(f, m)).Select(m => m.HelperName))
             .OrderBy(n => n, StringComparer.Ordinal);
         var sb = new StringBuilder();
         foreach (string n in names)
@@ -1089,11 +1271,8 @@ static class Emit
     static string FamilyTable(List<Family> families)
     {
         var sb = new StringBuilder();
+        sb.Append(CsBanner("The platform-ISA family table. Lowered is derived from map coverage and the feature-bit implications, never edited."));
         sb.Append("""
-            // <auto-generated/>
-            // Generated by tools/gen-isa-map from System.Private.CoreLib; regenerate with
-            //   dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>
-            // Lowered is computed from map coverage and is never edited by hand.
             namespace Dn2Cpp;
 
             internal static partial class CoreIntrinsics
@@ -1122,7 +1301,7 @@ static class Emit
         var sb = new StringBuilder();
         sb.Append(CppBanner($"Helpers for {f.QualifiedName}: one per public static method that has a map row."));
         sb.Append("#include \"../dn2cpp_isa_common.h\"\n");
-        foreach (var m in f.Methods.Where(m => m.Row is not null).OrderBy(m => m.HelperName, StringComparer.Ordinal))
+        foreach (var m in f.Methods.Where(m => HasHelper(f, m)).OrderBy(m => m.HelperName, StringComparer.Ordinal))
             Helper(sb, f, m);
         return sb.ToString();
     }
@@ -1131,7 +1310,6 @@ static class Emit
     // macro, and a [[noreturn]] stub otherwise, so call sites in foreign-arch dead arms compile.
     static void Helper(StringBuilder sb, Family f, Method m)
     {
-        var row = m.Row!;
         var paramDecls = new List<string>();
         var stubDecls = new List<string>();
         for (int i = 0; i < m.Params.Length; i++)
@@ -1166,8 +1344,36 @@ static class Emit
         {
             ret = Codes.CppValue(m.Return);
         }
+        string display = f.QualifiedName + "." + m.Name;
 
-        int immIndex = row.ImmRange != 0 ? m.Params.Length - 1 : -1;
+        sb.Append('\n');
+        sb.Append("#if ").Append(Contract.TargetMacro(f.Arch)).Append('\n');
+        if (m.Row is null)
+        {
+            // A previewed family's unmapped method: throws on the native target too.
+            sb.Append("[[noreturn]] DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
+              .Append('(').Append(string.Join(", ", stubDecls)).Append(")\n{\n    dn2cpp_isa_not_lowered(\"")
+              .Append(display).Append(" (preview: no map row)\");\n}\n");
+        }
+        else
+        {
+            string body = Body(f, m, m.Row);
+            string target = m.Row.Target ?? f.Target ?? "";
+            string attr = target.Length > 0 ? $"DN2CPP_ISA_TARGET(\"{target}\") " : "";
+            sb.Append(attr).Append("DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
+              .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n")
+              .Append("    dn2cpp_isa_require(").Append(f.Token).Append(", \"").Append(display).Append("\");\n")
+              .Append("    ").Append(body).Append("\n}\n");
+        }
+        sb.Append("#else\n");
+        sb.Append("[[noreturn]] DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
+          .Append('(').Append(string.Join(", ", stubDecls)).Append(")\n{\n    dn2cpp_isa_not_lowered(\"")
+          .Append(display).Append("\");\n}\n");
+        sb.Append("#endif\n");
+    }
+
+    static string Body(Family f, Method m, MapRow row)
+    {
         string OutItemIndex(Match x)
         {
             if (m.Return.Kind != TyKind.Tuple)
@@ -1177,8 +1383,14 @@ static class Emit
                 throw new ContractException($"{row.SourceLine}: {x.Value} is outside the returned tuple's items");
             return x.Groups[1].Value;
         }
-        // The address form first, so `&$r1` is the pointer itself rather than `&(*item1)`.
-        string expr = OutItemAddr.Replace(row.Expression, x => "item" + OutItemIndex(x));
+        // The address forms first, so `&$r1` is the pointer itself rather than `&(*item1)`.
+        string expr = OutItemsAddr.Replace(row.Expression, x =>
+        {
+            if (m.Return.Kind != TyKind.Tuple)
+                throw new ContractException($"{row.SourceLine}: &$r* but {m.Key} does not return a tuple");
+            return string.Join(", ", Enumerable.Range(1, m.Return.Items.Length).Select(j => "item" + j));
+        });
+        expr = OutItemAddr.Replace(expr, x => "item" + OutItemIndex(x));
         expr = OutItem.Replace(expr, x => "(*item" + OutItemIndex(x) + ")");
         expr = Param.Replace(expr, x =>
         {
@@ -1186,20 +1398,39 @@ static class Emit
             if (k >= m.Params.Length)
                 throw new ContractException($"{row.SourceLine}: ${k} but {m.Key} has {m.Params.Length} parameter(s)");
             var p = m.Params[k];
-            if (k == immIndex)
-                return "DN2CPP_IMM";
+            string? asElem = x.Groups[3].Success ? x.Groups[3].Value : null;
+            int immIndex = row.Imms.ToList().FindIndex(i => i.Param == k);
+            if (immIndex >= 0)
+            {
+                if (x.Groups[2].Success || asElem is not null)
+                    throw new ContractException($"{row.SourceLine}: ${k} is an immediate and takes no item or element");
+                return immIndex == 0 ? "DN2CPP_IMM" : "DN2CPP_IMM2";
+            }
             if (p.Kind == TyKind.Tuple)
             {
                 if (!x.Groups[2].Success)
-                    throw new ContractException($"{row.SourceLine}: ${k} is a tuple; name an item as ${k}.<n>");
+                    throw new ContractException($"{row.SourceLine}: ${k} is a tuple; name an item as ${k}.<n> or the aggregate as ${k}.*");
+                var item = asElem is null ? p.Items[0] : Ty.Vector(p.Items[0].Bits, asElem);
+                if (x.Groups[2].Value == "*")
+                {
+                    string items = string.Join(", ", Enumerable.Range(1, p.Items.Length)
+                        .Select(j => $"dn2cpp_isa_bits<{Codes.Native(f.Arch, item)}>(a{k}_{j})"));
+                    // Parenthesized: the ACLE intrinsic may be a macro, and the aggregate's
+                    // commas must not split its arguments.
+                    return $"({Codes.NativeTuple(f.Arch, item, p.Items.Length)}{{{{{items}}}}})";
+                }
                 int j = int.Parse(x.Groups[2].Value, CultureInfo.InvariantCulture);
                 if (j < 1 || j > p.Items.Length)
                     throw new ContractException($"{row.SourceLine}: ${k}.{j} is outside the tuple's items");
-                return $"dn2cpp_isa_bits<{Codes.Native(f.Arch, p.Items[j - 1])}>(a{k}_{j})";
+                return $"dn2cpp_isa_bits<{Codes.Native(f.Arch, item)}>(a{k}_{j})";
             }
             if (x.Groups[2].Success)
                 throw new ContractException($"{row.SourceLine}: ${k} is not a tuple");
-            return p.Kind == TyKind.Vector ? $"dn2cpp_isa_bits<{Codes.Native(f.Arch, p)}>(a{k})" : $"a{k}";
+            if (p.Kind == TyKind.Vector)
+                return $"dn2cpp_isa_bits<{Codes.Native(f.Arch, asElem is null ? p : Ty.Vector(p.Bits, asElem))}>(a{k})";
+            if (asElem is not null)
+                throw new ContractException($"{row.SourceLine}: ${k}:{asElem} but ${k} is not a vector");
+            return $"a{k}";
         });
 
         string produce = m.Return.Kind switch
@@ -1207,32 +1438,263 @@ static class Emit
             TyKind.Vector => $"dn2cpp_isa_vec<{m.Return.Bits / 8}>({expr})",
             _ => expr,
         };
-        string body;
-        if (row.ImmRange != 0)
+        switch (row.Imms.Length)
         {
-            body = row.ImmRange == 256
-                ? $"DN2CPP_ISA_IMM8_SWITCH(a{immIndex}, {produce});"
-                : $"DN2CPP_ISA_IMM_SWITCH_N({row.ImmRange}, a{immIndex}, {produce});";
+            case 0:
+                return m.Return.Kind is TyKind.Void or TyKind.Tuple ? produce + ";" : "return " + produce + ";";
+            case 1:
+            {
+                var i = row.Imms[0];
+                return i.Lo == 0 && i.Count == 256
+                    ? $"DN2CPP_ISA_IMM8_SWITCH(a{i.Param}, {produce});"
+                    : $"DN2CPP_ISA_IMM_RANGE_SWITCH({i.Lo}, {i.Count}, a{i.Param}, {produce});";
+            }
+            default:
+            {
+                var i1 = row.Imms[0];
+                var i2 = row.Imms[1];
+                return $"DN2CPP_ISA_IMM_RANGE_SWITCH2({i1.Lo}, {i1.Count}, a{i1.Param}, {i2.Lo}, {i2.Count}, a{i2.Param}, {produce});";
+            }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// samples/dotnet/PlatformIsaProbe/Exercises.g.cs — one exercise per lowered family that has
+// no hand-written one: every mapped method called once with fixed inputs, its result printed
+// as hex bytes. Real .NET is the oracle (the native gates diff the output), so no reference
+// value is computed here. Nothing machine-dependent is printed.
+// ---------------------------------------------------------------------------------------
+
+static class Exercises
+{
+    // The scalar families keep their hand-written exercises in X86Sections / ArmSections.
+    static readonly HashSet<string> HandWritten = new(StringComparer.Ordinal)
+    {
+        "System.Runtime.Intrinsics.X86.X86Base", "System.Runtime.Intrinsics.X86.Lzcnt",
+        "System.Runtime.Intrinsics.X86.Popcnt", "System.Runtime.Intrinsics.X86.Bmi1",
+        "System.Runtime.Intrinsics.X86.Bmi2", "System.Runtime.Intrinsics.X86.X86Serialize",
+        "System.Runtime.Intrinsics.Arm.ArmBase", "System.Runtime.Intrinsics.Arm.Crc32",
+    };
+
+    const int BufferBytes = 64;
+
+    public static string File(List<Family> families)
+    {
+        var sb = new StringBuilder();
+        sb.Append(Emit.CsBanner("The exercise of every lowered family without a hand-written one: each mapped method called once with fixed inputs, its result printed as hex bytes; real .NET is the oracle."));
+        sb.Append("""
+            using System;
+            using System.Collections.Generic;
+            using System.Runtime.Intrinsics;
+            using Arm = System.Runtime.Intrinsics.Arm;
+            using Wasm = System.Runtime.Intrinsics.Wasm;
+            using X86 = System.Runtime.Intrinsics.X86;
+
+            namespace PlatformIsaProbe;
+
+            internal static class Exercises
+            {
+
+            """);
+        var tops = families.Where(f => f.Enclosing is null && f.Lowered && !HandWritten.Contains(f.QualifiedName)).ToList();
+        foreach (string arch in Contract.Archs)
+        {
+            sb.Append($"    internal static void Register{Contract.IsaArch(arch)}(Dictionary<string, Action> exercises)\n    {{\n");
+            foreach (var f in tops.Where(f => f.Arch == arch))
+                sb.Append($"        exercises[\"{Contract.Display(f.QualifiedName)}\"] = {MethodName(f)};\n");
+            sb.Append("    }\n\n");
+        }
+        foreach (var f in tops)
+            Exercise(sb, families, f);
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    static string MethodName(Family f) => Contract.IsaArch(f.Arch) + f.TypePath.Replace("+", "");
+
+    static string CsFamily(Family f) => Contract.IsaArch(f.Arch) + "." + f.TypePath.Replace('+', '.');
+
+    // The label prefix below the top-level type: "" for it, "Arm64." for a nested type.
+    static string LabelPrefix(Family f)
+    {
+        int plus = f.TypePath.IndexOf('+');
+        return plus < 0 ? "" : f.TypePath.Substring(plus + 1).Replace('+', '.') + ".";
+    }
+
+    static void Exercise(StringBuilder sb, List<Family> families, Family f)
+    {
+        sb.Append($"    private static unsafe void {MethodName(f)}()\n    {{\n");
+        Calls(sb, families, f, "        ");
+        sb.Append("    }\n\n");
+    }
+
+    static void Calls(StringBuilder sb, List<Family> families, Family f, string indent)
+    {
+        bool witnessed = false;
+        foreach (var m in f.Methods.Where(m => m.Row is not null).OrderBy(m => m.HelperName, StringComparer.Ordinal))
+            Call(sb, f, m, indent, ref witnessed);
+        foreach (var nested in families.Where(g => g.Enclosing == f.QualifiedName && g.Lowered && HasCalls(families, g)))
+        {
+            sb.Append($"{indent}if ({CsFamily(nested)}.IsSupported)\n{indent}{{\n");
+            Calls(sb, families, nested, indent + "    ");
+            sb.Append($"{indent}}}\n");
+        }
+    }
+
+    static bool HasCalls(List<Family> families, Family f) =>
+        f.Methods.Any(m => m.Row is not null) || families.Any(g => g.Enclosing == f.QualifiedName && g.Lowered && HasCalls(families, g));
+
+    // One call is one statement; a call that needs buffers or a tuple result gets a block.
+    static void Call(StringBuilder outer, Family f, Method m, string indent, ref bool witnessed)
+    {
+        var row = m.Row!;
+        string member = f.QualifiedName + "." + m.Name;
+        string label = LabelPrefix(f) + m.Key;
+        var sb = new StringBuilder();
+        string inner = indent + "    ";
+        var args = new List<string>();
+        var pointers = new List<int>();
+        for (int k = 0; k < m.Params.Length; k++)
+        {
+            var p = m.Params[k];
+            var imm = row.Imms.FirstOrDefault(i => i.Param == k);
+            if (imm is not null)
+            {
+                args.Add(Literal(p, imm.Lo + (imm.Count - 1) / 2));
+                continue;
+            }
+            switch (p.Kind)
+            {
+                case TyKind.Scalar:
+                    args.Add(Literal(p, Lane(k, 0, p.Code)));
+                    break;
+                case TyKind.Vector:
+                    args.Add(VectorLiteral(p, k));
+                    break;
+                case TyKind.Tuple:
+                    args.Add("(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j))) + ")");
+                    break;
+                case TyKind.Pointer:
+                    sb.Append($"{inner}byte* p{k} = stackalloc byte[{BufferBytes}];\n");
+                    sb.Append($"{inner}Fmt.Fill(p{k}, {BufferBytes}, {k + 1});\n");
+                    args.Add(p.Elem is null ? $"(void*)p{k}" : $"({Codes.Cs(p.Elem.Code)}*)p{k}");
+                    pointers.Add(k);
+                    break;
+                default:
+                    throw new ContractException($"{member}: parameter '{p}' has no exercise spelling");
+            }
+        }
+        string call = $"{CsFamily(f)}.{m.Name}({string.Join(", ", args)})";
+        string mem = m.Return.Kind == TyKind.Void
+            ? string.Concat(pointers.Select(k => $" + \" mem{k}=\" + Fmt.Hex(p{k}, {BufferBytes})"))
+            : "";
+        switch (m.Return.Kind)
+        {
+            case TyKind.Void:
+                sb.Append($"{inner}{call};\n");
+                sb.Append($"{inner}Console.WriteLine(\"{label}=void\"{mem});\n");
+                break;
+            case TyKind.Vector:
+                sb.Append($"{inner}Console.WriteLine(\"{label}=\" + Fmt.Hex({call}.AsByte()));\n");
+                break;
+            case TyKind.Scalar:
+                sb.Append($"{inner}Console.WriteLine(\"{label}=\" + {ScalarHex(m.Return, call)});\n");
+                break;
+            case TyKind.Tuple:
+                sb.Append($"{inner}var r = {call};\n");
+                sb.Append($"{inner}Console.WriteLine(\"{label}=\" + ");
+                sb.Append(string.Join(" + \",\" + ", m.Return.Items.Select((it, j) =>
+                    it.Kind == TyKind.Vector ? $"Fmt.Hex(r.Item{j + 1}.AsByte())" : ScalarHex(it, $"r.Item{j + 1}"))));
+                sb.Append(");\n");
+                break;
+            default:
+                throw new ContractException($"{member}: return type '{m.Return}' has no exercise spelling");
+        }
+        // One immediate method per family also witnesses the range check .NET inserts for a
+        // non-constant immediate: one past the top of the range throws.
+        if (!witnessed && row.Imms.Length == 1 && row.Imms[0].Lo + row.Imms[0].Count <= 255)
+        {
+            var imm = row.Imms[0];
+            var outArgs = new List<string>(args);
+            outArgs[imm.Param] = $"Fmt.NonConstant({Literal(m.Params[imm.Param], imm.Lo + imm.Count)})";
+            string outCall = $"{CsFamily(f)}.{m.Name}({string.Join(", ", outArgs)})";
+            string stmt = m.Return.Kind == TyKind.Void ? $"{outCall};" : $"_ = {outCall};";
+            sb.Append($"{inner}Console.WriteLine(\"{label} imm={imm.Lo + imm.Count}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
+            witnessed = true;
+        }
+        string[] lines = sb.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length == 1)
+            outer.Append(indent).Append(lines[0].TrimStart()).Append('\n');
         else
+            outer.Append($"{indent}{{\n").Append(sb).Append($"{indent}}}\n");
+    }
+
+    static string ScalarHex(Ty t, string value) => t.Code switch
+    {
+        "i8" or "u8" => $"Fmt.Hex((byte){value})",
+        "i16" or "u16" or "char" => $"Fmt.Hex((ushort){value})",
+        "i32" or "u32" => $"Fmt.Hex((uint){value})",
+        "i64" or "u64" or "nint" or "nuint" => $"Fmt.Hex((ulong){value})",
+        "f32" => $"Fmt.Hex(BitConverter.SingleToUInt32Bits({value}))",
+        "f64" => $"Fmt.Hex(BitConverter.DoubleToUInt64Bits({value}))",
+        "bool" => $"Fmt.Bool({value})",
+        _ => throw new ContractException($"scalar '{t}' has no exercise spelling"),
+    };
+
+    // Lane i of operand k: a fixed pattern that differs per operand and per lane, with
+    // negative values for signed types and small exact fractions for floats.
+    static long Lane(int k, int i, string code)
+    {
+        long v = (k + 1) * 0x1D + i * 0x25 + 7;
+        switch (code)
         {
-            body = m.Return.Kind is TyKind.Void or TyKind.Tuple ? produce + ";" : "return " + produce + ";";
+            case "i8": return (sbyte)(v & 0xFF);
+            case "u8": return v & 0xFF;
+            case "i16": return (short)((v * 0x1F3) & 0xFFFF);
+            case "u16": return (v * 0x1F3) & 0xFFFF;
+            case "i32": return (int)((v * 0x1F3A7) & 0xFFFFFFFF);
+            case "u32": return (v * 0x1F3A7) & 0xFFFFFFFF;
+            case "i64": return v * 0x1F3A7C5D1BL;
+            case "u64": return v * 0x1F3A7C5D1BL;
+            case "nint": return (int)((v * 0x1F3A7) & 0xFFFFFFFF);
+            case "nuint": return (v * 0x1F3A7) & 0xFFFFFFFF;
+            case "f32":
+            case "f64": return (v % 41) - 20;
+            case "bool": return v & 1;
+            case "char": return 0x41 + (v % 26);
+            default: throw new ContractException($"'{code}' has no exercise lane value");
         }
+    }
 
-        string target = row.Target ?? f.Target ?? "";
-        string attr = target.Length > 0 ? $"DN2CPP_ISA_TARGET(\"{target}\") " : "";
-        string display = f.QualifiedName + "." + m.Name;
+    static string Literal(Ty t, long v)
+    {
+        string s = t.Code switch
+        {
+            "i8" => $"(sbyte){v}",
+            "u8" => $"(byte){v}",
+            "i16" => $"(short){v}",
+            "u16" => $"(ushort){v}",
+            "i32" => v.ToString(CultureInfo.InvariantCulture),
+            "u32" => v.ToString(CultureInfo.InvariantCulture) + "U",
+            "i64" => v.ToString(CultureInfo.InvariantCulture) + "L",
+            "u64" => ((ulong)v).ToString(CultureInfo.InvariantCulture) + "UL",
+            "nint" => $"(nint){v}",
+            "nuint" => $"(nuint){v}",
+            "f32" => (v * 0.25).ToString("R", CultureInfo.InvariantCulture) + (v % 4 == 0 ? ".0f" : "f"),
+            "f64" => (v * 0.125).ToString("R", CultureInfo.InvariantCulture) + (v % 8 == 0 ? ".0" : ""),
+            "bool" => v != 0 ? "true" : "false",
+            "char" => $"(char){v}",
+            _ => throw new ContractException($"'{t}' has no exercise literal"),
+        };
+        return t.CsEnum is null ? s : $"({t.CsEnum}){s}";
+    }
 
-        sb.Append('\n');
-        sb.Append("#if ").Append(Contract.TargetMacro(f.Arch)).Append('\n');
-        sb.Append(attr).Append("DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
-          .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n")
-          .Append("    dn2cpp_isa_require(").Append(f.Token).Append(", \"").Append(display).Append("\");\n")
-          .Append("    ").Append(body).Append("\n}\n");
-        sb.Append("#else\n");
-        sb.Append("[[noreturn]] DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
-          .Append('(').Append(string.Join(", ", stubDecls)).Append(")\n{\n    dn2cpp_isa_not_lowered(\"")
-          .Append(display).Append("\");\n}\n");
-        sb.Append("#endif\n");
+    static string VectorLiteral(Ty v, int k)
+    {
+        string elem = v.Elem!.Code;
+        int lanes = v.Bits / Codes.ElemBits(elem);
+        var items = Enumerable.Range(0, lanes).Select(i => Literal(v.Elem, Lane(k, i, elem)));
+        return $"Vector{v.Bits}.Create({string.Join(", ", items)})";
     }
 }

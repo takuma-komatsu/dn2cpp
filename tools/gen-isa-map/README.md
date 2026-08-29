@@ -30,12 +30,13 @@ Outputs:
 | `runtime/core/isa/dn2cpp_isa_manifest.txt` | every lowered helper name, sorted |
 | `runtime/core/isa/<arch>/dn2cpp_isa_<arch>_<family>.h` | helpers of one family with map rows |
 | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` | the family table the transpiler reads |
+| `samples/dotnet/PlatformIsaProbe/Exercises.g.cs` | the probe's exercise of every generated-lowered family |
 
 Inputs: `families.csv` (the family set, feature bits and landing order),
 `runtime/core/dn2cpp_cpu_features.h` (the feature bits and what each implies) and
-`map/<arch>/<family>.map` (the lowering of each method). The generator fails when the csv's
-family set differs from CoreLib's, naming both differences, and when the csv names a bit
-the header does not define.
+`map/<arch>/<family>.map` or `map/<arch>/<family>/*.map` (the lowering of each method). The
+generator fails when the csv's family set differs from CoreLib's, naming both differences,
+and when the csv names a bit the header does not define.
 
 ## Naming contract
 
@@ -79,32 +80,71 @@ parameter is passed as its items, `a<k>_1, a<k>_2, …`.
 
 ## Map grammar
 
-`map/<arch>/<family>.map`, one file per family, named by the helper type path
-(`map/x86/sse2_x64.map`). A family with no feature bits (Sve, Sve2) may not have one.
+`map/<arch>/<family>.map`, named by the helper type path (`map/x86/sse2_x64.map`), or a
+directory `map/<arch>/<family>/` of `*.map` files read in ordinal name order
+(`map/arm/advsimd/arithmetic.map`, `…/shift.map`), so a large family is written by topic.
+A method with rows in two files is an error, and `target =` may appear in any file of the
+directory as long as every occurrence agrees. A family with no feature bits (Sve, Sve2) may
+not have a map.
 
 ```
 # comment
 target = sse4.2
 Method(argcodes) = <C expression using $0, $1, ...>
 Method(v128{T},v128{T}) = _mm_add_{epi}($0,$1) for T in i8,u8,i16
+Add(v{W}{T},v{W}{T}) = vadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+ShiftRightLogical(v{W}{T},u8) @imm[1..{bits}] = vshr{q}_n_{uT}($0:{uT}, $1) for W in 64,128 for T in i8,u8
+Extract(v{W}{T},u8) @imm[0..{N}) = vget{q}_lane_{neon}($0, $1) for W in 64,128 for T in i8,u8
+InsertSelectedScalar(v128{T},u8,v64{T},u8) @imm$1[0..{N128}) @imm$3[0..{N64}) = vcopyq_lane_{neon}($0, $1, $2, $3) for T in i8,u8
+Store(p{T},t2v64{T}) = vst1_{neon}_x2($0, $1.*) for T in i8,u8
+Load2xVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x2($0), &$r*) for T in i8,u8
 Method(v128f32,u8) @imm8 = _mm_shuffle_ps($0,$0,$1)
 Method(v128f32,v128f32) @target("sse4.1") @throws = ...
 ```
 
 - An exact row names the method and its argument codes exactly as in the helper name.
-- A pattern row repeats for every element code after `for T in`; `{T}` is replaced in the
-  codes and the expression, and `{epi}` (`i8`→`epi8`, …), `{ps|pd}` (`f32`→`ps`,
-  `f64`→`pd`), `{neon}` (`i8`→`s8`, `u8`→`u8`, …) and `{lane}` (`i8`→`i8x16`, …) are
-  spelled per element. A missing table entry is an error, never a guess.
+- A pattern row repeats for every width after `for W in` (64, 128, 256, 512) and every
+  element code after `for T in`; the placeholders are replaced in the codes, the annotations
+  and the expression alike. A row with element placeholders needs the `T` clause and one with
+  width placeholders the `W` clause, and a clause nothing uses is an error. The placeholders:
+
+  | placeholder | reads | spelling |
+  |-------------|-------|----------|
+  | `{T}` | T | the element code (`i8`) |
+  | `{W}` | W | the width (`128`) |
+  | `{q}` | W | `` for 64, `q` for wider: the NEON quad-register suffix |
+  | `{N}` | W, T | the lane count (`v128i8` → `16`) |
+  | `{N64}` `{N128}` | T | the lane count at that width |
+  | `{bits}` | T | the element width in bits |
+  | `{neon}` | T | the ACLE type suffix (`s8`, `u8`, `f32`) |
+  | `{ntype}` | W, T | the NEON vector type (`int8x16_t`) |
+  | `{uT}` `{sT}` | T | the same-width unsigned / signed element code (`f32` → `u32` / `i32`) |
+  | `{bhsd}` | T | the scalar-register letter of a one-lane intrinsic (`vqrdmlahh_s16`) |
+  | `{epi}` `{ps\|pd}` | T | the SSE integer / float suffix |
+  | `{lane}` | T | the wasm lane shape (`i8x16`) |
+
+  A missing table entry (a float asked for `{epi}`) is an error, never a guess.
 - `$k` is parameter `k`; a vector arrives converted to the native register type through
-  `dn2cpp_isa_bits<...>`, and a vector result is wrapped back through `dn2cpp_isa_vec<...>`.
-  `$k.j` is item `j` of a tuple parameter; `$r1`, `$r2`, … are the dereferenced out-pointers
-  of a tuple return and `&$r1`, `&$r2`, … the out-pointers themselves.
-- `@imm8` and `@imm[0..N)` (N in 2, 4, 8, 16, 32, 64) mark the last parameter as an
-  immediate; the body becomes `DN2CPP_ISA_IMM8_SWITCH` or `DN2CPP_ISA_IMM_SWITCH_N` and
-  the expression names the constant `DN2CPP_IMM`. `@target("...")` overrides the
-  family-level `target =`.
-  `@throws` documents a faulting intrinsic and changes nothing.
+  `dn2cpp_isa_bits<...>`, and `$k:u8` converts it to the same-width vector of another element
+  instead (a bitwise operation on floats, a table index read as bytes). A vector result is
+  wrapped back through `dn2cpp_isa_vec<...>`, whatever type the intrinsic returned.
+  `$k.j` is item `j` of a tuple parameter and `$k.*` the whole tuple as the NEON
+  multi-register aggregate (`int8x16x2_t`, parenthesized); `$r1`, `$r2`, … are the
+  dereferenced out-pointers of a tuple return, `&$r1`, `&$r2`, … the out-pointers themselves
+  and `&$r*` all of them in order (the argument list `dn2cpp_isa_scatter` takes).
+- `@imm8` marks the last parameter as a byte immediate with every value valid;
+  `@imm[lo..hi)` and `@imm[lo..hi]` (exclusive / inclusive top) give the encodable range —
+  a lane index `[0..{N})`, a left shift `[0..{bits})`, a right shift `[1..{bits}]` — for a
+  count that is a power of two up to 256; `@imm$k[...]` names parameter `k` instead of the
+  last, and two such annotations make a two-immediate helper. The body becomes
+  `DN2CPP_ISA_IMM8_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH` or `DN2CPP_ISA_IMM_RANGE_SWITCH2`
+  and the expression names the constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the
+  immediate is rewritten); a value outside the range throws ArgumentOutOfRangeException, the
+  check .NET inserts for a non-constant immediate. `@target("...")` overrides the
+  family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
+- A scalar result that .NET returns in lane 0 of a Vector64 (the `Across` reductions,
+  SHA1H, the one-lane RDM forms) goes through `dn2cpp_isa_lane0<8>(...)`, which zeroes the
+  other lanes as the register write does.
 - A family whose only public static member is `IsSupported` (`X86Serialize.X64`) has no map
   file: it is covered vacuously and lowered with its enclosing family.
 
@@ -131,3 +171,22 @@ column of `CoreIntrinsics.PlatformIsa.g.cs` by hand; the transpiler checks the
 enclosing-before-nested rule against the table it reads, and
 `gates/build-and-run-platform-isa-surface.sh` re-derives the implication rule from the two
 sources.
+
+## Generated exercises
+
+`samples/dotnet/PlatformIsaProbe/Exercises.g.cs` exercises every lowered family that has no
+hand-written exercise (the scalar families keep theirs in `X86Sections` / `ArmSections`):
+each mapped method is called once with fixed inputs — vectors from a per-operand, per-lane
+pattern, immediates at the middle of their range, pointers into a filled stack buffer whose
+bytes are printed after a store — and prints `Method(argcodes)=<hex bytes>`; nested types run
+behind their own `IsSupported`. One immediate method per family is also called one past its
+range inside `Fmt.Thrown`, which must print `ArgumentOutOfRangeException`. Real .NET is the
+oracle: the native gates diff the output byte for byte, so no reference value is computed.
+The registration (`Exercises.RegisterX86/Arm/Wasm`) is called from each `*Sections` class.
+
+## Previewing a partial map
+
+`--lowered-preview Arm.AdvSimd,Arm.AdvSimd.Arm64` treats the named families as covered: their
+unmapped methods get throwing native stubs and every output carries a PREVIEW banner. Run it
+on a scratch copy of the tree (never `--check`) to build and run the native gate against real
+.NET while a family's map is still being written.

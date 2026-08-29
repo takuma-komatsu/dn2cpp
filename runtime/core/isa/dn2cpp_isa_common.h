@@ -83,37 +83,114 @@ static inline void dn2cpp_isa_require(int32_t supported, const char* what)
 
 // Immediate-operand dispatch. Hardware encodes the immediate in the instruction,
 // so a runtime value has to select among one instantiation per value; EXPR
-// names the immediate as DN2CPP_IMM, an integral constant in every case body.
-// Out-of-range values throw ArgumentOutOfRangeException as .NET does.
+// names the immediate as DN2CPP_IMM (and a second one as DN2CPP_IMM2), an
+// integral constant in every case body. Out-of-range values throw
+// ArgumentOutOfRangeException, the check .NET inserts for a non-constant
+// immediate. The case-list macros take the case macro as their first argument;
+// the two-immediate form nests a second, independently named case list so the
+// outer expansion never meets its own name inside an argument.
 #define DN2CPP_ISA_IMM_CASE(v, EXPR) \
     case (v): { enum : int { DN2CPP_IMM = (v) }; return (EXPR); }
-#define DN2CPP_ISA_IMM_CASES_2(b, EXPR)   DN2CPP_ISA_IMM_CASE((b) + 0, EXPR)  DN2CPP_ISA_IMM_CASE((b) + 1, EXPR)
-#define DN2CPP_ISA_IMM_CASES_4(b, EXPR)   DN2CPP_ISA_IMM_CASES_2(b, EXPR)     DN2CPP_ISA_IMM_CASES_2((b) + 2, EXPR)
-#define DN2CPP_ISA_IMM_CASES_8(b, EXPR)   DN2CPP_ISA_IMM_CASES_4(b, EXPR)     DN2CPP_ISA_IMM_CASES_4((b) + 4, EXPR)
-#define DN2CPP_ISA_IMM_CASES_16(b, EXPR)  DN2CPP_ISA_IMM_CASES_8(b, EXPR)     DN2CPP_ISA_IMM_CASES_8((b) + 8, EXPR)
-#define DN2CPP_ISA_IMM_CASES_32(b, EXPR)  DN2CPP_ISA_IMM_CASES_16(b, EXPR)    DN2CPP_ISA_IMM_CASES_16((b) + 16, EXPR)
-#define DN2CPP_ISA_IMM_CASES_64(b, EXPR)  DN2CPP_ISA_IMM_CASES_32(b, EXPR)    DN2CPP_ISA_IMM_CASES_32((b) + 32, EXPR)
-#define DN2CPP_ISA_IMM_CASES_128(b, EXPR) DN2CPP_ISA_IMM_CASES_64(b, EXPR)    DN2CPP_ISA_IMM_CASES_64((b) + 64, EXPR)
-#define DN2CPP_ISA_IMM_CASES_256(b, EXPR) DN2CPP_ISA_IMM_CASES_128(b, EXPR)   DN2CPP_ISA_IMM_CASES_128((b) + 128, EXPR)
+#define DN2CPP_ISA_IMM_CASE_OUTER(v, STMT) \
+    case (v): { enum : int { DN2CPP_IMM = (v) }; STMT }
+#define DN2CPP_ISA_IMM_CASE2(v, EXPR) \
+    case (v): { enum : int { DN2CPP_IMM2 = (v) }; return (EXPR); }
+
+#define DN2CPP_ISA_IMM_CASES_1(C, b, EXPR)   C((b) + 0, EXPR)
+#define DN2CPP_ISA_IMM_CASES_2(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_1(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_1(C, (b) + 1, EXPR)
+#define DN2CPP_ISA_IMM_CASES_4(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_2(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_2(C, (b) + 2, EXPR)
+#define DN2CPP_ISA_IMM_CASES_8(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_4(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_4(C, (b) + 4, EXPR)
+#define DN2CPP_ISA_IMM_CASES_16(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_8(C, b, EXPR)   DN2CPP_ISA_IMM_CASES_8(C, (b) + 8, EXPR)
+#define DN2CPP_ISA_IMM_CASES_32(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_16(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_16(C, (b) + 16, EXPR)
+#define DN2CPP_ISA_IMM_CASES_64(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_32(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_32(C, (b) + 32, EXPR)
+#define DN2CPP_ISA_IMM_CASES_128(C, b, EXPR) DN2CPP_ISA_IMM_CASES_64(C, b, EXPR)  DN2CPP_ISA_IMM_CASES_64(C, (b) + 64, EXPR)
+#define DN2CPP_ISA_IMM_CASES_256(C, b, EXPR) DN2CPP_ISA_IMM_CASES_128(C, b, EXPR) DN2CPP_ISA_IMM_CASES_128(C, (b) + 128, EXPR)
+
+#define DN2CPP_ISA_IMM2_CASES_1(C, b, EXPR)   C((b) + 0, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_2(C, b, EXPR)   DN2CPP_ISA_IMM2_CASES_1(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_1(C, (b) + 1, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_4(C, b, EXPR)   DN2CPP_ISA_IMM2_CASES_2(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_2(C, (b) + 2, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_8(C, b, EXPR)   DN2CPP_ISA_IMM2_CASES_4(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_4(C, (b) + 4, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_16(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_8(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_8(C, (b) + 8, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_32(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_16(C, b, EXPR) DN2CPP_ISA_IMM2_CASES_16(C, (b) + 16, EXPR)
+#define DN2CPP_ISA_IMM2_CASES_64(C, b, EXPR)  DN2CPP_ISA_IMM2_CASES_32(C, b, EXPR) DN2CPP_ISA_IMM2_CASES_32(C, (b) + 32, EXPR)
 
 // Every value of a byte immediate is valid; the default arm only satisfies
 // return-path analysis.
 #define DN2CPP_ISA_IMM8_SWITCH(imm, EXPR) \
     switch ((int)((imm) & 0xFF)) { \
-        DN2CPP_ISA_IMM_CASES_256(0, EXPR) \
+        DN2CPP_ISA_IMM_CASES_256(DN2CPP_ISA_IMM_CASE, 0, EXPR) \
         default: dn2cpp_throw_argument_out_of_range(); \
     }
 
-// n in {2, 4, 8, 16, 32, 64}: the immediate is a lane or element index.
-#define DN2CPP_ISA_IMM_SWITCH_N(n, imm, EXPR) \
+// The immediate is valid in [lo, lo + count), count a power of two up to 256:
+// a lane index (0..lanes-1), a left shift (0..bits-1) or a right shift
+// (1..bits). The subtraction is unsigned so a negative value is out of range.
+#define DN2CPP_ISA_IMM_RANGE_SWITCH(lo, count, imm, EXPR) \
     { \
-        if ((uint32_t)(imm) >= (uint32_t)(n)) \
+        if ((uint32_t)(imm) - (uint32_t)(lo) >= (uint32_t)(count)) \
             dn2cpp_throw_argument_out_of_range(); \
         switch ((int)(imm)) { \
-            DN2CPP_ISA_IMM_CASES_##n(0, EXPR) \
+            DN2CPP_ISA_IMM_CASES_##count(DN2CPP_ISA_IMM_CASE, lo, EXPR) \
             default: dn2cpp_throw_argument_out_of_range(); \
         } \
     }
+
+// Two immediates (INS Vd.B[lane1], Vn.B[lane2]): the outer switch fixes
+// DN2CPP_IMM, the inner one DN2CPP_IMM2; count1 * count2 case bodies.
+#define DN2CPP_ISA_IMM2_INNER_SWITCH(lo, count, imm, EXPR) \
+    switch ((int)(imm)) { \
+        DN2CPP_ISA_IMM2_CASES_##count(DN2CPP_ISA_IMM_CASE2, lo, EXPR) \
+        default: dn2cpp_throw_argument_out_of_range(); \
+    }
+#define DN2CPP_ISA_IMM_RANGE_SWITCH2(lo1, count1, imm1, lo2, count2, imm2, EXPR) \
+    { \
+        if ((uint32_t)(imm1) - (uint32_t)(lo1) >= (uint32_t)(count1) \
+            || (uint32_t)(imm2) - (uint32_t)(lo2) >= (uint32_t)(count2)) \
+            dn2cpp_throw_argument_out_of_range(); \
+        switch ((int)(imm1)) { \
+            DN2CPP_ISA_IMM_CASES_##count1(DN2CPP_ISA_IMM_CASE_OUTER, lo1, DN2CPP_ISA_IMM2_INNER_SWITCH(lo2, count2, imm2, EXPR)) \
+            default: dn2cpp_throw_argument_out_of_range(); \
+        } \
+    }
+
+// ---------------------------------------------------------------------------
+// Multi-register and one-lane shapes of the NEON families.
+// ---------------------------------------------------------------------------
+
+// A scalar result written to one lane of Vd (ADDV Bd, FMAXV Sd, SHA1H Sd,
+// SQRDMLAH Hd): .NET returns it as lane 0 of a Vector64 whose other lanes are
+// zero, the register's contents after the write.
+template <int N, class S>
+static inline Dn2CppVec<N> dn2cpp_isa_lane0(S s)
+{
+    static_assert(sizeof(S) <= (size_t)N, "scalar wider than the vector");
+    Dn2CppVec<N> r{};
+    std::memcpy(r.b, &s, sizeof(s));
+    return r;
+}
+
+// A multi-register result (LD1 {Vn, Vn+1}, ZIP pairs) scattered into the
+// out-pointers of a ValueTuple return, in .val order.
+template <class X, int N>
+static inline void dn2cpp_isa_scatter(const X& x, Dn2CppVec<N>* item1, Dn2CppVec<N>* item2)
+{
+    *item1 = dn2cpp_isa_vec<N>(x.val[0]);
+    *item2 = dn2cpp_isa_vec<N>(x.val[1]);
+}
+
+template <class X, int N>
+static inline void dn2cpp_isa_scatter(const X& x, Dn2CppVec<N>* item1, Dn2CppVec<N>* item2, Dn2CppVec<N>* item3)
+{
+    dn2cpp_isa_scatter(x, item1, item2);
+    *item3 = dn2cpp_isa_vec<N>(x.val[2]);
+}
+
+template <class X, int N>
+static inline void dn2cpp_isa_scatter(const X& x, Dn2CppVec<N>* item1, Dn2CppVec<N>* item2, Dn2CppVec<N>* item3, Dn2CppVec<N>* item4)
+{
+    dn2cpp_isa_scatter(x, item1, item2, item3);
+    *item4 = dn2cpp_isa_vec<N>(x.val[3]);
+}
 
 // ---------------------------------------------------------------------------
 // 128-bit scalar arithmetic (X86Base.X64.DivRem, Bmi2.X64.MultiplyNoFlags,
