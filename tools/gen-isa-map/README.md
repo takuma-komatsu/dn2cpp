@@ -113,7 +113,7 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{T}` | T | the element code (`i8`) |
   | `{W}` | W | the width (`128`) |
   | `{q}` | W | `` for 64, `q` for wider: the NEON quad-register suffix |
-  | `{mm}` `{m}` | W | the SSE/AVX intrinsic prefix and register type at that width (`_mm` / `_mm256`, `__m128` / `__m256`; `{m}i` and `{m}d` are the integer and double types) |
+  | `{mm}` `{m}` | W | the SSE/AVX/AVX-512 intrinsic prefix and register type at that width (`_mm` / `_mm256` / `_mm512`, `__m128` / `__m256` / `__m512`; `{m}i` and `{m}d` are the integer and double types) |
   | `{N}` | W, T | the lane count (`v128i8` → `16`) |
   | `{N64}` `{N128}` | T | the lane count at that width |
   | `{bits}` | T | the element width in bits |

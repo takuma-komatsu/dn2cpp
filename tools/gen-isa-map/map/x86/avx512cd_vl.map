@@ -1,0 +1,5 @@
+# System.Runtime.Intrinsics.X86.Avx512CD.VL — the 128- and 256-bit VPCONFLICTD/Q and
+# VPLZCNTD/Q; see avx512cd.map.
+target = avx512cd,avx512vl
+DetectConflicts(v{W}{T}) = {mm}_conflict_{epi}($0) for W in 128,256 for T in i32,u32,i64,u64
+LeadingZeroCount(v{W}{T}) = {mm}_lzcnt_{epi}($0) for W in 128,256 for T in i32,u32,i64,u64

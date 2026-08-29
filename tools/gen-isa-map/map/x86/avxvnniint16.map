@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.AvxVnniInt16 — VPDPW{SU,US,UU}D and their saturating forms:
+# each 32-bit lane of the addend gains two 16-bit products whose signedness is the two
+# operands' (signed x unsigned, unsigned x signed, unsigned x unsigned, in the .NET
+# overload order); the Saturate forms clamp the sum to the lane's range. The JIT picks the
+# instruction from the element types of the second and third operands.
+target = avxvnniint16
+MultiplyWideningAndAdd(v{W}i32,v{W}i16,v{W}u16) = {mm}_dpwsud_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAdd(v{W}i32,v{W}u16,v{W}i16) = {mm}_dpwusd_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAdd(v{W}u32,v{W}u16,v{W}u16) = {mm}_dpwuud_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}i16,v{W}u16) = {mm}_dpwsuds_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}u16,v{W}i16) = {mm}_dpwusds_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}u32,v{W}u16,v{W}u16) = {mm}_dpwuuds_epi32($0, $1, $2) for W in 128,256

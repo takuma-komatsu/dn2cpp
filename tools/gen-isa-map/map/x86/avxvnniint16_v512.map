@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.AvxVnniInt16.V512 — the 512-bit VPDPW{SU,US,UU}D[S] forms,
+# which AVX10.2 adds; see avxvnniint16.map.
+target = avx10.2-512
+MultiplyWideningAndAdd(v512i32,v512i16,v512u16) = _mm512_dpwsud_epi32($0, $1, $2)
+MultiplyWideningAndAdd(v512i32,v512u16,v512i16) = _mm512_dpwusd_epi32($0, $1, $2)
+MultiplyWideningAndAdd(v512u32,v512u16,v512u16) = _mm512_dpwuud_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512i16,v512u16) = _mm512_dpwsuds_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512u16,v512i16) = _mm512_dpwusds_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512u32,v512u16,v512u16) = _mm512_dpwuuds_epi32($0, $1, $2)

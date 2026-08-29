@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.AvxVnniInt8.V512 — the 512-bit VPDPB{SS,SU,UU}D[S] forms,
+# which AVX10.2 adds (the EVEX encoding at this width has no other home); see
+# avxvnniint8.map.
+target = avx10.2-512
+MultiplyWideningAndAdd(v512i32,v512i8,v512i8) = _mm512_dpbssd_epi32($0, $1, $2)
+MultiplyWideningAndAdd(v512i32,v512i8,v512u8) = _mm512_dpbsud_epi32($0, $1, $2)
+MultiplyWideningAndAdd(v512u32,v512u8,v512u8) = _mm512_dpbuud_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512i8,v512i8) = _mm512_dpbssds_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512i32,v512i8,v512u8) = _mm512_dpbsuds_epi32($0, $1, $2)
+MultiplyWideningAndAddSaturate(v512u32,v512u8,v512u8) = _mm512_dpbuuds_epi32($0, $1, $2)

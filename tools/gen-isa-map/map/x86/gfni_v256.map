@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Gfni.V256 — the 256-bit forms of the GF(2^8) operations
+# (VEX encoding, four 64-bit matrix lanes); see gfni.map.
+target = avx,gfni
+GaloisFieldAffineTransform(v256u8,v256u8,u8) @imm8 = _mm256_gf2p8affine_epi64_epi8($0, $1, $2)
+GaloisFieldAffineTransformInverse(v256u8,v256u8,u8) @imm8 = _mm256_gf2p8affineinv_epi64_epi8($0, $1, $2)
+GaloisFieldMultiply(v256u8,v256u8) = _mm256_gf2p8mul_epi8($0, $1)

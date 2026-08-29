@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.AvxVnniInt8 — VPDPB{SS,SU,UU}D and their saturating forms:
+# each 32-bit lane of the addend gains four byte products whose signedness is the two
+# operands' (signed x signed, signed x unsigned, unsigned x unsigned, in the .NET
+# overload order); the Saturate forms clamp the sum to the lane's range. The JIT picks the
+# instruction from the element types of the second and third operands.
+target = avxvnniint8
+MultiplyWideningAndAdd(v{W}i32,v{W}i8,v{W}i8) = {mm}_dpbssd_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAdd(v{W}i32,v{W}i8,v{W}u8) = {mm}_dpbsud_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAdd(v{W}u32,v{W}u8,v{W}u8) = {mm}_dpbuud_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}i8,v{W}i8) = {mm}_dpbssds_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}i8,v{W}u8) = {mm}_dpbsuds_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}u32,v{W}u8,v{W}u8) = {mm}_dpbuuds_epi32($0, $1, $2) for W in 128,256
