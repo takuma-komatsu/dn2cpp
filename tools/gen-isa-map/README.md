@@ -215,4 +215,7 @@ portable cross-check beside the bytes; the gate refuses a `MISMATCH`. The regist
 `--lowered-preview Arm.AdvSimd,Arm.AdvSimd.Arm64` treats the named families as covered: their
 unmapped methods get throwing native stubs and every output carries a PREVIEW banner. Run it
 on a scratch copy of the tree (never `--check`) to build and run the native gate against real
-.NET while a family's map is still being written.
+.NET while a family's map is still being written. On an Apple silicon Mac,
+`tools/platform-isa-rosetta.sh --preview <families>` regenerates the working tree with the
+preview, runs the probe as an x86-64 binary under Rosetta 2 (the `@ref` cross-checks stand in
+for the absent x86 .NET oracle), and regenerates without the preview on exit.
