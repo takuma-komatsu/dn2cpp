@@ -844,7 +844,12 @@ instruction surface lowers, a promotion
 table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
 family answers false, so the BCL software fallback runs, and calling one of
 its instructions throws `PlatformNotSupportedException` exactly as .NET does
-when `IsSupported` is false. `DN2CPP_CPU_FEATURES` masks detection for tests
+when `IsSupported` is false. `Wasm.PackedSimd` lowers, but a wasm module
+either carries SIMD instructions or can load on an engine without them, so
+it answers true only in a `DN2CPP_WASM_SIMD` (`-msimd128`) build; the default
+console build and the Godot Web export stay non-SIMD and answer false, and
+whether the export ever turns the axis on is a separate decision.
+`DN2CPP_CPU_FEATURES` masks detection for tests
 (`none`, `all`, a family list with what each family implies, `-Name` to
 exclude) and never widens it;
 `DN2CPP_CPU_FEATURES_DIAG=1` prints the detected, allowed and effective sets

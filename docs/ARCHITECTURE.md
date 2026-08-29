@@ -300,6 +300,16 @@ capability contract, not a set of independent constants:
   by the same generator, calls each mapped method with fixed inputs and prints
   the bytes; the native gates diff it against real .NET, so a wrong lowering
   fails on the machine that has the instruction rather than in a user's program.
+  `Wasm.PackedSimd` has no such oracle (no host .NET answers true for it), so
+  its run is frozen in `gates/expected/platform-isa-wasm-simd.txt` and every
+  row with a portable equivalent carries a `@ref` cross-check against the
+  `Vector128` layer, an independent implementation; the gate refuses a mismatch.
+- **wasm SIMD is a build axis.** A module either carries SIMD instructions or
+  loads on an engine without them, so the wasm detector answers from
+  `__wasm_simd128__` and the CMake option `DN2CPP_WASM_SIMD` (`-msimd128`,
+  PUBLIC on the runtime so every TU agrees with the detector) is what makes
+  `PackedSimd.IsSupported` true. The helpers' real bodies exist only under that
+  macro; a default wasm build compiles their throwing stubs.
 - **The mask intersects detection.** `DN2CPP_CPU_FEATURES` narrows the detected
   set (the effective set is the implication closure of detected ∩ allowed) and
   can never make a getter true that detection left false.
