@@ -1,0 +1,13 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ — the 128-bit lane extracts and inserts of 64-bit
+# lanes (VEXTRACTF64X2 / VINSERTF64X2 and the integer forms) and the 256-bit ones of 32-bit
+# lanes (VEXTRACTF32X8 / VINSERTF32X8); every byte immediate is valid in .NET, the hardware
+# reads two bits or one.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ExtractVector128(v512f64,u8) @imm8 @ref(((($1 & 2) != 0 ? (($1 & 1) != 0 ? $0.GetUpper().GetUpper() : $0.GetUpper().GetLower()) : (($1 & 1) != 0 ? $0.GetLower().GetUpper() : $0.GetLower().GetLower())))) = _mm512_extractf64x2_pd($0, $1 & 3)
+ExtractVector128(v512{T},u8) @imm8 @ref(((($1 & 2) != 0 ? (($1 & 1) != 0 ? $0.GetUpper().GetUpper() : $0.GetUpper().GetLower()) : (($1 & 1) != 0 ? $0.GetLower().GetUpper() : $0.GetLower().GetLower())))) = _mm512_extracti64x2_epi64($0, $1 & 3) for T in i64,u64
+ExtractVector256(v512f32,u8) @imm8 @ref(($1 & 1) != 0 ? $0.GetUpper() : $0.GetLower()) = _mm512_extractf32x8_ps($0, $1 & 1)
+ExtractVector256(v512{T},u8) @imm8 @ref(($1 & 1) != 0 ? $0.GetUpper() : $0.GetLower()) = _mm512_extracti32x8_epi32($0, $1 & 1) for T in i32,u32
+InsertVector128(v512f64,v128f64,u8) @imm8 @ref((($2 & 2) != 0 ? $0.WithUpper(($2 & 1) != 0 ? $0.GetUpper().WithUpper($1) : $0.GetUpper().WithLower($1)) : $0.WithLower(($2 & 1) != 0 ? $0.GetLower().WithUpper($1) : $0.GetLower().WithLower($1)))) = _mm512_insertf64x2($0, $1, $2 & 3)
+InsertVector128(v512{T},v128{T},u8) @imm8 @ref((($2 & 2) != 0 ? $0.WithUpper(($2 & 1) != 0 ? $0.GetUpper().WithUpper($1) : $0.GetUpper().WithLower($1)) : $0.WithLower(($2 & 1) != 0 ? $0.GetLower().WithUpper($1) : $0.GetLower().WithLower($1)))) = _mm512_inserti64x2($0, $1, $2 & 3) for T in i64,u64
+InsertVector256(v512f32,v256f32,u8) @imm8 @ref(($2 & 1) != 0 ? $0.WithUpper($1) : $0.WithLower($1)) = _mm512_insertf32x8($0, $1, $2 & 1)
+InsertVector256(v512{T},v256{T},u8) @imm8 @ref(($2 & 1) != 0 ? $0.WithUpper($1) : $0.WithLower($1)) = _mm512_inserti32x8($0, $1, $2 & 1) for T in i32,u32

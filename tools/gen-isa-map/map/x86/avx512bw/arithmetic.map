@@ -1,0 +1,33 @@
+# System.Runtime.Intrinsics.X86.Avx512BW — byte and word arithmetic at 512 bits: the Sse2 /
+# Avx2 integer operations at twice Avx2's width. .NET 10 gates Avx512F, BW, CD, DQ and VL as
+# one instruction set (the token here requires all of them), and the JIT lowers this family's
+# methods with instructions from any of them, so every Avx512BW map file is compiled for that
+# whole set. Abs returns the unsigned lane type; Average rounds up; the saturating forms clamp
+# to the lane's range; MultiplyHigh keeps the upper 16 bits of each product,
+# MultiplyHighRoundScale the rounded bits 1..16 of a signed product; MultiplyAddAdjacent sums
+# each pair of adjacent products into the twice-width lane; SumAbsoluteDifferences sums eight
+# byte differences into each 64-bit lane; the InBlock32 form (VDBPSADBW) takes the control's
+# four 2-bit fields as the 32-bit-block selection of the second operand, every byte valid; the
+# packs saturate two operands into one register within each 128-bit lane.
+target = avx512f,avx512bw,avx512dq,avx512vl
+Abs(v512i8) @ref(Vector512.Abs($0).AsByte()) = _mm512_abs_epi8($0)
+Abs(v512i16) @ref(Vector512.Abs($0).AsUInt16()) = _mm512_abs_epi16($0)
+Add(v512{T},v512{T}) @ref(Vector512.Add($0, $1)) = _mm512_add_{epi}($0, $1) for T in i8,u8,i16,u16
+AddSaturate(v512{T},v512{T}) @ref(Vector512.AddSaturate($0, $1)) = _mm512_adds_{ep}($0, $1) for T in i8,u8,i16,u16
+Subtract(v512{T},v512{T}) @ref(Vector512.Subtract($0, $1)) = _mm512_sub_{epi}($0, $1) for T in i8,u8,i16,u16
+SubtractSaturate(v512{T},v512{T}) @ref(Vector512.SubtractSaturate($0, $1)) = _mm512_subs_{ep}($0, $1) for T in i8,u8,i16,u16
+Average(v512u8,v512u8) @ref(Vector512.Narrow(Vector512.ShiftRightLogical(Vector512.WidenLower($0) + Vector512.WidenLower($1) + Vector512<ushort>.One, 1), Vector512.ShiftRightLogical(Vector512.WidenUpper($0) + Vector512.WidenUpper($1) + Vector512<ushort>.One, 1))) = _mm512_avg_epu8($0, $1)
+Average(v512u16,v512u16) @ref(Vector512.Narrow(Vector512.ShiftRightLogical(Vector512.WidenLower($0) + Vector512.WidenLower($1) + Vector512<uint>.One, 1), Vector512.ShiftRightLogical(Vector512.WidenUpper($0) + Vector512.WidenUpper($1) + Vector512<uint>.One, 1))) = _mm512_avg_epu16($0, $1)
+Max(v512{T},v512{T}) @ref(Vector512.Max($0, $1)) = _mm512_max_{ep}($0, $1) for T in i8,u8,i16,u16
+Min(v512{T},v512{T}) @ref(Vector512.Min($0, $1)) = _mm512_min_{ep}($0, $1) for T in i8,u8,i16,u16
+MultiplyHigh(v512{T},v512{T}) = _mm512_mulhi_{ep}($0, $1) for T in i16,u16
+MultiplyHighRoundScale(v512i16,v512i16) = _mm512_mulhrs_epi16($0, $1)
+MultiplyLow(v512{T},v512{T}) @ref(Vector512.Multiply($0, $1)) = _mm512_mullo_epi16($0, $1) for T in i16,u16
+MultiplyAddAdjacent(v512i16,v512i16) = _mm512_madd_epi16($0, $1)
+MultiplyAddAdjacent(v512u8,v512i8) = _mm512_maddubs_epi16($0, $1)
+SumAbsoluteDifferences(v512u8,v512u8) = _mm512_sad_epu8($0, $1)
+SumAbsoluteDifferencesInBlock32(v512u8,v512u8,u8) @imm8 = _mm512_dbsad_epu8($0, $1, $2)
+PackSignedSaturate(v512i16,v512i16) = _mm512_packs_epi16($0, $1)
+PackSignedSaturate(v512i32,v512i32) = _mm512_packs_epi32($0, $1)
+PackUnsignedSaturate(v512i16,v512i16) = _mm512_packus_epi16($0, $1)
+PackUnsignedSaturate(v512i32,v512i32) = _mm512_packus_epi32($0, $1)

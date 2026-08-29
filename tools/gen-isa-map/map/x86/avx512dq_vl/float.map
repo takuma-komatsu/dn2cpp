@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ.VL — VFPCLASS, VRANGE and VREDUCE at 128 and 256 bits;
+# see avx512dq/float.map for the immediates.
+target = avx512f,avx512bw,avx512dq,avx512vl
+Classify(v{W}{T},u8) @imm8 = {mm}_movm_epi{bits}({mm}_fpclass_{ps|pd}_mask($0, $1)) for W in 128,256 for T in f32,f64
+Range(v{W}{T},v{W}{T},u8) @imm[0..16) = {mm}_range_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+Reduce(v{W}{T},u8) @imm8 = {mm}_reduce_{ps|pd}($0, $1) for W in 128,256 for T in f32,f64

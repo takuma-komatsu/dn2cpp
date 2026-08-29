@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.Avx512BW — the word-to-byte narrows (VPMOVWB truncating,
+# VPMOVSWB / VPMOVUSWB saturating to the signed / unsigned byte range) and the byte-to-word
+# widenings, sign- or zero-extending by the source lane type.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector256Byte(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsByte()) = _mm512_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector256ByteWithSaturation(v512u16) = _mm512_cvtusepi16_epi8($0)
+ConvertToVector256SByte(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsSByte()) = _mm512_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector256SByteWithSaturation(v512i16) = _mm512_cvtsepi16_epi8($0)
+ConvertToVector512Int16(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsInt16()) = _mm512_cvt{ep}_epi16($0) for T in i8,u8
+ConvertToVector512UInt16(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsUInt16()) = _mm512_cvt{ep}_epi16($0) for T in i8,u8

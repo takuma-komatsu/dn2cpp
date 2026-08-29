@@ -1,0 +1,25 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ — the 64-bit integer / float conversions. Integer to
+# float rounds under MXCSR (nearest-even by default) or embeds the FloatRoundingMode as
+# avx512f/arithmetic.map describes; float to integer rounds the same way, truncates, or
+# embeds the mode, which the references follow through Round / Floor / Ceiling / Truncate
+# (a float is widened to double first, exactly). The unsigned integer results carry no
+# reference (the integer indefinite for a negative or out-of-range input, where the portable
+# conversion saturates), nor do the long-to-float forms, whose single rounding the portable
+# layer cannot spell.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector256Single(v512{T}) = _mm512_cvt{ep}_ps($0) for T in i64,u64
+ConvertToVector256Single(v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_round{ep}_ps($0, ($1 & 3) | 8) for T in i64,u64
+ConvertToVector512Double(v512{T}) @ref(Vector512.ConvertToDouble($0)) = _mm512_cvt{ep}_pd($0) for T in i64,u64
+ConvertToVector512Double(v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_round{ep}_pd($0, ($1 & 3) | 8) for T in i64,u64
+ConvertToVector512Int64(v256f32) @ref(Vector512.ConvertToInt64(Vector512.Create(Vector256.WidenLower(Vector256.Round($0)), Vector256.WidenUpper(Vector256.Round($0))))) = _mm512_cvtps_epi64($0)
+ConvertToVector512Int64(v256f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref(Vector512.ConvertToInt64(Vector512.Create(Vector256.WidenLower((((int)$1 & 3) == 0 ? Vector256.Round($0) : ((int)$1 & 3) == 1 ? Vector256.Floor($0) : ((int)$1 & 3) == 2 ? Vector256.Ceiling($0) : Vector256.Truncate($0))), Vector256.WidenUpper((((int)$1 & 3) == 0 ? Vector256.Round($0) : ((int)$1 & 3) == 1 ? Vector256.Floor($0) : ((int)$1 & 3) == 2 ? Vector256.Ceiling($0) : Vector256.Truncate($0)))))) = _mm512_cvt_roundps_epi64($0, ($1 & 3) | 8)
+ConvertToVector512Int64(v512f64) @ref(Vector512.ConvertToInt64(Vector512.Round($0))) = _mm512_cvtpd_epi64($0)
+ConvertToVector512Int64(v512f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref(Vector512.ConvertToInt64((((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)))) = _mm512_cvt_roundpd_epi64($0, ($1 & 3) | 8)
+ConvertToVector512Int64WithTruncation(v256f32) @ref(Vector512.ConvertToInt64(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)))) = _mm512_cvttps_epi64($0)
+ConvertToVector512Int64WithTruncation(v512f64) @ref(Vector512.ConvertToInt64($0)) = _mm512_cvttpd_epi64($0)
+ConvertToVector512UInt64(v256f32) = _mm512_cvtps_epu64($0)
+ConvertToVector512UInt64(v256f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_roundps_epu64($0, ($1 & 3) | 8)
+ConvertToVector512UInt64(v512f64) = _mm512_cvtpd_epu64($0)
+ConvertToVector512UInt64(v512f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_roundpd_epu64($0, ($1 & 3) | 8)
+ConvertToVector512UInt64WithTruncation(v256f32) = _mm512_cvttps_epu64($0)
+ConvertToVector512UInt64WithTruncation(v512f64) = _mm512_cvttpd_epu64($0)

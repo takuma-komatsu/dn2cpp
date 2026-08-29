@@ -1,0 +1,24 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ.VL — the 64-bit integer / float conversions at 128 and
+# 256 bits, with avx512dq/convert.map's conventions; a result narrower than its register
+# zeroes the upper lanes, and the two-lane forms from four floats read the lower two.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector128Double(v128{T}) @ref(Vector128.ConvertToDouble($0)) = _mm_cvt{ep}_pd($0) for T in i64,u64
+ConvertToVector128Int64(v128f32) @ref(Vector128.ConvertToInt64(Vector128.WidenLower(Vector128.Round($0)))) = _mm_cvtps_epi64($0)
+ConvertToVector128Int64(v128f64) @ref(Vector128.ConvertToInt64(Vector128.Round($0))) = _mm_cvtpd_epi64($0)
+ConvertToVector128Int64WithTruncation(v128f32) @ref(Vector128.ConvertToInt64(Vector128.WidenLower($0))) = _mm_cvttps_epi64($0)
+ConvertToVector128Int64WithTruncation(v128f64) @ref(Vector128.ConvertToInt64($0)) = _mm_cvttpd_epi64($0)
+ConvertToVector128Single(v128{T}) = _mm_cvt{ep}_ps($0) for T in i64,u64
+ConvertToVector128Single(v256{T}) = _mm256_cvt{ep}_ps($0) for T in i64,u64
+ConvertToVector128UInt64(v128f32) = _mm_cvtps_epu64($0)
+ConvertToVector128UInt64(v128f64) = _mm_cvtpd_epu64($0)
+ConvertToVector128UInt64WithTruncation(v128f32) = _mm_cvttps_epu64($0)
+ConvertToVector128UInt64WithTruncation(v128f64) = _mm_cvttpd_epu64($0)
+ConvertToVector256Double(v256{T}) @ref(Vector256.ConvertToDouble($0)) = _mm256_cvt{ep}_pd($0) for T in i64,u64
+ConvertToVector256Int64(v128f32) @ref(Vector256.ConvertToInt64(Vector256.Create(Vector128.WidenLower(Vector128.Round($0)), Vector128.WidenUpper(Vector128.Round($0))))) = _mm256_cvtps_epi64($0)
+ConvertToVector256Int64(v256f64) @ref(Vector256.ConvertToInt64(Vector256.Round($0))) = _mm256_cvtpd_epi64($0)
+ConvertToVector256Int64WithTruncation(v128f32) @ref(Vector256.ConvertToInt64(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)))) = _mm256_cvttps_epi64($0)
+ConvertToVector256Int64WithTruncation(v256f64) @ref(Vector256.ConvertToInt64($0)) = _mm256_cvttpd_epi64($0)
+ConvertToVector256UInt64(v128f32) = _mm256_cvtps_epu64($0)
+ConvertToVector256UInt64(v256f64) = _mm256_cvtpd_epu64($0)
+ConvertToVector256UInt64WithTruncation(v128f32) = _mm256_cvttps_epu64($0)
+ConvertToVector256UInt64WithTruncation(v256f64) = _mm256_cvttpd_epu64($0)

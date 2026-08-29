@@ -1,0 +1,8 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ.VL — VPMULLQ at 128 and 256 bits, and the pair
+# broadcasts (VBROADCASTI32X2 / VBROADCASTF32X2) into 128 and 256 bits. The token requires the
+# whole .NET 10 AVX-512 unit (see avx512dq/arithmetic.map).
+target = avx512f,avx512bw,avx512dq,avx512vl
+MultiplyLow(v{W}{T},v{W}{T}) @ref(Vector{W}.Multiply($0, $1)) = {mm}_mullo_epi64($0, $1) for W in 128,256 for T in i64,u64
+BroadcastPairScalarToVector128(v128{T}) @ref(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1))) = _mm_broadcast_i32x2($0) for T in i32,u32
+BroadcastPairScalarToVector256(v128f32) @ref(Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)))) = _mm256_broadcast_f32x2($0)
+BroadcastPairScalarToVector256(v128{T}) @ref(Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)))) = _mm256_broadcast_i32x2($0) for T in i32,u32

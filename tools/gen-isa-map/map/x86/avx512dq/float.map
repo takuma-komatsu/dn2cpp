@@ -1,0 +1,27 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ — VFPCLASS, VRANGE and VREDUCE. Classify tests each
+# lane against the classes the immediate's bits name (QNaN, +0, -0, +inf, -inf, denormal,
+# negative, SNaN; every byte valid) and returns the mask as all-ones / all-zeros lanes
+# (VPMOVM2D / VPMOVM2Q); the scalar form classifies lane 0 into lane 0 and zeroes the rest.
+# Range selects min / max / absolute min / absolute max with the sign control of the
+# immediate's low four bits, the range .NET checks; Reduce subtracts the value rounded at the
+# scale and mode the immediate spells (every byte valid). The scalar forms keep the upper
+# lanes of the first operand, the one-operand ones passing the value as both operands as .NET
+# emits them. MoveMask collects the sign bits (VPMOVD2M / VPMOVQ2M; the 16-bit lanes through
+# VPMOVW2M) into an int.
+target = avx512f,avx512bw,avx512dq,avx512vl
+Classify(v512{T},u8) @imm8 = _mm512_movm_epi{bits}(_mm512_fpclass_{ps|pd}_mask($0, $1)) for T in f32,f64
+ClassifyScalar(v128{T},u8) @imm8 = _mm_movm_epi{bits}(_mm_fpclass_{ss|sd}_mask($0, $1)) for T in f32,f64
+Range(v512{T},v512{T},u8) @imm[0..16) = _mm512_range_{ps|pd}($0, $1, $2) for T in f32,f64
+RangeScalar(v128{T},v128{T},u8) @imm[0..16) = _mm_range_{ss|sd}($0, $1, $2) for T in f32,f64
+Reduce(v512{T},u8) @imm8 = _mm512_reduce_{ps|pd}($0, $1) for T in f32,f64
+ReduceScalar(v128{T},u8) @imm8 = _mm_reduce_{ss|sd}($0, $0, $1) for T in f32,f64
+ReduceScalar(v128{T},v128{T},u8) @imm8 = _mm_reduce_{ss|sd}($0, $1, $2) for T in f32,f64
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = (int32_t)_mm_movepi16_mask($0) for T in i16,u16
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = (int32_t)_mm_movepi32_mask($0) for T in i32,u32
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = (int32_t)_mm_movepi64_mask($0) for T in i64,u64
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = (int32_t)_mm_movepi{bits}_mask($0:{sT}) for T in f32,f64
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = (int32_t)_mm256_movepi32_mask($0) for T in i32,u32
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = (int32_t)_mm256_movepi64_mask($0) for T in i64,u64
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = (int32_t)_mm256_movepi{bits}_mask($0:{sT}) for T in f32,f64
+MoveMask(v512{T}) @ref((int)Vector512.ExtractMostSignificantBits($0)) = (int32_t)_mm512_movepi64_mask($0) for T in i64,u64
+MoveMask(v512f64) @ref((int)Vector512.ExtractMostSignificantBits($0)) = (int32_t)_mm512_movepi64_mask($0:i64)

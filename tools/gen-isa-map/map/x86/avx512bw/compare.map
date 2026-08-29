@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Avx512BW — byte and word comparisons: the mask register the
+# instruction writes, returned as all-ones / all-zeros lanes through VPMOVM2B / VPMOVM2W.
+target = avx512f,avx512bw,avx512dq,avx512vl
+CompareEqual(v512{T},v512{T}) @ref(Vector512.Equals($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpeq_{ep}_mask($0, $1)) for T in i8,u8,i16,u16
+CompareGreaterThan(v512{T},v512{T}) @ref(Vector512.GreaterThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpgt_{ep}_mask($0, $1)) for T in i8,u8,i16,u16
+CompareGreaterThanOrEqual(v512{T},v512{T}) @ref(Vector512.GreaterThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpge_{ep}_mask($0, $1)) for T in i8,u8,i16,u16
+CompareLessThan(v512{T},v512{T}) @ref(Vector512.LessThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmplt_{ep}_mask($0, $1)) for T in i8,u8,i16,u16
+CompareLessThanOrEqual(v512{T},v512{T}) @ref(Vector512.LessThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmple_{ep}_mask($0, $1)) for T in i8,u8,i16,u16
+CompareNotEqual(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.Equals($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmpneq_{ep}_mask($0, $1)) for T in i8,u8,i16,u16

@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ — the broadcasts DQ adds: a 64-bit pair of 32-bit
+# lanes into every pair (VBROADCASTI32X2 / VBROADCASTF32X2), and the 128 or 256 bits at a
+# pointer into every lane of the other element width than Avx512F's forms.
+target = avx512f,avx512bw,avx512dq,avx512vl
+BroadcastPairScalarToVector512(v128f32) @ref(Vector512.Create(Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1))), Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1))))) = _mm512_broadcast_f32x2($0)
+BroadcastPairScalarToVector512(v128{T}) @ref(Vector512.Create(Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1))), Vector256.Create(Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1)), Vector128.Create($0.GetElement(0), $0.GetElement(1), $0.GetElement(0), $0.GetElement(1))))) = _mm512_broadcast_i32x2($0) for T in i32,u32
+BroadcastVector128ToVector512(pf64) @ref(Vector512.Create(Vector256.Create(Vector128.Load($0), Vector128.Load($0)), Vector256.Create(Vector128.Load($0), Vector128.Load($0)))) = _mm512_broadcast_f64x2(_mm_loadu_pd($0))
+BroadcastVector128ToVector512(p{T}) @ref(Vector512.Create(Vector256.Create(Vector128.Load($0), Vector128.Load($0)), Vector256.Create(Vector128.Load($0), Vector128.Load($0)))) = _mm512_broadcast_i64x2(_mm_loadu_si128((const __m128i*)$0)) for T in i64,u64
+BroadcastVector256ToVector512(pf32) @ref(Vector512.Create(Vector256.Load($0), Vector256.Load($0))) = _mm512_broadcast_f32x8(_mm256_loadu_ps($0))
+BroadcastVector256ToVector512(p{T}) @ref(Vector512.Create(Vector256.Load($0), Vector256.Load($0))) = _mm512_broadcast_i32x8(_mm256_loadu_si256((const __m256i*)$0)) for T in i32,u32

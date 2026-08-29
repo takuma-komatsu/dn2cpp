@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.X86.Avx512DQ — the float-typed 512-bit logical operations (VANDPS
+# and friends; AndNot is the complement of the FIRST operand) and the 64-bit low multiply
+# (VPMULLQ). .NET 10 gates Avx512F, BW, CD, DQ and VL as one instruction set (the token here
+# requires all of them), and the JIT lowers this family's methods with instructions from any
+# of them, so every Avx512DQ map file is compiled for that whole set.
+target = avx512f,avx512bw,avx512dq,avx512vl
+And(v512{T},v512{T}) @ref(Vector512.BitwiseAnd($0, $1)) = _mm512_and_{ps|pd}($0, $1) for T in f32,f64
+AndNot(v512{T},v512{T}) @ref(Vector512.AndNot($1, $0)) = _mm512_andnot_{ps|pd}($0, $1) for T in f32,f64
+Or(v512{T},v512{T}) @ref(Vector512.BitwiseOr($0, $1)) = _mm512_or_{ps|pd}($0, $1) for T in f32,f64
+Xor(v512{T},v512{T}) @ref(Vector512.Xor($0, $1)) = _mm512_xor_{ps|pd}($0, $1) for T in f32,f64
+MultiplyLow(v512{T},v512{T}) @ref(Vector512.Multiply($0, $1)) = _mm512_mullo_epi64($0, $1) for T in i64,u64

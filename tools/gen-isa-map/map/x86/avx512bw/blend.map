@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Avx512BW — the mask-driven byte and word operations, the mask
+# a vector's sign bits (VPMOVB2M / VPMOVW2M) as in avx512f/blend.map. BlendVariable takes the
+# right operand's lane where the mask lane is negative; MoveMask collects the sign bits into an
+# int, or a long for the 64 bytes of a 512-bit vector.
+target = avx512f,avx512bw,avx512dq,avx512vl
+BlendVariable(v512{T},v512{T},v512{T}) @ref(Vector512.ConditionalSelect(Vector512.IsNegative($2.As<{cs}, {scs}>()).As<{scs}, {cs}>(), $1, $0)) = _mm512_mask_blend_epi{bits}(_mm512_movepi{bits}_mask($2), $0, $1) for T in i8,u8,i16,u16
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = (int32_t)_mm256_movepi8_mask($0) for T in i8,u8
+MoveMask(v512{T}) @ref((long)Vector512.ExtractMostSignificantBits($0)) = (int64_t)_mm512_movepi8_mask($0) for T in i8,u8
+MoveMask(v512{T}) @ref((int)Vector512.ExtractMostSignificantBits($0)) = (int32_t)_mm512_movepi16_mask($0) for T in i16,u16

@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.X86.Avx512BW — the byte and word loads, stores, masked forms and
+# broadcasts, with avx512f/loadstore.map's conventions (the mask a vector's sign bits, VPMOVB2M
+# / VPMOVW2M; a masked load reads only the selected lanes and takes the rest from the merge
+# operand, a masked store writes only the selected lanes).
+target = avx512f,avx512bw,avx512dq,avx512vl
+LoadVector512(p{T}) @ref(Vector512.Load($0)) = _mm512_loadu_si512((const void*)$0) for T in i8,u8,i16,u16
+Store(p{T},v512{T}) = _mm512_storeu_si512((void*)$0, $1) for T in i8,u8,i16,u16
+MaskLoad(p{T},v512{T},v512{T}) @ref(Vector512.ConditionalSelect(Vector512.IsNegative($1.As<{cs}, {scs}>()).As<{scs}, {cs}>(), Vector512.Load($0), $2)) = _mm512_mask_loadu_epi{bits}($2, _mm512_movepi{bits}_mask($1), (const void*)$0) for T in i8,u8,i16,u16
+MaskStore(p{T},v512{T},v512{T}) = _mm512_mask_storeu_epi{bits}((void*)$0, _mm512_movepi{bits}_mask($1), $2) for T in i8,u8,i16,u16
+BroadcastScalarToVector512(v128{T}) @ref(Vector512.Create($0.GetElement(0))) = _mm512_broadcastb_epi8($0) for T in i8,u8
+BroadcastScalarToVector512(v128{T}) @ref(Vector512.Create($0.GetElement(0))) = _mm512_broadcastw_epi16($0) for T in i16,u16
