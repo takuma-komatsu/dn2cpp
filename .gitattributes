@@ -6,3 +6,12 @@
 
 *.bat text eol=crlf
 *.cmd text eol=crlf
+
+# The ISA contract is generated and byte-compared by gen-isa-map --check, so its
+# inputs and outputs are pinned to LF explicitly rather than left to detection.
+runtime/core/isa/*.g.h text eol=lf
+runtime/core/isa/**/*.h text eol=lf
+runtime/core/isa/dn2cpp_isa_manifest.txt text eol=lf
+src/Dn2Cpp.Transpiler/*.g.cs text eol=lf
+tools/gen-isa-map/families.csv text eol=lf
+tools/gen-isa-map/map/** text eol=lf
