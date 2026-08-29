@@ -49,6 +49,10 @@
 //
 //   # comment                                blank lines and '#' lines are ignored
 //   target = sse4.2                          family-level default for DN2CPP_ISA_TARGET(...)
+//   derive = X86.Avx512F.VL, X86.Avx512BW.VL the rows of the listed families for every method this
+//                                            family shares with them (first source wins, an explicit
+//                                            row in this file wins over all), under this file's target;
+//                                            a method no source covers is an error
 //   Method(codes) [@ann ...] = expression    exact row: codes are the helper-name argument codes
 //   Method(v{W}{T},v{W}{T}) = vadd{q}_{neon}($0,$1) for W in 64,128 for T in i8,u8
 //                                            pattern row: repeated per width W and element T;
@@ -402,6 +406,10 @@ sealed class Family
     public List<Method> Methods = new();
     public string? Target;
     public string? TargetSource;
+    // The families whose rows this one takes for the methods it shares with them (the
+    // `derive =` directive), in precedence order; null for a family mapped directly.
+    public string[]? Derive;
+    public string? DeriveSource;
     public bool Preview;
     public bool HasRows => Methods.Any(m => m.Row is not null) || (Preview && Methods.Count > 0);
     public bool Covered => !NeverLowered && (Preview || Methods.All(m => m.Row is not null));
@@ -1096,6 +1104,39 @@ static class Maps
                 throw new ContractException($"{file}: {family.QualifiedName} has no feature bits and is never lowered");
             Parse(file, family);
         }
+        foreach (var f in families.Where(f => f.Derive is not null))
+            Derive(f, families);
+    }
+
+    // A derived family takes, for each method it shares with a source family (same name and
+    // argument codes), the source's row under its own file's target; the first source in the
+    // list wins, and an explicit row in the family's own file wins over every source. .NET 10's
+    // Avx10v1 is the AVX-512 VL and scalar surfaces re-exposed under one token, so copying the
+    // rows would drift silently; a method no source covers is an error rather than an unmapped
+    // method, so a surface addition to the derived family cannot hide behind the derivation.
+    static void Derive(Family f, List<Family> families)
+    {
+        string where = f.DeriveSource!;
+        var byKey = f.Methods.ToDictionary(m => m.Key, StringComparer.Ordinal);
+        foreach (string name in f.Derive!)
+        {
+            var src = families.FirstOrDefault(g => Contract.Display(g.QualifiedName) == name)
+                ?? throw new ContractException($"{where}: no family is named '{name}' (use the display name, e.g. X86.Avx512F.VL)");
+            if (src == f || src.Arch != f.Arch)
+                throw new ContractException($"{where}: {name} is not another {f.Arch} family");
+            if (src.Derive is not null)
+                throw new ContractException($"{where}: {name} derives its own rows; a source must be mapped directly");
+            if (!src.Methods.Any(m => m.Row is not null))
+                throw new ContractException($"{where}: {name} has no map rows to derive from");
+            foreach (var m in src.Methods)
+            {
+                if (m.Row is not null && byKey.TryGetValue(m.Key, out var mine) && mine.Row is null)
+                    mine.Row = m.Row with { Target = null, SourceLine = $"{where} (from {name}: {m.Row.SourceLine})" };
+            }
+        }
+        var uncovered = f.Methods.Where(m => m.Row is null).Select(m => m.Key).OrderBy(k => k, StringComparer.Ordinal).ToList();
+        if (uncovered.Count > 0)
+            throw new ContractException($"{where}: no source covers {uncovered.Count} method(s) of {f.QualifiedName}; add explicit rows for {string.Join(" ", uncovered)}");
     }
 
     sealed record RowSpec(string Method, string[] Codes, string[] Annotations, string Expression, string[] Widths, string[] Elems, string Where);
@@ -1142,6 +1183,21 @@ static class Maps
                     throw new ContractException($"{where}: target '{target}' disagrees with '{family.Target}' at {family.TargetSource}; a family has one target");
                 family.Target = target;
                 family.TargetSource = where;
+                continue;
+            }
+
+            if (line.StartsWith("derive", StringComparison.Ordinal) && line.Length > 6 && (line[6] == ' ' || line[6] == '='))
+            {
+                int eq = line.IndexOf('=');
+                if (eq < 0)
+                    throw new ContractException($"{where}: expected 'derive = <Arch.Family>, ...'");
+                string[] names = line.Substring(eq + 1).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (names.Length == 0)
+                    throw new ContractException($"{where}: empty derive list");
+                if (family.Derive is not null)
+                    throw new ContractException($"{where}: a second derive list; {family.DeriveSource} already has one");
+                family.Derive = names;
+                family.DeriveSource = where;
                 continue;
             }
 

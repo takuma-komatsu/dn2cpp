@@ -160,6 +160,14 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   than .NET's byte (`_mm256_extractf128_ps` reads one) is masked in the expression
   (`DN2CPP_IMM & 1`), as the hardware ignores the rest. `@target("...")` overrides the
   family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
+- `derive = X86.Avx512F.VL, X86.Avx512BW.VL, …` gives the family, for every method it shares
+  with a listed family (same name and argument codes), that family's row under this file's
+  `target =`; the first listed source wins where two define a method, an explicit row in the
+  same file wins over every source, and a method no source covers is an error rather than an
+  unmapped method, so a surface addition cannot hide behind the derivation. A source must be
+  mapped directly (not derive in turn) and a source row's `@target` is not carried. .NET 10's
+  `Avx10v1` is the AVX-512 VL and scalar surfaces under one token, which is what the directive
+  is for: copied rows would drift when a source row is fixed, and `--check` could not see it.
 - `@ref(<C# expression>)` names a portable `System.Runtime.Intrinsics` computation of the
   same result over `$0`, `$1`, … (`Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = …`;
   a pointer operand is dereferenced as `*$0`, an immediate is its literal). The generated
@@ -197,7 +205,8 @@ before `Sse3.X64` — and .NET's instruction-set implications, so `Dp` waits for
 `Popcnt` for `Sse42`: otherwise `Dp.IsSupported` could answer true while
 `AdvSimd.IsSupported` is the constant 0, a state .NET never has, and BCL code guarded by `Dp`
 would reach `AdvSimd` calls that throw. A family with no methods of its own is vacuously
-covered, and a family with no feature bits is never lowered. Nothing edits the `lowered`
+covered, a family with a `derive` list is covered by its sources' rows, and a family with no
+feature bits is never lowered. Nothing edits the `lowered`
 column of `CoreIntrinsics.PlatformIsa.g.cs` by hand; the transpiler checks the
 enclosing-before-nested rule against the table it reads, and
 `gates/build-and-run-platform-isa-surface.sh` re-derives the implication rule from the two
