@@ -55,8 +55,11 @@ table_families=$(awk -F'\t' '{ print $2 "\t" $4 }' <<<"$table_fields" | sort -u)
 table_tokens=$(awk -F'\t' '{ print $3 }' <<<"$table_fields" | sort -u)
 header_tokens=$(grep -oE 'DN2CPP_ISA_(X86|Arm|Wasm)_[A-Za-z0-9_]+' "$TOKENS_H" | sort -u)
 manifest=$(grep -v '^[[:space:]]*$' "$MANIFEST" | sort -u || true)
-# Helper DEFINITIONS in the per-arch headers; a tree with no header yet is empty.
-helper_defs=$(grep -ohE 'dn2cpp_isa_[a-z0-9_]+\(' runtime/core/isa/*/dn2cpp_isa_*.h 2>/dev/null | sed 's/($//' | sort -u || true)
+# Helper DEFINITIONS in the per-arch headers: the DN2CPP_ISA_INLINE declaration
+# lines, so the calls a body makes into dn2cpp_isa_common.h (dn2cpp_isa_require,
+# dn2cpp_isa_not_lowered, the shared arithmetic) do not count as helpers. A tree
+# with no header yet is empty.
+helper_defs=$(grep -hE 'DN2CPP_ISA_INLINE' runtime/core/isa/*/dn2cpp_isa_*.h 2>/dev/null | grep -oE 'dn2cpp_isa_[a-z0-9_]+\(' | sed 's/($//' | sort -u || true)
 
 echo "== 3/5 Family and token sets agree across the CLI, the table and the runtime header =="
 platform_isa_set_eq "family rows and Lowered flags: CLI vs table" \

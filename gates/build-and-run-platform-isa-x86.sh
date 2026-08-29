@@ -11,13 +11,15 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_platform_isa.sh"
 
 # The partial-mask pair for run P: our mask vs the .NET JIT knob that removes
-# the same family. The knob names are read off an x86-64 host's libclrjit
-# (`strings libclrjit.so | grep '^Enable'`) and confirmed there when the first
-# X86 family is Lowered — a wrong name fails loudly (oracle True vs ours False),
-# never silently. Run P is unreachable until then.
+# the same family. Bmi1 sits in .NET 10's AVX2 instruction set, which AVX
+# implies, so removing AVX removes Bmi1 on both sides and Bmi1 is the witness
+# while Avx itself is not yet Lowered. The knob
+# names are read off an x86-64 host's libclrjit (`strings libclrjit.so | grep
+# '^Enable'`) and confirmed there — a wrong name fails loudly (oracle True vs
+# ours False), never silently.
 PLATFORM_ISA_P_MASK="-Avx"
 PLATFORM_ISA_P_KNOBS="DOTNET_EnableAVX=0"
 PLATFORM_ISA_P_TRUE="X86.X86Base"
-PLATFORM_ISA_P_FALSE="X86.Avx"
+PLATFORM_ISA_P_FALSE="X86.Bmi1"
 
 platform_isa_native_gate x86

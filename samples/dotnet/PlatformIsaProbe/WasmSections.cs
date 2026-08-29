@@ -8,8 +8,7 @@ namespace PlatformIsaProbe;
 // The one Wasm family; see X86Sections for the probe rule.
 internal static class WasmSections
 {
-    // The PackedSimd exercise lands with its lowering
-    // (exercises["Wasm.PackedSimd"] = PackedSimdExercise;). None yet.
+    // The PackedSimd exercise lands with its lowering; see X86Sections.
     internal static void RegisterExercises(Dictionary<string, Action> exercises)
     {
     }

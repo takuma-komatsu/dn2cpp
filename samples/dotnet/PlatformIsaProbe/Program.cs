@@ -18,11 +18,10 @@ namespace PlatformIsaProbe;
 //
 // The contract block prints every selected row's IsSupported. Then each
 // selected top-level family gets a section: when supported it runs the
-// family's exercise (registered by the *Sections classes; none yet, so the
-// section is header-only), otherwise it calls one representative instruction,
-// which must throw PlatformNotSupportedException as it does in .NET. A
-// successful probe prints nothing, so the supported branch stays output-free
-// until exercise code lands.
+// family's exercise (registered by the *Sections classes; a family without
+// one prints a header-only section), otherwise it calls one representative
+// instruction, which must throw PlatformNotSupportedException as it does in
+// .NET. A successful probe prints nothing.
 //
 // Never print Vector128/256/512.IsHardwareAccelerated or Vector<T>.Count: they
 // flip under DOTNET_EnableHWIntrinsic=0, which is the oracle for the masked run.
@@ -164,7 +163,7 @@ internal static class Program
             ("Arm64", () => Arm.Sve2.Arm64.IsSupported)),
     };
 
-    // Exercise hook, keyed by top-level row name (X86.Sse2). A supported family
+    // Exercise hook, keyed by top-level row name (X86.Lzcnt). A supported family
     // with an entry runs it inside its section; the *Sections classes register.
     private static readonly Dictionary<string, Action> Exercises = new(StringComparer.Ordinal);
 
