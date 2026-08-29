@@ -433,14 +433,20 @@ static inline bool vec_any(const Dn2CppVec<N>& v, T value) {
 }
 
 // --- most-significant-bit extraction (sign bit per lane -> bitfield) ---
+// MaskFromVec is defined only for lanes that are all ones or all zeros, and
+// BitsFromMask relies on that (the wasm target narrows the lanes with a
+// saturating pack, which moves the top bit of an arbitrary value), so the sign
+// bit is broadcast over the lane first: every target then sees a real mask.
 template <class T, int N>
 static inline uint64_t vec_extract_msb(const Dn2CppVec<N>& v) {
     const hn::CappedTag<lane_t<T>, (size_t)(N / (int)sizeof(T))> d;
+    const hn::RebindToSigned<decltype(d)> di;
     const size_t total = (size_t)N / sizeof(T), step = hn::Lanes(d);
     uint64_t mask = 0;
     for (size_t i = 0; i < total; i += step) {
         auto vv = hn::LoadU(d, reinterpret_cast<const lane_t<T>*>(v.b) + i);
-        mask |= (uint64_t)hn::BitsFromMask(d, hn::MaskFromVec(vv)) << i;
+        auto sign = hn::BroadcastSignBit(hn::BitCast(di, vv));
+        mask |= (uint64_t)hn::BitsFromMask(di, hn::MaskFromVec(sign)) << i;
     }
     return mask;
 }
