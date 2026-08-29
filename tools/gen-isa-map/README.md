@@ -100,6 +100,7 @@ Store(p{T},t2v64{T}) = vst1_{neon}_x2($0, $1.*) for T in i8,u8
 Load2xVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x2($0), &$r*) for T in i8,u8
 Method(v128f32,u8) @imm8 = _mm_shuffle_ps($0,$0,$1)
 Method(v128f32,v128f32) @target("sse4.1") @throws = ...
+Method(i32,i32) @targetonly = ...
 ```
 
 - An exact row names the method and its argument codes exactly as in the helper name.
@@ -203,6 +204,11 @@ contract that a true getter always has a real helper body. wasm SIMD is a proper
 whole module (the CMake option `DN2CPP_WASM_SIMD` adds `-msimd128` everywhere), so a default
 wasm build compiles the stubs and its detector answers false. The macros come from
 `runtime/core/dn2cpp_cpu_features.h` and `runtime/core/isa/dn2cpp_isa_common.h`.
+`@targetonly` is the narrow exception for an API whose target, rather than its family token,
+is the capability: it omits `dn2cpp_isa_require` from the real body but retains the same
+arch/compiler guard and foreign-target throwing stub. The generator fixes this registry to
+`X86Base.CpuId`, whose .NET implementation is an x86 QCall even when hardware intrinsics are
+disabled.
 
 ## Lowered is derived
 

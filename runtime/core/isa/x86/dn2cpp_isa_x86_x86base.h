@@ -11,7 +11,6 @@
 #if DN2CPP_TARGET_X64
 DN2CPP_ISA_INLINE void dn2cpp_isa_x86_x86base_cpuid_i32_i32(int32_t a0, int32_t a1, int32_t* item1, int32_t* item2, int32_t* item3, int32_t* item4)
 {
-    dn2cpp_isa_require(DN2CPP_ISA_X86_X86Base, "System.Runtime.Intrinsics.X86.X86Base.CpuId");
     dn2cpp_isa_cpuid(a0, a1, item1, item2, item3, item4);
 }
 #else

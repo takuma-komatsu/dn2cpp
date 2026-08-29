@@ -36,7 +36,13 @@ internal static class X86Sections
         };
     }
 
-    internal static void ProbeX86Base() { _ = X86Base.CpuId(0, 0); }
+    internal static void ProbeX86Base()
+    {
+        (int eax, int ebx, int ecx, int edx) = X86Base.CpuId(0, 0);
+        Console.WriteLine("CpuId(0,0).target=" + Fmt.Bool(eax >= 1 &&
+            Fmt.IsPrintableAscii(ebx) && Fmt.IsPrintableAscii(edx) && Fmt.IsPrintableAscii(ecx)));
+        X86Base.Pause();
+    }
     internal static void ProbeLzcnt() { _ = Lzcnt.LeadingZeroCount(1u); }
     internal static void ProbePopcnt() { _ = Popcnt.PopCount(1u); }
     internal static void ProbeBmi1() { _ = Bmi1.TrailingZeroCount(1u); }

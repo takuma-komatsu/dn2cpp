@@ -281,6 +281,10 @@ capability contract, not a set of independent constants:
   (`dn2cpp_isa_require`): a call made while the token is false — the CPU lacks
   the ISA, or `DN2CPP_CPU_FEATURES` masked it — throws
   `PlatformNotSupportedException` as .NET does, never the instruction.
+  `X86Base.CpuId` is the target-capability exception: .NET implements it as
+  an x86 QCall, so disabling hardware intrinsics makes `X86Base.IsSupported`
+  false without disabling `CpuId`. Its generated helper omits the token check
+  on x86 and retains the foreign-target throwing stub.
 - **Cut ⟹ route via the `MdPlatformIsa` row.** Its predicate is the
   `ClassInfo.PlatformIsa` stamp rather than a name table: the nested types
   (`X64`, `Arm64`, `VL`, `V256`, `V512`) have bare names, so only a stamp made

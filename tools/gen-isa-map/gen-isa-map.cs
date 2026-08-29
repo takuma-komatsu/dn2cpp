@@ -83,6 +83,8 @@
 //     @exerciseimm=0    use this valid value in the generated exercise instead of the range's
 //                      midpoint; `@exerciseimm$k=0` names one of two immediate parameters
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
+//     @targetonly       the target guard is the capability: omit the family's run-time token
+//                      check while retaining the foreign-target throwing stub
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
 //     @ref(<C#>)       a portable System.Runtime.Intrinsics expression over $0, $1, ... that
 //                      computes the same result; the generated exercise prints ` ref=OK` or
@@ -96,7 +98,8 @@
 // (Contract.HelperCondition; wasm also tests __wasm_simd128__, since SIMD is a property of the
 // whole module) with the real body — which first tests the family's IsSupported token through
 // dn2cpp_isa_require, throwing PlatformNotSupportedException as .NET does for a call made while
-// IsSupported is false — and `#else` with a [[noreturn]] stub calling
+// IsSupported is false. A registry-checked @targetonly row omits only that test. The `#else` is
+// still a [[noreturn]] stub calling
 // dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"), so a foreign-arch dead arm in generated
 // code still compiles against a declaration.
 
@@ -468,7 +471,8 @@ sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values =
 }
 
 // Ref is the row's portable C# cross-check (@ref), spelled over the exercise's operands.
-sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref, bool Opaque, string SourceLine);
+sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref,
+    bool Opaque, bool TargetOnly, string SourceLine);
 
 static class Lowering
 {
@@ -950,6 +954,13 @@ static class Codes
 
 static class Maps
 {
+    // A target-only row bypasses the family token, so additions are an explicit contract
+    // decision rather than an annotation a new map can acquire silently.
+    static readonly HashSet<string> TargetOnlyRows = new(StringComparer.Ordinal)
+    {
+        "System.Runtime.Intrinsics.X86.X86Base.CpuId(i32,i32)",
+    };
+
     static readonly Regex RowStart = new(@"^([A-Za-z_][A-Za-z0-9_]*)\((.*?)\)\s*(.*)$", RegexOptions.Compiled);
     static readonly Regex ForClause = new(@"\s+for\s+([WT])\s+in\s+([a-z0-9]+(?:\s*,\s*[a-z0-9]+)*)\s*$", RegexOptions.Compiled);
     static readonly Regex ImmAnn = new(@"^@imm(?:\$(\d+))?\[(\d+)\.\.(\d+)([\)\]])$", RegexOptions.Compiled);
@@ -1127,6 +1138,23 @@ static class Maps
         }
         foreach (var f in families.Where(f => f.Derive is not null))
             Derive(f, families);
+        ValidateTargetOnlyRows(families);
+    }
+
+    static void ValidateTargetOnlyRows(List<Family> families)
+    {
+        var actual = families
+            .SelectMany(f => f.Methods
+                .Where(m => m.Row is { TargetOnly: true })
+                .Select(m => f.QualifiedName + "." + m.Key))
+            .ToHashSet(StringComparer.Ordinal);
+        if (!actual.SetEquals(TargetOnlyRows))
+        {
+            string missing = string.Join(" ", TargetOnlyRows.Except(actual).OrderBy(x => x, StringComparer.Ordinal));
+            string extra = string.Join(" ", actual.Except(TargetOnlyRows).OrderBy(x => x, StringComparer.Ordinal));
+            throw new ContractException(
+                $"target-only route registry changed; missing [{missing}], extra [{extra}]");
+        }
     }
 
     // A derived family takes, for each method it shares with a source family (same name and
@@ -1327,6 +1355,7 @@ static class Maps
         string? target = null;
         string? reference = null;
         bool opaque = false;
+        bool targetOnly = false;
         var imms = new List<ImmSpec>();
         var exerciseImms = new List<(int? Param, int Value, string Annotation)>();
         foreach (string raw in spec.Annotations)
@@ -1385,6 +1414,12 @@ static class Maps
             }
             else if (TargetAnn.Match(ann) is { Success: true } ta)
                 target = ta.Groups[1].Value;
+            else if (ann == "@targetonly")
+            {
+                if (targetOnly)
+                    throw new ContractException($"{where}: two @targetonly annotations");
+                targetOnly = true;
+            }
             else if (ann == "@opaque")
                 opaque = true;
             else if (ann != "@throws")
@@ -1428,7 +1463,8 @@ static class Maps
         }
 
         string expr = Substitute(spec.Expression, w, t, where);
-        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, opaque, where);
+        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, opaque,
+            targetOnly, where);
     }
 
     static string Substitute(string text, string w, string t, string where) =>
@@ -1717,9 +1753,10 @@ static class Emit
             string target = m.Row.Target ?? f.Target ?? "";
             string attr = target.Length > 0 ? $"DN2CPP_ISA_TARGET(\"{target}\") " : "";
             sb.Append(attr).Append("DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
-              .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n")
-              .Append("    dn2cpp_isa_require(").Append(f.Token).Append(", \"").Append(display).Append("\");\n")
-              .Append("    ").Append(body).Append("\n}\n");
+              .Append('(').Append(string.Join(", ", paramDecls)).Append(")\n{\n");
+            if (!m.Row.TargetOnly)
+                sb.Append("    dn2cpp_isa_require(").Append(f.Token).Append(", \"").Append(display).Append("\");\n");
+            sb.Append("    ").Append(body).Append("\n}\n");
         }
         sb.Append("#else\n");
         sb.Append("[[noreturn]] DN2CPP_ISA_INLINE ").Append(ret).Append(' ').Append(m.HelperName)
