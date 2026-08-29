@@ -1,0 +1,15 @@
+# System.Runtime.Intrinsics.X86.Sse3 — the horizontal pair operations, the alternating
+# add/subtract (even lanes subtract, odd lanes add), the duplicating moves and loads, and
+# LDDQU, an unaligned integer load that reads any element type as 128 bits.
+target = sse3
+AddSubtract(v128f32,v128f32) @ref(Vector128.ConditionalSelect(Vector128.Create(-1, 0, -1, 0).AsSingle(), Vector128.Subtract($0, $1), Vector128.Add($0, $1))) = _mm_addsub_ps($0, $1)
+AddSubtract(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.Create(-1L, 0L).AsDouble(), Vector128.Subtract($0, $1), Vector128.Add($0, $1))) = _mm_addsub_pd($0, $1)
+HorizontalAdd(v128f32,v128f32) @ref(Vector128.Create($0.GetElement(0) + $0.GetElement(1), $0.GetElement(2) + $0.GetElement(3), $1.GetElement(0) + $1.GetElement(1), $1.GetElement(2) + $1.GetElement(3))) = _mm_hadd_ps($0, $1)
+HorizontalAdd(v128f64,v128f64) @ref(Vector128.Create($0.GetElement(0) + $0.GetElement(1), $1.GetElement(0) + $1.GetElement(1))) = _mm_hadd_pd($0, $1)
+HorizontalSubtract(v128f32,v128f32) @ref(Vector128.Create($0.GetElement(0) - $0.GetElement(1), $0.GetElement(2) - $0.GetElement(3), $1.GetElement(0) - $1.GetElement(1), $1.GetElement(2) - $1.GetElement(3))) = _mm_hsub_ps($0, $1)
+HorizontalSubtract(v128f64,v128f64) @ref(Vector128.Create($0.GetElement(0) - $0.GetElement(1), $1.GetElement(0) - $1.GetElement(1))) = _mm_hsub_pd($0, $1)
+LoadAndDuplicateToVector128(pf64) @ref(Vector128.Create(*$0)) = _mm_loaddup_pd($0)
+LoadDquVector128(p{T}) @ref(Vector128.Load($0)) = _mm_lddqu_si128((const __m128i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+MoveAndDuplicate(v128f64) @ref(Vector128.Create($0.GetElement(0))) = _mm_movedup_pd($0)
+MoveHighAndDuplicate(v128f32) @ref(Vector128.Create($0.GetElement(1), $0.GetElement(1), $0.GetElement(3), $0.GetElement(3))) = _mm_movehdup_ps($0)
+MoveLowAndDuplicate(v128f32) @ref(Vector128.Create($0.GetElement(0), $0.GetElement(0), $0.GetElement(2), $0.GetElement(2))) = _mm_moveldup_ps($0)

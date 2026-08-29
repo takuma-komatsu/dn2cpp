@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Sse — bitwise operations on the single lanes. AndNot is
+# ANDNPS: the complement of the FIRST operand, so the portable AndNot's operands swap.
+target = sse
+And(v128f32,v128f32) @ref(Vector128.BitwiseAnd($0, $1)) = _mm_and_ps($0, $1)
+AndNot(v128f32,v128f32) @ref(Vector128.AndNot($1, $0)) = _mm_andnot_ps($0, $1)
+Or(v128f32,v128f32) @ref(Vector128.BitwiseOr($0, $1)) = _mm_or_ps($0, $1)
+Xor(v128f32,v128f32) @ref(Vector128.Xor($0, $1)) = _mm_xor_ps($0, $1)

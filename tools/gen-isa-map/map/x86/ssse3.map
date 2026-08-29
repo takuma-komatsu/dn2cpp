@@ -1,0 +1,23 @@
+# System.Runtime.Intrinsics.X86.Ssse3 — byte-granular integer operations. Abs returns the
+# unsigned element type, as .NET declares it. PALIGNR is the byte concatenation shifted
+# right by the immediate: 16..31 shift zeros in, 32 and above give zero, so every byte
+# value is valid. PSHUFB zeroes a lane whose index has bit 7 set and otherwise reads
+# `index & 15`, which the reference spells by masking the index to those bits before the
+# portable shuffle. PSIGN passes, negates or zeroes each lane by the sign of the second
+# operand's lane.
+target = ssse3
+Abs(v128i8) @ref(Vector128.Abs($0).AsByte()) = _mm_abs_epi8($0)
+Abs(v128i16) @ref(Vector128.Abs($0).AsUInt16()) = _mm_abs_epi16($0)
+Abs(v128i32) @ref(Vector128.Abs($0).AsUInt32()) = _mm_abs_epi32($0)
+AlignRight(v128{T},v128{T},u8) @imm8 = _mm_alignr_epi8($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64
+HorizontalAdd(v128i16,v128i16) @ref(Vector128.Create((short)($0.GetElement(0) + $0.GetElement(1)), (short)($0.GetElement(2) + $0.GetElement(3)), (short)($0.GetElement(4) + $0.GetElement(5)), (short)($0.GetElement(6) + $0.GetElement(7)), (short)($1.GetElement(0) + $1.GetElement(1)), (short)($1.GetElement(2) + $1.GetElement(3)), (short)($1.GetElement(4) + $1.GetElement(5)), (short)($1.GetElement(6) + $1.GetElement(7)))) = _mm_hadd_epi16($0, $1)
+HorizontalAdd(v128i32,v128i32) @ref(Vector128.Create($0.GetElement(0) + $0.GetElement(1), $0.GetElement(2) + $0.GetElement(3), $1.GetElement(0) + $1.GetElement(1), $1.GetElement(2) + $1.GetElement(3))) = _mm_hadd_epi32($0, $1)
+HorizontalAddSaturate(v128i16,v128i16) = _mm_hadds_epi16($0, $1)
+HorizontalSubtract(v128i16,v128i16) @ref(Vector128.Create((short)($0.GetElement(0) - $0.GetElement(1)), (short)($0.GetElement(2) - $0.GetElement(3)), (short)($0.GetElement(4) - $0.GetElement(5)), (short)($0.GetElement(6) - $0.GetElement(7)), (short)($1.GetElement(0) - $1.GetElement(1)), (short)($1.GetElement(2) - $1.GetElement(3)), (short)($1.GetElement(4) - $1.GetElement(5)), (short)($1.GetElement(6) - $1.GetElement(7)))) = _mm_hsub_epi16($0, $1)
+HorizontalSubtract(v128i32,v128i32) @ref(Vector128.Create($0.GetElement(0) - $0.GetElement(1), $0.GetElement(2) - $0.GetElement(3), $1.GetElement(0) - $1.GetElement(1), $1.GetElement(2) - $1.GetElement(3))) = _mm_hsub_epi32($0, $1)
+HorizontalSubtractSaturate(v128i16,v128i16) = _mm_hsubs_epi16($0, $1)
+MultiplyAddAdjacent(v128u8,v128i8) = _mm_maddubs_epi16($0, $1)
+MultiplyHighRoundScale(v128i16,v128i16) = _mm_mulhrs_epi16($0, $1)
+Shuffle(v128i8,v128i8) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((sbyte)-113))) = _mm_shuffle_epi8($0, $1)
+Shuffle(v128u8,v128u8) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((byte)143))) = _mm_shuffle_epi8($0, $1)
+Sign(v128{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.Equals($1, Vector128<{cs}>.Zero), Vector128<{cs}>.Zero, Vector128.ConditionalSelect(Vector128.LessThan($1, Vector128<{cs}>.Zero), Vector128.Negate($0), $0))) = _mm_sign_{epi}($0, $1) for T in i8,i16,i32

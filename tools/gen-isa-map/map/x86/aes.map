@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.Aes — one AES round in each direction, the last round,
+# the inverse MixColumns, and the key-schedule assist whose immediate is the round
+# constant (any byte).
+target = aes
+Decrypt(v128u8,v128u8) = _mm_aesdec_si128($0, $1)
+DecryptLast(v128u8,v128u8) = _mm_aesdeclast_si128($0, $1)
+Encrypt(v128u8,v128u8) = _mm_aesenc_si128($0, $1)
+EncryptLast(v128u8,v128u8) = _mm_aesenclast_si128($0, $1)
+InverseMixColumns(v128u8) = _mm_aesimc_si128($0)
+KeygenAssist(v128u8,u8) @imm8 = _mm_aeskeygenassist_si128($0, $1)

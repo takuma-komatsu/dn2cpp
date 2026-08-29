@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Pclmulqdq — PCLMULQDQ: the carry-less product of one
+# 64-bit lane of each operand, selected by bits 0 and 4 of the control; the other control
+# bits are ignored, so every byte value is valid.
+target = pclmul
+CarrylessMultiply(v128i64,v128i64,u8) @imm8 = _mm_clmulepi64_si128($0, $1, $2)
+CarrylessMultiply(v128u64,v128u64,u8) @imm8 = _mm_clmulepi64_si128($0, $1, $2)

@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.X86.Sse — lane movement. MOVHLPS / MOVLHPS move a 64-bit
+# half of the second operand into the first; the shuffle control selects two lanes of
+# each operand, two bits per result lane, low lanes from the first operand.
+target = sse
+MoveHighToLow(v128f32,v128f32) @ref(Vector128.Create($1.GetUpper(), $0.GetUpper())) = _mm_movehl_ps($0, $1)
+MoveLowToHigh(v128f32,v128f32) @ref(Vector128.Create($0.GetLower(), $1.GetLower())) = _mm_movelh_ps($0, $1)
+MoveMask(v128f32) @ref((int)Vector128.ExtractMostSignificantBits($0)) = _mm_movemask_ps($0)
+MoveScalar(v128f32,v128f32) @ref($0.WithElement(0, $1.GetElement(0))) = _mm_move_ss($0, $1)
+Shuffle(v128f32,v128f32,u8) @imm8 @ref(Vector128.Create($0.GetElement($2 & 3), $0.GetElement(($2 >> 2) & 3), $1.GetElement(($2 >> 4) & 3), $1.GetElement(($2 >> 6) & 3))) = _mm_shuffle_ps($0, $1, $2)
+UnpackHigh(v128f32,v128f32) @ref(Vector128.Create($0.GetElement(2), $1.GetElement(2), $0.GetElement(3), $1.GetElement(3))) = _mm_unpackhi_ps($0, $1)
+UnpackLow(v128f32,v128f32) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(1), $1.GetElement(1))) = _mm_unpacklo_ps($0, $1)
