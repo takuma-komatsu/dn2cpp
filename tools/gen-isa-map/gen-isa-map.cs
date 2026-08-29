@@ -22,13 +22,19 @@
 //
 // families.csv is the human-owned side of the contract: which families exist, which feature
 // bits each requires, and the landing order. The generator asserts that its family set equals
-// the metadata set, so a CoreLib update that adds or removes a family fails here first.
+// the metadata set, so a CoreLib update that adds or removes a family fails here first. The
+// feature bits and their implications are read from runtime/core/dn2cpp_cpu_features.h
+// (the DN2CPP_CPU_FEATURE_TABLE rows), the one place they are defined.
 //
 // `Lowered` is derived, never edited: a family is lowered when every public static method it
-// declares has a map row and, for a nested family, its enclosing family is lowered too, so
-// Sse3.X64.IsSupported can never report true while Sse3 calls are still unlowered. A family
-// with no methods of its own is vacuously covered; a family with no feature bits (Sve, Sve2)
-// is never lowered, whatever its maps say.
+// declares has a map row AND every family it implies is lowered — the families whose bits lie
+// in the implication closure of its own bits, which covers the enclosing type (a nested type
+// carries its enclosing type's bits) and .NET's instruction-set implications (Dp implies
+// AdvSimd). Otherwise Dp.IsSupported could answer true while AdvSimd.IsSupported is the
+// constant 0, a state .NET never has, and BCL code guarded by Dp would reach AdvSimd calls
+// that throw. A family with no methods of its own is vacuously covered; a family with no
+// feature bits (Sve, Sve2) is never lowered, whatever its maps say.
+//
 //
 // MAP GRAMMAR — tools/gen-isa-map/map/<arch>/<familypath>.map, one file per family, where
 // <familypath> is the lowercase type path below the arch namespace with '+' as '_'
@@ -112,18 +118,13 @@ if (!File.Exists(Path.Combine(toolDir, "families.csv")))
 
 try
 {
-    var families = Csv.Read(Path.Combine(toolDir, "families.csv"));
+    var cpu = CpuFeatures.Read(Path.Combine(root, "runtime", "core", "dn2cpp_cpu_features.h"));
+    var families = Csv.Read(Path.Combine(toolDir, "families.csv"), cpu);
     using var pe = new PEReader(File.OpenRead(corelibPath));
     var md = pe.GetMetadataReader();
     Surface.Populate(md, families);
     Maps.Apply(toolDir, families);
-    // Enclosing families precede nested ones (Csv.CheckOrder), so one forward pass settles Lowered.
-    var loweredByName = new Dictionary<string, bool>(StringComparer.Ordinal);
-    foreach (var f in families)
-    {
-        f.Lowered = f.Covered && (f.Enclosing is null || loweredByName[f.Enclosing]);
-        loweredByName[f.QualifiedName] = f.Lowered;
-    }
+    Lowering.Settle(families, cpu);
 
     var outputs = Emit.All(families);
     // The per-arch directories hold nothing but generated family headers, so any header no
@@ -209,11 +210,19 @@ static void Report(string corelibPath, List<Family> families)
     int methods = families.Sum(f => f.Methods.Count);
     int lowerable = families.Where(f => !f.NeverLowered).Sum(f => f.Methods.Count);
     int mapped = families.Sum(f => f.Methods.Count(m => m.Row is not null));
-    int lowered = families.Count(f => f.Lowered);
+    var lowered = families.Where(f => f.Lowered).Select(f => Contract.Display(f.QualifiedName)).ToList();
+    // Families whose own maps are complete but which imply an uncovered family.
+    var held = families.Where(f => f.Covered && !f.Lowered && f.HasRows)
+        .Select(f => $"{Contract.Display(f.QualifiedName)} (implies {string.Join(", ", f.Implied.Where(g => !g.Covered).Select(g => Contract.Display(g.QualifiedName)))})")
+        .ToList();
     Console.Error.WriteLine($"  corelib    {version}");
     Console.Error.WriteLine($"  families   {families.Count} ({families.Count(f => f.NeverLowered)} never lowered)");
     Console.Error.WriteLine($"  methods    {methods} ({lowerable} lowerable, {mapped} mapped)");
-    Console.Error.WriteLine($"  lowered    {lowered} family(ies), {families.Count(f => f.HasRows)} with helper headers");
+    Console.Error.WriteLine($"  lowered    {lowered.Count} family(ies), {families.Count(f => f.HasRows)} with helper headers");
+    if (lowered.Count > 0)
+        Console.Error.WriteLine($"             {string.Join(" ", lowered)}");
+    foreach (string h in held)
+        Console.Error.WriteLine($"  covered, not lowered: {h}");
 }
 
 // ---------------------------------------------------------------------------------------
@@ -255,21 +264,13 @@ static class Contract
         _ => "DN2CPP_TARGET_WASM32",
     };
 
-    // The feature-bit enumerators the runtime's detector defines, without the DN2CPP_CPU_
-    // prefix that families.csv omits. A typo in the csv fails here rather than in a C++ build.
-    public static readonly HashSet<string> Bits = new(StringComparer.Ordinal)
-    {
-        "X86_X86BASE", "X86_SSE", "X86_SSE2", "X86_SSE3", "X86_SSSE3", "X86_SSE41", "X86_SSE42",
-        "X86_POPCNT", "X86_AES", "X86_VAES", "X86_PCLMULQDQ", "X86_VPCLMULQDQ", "X86_LZCNT",
-        "X86_AVX", "X86_FMA", "X86_AVX2", "X86_BMI1", "X86_BMI2", "X86_AVXVNNI", "X86_AVXVNNIINT8",
-        "X86_AVXVNNIINT16", "X86_AVX512", "X86_AVX512VBMI", "X86_AVX512VBMI2", "X86_GFNI",
-        "X86_AVX10V1", "X86_AVX10V1_512", "X86_AVX10V2", "X86_AVX10V2_512", "X86_X86SERIALIZE",
-        "ARM_ARMBASE", "ARM_ADVSIMD", "ARM_AES", "ARM_CRC32", "ARM_SHA1", "ARM_SHA256", "ARM_DP", "ARM_RDM",
-        "WASM_PACKEDSIMD",
-    };
-
     public static string Token(string qualifiedName) =>
         "DN2CPP_ISA_" + qualifiedName.Substring(IntrinsicsPrefix.Length).Replace('.', '_').Replace('+', '_');
+
+    // The display name the gates and the probe use: X86.Lzcnt.X64.
+    public static string Display(string qualifiedName) =>
+        qualifiedName.Substring(IntrinsicsPrefix.Length).Replace('+', '.');
+
 
     // The type path below the arch namespace: "Sse2+X64" for System.Runtime.Intrinsics.X86.Sse2+X64.
     public static string TypePath(string qualifiedName, string arch) =>
@@ -281,6 +282,66 @@ static class Contract
 sealed class ContractException : Exception
 {
     public ContractException(string message) : base(message) { }
+}
+
+// ---------------------------------------------------------------------------------------
+// runtime/core/dn2cpp_cpu_features.h: the feature bits and what each implies.
+// ---------------------------------------------------------------------------------------
+
+sealed class CpuFeatures
+{
+    // X(ID, "Name", ARCH, parentsMask) rows of DN2CPP_CPU_FEATURE_TABLE; the mask is `0` or
+    // DN2CPP_CPU_<ID> terms joined by '|'.
+    static readonly Regex XRow = new(@"^\s*X\(([A-Z][A-Z0-9_]*),\s*""[^""]*"",\s*[A-Z0-9]+,\s*([^)]*)\)\s*\\?\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+    public readonly Dictionary<string, string[]> Parents = new(StringComparer.Ordinal);
+
+    public static CpuFeatures Read(string path)
+    {
+        if (!File.Exists(path))
+            throw new ContractException($"{path} not found — the feature bits and their implications are read from it");
+        var cpu = new CpuFeatures();
+        foreach (Match m in XRow.Matches(File.ReadAllText(path)))
+        {
+            string id = m.Groups[1].Value;
+            string mask = m.Groups[2].Value.Trim();
+            string[] parents = mask == "0"
+                ? Array.Empty<string>()
+                : mask.Split('|').Select(t => t.Trim()).Select(t =>
+                    t.StartsWith("DN2CPP_CPU_", StringComparison.Ordinal)
+                        ? t.Substring("DN2CPP_CPU_".Length)
+                        : throw new ContractException($"{path}: parent '{t}' of {id} is not a DN2CPP_CPU_ enumerator")).ToArray();
+            if (!cpu.Parents.TryAdd(id, parents))
+                throw new ContractException($"{path}: duplicate feature bit {id}");
+        }
+        if (cpu.Parents.Count == 0)
+            throw new ContractException($"{path}: no DN2CPP_CPU_FEATURE_TABLE rows found");
+        foreach (var (id, parents) in cpu.Parents)
+        {
+            foreach (string p in parents)
+            {
+                if (!cpu.Parents.ContainsKey(p))
+                    throw new ContractException($"{path}: {id} names parent {p}, which is not a feature bit");
+            }
+        }
+        return cpu;
+    }
+
+    // The bits and, transitively, every bit they imply.
+    public HashSet<string> Closure(IEnumerable<string> bits)
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        var work = new Stack<string>(bits);
+        while (work.Count > 0)
+        {
+            string b = work.Pop();
+            if (!set.Add(b))
+                continue;
+            foreach (string p in Parents[b])
+                work.Push(p);
+        }
+        return set;
+    }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -303,6 +364,8 @@ sealed class Family
     public bool HasRows => Methods.Any(m => m.Row is not null);
     public bool Covered => !NeverLowered && Methods.All(m => m.Row is not null);
     public bool Lowered;
+    // The families this one implies: every family whose bits lie in the closure of this one's.
+    public List<Family> Implied = new();
     public string HeaderRelPath => $"runtime/core/isa/{Arch}/dn2cpp_isa_{Arch}_{HelperPath}.h";
 }
 
@@ -317,6 +380,38 @@ sealed class Method
 }
 
 sealed record MapRow(string Expression, string? Target, int ImmRange /* 0 = none */, string SourceLine);
+
+static class Lowering
+{
+    // Lowered starts as Covered and only ever falls: a family drops when any family it implies
+    // is not lowered, until nothing changes. Families with equal bits (a type and its X64 /
+    // Arm64 nested type) imply each other and so are lowered together or not at all.
+    public static void Settle(List<Family> families, CpuFeatures cpu)
+    {
+        foreach (var f in families)
+        {
+            f.Lowered = f.Covered;
+            if (f.NeverLowered)
+                continue;
+            var closure = cpu.Closure(f.Bits);
+            f.Implied = families.Where(g => g != f && !g.NeverLowered && g.Bits.All(closure.Contains)).ToList();
+        }
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var f in families)
+            {
+                if (f.Lowered && f.Implied.Any(g => !g.Lowered))
+                {
+                    f.Lowered = false;
+                    changed = true;
+                }
+            }
+        }
+    }
+}
+
 
 enum TyKind { Void, Scalar, Vector, Pointer, ByRef, Tuple, VectorDef, TupleDef, Unsupported }
 
@@ -347,7 +442,7 @@ sealed record Ty(TyKind Kind, string Code = "", string Cpp = "", int Bits = 0, T
 
 static class Csv
 {
-    public static List<Family> Read(string path)
+    public static List<Family> Read(string path, CpuFeatures cpu)
     {
         var rows = File.ReadAllLines(path)
             .Select(l => l.Trim())
@@ -372,8 +467,8 @@ static class Csv
             string[] bits = c[2].Length == 0 ? Array.Empty<string>() : c[2].Split('|');
             foreach (string b in bits)
             {
-                if (!Contract.Bits.Contains(b))
-                    throw new ContractException($"{path}: unknown feature bit '{b}' in '{line}'");
+                if (!cpu.Parents.ContainsKey(b))
+                    throw new ContractException($"{path}: feature bit '{b}' in '{line}' is not a DN2CPP_CPU_FEATURE_TABLE row");
                 if (!b.StartsWith(arch.ToUpperInvariant() + "_", StringComparison.Ordinal))
                     throw new ContractException($"{path}: feature bit '{b}' belongs to another arch in '{line}'");
             }

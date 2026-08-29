@@ -339,13 +339,12 @@ if [ -f "$isa_table" ] && [ -f "$isa_header" ]; then
 else
     bad "the platform ISA token set: $isa_table and $isa_header must both exist (regenerate: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>)"
 fi
-# The CPU feature bits are written twice more: the runtime detector's X-macro
-# defines them, and the generator's Contract.Bits repeats the list so a typo in
+# The CPU feature bits have one definition, the runtime detector's X-macro; the
+# generator reads that header for the bit set and the implications, so a typo in
 # families.csv fails at generation instead of in a C++ build. Every bit the csv
 # spells must be a defined enumerator, or the tokens header expands to an
-# undefined macro on exactly the target the family is meant for; the two lists
-# must be identical, or the generator accepts (or rejects) a bit the runtime
-# does not (does) define.
+# undefined macro on exactly the target the family is meant for. The generator
+# must keep reading the header rather than growing a second list.
 cpu_header=runtime/core/dn2cpp_cpu_features.h
 isa_csv=tools/gen-isa-map/families.csv
 isa_gen=tools/gen-isa-map/gen-isa-map.cs
@@ -353,11 +352,11 @@ cpu_header_bits=$(grep -oE '^[[:space:]]*X\([A-Z][A-Z0-9_]*,' "$cpu_header" \
     | sed -E 's/^[[:space:]]*X\(/DN2CPP_CPU_/; s/,$//' | sort -u)
 csv_bits=$(awk -F, '!/^#/ && $1 != "qualified_name" && $3 != "" { print $3 }' "$isa_csv" \
     | tr '|' '\n' | sed 's/^/DN2CPP_CPU_/' | sort -u)
-gen_bits=$(sed -n '/HashSet<string> Bits = new/,/^    };/p' "$isa_gen" \
-    | grep -oE '"(X86|ARM|WASM)_[A-Z0-9_]+"' | tr -d '"' | sed 's/^/DN2CPP_CPU_/' | sort -u)
-set_eq "the CPU feature-bit set" \
-    "$isa_gen Contract.Bits" "$gen_bits" \
-    "$cpu_header DN2CPP_CPU_FEATURE_TABLE" "$cpu_header_bits"
+if grep -qF 'dn2cpp_cpu_features.h' "$isa_gen" && ! grep -qE 'HashSet<string> Bits' "$isa_gen"; then
+    ok "$isa_gen reads the feature bits from $cpu_header and keeps no list of its own"
+else
+    bad "$isa_gen must read the feature bits from $cpu_header (CpuFeatures.Read) and keep no Bits list of its own"
+fi
 csv_undefined=$(comm -23 <(printf '%s\n' "$csv_bits") <(printf '%s\n' "$cpu_header_bits") | tr '\n' ' ')
 if [ -z "${csv_undefined// }" ]; then
     ok "every feature bit $isa_csv references is defined by $cpu_header"

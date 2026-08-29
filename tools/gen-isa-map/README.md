@@ -31,9 +31,11 @@ Outputs:
 | `runtime/core/isa/<arch>/dn2cpp_isa_<arch>_<family>.h` | helpers of one family with map rows |
 | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` | the family table the transpiler reads |
 
-Inputs: `families.csv` (the family set, feature bits and landing order) and
-`map/<arch>/<family>.map` (the lowering of each method). The generator fails when the
-csv's family set differs from CoreLib's, naming both differences.
+Inputs: `families.csv` (the family set, feature bits and landing order),
+`runtime/core/dn2cpp_cpu_features.h` (the feature bits and what each implies) and
+`map/<arch>/<family>.map` (the lowering of each method). The generator fails when the csv's
+family set differs from CoreLib's, naming both differences, and when the csv names a bit
+the header does not define.
 
 ## Naming contract
 
@@ -114,8 +116,18 @@ generated code still compiles. The macros come from `runtime/core/isa/dn2cpp_isa
 
 ## Lowered is derived
 
-A family is lowered when every public static method it declares has a map row and, for a
-nested family, its enclosing family is lowered too; a family with no methods of its own is
-vacuously covered, and a family with no feature bits is never lowered. Nothing edits the
-`lowered` column of `CoreIntrinsics.PlatformIsa.g.cs` by hand, and the transpiler checks the
-enclosing-before-nested rule against the table it reads.
+A family is lowered when every public static method it declares has a map row and every
+family it implies is lowered too. The implied set comes from the feature bits: the families
+whose bits lie in the implication closure of its own (`families.csv` gives the bits,
+`runtime/core/dn2cpp_cpu_features.h`'s `DN2CPP_CPU_FEATURE_TABLE` parents give the
+implications, and the generator reads both). That covers the enclosing type — a nested type
+carries its enclosing type's bits, so `Sse3.X64` cannot be lowered before `Sse3`, nor `Sse3`
+before `Sse3.X64` — and .NET's instruction-set implications, so `Dp` waits for `AdvSimd` and
+`Popcnt` for `Sse42`: otherwise `Dp.IsSupported` could answer true while
+`AdvSimd.IsSupported` is the constant 0, a state .NET never has, and BCL code guarded by `Dp`
+would reach `AdvSimd` calls that throw. A family with no methods of its own is vacuously
+covered, and a family with no feature bits is never lowered. Nothing edits the `lowered`
+column of `CoreIntrinsics.PlatformIsa.g.cs` by hand; the transpiler checks the
+enclosing-before-nested rule against the table it reads, and
+`gates/build-and-run-platform-isa-surface.sh` re-derives the implication rule from the two
+sources.

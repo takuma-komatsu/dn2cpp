@@ -289,8 +289,13 @@ capability contract, not a set of independent constants:
   Lowered into `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` only
   when every public static method of it has a helper
   (`dn2cpp_isa_<arch>_<type>_<method>_<argsig>`) under `runtime/core/isa/`, and
-  a nested family may be Lowered only when its enclosing family is;
-  `gates/build-and-run-platform-isa-surface.sh` re-derives both.
+  every family it implies is Lowered too — the families whose feature bits lie
+  in the implication closure of its own (`DN2CPP_CPU_FEATURE_TABLE` parents),
+  which covers the enclosing family and .NET's instruction-set implications
+  (`Dp` ⟹ `AdvSimd`, `Popcnt` ⟹ `Sse42`). A child true beside a parent folded
+  to 0 is a state .NET never has, and BCL code guarded by the child would reach
+  the parent's throwing calls. `gates/build-and-run-platform-isa-surface.sh`
+  re-derives both rules from the csv and the header.
 - **The mask intersects detection.** `DN2CPP_CPU_FEATURES` narrows the detected
   set (the effective set is the implication closure of detected ∩ allowed) and
   can never make a getter true that detection left false.

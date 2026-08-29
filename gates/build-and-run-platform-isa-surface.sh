@@ -30,13 +30,13 @@ for f in "$PLATFORM_ISA_TABLE" "$TOKENS_H" "$MANIFEST"; do
     [ -f "$f" ] || { echo "FAIL: $f not found; regenerate with: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib $corelib" >&2; exit 1; }
 done
 
-echo "== 1/5 The generator reproduces the checked-in tree byte for byte =="
+echo "== 1/6 The generator reproduces the checked-in tree byte for byte =="
 # --check exits nonzero when regenerating would change any file, which is the
 # completeness proof: a family is written Lowered only when every public static
 # method has a map row, and a hand edit to any generated file fails here.
 dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib "$corelib" --check
 
-echo "== 2/5 The CLI's account of the surface =="
+echo "== 2/6 The CLI's account of the surface =="
 build_proj "samples/dotnet/$PLATFORM_ISA_PROJECT/$PLATFORM_ISA_PROJECT.csproj"
 app="samples/dotnet/$PLATFORM_ISA_PROJECT/bin/$CONFIG/$TFM/$PLATFORM_ISA_PROJECT.dll"
 [ -f "$app" ] || { echo "error: not built: $app" >&2; exit 1; }
@@ -61,7 +61,7 @@ manifest=$(grep -v '^[[:space:]]*$' "$MANIFEST" | sort -u || true)
 # with no header yet is empty.
 helper_defs=$(grep -hE 'DN2CPP_ISA_INLINE' runtime/core/isa/*/dn2cpp_isa_*.h 2>/dev/null | grep -oE 'dn2cpp_isa_[a-z0-9_]+\(' | sed 's/($//' | sort -u || true)
 
-echo "== 3/5 Family and token sets agree across the CLI, the table and the runtime header =="
+echo "== 3/6 Family and token sets agree across the CLI, the table and the runtime header =="
 platform_isa_set_eq "family rows and Lowered flags: CLI vs table" \
     "--dump-isa-surface" "$cli_families" "$PLATFORM_ISA_TABLE" "$table_families"
 platform_isa_set_eq "token set: CLI vs runtime header" \
@@ -69,11 +69,11 @@ platform_isa_set_eq "token set: CLI vs runtime header" \
 platform_isa_set_eq "token set: table vs runtime header" \
     "$PLATFORM_ISA_TABLE" "$table_tokens" "$TOKENS_H" "$header_tokens"
 
-echo "== 4/5 The helper manifest is exactly the set the runtime defines =="
+echo "== 4/6 The helper manifest is exactly the set the runtime defines =="
 platform_isa_set_eq "helper names: manifest vs runtime/core/isa/*/ definitions" \
     "$MANIFEST" "$manifest" "helper headers" "$helper_defs"
 
-echo "== 5/5 Every Lowered family has every helper, and a nested Lowered family has a Lowered parent =="
+echo "== 5/6 Every Lowered family has every helper, and a nested Lowered family has a Lowered parent =="
 n_lowered=$(grep -c . <<<"$cli_lowered" || true)
 if [ "$n_lowered" -eq 0 ]; then
     platform_isa_ok "no family is Lowered; the completeness check has nothing to cover"
@@ -98,6 +98,55 @@ while IFS= read -r fam; do
             ;;
     esac
 done <<<"$cli_lowered"
+
+echo "== 6/6 A Lowered family implies only Lowered families =="
+# The feature bits a family requires (families.csv) and what each bit implies
+# (the DN2CPP_CPU_FEATURE_TABLE parents in dn2cpp_cpu_features.h) define the
+# families a Lowered one must carry with it: every family whose bits lie in the
+# implication closure of its own. Otherwise Dp.IsSupported could be true while
+# AdvSimd.IsSupported is the constant 0, a state .NET never has. Re-derived here
+# from the two sources rather than trusted from the generator's table.
+cpu_header=runtime/core/dn2cpp_cpu_features.h
+isa_csv=tools/gen-isa-map/families.csv
+parents_tsv=$(sed -nE 's/^[[:space:]]*X\(([A-Z0-9_]+),[[:space:]]*"[^"]*",[[:space:]]*[A-Z0-9]+,[[:space:]]*([^)]*)\).*$/\1\t\2/p' "$cpu_header" \
+    | sed -E 's/DN2CPP_CPU_//g; s/[[:space:]]*\|[[:space:]]*/ /g; s/\t0$/\t/')
+family_bits=$(awk -F, '!/^#/ && $1 != "qualified_name" && $3 != "" { sub(/^System\.Runtime\.Intrinsics\./, "", $1); gsub(/\+/, ".", $1); print $1 "\t" $3 }' "$isa_csv" | tr '|' ' ')
+n_parents=$(grep -c . <<<"$parents_tsv" || true)
+n_bits=$(grep -cE '^[[:space:]]*X\(' "$cpu_header" || true)
+if [ "$n_parents" -ne "$n_bits" ] || [ "$n_parents" -eq 0 ]; then
+    platform_isa_bad "$cpu_header: $n_bits X(...) rows but $n_parents parse; a row's shape changed"
+else
+    platform_isa_ok "$cpu_header: $n_parents feature-bit rows with parents"
+fi
+implied_violations=$(awk -F'\t' -v lowered="$(tr '\n' ' ' <<<"$cli_lowered")" '
+    FNR == NR { n = split($2, ps, " "); parents[$1] = ""; for (i = 1; i <= n; i++) parents[$1] = parents[$1] " " ps[i]; next }
+    { bits[$1] = $2 }
+    END {
+        split(lowered, lw, " "); for (i in lw) if (lw[i] != "") isLowered[lw[i]] = 1
+        for (f in bits) {
+            if (!(f in isLowered)) continue
+            # closure of f'"'"'s bits
+            delete closure; n = split(bits[f], q, " "); head = 1; tail = n
+            for (i = 1; i <= n; i++) closure[q[i]] = 1
+            while (head <= tail) {
+                b = q[head++]; m = split(parents[b], ps, " ")
+                for (j = 1; j <= m; j++) if (ps[j] != "" && !(ps[j] in closure)) { closure[ps[j]] = 1; q[++tail] = ps[j] }
+            }
+            for (g in bits) {
+                if (g == f) continue
+                m = split(bits[g], gb, " "); inside = 1
+                for (j = 1; j <= m; j++) if (!(gb[j] in closure)) inside = 0
+                if (inside && !(g in isLowered)) print f " implies " g
+            }
+        }
+    }' <(printf '%s\n' "$parents_tsv") <(printf '%s\n' "$family_bits") | sort)
+if [ "$n_lowered" -eq 0 ]; then
+    platform_isa_ok "no family is Lowered; the implication rule has nothing to cover"
+elif [ -z "$implied_violations" ]; then
+    platform_isa_ok "every family a Lowered family implies is Lowered ($n_lowered Lowered families checked)"
+else
+    platform_isa_bad "Lowered families implying non-Lowered ones: $(tr '\n' ';' <<<"$implied_violations")"
+fi
 
 rm -rf "$scratch"
 echo
