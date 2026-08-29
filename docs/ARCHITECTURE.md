@@ -277,7 +277,10 @@ capability contract, not a set of independent constants:
   guarded arms, so their icalls never enter the reachability tree, and a call
   to one of the family's instructions routes to a `PlatformNotSupportedException`
   throw — what .NET does when `IsSupported` is false. Lowered getters read the
-  token at run time.
+  token at run time, and every lowered helper re-reads it before executing
+  (`dn2cpp_isa_require`): a call made while the token is false — the CPU lacks
+  the ISA, or `DN2CPP_CPU_FEATURES` masked it — throws
+  `PlatformNotSupportedException` as .NET does, never the instruction.
 - **Cut ⟹ route via the `MdPlatformIsa` row.** Its predicate is the
   `ClassInfo.PlatformIsa` stamp rather than a name table: the nested types
   (`X64`, `Arm64`, `VL`, `V256`, `V512`) have bare names, so only a stamp made
