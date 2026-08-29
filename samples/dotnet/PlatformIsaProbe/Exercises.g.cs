@@ -624,896 +624,896 @@ internal static class Exercises
         Console.WriteLine("LeadingZeroCount(v64u32)=" + Fmt.Hex(Arm.AdvSimd.LeadingZeroCount(Vector64.Create(4604796U, 9337503U)).AsByte()));
         Console.WriteLine("LeadingZeroCount(v64u8)=" + Fmt.Hex(Arm.AdvSimd.LeadingZeroCount(Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39)).AsByte()));
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((float*)p0);
             Console.WriteLine("Load2xVector64(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((short*)p0);
             Console.WriteLine("Load2xVector64(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((int*)p0);
             Console.WriteLine("Load2xVector64(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((sbyte*)p0);
             Console.WriteLine("Load2xVector64(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((ushort*)p0);
             Console.WriteLine("Load2xVector64(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((uint*)p0);
             Console.WriteLine("Load2xVector64(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64((byte*)p0);
             Console.WriteLine("Load2xVector64(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((float*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((short*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((int*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((sbyte*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((ushort*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((uint*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load2xVector64AndUnzip((byte*)p0);
             Console.WriteLine("Load2xVector64AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((float*)p0);
             Console.WriteLine("Load3xVector64(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((short*)p0);
             Console.WriteLine("Load3xVector64(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((int*)p0);
             Console.WriteLine("Load3xVector64(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((sbyte*)p0);
             Console.WriteLine("Load3xVector64(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((ushort*)p0);
             Console.WriteLine("Load3xVector64(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((uint*)p0);
             Console.WriteLine("Load3xVector64(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64((byte*)p0);
             Console.WriteLine("Load3xVector64(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((float*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((short*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((int*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((sbyte*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((ushort*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((uint*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load3xVector64AndUnzip((byte*)p0);
             Console.WriteLine("Load3xVector64AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((float*)p0);
             Console.WriteLine("Load4xVector64(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((short*)p0);
             Console.WriteLine("Load4xVector64(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((int*)p0);
             Console.WriteLine("Load4xVector64(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((sbyte*)p0);
             Console.WriteLine("Load4xVector64(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((ushort*)p0);
             Console.WriteLine("Load4xVector64(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((uint*)p0);
             Console.WriteLine("Load4xVector64(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64((byte*)p0);
             Console.WriteLine("Load4xVector64(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((float*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((short*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((int*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((sbyte*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((ushort*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((uint*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.Load4xVector64AndUnzip((byte*)p0);
             Console.WriteLine("Load4xVector64AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4.0f, 3.0f), Vector64.Create(1.0f, 0.0f)), (byte)0, (float*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((short)17964, (short)-29109, (short)-10646, (short)7817), Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288)), (byte)1, (short*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796, 9337503), Vector64.Create(8314215, 13046922)), (byte)0, (int*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39), Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68)), (byte)3, (sbyte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817), Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288)), (byte)1, (ushort*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796U, 9337503U), Vector64.Create(8314215U, 13046922U)), (byte)0, (uint*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68)), (byte)3, (byte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t2v64u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4.0f, 3.0f), Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f)), (byte)0, (float*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((short)17964, (short)-29109, (short)-10646, (short)7817), Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), Vector64.Create((short)-18630, (short)-167, (short)18296, (short)-28777)), (byte)1, (short*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796, 9337503), Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341)), (byte)0, (int*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39), Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68), Vector64.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97)), (byte)3, (sbyte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817), Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288), Vector64.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759)), (byte)1, (ushort*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796U, 9337503U), Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U)), (byte)0, (uint*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68), Vector64.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97)), (byte)3, (byte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t3v64u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4.0f, 3.0f), Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f), Vector64.Create(-5.0f, 4.25f)), (byte)0, (float*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((short)17964, (short)-29109, (short)-10646, (short)7817), Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), Vector64.Create((short)-18630, (short)-167, (short)18296, (short)-28777), Vector64.Create((short)-4159, (short)14304, (short)32767, (short)-14306)), (byte)1, (short*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796, 9337503), Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341), Vector64.Create(15733053, 20465760)), (byte)0, (int*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39), Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68), Vector64.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97), Vector64.Create((sbyte)123, (sbyte)-96, (sbyte)-59, (sbyte)-22, (sbyte)15, (sbyte)52, (sbyte)89, (sbyte)126)), (byte)3, (sbyte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817), Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288), Vector64.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759), Vector64.Create((ushort)61377, (ushort)14304, (ushort)32767, (ushort)51230)), (byte)1, (ushort*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create(4604796U, 9337503U), Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U), Vector64.Create(15733053U, 20465760U)), (byte)0, (uint*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             var r = Arm.AdvSimd.LoadAndInsertScalar((Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68), Vector64.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97), Vector64.Create((byte)123, (byte)160, (byte)197, (byte)234, (byte)15, (byte)52, (byte)89, (byte)126)), (byte)3, (byte*)p2);
             Console.WriteLine("LoadAndInsertScalar(t4v64u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128f32,u8,pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (byte)1, (float*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128f64,u8,pf64)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(2.0, 1.5), (byte)0, (double*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128i16,u8,pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), (byte)3, (short*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128i32,u8,pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(4604796, 9337503, 14070210, 18802917), (byte)1, (int*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128i64,u8,pi64)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(4828507740108L, 9791140695219L), (byte)0, (long*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128i8,u8,pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), (byte)7, (sbyte*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128u16,u8,pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), (byte)3, (ushort*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128u32,u8,pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (byte)1, (uint*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128u64,u8,pu64)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create(4828507740108UL, 9791140695219UL), (byte)0, (ulong*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v128u8,u8,pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), (byte)7, (byte*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64f32,u8,pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create(4.0f, 3.0f), (byte)0, (float*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64i16,u8,pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create((short)17964, (short)-29109, (short)-10646, (short)7817), (byte)1, (short*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64i32,u8,pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create(4604796, 9337503), (byte)0, (int*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64i8,u8,pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39), (byte)3, (sbyte*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64u16,u8,pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817), (byte)1, (ushort*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64u32,u8,pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create(4604796U, 9337503U), (byte)0, (uint*)p2).AsByte()));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             Console.WriteLine("LoadAndInsertScalar(v64u8,u8,pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndInsertScalar(Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), (byte)3, (byte*)p2).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((float*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((short*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((int*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((sbyte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((ushort*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((uint*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector128(pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector128((byte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((float*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((short*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((int*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((sbyte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((ushort*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((uint*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadAndReplicateToVector64(pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadAndReplicateToVector64((byte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((float*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((short*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((int*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((sbyte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((ushort*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((uint*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x2((byte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x2(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((float*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((short*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((int*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((sbyte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((ushort*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((uint*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x3((byte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x3(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((float*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((short*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((int*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((sbyte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((ushort*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((uint*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Arm.AdvSimd.LoadAndReplicateToVector64x4((byte*)p0);
             Console.WriteLine("LoadAndReplicateToVector64x4(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((float*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pf64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((double*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((short*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((int*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pi64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((long*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((sbyte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((ushort*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((uint*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pu64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((ulong*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector128(pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadVector128((byte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pf32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((float*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pf64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((double*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pi16)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((short*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pi32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((int*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pi64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((long*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pi8)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((sbyte*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pu16)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((ushort*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pu32)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((uint*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pu64)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((ulong*)p0).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("LoadVector64(pu8)=" + Fmt.Hex(Arm.AdvSimd.LoadVector64((byte*)p0).AsByte()));
         }
@@ -2351,701 +2351,701 @@ internal static class Exercises
         Console.WriteLine("SqrtScalar(v64f32)=" + Fmt.Hex(Arm.AdvSimd.SqrtScalar(Vector64.Create(4.0f, 3.0f)).AsByte()));
         Console.WriteLine("SqrtScalar(v64f64)=" + Fmt.Hex(Arm.AdvSimd.SqrtScalar(Vector64.Create(2.0)).AsByte()));
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f)));
             Console.WriteLine("Store(pf32,t2v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f)));
             Console.WriteLine("Store(pf32,t3v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f), Vector64.Create(3.5f, 2.5f)));
             Console.WriteLine("Store(pf32,t4v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("Store(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((float*)p0, Vector64.Create(1.0f, 0.0f));
             Console.WriteLine("Store(pf32,v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("Store(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((double*)p0, Vector64.Create(0.5));
             Console.WriteLine("Store(pf64,v64f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636)));
             Console.WriteLine("Store(pi16,t2v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107)));
             Console.WriteLine("Store(pi16,t3v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107), Vector64.Create((short)-11811, (short)6652, (short)25115, (short)-21958)));
             Console.WriteLine("Store(pi16,t4v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
             Console.WriteLine("Store(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((short*)p0, Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288));
             Console.WriteLine("Store(pi16,v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598)));
             Console.WriteLine("Store(pi32,t2v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017)));
             Console.WriteLine("Store(pi32,t3v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017), Vector64.Create(30570729, 35303436)));
             Console.WriteLine("Store(pi32,t4v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("Store(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((int*)p0, Vector64.Create(8314215, 13046922));
             Console.WriteLine("Store(pi32,v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("Store(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((long*)p0, Vector64.Create(8718138975195L));
             Console.WriteLine("Store(pi64,v64i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72)));
             Console.WriteLine("Store(pi8,t2v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43)));
             Console.WriteLine("Store(pi8,t3v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43), Vector64.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14)));
             Console.WriteLine("Store(pi8,t4v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
             Console.WriteLine("Store(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((sbyte*)p0, Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68));
             Console.WriteLine("Store(pi8,v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636)));
             Console.WriteLine("Store(pu16,t2v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107)));
             Console.WriteLine("Store(pu16,t3v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107), Vector64.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578)));
             Console.WriteLine("Store(pu16,t4v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
             Console.WriteLine("Store(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ushort*)p0, Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288));
             Console.WriteLine("Store(pu16,v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U)));
             Console.WriteLine("Store(pu32,t2v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U)));
             Console.WriteLine("Store(pu32,t3v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U), Vector64.Create(30570729U, 35303436U)));
             Console.WriteLine("Store(pu32,t4v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("Store(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((uint*)p0, Vector64.Create(8314215U, 13046922U));
             Console.WriteLine("Store(pu32,v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("Store(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((ulong*)p0, Vector64.Create(8718138975195UL));
             Console.WriteLine("Store(pu64,v64u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184)));
             Console.WriteLine("Store(pu8,t2v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213)));
             Console.WriteLine("Store(pu8,t3v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213), Vector64.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242)));
             Console.WriteLine("Store(pu8,t4v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
             Console.WriteLine("Store(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.Store((byte*)p0, Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68));
             Console.WriteLine("Store(pu8,v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf32,t2v64f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf32,t3v64f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f), Vector64.Create(3.5f, 2.5f)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf32,t4v64f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pf32,v128f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((float*)p0, Vector64.Create(1.0f, 0.0f), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf32,v64f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((double*)p0, Vector128.Create(0.5, 0.0), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf64,v128f64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi16,t2v64i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi16,t3v64i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107), Vector64.Create((short)-11811, (short)6652, (short)25115, (short)-21958)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi16,t4v64i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi16,v128i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((short*)p0, Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi16,v64i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi32,t2v64i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi32,t3v64i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017), Vector64.Create(30570729, 35303436)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi32,t4v64i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi32,v128i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((int*)p0, Vector64.Create(8314215, 13046922), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi32,v64i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((long*)p0, Vector128.Create(8718138975195L, 13680771930306L), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi64,v128i64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi8,t2v64i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi8,t3v64i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43), Vector64.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi8,t4v64i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), (byte)7);
             Console.WriteLine("StoreSelectedScalar(pi8,v128i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((sbyte*)p0, Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi8,v64i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu16,t2v64u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu16,t3v64u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107), Vector64.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578)), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu16,t4v64u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu16,v128u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ushort*)p0, Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu16,v64u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu32,t2v64u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu32,t3v64u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U), Vector64.Create(30570729U, 35303436U)), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu32,t4v64u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu32,v128u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((uint*)p0, Vector64.Create(8314215U, 13046922U), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu32,v64u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu64,v128u64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu8,t2v64u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu8,t3v64u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213), Vector64.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242)), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu8,t4v64u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), (byte)7);
             Console.WriteLine("StoreSelectedScalar(pu8,v128u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreSelectedScalar((byte*)p0, Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu8,v64u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f)));
             Console.WriteLine("StoreVectorAndZip(pf32,t2v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f)));
             Console.WriteLine("StoreVectorAndZip(pf32,t3v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((float*)p0, (Vector64.Create(2.25f, 1.25f), Vector64.Create(-0.75f, -1.75f), Vector64.Create(-3.75f, -4.75f), Vector64.Create(3.5f, 2.5f)));
             Console.WriteLine("StoreVectorAndZip(pf32,t4v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636)));
             Console.WriteLine("StoreVectorAndZip(pi16,t2v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107)));
             Console.WriteLine("StoreVectorAndZip(pi16,t3v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((short*)p0, (Vector64.Create((short)10312, (short)28775, (short)-18298, (short)165), Vector64.Create((short)24783, (short)-22290, (short)-3827, (short)14636), Vector64.Create((short)-26282, (short)-7819, (short)10644, (short)29107), Vector64.Create((short)-11811, (short)6652, (short)25115, (short)-21958)));
             Console.WriteLine("StoreVectorAndZip(pi16,t4v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598)));
             Console.WriteLine("StoreVectorAndZip(pi32,t2v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017)));
             Console.WriteLine("StoreVectorAndZip(pi32,t3v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((int*)p0, (Vector64.Create(19442472, 24175179), Vector64.Create(23151891, 27884598), Vector64.Create(26861310, 31594017), Vector64.Create(30570729, 35303436)));
             Console.WriteLine("StoreVectorAndZip(pi32,t4v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72)));
             Console.WriteLine("StoreVectorAndZip(pi8,t2v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43)));
             Console.WriteLine("StoreVectorAndZip(pi8,t3v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((sbyte*)p0, (Vector64.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101), Vector64.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72), Vector64.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43), Vector64.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14)));
             Console.WriteLine("StoreVectorAndZip(pi8,t4v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636)));
             Console.WriteLine("StoreVectorAndZip(pu16,t2v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107)));
             Console.WriteLine("StoreVectorAndZip(pu16,t3v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((ushort*)p0, (Vector64.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165), Vector64.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636), Vector64.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107), Vector64.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578)));
             Console.WriteLine("StoreVectorAndZip(pu16,t4v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U)));
             Console.WriteLine("StoreVectorAndZip(pu32,t2v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U)));
             Console.WriteLine("StoreVectorAndZip(pu32,t3v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((uint*)p0, (Vector64.Create(19442472U, 24175179U), Vector64.Create(23151891U, 27884598U), Vector64.Create(26861310U, 31594017U), Vector64.Create(30570729U, 35303436U)));
             Console.WriteLine("StoreVectorAndZip(pu32,t4v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184)));
             Console.WriteLine("StoreVectorAndZip(pu8,t2v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213)));
             Console.WriteLine("StoreVectorAndZip(pu8,t3v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Arm.AdvSimd.StoreVectorAndZip((byte*)p0, (Vector64.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155), Vector64.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184), Vector64.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213), Vector64.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242)));
             Console.WriteLine("StoreVectorAndZip(pu8,t4v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -3420,1181 +3420,1181 @@ internal static class Exercises
             Console.WriteLine("Arm64.InsertSelectedScalar(v64u8,u8,v128u8,u8)=" + Fmt.Hex(Arm.AdvSimd.Arm64.InsertSelectedScalar(Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), (byte)3, Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137), (byte)7).AsByte()));
             Console.WriteLine("Arm64.InsertSelectedScalar(v64u8,u8,v64u8,u8)=" + Fmt.Hex(Arm.AdvSimd.Arm64.InsertSelectedScalar(Vector64.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39), (byte)3, Vector64.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97), (byte)3).AsByte()));
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((float*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((double*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((short*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((int*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((long*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((sbyte*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((ushort*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((uint*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((ulong*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128((byte*)p0);
                 Console.WriteLine("Arm64.Load2xVector128(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((float*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((double*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((short*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((int*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((long*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((sbyte*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((ushort*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((uint*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((ulong*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load2xVector128AndUnzip((byte*)p0);
                 Console.WriteLine("Arm64.Load2xVector128AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((float*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((double*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((short*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((int*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((long*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((sbyte*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((ushort*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((uint*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((ulong*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128((byte*)p0);
                 Console.WriteLine("Arm64.Load3xVector128(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((float*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((double*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((short*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((int*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((long*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((sbyte*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((ushort*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((uint*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((ulong*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load3xVector128AndUnzip((byte*)p0);
                 Console.WriteLine("Arm64.Load3xVector128AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((float*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((double*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((short*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((int*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((long*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((sbyte*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((ushort*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((uint*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((ulong*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128((byte*)p0);
                 Console.WriteLine("Arm64.Load4xVector128(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((float*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((double*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((short*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((int*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((long*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((sbyte*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((ushort*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((uint*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((ulong*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.Load4xVector128AndUnzip((byte*)p0);
                 Console.WriteLine("Arm64.Load4xVector128AndUnzip(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f)), (byte)1, (float*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(2.0, 1.5), Vector128.Create(0.5, 0.0)), (byte)0, (double*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128f64,u8,pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)), (byte)3, (short*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create(8314215, 13046922, 17779629, 22512336)), (byte)1, (int*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108L, 9791140695219L), Vector128.Create(8718138975195L, 13680771930306L)), (byte)0, (long*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128i64,u8,pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108)), (byte)7, (sbyte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604)), (byte)3, (ushort*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U)), (byte)1, (uint*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108UL, 9791140695219UL), Vector128.Create(8718138975195UL, 13680771930306UL)), (byte)0, (ulong*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128u64,u8,pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)), (byte)7, (byte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t2v128u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Vector128.Create(-2.0f, -3.0f, -4.0f, -5.0f)), (byte)1, (float*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(2.0, 1.5), Vector128.Create(0.5, 0.0), Vector128.Create(-1.0, -1.5)), (byte)0, (double*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128f64,u8,pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461)), (byte)3, (short*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create(8314215, 13046922, 17779629, 22512336), Vector128.Create(12023634, 16756341, 21489048, 26221755)), (byte)1, (int*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108L, 9791140695219L), Vector128.Create(8718138975195L, 13680771930306L), Vector128.Create(12607770210282L, 17570403165393L)), (byte)0, (long*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128i64,u8,pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119)), (byte)7, (sbyte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075)), (byte)3, (ushort*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U)), (byte)1, (uint*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108UL, 9791140695219UL), Vector128.Create(8718138975195UL, 13680771930306UL), Vector128.Create(12607770210282UL, 17570403165393UL)), (byte)0, (ulong*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128u64,u8,pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137)), (byte)7, (byte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t3v128u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Vector128.Create(-2.0f, -3.0f, -4.0f, -5.0f), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f)), (byte)1, (float*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128f32,u8,pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(2.0, 1.5), Vector128.Create(0.5, 0.0), Vector128.Create(-1.0, -1.5), Vector128.Create(-2.5, 2.125)), (byte)0, (double*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128f64,u8,pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461), Vector128.Create((short)-4159, (short)14304, (short)32767, (short)-14306, (short)4157, (short)22620, (short)-24453, (short)-5990)), (byte)3, (short*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128i16,u8,pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create(8314215, 13046922, 17779629, 22512336), Vector128.Create(12023634, 16756341, 21489048, 26221755), Vector128.Create(15733053, 20465760, 25198467, 29931174)), (byte)1, (int*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128i32,u8,pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108L, 9791140695219L), Vector128.Create(8718138975195L, 13680771930306L), Vector128.Create(12607770210282L, 17570403165393L), Vector128.Create(16497401445369L, 21460034400480L)), (byte)0, (long*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128i64,u8,pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119), Vector128.Create((sbyte)123, (sbyte)-96, (sbyte)-59, (sbyte)-22, (sbyte)15, (sbyte)52, (sbyte)89, (sbyte)126, (sbyte)-93, (sbyte)-56, (sbyte)-19, (sbyte)18, (sbyte)55, (sbyte)92, (sbyte)-127, (sbyte)-90)), (byte)7, (sbyte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128i8,u8,pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075), Vector128.Create((ushort)61377, (ushort)14304, (ushort)32767, (ushort)51230, (ushort)4157, (ushort)22620, (ushort)41083, (ushort)59546)), (byte)3, (ushort*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128u16,u8,pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U), Vector128.Create(15733053U, 20465760U, 25198467U, 29931174U)), (byte)1, (uint*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128u32,u8,pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create(4828507740108UL, 9791140695219UL), Vector128.Create(8718138975195UL, 13680771930306UL), Vector128.Create(12607770210282UL, 17570403165393UL), Vector128.Create(16497401445369UL, 21460034400480UL)), (byte)0, (ulong*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128u64,u8,pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw2 = stackalloc byte[96];
-                byte* p2 = Fmt.Align(raw2, 32);
+                byte* raw2 = stackalloc byte[128];
+                byte* p2 = Fmt.Align(raw2, 64);
                 Fmt.Fill(p2, 64, 3);
                 var r = Arm.AdvSimd.Arm64.LoadAndInsertScalar((Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137), Vector128.Create((byte)123, (byte)160, (byte)197, (byte)234, (byte)15, (byte)52, (byte)89, (byte)126, (byte)163, (byte)200, (byte)237, (byte)18, (byte)55, (byte)92, (byte)129, (byte)166)), (byte)7, (byte*)p2);
                 Console.WriteLine("Arm64.LoadAndInsertScalar(t4v128u8,u8,pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128(pf64)=" + Fmt.Hex(Arm.AdvSimd.Arm64.LoadAndReplicateToVector128((double*)p0).AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128(pi64)=" + Fmt.Hex(Arm.AdvSimd.Arm64.LoadAndReplicateToVector128((long*)p0).AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128(pu64)=" + Fmt.Hex(Arm.AdvSimd.Arm64.LoadAndReplicateToVector128((ulong*)p0).AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((float*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((double*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((short*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((int*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((long*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((ushort*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((uint*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((ulong*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x2((byte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x2(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((float*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((double*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((short*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((int*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((long*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((ushort*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((uint*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((ulong*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x3((byte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x3(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((float*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((double*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((short*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((int*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((long*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((ushort*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((uint*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((ulong*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadAndReplicateToVector128x4((byte*)p0);
                 Console.WriteLine("Arm64.LoadAndReplicateToVector128x4(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()) + "," + Fmt.Hex(r.Item3.AsByte()) + "," + Fmt.Hex(r.Item4.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64((float*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64((int*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64NonTemporal((float*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64NonTemporal(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64NonTemporal((int*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64NonTemporal(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairScalarVector64NonTemporal((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairScalarVector64NonTemporal(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((float*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((double*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((short*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((int*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((long*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((ushort*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((ulong*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128((byte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((float*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((double*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((short*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((int*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((long*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((ushort*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((ulong*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector128NonTemporal((byte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector128NonTemporal(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((float*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((double*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((short*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((int*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((long*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((ushort*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((ulong*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64((byte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((float*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pf32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((double*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pf64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((short*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pi16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((int*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pi32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((long*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pi64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((sbyte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pi8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((ushort*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pu16)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((uint*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pu32)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((ulong*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pu64)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 var r = Arm.AdvSimd.Arm64.LoadPairVector64NonTemporal((byte*)p0);
                 Console.WriteLine("Arm64.LoadPairVector64NonTemporal(pu8)=" + Fmt.Hex(r.Item1.AsByte()) + "," + Fmt.Hex(r.Item2.AsByte()));
@@ -4795,953 +4795,953 @@ internal static class Exercises
             Console.WriteLine("Arm64.Sqrt(v128f64)=" + Fmt.Hex(Arm.AdvSimd.Arm64.Sqrt(Vector128.Create(2.0, 1.5)).AsByte()));
             Console.WriteLine("Arm64.Sqrt(v64f32)=" + Fmt.Hex(Arm.AdvSimd.Arm64.Sqrt(Vector64.Create(4.0f, 3.0f)).AsByte()));
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f)));
                 Console.WriteLine("Arm64.Store(pf32,t2v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f)));
                 Console.WriteLine("Arm64.Store(pf32,t3v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f), Vector128.Create(3.5f, 2.5f, 1.5f, 0.5f)));
                 Console.WriteLine("Arm64.Store(pf32,t4v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875)));
                 Console.WriteLine("Arm64.Store(pf64,t2v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375)));
                 Console.WriteLine("Arm64.Store(pf64,t3v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375), Vector128.Create(1.75, 1.25)));
                 Console.WriteLine("Arm64.Store(pf64,t4v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952)));
                 Console.WriteLine("Arm64.Store(pi16,t2v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113)));
                 Console.WriteLine("Arm64.Store(pi16,t3v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113), Vector128.Create((short)-11811, (short)6652, (short)25115, (short)-21958, (short)-3495, (short)14968, (short)-32105, (short)-13642)));
                 Console.WriteLine("Arm64.Store(pi16,t4v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012)));
                 Console.WriteLine("Arm64.Store(pi32,t2v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431)));
                 Console.WriteLine("Arm64.Store(pi32,t3v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431), Vector128.Create(30570729, 35303436, 40036143, 44768850)));
                 Console.WriteLine("Arm64.Store(pi32,t4v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L)));
                 Console.WriteLine("Arm64.Store(pi64,t2v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L)));
                 Console.WriteLine("Arm64.Store(pi64,t3v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L), Vector128.Create(32055926385717L, 37018559340828L)));
                 Console.WriteLine("Arm64.Store(pi64,t4v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32)));
                 Console.WriteLine("Arm64.Store(pi8,t2v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3)));
                 Console.WriteLine("Arm64.Store(pi8,t3v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3), Vector128.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26)));
                 Console.WriteLine("Arm64.Store(pi8,t4v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952)));
                 Console.WriteLine("Arm64.Store(pu16,t2v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423)));
                 Console.WriteLine("Arm64.Store(pu16,t3v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423), Vector128.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578, (ushort)62041, (ushort)14968, (ushort)33431, (ushort)51894)));
                 Console.WriteLine("Arm64.Store(pu16,t4v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U)));
                 Console.WriteLine("Arm64.Store(pu32,t2v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U)));
                 Console.WriteLine("Arm64.Store(pu32,t3v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U), Vector128.Create(30570729U, 35303436U, 40036143U, 44768850U)));
                 Console.WriteLine("Arm64.Store(pu32,t4v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL)));
                 Console.WriteLine("Arm64.Store(pu64,t2v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL)));
                 Console.WriteLine("Arm64.Store(pu64,t3v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL), Vector128.Create(32055926385717UL, 37018559340828UL)));
                 Console.WriteLine("Arm64.Store(pu64,t4v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224)));
                 Console.WriteLine("Arm64.Store(pu8,t2v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253)));
                 Console.WriteLine("Arm64.Store(pu8,t3v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.Store((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253), Vector128.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26)));
                 Console.WriteLine("Arm64.Store(pu8,t4v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Vector128.Create(-2.0f, -3.0f, -4.0f, -5.0f));
                 Console.WriteLine("Arm64.StorePair(pf32,v128f32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((float*)p0, Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f));
                 Console.WriteLine("Arm64.StorePair(pf32,v64f32,v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((double*)p0, Vector128.Create(0.5, 0.0), Vector128.Create(-1.0, -1.5));
                 Console.WriteLine("Arm64.StorePair(pf64,v128f64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((double*)p0, Vector64.Create(0.5), Vector64.Create(-1.0));
                 Console.WriteLine("Arm64.StorePair(pf64,v64f64,v64f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461));
                 Console.WriteLine("Arm64.StorePair(pi16,v128i16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((short*)p0, Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), Vector64.Create((short)-18630, (short)-167, (short)18296, (short)-28777));
                 Console.WriteLine("Arm64.StorePair(pi16,v64i16,v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336), Vector128.Create(12023634, 16756341, 21489048, 26221755));
                 Console.WriteLine("Arm64.StorePair(pi32,v128i32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((int*)p0, Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341));
                 Console.WriteLine("Arm64.StorePair(pi32,v64i32,v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((long*)p0, Vector128.Create(8718138975195L, 13680771930306L), Vector128.Create(12607770210282L, 17570403165393L));
                 Console.WriteLine("Arm64.StorePair(pi64,v128i64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((long*)p0, Vector64.Create(8718138975195L), Vector64.Create(12607770210282L));
                 Console.WriteLine("Arm64.StorePair(pi64,v64i64,v64i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119));
                 Console.WriteLine("Arm64.StorePair(pi8,v128i8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((sbyte*)p0, Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68), Vector64.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97));
                 Console.WriteLine("Arm64.StorePair(pi8,v64i8,v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075));
                 Console.WriteLine("Arm64.StorePair(pu16,v128u16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((ushort*)p0, Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288), Vector64.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759));
                 Console.WriteLine("Arm64.StorePair(pu16,v64u16,v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U));
                 Console.WriteLine("Arm64.StorePair(pu32,v128u32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((uint*)p0, Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U));
                 Console.WriteLine("Arm64.StorePair(pu32,v64u32,v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL), Vector128.Create(12607770210282UL, 17570403165393UL));
                 Console.WriteLine("Arm64.StorePair(pu64,v128u64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((ulong*)p0, Vector64.Create(8718138975195UL), Vector64.Create(12607770210282UL));
                 Console.WriteLine("Arm64.StorePair(pu64,v64u64,v64u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137));
                 Console.WriteLine("Arm64.StorePair(pu8,v128u8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePair((byte*)p0, Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68), Vector64.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97));
                 Console.WriteLine("Arm64.StorePair(pu8,v64u8,v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Vector128.Create(-2.0f, -3.0f, -4.0f, -5.0f));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pf32,v128f32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((float*)p0, Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pf32,v64f32,v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((double*)p0, Vector128.Create(0.5, 0.0), Vector128.Create(-1.0, -1.5));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pf64,v128f64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((double*)p0, Vector64.Create(0.5), Vector64.Create(-1.0));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pf64,v64f64,v64f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi16,v128i16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((short*)p0, Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), Vector64.Create((short)-18630, (short)-167, (short)18296, (short)-28777));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi16,v64i16,v64i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336), Vector128.Create(12023634, 16756341, 21489048, 26221755));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi32,v128i32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((int*)p0, Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi32,v64i32,v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((long*)p0, Vector128.Create(8718138975195L, 13680771930306L), Vector128.Create(12607770210282L, 17570403165393L));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi64,v128i64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((long*)p0, Vector64.Create(8718138975195L), Vector64.Create(12607770210282L));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi64,v64i64,v64i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi8,v128i8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((sbyte*)p0, Vector64.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68), Vector64.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pi8,v64i8,v64i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu16,v128u16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((ushort*)p0, Vector64.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288), Vector64.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu16,v64u16,v64u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu32,v128u32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((uint*)p0, Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu32,v64u32,v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL), Vector128.Create(12607770210282UL, 17570403165393UL));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu64,v128u64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((ulong*)p0, Vector64.Create(8718138975195UL), Vector64.Create(12607770210282UL));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu64,v64u64,v64u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu8,v128u8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairNonTemporal((byte*)p0, Vector64.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68), Vector64.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97));
                 Console.WriteLine("Arm64.StorePairNonTemporal(pu8,v64u8,v64u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalar((float*)p0, Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f));
                 Console.WriteLine("Arm64.StorePairScalar(pf32,v64f32,v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalar((int*)p0, Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341));
                 Console.WriteLine("Arm64.StorePairScalar(pi32,v64i32,v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalar((uint*)p0, Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U));
                 Console.WriteLine("Arm64.StorePairScalar(pu32,v64u32,v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalarNonTemporal((float*)p0, Vector64.Create(1.0f, 0.0f), Vector64.Create(-2.0f, -3.0f));
                 Console.WriteLine("Arm64.StorePairScalarNonTemporal(pf32,v64f32,v64f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalarNonTemporal((int*)p0, Vector64.Create(8314215, 13046922), Vector64.Create(12023634, 16756341));
                 Console.WriteLine("Arm64.StorePairScalarNonTemporal(pi32,v64i32,v64i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StorePairScalarNonTemporal((uint*)p0, Vector64.Create(8314215U, 13046922U), Vector64.Create(12023634U, 16756341U));
                 Console.WriteLine("Arm64.StorePairScalarNonTemporal(pu32,v64u32,v64u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf32,t2v128f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf32,t3v128f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f), Vector128.Create(3.5f, 2.5f, 1.5f, 0.5f)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf32,t4v128f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf64,t2v128f64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf64,t3v128f64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375), Vector128.Create(1.75, 1.25)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pf64,t4v128f64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi16,t2v128i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi16,t3v128i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113), Vector128.Create((short)-11811, (short)6652, (short)25115, (short)-21958, (short)-3495, (short)14968, (short)-32105, (short)-13642)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi16,t4v128i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi32,t2v128i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi32,t3v128i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431), Vector128.Create(30570729, 35303436, 40036143, 44768850)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi32,t4v128i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi64,t2v128i64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi64,t3v128i64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L), Vector128.Create(32055926385717L, 37018559340828L)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi64,t4v128i64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi8,t2v128i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi8,t3v128i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3), Vector128.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pi8,t4v128i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu16,t2v128u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu16,t3v128u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423), Vector128.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578, (ushort)62041, (ushort)14968, (ushort)33431, (ushort)51894)), (byte)3);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu16,t4v128u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu32,t2v128u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu32,t3v128u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U), Vector128.Create(30570729U, 35303436U, 40036143U, 44768850U)), (byte)1);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu32,t4v128u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu64,t2v128u64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu64,t3v128u64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL), Vector128.Create(32055926385717UL, 37018559340828UL)), (byte)0);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu64,t4v128u64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu8,t2v128u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu8,t3v128u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreSelectedScalar((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253), Vector128.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26)), (byte)7);
                 Console.WriteLine("Arm64.StoreSelectedScalar(pu8,t4v128u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf32,t2v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf32,t3v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((float*)p0, (Vector128.Create(2.25f, 1.25f, 0.25f, -0.75f), Vector128.Create(-0.75f, -1.75f, -2.75f, -3.75f), Vector128.Create(-3.75f, -4.75f, 4.5f, 3.5f), Vector128.Create(3.5f, 2.5f, 1.5f, 0.5f)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf32,t4v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf64,t2v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf64,t3v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((double*)p0, (Vector128.Create(1.125, 0.625), Vector128.Create(-0.375, -0.875), Vector128.Create(-1.875, -2.375), Vector128.Create(1.75, 1.25)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pf64,t4v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi16,t2v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi16,t3v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((short*)p0, (Vector128.Create((short)10312, (short)28775, (short)-18298, (short)165, (short)18628, (short)-28445, (short)-9982, (short)8481), Vector128.Create((short)24783, (short)-22290, (short)-3827, (short)14636, (short)-32437, (short)-13974, (short)4489, (short)22952), Vector128.Create((short)-26282, (short)-7819, (short)10644, (short)29107, (short)-17966, (short)497, (short)18960, (short)-28113), Vector128.Create((short)-11811, (short)6652, (short)25115, (short)-21958, (short)-3495, (short)14968, (short)-32105, (short)-13642)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi16,t4v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi32,t2v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi32,t3v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((int*)p0, (Vector128.Create(19442472, 24175179, 28907886, 33640593), Vector128.Create(23151891, 27884598, 32617305, 37350012), Vector128.Create(26861310, 31594017, 36326724, 41059431), Vector128.Create(30570729, 35303436, 40036143, 44768850)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi32,t4v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi64,t2v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi64,t3v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((long*)p0, (Vector128.Create(20387032680456L, 25349665635567L), Vector128.Create(24276663915543L, 29239296870654L), Vector128.Create(28166295150630L, 33128928105741L), Vector128.Create(32055926385717L, 37018559340828L)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi64,t4v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi8,t2v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi8,t3v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((sbyte*)p0, (Vector128.Create((sbyte)-104, (sbyte)-67, (sbyte)-30, (sbyte)7, (sbyte)44, (sbyte)81, (sbyte)118, (sbyte)-101, (sbyte)-64, (sbyte)-27, (sbyte)10, (sbyte)47, (sbyte)84, (sbyte)121, (sbyte)-98, (sbyte)-61), Vector128.Create((sbyte)-75, (sbyte)-38, (sbyte)-1, (sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32), Vector128.Create((sbyte)-46, (sbyte)-9, (sbyte)28, (sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3), Vector128.Create((sbyte)-17, (sbyte)20, (sbyte)57, (sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pi8,t4v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu16,t2v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu16,t3v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ushort*)p0, (Vector128.Create((ushort)10312, (ushort)28775, (ushort)47238, (ushort)165, (ushort)18628, (ushort)37091, (ushort)55554, (ushort)8481), Vector128.Create((ushort)24783, (ushort)43246, (ushort)61709, (ushort)14636, (ushort)33099, (ushort)51562, (ushort)4489, (ushort)22952), Vector128.Create((ushort)39254, (ushort)57717, (ushort)10644, (ushort)29107, (ushort)47570, (ushort)497, (ushort)18960, (ushort)37423), Vector128.Create((ushort)53725, (ushort)6652, (ushort)25115, (ushort)43578, (ushort)62041, (ushort)14968, (ushort)33431, (ushort)51894)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu16,t4v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu32,t2v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu32,t3v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((uint*)p0, (Vector128.Create(19442472U, 24175179U, 28907886U, 33640593U), Vector128.Create(23151891U, 27884598U, 32617305U, 37350012U), Vector128.Create(26861310U, 31594017U, 36326724U, 41059431U), Vector128.Create(30570729U, 35303436U, 40036143U, 44768850U)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu32,t4v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu64,t2v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu64,t3v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((ulong*)p0, (Vector128.Create(20387032680456UL, 25349665635567UL), Vector128.Create(24276663915543UL, 29239296870654UL), Vector128.Create(28166295150630UL, 33128928105741UL), Vector128.Create(32055926385717UL, 37018559340828UL)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu64,t4v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu8,t2v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu8,t3v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 Arm.AdvSimd.Arm64.StoreVectorAndZip((byte*)p0, (Vector128.Create((byte)152, (byte)189, (byte)226, (byte)7, (byte)44, (byte)81, (byte)118, (byte)155, (byte)192, (byte)229, (byte)10, (byte)47, (byte)84, (byte)121, (byte)158, (byte)195), Vector128.Create((byte)181, (byte)218, (byte)255, (byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224), Vector128.Create((byte)210, (byte)247, (byte)28, (byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253), Vector128.Create((byte)239, (byte)20, (byte)57, (byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26)));
                 Console.WriteLine("Arm64.StoreVectorAndZip(pu8,t4v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -7450,8 +7450,8 @@ internal static class Exercises
             Console.WriteLine("Floor(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((float*)p0, a1, (byte)1);
@@ -7460,8 +7460,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pf32,v128f32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(0.5, 0.0);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((double*)p0, a1, (byte)0);
@@ -7470,8 +7470,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pf64,v128f64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((short*)p0, a1, (byte)3);
@@ -7480,8 +7480,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pi16,v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((int*)p0, a1, (byte)1);
@@ -7490,8 +7490,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pi32,v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8718138975195L, 13680771930306L);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((long*)p0, a1, (byte)0);
@@ -7500,8 +7500,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pi64,v128i64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((sbyte*)p0, a1, (byte)7);
@@ -7510,8 +7510,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pi8,v128i8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336).AsNInt();
             var r = Wasm.PackedSimd.LoadScalarAndInsert((nint*)p0, a1, (byte)1);
@@ -7520,8 +7520,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pnint,v128nint,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U).AsNUInt();
             var r = Wasm.PackedSimd.LoadScalarAndInsert((nuint*)p0, a1, (byte)1);
@@ -7530,8 +7530,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pnuint,v128nuint,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((ushort*)p0, a1, (byte)3);
@@ -7540,8 +7540,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pu16,v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((uint*)p0, a1, (byte)1);
@@ -7550,8 +7550,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pu32,v128u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((ulong*)p0, a1, (byte)0);
@@ -7560,8 +7560,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pu64,v128u64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
             var r = Wasm.PackedSimd.LoadScalarAndInsert((byte*)p0, a1, (byte)7);
@@ -7570,8 +7570,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndInsert(pu8,v128u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((float*)p0);
             var q = Vector128.Create(*((float*)p0));
@@ -7579,8 +7579,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((double*)p0);
             var q = Vector128.Create(*((double*)p0));
@@ -7588,8 +7588,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((short*)p0);
             var q = Vector128.Create(*((short*)p0));
@@ -7597,8 +7597,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((int*)p0);
             var q = Vector128.Create(*((int*)p0));
@@ -7606,8 +7606,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((long*)p0);
             var q = Vector128.Create(*((long*)p0));
@@ -7615,8 +7615,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((sbyte*)p0);
             var q = Vector128.Create(*((sbyte*)p0));
@@ -7624,8 +7624,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((nint*)p0);
             var q = Vector128.Create(*((nint*)p0));
@@ -7633,8 +7633,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pnint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((nuint*)p0);
             var q = Vector128.Create(*((nuint*)p0));
@@ -7642,8 +7642,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pnuint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((ushort*)p0);
             var q = Vector128.Create(*((ushort*)p0));
@@ -7651,8 +7651,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((uint*)p0);
             var q = Vector128.Create(*((uint*)p0));
@@ -7660,8 +7660,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((ulong*)p0);
             var q = Vector128.Create(*((ulong*)p0));
@@ -7669,8 +7669,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarAndSplatVector128((byte*)p0);
             var q = Vector128.Create(*((byte*)p0));
@@ -7678,8 +7678,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarAndSplatVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((float*)p0);
             var q = Vector128.CreateScalar(*((float*)p0));
@@ -7687,8 +7687,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((double*)p0);
             var q = Vector128.CreateScalar(*((double*)p0));
@@ -7696,8 +7696,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((int*)p0);
             var q = Vector128.CreateScalar(*((int*)p0));
@@ -7705,8 +7705,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((long*)p0);
             var q = Vector128.CreateScalar(*((long*)p0));
@@ -7714,8 +7714,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((nint*)p0);
             var q = Vector128.CreateScalar(*((nint*)p0));
@@ -7723,8 +7723,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pnint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((nuint*)p0);
             var q = Vector128.CreateScalar(*((nuint*)p0));
@@ -7732,8 +7732,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pnuint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((uint*)p0);
             var q = Vector128.CreateScalar(*((uint*)p0));
@@ -7741,8 +7741,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadScalarVector128((ulong*)p0);
             var q = Vector128.CreateScalar(*((ulong*)p0));
@@ -7750,8 +7750,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((float*)p0);
             var q = Vector128.Load(((float*)p0));
@@ -7759,8 +7759,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((double*)p0);
             var q = Vector128.Load(((double*)p0));
@@ -7768,8 +7768,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((short*)p0);
             var q = Vector128.Load(((short*)p0));
@@ -7777,8 +7777,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((int*)p0);
             var q = Vector128.Load(((int*)p0));
@@ -7786,8 +7786,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((long*)p0);
             var q = Vector128.Load(((long*)p0));
@@ -7795,8 +7795,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((sbyte*)p0);
             var q = Vector128.Load(((sbyte*)p0));
@@ -7804,8 +7804,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((nint*)p0);
             var q = Vector128.Load(((nint*)p0));
@@ -7813,8 +7813,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pnint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((nuint*)p0);
             var q = Vector128.Load(((nuint*)p0));
@@ -7822,8 +7822,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pnuint)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((ushort*)p0);
             var q = Vector128.Load(((ushort*)p0));
@@ -7831,8 +7831,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((uint*)p0);
             var q = Vector128.Load(((uint*)p0));
@@ -7840,8 +7840,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((ulong*)p0);
             var q = Vector128.Load(((ulong*)p0));
@@ -7849,8 +7849,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadVector128((byte*)p0);
             var q = Vector128.Load(((byte*)p0));
@@ -7858,8 +7858,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((short*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((short*)p0)));
@@ -7867,8 +7867,8 @@ internal static class Exercises
             Console.WriteLine("LoadWideningVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((int*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((int*)p0)));
@@ -7876,8 +7876,8 @@ internal static class Exercises
             Console.WriteLine("LoadWideningVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((sbyte*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((sbyte*)p0)));
@@ -7885,8 +7885,8 @@ internal static class Exercises
             Console.WriteLine("LoadWideningVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((ushort*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((ushort*)p0)));
@@ -7894,8 +7894,8 @@ internal static class Exercises
             Console.WriteLine("LoadWideningVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((uint*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((uint*)p0)));
@@ -7903,8 +7903,8 @@ internal static class Exercises
             Console.WriteLine("LoadWideningVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = Wasm.PackedSimd.LoadWideningVector128((byte*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((byte*)p0)));
@@ -9046,169 +9046,169 @@ internal static class Exercises
             Console.WriteLine("Sqrt(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("Store(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("Store(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
             Console.WriteLine("Store(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("Store(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("Store(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
             Console.WriteLine("Store(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((nint*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336).AsNInt());
             Console.WriteLine("Store(pnint,v128nint)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((nuint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U).AsNUInt());
             Console.WriteLine("Store(pnuint,v128nuint)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
             Console.WriteLine("Store(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("Store(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("Store(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.Store((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
             Console.WriteLine("Store(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pf32,v128f32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((double*)p0, Vector128.Create(0.5, 0.0), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pf64,v128f64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pi16,v128i16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pi32,v128i32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((long*)p0, Vector128.Create(8718138975195L, 13680771930306L), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pi64,v128i64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), (byte)7);
             Console.WriteLine("StoreSelectedScalar(pi8,v128i8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((nint*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336).AsNInt(), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pnint,v128nint,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((nuint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U).AsNUInt(), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pnuint,v128nuint,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), (byte)3);
             Console.WriteLine("StoreSelectedScalar(pu16,v128u16,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), (byte)1);
             Console.WriteLine("StoreSelectedScalar(pu32,v128u32,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL), (byte)0);
             Console.WriteLine("StoreSelectedScalar(pu64,v128u64,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Wasm.PackedSimd.StoreSelectedScalar((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), (byte)7);
             Console.WriteLine("StoreSelectedScalar(pu8,v128u8,u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -9914,8 +9914,8 @@ internal static class Exercises
             Console.WriteLine("DivideScalar(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse.LoadAlignedVector128((float*)p0);
             var q = Vector128.Load(((float*)p0));
@@ -9924,8 +9924,8 @@ internal static class Exercises
         }
         {
             var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             var r = X86.Sse.LoadHigh(a0, (float*)p1);
             var q = a0.WithUpper(Vector64.Load(((float*)p1)));
@@ -9934,8 +9934,8 @@ internal static class Exercises
         }
         {
             var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             var r = X86.Sse.LoadLow(a0, (float*)p1);
             var q = a0.WithLower(Vector64.Load(((float*)p1)));
@@ -9943,8 +9943,8 @@ internal static class Exercises
             Console.WriteLine("LoadLow(v128f32,pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse.LoadScalarVector128((float*)p0);
             var q = Vector128.CreateScalar(*((float*)p0));
@@ -9952,8 +9952,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse.LoadVector128((float*)p0);
             var q = Vector128.Load(((float*)p0));
@@ -10048,29 +10048,29 @@ internal static class Exercises
             Console.WriteLine("Or(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.Prefetch0((void*)p0);
             Console.WriteLine("Prefetch0(pvoid)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.Prefetch1((void*)p0);
             Console.WriteLine("Prefetch1(pvoid)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.Prefetch2((void*)p0);
             Console.WriteLine("Prefetch2(pvoid)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.PrefetchNonTemporal((void*)p0);
             Console.WriteLine("PrefetchNonTemporal(pvoid)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -10112,22 +10112,22 @@ internal static class Exercises
             Console.WriteLine("SqrtScalar(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.Store((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("Store(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.StoreAligned((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("StoreAligned(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.StoreAlignedNonTemporal((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("StoreAlignedNonTemporal(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -10137,22 +10137,22 @@ internal static class Exercises
             Console.WriteLine("StoreFence()=void");
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.StoreHigh((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("StoreHigh(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.StoreLow((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("StoreLow(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse.StoreScalar((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
             Console.WriteLine("StoreScalar(pf32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -11045,8 +11045,8 @@ internal static class Exercises
             Console.WriteLine("Insert(v128u16,u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((double*)p0);
             var q = Vector128.Load(((double*)p0));
@@ -11054,8 +11054,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((short*)p0);
             var q = Vector128.Load(((short*)p0));
@@ -11063,8 +11063,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((int*)p0);
             var q = Vector128.Load(((int*)p0));
@@ -11072,8 +11072,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((long*)p0);
             var q = Vector128.Load(((long*)p0));
@@ -11081,8 +11081,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((sbyte*)p0);
             var q = Vector128.Load(((sbyte*)p0));
@@ -11090,8 +11090,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((ushort*)p0);
             var q = Vector128.Load(((ushort*)p0));
@@ -11099,8 +11099,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((uint*)p0);
             var q = Vector128.Load(((uint*)p0));
@@ -11108,8 +11108,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((ulong*)p0);
             var q = Vector128.Load(((ulong*)p0));
@@ -11117,8 +11117,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadAlignedVector128((byte*)p0);
             var q = Vector128.Load(((byte*)p0));
@@ -11131,8 +11131,8 @@ internal static class Exercises
         }
         {
             var a0 = Vector128.Create(2.0, 1.5);
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             var r = X86.Sse2.LoadHigh(a0, (double*)p1);
             var q = a0.WithElement(1, *((double*)p1));
@@ -11141,8 +11141,8 @@ internal static class Exercises
         }
         {
             var a0 = Vector128.Create(2.0, 1.5);
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             var r = X86.Sse2.LoadLow(a0, (double*)p1);
             var q = a0.WithElement(0, *((double*)p1));
@@ -11150,8 +11150,8 @@ internal static class Exercises
             Console.WriteLine("LoadLow(v128f64,pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadScalarVector128((double*)p0);
             var q = Vector128.CreateScalar(*((double*)p0));
@@ -11159,8 +11159,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadScalarVector128((int*)p0);
             var q = Vector128.CreateScalar(*((int*)p0));
@@ -11168,8 +11168,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadScalarVector128((long*)p0);
             var q = Vector128.CreateScalar(*((long*)p0));
@@ -11177,8 +11177,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadScalarVector128((uint*)p0);
             var q = Vector128.CreateScalar(*((uint*)p0));
@@ -11186,8 +11186,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadScalarVector128((ulong*)p0);
             var q = Vector128.CreateScalar(*((ulong*)p0));
@@ -11195,8 +11195,8 @@ internal static class Exercises
             Console.WriteLine("LoadScalarVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((double*)p0);
             var q = Vector128.Load(((double*)p0));
@@ -11204,8 +11204,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((short*)p0);
             var q = Vector128.Load(((short*)p0));
@@ -11213,8 +11213,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((int*)p0);
             var q = Vector128.Load(((int*)p0));
@@ -11222,8 +11222,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((long*)p0);
             var q = Vector128.Load(((long*)p0));
@@ -11231,8 +11231,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((sbyte*)p0);
             var q = Vector128.Load(((sbyte*)p0));
@@ -11240,8 +11240,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((ushort*)p0);
             var q = Vector128.Load(((ushort*)p0));
@@ -11249,8 +11249,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((uint*)p0);
             var q = Vector128.Load(((uint*)p0));
@@ -11258,8 +11258,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((ulong*)p0);
             var q = Vector128.Load(((ulong*)p0));
@@ -11267,8 +11267,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse2.LoadVector128((byte*)p0);
             var q = Vector128.Load(((byte*)p0));
@@ -11276,15 +11276,15 @@ internal static class Exercises
             Console.WriteLine("LoadVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             X86.Sse2.MaskMove(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), (sbyte*)p2);
             Console.WriteLine("MaskMove(v128i8,v128i8,pi8)=void" + " mem2=" + Fmt.Hex(p2, 64));
         }
         {
-            byte* raw2 = stackalloc byte[96];
-            byte* p2 = Fmt.Align(raw2, 32);
+            byte* raw2 = stackalloc byte[128];
+            byte* p2 = Fmt.Align(raw2, 64);
             Fmt.Fill(p2, 64, 3);
             X86.Sse2.MaskMove(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), (byte*)p2);
             Console.WriteLine("MaskMove(v128u8,v128u8,pu8)=void" + " mem2=" + Fmt.Hex(p2, 64));
@@ -11817,253 +11817,253 @@ internal static class Exercises
             Console.WriteLine("SqrtScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("Store(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
             Console.WriteLine("Store(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("Store(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("Store(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
             Console.WriteLine("Store(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
             Console.WriteLine("Store(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("Store(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("Store(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.Store((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
             Console.WriteLine("Store(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("StoreAligned(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
             Console.WriteLine("StoreAligned(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("StoreAligned(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("StoreAligned(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
             Console.WriteLine("StoreAligned(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
             Console.WriteLine("StoreAligned(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("StoreAligned(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("StoreAligned(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAligned((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
             Console.WriteLine("StoreAligned(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("StoreAlignedNonTemporal(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
             Console.WriteLine("StoreAlignedNonTemporal(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("StoreAlignedNonTemporal(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("StoreAlignedNonTemporal(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
             Console.WriteLine("StoreAlignedNonTemporal(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
             Console.WriteLine("StoreAlignedNonTemporal(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("StoreAlignedNonTemporal(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("StoreAlignedNonTemporal(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreAlignedNonTemporal((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
             Console.WriteLine("StoreAlignedNonTemporal(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreHigh((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("StoreHigh(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreLow((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("StoreLow(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreNonTemporal((int*)p0, 8314215);
             Console.WriteLine("StoreNonTemporal(pi32,i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreNonTemporal((uint*)p0, 8314215U);
             Console.WriteLine("StoreNonTemporal(pu32,u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreScalar((double*)p0, Vector128.Create(0.5, 0.0));
             Console.WriteLine("StoreScalar(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreScalar((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
             Console.WriteLine("StoreScalar(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreScalar((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
             Console.WriteLine("StoreScalar(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreScalar((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
             Console.WriteLine("StoreScalar(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Sse2.StoreScalar((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
             Console.WriteLine("StoreScalar(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -12450,15 +12450,15 @@ internal static class Exercises
                 Console.WriteLine("X64.ConvertToUInt64(v128u64)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 X86.Sse2.X64.StoreNonTemporal((long*)p0, 8718138975195L);
                 Console.WriteLine("X64.StoreNonTemporal(pi64,i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
             }
             {
-                byte* raw0 = stackalloc byte[96];
-                byte* p0 = Fmt.Align(raw0, 32);
+                byte* raw0 = stackalloc byte[128];
+                byte* p0 = Fmt.Align(raw0, 64);
                 Fmt.Fill(p0, 64, 1);
                 X86.Sse2.X64.StoreNonTemporal((ulong*)p0, 8718138975195UL);
                 Console.WriteLine("X64.StoreNonTemporal(pu64,u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -12517,8 +12517,8 @@ internal static class Exercises
             Console.WriteLine("HorizontalSubtract(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadAndDuplicateToVector128((double*)p0);
             var q = Vector128.Create(*((double*)p0));
@@ -12526,8 +12526,8 @@ internal static class Exercises
             Console.WriteLine("LoadAndDuplicateToVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((short*)p0);
             var q = Vector128.Load(((short*)p0));
@@ -12535,8 +12535,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((int*)p0);
             var q = Vector128.Load(((int*)p0));
@@ -12544,8 +12544,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((long*)p0);
             var q = Vector128.Load(((long*)p0));
@@ -12553,8 +12553,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((sbyte*)p0);
             var q = Vector128.Load(((sbyte*)p0));
@@ -12562,8 +12562,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((ushort*)p0);
             var q = Vector128.Load(((ushort*)p0));
@@ -12571,8 +12571,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((uint*)p0);
             var q = Vector128.Load(((uint*)p0));
@@ -12580,8 +12580,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((ulong*)p0);
             var q = Vector128.Load(((ulong*)p0));
@@ -12589,8 +12589,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse3.LoadDquVector128((byte*)p0);
             var q = Vector128.Load(((byte*)p0));
@@ -12914,8 +12914,8 @@ internal static class Exercises
             Console.WriteLine("CompareEqual(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int16((sbyte*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((sbyte*)p0))).AsInt16();
@@ -12923,8 +12923,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int16(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int16((byte*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((byte*)p0))).AsInt16();
@@ -12946,8 +12946,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int16(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int32((short*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((short*)p0))).AsInt32();
@@ -12955,8 +12955,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int32(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int32((sbyte*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((sbyte*)p0)))).AsInt32();
@@ -12964,8 +12964,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int32(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int32((ushort*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((ushort*)p0))).AsInt32();
@@ -12973,8 +12973,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int32(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int32((byte*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((byte*)p0)))).AsInt32();
@@ -13010,8 +13010,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int32(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((short*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((short*)p0)))).AsInt64();
@@ -13019,8 +13019,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int64(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((int*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((int*)p0))).AsInt64();
@@ -13028,8 +13028,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int64(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((sbyte*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((sbyte*)p0))))).AsInt64();
@@ -13037,8 +13037,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int64(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((ushort*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((ushort*)p0)))).AsInt64();
@@ -13046,8 +13046,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int64(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((uint*)p0);
             var q = Vector128.WidenLower(Vector128.Load(((uint*)p0))).AsInt64();
@@ -13055,8 +13055,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector128Int64(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.ConvertToVector128Int64((byte*)p0);
             var q = Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((byte*)p0))))).AsInt64();
@@ -13235,8 +13235,8 @@ internal static class Exercises
             Console.WriteLine("Insert(v128u8,u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((short*)p0);
             var q = Vector128.Load(((short*)p0));
@@ -13244,8 +13244,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((int*)p0);
             var q = Vector128.Load(((int*)p0));
@@ -13253,8 +13253,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((long*)p0);
             var q = Vector128.Load(((long*)p0));
@@ -13262,8 +13262,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((sbyte*)p0);
             var q = Vector128.Load(((sbyte*)p0));
@@ -13271,8 +13271,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((ushort*)p0);
             var q = Vector128.Load(((ushort*)p0));
@@ -13280,8 +13280,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((uint*)p0);
             var q = Vector128.Load(((uint*)p0));
@@ -13289,8 +13289,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((ulong*)p0);
             var q = Vector128.Load(((ulong*)p0));
@@ -13298,8 +13298,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector128NonTemporal(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Sse41.LoadAlignedVector128NonTemporal((byte*)p0);
             var q = Vector128.Load(((byte*)p0));
@@ -14020,8 +14020,8 @@ internal static class Exercises
             Console.WriteLine("BlendVariable(v256f64,v256f64,v256f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.BroadcastScalarToVector128((float*)p0);
             var q = Vector128.Create(*((float*)p0));
@@ -14029,8 +14029,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.BroadcastScalarToVector256((float*)p0);
             var q = Vector256.Create(*((float*)p0));
@@ -14038,8 +14038,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.BroadcastScalarToVector256((double*)p0);
             var q = Vector256.Create(*((double*)p0));
@@ -14047,8 +14047,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.BroadcastVector128ToVector256((float*)p0);
             var q = Vector256.Create(Vector128.Load(((float*)p0)), Vector128.Load(((float*)p0)));
@@ -14056,8 +14056,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.BroadcastVector128ToVector256((double*)p0);
             var q = Vector256.Create(Vector128.Load(((double*)p0)), Vector128.Load(((double*)p0)));
@@ -14577,8 +14577,8 @@ internal static class Exercises
             Console.WriteLine("InsertVector128(v256u8,v128u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((float*)p0);
             var q = Vector256.Load(((float*)p0));
@@ -14586,8 +14586,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((double*)p0);
             var q = Vector256.Load(((double*)p0));
@@ -14595,8 +14595,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((short*)p0);
             var q = Vector256.Load(((short*)p0));
@@ -14604,8 +14604,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((int*)p0);
             var q = Vector256.Load(((int*)p0));
@@ -14613,8 +14613,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((long*)p0);
             var q = Vector256.Load(((long*)p0));
@@ -14622,8 +14622,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((sbyte*)p0);
             var q = Vector256.Load(((sbyte*)p0));
@@ -14631,8 +14631,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((ushort*)p0);
             var q = Vector256.Load(((ushort*)p0));
@@ -14640,8 +14640,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((uint*)p0);
             var q = Vector256.Load(((uint*)p0));
@@ -14649,8 +14649,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((ulong*)p0);
             var q = Vector256.Load(((ulong*)p0));
@@ -14658,8 +14658,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadAlignedVector256((byte*)p0);
             var q = Vector256.Load(((byte*)p0));
@@ -14667,8 +14667,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((short*)p0);
             var q = Vector256.Load(((short*)p0));
@@ -14676,8 +14676,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((int*)p0);
             var q = Vector256.Load(((int*)p0));
@@ -14685,8 +14685,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((long*)p0);
             var q = Vector256.Load(((long*)p0));
@@ -14694,8 +14694,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((sbyte*)p0);
             var q = Vector256.Load(((sbyte*)p0));
@@ -14703,8 +14703,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((ushort*)p0);
             var q = Vector256.Load(((ushort*)p0));
@@ -14712,8 +14712,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((uint*)p0);
             var q = Vector256.Load(((uint*)p0));
@@ -14721,8 +14721,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((ulong*)p0);
             var q = Vector256.Load(((ulong*)p0));
@@ -14730,8 +14730,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadDquVector256((byte*)p0);
             var q = Vector256.Load(((byte*)p0));
@@ -14739,8 +14739,8 @@ internal static class Exercises
             Console.WriteLine("LoadDquVector256(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((float*)p0);
             var q = Vector256.Load(((float*)p0));
@@ -14748,8 +14748,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pf32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((double*)p0);
             var q = Vector256.Load(((double*)p0));
@@ -14757,8 +14757,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((short*)p0);
             var q = Vector256.Load(((short*)p0));
@@ -14766,8 +14766,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((int*)p0);
             var q = Vector256.Load(((int*)p0));
@@ -14775,8 +14775,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((long*)p0);
             var q = Vector256.Load(((long*)p0));
@@ -14784,8 +14784,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((sbyte*)p0);
             var q = Vector256.Load(((sbyte*)p0));
@@ -14793,8 +14793,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((ushort*)p0);
             var q = Vector256.Load(((ushort*)p0));
@@ -14802,8 +14802,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((uint*)p0);
             var q = Vector256.Load(((uint*)p0));
@@ -14811,8 +14811,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((ulong*)p0);
             var q = Vector256.Load(((ulong*)p0));
@@ -14820,8 +14820,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx.LoadVector256((byte*)p0);
             var q = Vector256.Load(((byte*)p0));
@@ -14829,8 +14829,8 @@ internal static class Exercises
             Console.WriteLine("LoadVector256(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
             var r = X86.Avx.MaskLoad((float*)p0, a1);
@@ -14839,8 +14839,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pf32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f);
             var r = X86.Avx.MaskLoad((float*)p0, a1);
@@ -14849,8 +14849,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pf32,v256f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(0.5, 0.0);
             var r = X86.Avx.MaskLoad((double*)p0, a1);
@@ -14859,8 +14859,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pf64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(0.5, 0.0, -0.5, -1.0);
             var r = X86.Avx.MaskLoad((double*)p0, a1);
@@ -14869,29 +14869,29 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pf64,v256f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.MaskStore((float*)p0, Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Vector128.Create(-2.0f, -3.0f, -4.0f, -5.0f));
             Console.WriteLine("MaskStore(pf32,v128f32,v128f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.MaskStore((float*)p0, Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f), Vector256.Create(-2.0f, -3.0f, -4.0f, -5.0f, 4.25f, 3.25f, 2.25f, 1.25f));
             Console.WriteLine("MaskStore(pf32,v256f32,v256f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.MaskStore((double*)p0, Vector128.Create(0.5, 0.0), Vector128.Create(-1.0, -1.5));
             Console.WriteLine("MaskStore(pf64,v128f64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.MaskStore((double*)p0, Vector256.Create(0.5, 0.0, -0.5, -1.0), Vector256.Create(-1.0, -1.5, -2.0, -2.5));
             Console.WriteLine("MaskStore(pf64,v256f64,v256f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -15217,211 +15217,211 @@ internal static class Exercises
             Console.WriteLine("Sqrt(v256f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((float*)p0, Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f));
             Console.WriteLine("Store(pf32,v256f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((double*)p0, Vector256.Create(0.5, 0.0, -0.5, -1.0));
             Console.WriteLine("Store(pf64,v256f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((short*)p0, Vector256.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604, (short)-16469, (short)1994, (short)20457, (short)-26616, (short)-8153, (short)10310, (short)28773, (short)-18300));
             Console.WriteLine("Store(pi16,v256i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((int*)p0, Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164));
             Console.WriteLine("Store(pi32,v256i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((long*)p0, Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L));
             Console.WriteLine("Store(pi64,v256i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((sbyte*)p0, Vector256.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108, (sbyte)-111, (sbyte)-74, (sbyte)-37, (sbyte)0, (sbyte)37, (sbyte)74, (sbyte)111, (sbyte)-108, (sbyte)-71, (sbyte)-34, (sbyte)3, (sbyte)40, (sbyte)77, (sbyte)114, (sbyte)-105, (sbyte)-68));
             Console.WriteLine("Store(pi8,v256i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((ushort*)p0, Vector256.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604, (ushort)49067, (ushort)1994, (ushort)20457, (ushort)38920, (ushort)57383, (ushort)10310, (ushort)28773, (ushort)47236));
             Console.WriteLine("Store(pu16,v256u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((uint*)p0, Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U));
             Console.WriteLine("Store(pu32,v256u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((ulong*)p0, Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL));
             Console.WriteLine("Store(pu64,v256u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.Store((byte*)p0, Vector256.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108, (byte)145, (byte)182, (byte)219, (byte)0, (byte)37, (byte)74, (byte)111, (byte)148, (byte)185, (byte)222, (byte)3, (byte)40, (byte)77, (byte)114, (byte)151, (byte)188));
             Console.WriteLine("Store(pu8,v256u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((float*)p0, Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f));
             Console.WriteLine("StoreAligned(pf32,v256f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((double*)p0, Vector256.Create(0.5, 0.0, -0.5, -1.0));
             Console.WriteLine("StoreAligned(pf64,v256f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((short*)p0, Vector256.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604, (short)-16469, (short)1994, (short)20457, (short)-26616, (short)-8153, (short)10310, (short)28773, (short)-18300));
             Console.WriteLine("StoreAligned(pi16,v256i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((int*)p0, Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164));
             Console.WriteLine("StoreAligned(pi32,v256i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((long*)p0, Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L));
             Console.WriteLine("StoreAligned(pi64,v256i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((sbyte*)p0, Vector256.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108, (sbyte)-111, (sbyte)-74, (sbyte)-37, (sbyte)0, (sbyte)37, (sbyte)74, (sbyte)111, (sbyte)-108, (sbyte)-71, (sbyte)-34, (sbyte)3, (sbyte)40, (sbyte)77, (sbyte)114, (sbyte)-105, (sbyte)-68));
             Console.WriteLine("StoreAligned(pi8,v256i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((ushort*)p0, Vector256.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604, (ushort)49067, (ushort)1994, (ushort)20457, (ushort)38920, (ushort)57383, (ushort)10310, (ushort)28773, (ushort)47236));
             Console.WriteLine("StoreAligned(pu16,v256u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((uint*)p0, Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U));
             Console.WriteLine("StoreAligned(pu32,v256u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((ulong*)p0, Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL));
             Console.WriteLine("StoreAligned(pu64,v256u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAligned((byte*)p0, Vector256.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108, (byte)145, (byte)182, (byte)219, (byte)0, (byte)37, (byte)74, (byte)111, (byte)148, (byte)185, (byte)222, (byte)3, (byte)40, (byte)77, (byte)114, (byte)151, (byte)188));
             Console.WriteLine("StoreAligned(pu8,v256u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((float*)p0, Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f));
             Console.WriteLine("StoreAlignedNonTemporal(pf32,v256f32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((double*)p0, Vector256.Create(0.5, 0.0, -0.5, -1.0));
             Console.WriteLine("StoreAlignedNonTemporal(pf64,v256f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((short*)p0, Vector256.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604, (short)-16469, (short)1994, (short)20457, (short)-26616, (short)-8153, (short)10310, (short)28773, (short)-18300));
             Console.WriteLine("StoreAlignedNonTemporal(pi16,v256i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((int*)p0, Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164));
             Console.WriteLine("StoreAlignedNonTemporal(pi32,v256i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((long*)p0, Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L));
             Console.WriteLine("StoreAlignedNonTemporal(pi64,v256i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((sbyte*)p0, Vector256.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108, (sbyte)-111, (sbyte)-74, (sbyte)-37, (sbyte)0, (sbyte)37, (sbyte)74, (sbyte)111, (sbyte)-108, (sbyte)-71, (sbyte)-34, (sbyte)3, (sbyte)40, (sbyte)77, (sbyte)114, (sbyte)-105, (sbyte)-68));
             Console.WriteLine("StoreAlignedNonTemporal(pi8,v256i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((ushort*)p0, Vector256.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604, (ushort)49067, (ushort)1994, (ushort)20457, (ushort)38920, (ushort)57383, (ushort)10310, (ushort)28773, (ushort)47236));
             Console.WriteLine("StoreAlignedNonTemporal(pu16,v256u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((uint*)p0, Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U));
             Console.WriteLine("StoreAlignedNonTemporal(pu32,v256u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((ulong*)p0, Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL));
             Console.WriteLine("StoreAlignedNonTemporal(pu64,v256u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx.StoreAlignedNonTemporal((byte*)p0, Vector256.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108, (byte)145, (byte)182, (byte)219, (byte)0, (byte)37, (byte)74, (byte)111, (byte)148, (byte)185, (byte)222, (byte)3, (byte)40, (byte)77, (byte)114, (byte)151, (byte)188));
             Console.WriteLine("StoreAlignedNonTemporal(pu8,v256u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
@@ -16172,8 +16172,8 @@ internal static class Exercises
             Console.WriteLine("BlendVariable(v256u8,v256u8,v256u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((short*)p0);
             var q = Vector128.Create(*((short*)p0));
@@ -16181,8 +16181,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((int*)p0);
             var q = Vector128.Create(*((int*)p0));
@@ -16190,8 +16190,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((long*)p0);
             var q = Vector128.Create(*((long*)p0));
@@ -16199,8 +16199,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((sbyte*)p0);
             var q = Vector128.Create(*((sbyte*)p0));
@@ -16208,8 +16208,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((ushort*)p0);
             var q = Vector128.Create(*((ushort*)p0));
@@ -16217,8 +16217,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((uint*)p0);
             var q = Vector128.Create(*((uint*)p0));
@@ -16226,8 +16226,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((ulong*)p0);
             var q = Vector128.Create(*((ulong*)p0));
@@ -16235,8 +16235,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector128((byte*)p0);
             var q = Vector128.Create(*((byte*)p0));
@@ -16314,8 +16314,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector128(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((short*)p0);
             var q = Vector256.Create(*((short*)p0));
@@ -16323,8 +16323,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((int*)p0);
             var q = Vector256.Create(*((int*)p0));
@@ -16332,8 +16332,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((long*)p0);
             var q = Vector256.Create(*((long*)p0));
@@ -16341,8 +16341,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((sbyte*)p0);
             var q = Vector256.Create(*((sbyte*)p0));
@@ -16350,8 +16350,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((ushort*)p0);
             var q = Vector256.Create(*((ushort*)p0));
@@ -16359,8 +16359,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((uint*)p0);
             var q = Vector256.Create(*((uint*)p0));
@@ -16368,8 +16368,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((ulong*)p0);
             var q = Vector256.Create(*((ulong*)p0));
@@ -16377,8 +16377,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastScalarToVector256((byte*)p0);
             var q = Vector256.Create(*((byte*)p0));
@@ -16456,8 +16456,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastScalarToVector256(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((short*)p0);
             var q = Vector256.Create(Vector128.Load(((short*)p0)), Vector128.Load(((short*)p0)));
@@ -16465,8 +16465,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((int*)p0);
             var q = Vector256.Create(Vector128.Load(((int*)p0)), Vector128.Load(((int*)p0)));
@@ -16474,8 +16474,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((long*)p0);
             var q = Vector256.Create(Vector128.Load(((long*)p0)), Vector128.Load(((long*)p0)));
@@ -16483,8 +16483,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((sbyte*)p0);
             var q = Vector256.Create(Vector128.Load(((sbyte*)p0)), Vector128.Load(((sbyte*)p0)));
@@ -16492,8 +16492,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((ushort*)p0);
             var q = Vector256.Create(Vector128.Load(((ushort*)p0)), Vector128.Load(((ushort*)p0)));
@@ -16501,8 +16501,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((uint*)p0);
             var q = Vector256.Create(Vector128.Load(((uint*)p0)), Vector128.Load(((uint*)p0)));
@@ -16510,8 +16510,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((ulong*)p0);
             var q = Vector256.Create(Vector128.Load(((ulong*)p0)), Vector128.Load(((ulong*)p0)));
@@ -16519,8 +16519,8 @@ internal static class Exercises
             Console.WriteLine("BroadcastVector128ToVector256(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.BroadcastVector128ToVector256((byte*)p0);
             var q = Vector256.Create(Vector128.Load(((byte*)p0)), Vector128.Load(((byte*)p0)));
@@ -16638,8 +16638,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToUInt32(v256u32)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int16((sbyte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((sbyte*)p0))), Vector128.WidenUpper(Vector128.Load(((sbyte*)p0)))).AsInt16();
@@ -16647,8 +16647,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int16(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int16((byte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((byte*)p0))), Vector128.WidenUpper(Vector128.Load(((byte*)p0)))).AsInt16();
@@ -16670,8 +16670,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int16(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int32((short*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((short*)p0))), Vector128.WidenUpper(Vector128.Load(((short*)p0)))).AsInt32();
@@ -16679,8 +16679,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int32(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int32((sbyte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((sbyte*)p0)))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load(((sbyte*)p0))))).AsInt32();
@@ -16688,8 +16688,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int32(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int32((ushort*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((ushort*)p0))), Vector128.WidenUpper(Vector128.Load(((ushort*)p0)))).AsInt32();
@@ -16697,8 +16697,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int32(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int32((byte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((byte*)p0)))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load(((byte*)p0))))).AsInt32();
@@ -16734,8 +16734,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int32(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((short*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((short*)p0)))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load(((short*)p0))))).AsInt64();
@@ -16743,8 +16743,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int64(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((int*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((int*)p0))), Vector128.WidenUpper(Vector128.Load(((int*)p0)))).AsInt64();
@@ -16752,8 +16752,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int64(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((sbyte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((sbyte*)p0))))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((sbyte*)p0)))))).AsInt64();
@@ -16761,8 +16761,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int64(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((ushort*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((ushort*)p0)))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load(((ushort*)p0))))).AsInt64();
@@ -16770,8 +16770,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int64(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((uint*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.Load(((uint*)p0))), Vector128.WidenUpper(Vector128.Load(((uint*)p0)))).AsInt64();
@@ -16779,8 +16779,8 @@ internal static class Exercises
             Console.WriteLine("ConvertToVector256Int64(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.ConvertToVector256Int64((byte*)p0);
             var q = Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((byte*)p0))))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load(((byte*)p0)))))).AsInt64();
@@ -16886,291 +16886,291 @@ internal static class Exercises
             Console.WriteLine("ExtractVector128(v256u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f32,pf32,v128i32,v128f32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (float*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f), (byte)4).AsByte()));
             Console.WriteLine("GatherMaskVector128(v128f32,pf32,v128i32,v128f32,u8) imm=9=" + Fmt.Thrown(() => { _ = X86.Avx2.GatherMaskVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (float*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f), Fmt.NonConstant((byte)9)); }));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f32,pf32,v128i64,v128f32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (float*)p1, Vector128.Create(2L, 3L), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f32,pf32,v256i64,v128f32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (float*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f64,pf64,v128i32,v128f64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(2.0, 1.5), (double*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(-2.5, 2.125), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f64,pf64,v128i64,v128f64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(2.0, 1.5), (double*)p1, Vector128.Create(2L, 3L), Vector128.Create(-2.5, 2.125), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128i32,pi32,v128i32,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796, 9337503, 14070210, 18802917), (int*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(15733053, 20465760, 25198467, 29931174), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128i32,pi32,v128i64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796, 9337503, 14070210, 18802917), (int*)p1, Vector128.Create(2L, 3L), Vector128.Create(15733053, 20465760, 25198467, 29931174), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128i32,pi32,v256i64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796, 9337503, 14070210, 18802917), (int*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector128.Create(15733053, 20465760, 25198467, 29931174), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128i64,pi64,v128i32,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4828507740108L, 9791140695219L), (long*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(16497401445369L, 21460034400480L), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128i64,pi64,v128i64,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4828507740108L, 9791140695219L), (long*)p1, Vector128.Create(2L, 3L), Vector128.Create(16497401445369L, 21460034400480L), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128u32,pu32,v128i32,v128u32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (uint*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(15733053U, 20465760U, 25198467U, 29931174U), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128u32,pu32,v128i64,v128u32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (uint*)p1, Vector128.Create(2L, 3L), Vector128.Create(15733053U, 20465760U, 25198467U, 29931174U), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128u32,pu32,v256i64,v128u32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (uint*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector128.Create(15733053U, 20465760U, 25198467U, 29931174U), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128u64,pu64,v128i32,v128u64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4828507740108UL, 9791140695219UL), (ulong*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(16497401445369UL, 21460034400480UL), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128u64,pu64,v128i64,v128u64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector128(Vector128.Create(4828507740108UL, 9791140695219UL), (ulong*)p1, Vector128.Create(2L, 3L), Vector128.Create(16497401445369UL, 21460034400480UL), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256f32,pf32,v256i32,v256f32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4.0f, 3.0f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f), (float*)p1, Vector256.Create(4, 1, 3, 0, 2, 4, 1, 3), Vector256.Create(-5.0f, 4.25f, 3.25f, 2.25f, 1.25f, 0.25f, -0.75f, -1.75f), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256f64,pf64,v128i32,v256f64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(2.0, 1.5, 1.0, 0.5), (double*)p1, Vector128.Create(4, 1, 3, 0), Vector256.Create(-2.5, 2.125, 1.625, 1.125), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256f64,pf64,v256i64,v256f64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(2.0, 1.5, 1.0, 0.5), (double*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector256.Create(-2.5, 2.125, 1.625, 1.125), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256i32,pi32,v256i32,v256i32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4604796, 9337503, 14070210, 18802917, 23535624, 28268331, 33001038, 37733745), (int*)p1, Vector256.Create(4, 1, 3, 0, 2, 4, 1, 3), Vector256.Create(15733053, 20465760, 25198467, 29931174, 34663881, 39396588, 44129295, 48862002), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256i64,pi64,v128i32,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4828507740108L, 9791140695219L, 14753773650330L, 19716406605441L), (long*)p1, Vector128.Create(4, 1, 3, 0), Vector256.Create(16497401445369L, 21460034400480L, 26422667355591L, 31385300310702L), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256i64,pi64,v256i64,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4828507740108L, 9791140695219L, 14753773650330L, 19716406605441L), (long*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector256.Create(16497401445369L, 21460034400480L, 26422667355591L, 31385300310702L), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256u32,pu32,v256i32,v256u32,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4604796U, 9337503U, 14070210U, 18802917U, 23535624U, 28268331U, 33001038U, 37733745U), (uint*)p1, Vector256.Create(4, 1, 3, 0, 2, 4, 1, 3), Vector256.Create(15733053U, 20465760U, 25198467U, 29931174U, 34663881U, 39396588U, 44129295U, 48862002U), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256u64,pu64,v128i32,v256u64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4828507740108UL, 9791140695219UL, 14753773650330UL, 19716406605441UL), (ulong*)p1, Vector128.Create(4, 1, 3, 0), Vector256.Create(16497401445369UL, 21460034400480UL, 26422667355591UL, 31385300310702UL), (byte)4).AsByte()));
         }
         {
-            byte* raw1 = stackalloc byte[96];
-            byte* p1 = Fmt.Align(raw1, 32);
+            byte* raw1 = stackalloc byte[128];
+            byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector256(v256u64,pu64,v256i64,v256u64,u8)=" + Fmt.Hex(X86.Avx2.GatherMaskVector256(Vector256.Create(4828507740108UL, 9791140695219UL, 14753773650330UL, 19716406605441UL), (ulong*)p1, Vector256.Create(2L, 3L, 4L, 0L), Vector256.Create(16497401445369UL, 21460034400480UL, 26422667355591UL, 31385300310702UL), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pf32,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((float*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pf32,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((float*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pf32,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((float*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pf64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((double*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pf64,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((double*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pi32,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((int*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pi32,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((int*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pi32,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((int*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pi64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((long*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pi64,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((long*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pu32,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((uint*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pu32,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((uint*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pu32,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((uint*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pu64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((ulong*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector128(pu64,v128i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector128((ulong*)p0, Vector128.Create(0L, 1L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pf32,v256i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((float*)p0, Vector256.Create(0, 2, 4, 1, 3, 0, 2, 4), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pf64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((double*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pf64,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((double*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pi32,v256i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((int*)p0, Vector256.Create(0, 2, 4, 1, 3, 0, 2, 4), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pi64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((long*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pi64,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((long*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pu32,v256i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((uint*)p0, Vector256.Create(0, 2, 4, 1, 3, 0, 2, 4), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pu64,v128i32,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((ulong*)p0, Vector128.Create(0, 2, 4, 1), (byte)4).AsByte()));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             Console.WriteLine("GatherVector256(pu64,v256i64,u8)=" + Fmt.Hex(X86.Avx2.GatherVector256((ulong*)p0, Vector256.Create(0L, 1L, 2L, 3L), (byte)4).AsByte()));
         }
@@ -17273,8 +17273,8 @@ internal static class Exercises
             Console.WriteLine("InsertVector128(v256u8,v128u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((short*)p0);
             var q = Vector256.Load(((short*)p0));
@@ -17282,8 +17282,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((int*)p0);
             var q = Vector256.Load(((int*)p0));
@@ -17291,8 +17291,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((long*)p0);
             var q = Vector256.Load(((long*)p0));
@@ -17300,8 +17300,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((sbyte*)p0);
             var q = Vector256.Load(((sbyte*)p0));
@@ -17309,8 +17309,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((ushort*)p0);
             var q = Vector256.Load(((ushort*)p0));
@@ -17318,8 +17318,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((uint*)p0);
             var q = Vector256.Load(((uint*)p0));
@@ -17327,8 +17327,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((ulong*)p0);
             var q = Vector256.Load(((ulong*)p0));
@@ -17336,8 +17336,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var r = X86.Avx2.LoadAlignedVector256NonTemporal((byte*)p0);
             var q = Vector256.Load(((byte*)p0));
@@ -17345,8 +17345,8 @@ internal static class Exercises
             Console.WriteLine("LoadAlignedVector256NonTemporal(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
             var r = X86.Avx2.MaskLoad((int*)p0, a1);
@@ -17355,8 +17355,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pi32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164);
             var r = X86.Avx2.MaskLoad((int*)p0, a1);
@@ -17365,8 +17365,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pi32,v256i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8718138975195L, 13680771930306L);
             var r = X86.Avx2.MaskLoad((long*)p0, a1);
@@ -17375,8 +17375,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pi64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L);
             var r = X86.Avx2.MaskLoad((long*)p0, a1);
@@ -17385,8 +17385,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pi64,v256i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
             var r = X86.Avx2.MaskLoad((uint*)p0, a1);
@@ -17395,8 +17395,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pu32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U);
             var r = X86.Avx2.MaskLoad((uint*)p0, a1);
@@ -17405,8 +17405,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pu32,v256u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
             var r = X86.Avx2.MaskLoad((ulong*)p0, a1);
@@ -17415,8 +17415,8 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pu64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             var a1 = Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL);
             var r = X86.Avx2.MaskLoad((ulong*)p0, a1);
@@ -17425,57 +17425,57 @@ internal static class Exercises
             Console.WriteLine("MaskLoad(pu64,v256u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336), Vector128.Create(12023634, 16756341, 21489048, 26221755));
             Console.WriteLine("MaskStore(pi32,v128i32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((int*)p0, Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164), Vector256.Create(12023634, 16756341, 21489048, 26221755, 30954462, 35687169, 40419876, 45152583));
             Console.WriteLine("MaskStore(pi32,v256i32,v256i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((long*)p0, Vector128.Create(8718138975195L, 13680771930306L), Vector128.Create(12607770210282L, 17570403165393L));
             Console.WriteLine("MaskStore(pi64,v128i64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((long*)p0, Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L), Vector256.Create(12607770210282L, 17570403165393L, 22533036120504L, 27495669075615L));
             Console.WriteLine("MaskStore(pi64,v256i64,v256i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U));
             Console.WriteLine("MaskStore(pu32,v128u32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((uint*)p0, Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U), Vector256.Create(12023634U, 16756341U, 21489048U, 26221755U, 30954462U, 35687169U, 40419876U, 45152583U));
             Console.WriteLine("MaskStore(pu32,v256u32,v256u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL), Vector128.Create(12607770210282UL, 17570403165393UL));
             Console.WriteLine("MaskStore(pu64,v128u64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
         }
         {
-            byte* raw0 = stackalloc byte[96];
-            byte* p0 = Fmt.Align(raw0, 32);
+            byte* raw0 = stackalloc byte[128];
+            byte* p0 = Fmt.Align(raw0, 64);
             Fmt.Fill(p0, 64, 1);
             X86.Avx2.MaskStore((ulong*)p0, Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL), Vector256.Create(12607770210282UL, 17570403165393UL, 22533036120504UL, 27495669075615UL));
             Console.WriteLine("MaskStore(pu64,v256u64,v256u64)=void" + " mem0=" + Fmt.Hex(p0, 64));

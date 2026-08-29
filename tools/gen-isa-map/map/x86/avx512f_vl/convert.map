@@ -1,0 +1,48 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — conversions at 128 and 256 bits: the truncating
+# and saturating narrows (VPMOV*, VPMOVS*, VPMOVUS*), which zero the lanes above the result,
+# and the unsigned 32-bit float conversions. The unsigned integer results carry no reference
+# (the integer indefinite for a negative or out-of-range input, where the portable
+# conversion saturates); the saturating narrows have no portable spelling.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector128Byte(v128{T}) @ref(Vector128.Narrow(Vector128.Narrow($0, Vector128<{cs}>.Zero), Vector128<{ncs}>.Zero).AsByte()) = _mm_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128Byte(v256{T}) @ref(Vector128.Narrow(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower(), Vector256.Narrow($0, Vector256<{cs}>.Zero).GetUpper()).AsByte()) = _mm256_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128Byte(v128i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector128.Narrow($0, Vector128<long>.Zero), Vector128<int>.Zero), Vector128<short>.Zero).AsByte()) = _mm_cvtepi64_epi8($0)
+ConvertToVector128Byte(v128u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector128.Narrow($0, Vector128<ulong>.Zero), Vector128<uint>.Zero), Vector128<ushort>.Zero)) = _mm_cvtepi64_epi8($0)
+ConvertToVector128Byte(v256i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0, Vector256<long>.Zero).GetLower(), Vector128<int>.Zero), Vector128<short>.Zero).AsByte()) = _mm256_cvtepi64_epi8($0)
+ConvertToVector128Byte(v256u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0, Vector256<ulong>.Zero).GetLower(), Vector128<uint>.Zero), Vector128<ushort>.Zero)) = _mm256_cvtepi64_epi8($0)
+ConvertToVector128ByteWithSaturation(v{W}{T}) = {mm}_cvtus{epi}_epi8($0) for W in 128,256 for T in u32,u64
+ConvertToVector128SByte(v128{T}) @ref(Vector128.Narrow(Vector128.Narrow($0, Vector128<{cs}>.Zero), Vector128<{ncs}>.Zero).AsSByte()) = _mm_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128SByte(v256{T}) @ref(Vector128.Narrow(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower(), Vector256.Narrow($0, Vector256<{cs}>.Zero).GetUpper()).AsSByte()) = _mm256_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128SByte(v128i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector128.Narrow($0, Vector128<long>.Zero), Vector128<int>.Zero), Vector128<short>.Zero)) = _mm_cvtepi64_epi8($0)
+ConvertToVector128SByte(v128u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector128.Narrow($0, Vector128<ulong>.Zero), Vector128<uint>.Zero), Vector128<ushort>.Zero).AsSByte()) = _mm_cvtepi64_epi8($0)
+ConvertToVector128SByte(v256i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0, Vector256<long>.Zero).GetLower(), Vector128<int>.Zero), Vector128<short>.Zero)) = _mm256_cvtepi64_epi8($0)
+ConvertToVector128SByte(v256u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0, Vector256<ulong>.Zero).GetLower(), Vector128<uint>.Zero), Vector128<ushort>.Zero).AsSByte()) = _mm256_cvtepi64_epi8($0)
+ConvertToVector128SByteWithSaturation(v{W}{T}) = {mm}_cvts{epi}_epi8($0) for W in 128,256 for T in i32,i64
+ConvertToVector128Int16(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsInt16()) = _mm_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector128Int16(v256{T}) @ref(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower().AsInt16()) = _mm256_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector128Int16(v128{T}) @ref(Vector128.Narrow(Vector128.Narrow($0, Vector128<{cs}>.Zero), Vector128<{ncs}>.Zero).AsInt16()) = _mm_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128Int16(v256{T}) @ref(Vector128.Narrow(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower(), Vector128<{ncs}>.Zero).AsInt16()) = _mm256_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128Int16WithSaturation(v{W}{T}) = {mm}_cvts{epi}_epi16($0) for W in 128,256 for T in i32,i64
+ConvertToVector128UInt16(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsUInt16()) = _mm_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector128UInt16(v256{T}) @ref(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower().AsUInt16()) = _mm256_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector128UInt16(v128{T}) @ref(Vector128.Narrow(Vector128.Narrow($0, Vector128<{cs}>.Zero), Vector128<{ncs}>.Zero).AsUInt16()) = _mm_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128UInt16(v256{T}) @ref(Vector128.Narrow(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower(), Vector128<{ncs}>.Zero).AsUInt16()) = _mm256_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128UInt16WithSaturation(v{W}{T}) = {mm}_cvtus{epi}_epi16($0) for W in 128,256 for T in u32,u64
+ConvertToVector128Int32(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsInt32()) = _mm_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector128Int32(v256{T}) @ref(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower().AsInt32()) = _mm256_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector128Int32WithSaturation(v{W}i64) = {mm}_cvtsepi64_epi32($0) for W in 128,256
+ConvertToVector128UInt32(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsUInt32()) = _mm_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector128UInt32(v256{T}) @ref(Vector256.Narrow($0, Vector256<{cs}>.Zero).GetLower().AsUInt32()) = _mm256_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector128UInt32WithSaturation(v{W}u64) = {mm}_cvtusepi64_epi32($0) for W in 128,256
+ConvertToVector128UInt32(v128f32) = _mm_cvtps_epu32($0)
+ConvertToVector128UInt32(v128f64) = _mm_cvtpd_epu32($0)
+ConvertToVector128UInt32(v256f64) = _mm256_cvtpd_epu32($0)
+ConvertToVector128UInt32WithTruncation(v128f32) = _mm_cvttps_epu32($0)
+ConvertToVector128UInt32WithTruncation(v128f64) = _mm_cvttpd_epu32($0)
+ConvertToVector128UInt32WithTruncation(v256f64) = _mm256_cvttpd_epu32($0)
+ConvertToVector128Double(v128u32) @ref(Vector128.ConvertToDouble(Vector128.WidenLower($0))) = _mm_cvtepu32_pd($0)
+ConvertToVector128Single(v128u32) @ref(Vector128.ConvertToSingle($0)) = _mm_cvtepu32_ps($0)
+ConvertToVector256Double(v128u32) @ref(Vector256.ConvertToDouble(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)))) = _mm256_cvtepu32_pd($0)
+ConvertToVector256Single(v256u32) @ref(Vector256.ConvertToSingle($0)) = _mm256_cvtepu32_ps($0)
+ConvertToVector256UInt32(v256f32) = _mm256_cvtps_epu32($0)
+ConvertToVector256UInt32WithTruncation(v256f32) = _mm256_cvttps_epu32($0)

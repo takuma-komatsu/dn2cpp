@@ -1,0 +1,15 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — TernaryLogic, the rotates and the 64-bit
+# arithmetic shift at 128 and 256 bits; see avx512f/bitwise.map for the immediate and count
+# conventions.
+target = avx512f,avx512bw,avx512dq,avx512vl
+TernaryLogic(v{W}{T},v{W}{T},v{W}{T},u8) @imm8 = {mm}_ternarylogic_epi32($0, $1, $2, $3) for W in 128,256 for T in i8,u8,i16,u16,i32,u32
+TernaryLogic(v{W}{T},v{W}{T},v{W}{T},u8) @imm8 = {mm}_ternarylogic_epi64($0, $1, $2, $3) for W in 128,256 for T in i64,u64
+TernaryLogic(v{W}f32,v{W}f32,v{W}f32,u8) @imm8 = {mm}_ternarylogic_epi32($0:i32, $1:i32, $2:i32, $3) for W in 128,256
+TernaryLogic(v{W}f64,v{W}f64,v{W}f64,u8) @imm8 = {mm}_ternarylogic_epi64($0:i64, $1:i64, $2:i64, $3) for W in 128,256
+RotateLeft(v{W}{T},u8) @imm8 = {mm}_rol_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+RotateLeftVariable(v{W}{T},v{W}{uT}) = {mm}_rolv_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+RotateRight(v{W}{T},u8) @imm8 = {mm}_ror_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+RotateRightVariable(v{W}{T},v{W}{uT}) = {mm}_rorv_{epi}($0, $1) for W in 128,256 for T in i32,u32,i64,u64
+ShiftRightArithmetic(v{W}i64,u8) @imm8 @ref(Vector{W}.ShiftRightArithmetic($0, Math.Min((int)$1, 63))) = {mm}_srai_epi64($0, $1) for W in 128,256
+ShiftRightArithmetic(v{W}i64,v128i64) @ref(Vector{W}.ShiftRightArithmetic($0, (int)Math.Min($1.AsUInt64().GetElement(0), 63UL))) = {mm}_sra_epi64($0, $1) for W in 128,256
+ShiftRightArithmeticVariable(v{W}i64,v{W}u64) = {mm}_srav_epi64($0, $1) for W in 128,256

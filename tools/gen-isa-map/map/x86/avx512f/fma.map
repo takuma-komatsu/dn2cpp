@@ -1,0 +1,20 @@
+# System.Runtime.Intrinsics.X86.Avx512F — fused multiply-add at 512 bits, as Fma's forms:
+# the Negated forms negate the product, the Subtract forms negate the addend, and the
+# AddSubtract / SubtractAdd forms alternate by lane (odd lanes add, or even lanes add). The
+# FloatRoundingMode overloads embed the rounding as described in arithmetic.map; the
+# portable FusedMultiplyAdd rounds to nearest, so only the plain forms carry a reference.
+target = avx512f,avx512bw,avx512dq,avx512vl
+FusedMultiplyAdd(v512{T},v512{T},v512{T}) @ref(Vector512.FusedMultiplyAdd($0, $1, $2)) = _mm512_fmadd_{ps|pd}($0, $1, $2) for T in f32,f64
+FusedMultiplyAdd(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fmadd_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplyAddNegated(v512{T},v512{T},v512{T}) @ref(Vector512.FusedMultiplyAdd(-$0, $1, $2)) = _mm512_fnmadd_{ps|pd}($0, $1, $2) for T in f32,f64
+FusedMultiplyAddNegated(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fnmadd_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplySubtract(v512{T},v512{T},v512{T}) @ref(Vector512.FusedMultiplyAdd($0, $1, -$2)) = _mm512_fmsub_{ps|pd}($0, $1, $2) for T in f32,f64
+FusedMultiplySubtract(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fmsub_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplySubtractNegated(v512{T},v512{T},v512{T}) @ref(Vector512.FusedMultiplyAdd(-$0, $1, -$2)) = _mm512_fnmsub_{ps|pd}($0, $1, $2) for T in f32,f64
+FusedMultiplySubtractNegated(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fnmsub_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplyAddSubtract(v512f32,v512f32,v512f32) @ref(Vector512.ConditionalSelect(Vector512.Create(0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1).AsSingle(), Vector512.FusedMultiplyAdd($0, $1, $2), Vector512.FusedMultiplyAdd($0, $1, -$2))) = _mm512_fmaddsub_ps($0, $1, $2)
+FusedMultiplyAddSubtract(v512f64,v512f64,v512f64) @ref(Vector512.ConditionalSelect(Vector512.Create(0L, -1L, 0L, -1L, 0L, -1L, 0L, -1L).AsDouble(), Vector512.FusedMultiplyAdd($0, $1, $2), Vector512.FusedMultiplyAdd($0, $1, -$2))) = _mm512_fmaddsub_pd($0, $1, $2)
+FusedMultiplyAddSubtract(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fmaddsub_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplySubtractAdd(v512f32,v512f32,v512f32) @ref(Vector512.ConditionalSelect(Vector512.Create(-1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0, -1, 0).AsSingle(), Vector512.FusedMultiplyAdd($0, $1, $2), Vector512.FusedMultiplyAdd($0, $1, -$2))) = _mm512_fmsubadd_ps($0, $1, $2)
+FusedMultiplySubtractAdd(v512f64,v512f64,v512f64) @ref(Vector512.ConditionalSelect(Vector512.Create(-1L, 0L, -1L, 0L, -1L, 0L, -1L, 0L).AsDouble(), Vector512.FusedMultiplyAdd($0, $1, $2), Vector512.FusedMultiplyAdd($0, $1, -$2))) = _mm512_fmsubadd_pd($0, $1, $2)
+FusedMultiplySubtractAdd(v512{T},v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_fmsubadd_round_{ps|pd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64

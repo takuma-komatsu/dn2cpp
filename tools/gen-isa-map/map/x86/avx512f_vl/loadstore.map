@@ -1,0 +1,16 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — the masked loads and stores at 128 and 256 bits,
+# with avx512f/loadstore.map's conventions (the aligned forms fault below the vector's
+# width in bytes, which the exercise's 64-byte alignment covers).
+target = avx512f,avx512bw,avx512dq,avx512vl
+MaskLoad(p{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($1.As<{cs}, {scs}>()).As<{scs}, {cs}>(), Vector{W}.Load($0), $2)) = {mm}_mask_loadu_epi{bits}($2, {mm}_movepi{bits}_mask($1), (const void*)$0) for W in 128,256 for T in i32,u32,i64,u64
+MaskLoad(p{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($1), Vector{W}.Load($0), $2)) = {mm}_mask_loadu_{ps|pd}($2, {mm}_movepi{bits}_mask($1:{sT}), (const void*)$0) for W in 128,256 for T in f32,f64
+MaskLoadAligned(p{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($1.As<{cs}, {scs}>()).As<{scs}, {cs}>(), Vector{W}.Load($0), $2)) = {mm}_mask_load_epi{bits}($2, {mm}_movepi{bits}_mask($1), (const void*)$0) for W in 128,256 for T in i32,u32,i64,u64
+MaskLoadAligned(p{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($1), Vector{W}.Load($0), $2)) = {mm}_mask_load_{ps|pd}($2, {mm}_movepi{bits}_mask($1:{sT}), (const void*)$0) for W in 128,256 for T in f32,f64
+MaskStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_storeu_epi{bits}((void*)$0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i32,u32,i64,u64
+MaskStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_storeu_{ps|pd}((void*)$0, {mm}_movepi{bits}_mask($1:{sT}), $2) for W in 128,256 for T in f32,f64
+MaskStoreAligned(p{T},v{W}{T},v{W}{T}) = {mm}_mask_store_epi{bits}((void*)$0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i32,u32,i64,u64
+MaskStoreAligned(p{T},v{W}{T},v{W}{T}) = {mm}_mask_store_{ps|pd}((void*)$0, {mm}_movepi{bits}_mask($1:{sT}), $2) for W in 128,256 for T in f32,f64
+CompressStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_compressstoreu_epi{bits}((void*)$0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i32,u32,i64,u64
+CompressStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_compressstoreu_{ps|pd}((void*)$0, {mm}_movepi{bits}_mask($1:{sT}), $2) for W in 128,256 for T in f32,f64
+ExpandLoad(p{T},v{W}{T},v{W}{T}) = {mm}_mask_expandloadu_epi{bits}($2, {mm}_movepi{bits}_mask($1), (const void*)$0) for W in 128,256 for T in i32,u32,i64,u64
+ExpandLoad(p{T},v{W}{T},v{W}{T}) = {mm}_mask_expandloadu_{ps|pd}($2, {mm}_movepi{bits}_mask($1:{sT}), (const void*)$0) for W in 128,256 for T in f32,f64

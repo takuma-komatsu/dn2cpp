@@ -1,0 +1,18 @@
+# System.Runtime.Intrinsics.X86.Avx512F — the mask-driven lane operations. .NET has no mask
+# register type: a vector's lanes stand for the mask through their sign bits (VPMOVD2M /
+# VPMOVQ2M), which is how the JIT imports these. BlendVariable takes the right operand's
+# lane where the mask lane is negative; Compress packs the selected lanes of the value to the
+# low end and fills the rest from the merge operand, Expand spreads the low lanes of the
+# value into the selected positions and fills the rest from the merge operand. MoveMask
+# collects the sign bits (VPMOVB2M / VPMOVW2M / VPMOVD2M) into an int.
+target = avx512f,avx512bw,avx512dq,avx512vl
+BlendVariable(v512{T},v512{T},v512{T}) @ref(Vector512.ConditionalSelect(Vector512.IsNegative($2.As<{cs}, {scs}>()).As<{scs}, {cs}>(), $1, $0)) = _mm512_mask_blend_epi{bits}(_mm512_movepi{bits}_mask($2), $0, $1) for T in i32,u32,i64,u64
+BlendVariable(v512{T},v512{T},v512{T}) @ref(Vector512.ConditionalSelect(Vector512.IsNegative($2), $1, $0)) = _mm512_mask_blend_{ps|pd}(_mm512_movepi{bits}_mask($2:{sT}), $0, $1) for T in f32,f64
+Compress(v512{T},v512{T},v512{T}) = _mm512_mask_compress_epi{bits}($0, _mm512_movepi{bits}_mask($1), $2) for T in i32,u32,i64,u64
+Compress(v512{T},v512{T},v512{T}) = _mm512_mask_compress_{ps|pd}($0, _mm512_movepi{bits}_mask($1:{sT}), $2) for T in f32,f64
+Expand(v512{T},v512{T},v512{T}) = _mm512_mask_expand_epi{bits}($0, _mm512_movepi{bits}_mask($1), $2) for T in i32,u32,i64,u64
+Expand(v512{T},v512{T},v512{T}) = _mm512_mask_expand_{ps|pd}($0, _mm512_movepi{bits}_mask($1:{sT}), $2) for T in f32,f64
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = (int32_t)_mm_movepi8_mask($0) for T in i8,u8
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = (int32_t)_mm256_movepi16_mask($0) for T in i16,u16
+MoveMask(v512{T}) @ref((int)Vector512.ExtractMostSignificantBits($0)) = (int32_t)_mm512_movepi32_mask($0) for T in i32,u32
+MoveMask(v512f32) @ref((int)Vector512.ExtractMostSignificantBits($0)) = (int32_t)_mm512_movepi32_mask($0:i32)

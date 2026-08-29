@@ -1,0 +1,31 @@
+# System.Runtime.Intrinsics.X86.Avx512F — bitwise operations, shifts and rotates at 512 bits.
+# The logical operations work on 512 bits whatever the lane type; AndNot is VPANDN, the
+# complement of the FIRST operand. TernaryLogic evaluates the 3-input truth table the
+# immediate spells, bit by bit; every byte is a table. A shift count at or above the lane
+# width saturates (zero, or the sign fill for an arithmetic shift) and .NET keeps that for a
+# non-constant count, so every byte immediate is valid and the references spell the
+# saturation; the register-count forms read the low 64 bits of the count operand; the
+# Variable forms saturate lane by lane. A rotate count is taken modulo the lane width by
+# the hardware, so every byte is valid there too.
+target = avx512f,avx512bw,avx512dq,avx512vl
+And(v512{T},v512{T}) @ref(Vector512.BitwiseAnd($0, $1)) = _mm512_and_si512($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+AndNot(v512{T},v512{T}) @ref(Vector512.AndNot($1, $0)) = _mm512_andnot_si512($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Or(v512{T},v512{T}) @ref(Vector512.BitwiseOr($0, $1)) = _mm512_or_si512($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Xor(v512{T},v512{T}) @ref(Vector512.Xor($0, $1)) = _mm512_xor_si512($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+TernaryLogic(v512{T},v512{T},v512{T},u8) @imm8 = _mm512_ternarylogic_epi32($0, $1, $2, $3) for T in i8,u8,i16,u16,i32,u32
+TernaryLogic(v512{T},v512{T},v512{T},u8) @imm8 = _mm512_ternarylogic_epi64($0, $1, $2, $3) for T in i64,u64
+TernaryLogic(v512f32,v512f32,v512f32,u8) @imm8 = _mm512_ternarylogic_epi32($0:i32, $1:i32, $2:i32, $3)
+TernaryLogic(v512f64,v512f64,v512f64,u8) @imm8 = _mm512_ternarylogic_epi64($0:i64, $1:i64, $2:i64, $3)
+ShiftLeftLogical(v512{T},u8) @imm8 @ref($1 < {bits} ? Vector512.ShiftLeft($0, $1) : Vector512<{cs}>.Zero) = _mm512_slli_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftLeftLogical(v512{T},v128{T}) @ref($1.AsUInt64().GetElement(0) < {bits} ? Vector512.ShiftLeft($0, (int)$1.AsUInt64().GetElement(0)) : Vector512<{cs}>.Zero) = _mm512_sll_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftLeftLogicalVariable(v512{T},v512{uT}) = _mm512_sllv_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftRightLogical(v512{T},u8) @imm8 @ref($1 < {bits} ? Vector512.ShiftRightLogical($0, $1) : Vector512<{cs}>.Zero) = _mm512_srli_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftRightLogical(v512{T},v128{T}) @ref($1.AsUInt64().GetElement(0) < {bits} ? Vector512.ShiftRightLogical($0, (int)$1.AsUInt64().GetElement(0)) : Vector512<{cs}>.Zero) = _mm512_srl_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftRightLogicalVariable(v512{T},v512{uT}) = _mm512_srlv_{epi}($0, $1) for T in i32,u32,i64,u64
+ShiftRightArithmetic(v512{T},u8) @imm8 @ref(Vector512.ShiftRightArithmetic($0, Math.Min((int)$1, {bits} - 1))) = _mm512_srai_{epi}($0, $1) for T in i32,i64
+ShiftRightArithmetic(v512{T},v128{T}) @ref(Vector512.ShiftRightArithmetic($0, (int)Math.Min($1.AsUInt64().GetElement(0), (ulong)({bits} - 1)))) = _mm512_sra_{epi}($0, $1) for T in i32,i64
+ShiftRightArithmeticVariable(v512{T},v512{uT}) = _mm512_srav_{epi}($0, $1) for T in i32,i64
+RotateLeft(v512{T},u8) @imm8 = _mm512_rol_{epi}($0, $1) for T in i32,u32,i64,u64
+RotateLeftVariable(v512{T},v512{uT}) = _mm512_rolv_{epi}($0, $1) for T in i32,u32,i64,u64
+RotateRight(v512{T},u8) @imm8 = _mm512_ror_{epi}($0, $1) for T in i32,u32,i64,u64
+RotateRightVariable(v512{T},v512{uT}) = _mm512_rorv_{epi}($0, $1) for T in i32,u32,i64,u64

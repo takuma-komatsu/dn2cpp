@@ -1,0 +1,57 @@
+# System.Runtime.Intrinsics.X86.Avx512F — conversions. The integer widenings sign- or
+# zero-extend by the source lane type; the narrowings truncate (VPMOV*), or saturate to the
+# result's range in the WithSaturation forms (VPMOVS* for a signed result, VPMOVUS* for an
+# unsigned one); a narrowing to fewer than 128 bits zeroes the upper lanes. Float-to-integer
+# rounds under MXCSR (nearest-even by default, the portable Round), truncates, or embeds the
+# FloatRoundingMode as in arithmetic.map, which the references follow through Round / Floor /
+# Ceiling / Truncate. The unsigned results carry no reference: a negative or out-of-range
+# input yields the integer indefinite, where the portable conversion saturates.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector128Byte(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsByte()) = _mm512_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128Byte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero).AsByte()) = _mm512_cvtepi64_epi8($0)
+ConvertToVector128Byte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero)) = _mm512_cvtepi64_epi8($0)
+ConvertToVector128ByteWithSaturation(v512{T}) = _mm512_cvtus{epi}_epi8($0) for T in u32,u64
+ConvertToVector128SByte(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsSByte()) = _mm512_cvt{epi}_epi8($0) for T in i32,u32
+ConvertToVector128SByte(v512i64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<short>.Zero)) = _mm512_cvtepi64_epi8($0)
+ConvertToVector128SByte(v512u64) @ref(Vector128.Narrow(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()), Vector128<ushort>.Zero).AsSByte()) = _mm512_cvtepi64_epi8($0)
+ConvertToVector128SByteWithSaturation(v512{T}) = _mm512_cvts{epi}_epi8($0) for T in i32,i64
+ConvertToVector128Int16(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsInt16()) = _mm512_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128Int16WithSaturation(v512i64) = _mm512_cvtsepi64_epi16($0)
+ConvertToVector128UInt16(v512{T}) @ref(Vector128.Narrow(Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetLower(), Vector256.Narrow($0.GetLower(), $0.GetUpper()).GetUpper()).AsUInt16()) = _mm512_cvt{epi}_epi16($0) for T in i64,u64
+ConvertToVector128UInt16WithSaturation(v512u64) = _mm512_cvtusepi64_epi16($0)
+ConvertToVector256Int16(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsInt16()) = _mm512_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector256Int16WithSaturation(v512i32) = _mm512_cvtsepi32_epi16($0)
+ConvertToVector256UInt16(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsUInt16()) = _mm512_cvt{epi}_epi16($0) for T in i32,u32
+ConvertToVector256UInt16WithSaturation(v512u32) = _mm512_cvtusepi32_epi16($0)
+ConvertToVector256Int32(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsInt32()) = _mm512_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector256Int32WithSaturation(v512i64) = _mm512_cvtsepi64_epi32($0)
+ConvertToVector256UInt32(v512{T}) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper()).AsUInt32()) = _mm512_cvt{epi}_epi32($0) for T in i64,u64
+ConvertToVector256UInt32WithSaturation(v512u64) = _mm512_cvtusepi64_epi32($0)
+ConvertToVector256Int32(v512f64) @ref(Vector256.Create((int)Math.Round($0.GetElement(0)), (int)Math.Round($0.GetElement(1)), (int)Math.Round($0.GetElement(2)), (int)Math.Round($0.GetElement(3)), (int)Math.Round($0.GetElement(4)), (int)Math.Round($0.GetElement(5)), (int)Math.Round($0.GetElement(6)), (int)Math.Round($0.GetElement(7)))) = _mm512_cvtpd_epi32($0)
+ConvertToVector256Int32(v512f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref(Vector256.Create((int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(0), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(1), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(2), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(3), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(4), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(5), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(6), (int)(((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)).GetElement(7))) = _mm512_cvt_roundpd_epi32($0, ($1 & 3) | 8)
+ConvertToVector256Int32WithTruncation(v512f64) @ref(Vector256.Create((int)$0.GetElement(0), (int)$0.GetElement(1), (int)$0.GetElement(2), (int)$0.GetElement(3), (int)$0.GetElement(4), (int)$0.GetElement(5), (int)$0.GetElement(6), (int)$0.GetElement(7))) = _mm512_cvttpd_epi32($0)
+ConvertToVector256UInt32(v512f64) = _mm512_cvtpd_epu32($0)
+ConvertToVector256UInt32(v512f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_roundpd_epu32($0, ($1 & 3) | 8)
+ConvertToVector256UInt32WithTruncation(v512f64) = _mm512_cvttpd_epu32($0)
+ConvertToVector256Single(v512f64) @ref(Vector256.Narrow($0.GetLower(), $0.GetUpper())) = _mm512_cvtpd_ps($0)
+ConvertToVector256Single(v512f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_roundpd_ps($0, ($1 & 3) | 8)
+ConvertToVector512Double(v256f32) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0))) = _mm512_cvtps_pd($0)
+ConvertToVector512Double(v256{T}) @ref(Vector512.ConvertToDouble(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)))) = _mm512_cvt{ep}_pd($0) for T in i32,u32
+ConvertToVector512Int32(v128{T}) @ref(Vector512.Create(Vector256.WidenLower(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0))), Vector256.WidenUpper(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)))).AsInt32()) = _mm512_cvt{ep}_epi32($0) for T in i8,u8
+ConvertToVector512Int32(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsInt32()) = _mm512_cvt{ep}_epi32($0) for T in i16,u16
+ConvertToVector512Int32(v512f32) @ref(Vector512.ConvertToInt32(Vector512.Round($0))) = _mm512_cvtps_epi32($0)
+ConvertToVector512Int32(v512f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref(Vector512.ConvertToInt32((((int)$1 & 3) == 0 ? Vector512.Round($0) : ((int)$1 & 3) == 1 ? Vector512.Floor($0) : ((int)$1 & 3) == 2 ? Vector512.Ceiling($0) : Vector512.Truncate($0)))) = _mm512_cvt_roundps_epi32($0, ($1 & 3) | 8)
+ConvertToVector512Int32WithTruncation(v512f32) @ref(Vector512.ConvertToInt32($0)) = _mm512_cvttps_epi32($0)
+ConvertToVector512UInt32(v128{T}) @ref(Vector512.Create(Vector256.WidenLower(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0))), Vector256.WidenUpper(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)))).AsUInt32()) = _mm512_cvt{ep}_epi32($0) for T in i8,u8
+ConvertToVector512UInt32(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsUInt32()) = _mm512_cvt{ep}_epi32($0) for T in i16,u16
+ConvertToVector512UInt32(v512f32) = _mm512_cvtps_epu32($0)
+ConvertToVector512UInt32(v512f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_roundps_epu32($0, ($1 & 3) | 8)
+ConvertToVector512UInt32WithTruncation(v512f32) = _mm512_cvttps_epu32($0)
+ConvertToVector512Int64(v128{T}) @ref(Vector512.Create(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower($0))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower($0)))), Vector256.Create(Vector128.WidenLower(Vector128.WidenUpper(Vector128.WidenLower($0))), Vector128.WidenUpper(Vector128.WidenUpper(Vector128.WidenLower($0))))).AsInt64()) = _mm512_cvt{ep}_epi64($0) for T in i8,u8
+ConvertToVector512Int64(v128{T}) @ref(Vector512.Create(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower($0)), Vector128.WidenUpper(Vector128.WidenLower($0))), Vector256.Create(Vector128.WidenLower(Vector128.WidenUpper($0)), Vector128.WidenUpper(Vector128.WidenUpper($0)))).AsInt64()) = _mm512_cvt{ep}_epi64($0) for T in i16,u16
+ConvertToVector512Int64(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsInt64()) = _mm512_cvt{ep}_epi64($0) for T in i32,u32
+ConvertToVector512UInt64(v128{T}) @ref(Vector512.Create(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower($0))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower($0)))), Vector256.Create(Vector128.WidenLower(Vector128.WidenUpper(Vector128.WidenLower($0))), Vector128.WidenUpper(Vector128.WidenUpper(Vector128.WidenLower($0))))).AsUInt64()) = _mm512_cvt{ep}_epi64($0) for T in i8,u8
+ConvertToVector512UInt64(v128{T}) @ref(Vector512.Create(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower($0)), Vector128.WidenUpper(Vector128.WidenLower($0))), Vector256.Create(Vector128.WidenLower(Vector128.WidenUpper($0)), Vector128.WidenUpper(Vector128.WidenUpper($0)))).AsUInt64()) = _mm512_cvt{ep}_epi64($0) for T in i16,u16
+ConvertToVector512UInt64(v256{T}) @ref(Vector512.Create(Vector256.WidenLower($0), Vector256.WidenUpper($0)).AsUInt64()) = _mm512_cvt{ep}_epi64($0) for T in i32,u32
+ConvertToVector512Single(v512{T}) @ref(Vector512.ConvertToSingle($0)) = _mm512_cvt{ep}_ps($0) for T in i32,u32
+ConvertToVector512Single(v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_cvt_round{ep}_ps($0, ($1 & 3) | 8) for T in i32,u32
