@@ -71,8 +71,9 @@ internal sealed partial class MethodCompiler
             }
             // No software-vector operand/result: the element is non-primitive (e.g.
             // Vector<Int128>). The software-vector runtime is primitive-only, and such a
-            // helper is only ever called on the dead, hardware-gated-off SIMD branch
-            // (Vector.IsHardwareAccelerated folds to 0, so the scalar path always runs).
+            // helper is only ever called on the SIMD branch the portable getter gates off
+            // (Vector.IsHardwareAccelerated emits DN2CPP_SIMD_HW_ACCEL, 0 by default, so
+            // the scalar path runs; the platform-ISA facades never take such an element).
             // The declaring helper class is intrinsic, so its real body is never emitted —
             // drop the args and yield a default. The stub compiles but never executes.
             var nv = Comp.ResolveMethodSpec(Module, msh, Method.Context);

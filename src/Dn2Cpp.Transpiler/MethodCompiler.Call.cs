@@ -1596,9 +1596,10 @@ internal sealed partial class MethodCompiler
         // same clang builtins as the IBinaryInteger<T> statics on the primitive
         // integer types, taking the bit width from the argument. BitOperations is
         // BCL-as-IL (not an intrinsic type); inside these methods the Lzcnt / ArmBase /
-        // X86Base.IsSupported gates are platform-ISA getters (constant 0 until the
-        // family is lowered), so the body would otherwise fall through to a De Bruijn
-        // software-table lookup whose getter is an out-of-line cross-TU call. The
+        // X86Base.IsSupported gates are platform-ISA getters — a run-time token for a
+        // Lowered family, the constant 0 otherwise — so the body would otherwise test
+        // the token per call and fall to a De Bruijn software table where the family
+        // is not Lowered; the builtin is the same instruction on every path. The
         // remaining BitOperations methods (RotateLeft/Right,
         // IsPow2, RoundUpToPowerOf2, the nint/nuint overloads) have no builtin here
         // and keep falling through to BCL-as-IL.
