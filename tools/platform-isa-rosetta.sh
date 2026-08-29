@@ -91,7 +91,7 @@ echo "== 3/5 Building the x86-64 probe ($build_dir) =="
 "$CMAKE" --build "$build_dir" >"$build_dir.build.log" 2>&1 \
     || { tail -60 "$build_dir.build.log" >&2; exit 1; }
 bin="$build_dir/$project"
-file "$bin" | grep -q x86_64 || { echo "error: $bin is not an x86_64 binary" >&2; exit 1; }
+grep -q x86_64 <<<"$(file "$bin")" || { echo "error: $bin is not an x86_64 binary" >&2; exit 1; }
 
 fails=0
 # run LABEL ENV... — one probe run under Rosetta; prints the contract block and the
