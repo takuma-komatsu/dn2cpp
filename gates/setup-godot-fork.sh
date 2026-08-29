@@ -10,10 +10,12 @@
 #   3. the dn2cpp export toolchain bundle           (dist/package-toolchain.sh)
 #   4. managed assemblies + local nuget feed + the bundle installed into
 #      bin/GodotSharp/Dn2Cpp                        (build_assemblies.py --bundle-dn2cpp)
-#   5. a release export template + the desktop export template artifact the
-#      export preset points at (godot_fork_desktop_template, gates/_godot_fork.sh)
+#   5. desktop export templates + the artifacts the export preset points at
+#      (Windows builds distinct release and debug templates; other hosts build
+#      the release template used by their gate)
 #   6. an artifact root: $ROOT/{<desktop template>,nuget/,bin-cache/,pin.txt,
-#                              fork_head.txt,clone.txt,editor.txt,template.txt}
+#                              fork_head.txt,clone.txt,editor.txt,template.txt,
+#                              template-debug.txt (Windows)}
 #      — the engine binaries and their GodotSharp tree are referenced in place by
 #      recorded path, never linked or copied in (see step 6 for why)
 #
@@ -136,7 +138,6 @@ case "$DN2CPP_OS" in
         exit 1
         ;;
 esac
-
 # resolve_python — pick an interpreter by RUNNING a candidate, never by testing
 # its name or asking `command -v`. The probe is not defensiveness: a stock Windows
 # install answers `python3` with an app-execution-alias stub that resolves AND
@@ -168,6 +169,7 @@ SCONS="$(godot_fork_scons "$PY")"
 
 EDITOR_REL="bin/godot.$SCONS_PLATFORM.editor.$ARCH.mono$FORK_EXE"
 TEMPLATE_REL="bin/godot.$SCONS_PLATFORM.template_release.$ARCH.mono$FORK_EXE"
+TEMPLATE_DEBUG_REL="bin/godot.$SCONS_PLATFORM.template_debug.$ARCH.mono$FORK_EXE"
 # The three stamped products are FORK_GLUE_MARKER / FORK_API_RELEASE_REL /
 # FORK_TOOLCHAIN_MARKER (gates/_godot_fork.sh), not local names: this script
 # WRITES the stamps and godot_fork_cache_fresh READS them, and a second spelling
@@ -422,8 +424,16 @@ else
     printf '%s\n' "$TOOLS_HASH" > "$TOOLS_STAMP"
 fi
 
-echo "== 5/6 Release template + desktop export template artifact =="
+echo "== 5/6 Desktop export template artifacts =="
 provide_binary "$TEMPLATE_REL" "mono release template" template_release
+if [ "$DN2CPP_OS" = windows ]; then
+    provide_binary "$TEMPLATE_DEBUG_REL" "mono debug template" template_debug
+    if cmp -s "$FORK/$TEMPLATE_REL" "$FORK/$TEMPLATE_DEBUG_REL"; then
+        echo "error: the Windows release and debug templates are byte-identical" >&2
+        echo "       Build template_release and template_debug as separate SCons targets." >&2
+        exit 1
+    fi
+fi
 
 # What `custom_template/release` is allowed to point at is the exporter's rule,
 # not ours, and the two desktop platforms differ: macOS wants a ZIP laid out like
@@ -433,9 +443,6 @@ provide_binary "$TEMPLATE_REL" "mono release template" template_release
 # under is godot_fork_desktop_template's, so the gate reading it cannot drift from
 # this script writing it.
 #
-# Only the release binary is provided either way: the gate exports release, and
-# pairing a debug entry with the same binary would misreport what an
-# --export-debug produced.
 TEMPLATE_ARTIFACT="$(godot_fork_desktop_template "$ROOT")"
 # Keyed on a provenance stamp, exactly like the Web and iOS zips the two setup
 # aids bake — `<template>.provenance`, godot_fork_engine_provenance — and read by
@@ -454,8 +461,18 @@ TEMPLATE_ARTIFACT="$(godot_fork_desktop_template "$ROOT")"
 # written out at godot_fork_engine_provenance).
 TEMPLATE_STAMP="$TEMPLATE_ARTIFACT.provenance"
 ENGINE_PROVENANCE="$(godot_fork_engine_provenance)"
+if [ "$DN2CPP_OS" = windows ]; then
+    TEMPLATE_DEBUG_ARTIFACT="$(godot_fork_desktop_template "$ROOT" debug)"
+    TEMPLATE_DEBUG_STAMP="$TEMPLATE_DEBUG_ARTIFACT.provenance"
+else
+    TEMPLATE_DEBUG_ARTIFACT=
+    TEMPLATE_DEBUG_STAMP=
+fi
 if [ -f "$TEMPLATE_ARTIFACT" ] \
-    && [ "$(head -1 "$TEMPLATE_STAMP" 2>/dev/null || true)" = "$ENGINE_PROVENANCE" ]; then
+    && [ "$(head -1 "$TEMPLATE_STAMP" 2>/dev/null || true)" = "$ENGINE_PROVENANCE" ] \
+    && { [ "$DN2CPP_OS" != windows ] \
+        || { [ -f "$TEMPLATE_DEBUG_ARTIFACT" ] \
+            && [ "$(head -1 "$TEMPLATE_DEBUG_STAMP" 2>/dev/null || true)" = "$ENGINE_PROVENANCE" ]; }; }; then
     echo "skip: desktop template artifact already assembled from these engine sources: $TEMPLATE_ARTIFACT"
 else
     # The stamp never outlives the artifact it describes: removed before the
@@ -463,6 +480,7 @@ else
     # template — which the gate refuses — rather than a stamped half-written one,
     # which it would use. Same ordering, and the same reason, as install_binary's.
     rm -f "$TEMPLATE_STAMP"
+    [ -z "$TEMPLATE_DEBUG_STAMP" ] || rm -f "$TEMPLATE_DEBUG_STAMP"
     if [ "$DN2CPP_OS" = macos ]; then
         STAGE="$ROOT/template_stage"
         rm -rf "$STAGE"
@@ -476,6 +494,15 @@ else
         rm -f "$TEMPLATE_ARTIFACT"
         (cd "$STAGE" && zip -qry "$TEMPLATE_ARTIFACT" macos_template.app)
         rm -rf "$STAGE"
+    elif [ "$DN2CPP_OS" = windows ]; then
+        # Kept as two artifacts: the exporter consumes one executable per
+        # preset field, while the release packager later combines them.
+        cp -f "$FORK/$TEMPLATE_REL" "$TEMPLATE_ARTIFACT.tmp"
+        chmod +x "$TEMPLATE_ARTIFACT.tmp"
+        mv -f "$TEMPLATE_ARTIFACT.tmp" "$TEMPLATE_ARTIFACT"
+        cp -f "$FORK/$TEMPLATE_DEBUG_REL" "$TEMPLATE_DEBUG_ARTIFACT.tmp"
+        chmod +x "$TEMPLATE_DEBUG_ARTIFACT.tmp"
+        mv -f "$TEMPLATE_DEBUG_ARTIFACT.tmp" "$TEMPLATE_DEBUG_ARTIFACT"
     else
         # Copied, not symlinked: this path is handed to the *engine*, which opens
         # it with the Win32 file API rather than through this shell.
@@ -484,6 +511,10 @@ else
         mv -f "$TEMPLATE_ARTIFACT.tmp" "$TEMPLATE_ARTIFACT"
     fi
     printf '%s\n' "$ENGINE_PROVENANCE" > "$TEMPLATE_STAMP"
+    if [ "$DN2CPP_OS" = windows ]; then
+        printf '%s\n' "$ENGINE_PROVENANCE" > "$TEMPLATE_DEBUG_STAMP"
+        echo "-- debug desktop template artifact: $TEMPLATE_DEBUG_ARTIFACT ($ENGINE_PROVENANCE)"
+    fi
     echo "-- desktop template artifact: $TEMPLATE_ARTIFACT ($ENGINE_PROVENANCE)"
 fi
 
@@ -501,6 +532,12 @@ echo "== 6/6 Assembling the artifact root =="
 FORK_ABS="$(cd "$FORK" && pwd)"
 printf '%s\n' "$FORK_ABS/$EDITOR_REL" > "$ROOT/editor.txt"
 printf '%s\n' "$FORK_ABS/$TEMPLATE_REL" > "$ROOT/template.txt"
+if [ "$DN2CPP_OS" = windows ]; then
+    printf '%s\n' "$FORK_ABS/$TEMPLATE_DEBUG_REL" > "$ROOT/template-debug.txt"
+    rm -f "$ROOT/windows_template.exe" "$ROOT/windows_template.exe.provenance"
+else
+    rm -f "$ROOT/template-debug.txt"
+fi
 printf '%s\n' "$FORK_ABS" > "$ROOT/clone.txt"
 # Retire a previous layout's names, so nothing reads an editor or a GodotSharp
 # beside the recorded ones. `rm` never traverses a symlink, so this removes the
@@ -535,6 +572,9 @@ echo
 echo "root:          $ROOT"
 echo "editor:        $FORK_ABS/$EDITOR_REL (recorded in $ROOT/editor.txt)"
 echo "template:      $FORK_ABS/$TEMPLATE_REL (recorded in $ROOT/template.txt)"
+if [ "$DN2CPP_OS" = windows ]; then
+    echo "debug tmpl:    $FORK_ABS/$TEMPLATE_DEBUG_REL (recorded in $ROOT/template-debug.txt)"
+fi
 echo "desktop tmpl:  $TEMPLATE_ARTIFACT"
 echo "GodotSharp:    $FORK_ABS/bin/GodotSharp (beside the editor)"
 echo "fork clone:    $ROOT/clone.txt ($FORK_ABS)"

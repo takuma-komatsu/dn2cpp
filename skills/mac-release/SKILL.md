@@ -122,8 +122,8 @@ Expect these files under artifacts/release:
 
 ~~~
 Godot-$V-macos-arm64.zip
-godot-$V-web-template.zip
-godot-$V-web-template.zip.provenance
+godot-$V-web-templates.zip
+godot-$V-web-templates.zip.provenance
 godot-$V-macos-arm64-template.zip
 editor-macos.metadata
 web.metadata
@@ -135,8 +135,8 @@ Verify the set and hashes before touching GitHub:
 
 ~~~
 test -f "artifacts/release/Godot-$V-macos-arm64.zip"
-test -f "artifacts/release/godot-$V-web-template.zip"
-test -f "artifacts/release/godot-$V-web-template.zip.provenance"
+test -f "artifacts/release/godot-$V-web-templates.zip"
+test -f "artifacts/release/godot-$V-web-templates.zip.provenance"
 test -f "artifacts/release/godot-$V-macos-arm64-template.zip"
 test -f artifacts/release/editor-macos.metadata
 test -f artifacts/release/web.metadata
@@ -146,8 +146,12 @@ test "$(wc -l < artifacts/release/SHA256SUMS.txt | tr -d ' ')" -eq 3
 ~~~
 
 Check that metadata says release_version=$V, that editor-macos.metadata names
-the current git rev-parse HEAD, and that Web metadata agrees with the staged
-toolchain. Never edit metadata or checksums by hand.
+the current git rev-parse HEAD, and that Web metadata says `flavor=stock`, names
+`godot_web_release.zip` and `godot_web_debug.zip` in its `release_template` /
+`debug_template` records, records each inner SHA-256, and agrees with the staged
+toolchain. Inspect the outer zip's exact two-entry set and verify both recorded
+hashes; the two inner hashes must differ. Never edit metadata or checksums by
+hand.
 
 ## Phase A-6: rehearse and create the draft
 
@@ -196,7 +200,7 @@ Run this immediately after creating the draft:
 
 Require the uploaded asset
 internal-handoff-$V-macos-to-windows.tgz. Its exact seven members are the
-three metadata files, the three-row SHA256SUMS.txt, the Web template zip and
+three metadata files, the three-row SHA256SUMS.txt, the Web template bundle and
 provenance, and web_emcc.txt from FORK_ROOT. Keep the tarball outside
 artifacts/release; it is an internal transport asset, not a release lane.
 
@@ -226,12 +230,16 @@ Give Windows this fixed continuation:
 ./dist/release-handoff.sh get --repo "$REPO" --version "$V"
 # Check out the dn2cpp_commit from artifacts/release/editor-macos.metadata.
 # Run Windows Phase C from docs/RELEASE.md.
+./dist/package-windows-template.sh --version "$V"
+./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
+    "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)"
 ./dist/release-handoff.sh drop --repo "$REPO" --version "$V"
-./dist/release-github.sh --repo "$REPO" --version "$V" --prev-version "$PREV" --lane editor-windows --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos --publish
+./dist/release-github.sh --repo "$REPO" --version "$V" --prev-version "$PREV" --lane windows --lane editor-windows --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos --publish
 ~~~
 
 Windows must run drop before publishing and must not run
-setup-godot-fork-web.sh; Mac supplies the Web template and web_emcc.txt.
+setup-godot-fork-web.sh; Mac supplies the Web Release/Debug bundle and
+web_emcc.txt.
 
 ## Stop conditions and recovery
 
@@ -242,7 +250,7 @@ setup-godot-fork-web.sh; Mac supplies the Web template and web_emcc.txt.
   never rewrite metadata.
 - If buildtools or emsdk rows are absent from the toolchain, rerun setup with
   default output paths before rebuilding the fork and editor.
-- If Web metadata and bundled emcc disagree, run
+- If either Web template's metadata and bundled emcc disagree, run
   FORCE=1 ./gates/setup-godot-fork-web.sh, then repackage Web before rerunning
   the Mac editor package.
 - If the handoff is absent from the draft, run release-handoff.sh put with

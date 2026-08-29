@@ -333,17 +333,52 @@ if [ "$SMOKE" -eq 1 ]; then
     mkdir -p "$SMOKE_ROOT"
     cp -R "$FORK_ROOT/nuget" "$SMOKE_ROOT/nuget"
     for f in pin.txt fork_head.txt clone.txt template.txt \
-             macos_template.zip macos_template.zip.provenance web_emcc.txt; do
+             macos_template.zip macos_template.zip.provenance; do
         [ -f "$FORK_ROOT/$f" ] || die "the fork root has no $f — run gates/setup-godot-fork.sh (and -web)"
         cp "$FORK_ROOT/$f" "$SMOKE_ROOT/$f"
     done
-    # The Web template must be the RELEASE one, not the fork root's: the archive
-    # a user downloads and this run must agree about the engine inside it.
-    WEB_ASSET="$OUT/godot-$VERSION-web-template.zip"
-    for sfx in "" .provenance; do
-        [ -f "$WEB_ASSET$sfx" ] \
-            || die "no $WEB_ASSET$sfx — cut the Web template first: dist/package-web-template.sh --version $VERSION"
-        cp "$WEB_ASSET$sfx" "$SMOKE_ROOT/web_template.zip$sfx"
+    # Smoke the two inner templates from the public bundle, not fork-root
+    # stand-ins. Metadata binds both entry names and hashes to the outer bytes.
+    WEB_ASSET="$OUT/godot-$VERSION-web-templates.zip"
+    WEB_META="$OUT/web.metadata"
+    [ -f "$WEB_ASSET" ] && [ -f "$WEB_META" ] && [ -f "$WEB_ASSET.provenance" ] \
+        || die "the Web Release/Debug bundle, metadata, or provenance is missing — cut it first:
+       dist/package-web-template.sh --version $VERSION"
+    META_PROV="$(first_line "$(sed -n 's/^engine_provenance=//p' "$WEB_META")")"
+    ASSET_PROV="$(head -1 "$WEB_ASSET.provenance")"
+    [ -n "$META_PROV" ] && [ "$ASSET_PROV" = "$META_PROV" ] || die \
+        "$WEB_ASSET.provenance says '$ASSET_PROV', but $WEB_META says engine_provenance='$META_PROV'"
+    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+    $PY - "$WEB_ASSET" "$WEB_META" "$SMOKE_ROOT" <<'PY'
+import hashlib, sys, zipfile
+
+archive, metadata_path, output = sys.argv[1:]
+metadata = dict(line.rstrip("\n").split("=", 1) for line in open(metadata_path, encoding="utf-8") if "=" in line)
+outer = hashlib.sha256(open(archive, "rb").read()).hexdigest()
+if metadata.get("asset_sha256") != outer:
+    raise SystemExit("Web bundle hashes to %s, metadata says %s" % (outer, metadata.get("asset_sha256")))
+products = (("release", "web_template.zip"), ("debug", "web_template_debug.zip"))
+with zipfile.ZipFile(archive) as z:
+    wanted = [metadata.get(kind + "_template") for kind, _ in products]
+    canonical = ["godot_web_release.zip", "godot_web_debug.zip"]
+    if wanted != canonical:
+        raise SystemExit("Web metadata names %r, expected %r" % (wanted, canonical))
+    if len(z.namelist()) != 2 or sorted(z.namelist()) != sorted(wanted):
+        raise SystemExit("Web bundle entries are %r, expected exactly %r" % (z.namelist(), wanted))
+    for kind, destination in products:
+        data = z.read(metadata[kind + "_template"])
+        actual = hashlib.sha256(data).hexdigest()
+        expected = metadata.get(kind + "_template_sha256")
+        if actual != expected:
+            raise SystemExit("%s Web template hashes to %s, metadata says %s" % (kind, actual, expected))
+        open(output + "/" + destination, "wb").write(data)
+PY
+    WEB_EMCC="$(first_line "$(sed -n 's/^emcc=//p' "$WEB_META")")"
+    [ -n "$WEB_EMCC" ] || die "$WEB_META carries no emcc value"
+    printf '%s\n' "$WEB_EMCC" > "$SMOKE_ROOT/web_emcc.txt"
+    printf '%s\n' "$WEB_EMCC" > "$SMOKE_ROOT/web_emcc_debug.txt"
+    for name in web_template.zip web_template_debug.zip; do
+        cp "$WEB_ASSET.provenance" "$SMOKE_ROOT/$name.provenance"
     done
     # editor.txt is the whole point: the gates run the .app's own binary, and
     # derive GodotSharp beside it.

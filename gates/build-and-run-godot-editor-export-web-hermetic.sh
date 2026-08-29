@@ -48,8 +48,8 @@ PROJECT_NAME=EditorExportSample
 V8_MAX_FUNCTION_SIZE=7654321
 
 godot_fork_preflight
-if [ ! -f "$FORK_ROOT/web_template.zip" ]; then
-    gate_skip "no Web template at $FORK_ROOT/web_template.zip — run gates/setup-godot-fork-web.sh"
+if [ ! -f "$FORK_ROOT/web_template.zip" ] || [ ! -f "$FORK_ROOT/web_template_debug.zip" ]; then
+    gate_skip "no Release/Debug Web template pair under $FORK_ROOT — run gates/setup-godot-fork-web.sh"
 fi
 # emcc, node, cmake and ninja are NOT probed here, deliberately: the bundle ships
 # all four, and a host holding none is this gate's premise rather than a reason
@@ -109,6 +109,8 @@ echo "PATH without the bundled tools: $(printf '%s' "$HERMETIC_PATH" | tr ':' '\
 godot_fork_pin_abi_check
 godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
     "FORCE=1 gates/setup-godot-fork-web.sh"
+godot_fork_template_check "$FORK_ROOT/web_template_debug.zip" "Debug Web export template" \
+    "FORCE=1 gates/setup-godot-fork-web.sh"
 
 # The bundled tools are the subject, so their identity is a key term: a
 # re-packaged bundle carrying a different SDK or a different cmake is a different
@@ -120,7 +122,7 @@ STAGED_EMSDK="$STAGED_DN2CPP/emsdk"
 STAGED_BUILDTOOLS="$STAGED_DN2CPP/buildtools"
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export-web-hermetic|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|emsdk=$(file_text "$STAGED_EMSDK/.emsdk-stamp")|buildtools=$(file_text "$STAGED_BUILDTOOLS/.buildtools-stamp")" \
+    "godot-editor-export-web-hermetic|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|tmpl_debug=$(file_sig "$FORK_ROOT/web_template_debug.zip")|emsdk=$(file_text "$STAGED_EMSDK/.emsdk-stamp")|buildtools=$(file_text "$STAGED_BUILDTOOLS/.buildtools-stamp")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
@@ -177,15 +179,19 @@ EOF
 # preset it wants rather than the ones it does not, so a preset added later cannot
 # inherit a Web template zip.
 WEB_TEMPLATE_NATIVE="$(godot_fork_native_path "$FORK_ROOT/web_template.zip")"
+WEB_TEMPLATE_DEBUG_NATIVE="$(godot_fork_native_path "$FORK_ROOT/web_template_debug.zip")"
 presets_tmp="$(mktemp)"
-awk -v tmpl="$WEB_TEMPLATE_NATIVE" '
+awk -v tmpl="$WEB_TEMPLATE_NATIVE" -v debug_tmpl="$WEB_TEMPLATE_DEBUG_NATIVE" '
     /^\[preset\./ { inweb = ($0 ~ /^\[preset\.3[.\]]/) }
     inweb && /^custom_template\/release=""/ { print "custom_template/release=\"" tmpl "\""; next }
+    inweb && /^custom_template\/debug=""/ { print "custom_template/debug=\"" debug_tmpl "\""; next }
     { print }
 ' "$PROJ/export_presets.cfg" > "$presets_tmp"
 mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$WEB_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the Web preset" >&2; exit 1; }
+grep -qF "$WEB_TEMPLATE_DEBUG_NATIVE" "$PROJ/export_presets.cfg" \
+    || { echo "FAIL: could not patch custom_template/debug into the Web preset" >&2; exit 1; }
 
 echo "== 4/6 Importing the project (fork editor, headless, no SDK in the environment) =="
 run_with_watchdog 600 "${HERMETIC_ENV[@]}" "$FORK_EDITOR" --headless \
@@ -206,6 +212,13 @@ export_rc=0
 godot_export_step 2400 "$OUT/export.log" "$WEBDIR/index.html" \
     "${HERMETIC_ENV[@]}" "$FORK_EDITOR" --headless \
     --path "$PWD/$PROJ" --export-release dn2cpp-web "$WEBDIR/index.html" || export_rc=$?
+DEBUG_WEBDIR="$PWD/$OUT/web-debug"
+rm -rf "$DEBUG_WEBDIR"
+mkdir -p "$DEBUG_WEBDIR"
+debug_export_rc=0
+godot_export_step 2400 "$OUT/export-debug.log" "$DEBUG_WEBDIR/index.html" \
+    "${HERMETIC_ENV[@]}" "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-debug dn2cpp-web "$DEBUG_WEBDIR/index.html" || debug_export_rc=$?
 # Read the write test while the tree is still read-only, before restoring: a chmod
 # moves ctime, and `find -newer` reads mtime, but the order removes the question.
 ro_written="$(find "$STAGED_EMSDK" "$STAGED_BUILDTOOLS" -newer "$OUT/ro-reference" -print -quit)"
@@ -213,6 +226,11 @@ chmod -R u+w "$STAGED_EMSDK" "$STAGED_BUILDTOOLS"
 if [ "$export_rc" -ne 0 ]; then
     echo "FAIL: --export-release failed with nothing on PATH but dotnet (see below)" >&2
     cat "$OUT/export.log" >&2
+    exit 1
+fi
+if [ "$debug_export_rc" -ne 0 ]; then
+    echo "FAIL: --export-debug failed with nothing on PATH but dotnet (see below)" >&2
+    cat "$OUT/export-debug.log" >&2
     exit 1
 fi
 if [ -n "$ro_written" ]; then
@@ -225,6 +243,10 @@ fi
 echo "the bundled SDK and build tools were read-only across the export and nothing under them was written"
 
 echo "== 6/6 Asserting the export =="
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template.zip" \
+    "$FORK_ROOT/web_template_debug.zip" "$WEBDIR" "hermetic Release"
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template_debug.zip" \
+    "$FORK_ROOT/web_template.zip" "$DEBUG_WEBDIR" "hermetic Debug"
 # An export plugin's Error fails the export, so the export step already asserted
 # the exit code. This grep pins the MESSAGE: which plugin objected.
 if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then

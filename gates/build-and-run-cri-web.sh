@@ -79,8 +79,8 @@ PROJECT_NAME=GodotSampleApp
 V8_MAX_FUNCTION_SIZE=7654321
 
 godot_fork_preflight
-if [ ! -f "$FORK_ROOT/web_template_cri.zip" ]; then
-    gate_skip "no CRI Web template at $FORK_ROOT/web_template_cri.zip — run CRI=1 gates/setup-godot-fork-web.sh"
+if [ ! -f "$FORK_ROOT/web_template_cri.zip" ] || [ ! -f "$FORK_ROOT/web_template_cri_debug.zip" ]; then
+    gate_skip "no CRI Release/Debug Web template pair under $FORK_ROOT — run CRI=1 gates/setup-godot-fork-web.sh"
 fi
 # Bundled SDK: the subject is the export shape its frozen cache is baked to.
 dn2cpp_emsdk_resolve
@@ -120,6 +120,8 @@ godot_fork_pin_abi_check
 # `tmpl=` in the key fingerprints the stale zip itself, so a warm key replays a
 # green *because* nothing changed.
 godot_fork_template_check "$FORK_ROOT/web_template_cri.zip" "CRI Web export template" \
+    "CRI=1 FORCE=1 gates/setup-godot-fork-web.sh"
+godot_fork_template_check "$FORK_ROOT/web_template_cri_debug.zip" "CRI Debug Web export template" \
     "CRI=1 FORCE=1 gates/setup-godot-fork-web.sh"
 
 echo "== 2/6 Staging the sample project (Web) =="
@@ -371,7 +373,7 @@ script_export_mode=2
 
 [preset.0.options]
 
-custom_template/debug=""
+custom_template/debug="$(godot_fork_native_path "$FORK_ROOT/web_template_cri_debug.zip")"
 custom_template/release="$(godot_fork_native_path "$FORK_ROOT/web_template_cri.zip")"
 variant/extensions_support=true
 variant/thread_support=false
@@ -451,7 +453,7 @@ node gates/_run_in_chrome.js --probe >/dev/null 2>&1 && CHROME_OK=yes
 # Chrome is recorded as partial and re-run live under DN2CPP_REQUIRE_ALL=1,
 # like every gate.
 if gate_cache_check "$GEN" \
-    "cri-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template_cri.zip")|tmplemcc=$(file_text "$FORK_ROOT/web_emcc_cri.txt")|emcc=$(or_none "$(first_line "$(emcc --version 2>/dev/null)")")|chrome=$CHROME_OK|cri=$CRI_ATOM_VERSION|crimanaged=$(file_sig "$CRI_MANAGED_BROWSER")" \
+    "cri-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template_cri.zip")|tmpl_debug=$(file_sig "$FORK_ROOT/web_template_cri_debug.zip")|tmplemcc=$(file_text "$FORK_ROOT/web_emcc_cri.txt")|tmplemcc_debug=$(file_text "$FORK_ROOT/web_emcc_cri_debug.txt")|emcc=$(or_none "$(first_line "$(emcc --version 2>/dev/null)")")|chrome=$CHROME_OK|cri=$CRI_ATOM_VERSION|crimanaged=$(file_sig "$CRI_MANAGED_BROWSER")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     runtime \
@@ -508,6 +510,8 @@ echo "publish flavor OK: browser CriWare.CriAtomLE.dll"
 
 echo "== 5/6 Asserting the artifacts =="
 DROPIN="$WEBDIR/$PROJECT_NAME.so"
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template_cri.zip" \
+    "$FORK_ROOT/web_template_cri_debug.zip" "$WEBDIR" "CRI Release"
 # (a) the drop-in is beside the HTML, under the exact name the engine will
 #     dlopen, and it exports the entry point GDMono resolves
 [ -f "$DROPIN" ] || {
@@ -570,6 +574,40 @@ for data in DemoProj.acf DemoProj.acb DemoProj.awb; do
         || { echo "FAIL: the pck does not carry $data" >&2; exit 1; }
 done
 echo "pck OK: ACF/ACB/AWB present"
+
+# Debug is a distinct template-selection contract. It does not duplicate the
+# browser/audio run below, but it must carry the same CRI import closure and
+# resource payload before the pair can be called supported.
+DEBUG_WEBDIR="$PWD/$OUT/web-debug"
+rm -rf "$DEBUG_WEBDIR"
+mkdir -p "$DEBUG_WEBDIR"
+if ! godot_export_step 3600 "$OUT/export-debug.log" "$DEBUG_WEBDIR/index.html" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-debug dn2cpp-web "$DEBUG_WEBDIR/index.html"; then
+    echo "FAIL: --export-debug failed (see below)" >&2
+    cat "$OUT/export-debug.log" >&2
+    exit 1
+fi
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template_cri_debug.zip" \
+    "$FORK_ROOT/web_template_cri.zip" "$DEBUG_WEBDIR" "CRI Debug"
+DEBUG_DROPIN="$DEBUG_WEBDIR/$PROJECT_NAME.so"
+[ -f "$DEBUG_DROPIN" ] || { echo "FAIL: no Debug drop-in at $DEBUG_DROPIN" >&2; exit 1; }
+grep -qE '^func env\.cri' <<<"$(node gates/_wasm_symbols.js imports "$DEBUG_DROPIN")" || {
+    echo "FAIL: the Debug drop-in imports no cri_* symbol" >&2
+    exit 1
+}
+debug_unsat="$(node gates/_wasm_symbols.js unsatisfied "$DEBUG_DROPIN" \
+    "$DEBUG_WEBDIR/index.wasm" "$DEBUG_WEBDIR/index.js")"
+[ -z "$debug_unsat" ] || {
+    echo "FAIL: the CRI Debug export has unsatisfied imports:" >&2
+    printf '%s\n' "$debug_unsat" | LC_ALL=C sed 's/^/  /' >&2
+    exit 1
+}
+for data in DemoProj.acf DemoProj.acb DemoProj.awb; do
+    grep -qa "$data" "$DEBUG_WEBDIR/index.pck" \
+        || { echo "FAIL: the Debug pck does not carry $data" >&2; exit 1; }
+done
+echo "CRI Debug closure and pck OK"
 
 echo "== 6/6 Running the exported game in Chrome =="
 # A real Chrome (SwiftShader-rasterized — see gates/_run_in_chrome.js), because
