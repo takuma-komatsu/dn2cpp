@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Sse41+X64 — the 64-bit lane extract and insert; the index
+# must name one of the two lanes, as in .NET.
+target = sse4.1
+Extract(v128i64,u8) @imm[0..2) @ref($0.GetElement($1)) = _mm_extract_epi64($0, $1)
+Extract(v128u64,u8) @imm[0..2) @ref($0.GetElement($1)) = (uint64_t)_mm_extract_epi64($0, $1)
+Insert(v128{T},{T},u8) @imm$2[0..2) @ref($0.WithElement($2, $1)) = _mm_insert_epi64($0, (long long)$1, $2) for T in i64,u64

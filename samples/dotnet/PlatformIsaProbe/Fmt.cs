@@ -193,6 +193,23 @@ internal static class Fmt
         return crc;
     }
 
+    // PHMINPOSUW: lane 0 the smallest ushort lane, lane 1 the index of its first
+    // occurrence, the other lanes zero.
+    internal static Vector128<ushort> MinHorizontalRef(Vector128<ushort> v)
+    {
+        ushort min = v.GetElement(0);
+        ushort index = 0;
+        for (int i = 1; i < 8; i++)
+        {
+            if (v.GetElement(i) < min)
+            {
+                min = v.GetElement(i);
+                index = (ushort)i;
+            }
+        }
+        return Vector128.Create(min, index, 0, 0, 0, 0, 0, 0);
+    }
+
     // CLS: the leading bits equal to the sign bit, the sign bit itself excluded.
     internal static int ClsRef(int x) => BitOperations.LeadingZeroCount((uint)(x ^ (x >> 31))) - 1;
 

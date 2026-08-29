@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.Sse41 — blends. The immediate blend takes one control bit
+# per lane: PBLENDW eight, BLENDPS four, BLENDPD two; hardware ignores the higher bits and
+# .NET's jump table covers the whole byte, while the compiler intrinsics accept only the
+# used bits, so the float forms mask the immediate. The variable blend reads the top bit
+# of each mask lane (of each byte for PBLENDVB).
+target = sse4.1
+Blend(v128{T},v128{T},u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create((short)-($2 & 1), (short)-(($2 >> 1) & 1), (short)-(($2 >> 2) & 1), (short)-(($2 >> 3) & 1), (short)-(($2 >> 4) & 1), (short)-(($2 >> 5) & 1), (short)-(($2 >> 6) & 1), (short)-(($2 >> 7) & 1)).As<short, {cs}>(), $1, $0)) = _mm_blend_epi16($0, $1, $2) for T in i16,u16
+Blend(v128f32,v128f32,u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1)).AsSingle(), $1, $0)) = _mm_blend_ps($0, $1, $2 & 15)
+Blend(v128f64,v128f64,u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-(long)($2 & 1), -(long)(($2 >> 1) & 1)).AsDouble(), $1, $0)) = _mm_blend_pd($0, $1, $2 & 3)
+BlendVariable(v128{T},v128{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.LessThan($2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, {cs}>(), $1, $0)) = _mm_blendv_epi8($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64
+BlendVariable(v128f32,v128f32,v128f32) @ref(Vector128.ConditionalSelect(Vector128.LessThan($2.AsInt32(), Vector128<int>.Zero).AsSingle(), $1, $0)) = _mm_blendv_ps($0, $1, $2)
+BlendVariable(v128f64,v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.LessThan($2.AsInt64(), Vector128<long>.Zero).AsDouble(), $1, $0)) = _mm_blendv_pd($0, $1, $2)

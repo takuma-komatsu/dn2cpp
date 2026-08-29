@@ -36,6 +36,8 @@
 #include "x86/dn2cpp_isa_x86_sse2.h"
 #include "x86/dn2cpp_isa_x86_sse2_x64.h"
 #include "x86/dn2cpp_isa_x86_sse3.h"
+#include "x86/dn2cpp_isa_x86_sse41.h"
+#include "x86/dn2cpp_isa_x86_sse41_x64.h"
 #include "x86/dn2cpp_isa_x86_sse42.h"
 #include "x86/dn2cpp_isa_x86_sse42_x64.h"
 #include "x86/dn2cpp_isa_x86_sse_x64.h"

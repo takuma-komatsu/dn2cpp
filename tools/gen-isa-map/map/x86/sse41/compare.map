@@ -1,0 +1,8 @@
+# System.Runtime.Intrinsics.X86.Sse41 — PCMPEQQ and PTEST. TestZ is ZF (a & b == 0),
+# TestC is CF (~a & b == 0), TestNotZAndNotC both flags clear; one 128-bit spelling serves
+# every lane type.
+target = sse4.1
+CompareEqual(v128{T},v128{T}) @ref(Vector128.Equals($0, $1)) = _mm_cmpeq_epi64($0, $1) for T in i64,u64
+TestZ(v128{T},v128{T}) @ref(($0 & $1) == Vector128<{cs}>.Zero) = _mm_testz_si128($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64
+TestC(v128{T},v128{T}) @ref(Vector128.AndNot($1, $0) == Vector128<{cs}>.Zero) = _mm_testc_si128($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64
+TestNotZAndNotC(v128{T},v128{T}) @ref(($0 & $1) != Vector128<{cs}>.Zero && Vector128.AndNot($1, $0) != Vector128<{cs}>.Zero) = _mm_testnzc_si128($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64

@@ -71,6 +71,17 @@ static inline Dn2CppVec<N> dn2cpp_isa_vec(const From& x)
     return r;
 }
 
+// A scalar handed back in another type's bits (EXTRACTPS yields the lane as an
+// int32; .NET returns the float).
+template <class To, class From>
+static inline To dn2cpp_isa_bitcast(From x)
+{
+    static_assert(sizeof(To) == sizeof(From), "bitcast width mismatch");
+    To r;
+    std::memcpy(&r, &x, sizeof(r));
+    return r;
+}
+
 // A method whose IsSupported token is true on this target but whose body has no
 // lowering yet. Throws PlatformNotSupportedException, as .NET does for a call
 // on an unsupported ISA.
