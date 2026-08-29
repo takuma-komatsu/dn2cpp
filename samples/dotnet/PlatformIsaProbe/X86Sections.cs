@@ -22,6 +22,7 @@ internal static class X86Sections
         exercises["X86.Bmi1"] = Bmi1Exercise;
         exercises["X86.Bmi2"] = Bmi2Exercise;
         exercises["X86.X86Serialize"] = X86SerializeExercise;
+        Exercises.RegisterX86(exercises);
     }
 
     internal static void ProbeX86Base() { _ = X86Base.CpuId(0, 0); }

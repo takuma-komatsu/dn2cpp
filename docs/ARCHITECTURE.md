@@ -296,6 +296,10 @@ capability contract, not a set of independent constants:
   to 0 is a state .NET never has, and BCL code guarded by the child would reach
   the parent's throwing calls. `gates/build-and-run-platform-isa-surface.sh`
   re-derives both rules from the csv and the header.
+- **Every Lowered helper is exercised.** `Exercises.g.cs` in the probe, written
+  by the same generator, calls each mapped method with fixed inputs and prints
+  the bytes; the native gates diff it against real .NET, so a wrong lowering
+  fails on the machine that has the instruction rather than in a user's program.
 - **The mask intersects detection.** `DN2CPP_CPU_FEATURES` narrows the detected
   set (the effective set is the implication closure of detected ∩ allowed) and
   can never make a getter true that detection left false.

@@ -1,5 +1,7 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 
 namespace PlatformIsaProbe;
 
@@ -13,6 +15,85 @@ internal static class Fmt
     internal static string Hex(uint v) => "0x" + v.ToString("X8");
 
     internal static string Hex(ulong v) => "0x" + v.ToString("X16");
+
+    internal static string Hex(byte v) => "0x" + v.ToString("X2");
+
+    internal static string Hex(ushort v) => "0x" + v.ToString("X4");
+
+    // A vector or a buffer as its bytes in memory order, lowest address first.
+    internal static string Hex(Vector64<byte> v) => Bytes(v);
+
+    internal static string Hex(Vector128<byte> v) => Bytes(v);
+
+    internal static string Hex(Vector256<byte> v) => Bytes(v);
+
+    internal static string Hex(Vector512<byte> v) => Bytes(v);
+
+    internal static unsafe string Hex(byte* p, int count)
+    {
+        var sb = new System.Text.StringBuilder(2 + 2 * count);
+        sb.Append("0x");
+        for (int i = 0; i < count; i++)
+        {
+            sb.Append(p[i].ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    private static string Bytes(Vector64<byte> v)
+    {
+        var sb = new System.Text.StringBuilder("0x");
+        for (int i = 0; i < 8; i++)
+        {
+            sb.Append(v.GetElement(i).ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    private static string Bytes(Vector128<byte> v)
+    {
+        var sb = new System.Text.StringBuilder("0x");
+        for (int i = 0; i < 16; i++)
+        {
+            sb.Append(v.GetElement(i).ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    private static string Bytes(Vector256<byte> v)
+    {
+        var sb = new System.Text.StringBuilder("0x");
+        for (int i = 0; i < 32; i++)
+        {
+            sb.Append(v.GetElement(i).ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    private static string Bytes(Vector512<byte> v)
+    {
+        var sb = new System.Text.StringBuilder("0x");
+        for (int i = 0; i < 64; i++)
+        {
+            sb.Append(v.GetElement(i).ToString("X2"));
+        }
+        return sb.ToString();
+    }
+
+    // The fixed byte pattern a load reads and a store overwrites; seed tells the
+    // buffers of one call apart.
+    internal static unsafe void Fill(byte* p, int count, int seed)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            p[i] = (byte)(i * 7 + seed * 41 + 3);
+        }
+    }
+
+    // A value the JIT cannot treat as a constant, so an out-of-range immediate
+    // takes .NET's run-time range check rather than a compile-time fold.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static T NonConstant<T>(T value) => value;
 
     // The four bytes of a CPUID vendor register are printable ASCII on every
     // x86-64 CPU; the bytes themselves are a machine fact and never printed.
@@ -48,6 +129,10 @@ internal static class Fmt
         catch (ArithmeticException)
         {
             return "ArithmeticException";
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return "ArgumentOutOfRangeException";
         }
         catch (Exception)
         {

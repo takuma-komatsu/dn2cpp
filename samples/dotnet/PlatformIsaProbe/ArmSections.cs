@@ -14,6 +14,7 @@ internal static class ArmSections
     {
         exercises["Arm.ArmBase"] = ArmBaseExercise;
         exercises["Arm.Crc32"] = Crc32Exercise;
+        Exercises.RegisterArm(exercises);
     }
 
     internal static void ProbeArmBase() { _ = ArmBase.LeadingZeroCount(1); }
