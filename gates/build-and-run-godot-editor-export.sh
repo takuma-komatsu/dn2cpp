@@ -8,7 +8,7 @@
 # preflight, and the body reads only those variables.
 #
 # This is the oracle for the whole editor-export epic. It drives the pipeline the
-# way a user does — one `--export-release` — and every stage in between is the
+# way a user does — through the desktop export command — and every stage in between is the
 # fork's own code: ExportPlugin reads the new export option, BuildManager
 # publishes the game IL, Dn2CppExporter transpiles it with the bundled native
 # dn2cpp, compiles the generated C++ against the bundled runtime, and stages a
@@ -26,25 +26,28 @@
 #   2. The bundle is the whole toolchain. The toolchain is re-packaged from the
 #      *working tree* and installed into the fork editor before the export, so a
 #      dn2cpp runtime or transpiler regression fails here. Including the build
-#      tools: 5/13 asserts the export configured through the bundle's OWN cmake
+#      tools: 5/14 asserts the export configured through the bundle's OWN cmake
 #      and handed it the bundle's OWN ninja. That half cannot be proved by taking
 #      the host's away, the way the hermetic Web gate proves the Emscripten SDK —
 #      a desktop target compiles with a host clang++/cl.exe and can never be
 #      hermetic — so it is read out of the log instead, and it has to be read out
 #      of the log: a regression to the host's cmake builds the same game.
-#   3. The SECOND export of a work dir works, and is incremental. 3/13 keeps the
+#   3. The SECOND release export of a work dir works, and is incremental. 3/14 keeps the
 #      work dir deliberately — the persisting .godot/mono/dn2cpp/build tree is
 #      what stops a re-export recompiling the whole game — and every export a
-#      user performs after the first takes that path. 7/13 exports again and
-#      asserts the runtime was reused; 8/13 points that cache at another source
+#      user performs after the first takes that path. 7/14 exports again and
+#      asserts the runtime was reused; 8/14 points that cache at another source
 #      tree (which is what a moved or re-pointed toolchain leaves behind) and
 #      asserts the export recovers, says so, and names both trees.
-#   4. No specially-launched shell is needed. 9/13 exports from an environment
+#   4. On Windows, the debug field selects the independently built debug
+#      template. A later `--export-debug` uses it and cannot silently ship the
+#      release executable under a debug label.
+#   5. No specially-launched shell is needed. 10/14 exports from an environment
 #      holding neither a C++ compiler on PATH nor INCLUDE/LIB/LIBPATH — what
 #      Explorer hands a Windows editor — and asserts the editor found MSVC
 #      itself and that cmake then compiled with that cl.exe. Windows-only, and
 #      declared an expected partial elsewhere: MSVC exists nowhere else.
-#   5. A target the host cannot serve is refused, and refused before the
+#   6. A target the host cannot serve is refused, and refused before the
 #      publish. The last four sections re-export the same project with one
 #      precondition broken at a time — the target's operating system, its
 #      architecture, the host C++ compiler, the bundle's POSIX framework — and
@@ -53,7 +56,7 @@
 #      guard. A refusal exists to convert a failure that would otherwise land
 #      minutes later, inside a compiler or a linker that names none of them,
 #      into one sentence; a refusal nothing reads back is a comment.
-#   6. The macOS drop-in carries the selected architecture's deployment target
+#   7. The macOS drop-in carries the selected architecture's deployment target
 #      from the export preset. Both the CMake cache and the built Mach-O are
 #      asserted: one alone would allow the configure or compiler half to drift.
 #
@@ -88,7 +91,7 @@ godot_fork_preflight
 # data_<project>_<platform>_<arch> directory, and is NOT $DN2CPP_OS: the engine
 # maps Linux to "linuxbsd". Substituting $DN2CPP_OS agrees on the two OSes where
 # the names coincide and silently names a directory nothing writes on the third —
-# which in 13/13 would make a negative assertion vacuously true.
+# which in 14/14 would make a negative assertion vacuously true.
 # godot_editor_export_layout ARTIFACT sets DATA_DIR/DROPIN/GAME_EXE for a given
 # export target, so the primary export and the foreign-arch negative test derive
 # their paths one way.
@@ -117,6 +120,10 @@ EXPORT_TARGET="$PWD/$OUT/$PROJECT_NAME.$EXPORT_EXT"
 # returns 1 for an OS it has no arm for, and under `set -e` that would turn the
 # designed gate_skip above into a FAIL.
 DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
+DESKTOP_TEMPLATE_DEBUG=
+if [ "$DN2CPP_OS" = windows ]; then
+    DESKTOP_TEMPLATE_DEBUG="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
+fi
 
 # godot_editor_export_layout ARTIFACT — resolve the post-export paths for a given
 # export target. macOS packs the game into the bundle (data dir under
@@ -146,8 +153,11 @@ godot_editor_export_layout() {
 if [ ! -f "$DESKTOP_TEMPLATE" ]; then
     gate_skip "no desktop template at $DESKTOP_TEMPLATE — run gates/setup-godot-fork.sh"
 fi
+if [ "$DN2CPP_OS" = windows ] && [ ! -f "$DESKTOP_TEMPLATE_DEBUG" ]; then
+    gate_skip "no debug desktop template at $DESKTOP_TEMPLATE_DEBUG — run gates/setup-godot-fork.sh"
+fi
 
-echo "== 1/13 Fork pin + interop-ABI tripwire =="
+echo "== 1/14 Fork pin + interop-ABI tripwire =="
 godot_fork_pin_abi_check
 
 # The desktop template is the second engine in this gate, and nothing above sees
@@ -159,6 +169,16 @@ godot_fork_pin_abi_check
 # warm key replays a green *because* nothing changed.
 godot_fork_template_check "$DESKTOP_TEMPLATE" "desktop export template" \
     "gates/setup-godot-fork.sh"
+DEBUG_TEMPLATE_SIG=none
+if [ "$DN2CPP_OS" = windows ]; then
+    godot_fork_template_check "$DESKTOP_TEMPLATE_DEBUG" "debug desktop export template" \
+        "gates/setup-godot-fork.sh"
+    DEBUG_TEMPLATE_SIG="$(file_sig "$DESKTOP_TEMPLATE_DEBUG")"
+    if cmp -s "$DESKTOP_TEMPLATE" "$DESKTOP_TEMPLATE_DEBUG"; then
+        echo "FAIL: the Windows release and debug desktop templates are byte-identical" >&2
+        exit 1
+    fi
+fi
 
 # No local transpile happens here — the forked editor drives the whole pipeline
 # from the packaged toolchain — so the key is inputs-only: the self-hosted CLI,
@@ -176,7 +196,7 @@ godot_fork_template_check "$DESKTOP_TEMPLATE" "desktop export template" \
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")" \
+    "godot-editor-export|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
@@ -185,14 +205,14 @@ if gate_cache_check "$OUT" \
     { gate_cache_hit_msg; exit 0; }
 fi
 
-echo "== 2/13 Installing the working tree's toolchain into the fork editor =="
+echo "== 2/14 Installing the working tree's toolchain into the fork editor =="
 # Packaging still runs every run — that is what keeps a dn2cpp-side regression
 # visible here rather than only in the next setup-godot-fork.sh. The install is
 # skipped when the content already matches, and otherwise lands as an atomic
 # swap under a stage lock; see stage_editor_toolchain in gates/_common.sh.
 stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
 
-echo "== 3/13 Staging the sample project =="
+echo "== 3/14 Staging the sample project =="
 # Copied rather than exported in place: the preset needs an absolute template
 # path patched in, and the project accumulates .godot/, bin/ and obj/. The work
 # dir is NOT wiped — the persistent .godot/mono/dn2cpp/build tree is what keeps
@@ -255,9 +275,9 @@ EOF
 # invokes, but it would rewrite the Windows preset on a macOS run and vice versa).
 # Since both desktop presets share the same empty line, a plain global replace of
 # that exact line writes the same absolute path everywhere — fine for every
-# preset but one: 10/13 DOES export the foreign desktop preset, and on a macOS
+# preset but one: 11/14 DOES export the foreign desktop preset, and on a macOS
 # host the Windows exporter refuses the macOS binary this leaves there before
-# any plugin runs, so 10/13 re-points that single preset itself. Keeping this a
+# any plugin runs, so 11/14 re-points that single preset itself. Keeping this a
 # single substitution (not per-preset surgery) mirrors the original.
 #
 # The path written is native (godot_fork_native_path): the editor resolves it with
@@ -270,6 +290,21 @@ sed "s|custom_template/release=\"\"|custom_template/release=\"$DESKTOP_TEMPLATE_
 mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the preset" >&2; exit 1; }
+if [ "$DN2CPP_OS" = windows ]; then
+    DESKTOP_TEMPLATE_DEBUG_NATIVE="$(godot_fork_native_path "$DESKTOP_TEMPLATE_DEBUG")"
+    presets_tmp="$(mktemp)"
+    sed "s|custom_template/debug=\"\"|custom_template/debug=\"$DESKTOP_TEMPLATE_DEBUG_NATIVE\"|" \
+        "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
+    awk -v tmpl="$DESKTOP_TEMPLATE_DEBUG_NATIVE" '
+        /^name=/ { windows = ($0 == "name=\"dn2cpp-app-windows\"") }
+        windows && $0 == "custom_template/debug=\"" tmpl "\"" { debug = 1 }
+        windows && $0 == "binary_format/embed_pck=false" { sidecar = 1 }
+        windows && $0 == "application/modify_resources=false" { unmodified = 1 }
+        END { exit debug && sidecar && unmodified ? 0 : 1 }
+    ' "$PROJ/export_presets.cfg" \
+        || { echo "FAIL: the Windows preset does not preserve the debug template bytes" >&2; exit 1; }
+fi
 
 # Linux presets carry a checked-in x86_64 default, but this gate exports for the
 # host. Patch only that preset; the macOS and Windows negative controls below
@@ -293,13 +328,13 @@ if [ "$DN2CPP_OS" = linux ]; then
         || { echo "FAIL: could not set the Linux preset architecture to $ARCH" >&2; exit 1; }
 fi
 
-echo "== 4/13 Importing the project (fork editor, headless) =="
+echo "== 4/14 Importing the project (fork editor, headless) =="
 # The first import may abort in editor doc-gen teardown (Godot headless bug,
 # harmless — the import data is already written), so tolerate a non-zero exit.
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
     --path "$PWD/$PROJ" --import >"$OUT/import.log" 2>&1 || true
 
-echo "== 5/13 Exporting with dotnet/export_backend = dn2cpp =="
+echo "== 5/14 Exporting with dotnet/export_backend = dn2cpp =="
 # Generous watchdog: a cold .godot/mono/dn2cpp/build still has the whole game to
 # compile, and falls back to compiling the runtime and its vendored trees too
 # whenever the bundle's prebuilt does not describe this host.
@@ -356,7 +391,8 @@ godot_fork_assert_bundled_buildtools "$OUT/export.log" "$EXPORTER_LOG" \
     "$FORK_GODOTSHARP/Dn2Cpp" "$OUT" || exit 1
 
 # assert_export_artifact_and_run LOG — the artifact assertions and the real-engine
-# run, shared by the first export and by the incremental re-export of 7/13. Reads
+# run, shared by the first export and by the incremental release re-export of
+# 7/14. Reads
 # DATA_DIR / DROPIN / GAME_EXE, which the caller has resolved through
 # godot_editor_export_layout. Factored out rather than copied: the two exports
 # produce the same artifact and must be held to the same claims, and a second copy
@@ -442,7 +478,7 @@ $WINDOWS_DEPENDENCY_NAME.dll"
     done
 }
 
-# assert_export_succeeded LOG — the success half of 5/13, for the two re-exports
+# assert_export_succeeded LOG — the success half of 5/14, for the re-exports
 # below: the export plugin reported no error and the three dn2cpp stages ran.
 # Each caller runs the export through godot_export_step, which asserts the exit
 # code; this is the assertion on the message.
@@ -466,7 +502,7 @@ assert_export_succeeded() {
 # (Windows), clang++ and g++ (everywhere else); a wider set would strip
 # directories the refusal cannot be attributed to.
 #
-# Shared by 9/13, which needs an environment no vcvars has touched, and by 11/13,
+# Shared by 10/14, which needs an environment no vcvars has touched, and by 12/14,
 # which needs no compiler reachable at all. One way of stripping: two would be
 # two definitions of "no compiler on PATH", and the sections would drift apart
 # silently, each still green.
@@ -496,7 +532,7 @@ for exe in cl clang++ g++; do
     fi
 done
 
-echo "== 6/13 Asserting the artifact, then running it =="
+echo "== 6/14 Asserting the artifact, then running it =="
 # DATA_DIR / DROPIN / GAME_EXE come from the desktop-target seam: the data dir is
 # inside the .app on macOS and beside the .exe on Windows, and the drop-in is
 # <name>.dylib vs <name>.dll — the exact name the engine's WINDOWS/MACOS branch
@@ -504,9 +540,9 @@ echo "== 6/13 Asserting the artifact, then running it =="
 godot_editor_export_layout "$APP"
 assert_export_artifact_and_run "$OUT/run.log"
 
-# ── Incremental re-export (7..8/13) ───────────────────────────────────────────
+# ── Incremental release re-export (7..8/14) ───────────────────────────────────────────
 # Everything above ran against a work dir that had never been exported before.
-# Every export a user performs after the first does not, and 3/13 deliberately
+# Every export a user performs after the first does not, and 3/14 deliberately
 # keeps that state: the persisting .godot/mono/dn2cpp/build tree is what makes a
 # re-export cheap. Neither the cheapness nor the correctness of the second export
 # had an oracle, because every gate ran exactly one export per work dir.
@@ -567,7 +603,7 @@ GC_LIB="$(gc_lib_path)"
 # runtime was never compiled into this slot at all. That absence is the same claim
 # stated more strongly, so it becomes the witness — and it has to be asserted as an
 # absence rather than skipped: a from-source build that lost its GC library would
-# otherwise read as "prebuilt in use" and 7/13 would assert nothing. The two arms
+# otherwise read as "prebuilt in use" and 7/14 would assert nothing. The two arms
 # are picked apart by what the exporter's configure said, not by what is on disk.
 if [ -z "$GC_LIB" ]; then
     grep -q "using the prebuilt runtime" "$EXPORTER_LOG" \
@@ -581,7 +617,7 @@ if [ -z "$GC_LIB" ]; then
              exit 1; }
 fi
 
-echo "== 7/13 Incremental re-export into the persisting build tree =="
+echo "== 7/14 Incremental release re-export into the persisting build tree =="
 # A plain second --export-release, nothing broken: the runtime must be REUSED (the
 # GC library untouched) and the artifact must still work. An export that quietly
 # did nothing cannot satisfy that pair — assert_export_succeeded requires this
@@ -602,7 +638,7 @@ assert_export_succeeded "$REEXPORT_LOG" "the incremental re-export"
 if grep -qF "dn2cpp: stale build cache reset" "$REEXPORT_LOG"; then
     echo "FAIL: the re-export discarded a build cache that was still current — the" >&2
     echo "      staleness test now fires on an unchanged toolchain, so every export" >&2
-    echo "      recompiles the whole runtime (see 8/13 for the comparison it makes)" >&2
+    echo "      recompiles the whole runtime (see 8/14 for the comparison it makes)" >&2
     cat "$REEXPORT_LOG" >&2
     exit 1
 fi
@@ -623,7 +659,7 @@ elif [ -n "$GC_LIB" ] || [ -d "$BUILD_DIR/CMakeFiles/dn2cpp_runtime.dir" ]; then
     exit 1
 fi
 
-echo "== 8/13 Recovering from a build cache configured from another source tree =="
+echo "== 8/14 Recovering from a build cache configured from another source tree =="
 # The persisting build tree is keyed on the export TARGET (platform, config, RID) —
 # not on where the runtime sources it was configured from live. So every way the
 # toolchain's path can move leaves a cache that names a tree cmake will not accept:
@@ -697,27 +733,66 @@ if [ -e "$RESET_WITNESS" ]; then
     exit 1
 fi
 
-echo "== 9/13 Exporting from a shell that never ran vcvars =="
+# The Windows exporter consumes separate executables for its release and debug
+# fields. Prove the debug artifact crosses that final boundary: the preset names
+# it, --export-debug succeeds, and the exported executable is byte-for-byte the
+# debug input rather than the release input. The preset keeps both PCK embedding
+# and PE resource modification off, so this is a direct comparison rather than
+# an inference from a successful debug export.
+echo "== 9/14 Exporting with the Windows debug template =="
+if [ "$DN2CPP_OS" != windows ]; then
+    gate_expected_partial "section 9 (the distinct debug desktop template export) has no reachable state on $DN2CPP_OS: setup-godot-fork.sh produces separate debug and release desktop artifacts only on Windows. The uncovered surface is asserted by this same gate, gates/build-and-run-godot-editor-export.sh, section 9 on Windows, which drives --export-debug and compares the exported executable directly with both template inputs."
+else
+    DEBUG_DIR="$PWD/$OUT/debug-template"
+    DEBUG_APP="$DEBUG_DIR/$PROJECT_NAME.exe"
+    DEBUG_LOG="$OUT/export-debug-template.log"
+    rm -rf "$DEBUG_DIR"
+    mkdir -p "$DEBUG_DIR"
+    if ! godot_export_step 1200 "$DEBUG_LOG" "$DEBUG_APP" \
+        "$FORK_EDITOR" --headless \
+        --path "$PWD/$PROJ" --export-debug "$PRESET" "$DEBUG_APP"; then
+        echo "FAIL: --export-debug failed (see below)" >&2
+        cat "$DEBUG_LOG" >&2
+        exit 1
+    fi
+    assert_export_succeeded "$DEBUG_LOG" "the debug-template export"
+    godot_editor_export_layout "$DEBUG_APP"
+    assert_export_artifact_and_run "$OUT/run-debug-template.log"
+    if ! cmp -s "$DEBUG_APP" "$DESKTOP_TEMPLATE_DEBUG"; then
+        echo "FAIL: the debug export executable is not the selected debug template" >&2
+        echo "      export:   $(file_sig "$DEBUG_APP")" >&2
+        echo "      template: $(file_sig "$DESKTOP_TEMPLATE_DEBUG")" >&2
+        exit 1
+    fi
+    if cmp -s "$DEBUG_APP" "$DESKTOP_TEMPLATE"; then
+        echo "FAIL: --export-debug emitted the release template executable" >&2
+        echo "      shared signature: $(file_sig "$DEBUG_APP")" >&2
+        exit 1
+    fi
+    godot_editor_export_layout "$APP"
+fi
+
+echo "== 10/14 Exporting from a shell that never ran vcvars =="
 # The launch every Windows user actually performs. MSVC is on no machine's PATH
 # and its INCLUDE/LIB/LIBPATH exist only inside a shell that has run vcvarsall,
 # so the editor resolves them itself — vswhere, then vcvarsall for the host arch
 # — and overlays the result onto its build children alone. Without that import
-# this export is 11/13's refusal instead, which is why the two share one PATH.
+# this export is 12/14's refusal instead, which is why the two share one PATH.
 #
 # THIS shell HAS run vcvars (ensure_msvc_env, sourced from gates/_common.sh), so
 # what the editor inherits is sanitized rather than inherited: the stripped PATH
 # and the three MSVC variables emptied, which the import reads as unset. Emptied
 # rather than `env -u`d: an empty value is what a shell that never ran vcvars
 # hands a child, and covering it is the point. %ProgramFiles(x86)% is left alone
-# — finding the real install is the whole subject here, and 11/13 is the section
+# — finding the real install is the whole subject here, and 12/14 is the section
 # that takes it away.
 if [ "$DN2CPP_OS" != windows ]; then
     # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
-    gate_expected_partial "section 9 (the vcvars-less export) has no reachable state on $DN2CPP_OS: MSVC exists only on Windows and Dn2CppExporter imports it only under OS.IsWindows, so no PATH or environment this gate could hand the editor produces the state the section drives. Structural and permanent, not an absent prerequisite — nothing installable on a POSIX host creates it, which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-godot-editor-export.sh, section 9, run on a Windows host, where the import runs and the section asserts it end to end."
+    gate_expected_partial "section 10 (the vcvars-less export) has no reachable state on $DN2CPP_OS: MSVC exists only on Windows and Dn2CppExporter imports it only under OS.IsWindows, so no PATH or environment this gate could hand the editor produces the state the section drives. Structural and permanent, not an absent prerequisite — nothing installable on a POSIX host creates it, which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-godot-editor-export.sh, section 10, run on a Windows host, where the import runs and the section asserts it end to end."
 else
     # Cold, deliberately: a warm slot skips cmake's compiler detection entirely,
     # and the cache witness below would then be the PREVIOUS export's answer.
-    # The runtime still comes from the bundle's prebuilt (5/13 asserts the
+    # The runtime still comes from the bundle's prebuilt (5/14 asserts the
     # adoption), so only the game is compiled.
     rm -rf "$BUILD_DIR"
     VCVARSLESS_LOG="$OUT/export-no-vcvars.log"
@@ -751,7 +826,7 @@ else
     assert_export_artifact_and_run "$OUT/run-no-vcvars.log"
 fi
 
-# ── Refusal oracles (10..13/13) ────────────────────────────────────────────────
+# ── Refusal oracles (11..14/14) ────────────────────────────────────────────────
 # Everything below re-exports the same staged project with exactly one
 # precondition broken, and every one of them must die in Dn2CppExporter.Create,
 # before a single byte is published. They run in this order because the last one
@@ -762,7 +837,7 @@ fi
 # The export target of each gets its own subdirectory. A refused export still
 # runs the platform exporter's own packaging afterwards, and the good artifact
 # plus its data dir sit in $OUT: sharing a directory would let one of these
-# overwrite what 6/13 just asserted, or let a stale copy answer for a fresh one.
+# overwrite what 6/14 just asserted, or let a stale copy answer for a fresh one.
 #
 # godot_export_refused RC LOG WHAT — the half every refusal assert shares: the
 # export failed (non-zero exit and the editor's own verdict), the C# export
@@ -785,7 +860,7 @@ godot_export_refused() {
     fi
 }
 
-echo "== 10/13 Refusing an export whose target OS is not the host's =="
+echo "== 11/14 Refusing an export whose target OS is not the host's =="
 # The sharpest of the four, and the one whose absence costs the most. The backend
 # compiles the game with the host's own C++ compiler, so the target OPERATING
 # SYSTEM is as fixed as the architecture — but an architecture test alone lets a
@@ -813,7 +888,7 @@ esac
 # guard is even observable: EditorExportPlatformWindows::export_project validates
 # the custom template's PE architecture (_get_exe_arch) at its very top — BEFORE
 # EditorExportPlatformPC::export_project, whose ExportNotifier is what fires the
-# C# plugins' _ExportBegin — and the staging of 3/13 left the host's own macOS
+# C# plugins' _ExportBegin — and the staging of 3/14 left the host's own macOS
 # binary in that slot, so the engine refuses on "Mismatching custom export
 # template executable architecture" and the OS guard under test never runs. The
 # arch-wording oracle below polices ordering INSIDE the plugin (OS test before
@@ -832,7 +907,7 @@ if [ "$DN2CPP_OS" = macos ]; then
         printf '\x64\x86'
     } > "$FOREIGN_STUB"
     # Only the Windows preset's line is rewritten — the macOS preset must keep
-    # $DESKTOP_TEMPLATE_NATIVE, because 11/13 and 13/13 re-export it afterwards.
+    # $DESKTOP_TEMPLATE_NATIVE, because 12/14 and 14/14 re-export it afterwards.
     presets_tmp="$(mktemp)"
     awk -v stub="$FOREIGN_STUB" '
         /^name="/ { preset = $0 }
@@ -872,9 +947,9 @@ for arch_worded in "cannot cross-compile" "Cross-architecture export is not supp
     fi
 done
 
-echo "== 11/13 Refusing a host with no C++ compiler to be found =="
+echo "== 12/14 Refusing a host with no C++ compiler to be found =="
 # The probe is HostCxxCompiler(), and on Windows it no longer reads the PATH
-# alone: the editor searches for MSVC itself (9/13), so a stripped PATH stops
+# alone: the editor searches for MSVC itself (10/14), so a stripped PATH stops
 # being a host without a compiler there. What has to be simulated instead is a
 # machine with NO Visual Studio — %ProgramFiles(x86)% and %ProgramFiles% pointed
 # at an empty directory, the only place the search looks for vswhere.exe, plus
@@ -920,7 +995,7 @@ grep -qF "missing tools it cannot build without" "$NOCXX_LOG" \
 # holds wherever the gate runs. The remedy is the half that differs, and it is
 # the half that has to be right: a macOS user is told about the Command Line
 # Tools, a Linux user their own package manager, a Windows user to install the
-# workload — never to relaunch from a Developer Command Prompt, which 9/13 is the
+# workload — never to relaunch from a Developer Command Prompt, which 10/14 is the
 # proof they do not need.
 grep -qF "clang++" "$NOCXX_LOG" \
     || { echo "FAIL: the toolchain refusal does not name the compiler it wanted" >&2
@@ -946,7 +1021,7 @@ if [ "$DN2CPP_OS" = windows ]; then
              cat "$NOCXX_LOG" >&2; exit 1; }
 fi
 
-echo "== 12/13 Refusing a cross-target export against a bundle with no POSIX framework =="
+echo "== 13/14 Refusing a cross-target export against a bundle with no POSIX framework =="
 # What the transpiler consumes is the CoreLib's IL, so its flavour decides which
 # native libraries the emitted P/Invokes name. Off a Windows host every target
 # but Windows itself has to be transpiled against the POSIX framework the bundle
@@ -970,7 +1045,7 @@ if [ "$DN2CPP_OS" != windows ]; then
     # One line, not a wrapped paragraph: the runner's summary takes the FIRST
     # line of the reason (run-all-gates.sh's `sed … | head -1`), so a reason
     # spread over several lines is reported truncated.
-    gate_expected_partial "section 12 (the POSIX-framework refusal) has no reachable state on $DN2CPP_OS: Dn2CppToolchain.NeedsCrossCoreLib is false for every target here because ref/ is already the POSIX flavour, so dist/package-toolchain.sh stages no ref-posix/ for the section to hide and the guard under test cannot fire. Permanent rather than environmental — no installation on a POSIX host creates the cross-CoreLib state, which is why this is not a gate_skip/gate_partial prerequisite. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-godot-editor-export.sh, run on a Windows host, where ref-posix/ is staged and section 12 hides it and asserts the refusal end to end. Sections 1-8, 10, 11 and 13 of this run did run and hold."
+    gate_expected_partial "section 13 (the POSIX-framework refusal) has no reachable state on $DN2CPP_OS: Dn2CppToolchain.NeedsCrossCoreLib is false for every target here because ref/ is already the POSIX flavour, so dist/package-toolchain.sh stages no ref-posix/ for the section to hide and the guard under test cannot fire. Permanent rather than environmental — no installation on a POSIX host creates the cross-CoreLib state, which is why this is not a gate_skip/gate_partial prerequisite. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-godot-editor-export.sh, run on a Windows host, where ref-posix/ is staged and section 13 hides it and asserts the refusal end to end. Sections 1-8, 11, 12 and 14 of this run did run and hold."
 else
     # The refusal needs a CROSS target, and Web is the one this repository can
     # always reach: Android would need an installed export template, iOS an Apple
@@ -1033,7 +1108,7 @@ else
     fi
 fi
 
-echo "== 13/13 Refusing an architecture the host cannot compile for =="
+echo "== 14/14 Refusing an architecture the host cannot compile for =="
 # The backend compiles the game with the host's own compiler, so the host's own
 # architecture is the only one it can produce. It used to decide that from the
 # preset's *features*, while the packaging loop iterates the preset's resolved

@@ -75,6 +75,7 @@ _fork_recorded() {   # _fork_recorded FILE FALLBACK
 }
 FORK_EDITOR="$(_fork_recorded editor.txt "$FORK_ROOT/editor_bin$FORK_EXE")"
 FORK_TEMPLATE="$(_fork_recorded template.txt "$FORK_ROOT/template_bin$FORK_EXE")"
+FORK_TEMPLATE_DEBUG="$(_fork_recorded template-debug.txt "$FORK_ROOT/template_debug_bin$FORK_EXE")"
 # The engine's own rule — "GodotSharp/ sits beside the executable"
 # (godotsharp_dirs.cpp resolves it next to the running image) — so one expression
 # covers both layouts: the fork's own bin/GodotSharp for a recorded editor, the
@@ -141,7 +142,7 @@ godot_fork_native_path() {
     fi
 }
 
-# godot_fork_desktop_template ROOT — echo the DESKTOP export template artifact
+# godot_fork_desktop_template ROOT [release|debug] — echo the DESKTOP export template artifact
 # gates/setup-godot-fork.sh assembles into ROOT for this host. The platforms hand
 # the exporter different things and the difference is the engine's, not a
 # preference: the macOS exporter reads a zip laid out like misc/dist/
@@ -155,10 +156,32 @@ godot_fork_native_path() {
 # binary_format/architecture disagrees — a mismatch there dies before the export
 # plugin runs at all.
 godot_fork_desktop_template() {
+    local target="${2:-release}"
     case "${DN2CPP_OS:-}" in
-        macos)   printf '%s/macos_template.zip\n' "$1" ;;
-        windows) printf '%s/windows_template.exe\n' "$1" ;;
-        linux)   printf '%s/linux_template.%s\n' "$1" "$(godot_fork_host_arch)" ;;
+        macos)
+            [ "$target" = release ] || {
+                echo "error: no macOS $target desktop template artifact" >&2
+                return 1
+            }
+            printf '%s/macos_template.zip\n' "$1"
+            ;;
+        windows)
+            case "$target" in
+                release) printf '%s/windows_template_release.exe\n' "$1" ;;
+                debug)   printf '%s/windows_template_debug.exe\n' "$1" ;;
+                *)
+                    echo "error: unknown Windows template target: $target" >&2
+                    return 1
+                    ;;
+            esac
+            ;;
+        linux)
+            [ "$target" = release ] || {
+                echo "error: no Linux $target desktop template artifact" >&2
+                return 1
+            }
+            printf '%s/linux_template.%s\n' "$1" "$(godot_fork_host_arch)"
+            ;;
         *)
             echo "error: no desktop export template rule for ${DN2CPP_OS:-unknown}" >&2
             return 1
@@ -221,8 +244,8 @@ godot_fork_engine_hash() {
 
 # godot_fork_engine_provenance — the one line stamped beside every EXPORT
 # TEMPLATE the fork setup aids bake (the two Web zips, the iOS zip, and the
-# desktop macos_template.zip / windows_template.exe setup-godot-fork.sh step 5
-# assembles), as `<template>.provenance`. Export templates are what the engine
+# desktop macos_template.zip / Windows release and debug executables that
+# setup-godot-fork.sh step 5 assembles), as `<template>.provenance`. Export templates are what the engine
 # binaries' stamps are not: handed to a consumer that cannot check them. Godot
 # validates a preset's `custom_template` with FileAccess::exists alone and
 # bypasses the version-keyed template directory, so a template one patch release
@@ -509,6 +532,36 @@ godot_fork_web_template_fresh() {
     return 0
 }
 
+# godot_fork_web_template_pair_fresh RELEASE DEBUG FLAVOR RELEASE_EMCC_STAMP
+# DEBUG_EMCC_STAMP EMCC ENGINE — the configuration-pair readiness predicate.
+# Each member must independently be fresh, and both engine modules must differ;
+# otherwise a copied or mislabeled Release zip could occupy the Debug slot.
+godot_fork_web_template_pair_fresh() {
+    local release_zip="$1" debug_zip="$2" flavor="$3" release_stamp="$4"
+    local debug_stamp="$5" emcc="$6" engine="$7" tmp
+    if ! godot_fork_web_template_fresh "$release_zip" "$flavor" \
+            "$release_stamp" "$emcc" "$engine"; then
+        return 1
+    fi
+    if ! godot_fork_web_template_fresh "$debug_zip" "$flavor" \
+            "$debug_stamp" "$emcc" "$engine"; then
+        return 1
+    fi
+    tmp="$(mktemp -d)"
+    unzip -qp "$release_zip" godot.wasm > "$tmp/release.wasm"
+    unzip -qp "$release_zip" godot.side.wasm > "$tmp/release.side.wasm"
+    unzip -qp "$debug_zip" godot.wasm > "$tmp/debug.wasm"
+    unzip -qp "$debug_zip" godot.side.wasm > "$tmp/debug.side.wasm"
+    if cmp -s "$tmp/release.wasm" "$tmp/debug.wasm" || \
+       cmp -s "$tmp/release.side.wasm" "$tmp/debug.side.wasm"; then
+        FORK_WEB_TEMPLATE_WHY="$release_zip and $debug_zip do not carry distinct Release/Debug engine modules"
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+    return 0
+}
+
 # godot_fork_web_template_assert ZIP — refuse a Web template the mono drop-in
 # cannot load. Two structural properties, neither of which announces itself at
 # export time:
@@ -558,6 +611,44 @@ godot_fork_web_template_assert() {
         exit 1
     fi
     echo "ok: godot.side.wasm present (dlink), main module exports __cpp_exception"
+}
+
+# godot_fork_web_export_template_assert TEMPLATE OTHER OUT_DIR LABEL — prove
+# that a Web export selected exactly TEMPLATE for both engine modules. Godot
+# renames godot.wasm/godot.side.wasm to <basename>.wasm/.side.wasm without
+# rewriting them, so byte equality is the strongest available selection proof.
+# OTHER is the opposite configuration and supplies the non-vacuity control.
+godot_fork_web_export_template_assert() {
+    local template="$1" other="$2" out_dir="$3" label="$4" tmp base
+    tmp="$(mktemp -d)"
+    base="$(basename "$(first_line "$(find "$out_dir" -maxdepth 1 -name '*.html' -type f -print)")" .html)"
+    if [ -z "$base" ] || [ ! -f "$out_dir/$base.wasm" ] || [ ! -f "$out_dir/$base.side.wasm" ]; then
+        echo "FAIL: $label export carries no matching main/side wasm pair in $out_dir" >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+    unzip -qp "$template" godot.wasm > "$tmp/selected.wasm"
+    unzip -qp "$template" godot.side.wasm > "$tmp/selected.side.wasm"
+    unzip -qp "$other" godot.wasm > "$tmp/other.wasm"
+    unzip -qp "$other" godot.side.wasm > "$tmp/other.side.wasm"
+    cmp -s "$out_dir/$base.wasm" "$tmp/selected.wasm" || {
+        echo "FAIL: $label export's main wasm is not byte-identical to $template" >&2
+        rm -rf "$tmp"
+        return 1
+    }
+    cmp -s "$out_dir/$base.side.wasm" "$tmp/selected.side.wasm" || {
+        echo "FAIL: $label export's side wasm is not byte-identical to $template" >&2
+        rm -rf "$tmp"
+        return 1
+    }
+    if cmp -s "$out_dir/$base.wasm" "$tmp/other.wasm" || \
+       cmp -s "$out_dir/$base.side.wasm" "$tmp/other.side.wasm"; then
+        echo "FAIL: $label export is not distinct from the opposite template $other" >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+    rm -rf "$tmp"
+    echo "$label template selection OK: exported main/side wasm match only $template"
 }
 
 # godot_fork_ios_ready ZIP — the complete readiness predicate shared by the iOS
@@ -753,6 +844,9 @@ godot_fork_cache_fresh() {
 
     _fork_stamp_is "$FORK_EDITOR.engine-hash" "$FORK_CACHE_ENGINE_NOW" "editor binary" || return 1
     _fork_stamp_is "$FORK_TEMPLATE.engine-hash" "$FORK_CACHE_ENGINE_NOW" "release template" || return 1
+    if [ "${DN2CPP_OS:-}" = windows ]; then
+        _fork_stamp_is "$FORK_TEMPLATE_DEBUG.engine-hash" "$FORK_CACHE_ENGINE_NOW" "debug template" || return 1
+    fi
     _fork_stamp_is "$FORK/$FORK_GLUE_MARKER.engine-hash" "$FORK_CACHE_ENGINE_NOW" "mono glue" || return 1
     _fork_stamp_is "$(godot_fork_tools_stamp)" "$FORK_CACHE_TOOLS_NOW" "managed assemblies + feed" || return 1
 
@@ -770,6 +864,19 @@ godot_fork_cache_fresh() {
     if [ "$stamped_provenance" != "$want_provenance" ]; then
         FORK_CACHE_WHY="the desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
         return 1
+    fi
+    if [ "${DN2CPP_OS:-}" = windows ]; then
+        local desktop_debug
+        desktop_debug="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
+        if [ ! -f "$desktop_debug" ]; then
+            FORK_CACHE_WHY="the debug desktop export template is missing at $desktop_debug"
+            return 1
+        fi
+        stamped_provenance="$(head -1 "$desktop_debug.provenance" 2>/dev/null || true)"
+        if [ "$stamped_provenance" != "$want_provenance" ]; then
+            FORK_CACHE_WHY="the debug desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
+            return 1
+        fi
     fi
 
     # The products the tools stamp vouches for, asserted separately: the stamp is

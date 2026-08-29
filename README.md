@@ -284,9 +284,11 @@ template; the fork changes editor tooling only.**
   `build_assemblies.py`, never in the engine runtime or the ABI surfaces;
   design, fork strategy and re-pin procedure are in
   `docs/EDITOR-EXPORT-DESIGN.md`. Its Releases carry a macOS editor `.app`
-  and a Windows `x86_64` editor, plus the two export templates upstream
-  cannot supply — the Web one, and a macOS `arm64` one, since the backend
-  never cross-compiles and upstream's macOS archive is universal-only. The
+  and a Windows `x86_64` editor, plus the export templates upstream cannot
+  supply: Web, macOS `arm64`, and Windows `x86_64`. The Web and Windows template
+  archives each contain distinct release and debug templates. The Windows pair
+  carries the fork's native dependency search. The backend never cross-compiles,
+  and upstream's macOS archive is universal-only. The
   `.app` is ad-hoc signed and not notarized, so clear its quarantine
   attribute (`xattr -dr com.apple.quarantine`) before the first launch; the
   Windows editor is unsigned, and building a **Windows game** from it needs

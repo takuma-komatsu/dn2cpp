@@ -23,8 +23,8 @@
 #     --smoke | --no-smoke       run the two editor-export gates against the
 #                                assembled package (default: --smoke)
 #     --allow-partial-prebuilt   accept a toolchain missing cross-compile axes
-#     --web-asset PATH           the RELEASE Web template the smoke exports with
-#                                (default: <out>/godot-<version>-web-template.zip)
+#     --web-asset PATH           the Release/Debug Web bundle used by smoke
+#                                (default: <out>/godot-<version>-web-templates.zip)
 #     -h | --help
 source "$(dirname "$0")/../gates/_common.sh"       # repo-root cd, DN2CPP_OS, EXE_EXT, stage_editor_toolchain
 source "$(dirname "$0")/../gates/_godot_fork.sh"   # FORK_ROOT/FORK_EDITOR/FORK_GODOTSHARP, SELFHOST_BIN
@@ -344,19 +344,62 @@ if [ "$SMOKE" -eq 1 ]; then
     cp -R "$FORK_ROOT/nuget" "$SMOKE_ROOT/nuget"
     DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
     DESKTOP_TEMPLATE_NAME="$(basename "$DESKTOP_TEMPLATE")"
-    for f in pin.txt fork_head.txt clone.txt template.txt web_emcc.txt \
-             "$DESKTOP_TEMPLATE_NAME" "$DESKTOP_TEMPLATE_NAME.provenance"; do
+    DESKTOP_TEMPLATE_DEBUG="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
+    DESKTOP_TEMPLATE_DEBUG_NAME="$(basename "$DESKTOP_TEMPLATE_DEBUG")"
+    # The desktop gate reads both recorded SCons binaries during preflight, then
+    # both assembled artifacts before its cache check. Keep those two layers in
+    # the smoke root exactly as setup-godot-fork.sh records and names them.
+    for f in pin.txt fork_head.txt clone.txt template.txt template-debug.txt \
+             "$DESKTOP_TEMPLATE_NAME" "$DESKTOP_TEMPLATE_NAME.provenance" \
+             "$DESKTOP_TEMPLATE_DEBUG_NAME" "$DESKTOP_TEMPLATE_DEBUG_NAME.provenance"; do
         [ -f "$FORK_ROOT/$f" ] || die "the fork root has no $f — run gates/setup-godot-fork.sh (and -web)"
         cp "$FORK_ROOT/$f" "$SMOKE_ROOT/$f"
     done
-    # The Web template must be the RELEASE one, not the fork root's: the archive
-    # a user downloads and this run must agree about the engine inside it.
-    [ -n "$WEB_ASSET" ] || WEB_ASSET="$OUT/godot-$VERSION-web-template.zip"
+    # Extract both templates from the exact public bundle. The outer and inner
+    # hashes must all agree with metadata before either reaches a smoke preset.
+    [ -n "$WEB_ASSET" ] || WEB_ASSET="$OUT/godot-$VERSION-web-templates.zip"
     [ -f "$WEB_ASSET" ] \
         || die "no $WEB_ASSET — cut the Web template first: dist/package-web-template.sh --version $VERSION"
-    cp "$WEB_ASSET" "$SMOKE_ROOT/web_template.zip"
+    META="$OUT/web.metadata"
+    [ -f "$META" ] || die "no $META — the Web bundle's inner identities are unknown"
+    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+    $PY - "$WEB_ASSET" "$META" "$SMOKE_ROOT" <<'PY'
+import hashlib, sys, zipfile
+
+archive, metadata_path, output = sys.argv[1:]
+metadata = dict(line.rstrip("\n").split("=", 1) for line in open(metadata_path, encoding="utf-8") if "=" in line)
+outer = hashlib.sha256(open(archive, "rb").read()).hexdigest()
+if metadata.get("asset_sha256") != outer:
+    raise SystemExit("Web bundle hashes to %s, metadata says %s" % (outer, metadata.get("asset_sha256")))
+products = (("release", "web_template.zip"), ("debug", "web_template_debug.zip"))
+with zipfile.ZipFile(archive) as z:
+    wanted = [metadata.get(kind + "_template") for kind, _ in products]
+    canonical = ["godot_web_release.zip", "godot_web_debug.zip"]
+    if wanted != canonical:
+        raise SystemExit("Web metadata names %r, expected %r" % (wanted, canonical))
+    if len(z.namelist()) != 2 or sorted(z.namelist()) != sorted(wanted):
+        raise SystemExit("Web bundle entries are %r, expected exactly %r" % (z.namelist(), wanted))
+    for kind, destination in products:
+        data = z.read(metadata[kind + "_template"])
+        actual = hashlib.sha256(data).hexdigest()
+        expected = metadata.get(kind + "_template_sha256")
+        if actual != expected:
+            raise SystemExit("%s Web template hashes to %s, metadata says %s" % (kind, actual, expected))
+        open(output + "/" + destination, "wb").write(data)
+PY
+    WEB_EMCC="$(first_line "$(sed -n 's/^emcc=//p' "$META")")"
+    [ -n "$WEB_EMCC" ] || die "$META carries no emcc value"
+    printf '%s\n' "$WEB_EMCC" > "$SMOKE_ROOT/web_emcc.txt"
+    printf '%s\n' "$WEB_EMCC" > "$SMOKE_ROOT/web_emcc_debug.txt"
+    META_PROV="$(first_line "$(sed -n 's/^engine_provenance=//p' "$META")")"
+    [ -n "$META_PROV" ] || die "$META carries no engine_provenance"
     if [ -f "$WEB_ASSET.provenance" ]; then
-        cp "$WEB_ASSET.provenance" "$SMOKE_ROOT/web_template.zip.provenance"
+        ASSET_PROV="$(head -1 "$WEB_ASSET.provenance")"
+        [ "$ASSET_PROV" = "$META_PROV" ] || die \
+            "$WEB_ASSET.provenance says '$ASSET_PROV', but $META says engine_provenance='$META_PROV'"
+        for name in web_template.zip web_template_debug.zip; do
+            cp "$WEB_ASSET.provenance" "$SMOKE_ROOT/$name.provenance"
+        done
     else
         # The stamp says which engine BAKED the asset, so it can only be copied
         # from something that witnessed the bake. dist/package-web-template.sh's
@@ -365,7 +408,6 @@ if [ "$SMOKE" -eq 1 ]; then
         # godot_fork_engine_provenance here instead would stamp the asset with
         # this worktree's engine, which is a forgery whenever the two differ,
         # and unfalsifiable exactly when it matters.
-        META="$OUT/web.metadata"
         [ -f "$META" ] || die "no $WEB_ASSET.provenance and no $META — the Web asset's engine is
        unknown, and this run must not invent it. Either fetch the .provenance stamp
        published beside the release asset, or re-cut the asset here:
@@ -377,9 +419,9 @@ if [ "$SMOKE" -eq 1 ]; then
         [ -n "$META_SHA" ] && [ "$META_SHA" = "$WEB_SHA" ] \
             || die "$META describes an asset with sha256 '$META_SHA', but $WEB_ASSET is $WEB_SHA —
        the metadata does not describe this file, so its engine_provenance says nothing about it"
-        META_PROV="$(meta_get engine_provenance)"
-        [ -n "$META_PROV" ] || die "$META carries no engine_provenance"
-        printf '%s\n' "$META_PROV" > "$SMOKE_ROOT/web_template.zip.provenance"
+        for name in web_template.zip web_template_debug.zip; do
+            printf '%s\n' "$META_PROV" > "$SMOKE_ROOT/$name.provenance"
+        done
     fi
     # editor.txt is the whole point: the gates run the package's own binary, and
     # derive GodotSharp beside it.

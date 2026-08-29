@@ -510,7 +510,7 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
 
    | product | key |
    |---------|-----|
-   | the clone's editor + release template (`gates/setup-godot-dotnet.sh` steps 1, 4) | the binary's OWN `--version` commit. No stamp: a build cannot forge what it stamps into itself |
+   | the clone's editor + desktop release template (`gates/setup-godot-dotnet.sh` steps 1, 4) | the binary's OWN `--version` commit. No stamp: a build cannot forge what it stamps into itself |
    | that clone's glue and assemblies + feed (steps 2, 3) | `clone_tree_hash` (pin plus working-tree dirt), stamped in the gitignored `…/Generated/GeneratedIncludes.props.clone-hash` and `bin/GodotSharp/.clone-hash` |
    | the fork's editor + release template (`gates/setup-godot-fork.sh` steps 1, 5) | `godot_fork_engine_hash`, stamped `<binary>.engine-hash` |
    | the fork's mono glue (step 2) | the same engine hash — the glue is the editor's output |
@@ -518,7 +518,7 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
    | the fork's desktop export template (step 5) | `<template>.provenance`, `godot_fork_engine_provenance` |
    | the fork's iOS simulator library (`gates/setup-godot-fork-ios.sh` step 3) | `<library>.provenance`, `godot_fork_engine_provenance` plus the complete SCons argument vector |
 
-   The three template zips built from the fork's engine rebuild themselves too
+   The fork-built template archives rebuild themselves too
    and need no `FORCE=1` to notice a re-pin: each carries the same
    `<template>.provenance` stamp, the bake's skip reads it, and the consuming
    gates refuse a template stamped with another engine. The iOS aid also keys
@@ -527,8 +527,8 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
    are separate aids, so re-run all three after a re-pin:
 
    ```
-   ./gates/setup-godot-fork-web.sh            # web_template.zip
-   CRI=1 ./gates/setup-godot-fork-web.sh      # web_template_cri.zip
+   ./gates/setup-godot-fork-web.sh            # web_template.zip + web_template_debug.zip
+   CRI=1 ./gates/setup-godot-fork-web.sh      # web_template_cri.zip + web_template_cri_debug.zip
    ./gates/setup-godot-fork-ios.sh            # ios_template.zip
    ```
 
@@ -555,8 +555,8 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
 The list above is for moving the *base*. A GodotTools edit, or a rebase onto the
 same base with unchanged engine sources, needs no separate cache procedure:
 `gates/pre-merge.sh` asks `godot_fork_cache_fresh` (`gates/_godot_fork.sh`)
-before its suites and refreshes the desktop cache and the two Web templates when
-a stamp disagrees. An engine edit also makes the iOS template stale. That repair
+before its suites and refreshes the desktop cache and both stock/CRI Web pairs
+when a stamp disagrees. An engine edit also makes the iOS template stale. That repair
 stays manual because it consumes Xcode and an official templates archive. On a
 host with Xcode, pre-merge refuses before its suites and names
 `gates/setup-godot-fork-ios.sh` rather than discovering the stale template
@@ -702,7 +702,8 @@ assertion more important here, not less.
 ### The template must be baked, and three of its flags are not negotiable
 
 Upstream ships no C#-capable Web template and cannot, so
-`gates/setup-godot-fork-web.sh` bakes one from the fork:
+`gates/setup-godot-fork-web.sh` bakes Release and Debug configurations from the
+fork. Both use the same required linking model:
 
 - **`dlink_enabled=yes`** — the game is a side module; a stock Web build's
   `dlopen` is an Emscripten stub returning `NULL`. (With dlink the engine is
@@ -839,7 +840,8 @@ a `*.metadata` file beside it:
 |-------|--------|
 | the macOS editor `.app`, zipped | `dist/package-editor-macos.sh` |
 | the Windows editor (x86_64), zipped | `dist/package-editor-windows.sh` |
-| the Web export template, zipped | `dist/package-web-template.sh` |
+| the Windows x86_64 release/debug export templates, zipped | `dist/package-windows-template.sh` |
+| the Web release/debug export templates, bundled | `dist/package-web-template.sh` |
 | the macOS arm64 export template, zipped | `dist/package-macos-template.sh` |
 
 `dist/release-github.sh` turns a finished asset directory into an annotated tag
@@ -893,6 +895,14 @@ metadata without requiring a public-body witness.
   holds no link at all.** Nothing here forces the macOS indirection, and MSYS
   `ln -s` silently *copies* without a `winsymlinks` mode and the privilege to
   create one — a copy is a snapshot of the tree the staging step rewrites.
+- **The Windows export templates are a separate release asset.** The editor and
+  the export templates are different engine builds, and selecting no custom
+  template makes Godot use the upstream version-keyed template even when the
+  export was initiated by the forked editor. The packaging script requires the
+  fork setup's engine-provenance stamps and verifies both copied executables'
+  versions before the release/debug pair can become one lane asset. Keeping the
+  two configurations distinct ensures `--export-debug` does not silently run a
+  release engine binary.
 - **The Windows archiver is Python's `zipfile`.** Neither `zip` nor `7z` can be
   assumed on a Windows host, and PowerShell 5.1's `Compress-Archive` writes `\`
   as the entry separator, which other extractors read as one file name. Sorting
@@ -919,15 +929,15 @@ metadata without requiring a public-body witness.
   `godot_fork_engine_hash` hashes file by file: fed through `xargs`, an empty
   list still runs `shasum` on GNU and not on BSD, and one tree would then be able
   to produce two provenance strings.
-- **Ship the Web template from the fork's artifact root, never its `bin/`**,
-  where the stock and CRI flavours share one file name and the wrong one goes out
-  silently. `godot_fork_web_template_flavor` (`gates/_godot_fork.sh`) probes the
-  archive for which it is, and `godot_fork_web_template_assert` checks the
-  non-negotiable flags.
-- **Cut the Web template before either editor.** The template is the wasm main
-  module and the drop-in the editor's bundled SDK compiles is a side module of
-  it, so `dist/package-editor-macos.sh` refuses a bundle whose `emcc_version` is
-  not the one the template is stamped with — re-bake with
+- **Ship the Web template pair from the fork's artifact root, never its `bin/`**,
+  where stock and CRI products can otherwise be confused. Each inner archive is
+  checked for its stock flavor and non-negotiable flags; the Release and Debug
+  archives must carry matching emcc/provenance and different hashes before they
+  can become the one public bundle.
+- **Cut the Web template pair before either editor.** Each selected template is
+  the wasm main module and the drop-in the editor's bundled SDK compiles is a
+  side module of it, so `dist/package-editor-macos.sh` refuses a bundle whose
+  `emcc_version` is not the one the templates are stamped with — re-bake with
   `FORCE=1 gates/setup-godot-fork-web.sh` and re-cut when they disagree.
 - **Web and Windows need fork-built templates.** Web enables the mono module and
   dynamic loader for wasm32. Windows passes the data-directory search request

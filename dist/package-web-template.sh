@@ -1,140 +1,159 @@
 #!/usr/bin/env bash
-# dist/package-web-template.sh — stage the fork's Web export template as a
-# release asset, with everything a downloader cannot check checked here.
-#
-# Godot validates a preset's custom_template with FileAccess::exists alone, so a
-# published template is trusted on its filename: a wrong engine, a stock-vs-CRI
-# mix-up and a non-dlink build all export, run, and match every expectation.
-# Hence the four assertions below (provenance stamp, emcc stamp, flavor,
-# dlink + wasm-EH) and the metadata file beside the asset.
-#
-# The default SOURCE is the fork ROOT's published web_template.zip, never the
-# fork's bin/ zip: both flavors are built to that one bin/ path and
-# gates/setup-godot-fork-web.sh publishes a per-flavor copy out of it, so bin/
-# holds whichever flavor was baked last.
+# dist/package-web-template.sh — package the fork's Release and Debug Web
+# export templates as one deterministic release asset.
 #
 # Usage:
 #   dist/package-web-template.sh --version V [options]
-#     --version V   release version string, e.g. 4.7.1-dn2cpp.3.1 (required)
-#     --out DIR     asset directory (default: artifacts/release)
-#     --src PATH    template zip (default: <fork root>/web_template.zip)
+#     --version V       release version string (required)
+#     --out DIR         asset directory (default: artifacts/release)
+#     --release-src P   Release template (default: <fork>/web_template.zip)
+#     --debug-src P     Debug template (default: <fork>/web_template_debug.zip)
 #     -h | --help
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-source "$SCRIPT_DIR/../gates/_common.sh"      # set -euo pipefail, cd to repo root
+source "$SCRIPT_DIR/../gates/_common.sh"
 source "$SCRIPT_DIR/../gates/_godot_fork.sh"
 
 VERSION=
 OUT_DIR=artifacts/release
-SRC=
-
+RELEASE_SRC=
+DEBUG_SRC=
 while [ $# -gt 0 ]; do
     case "$1" in
-        --version) VERSION="$2"; shift 2 ;;
-        --out)     OUT_DIR="$2"; shift 2 ;;
-        --src)     SRC="$2"; shift 2 ;;
-        # Line-numbered against the header above: editing it without moving this
-        # truncates --help silently.
-        -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+        --version)     VERSION="$2"; shift 2 ;;
+        --out)         OUT_DIR="$2"; shift 2 ;;
+        --release-src) RELEASE_SRC="$2"; shift 2 ;;
+        --debug-src)   DEBUG_SRC="$2"; shift 2 ;;
+        -h|--help)     awk 'NR > 1 && !/^#/ { exit } NR > 1 { print }' "$0"; exit 0 ;;
         *) echo "error: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 [ -n "$VERSION" ] || { echo "error: --version is required" >&2; exit 2; }
 release_version_split "$VERSION" || exit 1
 
-# 1. The fork worktree, which is what the provenance stamp is compared against.
 godot_fork_resolve || exit 1
 BASE_COMMIT="$(godot_fork_base_commit)"
-[ -n "$SRC" ] || SRC="$FORK_ROOT/web_template.zip"
-[ -f "$SRC" ] || {
-    echo "error: no Web export template at $SRC" >&2
-    echo "       Bake one: gates/setup-godot-fork-web.sh" >&2
+[ -n "$RELEASE_SRC" ] || RELEASE_SRC="$FORK_ROOT/web_template.zip"
+[ -n "$DEBUG_SRC" ] || DEBUG_SRC="$FORK_ROOT/web_template_debug.zip"
+for src in "$RELEASE_SRC" "$DEBUG_SRC"; do
+    [ -f "$src" ] || {
+        echo "error: no Web export template at $src" >&2
+        echo "       Bake the Release/Debug pair: gates/setup-godot-fork-web.sh" >&2
+        exit 1
+    }
+done
+
+stamp_value() {
+    local src="$1" suffix="$2" fallback="$3" stamp
+    stamp="$src.$suffix"
+    [ -f "$stamp" ] || stamp="$(dirname "$src")/$fallback"
+    [ -f "$stamp" ] || return 1
+    head -1 "$stamp"
+}
+
+validate_template() {
+    local label="$1" src="$2" emcc_fallback="$3" flavor
+    godot_fork_template_check "$src" "$label Web export template" \
+        "gates/setup-godot-fork-web.sh"
+    flavor="$(godot_fork_web_template_flavor "$src")"
+    [ "$flavor" = stock ] || {
+        echo "FAIL: $src is a $flavor-flavor template; a release bundle must be stock" >&2
+        exit 1
+    }
+    godot_fork_web_template_assert "$src"
+    stamp_value "$src" emcc "$emcc_fallback" >/dev/null || {
+        echo "error: no emcc stamp for the $label Web template at $src" >&2
+        echo "       Re-publish the pair: gates/setup-godot-fork-web.sh" >&2
+        exit 1
+    }
+}
+
+echo "== packaging the Web Release/Debug template bundle: $VERSION =="
+validate_template Release "$RELEASE_SRC" web_emcc.txt
+validate_template Debug "$DEBUG_SRC" web_emcc_debug.txt
+
+RELEASE_PROVENANCE="$(stamp_value "$RELEASE_SRC" provenance web_template.zip.provenance)"
+DEBUG_PROVENANCE="$(stamp_value "$DEBUG_SRC" provenance web_template_debug.zip.provenance)"
+[ -n "$RELEASE_PROVENANCE" ] && [ "$RELEASE_PROVENANCE" = "$DEBUG_PROVENANCE" ] || {
+    echo "error: the Release and Debug Web templates disagree on engine provenance" >&2
+    echo "       release: ${RELEASE_PROVENANCE:-<missing>}" >&2
+    echo "       debug:   ${DEBUG_PROVENANCE:-<missing>}" >&2
     exit 1
 }
-echo "== packaging the Web export template: $VERSION =="
-echo "fork:  $FORK"
-echo "src:   $SRC"
-
-# 2. Provenance: the zip must have been baked from the engine sources now in the
-#    fork. A missing stamp is a refusal — see godot_fork_template_check.
-godot_fork_template_check "$SRC" "Web export template" "gates/setup-godot-fork-web.sh"
-ENGINE_PROVENANCE="$(head -1 "$SRC.provenance")"
-
-# 3. The emcc that linked it — the only record of the EH flavour, WASM_BIGINT
-#    and dylink ABI a drop-in has to match, so an unstamped asset is unusable
-#    even when it works today. Either stamp spelling is accepted:
-#    gates/setup-godot-fork-web.sh writes <zip>.emcc beside the zip it builds and
-#    publishes it as web_emcc.txt beside the flavored copy, and a --src naming
-#    the built zip must reach the flavor refusal below rather than die here.
-EMCC_STAMP="$SRC.emcc"
-[ -f "$EMCC_STAMP" ] || EMCC_STAMP="$(dirname "$SRC")/web_emcc.txt"
-[ -f "$EMCC_STAMP" ] || {
-    echo "error: no emcc stamp beside the template ($EMCC_STAMP)" >&2
-    echo "       Re-publish it: gates/setup-godot-fork-web.sh" >&2
+RELEASE_EMCC="$(stamp_value "$RELEASE_SRC" emcc web_emcc.txt)"
+DEBUG_EMCC="$(stamp_value "$DEBUG_SRC" emcc web_emcc_debug.txt)"
+[ -n "$RELEASE_EMCC" ] && [ "$RELEASE_EMCC" = "$DEBUG_EMCC" ] || {
+    echo "error: the Release and Debug Web templates were linked by different emcc" >&2
+    echo "       release: ${RELEASE_EMCC:-<missing>}" >&2
+    echo "       debug:   ${DEBUG_EMCC:-<missing>}" >&2
     exit 1
 }
-EMCC_VERSION="$(head -1 "$EMCC_STAMP")"
-# The SDK release the stamp names, spelled as the toolchain bundle's manifest
-# spells it (emscripten-version.txt minus its `-git` suffix) so a reader can
-# compare the two files directly. Taken from the stamp and not from the pin: the
-# pin says what the repo asks for, the stamp says what linked these bytes.
-EMSDK_VERSION="$(awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+(-git)?$/) v = $i }
-                     END { print v }' <<<"$EMCC_VERSION")"
+
+EMSDK_VERSION="$(awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+(-git)?$/) v = $i } END { print v }' <<<"$RELEASE_EMCC")"
 EMSDK_VERSION="${EMSDK_VERSION%-git}"
 [ -n "$EMSDK_VERSION" ] || {
-    echo "error: the emcc stamp names no SDK release: $EMCC_VERSION" >&2
-    echo "       Re-publish the template: gates/setup-godot-fork-web.sh" >&2
+    echo "error: the emcc stamp names no SDK release: $RELEASE_EMCC" >&2
     exit 1
 }
-echo "emcc:  $EMCC_VERSION"
-echo "emsdk: $EMSDK_VERSION"
 
-# 4. Flavor. The CRI variant carries a third party's SDK and must never ship as
-#    the general-purpose template.
-FLAVOR="$(godot_fork_web_template_flavor "$SRC")"
-if [ "$FLAVOR" != stock ]; then
-    echo "FAIL: $SRC is a $FLAVOR-flavor template; a release asset must be stock" >&2
-    echo "      Both flavors are built to ONE zip in the fork's bin/, so that path is" >&2
-    echo "      whichever was baked last — it is never a valid --src." >&2
-    echo "      Either rerun gates/setup-godot-fork-web.sh without CRI=1, or point" >&2
-    echo "      --src at the fork root's published web_template.zip." >&2
+RELEASE_NAME=godot_web_release.zip
+DEBUG_NAME=godot_web_debug.zip
+RELEASE_SHA="$(shasum -a 256 "$RELEASE_SRC" | awk '{print $1}')"
+DEBUG_SHA="$(shasum -a 256 "$DEBUG_SRC" | awk '{print $1}')"
+[ "$RELEASE_SHA" != "$DEBUG_SHA" ] || {
+    echo "error: the Release and Debug Web templates have identical bytes ($RELEASE_SHA)" >&2
     exit 1
-fi
-echo "flavor: stock"
+}
 
-# 5. dlink + the wasm exception tag, on the bytes actually being shipped.
-godot_fork_web_template_assert "$SRC"
-
-# 6. Stage the asset and its provenance stamp side by side.
-ASSET="godot-$VERSION-web-template.zip"
 mkdir -p "$OUT_DIR"
-# Absolute from here: the editor resolves a relative OUT_DIR against the project.
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
-cp -f "$SRC" "$OUT_DIR/$ASSET"
-cp -f "$SRC.provenance" "$OUT_DIR/$ASSET.provenance"
-ASSET_SHA="$(shasum -a 256 "$OUT_DIR/$ASSET")"
-ASSET_SHA="${ASSET_SHA%% *}"
+ASSET="godot-$VERSION-web-templates.zip"
+ASSET_PATH="$OUT_DIR/$ASSET"
+ASSET_TMP="$(mktemp "$OUT_DIR/.$ASSET.tmp.XXXXXX")"
+trap 'rm -f "$ASSET_TMP"' EXIT
+PY="$(resolve_python)" || { echo "error: Python 3 is required to package Web templates" >&2; exit 1; }
+# Fixed timestamp, mode and entry order make the outer archive reproducible.
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PY - "$ASSET_TMP" "$RELEASE_SRC" "$RELEASE_NAME" "$DEBUG_SRC" "$DEBUG_NAME" <<'PY'
+import sys
+import zipfile
 
-# 7. SHA256SUMS.txt, idempotent: this asset's previous line is dropped before the
-#    new one is appended, so a re-run replaces rather than accumulates. grep -v
-#    exits 1 on an all-filtered file, which is not an error here.
+archive, release_path, release_name, debug_path, debug_name = sys.argv[1:]
+with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
+    for path, name in ((release_path, release_name), (debug_path, debug_name)):
+        info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+        info.create_system = 3
+        info.external_attr = 0o100644 << 16
+        with open(path, "rb") as source:
+            output.writestr(info, source.read(), compress_type=zipfile.ZIP_STORED)
+PY
+# A failed or interrupted writer leaves only the hidden temporary file; the
+# public path changes in one rename after both inner ZIPs are complete.
+mv -f "$ASSET_TMP" "$ASSET_PATH"
+
+printf '%s\n' "$RELEASE_PROVENANCE" > "$ASSET_PATH.provenance"
+ASSET_SHA="$(shasum -a 256 "$ASSET_PATH" | awk '{print $1}')"
 SUMS="$OUT_DIR/SHA256SUMS.txt"
 if [ -f "$SUMS" ]; then
-    grep -v "  $ASSET\$" "$SUMS" > "$SUMS.tmp" || true
+    grep -vE "  godot-$VERSION-web-template(s)?\.zip$" "$SUMS" > "$SUMS.tmp" || true
     mv -f "$SUMS.tmp" "$SUMS"
 fi
 printf '%s  %s\n' "$ASSET_SHA" "$ASSET" >> "$SUMS"
 
-# 8. What a consumer needs to reproduce or validate the asset without unzipping
-#    it. The engine provenance is the stamp verbatim, so it compares equal to
-#    what godot_fork_engine_provenance prints in the fork.
 cat > "$OUT_DIR/web.metadata" <<EOF
 asset=$ASSET
 asset_sha256=$ASSET_SHA
 flavor=stock
-emcc=$EMCC_VERSION
+emcc=$RELEASE_EMCC
 emsdk_version=$EMSDK_VERSION
-engine_provenance=$ENGINE_PROVENANCE
+engine_provenance=$RELEASE_PROVENANCE
+release_template=$RELEASE_NAME
+release_template_sha256=$RELEASE_SHA
+debug_template=$DEBUG_NAME
+debug_template_sha256=$DEBUG_SHA
 release_version=$VERSION
 EOF
 
-echo "OK: $OUT_DIR/$ASSET ($ASSET_SHA)"
+# Retire a stale singular asset only after the complete pair is published.
+rm -f "$OUT_DIR/godot-$VERSION-web-template.zip" \
+      "$OUT_DIR/godot-$VERSION-web-template.zip.provenance"
+echo "OK: $ASSET_PATH ($ASSET_SHA)"
