@@ -6,7 +6,8 @@
 # spells for the exercise's NaN-free operands. The Compare forms take the predicate as a
 # FloatComparisonMode, the 32 values of the immediate; .NET range-checks a non-constant
 # mode against those 32 and throws outside them. CompareScalar compares lane 0 and keeps
-# the other lanes of the first operand.
+# the other lanes of the first operand. Opaque exercise operands keep the .NET oracle on
+# that instruction path; its constant folder otherwise treats an all-true predicate as packed.
 target = avx
 CompareEqual(v256{T},v256{T}) @ref(Vector256.Equals($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_EQ_OQ) for T in f32,f64
 CompareGreaterThan(v256{T},v256{T}) @ref(Vector256.GreaterThan($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_GT_OS) for T in f32,f64
@@ -22,4 +23,4 @@ CompareOrdered(v256{T},v256{T}) @ref(Vector256.Equals($0, $0) & Vector256.Equals
 CompareUnordered(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.Equals($0, $0) & Vector256.Equals($1, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_UNORD_Q) for T in f32,f64
 Compare(v128{T},v128{T},u8) @imm[0..32) = _mm_cmp_{ps|pd}($0, $1, $2) for T in f32,f64
 Compare(v256{T},v256{T},u8) @imm[0..32) = _mm256_cmp_{ps|pd}($0, $1, $2) for T in f32,f64
-CompareScalar(v128{T},v128{T},u8) @imm[0..32) = _mm_cmp_{ss|sd}($0, $1, $2) for T in f32,f64
+CompareScalar(v128{T},v128{T},u8) @imm[0..32) @opaque = _mm_cmp_{ss|sd}($0, $1, $2) for T in f32,f64

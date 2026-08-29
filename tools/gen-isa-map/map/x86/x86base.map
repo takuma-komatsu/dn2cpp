@@ -1,6 +1,7 @@
 # System.Runtime.Intrinsics.X86.X86Base — the x86-64 baseline, no target attribute.
 # DivRem is DIV/IDIV of (upper:lower); the helpers reject a zero divisor and a
-# quotient wider than the operand as DivideByZeroException, the way .NET surfaces #DE.
+# quotient wider than the operand as DivideByZeroException and OverflowException,
+# respectively.
 CpuId(i32,i32) = dn2cpp_isa_cpuid($0, $1, &$r1, &$r2, &$r3, &$r4)
 DivRem(nuint,nint,nint) @throws = dn2cpp_isa_divrem_nint($0, $1, $2, &$r1, &$r2)
 DivRem(nuint,nuint,nuint) @throws = dn2cpp_isa_divrem_nuint($0, $1, $2, &$r1, &$r2)

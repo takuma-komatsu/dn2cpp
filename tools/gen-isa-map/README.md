@@ -146,20 +146,26 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
 - `@imm8` marks the last parameter as a byte immediate with every value valid;
   `@imm[lo..hi)` and `@imm[lo..hi]` (exclusive / inclusive top) give the encodable range —
   a lane index `[0..{N})`, a left shift `[0..{bits})`, a right shift `[1..{bits}]` — for a
-  count that is a power of two up to 256; `@imm$k[...]` names parameter `k` instead of the
-  last, and two such annotations make a two-immediate helper. `@imm{1,2,4,8}` lists the
+  count that is a power of two up to 256. `@immwrap[0..{N})` instead accepts every byte and
+  masks an instruction-encoded lane index to that power-of-two count. `@imm$k[...]` names
+  parameter `k` instead of the last, and two such annotations make a two-immediate helper.
+  `@imm{1,2,4,8}` lists the
   valid values instead (a gather scale), one switch case each, and is dispatched alone. The
   body becomes `DN2CPP_ISA_IMM8_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH`,
-  `DN2CPP_ISA_IMM_RANGE_SWITCH2` or the listed cases, and the expression names the
-  constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the immediate is rewritten); a value
-  outside the range or the list throws ArgumentOutOfRangeException, the check .NET inserts
-  for a non-constant immediate. A `FloatRoundingMode` is such a list: .NET accepts 0 through 11
+  `DN2CPP_ISA_IMM_WRAP_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH2` or the listed cases, and the
+  expression names the
+  constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the immediate is rewritten). A value
+  outside a constrained range or list throws ArgumentOutOfRangeException, the check .NET
+  inserts for a non-constant immediate; `@immwrap` has no out-of-range byte. A
+  `FloatRoundingMode` is such a list: .NET accepts 0 through 11
   and the JIT encodes the low two bits as the rounding control with exceptions suppressed, so
   the row lists those twelve values and the expression hands the intrinsic `($k & 3) | 8`, the
   only spelling the compiler's `_round` intrinsics accept. An immediate whose compiler intrinsic accepts fewer bits
   than .NET's byte (`_mm256_extractf128_ps` reads one) is masked in the expression
   (`DN2CPP_IMM & 1`), as the hardware ignores the rest. `@target("...")` overrides the
-  family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
+  family-level `target =`. `@opaque` passes non-immediate exercise operands through the
+  probe's no-inline identity function so the .NET oracle executes the instruction instead
+  of folding constant vectors. `@throws` documents a faulting intrinsic and changes nothing.
 - `derive = X86.Avx512F.VL, X86.Avx512BW.VL, …` gives the family, for every method it shares
   with a listed family (same name and argument codes), that family's row under this file's
   `target =`; the first listed source wins where two define a method, an explicit row in the

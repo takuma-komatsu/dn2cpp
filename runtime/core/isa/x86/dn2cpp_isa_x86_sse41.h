@@ -636,7 +636,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE float dn2cpp_isa_x86_sse41_extract_v128f32_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Extract");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_bitcast<float>(_mm_extract_ps(dn2cpp_isa_bits<__m128>(a0), DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(4, a1, dn2cpp_isa_bitcast<float>(_mm_extract_ps(dn2cpp_isa_bits<__m128>(a0), DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE float dn2cpp_isa_x86_sse41_extract_v128f32_u8(const Dn2CppVector128&, uint8_t)
@@ -649,7 +649,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE float dn2cpp_isa_x86_sse41_extract
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE int32_t dn2cpp_isa_x86_sse41_extract_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Extract");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, _mm_extract_epi32(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(4, a1, _mm_extract_epi32(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE int32_t dn2cpp_isa_x86_sse41_extract_v128i32_u8(const Dn2CppVector128&, uint8_t)
@@ -662,7 +662,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE int32_t dn2cpp_isa_x86_sse41_extra
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE uint32_t dn2cpp_isa_x86_sse41_extract_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Extract");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, (uint32_t)_mm_extract_epi32(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(4, a1, (uint32_t)_mm_extract_epi32(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE uint32_t dn2cpp_isa_x86_sse41_extract_v128u32_u8(const Dn2CppVector128&, uint8_t)
@@ -675,7 +675,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE uint32_t dn2cpp_isa_x86_sse41_extr
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE uint8_t dn2cpp_isa_x86_sse41_extract_v128u8_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Extract");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, (uint8_t)_mm_extract_epi8(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(16, a1, (uint8_t)_mm_extract_epi8(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE uint8_t dn2cpp_isa_x86_sse41_extract_v128u8_u8(const Dn2CppVector128&, uint8_t)
@@ -779,7 +779,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128i32_i32_u8(const Dn2CppVector128& a0, int32_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(_mm_insert_epi32(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(4, a2, dn2cpp_isa_vec<16>(_mm_insert_epi32(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128i32_i32_u8(const Dn2CppVector128&, int32_t, uint8_t)
@@ -792,7 +792,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128i8_i8_u8(const Dn2CppVector128& a0, int8_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(_mm_insert_epi8(dn2cpp_isa_bits<__m128i>(a0), a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(16, a2, dn2cpp_isa_vec<16>(_mm_insert_epi8(dn2cpp_isa_bits<__m128i>(a0), a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128i8_i8_u8(const Dn2CppVector128&, int8_t, uint8_t)
@@ -805,7 +805,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128u32_u32_u8(const Dn2CppVector128& a0, uint32_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(_mm_insert_epi32(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(4, a2, dn2cpp_isa_vec<16>(_mm_insert_epi32(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128u32_u32_u8(const Dn2CppVector128&, uint32_t, uint8_t)
@@ -818,7 +818,7 @@ DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse
 DN2CPP_ISA_TARGET("sse4.1") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128u8_u8_u8(const Dn2CppVector128& a0, uint8_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse41, "System.Runtime.Intrinsics.X86.Sse41.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(_mm_insert_epi8(dn2cpp_isa_bits<__m128i>(a0), a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(16, a2, dn2cpp_isa_vec<16>(_mm_insert_epi8(dn2cpp_isa_bits<__m128i>(a0), a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse41_insert_v128u8_u8_u8(const Dn2CppVector128&, uint8_t, uint8_t)

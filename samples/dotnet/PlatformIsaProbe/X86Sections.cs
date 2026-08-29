@@ -28,6 +28,12 @@ internal static class X86Sections
         nestedProbes["X86.Avx10v2.V512"] = ProbeAvx10v2V512;
         nestedProbes["X86.AvxVnniInt8.V512"] = ProbeAvxVnniInt8V512;
         nestedProbes["X86.AvxVnniInt16.V512"] = ProbeAvxVnniInt16V512;
+        Action avxExercise = exercises["X86.Avx"];
+        exercises["X86.Avx"] = () =>
+        {
+            avxExercise();
+            AvxCompareScalarMode31Exercise();
+        };
     }
 
     internal static void ProbeX86Base() { _ = X86Base.CpuId(0, 0); }
@@ -65,8 +71,8 @@ internal static class X86Sections
 
     // CPUID answers are machine facts, so only shape facts every x86-64 CPU
     // shares are printed. DivRem divides (upper:lower) by divisor; a zero
-    // divisor and a quotient wider than the operand both fault in hardware,
-    // which .NET reports as DivideByZeroException.
+    // divisor and a quotient wider than the operand both fault in hardware;
+    // .NET distinguishes them as DivideByZeroException and OverflowException.
     private static void X86BaseExercise()
     {
         (int eax, int ebx, int ecx, int edx) = X86Base.CpuId(0, 0);
@@ -89,6 +95,7 @@ internal static class X86Sections
         Console.WriteLine("DivRem(i32 0,1,1)=" + Fmt.Thrown(() => { _ = X86Base.DivRem(0u, 1, 1); }));
         Console.WriteLine("DivRem(nuint 0,1,1)=" + Fmt.Thrown(() => { _ = X86Base.DivRem((nuint)0, (nuint)1, (nuint)1); }));
         Console.WriteLine("DivRem(nint 1,0,0)=" + Fmt.Thrown(() => { _ = X86Base.DivRem((nuint)1, (nint)0, (nint)0); }));
+        Console.WriteLine("DivRem(nint 0,1,1)=" + Fmt.Thrown(() => { _ = X86Base.DivRem((nuint)0, (nint)1, (nint)1); }));
         X86Base.Pause();
         Console.WriteLine("Pause=ok");
 
@@ -103,6 +110,22 @@ internal static class X86Sections
             Console.WriteLine("X64.DivRem(i64 1,0,0)=" + Fmt.Thrown(() => { _ = X86Base.X64.DivRem(1ul, 0L, 0L); }));
             Console.WriteLine("X64.DivRem(i64 0,1,1)=" + Fmt.Thrown(() => { _ = X86Base.X64.DivRem(0ul, 1L, 1L); }));
         }
+    }
+
+    // Mode 31 is the signaling spelling of mode 15's all-true predicate. The
+    // opaque operands keep both calls on VCMPSS/VCMPSD, whose upper lanes come
+    // from the left operand.
+    private static void AvxCompareScalarMode31Exercise()
+    {
+        Vector128<float> left32 = Fmt.NonConstant(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f));
+        Vector128<float> right32 = Fmt.NonConstant(Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
+        Console.WriteLine("CompareScalar(v128f32,v128f32,u8) mode=31=" +
+            Fmt.Hex(Avx.CompareScalar(left32, right32, FloatComparisonMode.UnorderedTrueSignaling).AsByte()));
+
+        Vector128<double> left64 = Fmt.NonConstant(Vector128.Create(2.0, 1.5));
+        Vector128<double> right64 = Fmt.NonConstant(Vector128.Create(0.5, 0.0));
+        Console.WriteLine("CompareScalar(v128f64,v128f64,u8) mode=31=" +
+            Fmt.Hex(Avx.CompareScalar(left64, right64, FloatComparisonMode.UnorderedTrueSignaling).AsByte()));
     }
 
     private static void LzcntExercise()

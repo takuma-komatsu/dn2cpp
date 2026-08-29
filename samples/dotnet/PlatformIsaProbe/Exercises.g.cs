@@ -11031,16 +11031,19 @@ internal static class Exercises
         {
             var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
             var r = X86.Sse2.Extract(a0, (byte)3);
-            var q = a0.GetElement((byte)3);
+            var q = a0.GetElement((byte)3 & 7);
             string h = Fmt.Hex((ushort)r);
             Console.WriteLine("Extract(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex((ushort)q)));
-            Console.WriteLine("Extract(v128u16,u8) imm=8=" + Fmt.Thrown(() => { _ = X86.Sse2.Extract(a0, Fmt.NonConstant((byte)8)); }));
+            var wr = X86.Sse2.Extract(a0, Fmt.NonConstant((byte)8));
+            var wq = a0.GetElement(Fmt.NonConstant((byte)8) & 7);
+            string wh = Fmt.Hex((ushort)wr);
+            Console.WriteLine("Extract(v128u16,u8) imm=8=" + wh + Fmt.Ref(wh, Fmt.Hex((ushort)wq)));
         }
         {
             var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
             var a1 = (short)32435;
             var r = X86.Sse2.Insert(a0, a1, (byte)3);
-            var q = a0.WithElement((byte)3, a1);
+            var q = a0.WithElement((byte)3 & 7, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128i16,i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -11048,7 +11051,7 @@ internal static class Exercises
             var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
             var a1 = (ushort)32435;
             var r = X86.Sse2.Insert(a0, a1, (byte)3);
-            var q = a0.WithElement((byte)3, a1);
+            var q = a0.WithElement((byte)3 & 7, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128u16,u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -13132,29 +13135,32 @@ internal static class Exercises
         {
             var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
             var r = X86.Sse41.Extract(a0, (byte)1);
-            var q = a0.GetElement((byte)1);
+            var q = a0.GetElement((byte)1 & 3);
             string h = Fmt.Hex(BitConverter.SingleToUInt32Bits(r));
             Console.WriteLine("Extract(v128f32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(BitConverter.SingleToUInt32Bits(q))));
-            Console.WriteLine("Extract(v128f32,u8) imm=4=" + Fmt.Thrown(() => { _ = X86.Sse41.Extract(a0, Fmt.NonConstant((byte)4)); }));
+            var wr = X86.Sse41.Extract(a0, Fmt.NonConstant((byte)4));
+            var wq = a0.GetElement(Fmt.NonConstant((byte)4) & 3);
+            string wh = Fmt.Hex(BitConverter.SingleToUInt32Bits(wr));
+            Console.WriteLine("Extract(v128f32,u8) imm=4=" + wh + Fmt.Ref(wh, Fmt.Hex(BitConverter.SingleToUInt32Bits(wq))));
         }
         {
             var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
             var r = X86.Sse41.Extract(a0, (byte)1);
-            var q = a0.GetElement((byte)1);
+            var q = a0.GetElement((byte)1 & 3);
             string h = Fmt.Hex((uint)r);
             Console.WriteLine("Extract(v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
         }
         {
             var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
             var r = X86.Sse41.Extract(a0, (byte)1);
-            var q = a0.GetElement((byte)1);
+            var q = a0.GetElement((byte)1 & 3);
             string h = Fmt.Hex((uint)r);
             Console.WriteLine("Extract(v128u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
         }
         {
             var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
             var r = X86.Sse41.Extract(a0, (byte)7);
-            var q = a0.GetElement((byte)7);
+            var q = a0.GetElement((byte)7 & 15);
             string h = Fmt.Hex((byte)r);
             Console.WriteLine("Extract(v128u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex((byte)q)));
         }
@@ -13214,7 +13220,7 @@ internal static class Exercises
             var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
             var a1 = 8314215;
             var r = X86.Sse41.Insert(a0, a1, (byte)1);
-            var q = a0.WithElement((byte)1, a1);
+            var q = a0.WithElement((byte)1 & 3, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128i32,i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -13222,7 +13228,7 @@ internal static class Exercises
             var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
             var a1 = (sbyte)65;
             var r = X86.Sse41.Insert(a0, a1, (byte)7);
-            var q = a0.WithElement((byte)7, a1);
+            var q = a0.WithElement((byte)7 & 15, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128i8,i8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -13230,7 +13236,7 @@ internal static class Exercises
             var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
             var a1 = 8314215U;
             var r = X86.Sse41.Insert(a0, a1, (byte)1);
-            var q = a0.WithElement((byte)1, a1);
+            var q = a0.WithElement((byte)1 & 3, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128u32,u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -13238,7 +13244,7 @@ internal static class Exercises
             var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
             var a1 = (byte)65;
             var r = X86.Sse41.Insert(a0, a1, (byte)7);
-            var q = a0.WithElement((byte)7, a1);
+            var q = a0.WithElement((byte)7 & 15, a1);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("Insert(v128u8,u8,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -13828,15 +13834,18 @@ internal static class Exercises
             {
                 var a0 = Vector128.Create(4828507740108L, 9791140695219L);
                 var r = X86.Sse41.X64.Extract(a0, (byte)0);
-                var q = a0.GetElement((byte)0);
+                var q = a0.GetElement((byte)0 & 1);
                 string h = Fmt.Hex((ulong)r);
                 Console.WriteLine("X64.Extract(v128i64,u8)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
-                Console.WriteLine("X64.Extract(v128i64,u8) imm=2=" + Fmt.Thrown(() => { _ = X86.Sse41.X64.Extract(a0, Fmt.NonConstant((byte)2)); }));
+                var wr = X86.Sse41.X64.Extract(a0, Fmt.NonConstant((byte)2));
+                var wq = a0.GetElement(Fmt.NonConstant((byte)2) & 1);
+                string wh = Fmt.Hex((ulong)wr);
+                Console.WriteLine("X64.Extract(v128i64,u8) imm=2=" + wh + Fmt.Ref(wh, Fmt.Hex((ulong)wq)));
             }
             {
                 var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
                 var r = X86.Sse41.X64.Extract(a0, (byte)0);
-                var q = a0.GetElement((byte)0);
+                var q = a0.GetElement((byte)0 & 1);
                 string h = Fmt.Hex((ulong)r);
                 Console.WriteLine("X64.Extract(v128u64,u8)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
             }
@@ -13844,7 +13853,7 @@ internal static class Exercises
                 var a0 = Vector128.Create(4828507740108L, 9791140695219L);
                 var a1 = 8718138975195L;
                 var r = X86.Sse41.X64.Insert(a0, a1, (byte)0);
-                var q = a0.WithElement((byte)0, a1);
+                var q = a0.WithElement((byte)0 & 1, a1);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("X64.Insert(v128i64,i64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -13852,7 +13861,7 @@ internal static class Exercises
                 var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
                 var a1 = 8718138975195UL;
                 var r = X86.Sse41.X64.Insert(a0, a1, (byte)0);
-                var q = a0.WithElement((byte)0, a1);
+                var q = a0.WithElement((byte)0 & 1, a1);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("X64.Insert(v128u64,u64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -14274,8 +14283,8 @@ internal static class Exercises
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("CompareOrdered(v256f64,v256f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
-        Console.WriteLine("CompareScalar(v128f32,v128f32,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
-        Console.WriteLine("CompareScalar(v128f64,v128f64,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Vector128.Create(2.0, 1.5), Vector128.Create(0.5, 0.0), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
+        Console.WriteLine("CompareScalar(v128f32,v128f32,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f)), Fmt.NonConstant(Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
+        Console.WriteLine("CompareScalar(v128f64,v128f64,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(2.0, 1.5)), Fmt.NonConstant(Vector128.Create(0.5, 0.0)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
         {
             var a0 = Vector256.Create(4.0f, 3.0f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f);
             var a1 = Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f);

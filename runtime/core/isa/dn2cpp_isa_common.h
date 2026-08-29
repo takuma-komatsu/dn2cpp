@@ -127,11 +127,11 @@ static inline void dn2cpp_isa_require(int32_t supported, const char* what)
 // Immediate-operand dispatch. Hardware encodes the immediate in the instruction,
 // so a runtime value has to select among one instantiation per value; EXPR
 // names the immediate as DN2CPP_IMM (and a second one as DN2CPP_IMM2), an
-// integral constant in every case body. Out-of-range values throw
-// ArgumentOutOfRangeException, the check .NET inserts for a non-constant
-// immediate. The case-list macros take the case macro as their first argument;
-// the two-immediate form nests a second, independently named case list so the
-// outer expansion never meets its own name inside an argument.
+// integral constant in every case body. Range-constrained values throw
+// ArgumentOutOfRangeException, while encoding-masked lane indices wrap exactly
+// as the instruction does. The case-list macros take the case macro as their
+// first argument; the two-immediate form nests a second, independently named
+// case list so the outer expansion never meets its own name inside an argument.
 #define DN2CPP_ISA_IMM_CASE(v, EXPR) \
     case (v): { enum : int { DN2CPP_IMM = (v) }; return (EXPR); }
 #define DN2CPP_ISA_IMM_CASE_OUTER(v, STMT) \
@@ -162,6 +162,14 @@ static inline void dn2cpp_isa_require(int32_t supported, const char* what)
 #define DN2CPP_ISA_IMM8_SWITCH(imm, EXPR) \
     switch ((int)((imm) & 0xFF)) { \
         DN2CPP_ISA_IMM_CASES_256(DN2CPP_ISA_IMM_CASE, 0, EXPR) \
+        default: dn2cpp_throw_argument_out_of_range(); \
+    }
+
+// The instruction encodes only log2(count) index bits, so every byte is valid
+// and selects a lane modulo count. The default arm is unreachable.
+#define DN2CPP_ISA_IMM_WRAP_SWITCH(count, imm, EXPR) \
+    switch ((int)((uint32_t)(imm) & ((count) - 1))) { \
+        DN2CPP_ISA_IMM_CASES_##count(DN2CPP_ISA_IMM_CASE, 0, EXPR) \
         default: dn2cpp_throw_argument_out_of_range(); \
     }
 
@@ -269,14 +277,15 @@ static inline int64_t dn2cpp_isa_smulh64(int64_t a, int64_t b)
 #endif
 }
 
-// (hi:lo) / divisor. The hardware instruction faults (#DE) on a zero divisor
-// and on a quotient that does not fit 64 bits; .NET surfaces that fault as
-// DivideByZeroException, so both are rejected up front and never reach the
-// division.
+// (hi:lo) / divisor. A zero divisor is DivideByZeroException; a quotient that
+// does not fit the destination is OverflowException. Reject both before the
+// hardware instruction or the portable division sees them.
 static inline uint64_t dn2cpp_isa_udivrem128(uint64_t lo, uint64_t hi, uint64_t divisor, uint64_t* rem)
 {
-    if (divisor == 0 || hi >= divisor)
+    if (divisor == 0)
         dn2cpp_throw_divide_by_zero();
+    if (hi >= divisor)
+        dn2cpp_overflow();
 #if defined(__SIZEOF_INT128__)
     unsigned __int128 n = ((unsigned __int128)hi << 64) | lo;
     *rem = (uint64_t)(n % divisor);
@@ -319,12 +328,12 @@ static inline int64_t dn2cpp_isa_sdivrem128(int64_t lo, int64_t hi, int64_t divi
     }
     uint64_t md = dneg ? (~(uint64_t)divisor + 1) : (uint64_t)divisor;
     if (mhi >= md)
-        dn2cpp_throw_divide_by_zero();
+        dn2cpp_overflow();
     uint64_t ur;
     uint64_t uq = dn2cpp_isa_udivrem128(mlo, mhi, md, &ur);
     bool qneg = nneg != dneg;
     if (uq > (qneg ? (1ull << 63) : (uint64_t)INT64_MAX))
-        dn2cpp_throw_divide_by_zero();
+        dn2cpp_overflow();
     *rem = (int64_t)(nneg ? (~ur + 1) : ur);
     return (int64_t)(qneg ? (~uq + 1) : uq);
 }
@@ -348,14 +357,16 @@ static inline uint64_t dn2cpp_isa_bitreverse64(uint64_t x)
 // ---------------------------------------------------------------------------
 // X86Base.DivRem: (upper:lower) / divisor into quotient and remainder. The
 // instruction faults (#DE) on a zero divisor and on a quotient wider than the
-// operand; .NET surfaces both as DivideByZeroException, so both are rejected
-// before any division.
+// operand. .NET distinguishes those as DivideByZeroException and
+// OverflowException, so both are rejected before any division.
 // ---------------------------------------------------------------------------
 
 static inline void dn2cpp_isa_divrem_u32(uint32_t lo, uint32_t hi, uint32_t divisor, uint32_t* q, uint32_t* r)
 {
-    if (divisor == 0 || hi >= divisor)
+    if (divisor == 0)
         dn2cpp_throw_divide_by_zero();
+    if (hi >= divisor)
+        dn2cpp_overflow();
     uint64_t n = ((uint64_t)hi << 32) | lo;
     *q = (uint32_t)(n / divisor);
     *r = (uint32_t)(n % divisor);
@@ -369,10 +380,10 @@ static inline void dn2cpp_isa_divrem_i32(uint32_t lo, int32_t hi, int32_t diviso
     // INT64_MIN / -1 is the one 64-bit quotient C++ cannot form; it does not
     // fit 32 bits either.
     if (divisor == -1 && n == INT64_MIN)
-        dn2cpp_throw_divide_by_zero();
+        dn2cpp_overflow();
     int64_t quotient = n / divisor;
     if (quotient < INT32_MIN || quotient > INT32_MAX)
-        dn2cpp_throw_divide_by_zero();
+        dn2cpp_overflow();
     *q = (int32_t)quotient;
     *r = (int32_t)(n % divisor);
 }

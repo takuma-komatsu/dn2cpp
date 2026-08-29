@@ -259,7 +259,11 @@ for lane in editor-macos editor-windows web macos; do
         esac
     } > "$PRISTINE/$lane.metadata"
 done
-( cd "$PRISTINE" && shasum -a 256 ./*.zip | sed 's|\./||' > SHA256SUMS.txt )
+( cd "$PRISTINE" && for lane in editor-macos editor-windows web macos; do
+    asset="$(lane_asset_name "$lane")"
+    sha="$(shasum -a 256 "$asset")"
+    printf '%s  %s\n' "${sha%% *}" "$asset"
+done > SHA256SUMS.txt )
 
 # meta_set FILE KEY VALUE — rewrite one key in place, the whole file through awk
 # so no other line can be reformatted by the edit.

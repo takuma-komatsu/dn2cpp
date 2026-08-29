@@ -74,6 +74,8 @@
 //                      to the immediate as DN2CPP_IMM (its $k is rewritten to that name)
 //     @imm[lo..hi)     same, valid in [lo, hi) — or [lo..hi] inclusive — for a count that is a
 //                      power of two up to 256, through DN2CPP_ISA_IMM_RANGE_SWITCH
+//     @immwrap[0..hi)  every byte is valid; the instruction masks the lane index to the given
+//                      power-of-two count, through DN2CPP_ISA_IMM_WRAP_SWITCH
 //     @imm$k[lo..hi)   the immediate is parameter k; two such annotations make a two-immediate
 //                      helper (DN2CPP_IMM and DN2CPP_IMM2 in parameter order, at most 256 cases)
 //     @imm{1,2,4,8}    the immediate takes the listed values only (a gather scale), through one
@@ -85,6 +87,8 @@
 //                      ` ref=MISMATCH(<reference>)` beside the helper's bytes. The portable
 //                      layer is an independent implementation, which is what checks a family
 //                      whose gate output is frozen because no host .NET can be its oracle.
+//     @opaque          pass non-immediate exercise inputs through Fmt.NonConstant, keeping the
+//                      oracle on its instruction path instead of a JIT constant-folding path
 //
 // Every helper is emitted inside its target and compiler-capability `#if`
 // (Contract.HelperCondition; wasm also tests __wasm_simd128__, since SIMD is a property of the
@@ -441,15 +445,15 @@ sealed class Method
     public MapRow? Row;
 }
 
-// One immediate parameter: valid values are [Lo, Lo + Count), or the listed Values (a gather
-// scale is 1, 2, 4 or 8 and nothing between).
-sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values = default)
+// One immediate parameter: constrained values are [Lo, Lo + Count), listed Values name a
+// sparse set, and Wrap masks every byte to the power-of-two Count.
+sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values = default, bool Wrap = false)
 {
     public bool IsSet => !Values.IsDefault;
     // The value the exercise passes: the middle of the range, or the middle listed value.
     public int Exercised => IsSet ? Values[Values.Length / 2] : Lo + (Count - 1) / 2;
-    // A byte one past the range, for the exercise that witnesses the range check; null when
-    // every byte is valid.
+    // A byte one past the nominal range. The exercise uses it to witness a range throw or,
+    // for Wrap, the instruction's boundary wrap; null when no byte lies past the range.
     public int? OutOfRange
     {
         get
@@ -461,7 +465,7 @@ sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values =
 }
 
 // Ref is the row's portable C# cross-check (@ref), spelled over the exercise's operands.
-sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref, string SourceLine);
+sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref, bool Opaque, string SourceLine);
 
 static class Lowering
 {
@@ -946,6 +950,7 @@ static class Maps
     static readonly Regex RowStart = new(@"^([A-Za-z_][A-Za-z0-9_]*)\((.*?)\)\s*(.*)$", RegexOptions.Compiled);
     static readonly Regex ForClause = new(@"\s+for\s+([WT])\s+in\s+([a-z0-9]+(?:\s*,\s*[a-z0-9]+)*)\s*$", RegexOptions.Compiled);
     static readonly Regex ImmAnn = new(@"^@imm(?:\$(\d+))?\[(\d+)\.\.(\d+)([\)\]])$", RegexOptions.Compiled);
+    static readonly Regex ImmWrapAnn = new(@"^@immwrap(?:\$(\d+))?\[0\.\.(\d+)\)$", RegexOptions.Compiled);
     static readonly Regex ImmSetAnn = new(@"^@imm(?:\$(\d+))?\{(\d+(?:,\d+)*)\}$", RegexOptions.Compiled);
     static readonly Regex TargetAnn = new(@"^@target\(""([^""]+)""\)$", RegexOptions.Compiled);
     // Only identifier-like braces are placeholders, so C++ brace initializers in an
@@ -1317,6 +1322,7 @@ static class Maps
 
         string? target = null;
         string? reference = null;
+        bool opaque = false;
         var imms = new List<ImmSpec>();
         foreach (string raw in spec.Annotations)
         {
@@ -1331,6 +1337,14 @@ static class Maps
             }
             else if (ann == "@imm8")
                 imms.Add(new ImmSpec(mm.Params.Length - 1, 0, 256));
+            else if (ImmWrapAnn.Match(ann) is { Success: true } rw)
+            {
+                int param = rw.Groups[1].Success ? int.Parse(rw.Groups[1].Value, CultureInfo.InvariantCulture) : mm.Params.Length - 1;
+                int count = int.Parse(rw.Groups[2].Value, CultureInfo.InvariantCulture);
+                if (count < 1 || count > 256 || (count & (count - 1)) != 0)
+                    throw new ContractException($"{where}: {ann} spans {count} values; wrapped dispatch takes a power of two up to 256");
+                imms.Add(new ImmSpec(param, 0, count, Wrap: true));
+            }
             else if (ImmAnn.Match(ann) is { Success: true } r)
             {
                 int param = r.Groups[1].Success ? int.Parse(r.Groups[1].Value, CultureInfo.InvariantCulture) : mm.Params.Length - 1;
@@ -1356,6 +1370,8 @@ static class Maps
             }
             else if (TargetAnn.Match(ann) is { Success: true } ta)
                 target = ta.Groups[1].Value;
+            else if (ann == "@opaque")
+                opaque = true;
             else if (ann != "@throws")
                 throw new ContractException($"{where}: unknown annotation '{ann}'");
         }
@@ -1373,9 +1389,13 @@ static class Maps
             throw new ContractException($"{where}: two immediates spanning {imms[0].Count * imms[1].Count} cases; the bound is 256");
         if (imms.Count == 2 && imms.Any(i => i.IsSet))
             throw new ContractException($"{where}: a listed-values immediate is dispatched alone");
+        if (imms.Count == 2 && imms.Any(i => i.Wrap))
+            throw new ContractException($"{where}: a wrapped immediate is dispatched alone");
+        if (imms.Any(i => i.Wrap) && reference is null)
+            throw new ContractException($"{where}: a wrapped immediate needs @ref for its boundary exercise");
 
         string expr = Substitute(spec.Expression, w, t, where);
-        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, where);
+        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, opaque, where);
     }
 
     static string Substitute(string text, string w, string t, string where) =>
@@ -1713,6 +1733,8 @@ static class Emit
                     string cases = string.Concat(i.Values.Select(v => $"DN2CPP_ISA_IMM_CASE({v}, {produce}) "));
                     return $"switch ((int)a{i.Param}) {{ {cases}default: dn2cpp_throw_argument_out_of_range(); }}";
                 }
+                if (i.Wrap)
+                    return $"DN2CPP_ISA_IMM_WRAP_SWITCH({i.Count}, a{i.Param}, {produce});";
                 return i.Lo == 0 && i.Count == 256
                     ? $"DN2CPP_ISA_IMM8_SWITCH(a{i.Param}, {produce});"
                     : $"DN2CPP_ISA_IMM_RANGE_SWITCH({i.Lo}, {i.Count}, a{i.Param}, {produce});";
@@ -1874,6 +1896,8 @@ static class Exercises
                 default:
                     throw new ContractException($"{member}: parameter '{p}' has no exercise spelling");
             }
+            if (row.Opaque)
+                value = $"Fmt.NonConstant({value})";
             if (bind)
             {
                 sb.Append($"{inner}var a{k} = {value};\n");
@@ -1936,16 +1960,47 @@ static class Exercises
             default:
                 throw new ContractException($"{member}: return type '{m.Return}' has no exercise spelling");
         }
-        // One immediate method per family also witnesses the range check .NET inserts for a
-        // non-constant immediate: one past the top of the range throws.
+        // One immediate method per family also witnesses its boundary behavior with a
+        // non-constant immediate: a constrained range throws, while a wrapped lane returns.
         if (!witnessed && row.Imms.Length == 1 && row.Imms[0].OutOfRange is { } past)
         {
             var imm = row.Imms[0];
             var outArgs = new List<string>(args);
             outArgs[imm.Param] = $"Fmt.NonConstant({Literal(m.Params[imm.Param], past)})";
             string outCall = $"{CsFamily(f)}.{m.Name}({string.Join(", ", outArgs)})";
-            string stmt = m.Return.Kind == TyKind.Void ? $"{outCall};" : $"_ = {outCall};";
-            sb.Append($"{inner}Console.WriteLine(\"{label} imm={past}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
+            if (imm.Wrap)
+            {
+                string outReference = RefParam.Replace(row.Ref!, x =>
+                {
+                    int k = int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture);
+                    if (k >= outArgs.Count)
+                        throw new ContractException($"{row.SourceLine}: @ref names ${k} but {m.Key} has {outArgs.Count} parameter(s)");
+                    return outArgs[k];
+                });
+                string actual, expected;
+                switch (m.Return.Kind)
+                {
+                    case TyKind.Vector:
+                        actual = "Fmt.Hex(wr.AsByte())";
+                        expected = "Fmt.Hex(wq.AsByte())";
+                        break;
+                    case TyKind.Scalar:
+                        actual = ScalarHex(m.Return, "wr");
+                        expected = ScalarHex(m.Return, "wq");
+                        break;
+                    default:
+                        throw new ContractException($"{row.SourceLine}: a wrapped immediate needs a vector or scalar result");
+                }
+                sb.Append($"{inner}var wr = {outCall};\n");
+                sb.Append($"{inner}var wq = {outReference};\n");
+                sb.Append($"{inner}string wh = {actual};\n");
+                sb.Append($"{inner}Console.WriteLine(\"{label} imm={past}=\" + wh + Fmt.Ref(wh, {expected}));\n");
+            }
+            else
+            {
+                string stmt = m.Return.Kind == TyKind.Void ? $"{outCall};" : $"_ = {outCall};";
+                sb.Append($"{inner}Console.WriteLine(\"{label} imm={past}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
+            }
             witnessed = true;
         }
         string[] lines = sb.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);

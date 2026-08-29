@@ -1325,7 +1325,7 @@ DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_
 DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE uint16_t dn2cpp_isa_x86_sse2_extract_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse2, "System.Runtime.Intrinsics.X86.Sse2.Extract");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, (uint16_t)_mm_extract_epi16(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(8, a1, (uint16_t)_mm_extract_epi16(dn2cpp_isa_bits<__m128i>(a0), DN2CPP_IMM));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE uint16_t dn2cpp_isa_x86_sse2_extract_v128u16_u8(const Dn2CppVector128&, uint8_t)
@@ -1338,7 +1338,7 @@ DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE uint16_t dn2cpp_isa_x86_sse2_extract
 DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_insert_v128i16_i16_u8(const Dn2CppVector128& a0, int16_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse2, "System.Runtime.Intrinsics.X86.Sse2.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(_mm_insert_epi16(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(8, a2, dn2cpp_isa_vec<16>(_mm_insert_epi16(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_insert_v128i16_i16_u8(const Dn2CppVector128&, int16_t, uint8_t)
@@ -1351,7 +1351,7 @@ DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_
 DN2CPP_ISA_TARGET("sse2") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_insert_v128u16_u16_u8(const Dn2CppVector128& a0, uint16_t a1, uint8_t a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Sse2, "System.Runtime.Intrinsics.X86.Sse2.Insert");
-    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(_mm_insert_epi16(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
+    DN2CPP_ISA_IMM_WRAP_SWITCH(8, a2, dn2cpp_isa_vec<16>(_mm_insert_epi16(dn2cpp_isa_bits<__m128i>(a0), (int)a1, DN2CPP_IMM)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_sse2_insert_v128u16_u16_u8(const Dn2CppVector128&, uint16_t, uint8_t)

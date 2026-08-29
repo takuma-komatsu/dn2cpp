@@ -1,15 +1,15 @@
 # System.Runtime.Intrinsics.X86.Sse41 — lane extract and insert, and MOVNTDQA. An
-# extract or integer insert index must name a lane, as in .NET; EXTRACTPS yields the
+# extract or integer insert index wraps through the bits encoded by the instruction; EXTRACTPS yields the
 # lane's bits in an integer register, which .NET returns as the float. INSERTPS reads the
 # source lane from bits 7:6 of its control, the destination lane from bits 5:4, and zeroes
 # the lanes of the low nibble, so every byte is valid. MOVNTDQA's header signature takes a
 # non-const pointer in older intrinsic headers.
 target = sse4.1
-Extract(v128u8,u8) @imm[0..16) @ref($0.GetElement($1)) = (uint8_t)_mm_extract_epi8($0, $1)
-Extract(v128i32,u8) @imm[0..4) @ref($0.GetElement($1)) = _mm_extract_epi32($0, $1)
-Extract(v128u32,u8) @imm[0..4) @ref($0.GetElement($1)) = (uint32_t)_mm_extract_epi32($0, $1)
-Extract(v128f32,u8) @imm[0..4) @ref($0.GetElement($1)) = dn2cpp_isa_bitcast<float>(_mm_extract_ps($0, $1))
-Insert(v128{T},{T},u8) @imm$2[0..16) @ref($0.WithElement($2, $1)) = _mm_insert_epi8($0, $1, $2) for T in i8,u8
-Insert(v128{T},{T},u8) @imm$2[0..4) @ref($0.WithElement($2, $1)) = _mm_insert_epi32($0, (int)$1, $2) for T in i32,u32
+Extract(v128u8,u8) @immwrap[0..16) @ref($0.GetElement($1 & 15)) = (uint8_t)_mm_extract_epi8($0, $1)
+Extract(v128i32,u8) @immwrap[0..4) @ref($0.GetElement($1 & 3)) = _mm_extract_epi32($0, $1)
+Extract(v128u32,u8) @immwrap[0..4) @ref($0.GetElement($1 & 3)) = (uint32_t)_mm_extract_epi32($0, $1)
+Extract(v128f32,u8) @immwrap[0..4) @ref($0.GetElement($1 & 3)) = dn2cpp_isa_bitcast<float>(_mm_extract_ps($0, $1))
+Insert(v128{T},{T},u8) @immwrap$2[0..16) @ref($0.WithElement($2 & 15, $1)) = _mm_insert_epi8($0, $1, $2) for T in i8,u8
+Insert(v128{T},{T},u8) @immwrap$2[0..4) @ref($0.WithElement($2 & 3, $1)) = _mm_insert_epi32($0, (int)$1, $2) for T in i32,u32
 Insert(v128f32,v128f32,u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1)).AsSingle(), Vector128<float>.Zero, $0.WithElement(($2 >> 4) & 3, $1.GetElement(($2 >> 6) & 3)))) = _mm_insert_ps($0, $1, $2)
 LoadAlignedVector128NonTemporal(p{T}) @ref(Vector128.Load($0)) = _mm_stream_load_si128((__m128i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64

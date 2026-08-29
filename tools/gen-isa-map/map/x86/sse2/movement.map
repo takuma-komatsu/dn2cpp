@@ -2,7 +2,7 @@
 # moves (MOVQ zeroes the upper lane), the immediate shuffles (two control bits per result
 # lane; ShuffleHigh / ShuffleLow permute one 64-bit half and keep the other), the
 # interleaving unpacks, the saturating packs, and the 16-bit lane extract and insert whose
-# index must be a valid lane. SHUFPD reads two control bits and ignores the rest, which
+# encoded index wraps modulo the lane count. SHUFPD reads two control bits and ignores the rest, which
 # .NET's jump table over the whole byte relies on; the compiler's intrinsic accepts only
 # those two bits, so the immediate is masked to them.
 target = sse2
@@ -27,5 +27,5 @@ UnpackHigh(v128f64,v128f64) @ref(Vector128.Create($0.GetElement(1), $1.GetElemen
 PackSignedSaturate(v128i16,v128i16) = _mm_packs_epi16($0, $1)
 PackSignedSaturate(v128i32,v128i32) = _mm_packs_epi32($0, $1)
 PackUnsignedSaturate(v128i16,v128i16) = _mm_packus_epi16($0, $1)
-Extract(v128u16,u8) @imm[0..8) @ref($0.GetElement($1)) = (uint16_t)_mm_extract_epi16($0, $1)
-Insert(v128{T},{T},u8) @imm$2[0..8) @ref($0.WithElement($2, $1)) = _mm_insert_epi16($0, (int)$1, $2) for T in i16,u16
+Extract(v128u16,u8) @immwrap[0..8) @ref($0.GetElement($1 & 7)) = (uint16_t)_mm_extract_epi16($0, $1)
+Insert(v128{T},{T},u8) @immwrap$2[0..8) @ref($0.WithElement($2 & 7, $1)) = _mm_insert_epi16($0, (int)$1, $2) for T in i16,u16

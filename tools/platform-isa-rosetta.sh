@@ -7,8 +7,8 @@
 # A developer procedure, not a gate. The x86 gate excludes Rosetta on purpose: no
 # real .NET oracle runs here (the host SDK is arm64), and Rosetta's CPUID is a
 # feature set no shipping CPU has. So the checks are the probe's own — every
-# `ref=` cross-check of a generated exercise prints ref=OK, the one-past-range
-# immediate prints ArgumentOutOfRangeException, DN2CPP_CPU_FEATURES=none folds
+# `ref=` cross-check of a generated exercise prints ref=OK, each immediate
+# boundary either throws or wraps according to its contract, DN2CPP_CPU_FEATURES=none folds
 # every row to False with one diag line, and a partial mask removes the named
 # family together with the families that imply it.
 #
