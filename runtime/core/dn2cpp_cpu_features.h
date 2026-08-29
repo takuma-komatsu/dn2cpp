@@ -37,11 +37,13 @@
 // accepted by the DN2CPP_CPU_FEATURES mask. parentsMask lists the families a
 // family implies: a child bit is only ever set when every parent bit is set,
 // and masking a parent masks its children (as DOTNET_EnableAVX=0 does). The
-// parents are .NET 10's instruction-set implications. The bits are one per
-// public type, finer than .NET 10's JIT instruction sets, so detection sets
-// the types .NET gates as one set only together (see dn2cpp_cpu_features.cpp);
-// a wrong parent or a split group makes a getter true where .NET's is false,
-// or vice versa.
+// parents are .NET 10's instruction-set implications (InstructionSetDesc.txt:
+// Lzcnt, Bmi1, Bmi2 and Fma belong to its AVX2 set, Popcnt to SSE42, Gfni
+// implies SSE42, Avx10v1 implies the Vbmi2 set). The bits are one per public
+// type, finer than .NET 10's JIT instruction sets, so detection sets the types
+// .NET gates as one set only together (see dn2cpp_cpu_features.cpp); a wrong
+// parent or a split group makes a getter true where .NET's is false, or vice
+// versa — DOTNET_EnableAVX=0 turns Lzcnt off in .NET, so -Avx must here.
 #define DN2CPP_CPU_FEATURE_TABLE(X) \
     X(X86_X86BASE,      "X86Base",      X86,  0) \
     X(X86_SSE,          "Sse",          X86,  DN2CPP_CPU_X86_X86BASE) \
@@ -55,20 +57,20 @@
     X(X86_VAES,         "Vaes",         X86,  DN2CPP_CPU_X86_AES | DN2CPP_CPU_X86_AVX) \
     X(X86_PCLMULQDQ,    "Pclmulqdq",    X86,  DN2CPP_CPU_X86_SSE2) \
     X(X86_VPCLMULQDQ,   "Vpclmulqdq",   X86,  DN2CPP_CPU_X86_PCLMULQDQ | DN2CPP_CPU_X86_AVX) \
-    X(X86_LZCNT,        "Lzcnt",        X86,  DN2CPP_CPU_X86_X86BASE) \
     X(X86_AVX,          "Avx",          X86,  DN2CPP_CPU_X86_SSE42) \
-    X(X86_FMA,          "Fma",          X86,  DN2CPP_CPU_X86_AVX) \
     X(X86_AVX2,         "Avx2",         X86,  DN2CPP_CPU_X86_AVX) \
-    X(X86_BMI1,         "Bmi1",         X86,  DN2CPP_CPU_X86_AVX) \
-    X(X86_BMI2,         "Bmi2",         X86,  DN2CPP_CPU_X86_AVX) \
+    X(X86_FMA,          "Fma",          X86,  DN2CPP_CPU_X86_AVX2) \
+    X(X86_BMI1,         "Bmi1",         X86,  DN2CPP_CPU_X86_AVX2) \
+    X(X86_BMI2,         "Bmi2",         X86,  DN2CPP_CPU_X86_AVX2) \
+    X(X86_LZCNT,        "Lzcnt",        X86,  DN2CPP_CPU_X86_AVX2) \
     X(X86_AVXVNNI,      "AvxVnni",      X86,  DN2CPP_CPU_X86_AVX2) \
     X(X86_AVXVNNIINT8,  "AvxVnniInt8",  X86,  DN2CPP_CPU_X86_AVX2) \
     X(X86_AVXVNNIINT16, "AvxVnniInt16", X86,  DN2CPP_CPU_X86_AVX2) \
     X(X86_AVX512,       "Avx512F",      X86,  DN2CPP_CPU_X86_AVX2) \
     X(X86_AVX512VBMI,   "Avx512Vbmi",   X86,  DN2CPP_CPU_X86_AVX512) \
-    X(X86_AVX512VBMI2,  "Avx512Vbmi2",  X86,  DN2CPP_CPU_X86_AVX512) \
-    X(X86_GFNI,         "Gfni",         X86,  DN2CPP_CPU_X86_SSE41) \
-    X(X86_AVX10V1,      "Avx10v1",      X86,  DN2CPP_CPU_X86_AVX512) \
+    X(X86_AVX512VBMI2,  "Avx512Vbmi2",  X86,  DN2CPP_CPU_X86_AVX512VBMI) \
+    X(X86_GFNI,         "Gfni",         X86,  DN2CPP_CPU_X86_SSE42) \
+    X(X86_AVX10V1,      "Avx10v1",      X86,  DN2CPP_CPU_X86_AVX512VBMI2) \
     X(X86_AVX10V1_512,  "Avx10v1_V512", X86,  DN2CPP_CPU_X86_AVX10V1) \
     X(X86_AVX10V2,      "Avx10v2",      X86,  DN2CPP_CPU_X86_AVX10V1) \
     X(X86_AVX10V2_512,  "Avx10v2_V512", X86,  DN2CPP_CPU_X86_AVX10V2 | DN2CPP_CPU_X86_AVX10V1_512) \

@@ -19,13 +19,12 @@
 # immediately followed by its nested types in ordinal order of the nested name, and a
 # nested type's own nested types follow it in turn. The generator enforces this.
 #
-# Bit assignments follow the family's IsSupported condition in .NET 10 with two deliberate
-# differences, both towards finer runtime detection than the JIT's consolidated sets:
-#   - .NET 10 gates Sse3/Ssse3/Sse41/Sse42/Popcnt as one SSE4.2 group and Bmi1/Bmi2/Lzcnt/
-#     Fma together with Avx2 as one AVX2 group. Each family here checks only its own bit,
-#     so a machine with a partial group still lights the parts it has.
-#   - .NET 10 gates Avx512Vbmi and Avx512Vbmi2 on one consolidated set, and AvxVnniInt8
-#     and AvxVnniInt16 on one set. Each family here checks its own bit.
+# Bit assignments follow the family's IsSupported condition in .NET 10. The bits are finer
+# than the JIT's consolidated instruction sets (SSE4.2 = Sse3/Ssse3/Sse41/Sse42/Popcnt,
+# AVX2 = Avx2/Bmi1/Bmi2/Lzcnt/Fma, AVX512v2 = Avx512Vbmi, AVX512v3 = Avx512Vbmi2, one set
+# for AvxVnniInt8/Int16), but the runtime detector sets each such group only together and
+# the parent table in dn2cpp_cpu_features.h repeats the JIT's implications, so every
+# getter answers as .NET's does; the extra bits only keep the tokens one per type.
 # Avx512F/BW/CD/DQ and their VL nested types share one AVX512 bit: .NET 10 requires all
 # of F+BW+CD+DQ+VL for any of them to report support. Nested X64/Arm64 types carry their
 # enclosing type's bits because every target is 64-bit. A V256/V512 nested type adds the
