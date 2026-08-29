@@ -72,6 +72,8 @@
 //                      power of two up to 256, through DN2CPP_ISA_IMM_RANGE_SWITCH
 //     @imm$k[lo..hi)   the immediate is parameter k; two such annotations make a two-immediate
 //                      helper (DN2CPP_IMM and DN2CPP_IMM2 in parameter order, at most 256 cases)
+//     @imm{1,2,4,8}    the immediate takes the listed values only (a gather scale), through one
+//                      switch case per value; `@imm$k{...}` names the parameter
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
 //     @ref(<C#>)       a portable System.Runtime.Intrinsics expression over $0, $1, ... that
@@ -419,8 +421,24 @@ sealed class Method
     public MapRow? Row;
 }
 
-// One immediate parameter: valid values are [Lo, Lo + Count).
-sealed record ImmSpec(int Param, int Lo, int Count);
+// One immediate parameter: valid values are [Lo, Lo + Count), or the listed Values (a gather
+// scale is 1, 2, 4 or 8 and nothing between).
+sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values = default)
+{
+    public bool IsSet => !Values.IsDefault;
+    // The value the exercise passes: the middle of the range, or the middle listed value.
+    public int Exercised => IsSet ? Values[Values.Length / 2] : Lo + (Count - 1) / 2;
+    // A byte one past the range, for the exercise that witnesses the range check; null when
+    // every byte is valid.
+    public int? OutOfRange
+    {
+        get
+        {
+            int v = IsSet ? Values[Values.Length - 1] + 1 : Lo + Count;
+            return v <= 255 ? v : null;
+        }
+    }
+}
 
 // Ref is the row's portable C# cross-check (@ref), spelled over the exercise's operands.
 sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref, string SourceLine);
@@ -908,6 +926,7 @@ static class Maps
     static readonly Regex RowStart = new(@"^([A-Za-z_][A-Za-z0-9_]*)\((.*?)\)\s*(.*)$", RegexOptions.Compiled);
     static readonly Regex ForClause = new(@"\s+for\s+([WT])\s+in\s+([a-z0-9]+(?:\s*,\s*[a-z0-9]+)*)\s*$", RegexOptions.Compiled);
     static readonly Regex ImmAnn = new(@"^@imm(?:\$(\d+))?\[(\d+)\.\.(\d+)([\)\]])$", RegexOptions.Compiled);
+    static readonly Regex ImmSetAnn = new(@"^@imm(?:\$(\d+))?\{(\d+(?:,\d+)*)\}$", RegexOptions.Compiled);
     static readonly Regex TargetAnn = new(@"^@target\(""([^""]+)""\)$", RegexOptions.Compiled);
     // Only identifier-like braces are placeholders, so C++ brace initializers in an
     // expression pass through.
@@ -1204,7 +1223,7 @@ static class Maps
             or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "epu" or "ep" or "ps|pd" or "ss|sd"
             or "lane" or "slane" or "ulane" or "wlane" or "swlane" or "uwlane"
             or "cs" or "scs" or "ucs" => (true, false),
-        "W" or "q" => (false, true),
+        "W" or "q" or "mm" or "m" => (false, true),
         "N" or "ntype" => (true, true),
         _ => throw new ContractException($"{where}: unknown placeholder '{{{name}}}'"),
     };
@@ -1249,6 +1268,19 @@ static class Maps
                     throw new ContractException($"{where}: {ann} spans {count} values; the dispatch takes a power of two up to 256");
                 imms.Add(new ImmSpec(param, lo, count));
             }
+            else if (ImmSetAnn.Match(ann) is { Success: true } rs)
+            {
+                int param = rs.Groups[1].Success ? int.Parse(rs.Groups[1].Value, CultureInfo.InvariantCulture) : mm.Params.Length - 1;
+                var values = rs.Groups[2].Value.Split(',').Select(v => int.Parse(v, CultureInfo.InvariantCulture)).ToImmutableArray();
+                for (int i = 1; i < values.Length; i++)
+                {
+                    if (values[i] <= values[i - 1])
+                        throw new ContractException($"{where}: {ann} must list its values in ascending order");
+                }
+                if (values[values.Length - 1] > 255)
+                    throw new ContractException($"{where}: {ann} lists a value above 255");
+                imms.Add(new ImmSpec(param, values[0], values.Length, values));
+            }
             else if (TargetAnn.Match(ann) is { Success: true } ta)
                 target = ta.Groups[1].Value;
             else if (ann != "@throws")
@@ -1266,6 +1298,8 @@ static class Maps
             throw new ContractException($"{where}: at most two immediates per helper");
         if (imms.Count == 2 && imms[0].Count * imms[1].Count > 256)
             throw new ContractException($"{where}: two immediates spanning {imms[0].Count * imms[1].Count} cases; the bound is 256");
+        if (imms.Count == 2 && imms.Any(i => i.IsSet))
+            throw new ContractException($"{where}: a listed-values immediate is dispatched alone");
 
         string expr = Substitute(spec.Expression, w, t, where);
         mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, where);
@@ -1283,6 +1317,8 @@ static class Maps
                 case "T": return t;
                 case "W": return w;
                 case "q": return w == "64" ? "" : "q";
+                case "mm": return w == "128" ? "_mm" : "_mm" + w;
+                case "m": return "__m" + w;
                 case "bits": return Codes.ElemBits(t).ToString(CultureInfo.InvariantCulture);
                 case "N64": return (64 / Codes.ElemBits(t)).ToString(CultureInfo.InvariantCulture);
                 case "N128": return (128 / Codes.ElemBits(t)).ToString(CultureInfo.InvariantCulture);
@@ -1592,6 +1628,12 @@ static class Emit
             case 1:
             {
                 var i = row.Imms[0];
+                if (i.IsSet)
+                {
+                    // Listed values: one case each, anything else out of range.
+                    string cases = string.Concat(i.Values.Select(v => $"DN2CPP_ISA_IMM_CASE({v}, {produce}) "));
+                    return $"switch ((int)a{i.Param}) {{ {cases}default: dn2cpp_throw_argument_out_of_range(); }}";
+                }
                 return i.Lo == 0 && i.Count == 256
                     ? $"DN2CPP_ISA_IMM8_SWITCH(a{i.Param}, {produce});"
                     : $"DN2CPP_ISA_IMM_RANGE_SWITCH({i.Lo}, {i.Count}, a{i.Param}, {produce});";
@@ -1627,7 +1669,10 @@ static class Exercises
         "System.Runtime.Intrinsics.Arm.ArmBase", "System.Runtime.Intrinsics.Arm.Crc32",
     };
 
+    // The buffer a pointer operand addresses, and its alignment: the aligned 256-bit loads and
+    // stores fault below 32 bytes, and a stack allocation guarantees less.
     const int BufferBytes = 64;
+    const int BufferAlign = 32;
 
     public static string File(List<Family> families)
     {
@@ -1717,7 +1762,7 @@ static class Exercises
             string value;
             if (imm is not null)
             {
-                value = Literal(p, imm.Lo + (imm.Count - 1) / 2);
+                value = Literal(p, imm.Exercised);
                 args.Add(value);
                 refArgs.Add(value);
                 continue;
@@ -1734,7 +1779,8 @@ static class Exercises
                     value = "(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j, 0))) + ")";
                     break;
                 case TyKind.Pointer:
-                    sb.Append($"{inner}byte* p{k} = stackalloc byte[{BufferBytes}];\n");
+                    sb.Append($"{inner}byte* raw{k} = stackalloc byte[{BufferBytes + BufferAlign}];\n");
+                    sb.Append($"{inner}byte* p{k} = Fmt.Align(raw{k}, {BufferAlign});\n");
                     sb.Append($"{inner}Fmt.Fill(p{k}, {BufferBytes}, {k + 1});\n");
                     value = p.Elem is null ? $"(void*)p{k}" : $"({Codes.Cs(p.Elem.Code)}*)p{k}";
                     args.Add(value);
@@ -1808,14 +1854,14 @@ static class Exercises
         }
         // One immediate method per family also witnesses the range check .NET inserts for a
         // non-constant immediate: one past the top of the range throws.
-        if (!witnessed && row.Imms.Length == 1 && row.Imms[0].Lo + row.Imms[0].Count <= 255)
+        if (!witnessed && row.Imms.Length == 1 && row.Imms[0].OutOfRange is { } past)
         {
             var imm = row.Imms[0];
             var outArgs = new List<string>(args);
-            outArgs[imm.Param] = $"Fmt.NonConstant({Literal(m.Params[imm.Param], imm.Lo + imm.Count)})";
+            outArgs[imm.Param] = $"Fmt.NonConstant({Literal(m.Params[imm.Param], past)})";
             string outCall = $"{CsFamily(f)}.{m.Name}({string.Join(", ", outArgs)})";
             string stmt = m.Return.Kind == TyKind.Void ? $"{outCall};" : $"_ = {outCall};";
-            sb.Append($"{inner}Console.WriteLine(\"{label} imm={imm.Lo + imm.Count}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
+            sb.Append($"{inner}Console.WriteLine(\"{label} imm={past}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
             witnessed = true;
         }
         string[] lines = sb.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -1894,6 +1940,10 @@ static class Exercises
     {
         if (m.Name == "Swizzle")
             return k == 1 ? 16 + 3 : 0;
+        // A gather's index lanes are element offsets from the base pointer at the scale
+        // exercised; folded so every lane, at the largest scale, stays inside the buffer.
+        if (m.Name.StartsWith("Gather", StringComparison.Ordinal))
+            return k == (m.Name.StartsWith("GatherMask", StringComparison.Ordinal) ? 2 : 1) ? (BufferBytes - 8) / 8 : 0;
         if (!m.Name.StartsWith("VectorTableLookup", StringComparison.Ordinal) || k != m.Params.Length - 1)
             return 0;
         var table = m.Params[m.Name.EndsWith("Extension", StringComparison.Ordinal) ? 1 : 0];

@@ -80,6 +80,11 @@ internal static class Fmt
         return sb.ToString();
     }
 
+    // The first address at or after p on an `alignment`-byte boundary: the aligned
+    // 256-bit loads and stores fault below 32 bytes, and stackalloc promises less.
+    internal static unsafe byte* Align(byte* p, int alignment) =>
+        (byte*)(((nuint)p + (nuint)(alignment - 1)) & ~(nuint)(alignment - 1));
+
     // The fixed byte pattern a load reads and a store overwrites; seed tells the
     // buffers of one call apart.
     internal static unsafe void Fill(byte* p, int count, int seed)

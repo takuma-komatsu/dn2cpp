@@ -113,6 +113,7 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{T}` | T | the element code (`i8`) |
   | `{W}` | W | the width (`128`) |
   | `{q}` | W | `` for 64, `q` for wider: the NEON quad-register suffix |
+  | `{mm}` `{m}` | W | the SSE/AVX intrinsic prefix and register type at that width (`_mm` / `_mm256`, `__m128` / `__m256`; `{m}i` and `{m}d` are the integer and double types) |
   | `{N}` | W, T | the lane count (`v128i8` → `16`) |
   | `{N64}` `{N128}` | T | the lane count at that width |
   | `{bits}` | T | the element width in bits |
@@ -145,11 +146,15 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   `@imm[lo..hi)` and `@imm[lo..hi]` (exclusive / inclusive top) give the encodable range —
   a lane index `[0..{N})`, a left shift `[0..{bits})`, a right shift `[1..{bits}]` — for a
   count that is a power of two up to 256; `@imm$k[...]` names parameter `k` instead of the
-  last, and two such annotations make a two-immediate helper. The body becomes
-  `DN2CPP_ISA_IMM8_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH` or `DN2CPP_ISA_IMM_RANGE_SWITCH2`
-  and the expression names the constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the
-  immediate is rewritten); a value outside the range throws ArgumentOutOfRangeException, the
-  check .NET inserts for a non-constant immediate. `@target("...")` overrides the
+  last, and two such annotations make a two-immediate helper. `@imm{1,2,4,8}` lists the
+  valid values instead (a gather scale), one switch case each, and is dispatched alone. The
+  body becomes `DN2CPP_ISA_IMM8_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH`,
+  `DN2CPP_ISA_IMM_RANGE_SWITCH2` or the listed cases, and the expression names the
+  constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the immediate is rewritten); a value
+  outside the range or the list throws ArgumentOutOfRangeException, the check .NET inserts
+  for a non-constant immediate. An immediate whose compiler intrinsic accepts fewer bits
+  than .NET's byte (`_mm256_extractf128_ps` reads one) is masked in the expression
+  (`DN2CPP_IMM & 1`), as the hardware ignores the rest. `@target("...")` overrides the
   family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
 - `@ref(<C# expression>)` names a portable `System.Runtime.Intrinsics` computation of the
   same result over `$0`, `$1`, … (`Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = …`;
@@ -199,10 +204,12 @@ sources.
 `samples/dotnet/PlatformIsaProbe/Exercises.g.cs` exercises every lowered family that has no
 hand-written exercise (the scalar families keep theirs in `X86Sections` / `ArmSections`):
 each mapped method is called once with fixed inputs — vectors from a per-operand, per-lane
-pattern, immediates at the middle of their range, pointers into a filled stack buffer whose
-bytes are printed after a store — and prints `Method(argcodes)=<hex bytes>`; nested types run
-behind their own `IsSupported`. One immediate method per family is also called one past its
-range inside `Fmt.Thrown`, which must print `ArgumentOutOfRangeException`. Real .NET is the
+pattern, immediates at the middle of their range or list, pointers into a filled 32-byte-aligned
+stack buffer (the aligned 256-bit loads and stores fault below that) whose bytes are printed
+after a store, a gather's index lanes folded so every lane stays inside that buffer — and
+prints `Method(argcodes)=<hex bytes>`; nested types run behind their own `IsSupported`. One
+immediate method per family is also called one past its range or list inside `Fmt.Thrown`,
+which must print `ArgumentOutOfRangeException`. Real .NET is the
 oracle for the x86 and Arm families: the native gates diff the output byte for byte, so no
 reference value is computed. PackedSimd has no such oracle — no host .NET answers true for
 it — so `gates/build-and-run-platform-isa-wasm.sh` diffs its output against the frozen
