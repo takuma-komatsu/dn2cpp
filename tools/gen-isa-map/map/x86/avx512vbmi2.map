@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.Avx512Vbmi2 — the byte and word compress / expand forms
+# (VPCOMPRESSB/W, VPEXPANDB/W), with avx512f/blend.map's and loadstore.map's conventions: the
+# mask is a vector's sign bits (VPMOVB2M / VPMOVW2M); Compress packs the selected lanes of the
+# value to the low end and fills the rest from the merge operand, Expand spreads the low lanes
+# into the selected positions; CompressStore writes the selected lanes contiguously, ExpandLoad
+# reads contiguous lanes into the selected positions. The token implies the whole .NET 10
+# AVX-512 unit, so the helpers compile for it too.
+target = avx512vbmi2,avx512f,avx512bw,avx512dq,avx512vl
+Compress(v512{T},v512{T},v512{T}) = _mm512_mask_compress_epi{bits}($0, _mm512_movepi{bits}_mask($1), $2) for T in i8,u8,i16,u16
+CompressStore(p{T},v512{T},v512{T}) = _mm512_mask_compressstoreu_epi{bits}((void*)$0, _mm512_movepi{bits}_mask($1), $2) for T in i8,u8,i16,u16
+Expand(v512{T},v512{T},v512{T}) = _mm512_mask_expand_epi{bits}($0, _mm512_movepi{bits}_mask($1), $2) for T in i8,u8,i16,u16
+ExpandLoad(p{T},v512{T},v512{T}) = _mm512_mask_expandloadu_epi{bits}($2, _mm512_movepi{bits}_mask($1), (const void*)$0) for T in i8,u8,i16,u16

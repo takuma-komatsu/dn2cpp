@@ -1,0 +1,13 @@
+# System.Runtime.Intrinsics.X86.Avx512Vbmi — byte permutes across the whole 512-bit register
+# (VPERMB; the x2 form indexes the 128 bytes of the lower:upper pair, bit 6 of the index
+# picking the upper operand) and VPMULTISHIFTQB: each byte of the result takes the eight bits
+# of the matching 64-bit lane of the value that start at the bit offset the control byte
+# names, modulo 64. The token implies the whole .NET 10 AVX-512 unit, so the helpers compile
+# for it too.
+target = avx512vbmi,avx512f,avx512bw,avx512dq,avx512vl
+PermuteVar64x8(v512i8,v512i8) @ref(Vector512.Shuffle($0, $1 & Vector512.Create((sbyte)63))) = _mm512_permutexvar_epi8($1, $0)
+PermuteVar64x8(v512u8,v512u8) @ref(Vector512.Shuffle($0, $1 & Vector512.Create((byte)63))) = _mm512_permutexvar_epi8($1, $0)
+PermuteVar64x8x2(v512i8,v512i8,v512i8) @ref(Vector512.ConditionalSelect(Vector512.Equals($1 & Vector512.Create((sbyte)64), Vector512.Create((sbyte)64)), Vector512.Shuffle($2, $1 & Vector512.Create((sbyte)63)), Vector512.Shuffle($0, $1 & Vector512.Create((sbyte)63)))) = _mm512_permutex2var_epi8($0, $1, $2)
+PermuteVar64x8x2(v512u8,v512u8,v512u8) @ref(Vector512.ConditionalSelect(Vector512.Equals($1 & Vector512.Create((byte)64), Vector512.Create((byte)64)), Vector512.Shuffle($2, $1 & Vector512.Create((byte)63)), Vector512.Shuffle($0, $1 & Vector512.Create((byte)63)))) = _mm512_permutex2var_epi8($0, $1, $2)
+MultiShift(v512i8,v512i64) = _mm512_multishift_epi64_epi8($0, $1)
+MultiShift(v512u8,v512u64) = _mm512_multishift_epi64_epi8($0, $1)

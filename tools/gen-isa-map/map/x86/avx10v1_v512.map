@@ -1,0 +1,5 @@
+# System.Runtime.Intrinsics.X86.Avx10v1.V512 — the 512-bit forms of the AVX10.1 additions over
+# Avx512F: Avx512DQ's, Avx512CD's, Avx512Vbmi's and Avx512Vbmi2's 512-bit surfaces under the
+# AVX10 512-bit token. The rows are taken from their maps.
+target = avx10.1-512
+derive = X86.Avx512DQ, X86.Avx512CD, X86.Avx512Vbmi, X86.Avx512Vbmi2

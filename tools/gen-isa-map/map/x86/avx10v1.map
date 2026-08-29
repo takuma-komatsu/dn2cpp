@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Avx10v1 — .NET 10's AVX10.1: the 128- and 256-bit (VL) and
+# scalar surfaces of Avx512F, BW, CD, DQ, Vbmi and Vbmi2 re-exposed under one token, for a CPU
+# that has AVX10 without 512-bit vectors. Every method here is one of theirs, so the rows are
+# taken from their maps; the sources that declare a method twice (Extract / Insert of 64-bit
+# lanes in F and DQ) agree, and the VL families come first so the VL row is the one taken.
+target = avx10.1-256
+derive = X86.Avx512F.VL, X86.Avx512BW.VL, X86.Avx512CD.VL, X86.Avx512DQ.VL, X86.Avx512Vbmi.VL, X86.Avx512Vbmi2.VL, X86.Avx512F, X86.Avx512BW, X86.Avx512DQ

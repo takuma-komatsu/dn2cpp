@@ -1,0 +1,4 @@
+# System.Runtime.Intrinsics.X86.Avx10v1.X64 — Avx512F.X64's 64-bit scalar conversions under the
+# AVX10 token; the rows are taken from its map.
+target = avx10.1-256
+derive = X86.Avx512F.X64
