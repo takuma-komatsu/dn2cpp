@@ -95,6 +95,14 @@ option(DN2CPP_USE_HIGHWAY "Back the portable-SIMD ops with vendored Google Highw
 set(DN2CPP_HIGHWAY_ARCH   ""    CACHE STRING   "Extra -march/-mcpu flags for the Highway build (e.g. -mavx2); empty = compiler default ISA")
 set(DN2CPP_HOT_ARCH       ""    CACHE STRING   "Extra ISA flags for the [HotPath] TU generated_hot.cpp (e.g. -mavx2, /arch:AVX2, -msimd128); empty = compiler default ISA")
 set(DN2CPP_CPU_FEATURES   ""    CACHE STRING   "Default DN2CPP_CPU_FEATURES mask compiled into the runtime, consulted when the environment variable is unset (browsers have no environment block); same grammar as the variable")
+# The wasm SIMD axis. PackedSimd's detection is the compile-time __wasm_simd128__
+# of ONE runtime TU (dn2cpp_cpu_features.cpp), while the generated helper headers
+# test the same macro in EVERY TU that includes them: a TU compiled without the
+# flag sees the throwing stubs while the token answers true. So the flag is
+# PUBLIC on dn2cpp_runtime, never per-target, and the whole build agrees. The
+# helpers may then inline everywhere, as under DN2CPP_HIGHWAY_ARCH above: every
+# TU requires the ISA.
+option(DN2CPP_WASM_SIMD   "Compile the wasm runtime and app with SIMD (-msimd128); PackedSimd answers true" OFF)
 option(DN2CPP_GODOT       "Build the Godot GDExtension runtime library"           OFF)
 option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"    OFF)
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
@@ -997,6 +1005,10 @@ else()
     if(DN2CPP_CPU_FEATURES)
         target_compile_definitions(dn2cpp_runtime PRIVATE "DN2CPP_CPU_FEATURES_DEFAULT=\"${DN2CPP_CPU_FEATURES}\"")
     endif()
+    if(EMSCRIPTEN AND DN2CPP_WASM_SIMD)
+        # PUBLIC: see the option. The default wasm build is untouched by this arm.
+        target_compile_options(dn2cpp_runtime PUBLIC -msimd128)
+    endif()
     add_library(dn2cpp::dn2cpp_runtime ALIAS dn2cpp_runtime)
 
     # Godot GDExtension runtime (table-driven bridge). Off by default; the gdext
@@ -1197,6 +1209,15 @@ if(DN2CPP_APP_DIR)
             # buys. A side module owns none of that.
             target_link_options(${DN2CPP_APP_NAME} PRIVATE
                 -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+            # Under node the console executable copies the process's DN2CPP_*
+            # variables into the wasm environment block (the runtime's
+            # DN2CPP_CPU_FEATURES / _DIAG knobs), which is what lets a gate run
+            # the masked configuration of a wasm binary. Console only: a browser
+            # page has no process.env (DN2CPP_CPU_FEATURES_DEFAULT is the knob
+            # there), and a side module owns no runtime and no ENV to fill.
+            set(_dn2cpp_env_node_js "${DN2CPP_ROOT}/runtime/core/platform/wasm/dn2cpp_env_node.js")
+            target_link_options(${DN2CPP_APP_NAME} PRIVATE "SHELL:--pre-js ${_dn2cpp_env_node_js}")
+            set_property(TARGET ${DN2CPP_APP_NAME} APPEND PROPERTY LINK_DEPENDS "${_dn2cpp_env_node_js}")
             if(DN2CPP_USE_GC)
                 # SpillPointers finds __stack_pointer BY NAME, but emcc's finalize
                 # strips the wasm name section BEFORE it invokes wasm-opt — so the

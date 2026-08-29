@@ -9,9 +9,11 @@
 //     wasm instance. It starts (nearly) empty, is not shared with the host,
 //     and is discarded when the instance exits; persistence requires the
 //     embedder to mount/preload files.
-//   - Environment: a small synthetic block. Unless the embedder preloads
-//     variables (e.g. Module.preRun / -sENVIRONMENT plumbing), getenv sees
-//     only Emscripten's defaults — treat the environment as effectively empty.
+//   - Environment: a small synthetic block. A browser build sees only
+//     Emscripten's defaults — treat the environment as effectively empty,
+//     which is why DN2CPP_CPU_FEATURES_DEFAULT exists. The console executable
+//     links dn2cpp_env_node.js as a pre-js, which under node copies the
+//     process's DN2CPP_* variables into the block before main runs.
 //   - Local time: implemented over the JS Date; under node this is UTC-only
 //     unless TZ is set in the node process's environment.
 //   - Allocator: dlmalloc; malloc_usable_size is available via <malloc.h>.
