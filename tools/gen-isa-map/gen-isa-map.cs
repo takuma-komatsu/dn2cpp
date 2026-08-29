@@ -923,6 +923,7 @@ static class Maps
             ["i32"] = "epi32", ["u32"] = "epi32", ["i64"] = "epi64", ["u64"] = "epi64",
         },
         ["ps|pd"] = new() { ["f32"] = "ps", ["f64"] = "pd" },
+        ["ss|sd"] = new() { ["f32"] = "ss", ["f64"] = "sd" },
         // The unsigned SSE integer suffix whatever the element (_mm_max_epu8 serves the
         // byte overload alone), and the suffix in the element's own signedness for an
         // instruction that has both forms (_mm_cvtepi8_epi16 / _mm_cvtepu8_epi16).
@@ -1200,7 +1201,7 @@ static class Maps
     static (bool T, bool W) Dependency(string name, string where) => name switch
     {
         "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "wT" or "nT" or "unT" or "hbits"
-            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "epu" or "ep" or "ps|pd"
+            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "epu" or "ep" or "ps|pd" or "ss|sd"
             or "lane" or "slane" or "ulane" or "wlane" or "swlane" or "uwlane"
             or "cs" or "scs" or "ucs" => (true, false),
         "W" or "q" => (false, true),
