@@ -205,7 +205,7 @@ cheapest kind of port; it needs one `list(APPEND)` and a comment saying why.
 Files outside `runtime/core/platform/` also branch on the target. Enumerate them:
 
 ```bash
-grep -rlE '__APPLE__|__linux__|__ANDROID__|_WIN32|_MSC_VER|__EMSCRIPTEN__|TARGET_OS_IPHONE' \
+grep -rlE '__APPLE__|__linux__|__ANDROID__|_WIN32|_MSC_VER|__EMSCRIPTEN__|TARGET_OS_IPHONE|DN2CPP_TARGET_(X64|ARM64|WASM32|OTHER)' \
     runtime/ | grep -v '^runtime/core/platform/' | sort
 ```
 
@@ -223,6 +223,27 @@ The distribution is the useful part:
 
 Budget for this. A port that plans only for `platform/<os>/` has planned for about
 half of it.
+
+### 2.5 CPU feature detection
+
+`runtime/core/dn2cpp_cpu_features.h` derives exactly one of `DN2CPP_TARGET_X64`,
+`DN2CPP_TARGET_ARM64`, `DN2CPP_TARGET_WASM32` (else `DN2CPP_TARGET_OTHER`) from
+the compiler's architecture macros, and
+`runtime/core/intrinsics/dn2cpp_cpu_features.cpp` supplies the detection behind
+every `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` `IsSupported`: CPUID
+with the OSXSAVE and XGETBV checks the AVX families need on x86-64,
+`getauxval(AT_HWCAP)` on Linux arm64, `sysctlbyname("hw.optional.arm.FEAT_*")`
+on Darwin arm64, `IsProcessorFeaturePresent` on Windows. A target that supplies
+none of these is not broken — every family answers false and the BCL's software
+fallback runs — but it has left the hardware paths on the table.
+
+Detection is a **run-time** fact, never a build-time one. The binary that runs
+under Rosetta on an iOS-simulator lane was compiled for x86-64 and executes on an
+arm64 machine whose CPUID emulation exposes a feature set no shipping CPU has;
+a build-time answer would be wrong on either side of that line. The same rule
+gives the tests their handle: `DN2CPP_CPU_FEATURES` intersects the detected set
+and never widens it, so `none` is the software-fallback build of the same
+binary.
 
 ---
 
@@ -591,9 +612,13 @@ loudly.
    surface so it answers rather than fails to link (H8).
 6. **Wire `gates/_common.sh`**: build dir, toolchain args, and the *same* args in
    both the runtime configure and `cmake_build_app` (§3.3).
-7. **Write the gate, and make its skip honest**: `gate_skip` with a reason whose
+7. **Decide the CPU-feature story** (§2.5): a detection arm in
+   `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` for the target's OS, or the
+   documented all-false answer. Prove it with `DN2CPP_CPU_FEATURES_DIAG=1`, whose
+   one stderr line names the detected set, before trusting any `IsSupported`.
+8. **Write the gate, and make its skip honest**: `gate_skip` with a reason whose
    stated remedy actually works on the host that will read it (§4).
-8. **Then install the toolchain and run it.** An axis that has only ever skipped has
+9. **Then install the toolchain and run it.** An axis that has only ever skipped has
    never run (H1.2).
 
 ---

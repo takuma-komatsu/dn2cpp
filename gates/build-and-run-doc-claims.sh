@@ -123,7 +123,7 @@ check_paths() {
     ok "$f: all $n cited repo paths exist"
 }
 
-echo "== 1/13 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
+echo "== 1/14 docs/PINVOKE-MARSHALLING.md — rows against the PInvokeNative bucket =="
 PM=docs/PINVOKE-MARSHALLING.md
 BUCKET=samples/dotnet/PInvokeNative
 
@@ -150,7 +150,7 @@ pool_tree=$(sed -n 's/^[[:space:]]*const int poolSize = \([0-9][0-9]*\);/\1/p' \
     src/Dn2Cpp.Transpiler/CppEmitter.cs)
 eq "delegate thunk-pool distinct-instance capacity" "$pool_doc" "$pool_tree"
 
-echo "== 2/13 AGENTS.md — the default-reference wiring =="
+echo "== 2/14 AGENTS.md — the default-reference wiring =="
 # The conditional default references. This is the one claim in AGENTS.md that
 # says out loud that nothing checks it — "Nothing references these assemblies at
 # build time, so nothing fails when a wiring is dropped", and of the destinations
@@ -203,7 +203,7 @@ for f in $(printf '%s' "$flat" | grep -oE '`dist/[a-z-]*smoke-test\.sh`' | tr -d
     fi
 done
 
-echo "== 3/13 docs/PORTING.md — the PAL seam's declared contract =="
+echo "== 3/14 docs/PORTING.md — the PAL seam's declared contract =="
 # The seam is a contract between this repository and somebody porting to a target
 # it has never seen. The SOURCE of the classification is the `// PAL-CONTRACT:`
 # marker on each declaration in the header, not the table in the doc, so this
@@ -289,7 +289,7 @@ for impl in runtime/core/platform/*/dn2cpp_pal_*.cpp; do
     set_eq "$impl vs the seam" "seam" "$pal_required" "impl" "$have"
 done
 
-echo "== 4/13 the generated culture table's own header =="
+echo "== 4/14 the generated culture table's own header =="
 # It states a row count and a provenance, and it is a "do not edit by hand" file —
 # which is why the count is worth checking: a hand-added row leaves the header
 # describing a table that no longer exists. The candidate list is the generator's
@@ -308,7 +308,7 @@ ct_cands=$(grep -cE '^[^#[:space:]]' "$CT_CAND" || true)
 eq "$CT_CAND names one candidate per emitted row" "$ct_cands" "$ct_rows" \
    "a candidate the generator REFUSES is legitimately absent from the table — it prints the reason; otherwise regenerate"
 
-echo "== 5/13 the BCL exception-message key set, written twice =="
+echo "== 5/14 the BCL exception-message key set, written twice =="
 # The transpiler emits the texts (Dn2Cpp.BclMessages) and the runtime asks for
 # them by name (the DN2CPP_SR_* constants). The lookup is by key, so drift can
 # only LOSE a message — the runtime asks for a key nothing emitted, reads null,
@@ -320,7 +320,52 @@ set_eq "the BCL message key set" \
     "src/Dn2Cpp.Transpiler/BclMessages.cs" "$sr_emitted" \
     "runtime/core/dn2cpp_core.h DN2CPP_SR_*" "$sr_asked"
 
-echo "== 6/13 the banned pipeline shape — an early-exiting consumer =="
+echo "== 6/14 the platform ISA family set, written twice =="
+# The generator writes one token per family into both the transpiler's table
+# (the getter the emitted code tests) and the runtime's header (the macro that
+# defines it). Drift can only lose a getter: a token the table emits and the
+# header never defines is a C++ compile error naming a macro, and one the header
+# defines that no table row emits is a family the runtime detects for nobody.
+# The surface gate proves the same set through the CLI; this check needs no
+# toolchain and stays red on a machine where that gate cannot run.
+isa_table=src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs
+isa_header=runtime/core/isa/dn2cpp_isa_tokens.g.h
+if [ -f "$isa_table" ] && [ -f "$isa_header" ]; then
+    isa_table_tokens=$(grep -oE '"DN2CPP_ISA_(X86|Arm|Wasm)_[A-Za-z0-9_]+"' "$isa_table" | tr -d '"' | sort -u)
+    isa_header_tokens=$(grep -oE 'DN2CPP_ISA_(X86|Arm|Wasm)_[A-Za-z0-9_]+' "$isa_header" | sort -u)
+    set_eq "the platform ISA token set" \
+        "$isa_table" "$isa_table_tokens" \
+        "$isa_header" "$isa_header_tokens"
+else
+    bad "the platform ISA token set: $isa_table and $isa_header must both exist (regenerate: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>)"
+fi
+# The CPU feature bits are written twice more: the runtime detector's X-macro
+# defines them, and the generator's Contract.Bits repeats the list so a typo in
+# families.csv fails at generation instead of in a C++ build. Every bit the csv
+# spells must be a defined enumerator, or the tokens header expands to an
+# undefined macro on exactly the target the family is meant for; the two lists
+# must be identical, or the generator accepts (or rejects) a bit the runtime
+# does not (does) define.
+cpu_header=runtime/core/dn2cpp_cpu_features.h
+isa_csv=tools/gen-isa-map/families.csv
+isa_gen=tools/gen-isa-map/gen-isa-map.cs
+cpu_header_bits=$(grep -oE '^[[:space:]]*X\([A-Z][A-Z0-9_]*,' "$cpu_header" \
+    | sed -E 's/^[[:space:]]*X\(/DN2CPP_CPU_/; s/,$//' | sort -u)
+csv_bits=$(awk -F, '!/^#/ && $1 != "qualified_name" && $3 != "" { print $3 }' "$isa_csv" \
+    | tr '|' '\n' | sed 's/^/DN2CPP_CPU_/' | sort -u)
+gen_bits=$(sed -n '/HashSet<string> Bits = new/,/^    };/p' "$isa_gen" \
+    | grep -oE '"(X86|ARM|WASM)_[A-Z0-9_]+"' | tr -d '"' | sed 's/^/DN2CPP_CPU_/' | sort -u)
+set_eq "the CPU feature-bit set" \
+    "$isa_gen Contract.Bits" "$gen_bits" \
+    "$cpu_header DN2CPP_CPU_FEATURE_TABLE" "$cpu_header_bits"
+csv_undefined=$(comm -23 <(printf '%s\n' "$csv_bits") <(printf '%s\n' "$cpu_header_bits") | tr '\n' ' ')
+if [ -z "${csv_undefined// }" ]; then
+    ok "every feature bit $isa_csv references is defined by $cpu_header"
+else
+    bad "$isa_csv references feature bits $cpu_header does not define: [$csv_undefined]"
+fi
+
+echo "== 7/14 the banned pipeline shape — an early-exiting consumer =="
 # gates/_common.sh's `set -o pipefail` note claims the tree builds no pipeline
 # into a consumer that can quit before its producer is done. It is the one claim
 # here whose subject is a shape rather than a number, and it has two failure modes
@@ -358,7 +403,7 @@ eq "gates/_common.sh 'none of which builds a pipeline at all' — pipelines into
    "0" "$n_badpipe" \
    "each is: ${badpipe:-none}. Rewrite as \`grep -q P <<<\"\$(X)\"\`, \`grep -q P FILE\`, \`head -N <<<\"\$(X)\"\`, \`\${x%%\$'\''\\n'\''*}\` or \`first_line \"\$(X)\"\`; see the note beside \`set -o pipefail\` in gates/_common.sh"
 
-echo "== 7/13 docs/EDITOR-EXPORT-DESIGN.md — release assets, bundle layout, ABI no-touch list =="
+echo "== 8/14 docs/EDITOR-EXPORT-DESIGN.md — release assets, bundle layout, ABI no-touch list =="
 # A release asset is exactly a dist/ script that writes the `<lane>.metadata`
 # dist/release-github.sh consumes; §11's table is the hand-written copy of that
 # set. Both directions matter: a lane packaged and undocumented leaves a release
@@ -418,7 +463,7 @@ repinned_sim_provenance="engine=new-tree base=new-pin scons=$old_sim_stamp"
     && ok "the pre-engine-provenance iOS simulator stamp misses after a re-pin" \
     || bad "the pre-engine-provenance iOS simulator stamp still licenses a cache hit"
 
-echo "== 8/13 dist/release-notes-template.md — bound by its renderer =="
+echo "== 9/14 dist/release-notes-template.md — bound by its renderer =="
 # The template is rendered on a packaging host at release time, and that is the
 # only machine its two failure modes reach: an @@KEY@@ nothing binds dies mid-cut,
 # and a comment that is not a lane marker publishes verbatim onto the release
@@ -547,7 +592,7 @@ if [ -n "${guide_files// }" ]; then
        "standing text belongs in the guide and per-release text in the notes; a section in both gets corrected in one"
 fi
 
-echo "== 9/13 the pinned toolchains a bundle ships, and their keep lists =="
+echo "== 10/14 the pinned toolchains a bundle ships, and their keep lists =="
 # Everything here holds for BOTH pins — the Emscripten SDK and the cmake+ninja
 # pair — because both are the same thing: an upstream archive per host, unpacked,
 # trimmed to a keep list, staged into the bundle.
@@ -670,7 +715,7 @@ for TRIM in "$EMSDK_TRIM" "$BUILDTOOLS_TRIM"; do
        "a kept directory keeps its whole subtree, so naming something inside one narrows nothing"
 done
 
-echo "== 10/13 README.md — the vendored set against third_party/ =="
+echo "== 11/14 README.md — the vendored set against third_party/ =="
 # README's License section is the only inventory of what this repository vendors
 # and under what terms, so a tree added without a row ships with its license
 # unstated — and one whose row outlived it credits a license nothing carries.
@@ -686,12 +731,12 @@ doc_vendored=$(awk '/^## /{s = ($0 == "## License")} s' README.md \
 set_eq "README.md's vendored license list vs third_party/" \
        "licensed by README.md" "$doc_vendored" "present under third_party/" "$tree_vendored"
 
-echo "== 11/13 dangling path references in every doc =="
+echo "== 12/14 dangling path references in every doc =="
 for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"
 done
 
-echo "== 12/13 the GDExtension library name, written in five places =="
+echo "== 13/14 the GDExtension library name, written in five places =="
 # One fixed name is spelled by the CMake pin that produces the library, by the
 # [libraries] of every shipped .gdextension, and by README. A .gdextension that
 # drifts is a dlopen failure in the engine naming no cause, and README is what a
@@ -724,7 +769,7 @@ else
     done
 fi
 
-echo "== 13/13 the exec bit on every script a doc tells you to run =="
+echo "== 14/14 the exec bit on every script a doc tells you to run =="
 # AGENTS.md and README spell `./gates/<name>.sh`; a script committed 100644
 # answers that with permission denied, and no suite notices — the runner invokes
 # a gate as `bash "$script"`, and a measure script has no suite at all. The

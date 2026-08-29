@@ -261,6 +261,37 @@ leave the shape test to the emitter, which has already paid for the signature;
 receiver's static type, say), make the cut agree or **delete the cut** and let
 the real body be reachable — never approximate it.
 
+#### Platform ISA contract
+
+The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one
+capability contract, not a set of independent constants:
+
+- **One token macro per family.** `runtime/core/isa/dn2cpp_isa_tokens.g.h`
+  defines `DN2CPP_ISA_<Arch>_<Type>` from the target macro
+  (`DN2CPP_TARGET_X64` / `ARM64` / `WASM32`, `runtime/core/dn2cpp_cpu_features.h`)
+  and the run-time feature word. The transpiler emits the **token**, never a
+  host-derived constant: the self-host fixpoint requires the emitted text to be
+  a function of the inputs alone, and the machine running the transpiler is
+  not one of them.
+- **Non-lowered getters const-fold to 0.** `BranchLiveness` then prunes the
+  guarded arms, so their icalls never enter the reachability tree, and a call
+  to one of the family's instructions routes to a `PlatformNotSupportedException`
+  throw — what .NET does when `IsSupported` is false. Lowered getters read the
+  token at run time.
+- **Cut ⟹ route via the `MdPlatformIsa` row.** Its predicate is the
+  `ClassInfo.PlatformIsa` stamp rather than a name table: the nested types
+  (`X64`, `Arm64`, `VL`, `V256`, `V512`) have bare names, so only a stamp made
+  when the class is classified can tell `Sse2.X64` from any other `X64`.
+- **Lowered is a proof, not a flag.** `tools/gen-isa-map` writes a family as
+  Lowered into `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` only
+  when every public static method of it has a helper
+  (`dn2cpp_isa_<arch>_<type>_<method>_<argsig>`) under `runtime/core/isa/`, and
+  a nested family may be Lowered only when its enclosing family is;
+  `gates/build-and-run-platform-isa-surface.sh` re-derives both.
+- **The mask intersects detection.** `DN2CPP_CPU_FEATURES` narrows the detected
+  set (the effective set is the implication closure of detected ∩ allowed) and
+  can never make a getter true that detection left false.
+
 #### Adopting a third-party async task type
 
 `Compilation.AdoptCustomAsyncTaskTypes` is the one place a non-BCL type is
@@ -491,6 +522,7 @@ that answer a fault differently are directly observable by a hot-update program.
 | Runtime-instantiation templates (`MakeGenericType` over a typeof-only definition, any argument) | `Compilation.BuildRuntimeInstantiationTemplates` (trigger + `$CnAny` rooting + shape bound), `Compilation.JudgeRuntimeTemplates` (per-body/per-slot eligibility), `CppEmitter.EmitRuntimeTemplates` (the `dn2cpp_runtime_templates` rows), `runtime/core/intrinsics/dn2cpp_system_reflection.cpp` (`dn2cpp_try_synthesize_generic`: clone, intern, rgctx fill) |
 | Reachability tree-shake | `Compilation` (walks call/newobj/ldftn from roots). Unreached bodies are never decoded |
 | Const-folded capability getters + dead-arm pruning | `CoreIntrinsics.ConstFoldedGetter` (the oracle: add a `(type, method) → bool` entry), `BranchLiveness` (per-body live-offset walk shared by the reachability scanner and `MethodCompiler`, so a dead arm's icalls/P-Invokes never enter the tree), `Compilation.ResolveCallTarget` (the getter's own body edge is cut) |
+| Platform ISA contract (`X86.*` / `Arm.*` / `Wasm.*` `IsSupported` and instructions) | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` (the generated family table: token, enclosing family, Lowered), the `MdPlatformIsa` intercept row keyed on the `ClassInfo.PlatformIsa` stamp, `runtime/core/dn2cpp_cpu_features.h` + `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` (detection, the `DN2CPP_CPU_FEATURES` mask), `runtime/core/isa/` (tokens and per-family helpers, written by `tools/gen-isa-map`) |
 | Multi-assembly | the `Module` abstraction + `ResolveTypeRef` (cross-assembly TypeRef/MemberRef resolution) |
 | Exception handling | `MethodCompiler` (structural EH-region reconstruction → nested C++ try/catch, `isinst` dispatch) |
 | vtables / interfaces | `Compilation` (slot assignment), `CppEmitter` (vtable/interface table emission) |

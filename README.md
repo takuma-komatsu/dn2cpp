@@ -673,7 +673,7 @@ optimization changed no results. All are on by default except
 - **Highway SIMD backend** (CMake `DN2CPP_USE_HIGHWAY`) behind the
   portable-SIMD surface; `-DDN2CPP_USE_HIGHWAY=OFF` returns to the scalar
   emulation, byte-identically in behavior. Platform-specific hardware
-  intrinsics are not emitted yet — see *Transient limitations*.
+  intrinsics lower per family; see *Transient limitations*.
 - **`--trim-reflection`** drops the member tables of types the program
   cannot plausibly reflect over (the Godot Web export turns it on). The
   analysis is unsound by nature, so a stripped type **throws** rather than
@@ -836,10 +836,19 @@ authoritative list**. Representative examples as of now: the forked
 editor's distributable `.app` is ad-hoc signed and not notarized. iOS
 *device* execution is likewise unverified (provisioning required) — the
 simulator lane is E2E-verified and the device build path is exercised
-headlessly. Platform-specific `System.Runtime.Intrinsics` families also remain
-unsupported: their `IsSupported` getters stay false so the BCL selects software
-fallbacks until the matching instruction bodies and target-CPU feature checks
-can be enabled together. Portable SIMD remains available through Highway.
+headlessly. The platform-specific `System.Runtime.Intrinsics` families
+(`X86.*`, `Arm.*`, `Wasm.*`) form one capability contract: a family answers
+`IsSupported` from the target's run-time CPU detection only once its whole
+instruction surface lowers, a promotion
+`gates/build-and-run-platform-isa-surface.sh` decides from the generated
+table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
+family answers false, so the BCL software fallback runs, and calling one of
+its instructions throws `PlatformNotSupportedException` exactly as .NET does
+when `IsSupported` is false. `DN2CPP_CPU_FEATURES` masks detection for tests
+(`none`, `all`, a family list with what each family implies, `-Name` to
+exclude) and never widens it;
+`DN2CPP_CPU_FEATURES_DIAG=1` prints the detected, allowed and effective sets
+once on stderr. Portable SIMD remains available through Highway.
 
 ### Runtime quirks
 
