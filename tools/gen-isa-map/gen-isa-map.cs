@@ -74,12 +74,19 @@
 //                      helper (DN2CPP_IMM and DN2CPP_IMM2 in parameter order, at most 256 cases)
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
+//     @ref(<C#>)       a portable System.Runtime.Intrinsics expression over $0, $1, ... that
+//                      computes the same result; the generated exercise prints ` ref=OK` or
+//                      ` ref=MISMATCH(<reference>)` beside the helper's bytes. The portable
+//                      layer is an independent implementation, which is what checks a family
+//                      whose gate output is frozen because no host .NET can be its oracle.
 //
-// Every helper is emitted inside `#if DN2CPP_TARGET_<ARCH>` with the real body — which first
-// tests the family's IsSupported token through dn2cpp_isa_require, throwing
-// PlatformNotSupportedException as .NET does for a call made while IsSupported is false — and
-// `#else` with a [[noreturn]] stub calling dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"),
-// so a foreign-arch dead arm in generated code still compiles against a declaration.
+// Every helper is emitted inside the arch's `#if` (Contract.HelperCondition: the target macro,
+// and for wasm also __wasm_simd128__, since SIMD is a property of the whole module) with the
+// real body — which first tests the family's IsSupported token through dn2cpp_isa_require,
+// throwing PlatformNotSupportedException as .NET does for a call made while IsSupported is
+// false — and `#else` with a [[noreturn]] stub calling
+// dn2cpp_isa_not_lowered("<QualifiedName>.<Method>"), so a foreign-arch dead arm in generated
+// code still compiles against a declaration.
 
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -287,6 +294,15 @@ static class Contract
         _ => "DN2CPP_TARGET_WASM32",
     };
 
+    // The `#if` a helper's real body sits under. x86-64 and AArch64 compilers always accept
+    // their intrinsic headers (the target attribute widens one helper); wasm SIMD is a
+    // module-wide property (-msimd128, DN2CPP_WASM_SIMD) — a module carrying one SIMD
+    // instruction cannot instantiate on an engine without them — so the body exists only
+    // in a SIMD build and a default wasm build compiles the stubs, which is consistent
+    // with its detector answering false.
+    public static string HelperCondition(string arch) =>
+        arch == "wasm" ? TargetMacro(arch) + " && defined(__wasm_simd128__)" : TargetMacro(arch);
+
     public static string Token(string qualifiedName) =>
         "DN2CPP_ISA_" + qualifiedName.Substring(IntrinsicsPrefix.Length).Replace('.', '_').Replace('+', '_');
 
@@ -406,7 +422,8 @@ sealed class Method
 // One immediate parameter: valid values are [Lo, Lo + Count).
 sealed record ImmSpec(int Param, int Lo, int Count);
 
-sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string SourceLine);
+// Ref is the row's portable C# cross-check (@ref), spelled over the exercise's operands.
+sealed record MapRow(string Expression, string? Target, ImmutableArray<ImmSpec> Imms, string? Ref, string SourceLine);
 
 static class Lowering
 {
@@ -632,7 +649,7 @@ static class Surface
             var sig = m.DecodeSignature(provider, null);
             // A never-lowered family's signatures (System.Numerics.Vector<T>, the Sve enums) stay
             // outside the argument-code vocabulary; only the method's existence is recorded.
-            string[] codes = f.NeverLowered ? Array.Empty<string>() : sig.ParameterTypes.Select(p => Codes.Arg(p, member)).ToArray();
+            string[] codes = f.NeverLowered ? Array.Empty<string>() : sig.ParameterTypes.Select(p => Codes.Arg(p, member, f.Arch)).ToArray();
             if (!f.NeverLowered)
                 Codes.CheckReturn(sig.ReturnType, member);
             methods.Add(new Method
@@ -762,13 +779,18 @@ static class Codes
 
     // The helper-name code of a parameter. The surface is finite, so anything outside the
     // vocabulary is a contract change and fails naming the member.
-    public static string Arg(Ty t, string member)
+    public static string Arg(Ty t, string member, string arch)
     {
         switch (t.Kind)
         {
             case TyKind.Scalar:
                 return t.Code;
             case TyKind.Vector:
+                // ElemBits spells a native-integer lane as 32 bits, which holds only on
+                // wasm32; the x86 and Arm families declare no such vector, and one
+                // appearing there would need a per-arch lane width.
+                if (t.Elem!.Code is "nint" or "nuint" && arch != "wasm")
+                    throw new ContractException($"{member}: a {t} parameter outside the wasm family; native-integer lanes are spelled for wasm32 only");
                 return $"v{t.Bits}{t.Elem!.Code}";
             case TyKind.Pointer:
                 if (t.Elem is null)
@@ -784,7 +806,7 @@ static class Codes
                 // Only homogeneous vector tuples occur (multi-register loads and stores); the
                 // code is the arity followed by the shared item code.
                 if (t.Items.Length >= 2 && t.Items.All(i => i.Kind == TyKind.Vector && i.ToString() == t.Items[0].ToString()))
-                    return $"t{t.Items.Length}{Arg(t.Items[0], member)}";
+                    return $"t{t.Items.Length}{Arg(t.Items[0], member, arch)}";
                 break;
         }
         throw new ContractException($"{member}: parameter type '{t}' has no argument code");
@@ -856,16 +878,18 @@ static class Codes
         return $"{Neon[item.Elem!.Code]}x{item.Bits / ElemBits(item.Elem.Code)}x{arity}_t";
     }
 
+    // A native-integer lane is 32 bits: only the wasm family declares Vector128<nint> /
+    // <nuint>, and wasm32 is its one target (Arg enforces the first half).
     public static int ElemBits(string code) => code switch
     {
         "i8" or "u8" => 8,
         "i16" or "u16" => 16,
-        "i32" or "u32" or "f32" => 32,
+        "i32" or "u32" or "f32" or "nint" or "nuint" => 32,
         "i64" or "u64" or "f64" => 64,
         _ => throw new ContractException($"'{code}' is not a vector element code"),
     };
 
-    public static bool IsVectorElem(string code) => Neon.ContainsKey(code);
+    public static bool IsVectorElem(string code) => Neon.ContainsKey(code) || code is "nint" or "nuint";
 
     public static readonly Dictionary<string, string> Neon = new(StringComparer.Ordinal)
     {
@@ -954,11 +978,61 @@ static class Maps
             ["i32"] = "s", ["u32"] = "s", ["i64"] = "d", ["u64"] = "d",
             ["f32"] = "s", ["f64"] = "d",
         },
+        // The wasm lane shape in the intrinsic's own signedness (wasm_u8x16_min), and the
+        // signed / unsigned spelling regardless of the element's (wasm_i8x16_add exists,
+        // wasm_u8x16_add does not; wasm_u16x8_extend_low_u8x16 is the zero-extension of
+        // a signed operand too). A native-integer lane is i32x4 / u32x4 on wasm32.
         ["lane"] = new()
         {
             ["i8"] = "i8x16", ["u8"] = "u8x16", ["i16"] = "i16x8", ["u16"] = "u16x8",
             ["i32"] = "i32x4", ["u32"] = "u32x4", ["i64"] = "i64x2", ["u64"] = "u64x2",
-            ["f32"] = "f32x4", ["f64"] = "f64x2",
+            ["f32"] = "f32x4", ["f64"] = "f64x2", ["nint"] = "i32x4", ["nuint"] = "u32x4",
+        },
+        ["slane"] = new()
+        {
+            ["i8"] = "i8x16", ["u8"] = "i8x16", ["i16"] = "i16x8", ["u16"] = "i16x8",
+            ["i32"] = "i32x4", ["u32"] = "i32x4", ["i64"] = "i64x2", ["u64"] = "i64x2",
+            ["f32"] = "f32x4", ["f64"] = "f64x2", ["nint"] = "i32x4", ["nuint"] = "i32x4",
+        },
+        ["ulane"] = new()
+        {
+            ["i8"] = "u8x16", ["u8"] = "u8x16", ["i16"] = "u16x8", ["u16"] = "u16x8",
+            ["i32"] = "u32x4", ["u32"] = "u32x4", ["i64"] = "u64x2", ["u64"] = "u64x2",
+            ["nint"] = "u32x4", ["nuint"] = "u32x4",
+        },
+        // The lane shape of the twice-width element (a widening result), in the element's
+        // signedness and in the signed / unsigned spelling.
+        ["wlane"] = new()
+        {
+            ["i8"] = "i16x8", ["u8"] = "u16x8", ["i16"] = "i32x4", ["u16"] = "u32x4", ["i32"] = "i64x2", ["u32"] = "u64x2",
+        },
+        ["swlane"] = new()
+        {
+            ["i8"] = "i16x8", ["u8"] = "i16x8", ["i16"] = "i32x4", ["u16"] = "i32x4", ["i32"] = "i64x2", ["u32"] = "i64x2",
+        },
+        ["uwlane"] = new()
+        {
+            ["i8"] = "u16x8", ["u8"] = "u16x8", ["i16"] = "u32x4", ["u16"] = "u32x4", ["i32"] = "u64x2", ["u32"] = "u64x2",
+        },
+        // The C# element type, and its same-width signed / unsigned counterpart: the casts
+        // and As<,>() reinterpretations a @ref expression needs.
+        ["cs"] = new()
+        {
+            ["i8"] = "sbyte", ["u8"] = "byte", ["i16"] = "short", ["u16"] = "ushort",
+            ["i32"] = "int", ["u32"] = "uint", ["i64"] = "long", ["u64"] = "ulong",
+            ["f32"] = "float", ["f64"] = "double", ["nint"] = "nint", ["nuint"] = "nuint",
+        },
+        ["scs"] = new()
+        {
+            ["i8"] = "sbyte", ["u8"] = "sbyte", ["i16"] = "short", ["u16"] = "short",
+            ["i32"] = "int", ["u32"] = "int", ["i64"] = "long", ["u64"] = "long",
+            ["nint"] = "nint", ["nuint"] = "nint",
+        },
+        ["ucs"] = new()
+        {
+            ["i8"] = "byte", ["u8"] = "byte", ["i16"] = "ushort", ["u16"] = "ushort",
+            ["i32"] = "uint", ["u32"] = "uint", ["i64"] = "ulong", ["u64"] = "ulong",
+            ["nint"] = "nuint", ["nuint"] = "nuint",
         },
     };
 
@@ -987,6 +1061,26 @@ static class Maps
     }
 
     sealed record RowSpec(string Method, string[] Codes, string[] Annotations, string Expression, string[] Widths, string[] Elems, string Where);
+
+    // The annotation at the start of `rest`: up to the next space, or — for one that opens
+    // a parenthesis (@ref(Vector128.Add($0, $1))) — to its matching close, so a C#
+    // expression with spaces and nested calls is one annotation.
+    static string TakeAnnotation(string rest, string where)
+    {
+        int paren = rest.IndexOf('(');
+        int space = rest.IndexOf(' ');
+        if (paren < 0 || (space >= 0 && space < paren))
+            return space < 0 ? rest : rest.Substring(0, space);
+        int depth = 0;
+        for (int i = paren; i < rest.Length; i++)
+        {
+            if (rest[i] == '(')
+                depth++;
+            else if (rest[i] == ')' && --depth == 0)
+                return rest.Substring(0, i + 1);
+        }
+        throw new ContractException($"{where}: unbalanced parentheses in annotation '{rest}'");
+    }
 
     static void Parse(string file, Family family)
     {
@@ -1036,9 +1130,9 @@ static class Maps
         var annotations = new List<string>();
         while (rest.StartsWith('@'))
         {
-            int end = rest.IndexOf(' ');
-            annotations.Add(end < 0 ? rest : rest.Substring(0, end));
-            rest = end < 0 ? "" : rest.Substring(end + 1).TrimStart();
+            string ann = TakeAnnotation(rest, where);
+            annotations.Add(ann);
+            rest = rest.Substring(ann.Length).TrimStart();
         }
         if (!rest.StartsWith('='))
             throw new ContractException($"{where}: expected '=' after the signature and annotations");
@@ -1093,7 +1187,9 @@ static class Maps
     static (bool T, bool W) Dependency(string name, string where) => name switch
     {
         "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "wT" or "nT" or "unT" or "hbits"
-            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "ps|pd" or "lane" => (true, false),
+            or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "ps|pd"
+            or "lane" or "slane" or "ulane" or "wlane" or "swlane" or "uwlane"
+            or "cs" or "scs" or "ucs" => (true, false),
         "W" or "q" => (false, true),
         "N" or "ntype" => (true, true),
         _ => throw new ContractException($"{where}: unknown placeholder '{{{name}}}'"),
@@ -1114,11 +1210,20 @@ static class Maps
             throw new ContractException($"{where}: {key} already has a row ({mm.Row.SourceLine})");
 
         string? target = null;
+        string? reference = null;
         var imms = new List<ImmSpec>();
         foreach (string raw in spec.Annotations)
         {
             string ann = Substitute(raw, w, t, where);
-            if (ann == "@imm8")
+            if (ann.StartsWith("@ref(", StringComparison.Ordinal) && ann.EndsWith(')'))
+            {
+                if (reference is not null)
+                    throw new ContractException($"{where}: two @ref annotations");
+                reference = ann.Substring(5, ann.Length - 6).Trim();
+                if (reference.Length == 0)
+                    throw new ContractException($"{where}: empty @ref");
+            }
+            else if (ann == "@imm8")
                 imms.Add(new ImmSpec(mm.Params.Length - 1, 0, 256));
             else if (ImmAnn.Match(ann) is { Success: true } r)
             {
@@ -1149,7 +1254,7 @@ static class Maps
             throw new ContractException($"{where}: two immediates spanning {imms[0].Count * imms[1].Count} cases; the bound is 256");
 
         string expr = Substitute(spec.Expression, w, t, where);
-        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), where);
+        mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, where);
     }
 
     static string Substitute(string text, string w, string t, string where) =>
@@ -1375,7 +1480,7 @@ static class Emit
         string display = f.QualifiedName + "." + m.Name;
 
         sb.Append('\n');
-        sb.Append("#if ").Append(Contract.TargetMacro(f.Arch)).Append('\n');
+        sb.Append("#if ").Append(Contract.HelperCondition(f.Arch)).Append('\n');
         if (m.Row is null)
         {
             // A previewed family's unmapped method: throws on the native target too.
@@ -1491,11 +1596,14 @@ static class Emit
 // samples/dotnet/PlatformIsaProbe/Exercises.g.cs — one exercise per lowered family that has
 // no hand-written one: every mapped method called once with fixed inputs, its result printed
 // as hex bytes. Real .NET is the oracle (the native gates diff the output), so no reference
-// value is computed here. Nothing machine-dependent is printed.
+// value is computed here except a row's @ref cross-check, the portable computation printed as
+// agreement or disagreement beside the bytes. Nothing machine-dependent is printed.
 // ---------------------------------------------------------------------------------------
 
 static class Exercises
 {
+    static readonly Regex RefParam = new(@"\$(\d+)", RegexOptions.Compiled);
+
     // The scalar families keep their hand-written exercises in X86Sections / ArmSections.
     static readonly HashSet<string> HandWritten = new(StringComparer.Ordinal)
     {
@@ -1573,7 +1681,10 @@ static class Exercises
     static bool HasCalls(List<Family> families, Family f) =>
         f.Methods.Any(m => m.Row is not null) || families.Any(g => g.Enclosing == f.QualifiedName && g.Lowered && HasCalls(families, g));
 
-    // One call is one statement; a call that needs buffers or a tuple result gets a block.
+    // One call is one statement; a call that needs buffers, a tuple result or a @ref
+    // cross-check gets a block. With a cross-check the operands are bound to locals a<k>,
+    // which the reference expression names through $k, and the line ends in ` ref=OK` or
+    // ` ref=MISMATCH(<reference bytes>)`.
     static void Call(StringBuilder outer, Family f, Method m, string indent, ref bool witnessed)
     {
         var row = m.Row!;
@@ -1582,42 +1693,84 @@ static class Exercises
         var sb = new StringBuilder();
         string inner = indent + "    ";
         var args = new List<string>();
+        var refArgs = new List<string>();
         var pointers = new List<int>();
+        bool bind = row.Ref is not null;
         for (int k = 0; k < m.Params.Length; k++)
         {
             var p = m.Params[k];
             var imm = row.Imms.FirstOrDefault(i => i.Param == k);
+            string value;
             if (imm is not null)
             {
-                args.Add(Literal(p, imm.Lo + (imm.Count - 1) / 2));
+                value = Literal(p, imm.Lo + (imm.Count - 1) / 2);
+                args.Add(value);
+                refArgs.Add(value);
                 continue;
             }
             switch (p.Kind)
             {
                 case TyKind.Scalar:
-                    args.Add(Literal(p, Lane(k, 0, p.Code)));
+                    value = Literal(p, Lane(k, 0, p.Code));
                     break;
                 case TyKind.Vector:
-                    args.Add(VectorLiteral(p, k, IndexModulus(m, k)));
+                    value = VectorLiteral(p, k, IndexModulus(m, k));
                     break;
                 case TyKind.Tuple:
-                    args.Add("(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j, 0))) + ")");
+                    value = "(" + string.Join(", ", p.Items.Select((it, j) => VectorLiteral(it, k * 4 + j, 0))) + ")";
                     break;
                 case TyKind.Pointer:
                     sb.Append($"{inner}byte* p{k} = stackalloc byte[{BufferBytes}];\n");
                     sb.Append($"{inner}Fmt.Fill(p{k}, {BufferBytes}, {k + 1});\n");
-                    args.Add(p.Elem is null ? $"(void*)p{k}" : $"({Codes.Cs(p.Elem.Code)}*)p{k}");
+                    value = p.Elem is null ? $"(void*)p{k}" : $"({Codes.Cs(p.Elem.Code)}*)p{k}";
+                    args.Add(value);
+                    refArgs.Add($"({value})");
                     pointers.Add(k);
-                    break;
+                    continue;
                 default:
                     throw new ContractException($"{member}: parameter '{p}' has no exercise spelling");
             }
+            if (bind)
+            {
+                sb.Append($"{inner}var a{k} = {value};\n");
+                value = $"a{k}";
+            }
+            args.Add(value);
+            refArgs.Add(value);
         }
         string call = $"{CsFamily(f)}.{m.Name}({string.Join(", ", args)})";
         string mem = m.Return.Kind == TyKind.Void
             ? string.Concat(pointers.Select(k => $" + \" mem{k}=\" + Fmt.Hex(p{k}, {BufferBytes})"))
             : "";
-        switch (m.Return.Kind)
+        if (bind)
+        {
+            string reference = RefParam.Replace(row.Ref!, x =>
+            {
+                int k = int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture);
+                if (k >= refArgs.Count)
+                    throw new ContractException($"{row.SourceLine}: @ref names ${k} but {m.Key} has {refArgs.Count} parameter(s)");
+                return refArgs[k];
+            });
+            string actual, expected;
+            switch (m.Return.Kind)
+            {
+                case TyKind.Vector:
+                    actual = "Fmt.Hex(r.AsByte())";
+                    expected = "Fmt.Hex(q.AsByte())";
+                    break;
+                case TyKind.Scalar:
+                    actual = ScalarHex(m.Return, "r");
+                    expected = ScalarHex(m.Return, "q");
+                    break;
+                default:
+                    throw new ContractException($"{row.SourceLine}: @ref needs a vector or scalar result; {m.Key} returns '{m.Return}'");
+            }
+            sb.Append($"{inner}var r = {call};\n");
+            sb.Append($"{inner}var q = {reference};\n");
+            sb.Append($"{inner}string h = {actual};\n");
+            sb.Append($"{inner}Console.WriteLine(\"{label}=\" + h + Fmt.Ref(h, {expected}));\n");
+        }
+        else switch (m.Return.Kind)
         {
             case TyKind.Void:
                 sb.Append($"{inner}{call};\n");
@@ -1718,12 +1871,15 @@ static class Exercises
         return t.CsEnum is null ? s : $"({t.CsEnum}){s}";
     }
 
-    // The index operand of a table lookup (the last parameter of VectorTableLookup*) is
-    // read as byte indices into 16 bytes per table register; the fixed lane pattern is
-    // folded to a few values past the table so most lanes select an entry and the rest
-    // exercise the out-of-range lane (zero for TBL, the default operand for TBX).
+    // The index operand of a table lookup (the last parameter of VectorTableLookup*, the
+    // second of Swizzle) is read as byte indices into 16 bytes per table register; the
+    // fixed lane pattern is folded to a few values past the table so most lanes select an
+    // entry and the rest exercise the out-of-range lane (zero for TBL and swizzle, the
+    // default operand for TBX).
     static int IndexModulus(Method m, int k)
     {
+        if (m.Name == "Swizzle")
+            return k == 1 ? 16 + 3 : 0;
         if (!m.Name.StartsWith("VectorTableLookup", StringComparison.Ordinal) || k != m.Params.Length - 1)
             return 0;
         var table = m.Params[m.Name.EndsWith("Extension", StringComparison.Ordinal) ? 1 : 0];
@@ -1731,15 +1887,19 @@ static class Exercises
         return 16 * registers + 3;
     }
 
+    // Vector128.Create has no native-integer lane overload, so those lanes are created as
+    // the 32-bit integers they are on wasm32 and reinterpreted.
     static string VectorLiteral(Ty v, int k, int modulus)
     {
         string elem = v.Elem!.Code;
         int lanes = v.Bits / Codes.ElemBits(elem);
+        var created = elem switch { "nint" => Codes.ScalarOf("i32"), "nuint" => Codes.ScalarOf("u32"), _ => v.Elem };
         var items = Enumerable.Range(0, lanes).Select(i =>
         {
             long value = Lane(k, i, elem);
-            return Literal(v.Elem, modulus == 0 ? value : ((value % modulus) + modulus) % modulus);
+            return Literal(created, modulus == 0 ? value : ((value % modulus) + modulus) % modulus);
         });
-        return $"Vector{v.Bits}.Create({string.Join(", ", items)})";
+        string vector = $"Vector{v.Bits}.Create({string.Join(", ", items)})";
+        return elem switch { "nint" => vector + ".AsNInt()", "nuint" => vector + ".AsNUInt()", _ => vector };
     }
 }

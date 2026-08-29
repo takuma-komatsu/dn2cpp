@@ -124,9 +124,14 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{hbits}` | T | half the element width in bits: a narrowing shift's range |
   | `{bhsd}` | T | the scalar-register letter of a one-lane intrinsic (`vqrdmlahh_s16`) |
   | `{epi}` `{ps\|pd}` | T | the SSE integer / float suffix |
-  | `{lane}` | T | the wasm lane shape (`i8x16`) |
+  | `{lane}` | T | the wasm lane shape in the element's signedness (`u8x16`; a native-integer lane is `i32x4` / `u32x4`) |
+  | `{slane}` `{ulane}` | T | the signed / unsigned wasm lane shape whatever the element's (`wasm_i8x16_add` serves both `sbyte` and `byte`) |
+  | `{wlane}` `{swlane}` `{uwlane}` | T | the twice-width lane shape in the element's, the signed and the unsigned spelling (`i8` → `i16x8`; `u8` → `u16x8` / `i16x8` / `u16x8`) |
+  | `{cs}` `{scs}` `{ucs}` | T | the C# element type and its same-width signed / unsigned type (`byte` / `sbyte` / `byte`), for the casts a `@ref` expression needs |
 
-  A missing table entry (a float asked for `{epi}`) is an error, never a guess.
+  A missing table entry (a float asked for `{epi}`) is an error, never a guess. `nint` and
+  `nuint` are vector elements only in the wasm family: their lanes are spelled as 32 bits,
+  which holds on wasm32 alone, and the generator refuses such a vector elsewhere.
 - `$k` is parameter `k`; a vector arrives converted to the native register type through
   `dn2cpp_isa_bits<...>`, and `$k:u8` converts it to the same-width vector of another element
   instead (a bitwise operation on floats, a table index read as bytes). A vector result is
@@ -145,17 +150,30 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   immediate is rewritten); a value outside the range throws ArgumentOutOfRangeException, the
   check .NET inserts for a non-constant immediate. `@target("...")` overrides the
   family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
+- `@ref(<C# expression>)` names a portable `System.Runtime.Intrinsics` computation of the
+  same result over `$0`, `$1`, … (`Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = …`;
+  a pointer operand is dereferenced as `*$0`, an immediate is its literal). The generated
+  exercise binds the operands to locals, evaluates both, and prints ` ref=OK` or
+  ` ref=MISMATCH(<reference>)` after the helper's bytes. The portable layer is lowered by an
+  independent implementation, so this is the second check on a family whose gate output is
+  frozen because no host .NET can answer for it (PackedSimd). Give it to every method with
+  a clean equivalent and to nothing else: a reference that re-derives the instruction from
+  scratch would only restate the map row.
 - A scalar result that .NET returns in lane 0 of a Vector64 (the `Across` reductions,
   SHA1H, the one-lane RDM forms) goes through `dn2cpp_isa_lane0<8>(...)`, which zeroes the
   other lanes as the register write does.
 - A family whose only public static member is `IsSupported` (`X86Serialize.X64`) has no map
   file: it is covered vacuously and lowered with its enclosing family.
 
-Every helper is emitted under `#if DN2CPP_TARGET_<ARCH>` with its body, which first tests
+Every helper is emitted under the arch's `#if` — `DN2CPP_TARGET_X64`, `DN2CPP_TARGET_ARM64`,
+or `DN2CPP_TARGET_WASM32 && defined(__wasm_simd128__)` — with its body, which first tests
 the family's `IsSupported` token through `dn2cpp_isa_require` (a call made while the token
 is false throws PlatformNotSupportedException, as in .NET), and under `#else` as a
 `[[noreturn]]` stub calling `dn2cpp_isa_not_lowered`, so a foreign-arch dead arm in
-generated code still compiles. The macros come from `runtime/core/isa/dn2cpp_isa_common.h`.
+generated code still compiles. wasm SIMD is a property of the whole module (the CMake
+option `DN2CPP_WASM_SIMD` adds `-msimd128` everywhere), so a default wasm build compiles the
+stubs and its detector answers false. The macros come from
+`runtime/core/isa/dn2cpp_isa_common.h`.
 
 ## Lowered is derived
 
@@ -184,8 +202,12 @@ pattern, immediates at the middle of their range, pointers into a filled stack b
 bytes are printed after a store — and prints `Method(argcodes)=<hex bytes>`; nested types run
 behind their own `IsSupported`. One immediate method per family is also called one past its
 range inside `Fmt.Thrown`, which must print `ArgumentOutOfRangeException`. Real .NET is the
-oracle: the native gates diff the output byte for byte, so no reference value is computed.
-The registration (`Exercises.RegisterX86/Arm/Wasm`) is called from each `*Sections` class.
+oracle for the x86 and Arm families: the native gates diff the output byte for byte, so no
+reference value is computed. PackedSimd has no such oracle — no host .NET answers true for
+it — so `gates/build-and-run-platform-isa-wasm.sh` diffs its output against the frozen
+`gates/expected/platform-isa-wasm-simd.txt`, and every row with a `@ref` prints its
+portable cross-check beside the bytes; the gate refuses a `MISMATCH`. The registration
+(`Exercises.RegisterX86/Arm/Wasm`) is called from each `*Sections` class.
 
 ## Previewing a partial map
 
