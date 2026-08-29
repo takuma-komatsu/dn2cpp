@@ -130,6 +130,7 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   | `{slane}` `{ulane}` | T | the signed / unsigned wasm lane shape whatever the element's (`wasm_i8x16_add` serves both `sbyte` and `byte`) |
   | `{wlane}` `{swlane}` `{uwlane}` | T | the twice-width lane shape in the element's, the signed and the unsigned spelling (`i8` → `i16x8`; `u8` → `u16x8` / `i16x8` / `u16x8`) |
   | `{cs}` `{scs}` `{ucs}` | T | the C# element type and its same-width signed / unsigned type (`byte` / `sbyte` / `byte`), for the casts a `@ref` expression needs |
+  | `{ncs}` | T | the C# type of the element of half the width (`int` → `short`), the zero operand a `@ref` narrows with |
 
   A missing table entry (a float asked for `{epi}`) is an error, never a guess. `nint` and
   `nuint` are vector elements only in the wasm family: their lanes are spelled as 32 bits,
@@ -152,7 +153,10 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   `DN2CPP_ISA_IMM_RANGE_SWITCH2` or the listed cases, and the expression names the
   constants `DN2CPP_IMM` and `DN2CPP_IMM2` (the `$k` of the immediate is rewritten); a value
   outside the range or the list throws ArgumentOutOfRangeException, the check .NET inserts
-  for a non-constant immediate. An immediate whose compiler intrinsic accepts fewer bits
+  for a non-constant immediate. A `FloatRoundingMode` is such a list: .NET accepts 0 through 11
+  and the JIT encodes the low two bits as the rounding control with exceptions suppressed, so
+  the row lists those twelve values and the expression hands the intrinsic `($k & 3) | 8`, the
+  only spelling the compiler's `_round` intrinsics accept. An immediate whose compiler intrinsic accepts fewer bits
   than .NET's byte (`_mm256_extractf128_ps` reads one) is masked in the expression
   (`DN2CPP_IMM & 1`), as the hardware ignores the rest. `@target("...")` overrides the
   family-level `target =`. `@throws` documents a faulting intrinsic and changes nothing.
@@ -204,8 +208,9 @@ sources.
 `samples/dotnet/PlatformIsaProbe/Exercises.g.cs` exercises every lowered family that has no
 hand-written exercise (the scalar families keep theirs in `X86Sections` / `ArmSections`):
 each mapped method is called once with fixed inputs — vectors from a per-operand, per-lane
-pattern, immediates at the middle of their range or list, pointers into a filled 32-byte-aligned
-stack buffer (the aligned 256-bit loads and stores fault below that) whose bytes are printed
+pattern, immediates at the middle of their range or list, pointers into a filled 64-byte-aligned
+64-byte stack buffer (the aligned 512-bit loads and stores fault below that alignment, and no
+load, store, masked or compressed form reaches past 64 bytes) whose bytes are printed
 after a store, a gather's index lanes folded so every lane stays inside that buffer — and
 prints `Method(argcodes)=<hex bytes>`; nested types run behind their own `IsSupported`. One
 immediate method per family is also called one past its range or list inside `Fmt.Thrown`,

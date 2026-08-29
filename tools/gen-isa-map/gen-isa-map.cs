@@ -1067,6 +1067,11 @@ static class Maps
             ["i32"] = "uint", ["u32"] = "uint", ["i64"] = "ulong", ["u64"] = "ulong",
             ["nint"] = "nuint", ["nuint"] = "nuint",
         },
+        // The C# type of the element of half the width: the zero operand a @ref narrows with.
+        ["ncs"] = new()
+        {
+            ["i16"] = "sbyte", ["u16"] = "byte", ["i32"] = "short", ["u32"] = "ushort", ["i64"] = "int", ["u64"] = "uint",
+        },
     };
 
     public static void Apply(string toolDir, List<Family> families)
@@ -1222,7 +1227,7 @@ static class Maps
         "T" or "bits" or "N64" or "N128" or "uT" or "sT" or "wT" or "nT" or "unT" or "hbits"
             or "neon" or "wneon" or "nneon" or "bhsd" or "epi" or "epu" or "ep" or "ps|pd" or "ss|sd"
             or "lane" or "slane" or "ulane" or "wlane" or "swlane" or "uwlane"
-            or "cs" or "scs" or "ucs" => (true, false),
+            or "cs" or "scs" or "ucs" or "ncs" => (true, false),
         "W" or "q" or "mm" or "m" => (false, true),
         "N" or "ntype" => (true, true),
         _ => throw new ContractException($"{where}: unknown placeholder '{{{name}}}'"),
@@ -1669,13 +1674,14 @@ static class Exercises
         "System.Runtime.Intrinsics.Arm.ArmBase", "System.Runtime.Intrinsics.Arm.Crc32",
     };
 
-    // The buffer a pointer operand addresses, and its alignment: the aligned 256-bit loads and
-    // stores fault below 32 bytes, and a stack allocation guarantees less. A gather's index
-    // lanes are folded modulo GatherIndexModulus: every lane at scale 8 stays inside the
-    // buffer, and the lane pattern's strides (0x1F3A7, 0x1F3A7C5D1B) are 1 modulo 5, so the
-    // folded indices differ per lane.
+    // The buffer a pointer operand addresses, and its alignment: the aligned 512-bit loads and
+    // stores fault below 64 bytes, and a stack allocation guarantees less; a 512-bit load,
+    // store, masked or compressed form touches at most the 64 bytes. A gather's index lanes
+    // are folded modulo GatherIndexModulus: every lane at scale 8 stays inside the buffer,
+    // and the lane pattern's strides (0x1F3A7, 0x1F3A7C5D1B) are 1 modulo 5, so the folded
+    // indices differ per lane.
     const int BufferBytes = 64;
-    const int BufferAlign = 32;
+    const int BufferAlign = 64;
     const int GatherIndexModulus = 5;
 
     public static string File(List<Family> families)

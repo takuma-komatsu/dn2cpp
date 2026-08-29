@@ -81,7 +81,7 @@ internal static class Fmt
     }
 
     // The first address at or after p on an `alignment`-byte boundary: the aligned
-    // 256-bit loads and stores fault below 32 bytes, and stackalloc promises less.
+    // 512-bit loads and stores fault below 64 bytes, and stackalloc promises less.
     internal static unsafe byte* Align(byte* p, int alignment) =>
         (byte*)(((nuint)p + (nuint)(alignment - 1)) & ~(nuint)(alignment - 1));
 
