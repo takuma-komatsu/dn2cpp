@@ -1670,9 +1670,13 @@ static class Exercises
     };
 
     // The buffer a pointer operand addresses, and its alignment: the aligned 256-bit loads and
-    // stores fault below 32 bytes, and a stack allocation guarantees less.
+    // stores fault below 32 bytes, and a stack allocation guarantees less. A gather's index
+    // lanes are folded modulo GatherIndexModulus: every lane at scale 8 stays inside the
+    // buffer, and the lane pattern's strides (0x1F3A7, 0x1F3A7C5D1B) are 1 modulo 5, so the
+    // folded indices differ per lane.
     const int BufferBytes = 64;
     const int BufferAlign = 32;
+    const int GatherIndexModulus = 5;
 
     public static string File(List<Family> families)
     {
@@ -1938,12 +1942,12 @@ static class Exercises
     // default operand for TBX).
     static int IndexModulus(Method m, int k)
     {
+        Debug.Assert((GatherIndexModulus - 1) * 8 + 8 <= BufferBytes, "a gathered lane at scale 8 must stay inside the buffer");
         if (m.Name == "Swizzle")
             return k == 1 ? 16 + 3 : 0;
-        // A gather's index lanes are element offsets from the base pointer at the scale
-        // exercised; folded so every lane, at the largest scale, stays inside the buffer.
+        // A gather's index lanes are offsets from the base pointer at the scale exercised.
         if (m.Name.StartsWith("Gather", StringComparison.Ordinal))
-            return k == (m.Name.StartsWith("GatherMask", StringComparison.Ordinal) ? 2 : 1) ? (BufferBytes - 8) / 8 : 0;
+            return k == (m.Name.StartsWith("GatherMask", StringComparison.Ordinal) ? 2 : 1) ? GatherIndexModulus : 0;
         if (!m.Name.StartsWith("VectorTableLookup", StringComparison.Ordinal) || k != m.Params.Length - 1)
             return 0;
         var table = m.Params[m.Name.EndsWith("Extension", StringComparison.Ordinal) ? 1 : 0];
