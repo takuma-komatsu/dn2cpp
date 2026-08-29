@@ -71,6 +71,30 @@ static inline Dn2CppVec<N> dn2cpp_isa_vec(const From& x)
     return r;
 }
 
+#if DN2CPP_TARGET_X64
+// A 256- or 512-bit register leaves the conversion by value, and clang rejects a
+// by-value __m256 / __m512 between functions that disagree on AVX / AVX-512 (the
+// calling convention differs), so the wide conversions carry the ISA of the
+// register they return; a helper of that ISA or a wider one inlines them.
+template <class To>
+DN2CPP_ISA_TARGET("avx") static inline To dn2cpp_isa_bits(const Dn2CppVec<32>& v)
+{
+    static_assert(sizeof(To) == 32, "vector width mismatch");
+    To r;
+    std::memcpy(&r, v.b, sizeof(r));
+    return r;
+}
+
+template <class To>
+DN2CPP_ISA_TARGET("avx512f") static inline To dn2cpp_isa_bits(const Dn2CppVec<64>& v)
+{
+    static_assert(sizeof(To) == 64, "vector width mismatch");
+    To r;
+    std::memcpy(&r, v.b, sizeof(r));
+    return r;
+}
+#endif
+
 // A scalar handed back in another type's bits (EXTRACTPS yields the lane as an
 // int32; .NET returns the float).
 template <class To, class From>
