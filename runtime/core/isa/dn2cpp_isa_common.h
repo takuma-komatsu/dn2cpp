@@ -15,8 +15,10 @@
 
 #if DN2CPP_TARGET_X64
 #include <immintrin.h>
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && !defined(__clang__)
 #include <intrin.h>
+#else
+#include <cpuid.h>
 #endif
 #elif DN2CPP_TARGET_ARM64
 #include <arm_neon.h>
@@ -67,6 +69,16 @@ static inline Dn2CppVec<N> dn2cpp_isa_vec(const From& x)
 [[noreturn]] static inline void dn2cpp_isa_not_lowered(const char* what)
 {
     dn2cpp_throw_platform_not_supported(what);
+}
+
+// Every lowered helper starts by testing its family's IsSupported token: a call
+// made while the token is false (the CPU lacks the ISA, or DN2CPP_CPU_FEATURES
+// masked it) throws PlatformNotSupportedException in .NET, and would execute an
+// instruction the CPU may not have here.
+static inline void dn2cpp_isa_require(int32_t supported, const char* what)
+{
+    if (!supported)
+        dn2cpp_throw_platform_not_supported(what);
 }
 
 // Immediate-operand dispatch. Hardware encodes the immediate in the instruction,
@@ -212,3 +224,164 @@ static inline uint64_t dn2cpp_isa_bitreverse64(uint64_t x)
     return ((uint64_t)dn2cpp_isa_bitreverse32((uint32_t)x) << 32)
          | dn2cpp_isa_bitreverse32((uint32_t)(x >> 32));
 }
+
+// ---------------------------------------------------------------------------
+// X86Base.DivRem: (upper:lower) / divisor into quotient and remainder. The
+// instruction faults (#DE) on a zero divisor and on a quotient wider than the
+// operand; .NET surfaces both as DivideByZeroException, so both are rejected
+// before any division.
+// ---------------------------------------------------------------------------
+
+static inline void dn2cpp_isa_divrem_u32(uint32_t lo, uint32_t hi, uint32_t divisor, uint32_t* q, uint32_t* r)
+{
+    if (divisor == 0 || hi >= divisor)
+        dn2cpp_throw_divide_by_zero();
+    uint64_t n = ((uint64_t)hi << 32) | lo;
+    *q = (uint32_t)(n / divisor);
+    *r = (uint32_t)(n % divisor);
+}
+
+static inline void dn2cpp_isa_divrem_i32(uint32_t lo, int32_t hi, int32_t divisor, int32_t* q, int32_t* r)
+{
+    if (divisor == 0)
+        dn2cpp_throw_divide_by_zero();
+    int64_t n = (int64_t)(((uint64_t)(uint32_t)hi << 32) | lo);
+    // INT64_MIN / -1 is the one 64-bit quotient C++ cannot form; it does not
+    // fit 32 bits either.
+    if (divisor == -1 && n == INT64_MIN)
+        dn2cpp_throw_divide_by_zero();
+    int64_t quotient = n / divisor;
+    if (quotient < INT32_MIN || quotient > INT32_MAX)
+        dn2cpp_throw_divide_by_zero();
+    *q = (int32_t)quotient;
+    *r = (int32_t)(n % divisor);
+}
+
+static inline void dn2cpp_isa_divrem_u64(uint64_t lo, uint64_t hi, uint64_t divisor, uint64_t* q, uint64_t* r)
+{
+    *q = dn2cpp_isa_udivrem128(lo, hi, divisor, r);
+}
+
+static inline void dn2cpp_isa_divrem_i64(uint64_t lo, int64_t hi, int64_t divisor, int64_t* q, int64_t* r)
+{
+    *q = dn2cpp_isa_sdivrem128((int64_t)lo, hi, divisor, r);
+}
+
+#if DN2CPP_TARGET_X64
+// The native-integer overloads are the 64-bit ones: every x86 target is x86-64.
+static_assert(sizeof(intptr_t) == 8, "X86Base.DivRem on native integers is the 128/64 division");
+
+static inline void dn2cpp_isa_divrem_nuint(uintptr_t lo, uintptr_t hi, uintptr_t divisor, uintptr_t* q, uintptr_t* r)
+{
+    uint64_t rem;
+    *q = (uintptr_t)dn2cpp_isa_udivrem128(lo, hi, divisor, &rem);
+    *r = (uintptr_t)rem;
+}
+
+static inline void dn2cpp_isa_divrem_nint(uintptr_t lo, intptr_t hi, intptr_t divisor, intptr_t* q, intptr_t* r)
+{
+    int64_t rem;
+    *q = (intptr_t)dn2cpp_isa_sdivrem128((int64_t)lo, hi, divisor, &rem);
+    *r = (intptr_t)rem;
+}
+
+// X86Base.CpuId: CPUID with EAX = functionId and ECX = subFunctionId.
+static inline void dn2cpp_isa_cpuid(int32_t fn, int32_t sub, int32_t* eax, int32_t* ebx, int32_t* ecx, int32_t* edx)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    int info[4];
+    __cpuidex(info, fn, sub);
+    *eax = info[0];
+    *ebx = info[1];
+    *ecx = info[2];
+    *edx = info[3];
+#else
+    unsigned int a, b, c, d;
+    __cpuid_count((unsigned int)fn, (unsigned int)sub, a, b, c, d);
+    *eax = (int32_t)a;
+    *ebx = (int32_t)b;
+    *ecx = (int32_t)c;
+    *edx = (int32_t)d;
+#endif
+}
+
+// Bmi2.MultiplyNoFlags with the low-half pointer: the high half is returned.
+// MULX is a flagless multiply, so no ISA above the baseline is involved.
+static inline uint32_t dn2cpp_isa_mulx32(uint32_t a, uint32_t b, uint32_t* low)
+{
+    uint64_t p = (uint64_t)a * b;
+    *low = (uint32_t)p;
+    return (uint32_t)(p >> 32);
+}
+
+static inline uint64_t dn2cpp_isa_mulx64(uint64_t a, uint64_t b, uint64_t* low)
+{
+    *low = a * b;
+    return dn2cpp_isa_umulh64(a, b);
+}
+#endif // DN2CPP_TARGET_X64
+
+// ---------------------------------------------------------------------------
+// ArmBase scalar operations. CLZ and CLS are defined at zero (the operand
+// width, and one less), which the C builtins are not, so zero is handled here.
+// ---------------------------------------------------------------------------
+
+#if DN2CPP_TARGET_ARM64
+static inline int32_t dn2cpp_isa_clz32(uint32_t x)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    return (int32_t)_CountLeadingZeros(x);
+#else
+    return x == 0 ? 32 : __builtin_clz(x);
+#endif
+}
+
+static inline int32_t dn2cpp_isa_clz64(uint64_t x)
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    return (int32_t)_CountLeadingZeros64(x);
+#else
+    return x == 0 ? 64 : __builtin_clzll(x);
+#endif
+}
+
+// CLS: the leading bits equal to the sign bit, the sign bit itself excluded.
+static inline int32_t dn2cpp_isa_cls32(int32_t x)
+{
+    return dn2cpp_isa_clz32((uint32_t)(x ^ (x >> 31))) - 1;
+}
+
+static inline int32_t dn2cpp_isa_cls64(int64_t x)
+{
+    return dn2cpp_isa_clz64((uint64_t)(x ^ (x >> 63))) - 1;
+}
+
+// RBIT. clang folds the builtin to the instruction; the other compilers take
+// the portable reversal, which is the same function.
+static inline uint32_t dn2cpp_isa_rbit32(uint32_t x)
+{
+#if defined(__clang__)
+    return __builtin_bitreverse32(x);
+#else
+    return dn2cpp_isa_bitreverse32(x);
+#endif
+}
+
+static inline uint64_t dn2cpp_isa_rbit64(uint64_t x)
+{
+#if defined(__clang__)
+    return __builtin_bitreverse64(x);
+#else
+    return dn2cpp_isa_bitreverse64(x);
+#endif
+}
+
+static inline void dn2cpp_isa_arm_yield()
+{
+#if defined(_MSC_VER) && !defined(__clang__)
+    __yield();
+#else
+    __asm__ __volatile__("yield");
+#endif
+}
+#endif // DN2CPP_TARGET_ARM64
