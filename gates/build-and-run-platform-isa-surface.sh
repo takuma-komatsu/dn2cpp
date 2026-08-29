@@ -26,8 +26,9 @@ corelib=$(locate_corelib)
 echo "corlib: $corelib"
 
 TOKENS_H=runtime/core/isa/dn2cpp_isa_tokens.g.h
+FAMILIES_H=runtime/core/isa/dn2cpp_isa_families.g.h
 MANIFEST=runtime/core/isa/dn2cpp_isa_manifest.txt
-for f in "$PLATFORM_ISA_TABLE" "$TOKENS_H" "$MANIFEST"; do
+for f in "$PLATFORM_ISA_TABLE" "$TOKENS_H" "$FAMILIES_H" "$MANIFEST"; do
     [ -f "$f" ] || { echo "FAIL: $f not found; regenerate with: dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib $corelib" >&2; exit 1; }
 done
 
@@ -36,6 +37,24 @@ echo "== 1/7 The generator reproduces the checked-in tree byte for byte =="
 # completeness proof: a family is written Lowered only when every public static
 # method has a map row, and a hand edit to any generated file fails here.
 dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib "$corelib" --check
+
+echo "== 1b/7 The selective-emission header table is the complete umbrella set =="
+table_headers=$(grep -oE '"isa/(arm|x86|wasm)/[^\"]+"' "$PLATFORM_ISA_TABLE" \
+    | tr -d '"' | sort -u)
+umbrella_headers=$(tr -d '\r' < "$FAMILIES_H" \
+    | sed -nE 's/^#include "((arm|x86|wasm)\/[^\"]+)"$/isa\/\1/p' \
+    | sort -u)
+platform_isa_set_eq "family helper headers: selective table vs fallback umbrella" \
+    "$PLATFORM_ISA_TABLE" "$table_headers" "$FAMILIES_H" "$umbrella_headers"
+while IFS= read -r header; do
+    [ -n "$header" ] || continue
+    header_text=$(tr -d '\r' < "runtime/core/$header")
+    if grep -qxF '#include "../dn2cpp_isa_common.h"' <<<"$header_text"; then
+        platform_isa_ok "$header closes over common support"
+    else
+        platform_isa_bad "$header does not include common support"
+    fi
+done <<<"$table_headers"
 
 echo "== 2/7 The CLI's account of the surface =="
 build_proj "samples/dotnet/$PLATFORM_ISA_PROJECT/$PLATFORM_ISA_PROJECT.csproj"

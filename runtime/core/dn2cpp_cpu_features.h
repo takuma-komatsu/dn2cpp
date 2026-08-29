@@ -4,9 +4,9 @@
 //
 // One bit per ISA family, resolved once from the CPU (and OS), the positive
 // AVX10.2 policy opt-in, and an optional narrowing mask (DN2CPP_CPU_FEATURES;
-// see dn2cpp_cpu_features.cpp). The generated code tests these bits through the
-// DN2CPP_ISA_* tokens included at the end, so this header is part of every
-// generated TU and deliberately pulls in no intrinsic header.
+// see dn2cpp_cpu_features.cpp). An ISA-using image tests these bits through the
+// DN2CPP_ISA_* tokens included at the end. Non-ISA images do not include this
+// header, and this header itself pulls in no compiler intrinsic.
 
 #include <stdint.h>
 #include <atomic>
@@ -120,7 +120,8 @@ static_assert(DN2CPP_CPU_FEATURE_COUNT < 63, "feature bits must stay below DN2CP
 // the cached word without recomputing, so the DN2CPP_CPU_FEATURES diagnostics
 // print once per process whichever caller comes first. A computed value is a
 // pure function of the CPU and the environment, so first callers racing on a
-// cold cache are benign. dn2cpp_runtime_init calls it at startup.
+// cold cache are benign. An ISA-using image passes it to dn2cpp_runtime_init,
+// which calls it at startup.
 uint64_t dn2cpp_cpu_features_resolve();
 
 extern std::atomic<uint64_t> dn2cpp_cpu_features_cache;

@@ -1441,6 +1441,7 @@ static class Emit
 
     public static Dictionary<string, string> All(List<Family> families)
     {
+        CheckHeaderClosure(families);
         var outputs = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["runtime/core/isa/dn2cpp_isa_tokens.g.h"] = Tokens(families),
@@ -1452,6 +1453,28 @@ static class Emit
         foreach (var f in families.Where(f => f.HasRows))
             outputs[f.HeaderRelPath] = FamilyHeader(f);
         return outputs;
+    }
+
+    // A selected family header includes common support, not its siblings. Keep that
+    // property structural: a map row that starts calling another public helper would
+    // otherwise compile under the umbrella while failing in selectively-emitted apps.
+    static void CheckHeaderClosure(List<Family> families)
+    {
+        var publicHelpers = families
+            .SelectMany(f => f.Methods.Where(m => HasHelper(f, m)).Select(m => m.HelperName))
+            .ToHashSet(StringComparer.Ordinal);
+        var helperRef = new Regex(@"\bdn2cpp_isa_[a-z0-9_]+\b", RegexOptions.Compiled);
+        foreach (var f in families)
+            foreach (var m in f.Methods)
+            {
+                if (m.Row is null)
+                    continue;
+                foreach (Match call in helperRef.Matches(m.Row.Expression))
+                    if (publicHelpers.Contains(call.Value))
+                        throw new ContractException(
+                            $"{m.Row.SourceLine}: {m.Key} calls public helper {call.Value}; "
+                            + "a family header must close over common support alone");
+            }
     }
 
     static string PreviewLine(string comment) =>
@@ -1527,8 +1550,8 @@ static class Emit
         var sb = new StringBuilder();
         sb.Append(CppBanner("Every generated family helper header."));
         sb.Append("""
-            // Every header is included on every target: the foreign-arch stubs must exist so that a
-            // dead `#if` arm in generated code still compiles.
+            // The fallback umbrella includes every header on every target: foreign-arch stubs keep
+            // dead `#if` arms in generated code compilable.
             #include "dn2cpp_isa_common.h"
 
             """);
@@ -1555,6 +1578,8 @@ static class Emit
         var sb = new StringBuilder();
         sb.Append(CsBanner("The platform-ISA family table. Lowered is derived from map coverage and the feature-bit implications, never edited."));
         sb.Append("""
+            #nullable enable
+
             namespace Dn2Cpp;
 
             internal static partial class CoreIntrinsics
@@ -1569,6 +1594,22 @@ static class Emit
             sb.Append("        new(IsaArch.").Append(Contract.IsaArch(f.Arch)).Append(", \"").Append(f.QualifiedName)
               .Append("\", \"").Append(f.Token).Append("\", ").Append(enclosing).Append(", ")
               .Append(f.Lowered ? "true" : "false").Append("),\n");
+        }
+        sb.Append("""
+                };
+
+                // Parallel to s_isaFamilies. A null row has no generated helper body;
+                // IsSupported can still use its token without including a family header.
+                private static readonly string?[] s_isaFamilyHeaders =
+                {
+
+            """);
+        foreach (var f in families)
+        {
+            string header = f.HasRows
+                ? $"\"isa/{f.Arch}/{Path.GetFileName(f.HeaderRelPath)}\""
+                : "null";
+            sb.Append("        ").Append(header).Append(",\n");
         }
         sb.Append("""
                 };

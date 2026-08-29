@@ -2343,7 +2343,8 @@ T& dn2cpp_never_destroyed()
     return *new T;
 }
 
-void dn2cpp_runtime_init();
+using Dn2CppCpuFeaturesInit = uint64_t (*)();
+void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures = nullptr);
 // Stop and join the background threads the runtime owns — the Task.Run pool
 // workers and (when it runs at all) the finalizer thread — so a host can
 // safely dlclose the library: dn2cpp_never_destroyed keeps the data those

@@ -39,6 +39,8 @@ internal sealed partial class MethodCompiler
         bool lowered = CoreIntrinsics.IsaLowered(family);
         if (callee.Name == "get_IsSupported" && ps.Length == 0)
         {
+            if (lowered)
+                _c.NotePlatformIsaUse();
             Push(StackKind.I4, "int32_t", lowered ? CoreIntrinsics.IsaSupportedToken(family) : "0");
             return;
         }
@@ -101,6 +103,7 @@ internal sealed partial class MethodCompiler
         }
 
         string helper = CoreIntrinsics.IsaHelperName(family, callee.Name, sig);
+        _c.NotePlatformIsaUse(CoreIntrinsics.IsaHelperHeader(family, callee, helper));
         if (ret is { Kind: TypeKind.Class, Class: { } tupleCls } && CoreIntrinsics.IsIsaValueTuple(tupleCls))
         {
             string tupleCpp = CppTypes.Of(ret);

@@ -1627,9 +1627,3 @@ static inline Dn2CppVec<N> dn2cpp_vec_shuffle(const Dn2CppVec<N>& v, const Dn2Cp
     }
     return r;
 }
-
-// The hardware-intrinsic surface hangs off this header because generated code
-// includes it and the runtime's own TUs never do: they must not pay for the
-// intrinsic headers the ISA helpers pull in.
-#include "dn2cpp_cpu_features.h"
-#include "isa/dn2cpp_isa.h"

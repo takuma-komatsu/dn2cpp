@@ -6,8 +6,8 @@
 //
 //     dotnet run tools/gen-isa-map/gen-isa-map.cs -- --corelib <System.Private.CoreLib.dll>
 //
-// Every header is included on every target: the foreign-arch stubs must exist so that a
-// dead `#if` arm in generated code still compiles.
+// The fallback umbrella includes every header on every target: foreign-arch stubs keep
+// dead `#if` arms in generated code compilable.
 #include "dn2cpp_isa_common.h"
 #include "arm/dn2cpp_isa_arm_advsimd.h"
 #include "arm/dn2cpp_isa_arm_advsimd_arm64.h"

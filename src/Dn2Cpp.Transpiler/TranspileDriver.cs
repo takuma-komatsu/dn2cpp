@@ -242,11 +242,11 @@ public static class TranspileDriver
             RemoveStaleChunks(outDir, "generated_b", ".cpp");
             RemoveStaleChunks(outDir, "generated_m", ".cpp");
             RemoveStaleChunks(outDir, "generated_", ".cpp");
-            // The two [HotPath] TUs each have one fixed name, so they are swept
-            // rewrite-or-remove style like the sidecars below: deleted up front,
-            // recreated during emission only when this run marks anything (the
-            // FastMath one only when a marked body sets that knob).
-            foreach (string hotTu in new[] { "generated_hot.cpp", "generated_hot_fast.cpp" })
+            // Optional generated TUs have fixed names, so they are swept rewrite-or-
+            // remove style like the sidecars below: deleted up front and recreated
+            // during emission only when this run marks their feature.
+            foreach (string hotTu in new[]
+                { "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp" })
             {
                 string hotTuPath = Path.Combine(outDir, hotTu);
                 if (File.Exists(hotTuPath))

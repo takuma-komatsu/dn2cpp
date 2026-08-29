@@ -3,8 +3,8 @@
 // headers: bit-copies between Dn2CppVec<N> and the compiler's vector types, the
 // target attribute that lets a helper use an ISA the TU is not compiled for,
 // immediate-operand dispatch, and the 128-bit scalar arithmetic the X86Base /
-// ArmBase families need. Reached only through dn2cpp_vectors.h, so the runtime's
-// own TUs never pay for the intrinsic headers.
+// ArmBase families need. Generated code includes it only when a platform-ISA
+// helper survives reachability; runtime TUs never pay for it.
 
 #include "dn2cpp_core.h"
 #include "dn2cpp_cpu_features.h"

@@ -90,6 +90,39 @@ platform_isa_contract_block() {
     awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' <<<"$1"
 }
 
+_platform_isa_witness_signature() {
+    local text="$1" block true_count false_count nested_count
+    block=$(platform_isa_contract_block "$text")
+    true_count=$(grep -c '^X86.X86Base=True$' <<<"$block" || true)
+    false_count=$(grep -c '^X86.Avx=False$' <<<"$block" || true)
+    nested_count=$(awk '
+        $0 == "== X86.Avx10v2.V512 ==" {
+            getline
+            if ($0 == "probe=PlatformNotSupportedException") found++
+        }
+        END { print found + 0 }
+    ' <<<"$text")
+    printf '%s\ntrue=%s\nfalse=%s\nnested=%s\n' \
+        "$block" "$true_count" "$false_count" "$nested_count"
+}
+
+_platform_isa_witness_normalization_self_check() {
+    local lf crlf lf_normalized crlf_normalized lf_signature crlf_signature
+    lf=$'prefix\n== contract ==\nX86.X86Base=True\nX86.Avx=False\n== X86.Avx10v2.V512 ==\nprobe=PlatformNotSupportedException\n'
+    crlf=${lf//$'\n'/$'\r\n'}
+    lf_normalized=$(tr -d '\r' <<<"$lf")
+    crlf_normalized=$(tr -d '\r' <<<"$crlf")
+    lf_signature=$(_platform_isa_witness_signature "$lf_normalized")
+    crlf_signature=$(_platform_isa_witness_signature "$crlf_normalized")
+    if [ "$lf_signature" != "$crlf_signature" ] \
+            || [ "$(grep -c '^true=1$' <<<"$lf_signature" || true)" -ne 1 ] \
+            || [ "$(grep -c '^false=1$' <<<"$lf_signature" || true)" -ne 1 ] \
+            || [ "$(grep -c '^nested=1$' <<<"$lf_signature" || true)" -ne 1 ]; then
+        echo "FAIL: LF and CRLF platform-ISA witness parsing disagree" >&2
+        return 1
+    fi
+}
+
 # ── The surface gate's set helpers ───────────────────────────────────────────
 # Same shape as gates/build-and-run-doc-claims.sh's, which keeps its own local.
 PLATFORM_ISA_FAILS=0
@@ -143,6 +176,7 @@ platform_isa_set_eq() {
 # and P select the Lowered set only; F and M expect false everywhere anyway.
 platform_isa_native_gate() {
     local arch="$1" isa base
+    _platform_isa_witness_normalization_self_check || exit 1
     isa=$(platform_isa_arch_name "$arch") || exit 1
     case "$arch" in
         x86) base="X86.X86Base" ;;
@@ -211,13 +245,39 @@ platform_isa_native_gate() {
     local log_dir="$_GATE_RUN_LOG_DIR"
     _PI_RUN_LABELS=()
     _PI_RUN_CODES=()
+    _PI_RUN_ORACLE_CODES=()
     _PI_RUN_OUTS=()
+    _PI_RUN_ORACLE_OUTS=()
     _PI_RUN_LOGS=()
+    _PI_RUN_ORACLE_LOGS=()
+
+    _pi_run_diag_file() {
+        local label="$1" code="$2" stdout_file="$3" stderr_file="$4"
+        echo "---- $label diagnostics ----" >&2
+        echo "exit code: ${code:-<not run>}" >&2
+        _gate_run_termination "$code" "$stderr_file"
+        if [ -s "$stdout_file" ]; then
+            echo "stdout tail (full output: $stdout_file):" >&2
+            tail -n 40 "$stdout_file" >&2
+        else
+            echo "stdout: <empty>" >&2
+        fi
+        if [ -s "$stderr_file" ]; then
+            echo "stderr:" >&2
+            cat "$stderr_file" >&2
+        else
+            echo "stderr: <empty>" >&2
+        fi
+    }
 
     gate_run_diagnostics() {
         local i
         for ((i = 0; i < ${#_PI_RUN_LABELS[@]}; i++)); do
-            gate_run_diag "${_PI_RUN_LABELS[$i]}" "${_PI_RUN_CODES[$i]}" "${_PI_RUN_OUTS[$i]}" "${_PI_RUN_LOGS[$i]}"
+            _pi_run_diag_file "${_PI_RUN_LABELS[$i]} native" \
+                "${_PI_RUN_CODES[$i]}" "${_PI_RUN_OUTS[$i]}" "${_PI_RUN_LOGS[$i]}"
+            _pi_run_diag_file "${_PI_RUN_LABELS[$i]} oracle" \
+                "${_PI_RUN_ORACLE_CODES[$i]}" "${_PI_RUN_ORACLE_OUTS[$i]}" \
+                "${_PI_RUN_ORACLE_LOGS[$i]}"
         done
     }
 
@@ -226,32 +286,49 @@ platform_isa_native_gate() {
     # Sets _PI_OURS / _PI_LOG; fails the gate on any stdout or exit-code diff.
     _pi_run() {
         local label="$1" argv="$2" ours_env="$3" oracle_env="$4"
-        local ours ours_code expected expected_code
+        local ours_code expected_code ours_out expected_out oracle_log
         _PI_LOG="$log_dir/$label.log"
-        # `$(...)` is already a subshell, so exporting inside it scopes the ISA
-        # env to one side; `env` cannot be used, run_bounded is a function.
+        oracle_log="$log_dir/$label.oracle.log"
+        ours_out="$log_dir/$label.out"
+        expected_out="$log_dir/$label.oracle.out"
+        # Scope each ISA environment in a subshell: `env` cannot invoke the
+        # run_bounded shell function. Direct files avoid MSYS native-pipe loss.
         set +e
         # shellcheck disable=SC2086
-        ours=$(if [ -n "$ours_env" ]; then export $ours_env; fi
-               run_bounded "./$out/$project" "$argv" 2>"$_PI_LOG"); ours_code=$?
+        (if [ -n "$ours_env" ]; then export $ours_env; fi
+         run_bounded "./$out/$project" "$argv") \
+            >"$ours_out" 2>"$_PI_LOG"; ours_code=$?
         # shellcheck disable=SC2086
-        expected=$(if [ -n "$oracle_env" ]; then export $oracle_env; fi
-                   run_bounded dotnet "$_CG_APP" "$argv" 2>"$log_dir/$label.oracle.log"); expected_code=$?
+        (if [ -n "$oracle_env" ]; then export $oracle_env; fi
+         run_bounded dotnet "$_CG_APP" "$argv") \
+            >"$expected_out" 2>"$oracle_log"; expected_code=$?
         set -e
         _PI_RUN_LABELS+=("$label")
         _PI_RUN_CODES+=("$ours_code")
-        _PI_RUN_OUTS+=("$ours")
+        _PI_RUN_ORACLE_CODES+=("$expected_code")
+        _PI_RUN_OUTS+=("$ours_out")
+        _PI_RUN_ORACLE_OUTS+=("$expected_out")
         _PI_RUN_LOGS+=("$_PI_LOG")
+        _PI_RUN_ORACLE_LOGS+=("$oracle_log")
         echo "-- run $label: argv=$argv ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
         local failed=0
-        assert_output "$ours" "$expected" || failed=1
+        if cmp -s "$ours_out" "$expected_out"; then
+            cat "$ours_out"
+            echo "OK"
+        else
+            echo "FAIL: native stdout differs from real .NET:" >&2
+            diff -u "$expected_out" "$ours_out" >&2 || true
+            failed=1
+        fi
         assert_exit_code "$ours_code" "$expected_code" || failed=1
         if [ "$failed" -ne 0 ]; then
             echo "FAIL: run $label of the $isa contract diverged from real .NET" >&2
             gate_run_diag_once
             exit 1
         fi
-        _PI_OURS="$ours"
+        # The raw files above enforce byte parity. This copy is text-only witness
+        # input, so remove Windows CR without weakening that exact comparison.
+        _PI_OURS=$(tr -d '\r' < "$ours_out")
     }
 
     # _pi_require_count LABEL WANT ACTUAL WHAT

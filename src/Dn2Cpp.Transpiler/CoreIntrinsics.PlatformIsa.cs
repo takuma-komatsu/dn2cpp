@@ -44,6 +44,10 @@ internal sealed class IsaFamily
     /// bad row.</summary>
     public readonly bool Lowered;
 
+    /// <summary>The generated helper header relative to the runtime include root, or
+    /// null when this facade declares no mapped instruction body.</summary>
+    public string? Header { get; internal set; }
+
     /// <summary>The declaring facade of a nested one (<c>Lzcnt</c> for
     /// <c>Lzcnt+X64</c>), resolved from <see cref="EnclosingName"/> once the whole table
     /// exists; null for a top-level facade.</summary>
@@ -78,8 +82,15 @@ internal static partial class CoreIntrinsics
             if (s_isaByQualifiedName is { } built)
                 return built;
             var map = new Dictionary<string, IsaFamily>(StringComparer.Ordinal);
-            foreach (var f in s_isaFamilies)
+            if (s_isaFamilies.Length != s_isaFamilyHeaders.Length)
+                throw new InvalidOperationException(
+                    $"ISA family/header table length mismatch: {s_isaFamilies.Length} != {s_isaFamilyHeaders.Length}");
+            for (int i = 0; i < s_isaFamilies.Length; i++)
+            {
+                var f = s_isaFamilies[i];
+                f.Header = s_isaFamilyHeaders[i];
                 map.Add(f.QualifiedName, f);
+            }
             foreach (var f in s_isaFamilies)
                 if (f.EnclosingName is { } enc && map.TryGetValue(enc, out var parent))
                     f.Enclosing = parent;
@@ -169,6 +180,27 @@ internal static partial class CoreIntrinsics
             sb.Append(IsaArgCode(f, method, p));
         }
         return sb.ToString();
+    }
+
+    /// <summary>The smallest runtime header that defines an emitted helper. Public
+    /// facade methods use their generated family header. CoreLib's known non-public
+    /// X86Base residue uses its small hand-written header; any future hand-written
+    /// helper falls back to the umbrella, preserving correctness until it is classified.</summary>
+    public static string IsaHelperHeader(IsaFamily f, MethodInfo callee, string helper)
+    {
+        if (callee.IsPublic)
+            return f.Header ?? "isa/dn2cpp_isa.h";
+        return helper switch
+        {
+            "dn2cpp_isa_x86_x86base_bitscanforward_u32"
+                or "dn2cpp_isa_x86_x86base_bitscanreverse_u32"
+                or "dn2cpp_isa_x86_x86base_x64_bitscanforward_u64"
+                or "dn2cpp_isa_x86_x86base_x64_bitscanreverse_u64"
+                or "dn2cpp_isa_x86_x86base_x64_bigmul_u64_u64"
+                or "dn2cpp_isa_x86_x86base_x64_bigmul_i64_i64"
+                    => "isa/dn2cpp_isa_bcl_internal.h",
+            _ => "isa/dn2cpp_isa.h",
+        };
     }
 
     private static string IsaArgCode(IsaFamily f, string method, TypeDesc t)
