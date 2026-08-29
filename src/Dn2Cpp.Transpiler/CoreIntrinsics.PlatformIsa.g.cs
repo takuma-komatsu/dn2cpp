@@ -36,7 +36,7 @@ internal static partial class CoreIntrinsics
         new(IsaArch.Arm, "System.Runtime.Intrinsics.Arm.Dp+Arm64", "DN2CPP_ISA_Arm_Dp_Arm64", "System.Runtime.Intrinsics.Arm.Dp", true),
         new(IsaArch.Arm, "System.Runtime.Intrinsics.Arm.Rdm", "DN2CPP_ISA_Arm_Rdm", null, true),
         new(IsaArch.Arm, "System.Runtime.Intrinsics.Arm.Rdm+Arm64", "DN2CPP_ISA_Arm_Rdm_Arm64", "System.Runtime.Intrinsics.Arm.Rdm", true),
-        new(IsaArch.Wasm, "System.Runtime.Intrinsics.Wasm.PackedSimd", "DN2CPP_ISA_Wasm_PackedSimd", null, false),
+        new(IsaArch.Wasm, "System.Runtime.Intrinsics.Wasm.PackedSimd", "DN2CPP_ISA_Wasm_PackedSimd", null, true),
         new(IsaArch.X86, "System.Runtime.Intrinsics.X86.Sse", "DN2CPP_ISA_X86_Sse", null, false),
         new(IsaArch.X86, "System.Runtime.Intrinsics.X86.Sse+X64", "DN2CPP_ISA_X86_Sse_X64", "System.Runtime.Intrinsics.X86.Sse", false),
         new(IsaArch.X86, "System.Runtime.Intrinsics.X86.Sse2", "DN2CPP_ISA_X86_Sse2", null, false),

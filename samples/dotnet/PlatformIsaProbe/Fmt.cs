@@ -90,6 +90,11 @@ internal static class Fmt
         }
     }
 
+    // The portable cross-check a generated exercise prints beside a helper's bytes:
+    // both spellings come from the same Hex overload, so equality is byte equality.
+    internal static string Ref(string actual, string reference) =>
+        actual == reference ? " ref=OK" : " ref=MISMATCH(" + reference + ")";
+
     // A value the JIT cannot treat as a constant, so an out-of-range immediate
     // takes .NET's run-time range check rather than a compile-time fold.
     [MethodImpl(MethodImplOptions.NoInlining)]

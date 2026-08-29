@@ -1,0 +1,27 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — lane-wise arithmetic. Every wasm SIMD
+# instruction is baseline in a -msimd128 module, so no target attribute. An integer
+# add, sub, mul, neg or abs has one spelling per lane width (i8x16.add) that the
+# signed and unsigned overloads share; a native-integer lane is i32x4 on wasm32.
+Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = wasm_{slane}_add($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Subtract(v128{T},v128{T}) @ref(Vector128.Subtract($0, $1)) = wasm_{slane}_sub($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Multiply(v128{T},v128{T}) @ref(Vector128.Multiply($0, $1)) = wasm_{slane}_mul($0, $1) for T in i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Divide(v128{T},v128{T}) @ref(Vector128.Divide($0, $1)) = wasm_{slane}_div($0, $1) for T in f32,f64
+Negate(v128{T}) @ref(Vector128.Negate($0)) = wasm_{slane}_neg($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Abs(v128{T}) @ref(Vector128.Abs($0)) = wasm_{slane}_abs($0) for T in i8,i16,i32,i64,f32,f64,nint
+AddSaturate(v128{T},v128{T}) @ref(Vector128.AddSaturate($0, $1)) = wasm_{lane}_add_sat($0, $1) for T in i8,u8,i16,u16
+SubtractSaturate(v128{T},v128{T}) @ref(Vector128.SubtractSaturate($0, $1)) = wasm_{lane}_sub_sat($0, $1) for T in i8,u8,i16,u16
+Min(v128{T},v128{T}) @ref(Vector128.Min($0, $1)) = wasm_{lane}_min($0, $1) for T in i8,u8,i16,u16,i32,u32,f32,f64
+Max(v128{T},v128{T}) @ref(Vector128.Max($0, $1)) = wasm_{lane}_max($0, $1) for T in i8,u8,i16,u16,i32,u32,f32,f64
+AverageRounded(v128{T},v128{T}) = wasm_{lane}_avgr($0, $1) for T in u8,u16
+# pmin / pmax are the C-style selects, not IEEE minimum / maximum: pmin(a, b) is
+# b < a ? b : a and pmax(a, b) is a < b ? b : a, which the reference spells out.
+PseudoMin(v128{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.LessThan($1, $0), $1, $0)) = wasm_{lane}_pmin($0, $1) for T in f32,f64
+PseudoMax(v128{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.LessThan($0, $1), $1, $0)) = wasm_{lane}_pmax($0, $1) for T in f32,f64
+Sqrt(v128{T}) @ref(Vector128.Sqrt($0)) = wasm_{lane}_sqrt($0) for T in f32,f64
+Ceiling(v128{T}) @ref(Vector128.Ceiling($0)) = wasm_{lane}_ceil($0) for T in f32,f64
+Floor(v128{T}) @ref(Vector128.Floor($0)) = wasm_{lane}_floor($0) for T in f32,f64
+Truncate(v128{T}) @ref(Vector128.Truncate($0)) = wasm_{lane}_trunc($0) for T in f32,f64
+RoundToNearest(v128{T}) @ref(Vector128.Round($0)) = wasm_{lane}_nearest($0) for T in f32,f64
+Dot(v128i16,v128i16) = wasm_i32x4_dot_i16x8($0, $1)
+MultiplyRoundedSaturateQ15(v128i16,v128i16) = wasm_i16x8_q15mulr_sat($0, $1)
+PopCount(v128u8) = wasm_i8x16_popcnt($0)

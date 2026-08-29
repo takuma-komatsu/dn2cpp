@@ -32,6 +32,14 @@
 #endif
 #elif DN2CPP_TARGET_WASM32 && defined(__wasm_simd128__)
 #include <wasm_simd128.h>
+
+// wasm SIMD has no unsigned 64-bit ordering compare (i64x2.lt_u is what .NET
+// documents, i64x2.lt_s is what the instruction set has); flipping the sign bit
+// of both operands makes the signed compare answer the unsigned question.
+static inline v128_t dn2cpp_isa_wasm_flip_sign64(v128_t v)
+{
+    return wasm_v128_xor(v, wasm_i64x2_splat(INT64_MIN));
+}
 #endif
 
 // A helper compiled for an ISA above the TU's baseline. The attribute keeps the

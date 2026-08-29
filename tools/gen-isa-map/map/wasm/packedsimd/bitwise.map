@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — whole-register bitwise operations, one
+# instruction for every element type. v128.andnot is left & ~right, and v128.bitselect
+# takes the mask last: (left & select) | (right & ~select).
+And(v128{T},v128{T}) @ref(Vector128.BitwiseAnd($0, $1)) = wasm_v128_and($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Or(v128{T},v128{T}) @ref(Vector128.BitwiseOr($0, $1)) = wasm_v128_or($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Xor(v128{T},v128{T}) @ref(Vector128.Xor($0, $1)) = wasm_v128_xor($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Not(v128{T}) @ref(Vector128.OnesComplement($0)) = wasm_v128_not($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+AndNot(v128{T},v128{T}) @ref(Vector128.AndNot($0, $1)) = wasm_v128_andnot($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+BitwiseSelect(v128{T},v128{T},v128{T}) @ref(Vector128.ConditionalSelect($2, $0, $1)) = wasm_v128_bitselect($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint

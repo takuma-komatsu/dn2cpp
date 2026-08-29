@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — byte permutation and the lane-mask
+# reductions. i8x16.swizzle reads the second operand as byte indices and answers zero
+# for an index of 16 or more, which is Vector128.Shuffle's out-of-range rule too.
+# bitmask is the most significant bit of every lane; all_true is per lane width and
+# any_true is whole-register, so a float lane is tested as its bits.
+Swizzle(v128{T},v128{T}) @ref(Vector128.Shuffle($0, $1)) = wasm_i8x16_swizzle($0, $1) for T in i8,u8
+Bitmask(v128{T}) @ref(Vector128.ExtractMostSignificantBits($0)) = wasm_{slane}_bitmask($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,nint,nuint
+AllTrue(v128{T}) @ref(!Vector128.EqualsAny($0, default)) = wasm_{slane}_all_true($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,nint,nuint
+AnyTrue(v128{T}) @ref(!Vector128.EqualsAll($0.AsByte(), default)) = wasm_v128_any_true($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint

@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — loads and stores. The scalar load zeroes
+# the other lanes (load32_zero / load64_zero, 32- and 64-bit lanes only), the splat
+# load fills them, and the lane load and store move one lane at an immediate index.
+# The widening load reads half a register and extends it in the element's signedness.
+LoadVector128(p{T}) @ref(Vector128.Load($0)) = wasm_v128_load($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+Store(p{T},v128{T}) = wasm_v128_store($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+LoadScalarVector128(p{T}) @ref(Vector128.CreateScalar(*$0)) = wasm_v128_load{bits}_zero($0) for T in i32,u32,i64,u64,f32,f64,nint,nuint
+LoadScalarAndSplatVector128(p{T}) @ref(Vector128.Create(*$0)) = wasm_v128_load{bits}_splat($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+LoadScalarAndInsert(p{T},v128{T},u8) @imm[0..{N128}) @ref($1.WithElement($2, *$0)) = wasm_v128_load{bits}_lane($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+StoreSelectedScalar(p{T},v128{T},u8) @imm[0..{N128}) = wasm_v128_store{bits}_lane($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+LoadWideningVector128(p{T}) @ref(Vector128.WidenLower(Vector128.Load($0))) = wasm_{wlane}_load{bits}x{N64}($0) for T in i8,u8,i16,u16,i32,u32

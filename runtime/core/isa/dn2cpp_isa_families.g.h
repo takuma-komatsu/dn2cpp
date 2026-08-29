@@ -21,6 +21,7 @@
 #include "arm/dn2cpp_isa_arm_rdm_arm64.h"
 #include "arm/dn2cpp_isa_arm_sha1.h"
 #include "arm/dn2cpp_isa_arm_sha256.h"
+#include "wasm/dn2cpp_isa_wasm_packedsimd.h"
 #include "x86/dn2cpp_isa_x86_bmi1.h"
 #include "x86/dn2cpp_isa_x86_bmi1_x64.h"
 #include "x86/dn2cpp_isa_x86_bmi2.h"
