@@ -59,6 +59,10 @@ internal sealed partial class MethodCompiler
             string val = CppTypes.KindOf(ps[i]) == StackKind.Struct && e.Kind == StackKind.Ptr
                 ? $"(*({ct}*)({e.Expr}))"
                 : Cast(e, ct);
+            // The helper takes scalars at their precise width and pointers to the
+            // element type; the stack model has int32_t and void*.
+            if (CoreIntrinsics.IsaHelperCpp(ps[i]) is { } precise && precise != ct)
+                val = $"(({precise}){val})";
             operands[i] = new List<string>();
             if (ps[i] is { Kind: TypeKind.Class, Class: { } tup } && CoreIntrinsics.IsIsaValueTuple(tup))
             {
@@ -103,7 +107,16 @@ internal sealed partial class MethodCompiler
             string tv = NewTemp(tupleCpp);
             Emit($"{tv} = {tupleCpp}{{}};");
             for (int i = 0; i < tupleCls.Context.TypeArgs.Length; i++)
-                args.Add($"&{tv}.{TupleItemCppName(tupleCls, i)}");
+            {
+                var item = tupleCls.Context.TypeArgs[i];
+                string addr = $"&{tv}.{TupleItemCppName(tupleCls, i)}";
+                // The helper's out-pointer has the item's precise width and sign
+                // (uintptr_t for nuint); the tuple field is stored at the transpiler's
+                // spelling (intptr_t), so the two pointer types can differ.
+                if (CoreIntrinsics.IsaHelperCpp(item) is { } precise && precise != CppTypes.StorageOf(item))
+                    addr = $"({precise}*){addr}";
+                args.Add(addr);
+            }
             Emit($"{helper}({string.Join(", ", args)});");
             Push(StackKind.Struct, tupleCpp, tv);
             return;

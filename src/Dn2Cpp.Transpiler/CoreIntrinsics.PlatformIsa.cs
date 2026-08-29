@@ -218,6 +218,31 @@ internal static partial class CoreIntrinsics
             $"{IsaContractName(f)}.{method}: parameter type {t} has no ISA helper-name code");
     }
 
+    /// <summary>The C++ spelling the generator gives a helper parameter or tuple item
+    /// where it differs from the transpiler's own: a scalar or enum at its precise width
+    /// and sign (<c>uint8_t</c>, <c>uintptr_t</c> for <c>nuint</c>; the transpiler spells
+    /// those <c>int32_t</c> and <c>intptr_t</c>), a pointer or byref as a pointer to
+    /// that (the transpiler's pointer is <c>void*</c>). Null for a shape the two already
+    /// spell alike (a vector) or that the contract does not name.</summary>
+    public static string? IsaHelperCpp(TypeDesc t)
+    {
+        switch (t.Kind)
+        {
+            case TypeKind.Primitive:
+                return CppTypes.NativeAbiType(t);
+            case TypeKind.Class when t.Class is { IsEnum: true }:
+                return CppTypes.NativeAbiType(t);
+            case TypeKind.Pointer:
+                if (t.Element is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Void })
+                    return "void*";
+                return IsaHelperCpp(t.Element!) is { } pe ? pe + "*" : null;
+            case TypeKind.ByRef:
+                return IsaHelperCpp(t.Element!) is { } re ? re + "*" : null;
+            default:
+                return null;
+        }
+    }
+
     private static string IsaPrimitiveCode(IsaFamily f, string method, PrimitiveTypeCode pc) => pc switch
     {
         PrimitiveTypeCode.SByte => "i8",
