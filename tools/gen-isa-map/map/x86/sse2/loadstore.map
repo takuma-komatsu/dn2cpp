@@ -1,0 +1,30 @@
+# System.Runtime.Intrinsics.X86.Sse2 — loads, stores, the fences and the masked byte
+# store. An integer vector loads and stores as 128 bits whatever its lane type; the
+# aligned forms fault on a misaligned address, as in .NET (the exercise's stackalloc
+# buffers are 16-byte aligned on both sides). The scalar integer forms move 32 or 64 bits
+# and zero the rest. MASKMOVDQU writes the bytes whose mask lane has bit 7 set.
+target = sse2
+LoadVector128(p{T}) @ref(Vector128.Load($0)) = _mm_loadu_si128((const __m128i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+LoadVector128(pf64) @ref(Vector128.Load($0)) = _mm_loadu_pd($0)
+LoadAlignedVector128(p{T}) @ref(Vector128.Load($0)) = _mm_load_si128((const __m128i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+LoadAlignedVector128(pf64) @ref(Vector128.Load($0)) = _mm_load_pd($0)
+LoadScalarVector128(pf64) @ref(Vector128.CreateScalar(*$0)) = _mm_load_sd($0)
+LoadScalarVector128(p{T}) @ref(Vector128.CreateScalar(*$0)) = _mm_loadu_si32($0) for T in i32,u32
+LoadScalarVector128(p{T}) @ref(Vector128.CreateScalar(*$0)) = _mm_loadl_epi64((const __m128i*)$0) for T in i64,u64
+LoadHigh(v128f64,pf64) @ref($0.WithElement(1, *$1)) = _mm_loadh_pd($0, $1)
+LoadLow(v128f64,pf64) @ref($0.WithElement(0, *$1)) = _mm_loadl_pd($0, $1)
+LoadFence() = _mm_lfence()
+MemoryFence() = _mm_mfence()
+Store(p{T},v128{T}) = _mm_storeu_si128((__m128i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Store(pf64,v128f64) = _mm_storeu_pd($0, $1)
+StoreAligned(p{T},v128{T}) = _mm_store_si128((__m128i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+StoreAligned(pf64,v128f64) = _mm_store_pd($0, $1)
+StoreAlignedNonTemporal(p{T},v128{T}) = _mm_stream_si128((__m128i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+StoreAlignedNonTemporal(pf64,v128f64) = _mm_stream_pd($0, $1)
+StoreScalar(pf64,v128f64) = _mm_store_sd($0, $1)
+StoreScalar(p{T},v128{T}) = _mm_storeu_si32($0, $1) for T in i32,u32
+StoreScalar(p{T},v128{T}) = _mm_storel_epi64((__m128i*)$0, $1) for T in i64,u64
+StoreHigh(pf64,v128f64) = _mm_storeh_pd($0, $1)
+StoreLow(pf64,v128f64) = _mm_storel_pd($0, $1)
+StoreNonTemporal(p{T},{T}) = _mm_stream_si32((int*)$0, (int)$1) for T in i32,u32
+MaskMove(v128{T},v128{T},p{T}) = _mm_maskmoveu_si128($0, $1, (char*)$2) for T in i8,u8

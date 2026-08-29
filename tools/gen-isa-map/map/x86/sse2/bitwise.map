@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.Sse2 — bitwise operations: one integer spelling for every
+# lane type, and the double form. ANDN complements the FIRST operand, so the portable
+# AndNot's operands swap.
+target = sse2
+And(v128{T},v128{T}) @ref(Vector128.BitwiseAnd($0, $1)) = _mm_and_si128($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+And(v128f64,v128f64) @ref(Vector128.BitwiseAnd($0, $1)) = _mm_and_pd($0, $1)
+AndNot(v128{T},v128{T}) @ref(Vector128.AndNot($1, $0)) = _mm_andnot_si128($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+AndNot(v128f64,v128f64) @ref(Vector128.AndNot($1, $0)) = _mm_andnot_pd($0, $1)
+Or(v128{T},v128{T}) @ref(Vector128.BitwiseOr($0, $1)) = _mm_or_si128($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Or(v128f64,v128f64) @ref(Vector128.BitwiseOr($0, $1)) = _mm_or_pd($0, $1)
+Xor(v128{T},v128{T}) @ref(Vector128.Xor($0, $1)) = _mm_xor_si128($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Xor(v128f64,v128f64) @ref(Vector128.Xor($0, $1)) = _mm_xor_pd($0, $1)

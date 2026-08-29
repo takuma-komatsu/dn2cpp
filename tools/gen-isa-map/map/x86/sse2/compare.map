@@ -1,0 +1,46 @@
+# System.Runtime.Intrinsics.X86.Sse2 — comparisons. Integer equality has one spelling per
+# lane width up to 32 bits (no 64-bit compare before SSE4.2) and the ordering compares
+# exist signed only. The double forms follow Sse's: a Not* predicate is the complement of
+# the positive one for NaN-free operands, the scalar vector-returning forms keep the upper
+# lane of the first operand, and the bool forms are COMISD (Ordered) / UCOMISD (Unordered),
+# alike in their answers.
+target = sse2
+CompareEqual(v128{T},v128{T}) @ref(Vector128.Equals($0, $1)) = _mm_cmpeq_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32
+CompareGreaterThan(v128{T},v128{T}) @ref(Vector128.GreaterThan($0, $1)) = _mm_cmpgt_{epi}($0, $1) for T in i8,i16,i32
+CompareLessThan(v128{T},v128{T}) @ref(Vector128.LessThan($0, $1)) = _mm_cmplt_{epi}($0, $1) for T in i8,i16,i32
+CompareEqual(v128f64,v128f64) @ref(Vector128.Equals($0, $1)) = _mm_cmpeq_pd($0, $1)
+CompareGreaterThan(v128f64,v128f64) @ref(Vector128.GreaterThan($0, $1)) = _mm_cmpgt_pd($0, $1)
+CompareGreaterThanOrEqual(v128f64,v128f64) @ref(Vector128.GreaterThanOrEqual($0, $1)) = _mm_cmpge_pd($0, $1)
+CompareLessThan(v128f64,v128f64) @ref(Vector128.LessThan($0, $1)) = _mm_cmplt_pd($0, $1)
+CompareLessThanOrEqual(v128f64,v128f64) @ref(Vector128.LessThanOrEqual($0, $1)) = _mm_cmple_pd($0, $1)
+CompareNotEqual(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.Equals($0, $1))) = _mm_cmpneq_pd($0, $1)
+CompareNotGreaterThan(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.GreaterThan($0, $1))) = _mm_cmpngt_pd($0, $1)
+CompareNotGreaterThanOrEqual(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.GreaterThanOrEqual($0, $1))) = _mm_cmpnge_pd($0, $1)
+CompareNotLessThan(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.LessThan($0, $1))) = _mm_cmpnlt_pd($0, $1)
+CompareNotLessThanOrEqual(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.LessThanOrEqual($0, $1))) = _mm_cmpnle_pd($0, $1)
+CompareOrdered(v128f64,v128f64) @ref(Vector128.Equals($0, $0) & Vector128.Equals($1, $1)) = _mm_cmpord_pd($0, $1)
+CompareUnordered(v128f64,v128f64) @ref(Vector128.OnesComplement(Vector128.Equals($0, $0) & Vector128.Equals($1, $1))) = _mm_cmpunord_pd($0, $1)
+CompareScalarEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.Equals($0, $1), $0)) = _mm_cmpeq_sd($0, $1)
+CompareScalarGreaterThan(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.GreaterThan($0, $1), $0)) = _mm_cmpgt_sd($0, $1)
+CompareScalarGreaterThanOrEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.GreaterThanOrEqual($0, $1), $0)) = _mm_cmpge_sd($0, $1)
+CompareScalarLessThan(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.LessThan($0, $1), $0)) = _mm_cmplt_sd($0, $1)
+CompareScalarLessThanOrEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.LessThanOrEqual($0, $1), $0)) = _mm_cmple_sd($0, $1)
+CompareScalarNotEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.Equals($0, $1)), $0)) = _mm_cmpneq_sd($0, $1)
+CompareScalarNotGreaterThan(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.GreaterThan($0, $1)), $0)) = _mm_cmpngt_sd($0, $1)
+CompareScalarNotGreaterThanOrEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.GreaterThanOrEqual($0, $1)), $0)) = _mm_cmpnge_sd($0, $1)
+CompareScalarNotLessThan(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.LessThan($0, $1)), $0)) = _mm_cmpnlt_sd($0, $1)
+CompareScalarNotLessThanOrEqual(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.LessThanOrEqual($0, $1)), $0)) = _mm_cmpnle_sd($0, $1)
+CompareScalarOrdered(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.Equals($0, $0) & Vector128.Equals($1, $1), $0)) = _mm_cmpord_sd($0, $1)
+CompareScalarUnordered(v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.Equals($0, $0) & Vector128.Equals($1, $1)), $0)) = _mm_cmpunord_sd($0, $1)
+CompareScalarOrderedEqual(v128f64,v128f64) @ref($0.GetElement(0) == $1.GetElement(0)) = _mm_comieq_sd($0, $1) != 0
+CompareScalarOrderedGreaterThan(v128f64,v128f64) @ref($0.GetElement(0) > $1.GetElement(0)) = _mm_comigt_sd($0, $1) != 0
+CompareScalarOrderedGreaterThanOrEqual(v128f64,v128f64) @ref($0.GetElement(0) >= $1.GetElement(0)) = _mm_comige_sd($0, $1) != 0
+CompareScalarOrderedLessThan(v128f64,v128f64) @ref($0.GetElement(0) < $1.GetElement(0)) = _mm_comilt_sd($0, $1) != 0
+CompareScalarOrderedLessThanOrEqual(v128f64,v128f64) @ref($0.GetElement(0) <= $1.GetElement(0)) = _mm_comile_sd($0, $1) != 0
+CompareScalarOrderedNotEqual(v128f64,v128f64) @ref($0.GetElement(0) != $1.GetElement(0)) = _mm_comineq_sd($0, $1) != 0
+CompareScalarUnorderedEqual(v128f64,v128f64) @ref($0.GetElement(0) == $1.GetElement(0)) = _mm_ucomieq_sd($0, $1) != 0
+CompareScalarUnorderedGreaterThan(v128f64,v128f64) @ref($0.GetElement(0) > $1.GetElement(0)) = _mm_ucomigt_sd($0, $1) != 0
+CompareScalarUnorderedGreaterThanOrEqual(v128f64,v128f64) @ref($0.GetElement(0) >= $1.GetElement(0)) = _mm_ucomige_sd($0, $1) != 0
+CompareScalarUnorderedLessThan(v128f64,v128f64) @ref($0.GetElement(0) < $1.GetElement(0)) = _mm_ucomilt_sd($0, $1) != 0
+CompareScalarUnorderedLessThanOrEqual(v128f64,v128f64) @ref($0.GetElement(0) <= $1.GetElement(0)) = _mm_ucomile_sd($0, $1) != 0
+CompareScalarUnorderedNotEqual(v128f64,v128f64) @ref($0.GetElement(0) != $1.GetElement(0)) = _mm_ucomineq_sd($0, $1) != 0

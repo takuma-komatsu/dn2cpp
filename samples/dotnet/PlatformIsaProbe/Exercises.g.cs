@@ -16,6 +16,11 @@ internal static class Exercises
     internal static void RegisterX86(Dictionary<string, Action> exercises)
     {
         exercises["X86.Sse"] = X86Sse;
+        exercises["X86.Sse2"] = X86Sse2;
+        exercises["X86.Sse3"] = X86Sse3;
+        exercises["X86.Ssse3"] = X86Ssse3;
+        exercises["X86.Pclmulqdq"] = X86Pclmulqdq;
+        exercises["X86.Aes"] = X86Aes;
     }
 
     internal static void RegisterArm(Dictionary<string, Action> exercises)
@@ -9579,6 +9584,2453 @@ internal static class Exercises
                 Console.WriteLine("X64.ConvertToInt64WithTruncation(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
             }
         }
+    }
+
+    private static unsafe void X86Sse2()
+    {
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Add(a0, a1);
+            var q = Vector128.Add(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Add(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.AddSaturate(a0, a1);
+            var q = Vector128.AddSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSaturate(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.AddSaturate(a0, a1);
+            var q = Vector128.AddSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSaturate(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.AddSaturate(a0, a1);
+            var q = Vector128.AddSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSaturate(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.AddSaturate(a0, a1);
+            var q = Vector128.AddSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSaturate(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.AddScalar(a0, a1);
+            var q = a0.WithElement(0, a0.GetElement(0) + a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.And(a0, a1);
+            var q = Vector128.BitwiseAnd(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("And(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.AndNot(a0, a1);
+            var q = Vector128.AndNot(a1, a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AndNot(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.Average(a0, a1);
+            var q = Vector128.Narrow(Vector128.ShiftRightLogical(Vector128.WidenLower(a0) + Vector128.WidenLower(a1) + Vector128<uint>.One, 1), Vector128.ShiftRightLogical(Vector128.WidenUpper(a0) + Vector128.WidenUpper(a1) + Vector128<uint>.One, 1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Average(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Average(a0, a1);
+            var q = Vector128.Narrow(Vector128.ShiftRightLogical(Vector128.WidenLower(a0) + Vector128.WidenLower(a1) + Vector128<ushort>.One, 1), Vector128.ShiftRightLogical(Vector128.WidenUpper(a0) + Vector128.WidenUpper(a1) + Vector128<ushort>.One, 1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Average(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.CompareEqual(a0, a1);
+            var q = Vector128.Equals(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareEqual(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareGreaterThan(a0, a1);
+            var q = Vector128.GreaterThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.CompareGreaterThan(a0, a1);
+            var q = Vector128.GreaterThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareGreaterThan(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.CompareGreaterThan(a0, a1);
+            var q = Vector128.GreaterThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareGreaterThan(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.CompareGreaterThan(a0, a1);
+            var q = Vector128.GreaterThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareGreaterThan(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareGreaterThanOrEqual(a0, a1);
+            var q = Vector128.GreaterThanOrEqual(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareLessThan(a0, a1);
+            var q = Vector128.LessThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.CompareLessThan(a0, a1);
+            var q = Vector128.LessThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareLessThan(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.CompareLessThan(a0, a1);
+            var q = Vector128.LessThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareLessThan(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.CompareLessThan(a0, a1);
+            var q = Vector128.LessThan(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareLessThan(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareLessThanOrEqual(a0, a1);
+            var q = Vector128.LessThanOrEqual(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareNotEqual(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.Equals(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareNotEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareNotGreaterThan(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.GreaterThan(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareNotGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareNotGreaterThanOrEqual(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.GreaterThanOrEqual(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareNotGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareNotLessThan(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.LessThan(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareNotLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareNotLessThanOrEqual(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.LessThanOrEqual(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareNotLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareOrdered(a0, a1);
+            var q = Vector128.Equals(a0, a0) & Vector128.Equals(a1, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareOrdered(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.Equals(a0, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarGreaterThan(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.GreaterThan(a0, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarGreaterThanOrEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.GreaterThanOrEqual(a0, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarLessThan(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.LessThan(a0, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarLessThanOrEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.LessThanOrEqual(a0, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarNotEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.Equals(a0, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarNotEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarNotGreaterThan(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.GreaterThan(a0, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarNotGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarNotGreaterThanOrEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.GreaterThanOrEqual(a0, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarNotGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarNotLessThan(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.LessThan(a0, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarNotLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarNotLessThanOrEqual(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.LessThanOrEqual(a0, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarNotLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrdered(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.Equals(a0, a0) & Vector128.Equals(a1, a1), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarOrdered(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedEqual(a0, a1);
+            var q = a0.GetElement(0) == a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedGreaterThan(a0, a1);
+            var q = a0.GetElement(0) > a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedGreaterThanOrEqual(a0, a1);
+            var q = a0.GetElement(0) >= a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedLessThan(a0, a1);
+            var q = a0.GetElement(0) < a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedLessThanOrEqual(a0, a1);
+            var q = a0.GetElement(0) <= a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarOrderedNotEqual(a0, a1);
+            var q = a0.GetElement(0) != a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarOrderedNotEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnordered(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.CreateScalar(-1L).AsDouble(), Vector128.OnesComplement(Vector128.Equals(a0, a0) & Vector128.Equals(a1, a1)), a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareScalarUnordered(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedEqual(a0, a1);
+            var q = a0.GetElement(0) == a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedGreaterThan(a0, a1);
+            var q = a0.GetElement(0) > a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedGreaterThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedGreaterThanOrEqual(a0, a1);
+            var q = a0.GetElement(0) >= a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedGreaterThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedLessThan(a0, a1);
+            var q = a0.GetElement(0) < a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedLessThan(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedLessThanOrEqual(a0, a1);
+            var q = a0.GetElement(0) <= a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedLessThanOrEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareScalarUnorderedNotEqual(a0, a1);
+            var q = a0.GetElement(0) != a1.GetElement(0);
+            string h = Fmt.Bool(r);
+            Console.WriteLine("CompareScalarUnorderedNotEqual(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Bool(q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.CompareUnordered(a0, a1);
+            var q = Vector128.OnesComplement(Vector128.Equals(a0, a0) & Vector128.Equals(a1, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("CompareUnordered(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = 8314215;
+            var r = X86.Sse2.ConvertScalarToVector128Double(a0, a1);
+            var q = a0.WithElement(0, (double)a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertScalarToVector128Double(v128f64,i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
+            var r = X86.Sse2.ConvertScalarToVector128Double(a0, a1);
+            var q = a0.WithElement(0, (double)a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertScalarToVector128Double(v128f64,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = 4604796;
+            var r = X86.Sse2.ConvertScalarToVector128Int32(a0);
+            var q = Vector128.CreateScalar(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertScalarToVector128Int32(i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.ConvertScalarToVector128Single(a0, a1);
+            var q = a0.WithElement(0, (float)a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertScalarToVector128Single(v128f32,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = 4604796U;
+            var r = X86.Sse2.ConvertScalarToVector128UInt32(a0);
+            var q = Vector128.CreateScalar(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertScalarToVector128UInt32(u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.ConvertToInt32(a0);
+            var q = (int)Math.Round(a0.GetElement(0));
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("ConvertToInt32(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ConvertToInt32(a0);
+            var q = a0.GetElement(0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("ConvertToInt32(v128i32)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.ConvertToInt32WithTruncation(a0);
+            var q = (int)a0.GetElement(0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("ConvertToInt32WithTruncation(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var r = X86.Sse2.ConvertToUInt32(a0);
+            var q = a0.GetElement(0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("ConvertToUInt32(v128u32)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var r = X86.Sse2.ConvertToVector128Double(a0);
+            var q = Vector128.WidenLower(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Double(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ConvertToVector128Double(a0);
+            var q = Vector128.ConvertToDouble(Vector128.WidenLower(a0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Double(v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var r = X86.Sse2.ConvertToVector128Int32(a0);
+            var q = Vector128.ConvertToInt32(Vector128.Round(a0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Int32(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.ConvertToVector128Int32(a0);
+            var q = Vector128.Create((int)Math.Round(a0.GetElement(0)), (int)Math.Round(a0.GetElement(1)), 0, 0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Int32(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var r = X86.Sse2.ConvertToVector128Int32WithTruncation(a0);
+            var q = Vector128.ConvertToInt32(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Int32WithTruncation(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.ConvertToVector128Int32WithTruncation(a0);
+            var q = Vector128.Create((int)a0.GetElement(0), (int)a0.GetElement(1), 0, 0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Int32WithTruncation(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.ConvertToVector128Single(a0);
+            var q = Vector128.Narrow(a0, Vector128<double>.Zero);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Single(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ConvertToVector128Single(a0);
+            var q = Vector128.ConvertToSingle(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ConvertToVector128Single(v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Divide(a0, a1);
+            var q = Vector128.Divide(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Divide(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.DivideScalar(a0, a1);
+            var q = a0.WithElement(0, a0.GetElement(0) / a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("DivideScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var r = X86.Sse2.Extract(a0, (byte)3);
+            var q = a0.GetElement((byte)3);
+            string h = Fmt.Hex((ushort)r);
+            Console.WriteLine("Extract(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex((ushort)q)));
+            Console.WriteLine("Extract(v128u16,u8) imm=8=" + Fmt.Thrown(() => { _ = X86.Sse2.Extract(a0, Fmt.NonConstant((byte)8)); }));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = (short)32435;
+            var r = X86.Sse2.Insert(a0, a1, (byte)3);
+            var q = a0.WithElement((byte)3, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Insert(v128i16,i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = (ushort)32435;
+            var r = X86.Sse2.Insert(a0, a1, (byte)3);
+            var q = a0.WithElement((byte)3, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Insert(v128u16,u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((double*)p0);
+            var q = Vector128.Load(((double*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((short*)p0);
+            var q = Vector128.Load(((short*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((int*)p0);
+            var q = Vector128.Load(((int*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((long*)p0);
+            var q = Vector128.Load(((long*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((sbyte*)p0);
+            var q = Vector128.Load(((sbyte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((ushort*)p0);
+            var q = Vector128.Load(((ushort*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((uint*)p0);
+            var q = Vector128.Load(((uint*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((ulong*)p0);
+            var q = Vector128.Load(((ulong*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadAlignedVector128((byte*)p0);
+            var q = Vector128.Load(((byte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAlignedVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            X86.Sse2.LoadFence();
+            Console.WriteLine("LoadFence()=void");
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            byte* p1 = stackalloc byte[64];
+            Fmt.Fill(p1, 64, 2);
+            var r = X86.Sse2.LoadHigh(a0, (double*)p1);
+            var q = a0.WithElement(1, *((double*)p1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadHigh(v128f64,pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            byte* p1 = stackalloc byte[64];
+            Fmt.Fill(p1, 64, 2);
+            var r = X86.Sse2.LoadLow(a0, (double*)p1);
+            var q = a0.WithElement(0, *((double*)p1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadLow(v128f64,pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadScalarVector128((double*)p0);
+            var q = Vector128.CreateScalar(*((double*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadScalarVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadScalarVector128((int*)p0);
+            var q = Vector128.CreateScalar(*((int*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadScalarVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadScalarVector128((long*)p0);
+            var q = Vector128.CreateScalar(*((long*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadScalarVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadScalarVector128((uint*)p0);
+            var q = Vector128.CreateScalar(*((uint*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadScalarVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadScalarVector128((ulong*)p0);
+            var q = Vector128.CreateScalar(*((ulong*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadScalarVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((double*)p0);
+            var q = Vector128.Load(((double*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((short*)p0);
+            var q = Vector128.Load(((short*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((int*)p0);
+            var q = Vector128.Load(((int*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((long*)p0);
+            var q = Vector128.Load(((long*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((sbyte*)p0);
+            var q = Vector128.Load(((sbyte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((ushort*)p0);
+            var q = Vector128.Load(((ushort*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((uint*)p0);
+            var q = Vector128.Load(((uint*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((ulong*)p0);
+            var q = Vector128.Load(((ulong*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse2.LoadVector128((byte*)p0);
+            var q = Vector128.Load(((byte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p2 = stackalloc byte[64];
+            Fmt.Fill(p2, 64, 3);
+            X86.Sse2.MaskMove(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), (sbyte*)p2);
+            Console.WriteLine("MaskMove(v128i8,v128i8,pi8)=void" + " mem2=" + Fmt.Hex(p2, 64));
+        }
+        {
+            byte* p2 = stackalloc byte[64];
+            Fmt.Fill(p2, 64, 3);
+            X86.Sse2.MaskMove(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), (byte*)p2);
+            Console.WriteLine("MaskMove(v128u8,v128u8,pu8)=void" + " mem2=" + Fmt.Hex(p2, 64));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Max(a0, a1);
+            var q = Vector128.Max(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Max(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Max(a0, a1);
+            var q = Vector128.Max(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Max(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Max(a0, a1);
+            var q = Vector128.Max(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Max(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.MaxScalar(a0, a1);
+            var q = a0.WithElement(0, Math.Max(a0.GetElement(0), a1.GetElement(0)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MaxScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            X86.Sse2.MemoryFence();
+            Console.WriteLine("MemoryFence()=void");
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Min(a0, a1);
+            var q = Vector128.Min(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Min(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Min(a0, a1);
+            var q = Vector128.Min(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Min(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Min(a0, a1);
+            var q = Vector128.Min(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Min(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.MinScalar(a0, a1);
+            var q = a0.WithElement(0, Math.Min(a0.GetElement(0), a1.GetElement(0)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MinScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.MoveMask(a0);
+            var q = (int)Vector128.ExtractMostSignificantBits(a0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("MoveMask(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var r = X86.Sse2.MoveMask(a0);
+            var q = (int)Vector128.ExtractMostSignificantBits(a0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("MoveMask(v128i8)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var r = X86.Sse2.MoveMask(a0);
+            var q = (int)Vector128.ExtractMostSignificantBits(a0);
+            string h = Fmt.Hex((uint)r);
+            Console.WriteLine("MoveMask(v128u8)=" + h + Fmt.Ref(h, Fmt.Hex((uint)q)));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.MoveScalar(a0, a1);
+            var q = a0.WithElement(0, a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var r = X86.Sse2.MoveScalar(a0);
+            var q = Vector128.CreateScalar(a0.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveScalar(v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var r = X86.Sse2.MoveScalar(a0);
+            var q = Vector128.CreateScalar(a0.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveScalar(v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Multiply(a0, a1);
+            var q = Vector128.Multiply(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Multiply(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.Multiply(a0, a1);
+            var q = Vector128.Create((ulong)a0.GetElement(0) * a1.GetElement(0), (ulong)a0.GetElement(2) * a1.GetElement(2));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Multiply(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("MultiplyAddAdjacent(v128i16,v128i16)=" + Fmt.Hex(X86.Sse2.MultiplyAddAdjacent(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        Console.WriteLine("MultiplyHigh(v128i16,v128i16)=" + Fmt.Hex(X86.Sse2.MultiplyHigh(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        Console.WriteLine("MultiplyHigh(v128u16,v128u16)=" + Fmt.Hex(X86.Sse2.MultiplyHigh(Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604)).AsByte()));
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.MultiplyLow(a0, a1);
+            var q = Vector128.Multiply(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MultiplyLow(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.MultiplyLow(a0, a1);
+            var q = Vector128.Multiply(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MultiplyLow(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.MultiplyScalar(a0, a1);
+            var q = a0.WithElement(0, a0.GetElement(0) * a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MultiplyScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Or(a0, a1);
+            var q = Vector128.BitwiseOr(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Or(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("PackSignedSaturate(v128i16,v128i16)=" + Fmt.Hex(X86.Sse2.PackSignedSaturate(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        Console.WriteLine("PackSignedSaturate(v128i32,v128i32)=" + Fmt.Hex(X86.Sse2.PackSignedSaturate(Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create(8314215, 13046922, 17779629, 22512336)).AsByte()));
+        Console.WriteLine("PackUnsignedSaturate(v128i16,v128i16)=" + Fmt.Hex(X86.Sse2.PackUnsignedSaturate(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128i16,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128i32,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create(4604796, 9337503, 14070210, 18802917), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128i64,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create(4828507740108L, 9791140695219L), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128i8,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128u16,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128u32,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128u64,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create(4828507740108UL, 9791140695219UL), (byte)127).AsByte()));
+        Console.WriteLine("ShiftLeftLogical128BitLane(v128u8,u8)=" + Fmt.Hex(X86.Sse2.ShiftLeftLogical128BitLane(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), (byte)127).AsByte()));
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 16 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<short>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 16 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<short>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 32 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<int>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 32 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<int>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 64 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<long>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 64 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<long>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 16 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<ushort>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 16 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<ushort>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 32 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<uint>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 32 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<uint>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var r = X86.Sse2.ShiftLeftLogical(a0, (byte)127);
+            var q = (byte)127 < 64 ? Vector128.ShiftLeft(a0, (byte)127) : Vector128<ulong>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.ShiftLeftLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 64 ? Vector128.ShiftLeft(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<ulong>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftLeftLogical(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Sse2.ShiftRightArithmetic(a0, (byte)127);
+            var q = Vector128.ShiftRightArithmetic(a0, Math.Min((int)(byte)127, 16 - 1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightArithmetic(v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.ShiftRightArithmetic(a0, a1);
+            var q = Vector128.ShiftRightArithmetic(a0, (int)Math.Min(a1.AsUInt64().GetElement(0), (ulong)(16 - 1)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightArithmetic(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ShiftRightArithmetic(a0, (byte)127);
+            var q = Vector128.ShiftRightArithmetic(a0, Math.Min((int)(byte)127, 32 - 1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightArithmetic(v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.ShiftRightArithmetic(a0, a1);
+            var q = Vector128.ShiftRightArithmetic(a0, (int)Math.Min(a1.AsUInt64().GetElement(0), (ulong)(32 - 1)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightArithmetic(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("ShiftRightLogical128BitLane(v128i16,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128i32,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create(4604796, 9337503, 14070210, 18802917), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128i64,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create(4828507740108L, 9791140695219L), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128i8,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128u16,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128u32,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128u64,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create(4828507740108UL, 9791140695219UL), (byte)127).AsByte()));
+        Console.WriteLine("ShiftRightLogical128BitLane(v128u8,u8)=" + Fmt.Hex(X86.Sse2.ShiftRightLogical128BitLane(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), (byte)127).AsByte()));
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 16 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<short>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 16 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<short>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 32 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<int>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 32 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<int>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 64 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<long>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 64 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<long>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 16 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<ushort>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 16 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<ushort>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 32 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<uint>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 32 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<uint>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var r = X86.Sse2.ShiftRightLogical(a0, (byte)127);
+            var q = (byte)127 < 64 ? Vector128.ShiftRightLogical(a0, (byte)127) : Vector128<ulong>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.ShiftRightLogical(a0, a1);
+            var q = a1.AsUInt64().GetElement(0) < 64 ? Vector128.ShiftRightLogical(a0, (int)a1.AsUInt64().GetElement(0)) : Vector128<ulong>.Zero;
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShiftRightLogical(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Shuffle(a0, a1, (byte)127);
+            var q = Vector128.Create(a0.GetElement((byte)127 & 1), a1.GetElement(((byte)127 >> 1) & 1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Shuffle(v128f64,v128f64,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Sse2.Shuffle(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((int)((byte)127 & 3), (int)(((byte)127 >> 2) & 3), (int)(((byte)127 >> 4) & 3), (int)(((byte)127 >> 6) & 3)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Shuffle(v128i32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var r = X86.Sse2.Shuffle(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((uint)((byte)127 & 3), (uint)(((byte)127 >> 2) & 3), (uint)(((byte)127 >> 4) & 3), (uint)(((byte)127 >> 6) & 3)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Shuffle(v128u32,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Sse2.ShuffleHigh(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((short)0, (short)1, (short)2, (short)3, (short)(4 + ((byte)127 & 3)), (short)(4 + (((byte)127 >> 2) & 3)), (short)(4 + (((byte)127 >> 4) & 3)), (short)(4 + (((byte)127 >> 6) & 3))));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShuffleHigh(v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var r = X86.Sse2.ShuffleHigh(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((ushort)0, (ushort)1, (ushort)2, (ushort)3, (ushort)(4 + ((byte)127 & 3)), (ushort)(4 + (((byte)127 >> 2) & 3)), (ushort)(4 + (((byte)127 >> 4) & 3)), (ushort)(4 + (((byte)127 >> 6) & 3))));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShuffleHigh(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Sse2.ShuffleLow(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((short)((byte)127 & 3), (short)(((byte)127 >> 2) & 3), (short)(((byte)127 >> 4) & 3), (short)(((byte)127 >> 6) & 3), (short)4, (short)5, (short)6, (short)7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShuffleLow(v128i16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var r = X86.Sse2.ShuffleLow(a0, (byte)127);
+            var q = Vector128.Shuffle(a0, Vector128.Create((ushort)((byte)127 & 3), (ushort)(((byte)127 >> 2) & 3), (ushort)(((byte)127 >> 4) & 3), (ushort)(((byte)127 >> 6) & 3), (ushort)4, (ushort)5, (ushort)6, (ushort)7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("ShuffleLow(v128u16,u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.Sqrt(a0);
+            var q = Vector128.Sqrt(a0);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Sqrt(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse2.SqrtScalar(a0);
+            var q = a0.WithElement(0, Math.Sqrt(a0.GetElement(0)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SqrtScalar(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.SqrtScalar(a0, a1);
+            var q = a0.WithElement(0, Math.Sqrt(a1.GetElement(0)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SqrtScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("Store(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
+            Console.WriteLine("Store(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
+            Console.WriteLine("Store(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
+            Console.WriteLine("Store(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
+            Console.WriteLine("Store(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
+            Console.WriteLine("Store(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
+            Console.WriteLine("Store(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
+            Console.WriteLine("Store(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.Store((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
+            Console.WriteLine("Store(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("StoreAligned(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
+            Console.WriteLine("StoreAligned(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
+            Console.WriteLine("StoreAligned(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
+            Console.WriteLine("StoreAligned(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
+            Console.WriteLine("StoreAligned(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
+            Console.WriteLine("StoreAligned(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
+            Console.WriteLine("StoreAligned(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
+            Console.WriteLine("StoreAligned(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAligned((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
+            Console.WriteLine("StoreAligned(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("StoreAlignedNonTemporal(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((short*)p0, Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604));
+            Console.WriteLine("StoreAlignedNonTemporal(pi16,v128i16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
+            Console.WriteLine("StoreAlignedNonTemporal(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
+            Console.WriteLine("StoreAlignedNonTemporal(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((sbyte*)p0, Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108));
+            Console.WriteLine("StoreAlignedNonTemporal(pi8,v128i8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((ushort*)p0, Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604));
+            Console.WriteLine("StoreAlignedNonTemporal(pu16,v128u16)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
+            Console.WriteLine("StoreAlignedNonTemporal(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
+            Console.WriteLine("StoreAlignedNonTemporal(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreAlignedNonTemporal((byte*)p0, Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108));
+            Console.WriteLine("StoreAlignedNonTemporal(pu8,v128u8)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreHigh((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("StoreHigh(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreLow((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("StoreLow(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreNonTemporal((int*)p0, 8314215);
+            Console.WriteLine("StoreNonTemporal(pi32,i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreNonTemporal((uint*)p0, 8314215U);
+            Console.WriteLine("StoreNonTemporal(pu32,u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreScalar((double*)p0, Vector128.Create(0.5, 0.0));
+            Console.WriteLine("StoreScalar(pf64,v128f64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreScalar((int*)p0, Vector128.Create(8314215, 13046922, 17779629, 22512336));
+            Console.WriteLine("StoreScalar(pi32,v128i32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreScalar((long*)p0, Vector128.Create(8718138975195L, 13680771930306L));
+            Console.WriteLine("StoreScalar(pi64,v128i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreScalar((uint*)p0, Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U));
+            Console.WriteLine("StoreScalar(pu32,v128u32)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            X86.Sse2.StoreScalar((ulong*)p0, Vector128.Create(8718138975195UL, 13680771930306UL));
+            Console.WriteLine("StoreScalar(pu64,v128u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Subtract(a0, a1);
+            var q = Vector128.Subtract(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Subtract(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.SubtractSaturate(a0, a1);
+            var q = Vector128.SubtractSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SubtractSaturate(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.SubtractSaturate(a0, a1);
+            var q = Vector128.SubtractSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SubtractSaturate(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.SubtractSaturate(a0, a1);
+            var q = Vector128.SubtractSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SubtractSaturate(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.SubtractSaturate(a0, a1);
+            var q = Vector128.SubtractSaturate(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SubtractSaturate(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.SubtractScalar(a0, a1);
+            var q = a0.WithElement(0, a0.GetElement(0) - a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("SubtractScalar(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("SumAbsoluteDifferences(v128u8,v128u8)=" + Fmt.Hex(X86.Sse2.SumAbsoluteDifferences(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)).AsByte()));
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(1), a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(4), a1.GetElement(4), a0.GetElement(5), a1.GetElement(5), a0.GetElement(6), a1.GetElement(6), a0.GetElement(7), a1.GetElement(7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(1), a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(8), a1.GetElement(8), a0.GetElement(9), a1.GetElement(9), a0.GetElement(10), a1.GetElement(10), a0.GetElement(11), a1.GetElement(11), a0.GetElement(12), a1.GetElement(12), a0.GetElement(13), a1.GetElement(13), a0.GetElement(14), a1.GetElement(14), a0.GetElement(15), a1.GetElement(15));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(4), a1.GetElement(4), a0.GetElement(5), a1.GetElement(5), a0.GetElement(6), a1.GetElement(6), a0.GetElement(7), a1.GetElement(7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(1), a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.UnpackHigh(a0, a1);
+            var q = Vector128.Create(a0.GetElement(8), a1.GetElement(8), a0.GetElement(9), a1.GetElement(9), a0.GetElement(10), a1.GetElement(10), a0.GetElement(11), a1.GetElement(11), a0.GetElement(12), a1.GetElement(12), a0.GetElement(13), a1.GetElement(13), a0.GetElement(14), a1.GetElement(14), a0.GetElement(15), a1.GetElement(15));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackHigh(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1), a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1), a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3), a0.GetElement(4), a1.GetElement(4), a0.GetElement(5), a1.GetElement(5), a0.GetElement(6), a1.GetElement(6), a0.GetElement(7), a1.GetElement(7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1), a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.UnpackLow(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0), a1.GetElement(0), a0.GetElement(1), a1.GetElement(1), a0.GetElement(2), a1.GetElement(2), a0.GetElement(3), a1.GetElement(3), a0.GetElement(4), a1.GetElement(4), a0.GetElement(5), a1.GetElement(5), a0.GetElement(6), a1.GetElement(6), a0.GetElement(7), a1.GetElement(7));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("UnpackLow(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+            var a1 = Vector128.Create(8718138975195L, 13680771930306L);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133);
+            var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U);
+            var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+            var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Sse2.Xor(a0, a1);
+            var q = Vector128.Xor(a0, a1);
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Xor(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        if (X86.Sse2.X64.IsSupported)
+        {
+            {
+                var a0 = Vector128.Create(2.0, 1.5);
+                var a1 = 8718138975195L;
+                var r = X86.Sse2.X64.ConvertScalarToVector128Double(a0, a1);
+                var q = a0.WithElement(0, (double)a1);
+                string h = Fmt.Hex(r.AsByte());
+                Console.WriteLine("X64.ConvertScalarToVector128Double(v128f64,i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+            }
+            {
+                var a0 = 4828507740108L;
+                var r = X86.Sse2.X64.ConvertScalarToVector128Int64(a0);
+                var q = Vector128.CreateScalar(a0);
+                string h = Fmt.Hex(r.AsByte());
+                Console.WriteLine("X64.ConvertScalarToVector128Int64(i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+            }
+            {
+                var a0 = 4828507740108UL;
+                var r = X86.Sse2.X64.ConvertScalarToVector128UInt64(a0);
+                var q = Vector128.CreateScalar(a0);
+                string h = Fmt.Hex(r.AsByte());
+                Console.WriteLine("X64.ConvertScalarToVector128UInt64(u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+            }
+            {
+                var a0 = Vector128.Create(2.0, 1.5);
+                var r = X86.Sse2.X64.ConvertToInt64(a0);
+                var q = (long)Math.Round(a0.GetElement(0));
+                string h = Fmt.Hex((ulong)r);
+                Console.WriteLine("X64.ConvertToInt64(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
+            }
+            {
+                var a0 = Vector128.Create(4828507740108L, 9791140695219L);
+                var r = X86.Sse2.X64.ConvertToInt64(a0);
+                var q = a0.GetElement(0);
+                string h = Fmt.Hex((ulong)r);
+                Console.WriteLine("X64.ConvertToInt64(v128i64)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
+            }
+            {
+                var a0 = Vector128.Create(2.0, 1.5);
+                var r = X86.Sse2.X64.ConvertToInt64WithTruncation(a0);
+                var q = (long)a0.GetElement(0);
+                string h = Fmt.Hex((ulong)r);
+                Console.WriteLine("X64.ConvertToInt64WithTruncation(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
+            }
+            {
+                var a0 = Vector128.Create(4828507740108UL, 9791140695219UL);
+                var r = X86.Sse2.X64.ConvertToUInt64(a0);
+                var q = a0.GetElement(0);
+                string h = Fmt.Hex((ulong)r);
+                Console.WriteLine("X64.ConvertToUInt64(v128u64)=" + h + Fmt.Ref(h, Fmt.Hex((ulong)q)));
+            }
+            {
+                byte* p0 = stackalloc byte[64];
+                Fmt.Fill(p0, 64, 1);
+                X86.Sse2.X64.StoreNonTemporal((long*)p0, 8718138975195L);
+                Console.WriteLine("X64.StoreNonTemporal(pi64,i64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+            }
+            {
+                byte* p0 = stackalloc byte[64];
+                Fmt.Fill(p0, 64, 1);
+                X86.Sse2.X64.StoreNonTemporal((ulong*)p0, 8718138975195UL);
+                Console.WriteLine("X64.StoreNonTemporal(pu64,u64)=void" + " mem0=" + Fmt.Hex(p0, 64));
+            }
+        }
+    }
+
+    private static unsafe void X86Sse3()
+    {
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
+            var r = X86.Sse3.AddSubtract(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.Create(-1, 0, -1, 0).AsSingle(), Vector128.Subtract(a0, a1), Vector128.Add(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSubtract(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse3.AddSubtract(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.Create(-1L, 0L).AsDouble(), Vector128.Subtract(a0, a1), Vector128.Add(a0, a1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("AddSubtract(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
+            var r = X86.Sse3.HorizontalAdd(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) + a0.GetElement(1), a0.GetElement(2) + a0.GetElement(3), a1.GetElement(0) + a1.GetElement(1), a1.GetElement(2) + a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalAdd(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse3.HorizontalAdd(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) + a0.GetElement(1), a1.GetElement(0) + a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalAdd(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var a1 = Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f);
+            var r = X86.Sse3.HorizontalSubtract(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) - a0.GetElement(1), a0.GetElement(2) - a0.GetElement(3), a1.GetElement(0) - a1.GetElement(1), a1.GetElement(2) - a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalSubtract(v128f32,v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var a1 = Vector128.Create(0.5, 0.0);
+            var r = X86.Sse3.HorizontalSubtract(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) - a0.GetElement(1), a1.GetElement(0) - a1.GetElement(1));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalSubtract(v128f64,v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadAndDuplicateToVector128((double*)p0);
+            var q = Vector128.Create(*((double*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadAndDuplicateToVector128(pf64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((short*)p0);
+            var q = Vector128.Load(((short*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pi16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((int*)p0);
+            var q = Vector128.Load(((int*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pi32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((long*)p0);
+            var q = Vector128.Load(((long*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pi64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((sbyte*)p0);
+            var q = Vector128.Load(((sbyte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pi8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((ushort*)p0);
+            var q = Vector128.Load(((ushort*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pu16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((uint*)p0);
+            var q = Vector128.Load(((uint*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pu32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((ulong*)p0);
+            var q = Vector128.Load(((ulong*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pu64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            byte* p0 = stackalloc byte[64];
+            Fmt.Fill(p0, 64, 1);
+            var r = X86.Sse3.LoadDquVector128((byte*)p0);
+            var q = Vector128.Load(((byte*)p0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("LoadDquVector128(pu8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(2.0, 1.5);
+            var r = X86.Sse3.MoveAndDuplicate(a0);
+            var q = Vector128.Create(a0.GetElement(0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveAndDuplicate(v128f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var r = X86.Sse3.MoveHighAndDuplicate(a0);
+            var q = Vector128.Create(a0.GetElement(1), a0.GetElement(1), a0.GetElement(3), a0.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveHighAndDuplicate(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
+            var r = X86.Sse3.MoveLowAndDuplicate(a0);
+            var q = Vector128.Create(a0.GetElement(0), a0.GetElement(0), a0.GetElement(2), a0.GetElement(2));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("MoveLowAndDuplicate(v128f32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+    }
+
+    private static unsafe void X86Ssse3()
+    {
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var r = X86.Ssse3.Abs(a0);
+            var q = Vector128.Abs(a0).AsUInt16();
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Abs(v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var r = X86.Ssse3.Abs(a0);
+            var q = Vector128.Abs(a0).AsUInt32();
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Abs(v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var r = X86.Ssse3.Abs(a0);
+            var q = Vector128.Abs(a0).AsByte();
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Abs(v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("AlignRight(v128i16,v128i16,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128i32,v128i32,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create(8314215, 13046922, 17779629, 22512336), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128i64,v128i64,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create(4828507740108L, 9791140695219L), Vector128.Create(8718138975195L, 13680771930306L), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128i8,v128i8,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128u16,v128u16,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create((ushort)17964, (ushort)36427, (ushort)54890, (ushort)7817, (ushort)26280, (ushort)44743, (ushort)63206, (ushort)16133), Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128u32,v128u32,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create(4604796U, 9337503U, 14070210U, 18802917U), Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128u64,v128u64,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create(4828507740108UL, 9791140695219UL), Vector128.Create(8718138975195UL, 13680771930306UL), (byte)127).AsByte()));
+        Console.WriteLine("AlignRight(v128u8,v128u8,u8)=" + Fmt.Hex(X86.Ssse3.AlignRight(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108), (byte)127).AsByte()));
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Ssse3.HorizontalAdd(a0, a1);
+            var q = Vector128.Create((short)(a0.GetElement(0) + a0.GetElement(1)), (short)(a0.GetElement(2) + a0.GetElement(3)), (short)(a0.GetElement(4) + a0.GetElement(5)), (short)(a0.GetElement(6) + a0.GetElement(7)), (short)(a1.GetElement(0) + a1.GetElement(1)), (short)(a1.GetElement(2) + a1.GetElement(3)), (short)(a1.GetElement(4) + a1.GetElement(5)), (short)(a1.GetElement(6) + a1.GetElement(7)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalAdd(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Ssse3.HorizontalAdd(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) + a0.GetElement(1), a0.GetElement(2) + a0.GetElement(3), a1.GetElement(0) + a1.GetElement(1), a1.GetElement(2) + a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalAdd(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("HorizontalAddSaturate(v128i16,v128i16)=" + Fmt.Hex(X86.Ssse3.HorizontalAddSaturate(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Ssse3.HorizontalSubtract(a0, a1);
+            var q = Vector128.Create((short)(a0.GetElement(0) - a0.GetElement(1)), (short)(a0.GetElement(2) - a0.GetElement(3)), (short)(a0.GetElement(4) - a0.GetElement(5)), (short)(a0.GetElement(6) - a0.GetElement(7)), (short)(a1.GetElement(0) - a1.GetElement(1)), (short)(a1.GetElement(2) - a1.GetElement(3)), (short)(a1.GetElement(4) - a1.GetElement(5)), (short)(a1.GetElement(6) - a1.GetElement(7)));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalSubtract(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Ssse3.HorizontalSubtract(a0, a1);
+            var q = Vector128.Create(a0.GetElement(0) - a0.GetElement(1), a0.GetElement(2) - a0.GetElement(3), a1.GetElement(0) - a1.GetElement(1), a1.GetElement(2) - a1.GetElement(3));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("HorizontalSubtract(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        Console.WriteLine("HorizontalSubtractSaturate(v128i16,v128i16)=" + Fmt.Hex(X86.Ssse3.HorizontalSubtractSaturate(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        Console.WriteLine("MultiplyAddAdjacent(v128u8,v128i8)=" + Fmt.Hex(X86.Ssse3.MultiplyAddAdjacent(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108)).AsByte()));
+        Console.WriteLine("MultiplyHighRoundScale(v128i16,v128i16)=" + Fmt.Hex(X86.Ssse3.MultiplyHighRoundScale(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604)).AsByte()));
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Ssse3.Shuffle(a0, a1);
+            var q = Vector128.Shuffle(a0, a1 & Vector128.Create((sbyte)-113));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Shuffle(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79);
+            var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
+            var r = X86.Ssse3.Shuffle(a0, a1);
+            var q = Vector128.Shuffle(a0, a1 & Vector128.Create((byte)143));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Shuffle(v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133);
+            var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
+            var r = X86.Ssse3.Sign(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.Equals(a1, Vector128<short>.Zero), Vector128<short>.Zero, Vector128.ConditionalSelect(Vector128.LessThan(a1, Vector128<short>.Zero), Vector128.Negate(a0), a0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Sign(v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create(4604796, 9337503, 14070210, 18802917);
+            var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
+            var r = X86.Ssse3.Sign(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.Equals(a1, Vector128<int>.Zero), Vector128<int>.Zero, Vector128.ConditionalSelect(Vector128.LessThan(a1, Vector128<int>.Zero), Vector128.Negate(a0), a0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Sign(v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+        {
+            var a0 = Vector128.Create((sbyte)36, (sbyte)73, (sbyte)110, (sbyte)-109, (sbyte)-72, (sbyte)-35, (sbyte)2, (sbyte)39, (sbyte)76, (sbyte)113, (sbyte)-106, (sbyte)-69, (sbyte)-32, (sbyte)5, (sbyte)42, (sbyte)79);
+            var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
+            var r = X86.Ssse3.Sign(a0, a1);
+            var q = Vector128.ConditionalSelect(Vector128.Equals(a1, Vector128<sbyte>.Zero), Vector128<sbyte>.Zero, Vector128.ConditionalSelect(Vector128.LessThan(a1, Vector128<sbyte>.Zero), Vector128.Negate(a0), a0));
+            string h = Fmt.Hex(r.AsByte());
+            Console.WriteLine("Sign(v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
+        }
+    }
+
+    private static unsafe void X86Pclmulqdq()
+    {
+        Console.WriteLine("CarrylessMultiply(v128i64,v128i64,u8)=" + Fmt.Hex(X86.Pclmulqdq.CarrylessMultiply(Vector128.Create(4828507740108L, 9791140695219L), Vector128.Create(8718138975195L, 13680771930306L), (byte)127).AsByte()));
+        Console.WriteLine("CarrylessMultiply(v128u64,v128u64,u8)=" + Fmt.Hex(X86.Pclmulqdq.CarrylessMultiply(Vector128.Create(4828507740108UL, 9791140695219UL), Vector128.Create(8718138975195UL, 13680771930306UL), (byte)127).AsByte()));
+    }
+
+    private static unsafe void X86Aes()
+    {
+        Console.WriteLine("Decrypt(v128u8,v128u8)=" + Fmt.Hex(X86.Aes.Decrypt(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)).AsByte()));
+        Console.WriteLine("DecryptLast(v128u8,v128u8)=" + Fmt.Hex(X86.Aes.DecryptLast(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)).AsByte()));
+        Console.WriteLine("Encrypt(v128u8,v128u8)=" + Fmt.Hex(X86.Aes.Encrypt(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)).AsByte()));
+        Console.WriteLine("EncryptLast(v128u8,v128u8)=" + Fmt.Hex(X86.Aes.EncryptLast(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108)).AsByte()));
+        Console.WriteLine("InverseMixColumns(v128u8)=" + Fmt.Hex(X86.Aes.InverseMixColumns(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79)).AsByte()));
+        Console.WriteLine("KeygenAssist(v128u8,u8)=" + Fmt.Hex(X86.Aes.KeygenAssist(Vector128.Create((byte)36, (byte)73, (byte)110, (byte)147, (byte)184, (byte)221, (byte)2, (byte)39, (byte)76, (byte)113, (byte)150, (byte)187, (byte)224, (byte)5, (byte)42, (byte)79), (byte)127).AsByte()));
     }
 
 }

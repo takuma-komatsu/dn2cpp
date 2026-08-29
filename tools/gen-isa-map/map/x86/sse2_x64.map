@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.Sse2+X64 — the 64-bit integer forms of the scalar
+# conversions and the 64-bit non-temporal store. CVTSD2SI rounds nearest-even under the
+# default MXCSR; the WithTruncation form truncates.
+target = sse2
+ConvertScalarToVector128Double(v128f64,i64) @ref($0.WithElement(0, (double)$1)) = _mm_cvtsi64_sd($0, $1)
+ConvertScalarToVector128Int64(i64) @ref(Vector128.CreateScalar($0)) = _mm_cvtsi64_si128($0)
+ConvertScalarToVector128UInt64(u64) @ref(Vector128.CreateScalar($0)) = _mm_cvtsi64_si128((long long)$0)
+ConvertToInt64(v128f64) @ref((long)Math.Round($0.GetElement(0))) = _mm_cvtsd_si64($0)
+ConvertToInt64(v128i64) @ref($0.GetElement(0)) = _mm_cvtsi128_si64($0)
+ConvertToInt64WithTruncation(v128f64) @ref((long)$0.GetElement(0)) = _mm_cvttsd_si64($0)
+ConvertToUInt64(v128u64) @ref($0.GetElement(0)) = (uint64_t)_mm_cvtsi128_si64($0)
+StoreNonTemporal(p{T},{T}) = _mm_stream_si64((long long*)$0, (long long)$1) for T in i64,u64
