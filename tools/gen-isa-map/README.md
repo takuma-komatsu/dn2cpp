@@ -151,6 +151,9 @@ Method(v128f32,v128f32) @target("sse4.1") @throws = ...
   parameter `k` instead of the last, and two such annotations make a two-immediate helper.
   `@imm{1,2,4,8}` lists the
   valid values instead (a gather scale), one switch case each, and is dispatched alone. The
+  generated exercise normally uses the middle valid value; `@exerciseimm=0` selects another
+  valid value when that midpoint has unstable oracle semantics, and `@exerciseimm$k=0` names
+  one of two immediate parameters. The
   body becomes `DN2CPP_ISA_IMM8_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH`,
   `DN2CPP_ISA_IMM_WRAP_SWITCH`, `DN2CPP_ISA_IMM_RANGE_SWITCH2` or the listed cases, and the
   expression names the

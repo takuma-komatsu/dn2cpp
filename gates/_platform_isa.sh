@@ -102,6 +102,17 @@ platform_isa_invalid_immediate_rows() {
         | sed -nE "s/^[[:space:]]*exercises\[\"($isa\.[^\"]+)\"\] = \(\) =>$/\1/p"
 }
 
+# platform_isa_invalid_immediate_registry — every generated native-only
+# immediate boundary, in registry order. The native gate executes the X86 and
+# Arm subsets; the combined cache keys the complete registry so a Wasm-only
+# generator change cannot leave the shared PlatformIsaProbe result warm.
+platform_isa_invalid_immediate_registry() {
+    [ -f "$PLATFORM_ISA_EXERCISES" ] \
+        || { echo "error: $PLATFORM_ISA_EXERCISES not found" >&2; return 1; }
+    tr -d '\r' < "$PLATFORM_ISA_EXERCISES" \
+        | sed -nE 's/^[[:space:]]*exercises\["((X86|Arm|Wasm)\.[^"]+)"\] = \(\) =>$/\1/p'
+}
+
 # platform_isa_invalid_immediate_violations TEXT — one diagnostic per boundary
 # result that disagrees with its token. Helpers require the token before their
 # immediate dispatch: true therefore throws AOOE, false PNSE.
@@ -197,12 +208,135 @@ platform_isa_set_eq() {
     fi
 }
 
+# _platform_isa_configure_arch ARCH — the partial-mask contract for one run.
+# These values select run-time policy only; both architectures are emitted into
+# and linked from the same probe.
+_platform_isa_configure_arch() {
+    case "$1" in
+        x86)
+            # AVX is the root of .NET 10's AVX-level, AVX-512 and AVX10 sets.
+            # X86Base is the kept witness and Bmi1 the removed witness.
+            PLATFORM_ISA_P_MASK="-Avx"
+            PLATFORM_ISA_P_KNOBS="DOTNET_EnableAVX=0"
+            PLATFORM_ISA_P_TRUE="X86.X86Base"
+            PLATFORM_ISA_P_FALSE="X86.Bmi1"
+            ;;
+        arm)
+            # AdvSimd is baseline on arm64; the JIT exposes knobs only for the
+            # optional families. ArmBase stays and Crc32 is removed.
+            PLATFORM_ISA_P_MASK="ArmBase,AdvSimd"
+            PLATFORM_ISA_P_KNOBS="DOTNET_EnableArm64Aes=0 DOTNET_EnableArm64Crc32=0 DOTNET_EnableArm64Dp=0 DOTNET_EnableArm64Rdm=0 DOTNET_EnableArm64Sha1=0 DOTNET_EnableArm64Sha256=0 DOTNET_EnableArm64Sve=0 DOTNET_EnableArm64Sve2=0"
+            PLATFORM_ISA_P_TRUE="Arm.ArmBase"
+            PLATFORM_ISA_P_FALSE="Arm.Crc32"
+            ;;
+        *) echo "error: no native platform-ISA configuration for '$1'" >&2; return 1 ;;
+    esac
+}
+
+# _platform_isa_clear_runtime_env — default runs must not inherit a native or
+# oracle mask. Clear the union of both architectures' knobs and their COMPlus_
+# aliases before the one shared transpile/build and every sequential run.
+_platform_isa_clear_runtime_env() {
+    unset DN2CPP_CPU_FEATURES DN2CPP_CPU_FEATURES_DIAG DN2CPP_ENABLE_AVX10V2
+    unset DOTNET_EnableHWIntrinsic COMPlus_EnableHWIntrinsic
+    unset DOTNET_EnableAVX10v2 COMPlus_EnableAVX10v2
+    local arch knob variable
+    for arch in x86 arm; do
+        _platform_isa_configure_arch "$arch" || return 1
+        for knob in $PLATFORM_ISA_P_KNOBS; do
+            variable="${knob%%=*}"
+            unset "$variable"
+            case "$variable" in
+                DOTNET_*) unset "COMPlus_${variable#DOTNET_}" ;;
+            esac
+        done
+    done
+    unset PLATFORM_ISA_P_MASK PLATFORM_ISA_P_KNOBS
+    unset PLATFORM_ISA_P_TRUE PLATFORM_ISA_P_FALSE
+}
+
+# _platform_isa_arch_context ARCH AVX10V2_COMPILER — the complete
+# run/assert plan for one architecture. The combined cache concatenates both
+# results, so neither half can change without invalidating the shared binary.
+_platform_isa_arch_context() {
+    local arch="$1" avx10v2_compiler="$2" isa rows name lowered_flag
+    local all=() lowered=() all_csv lowered_csv invalid_rows invalid_csv invalid_count
+    local optin_ctx="" ctx
+    isa=$(platform_isa_arch_name "$arch") || return 1
+    _platform_isa_configure_arch "$arch" || return 1
+    rows=$(platform_isa_table_rows "$arch") || return 1
+    [ -n "$rows" ] || { echo "error: $PLATFORM_ISA_TABLE lists no $isa family" >&2; return 1; }
+    while IFS=$'\t' read -r name lowered_flag; do
+        all+=("$name")
+        [ "$lowered_flag" = true ] && lowered+=("$name")
+    done <<<"$rows"
+    all_csv=$(platform_isa_join , "${all[@]}")
+    lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
+    invalid_rows=$(platform_isa_invalid_immediate_rows "$arch") || return 1
+    invalid_csv=$(tr '\n' ',' <<<"$invalid_rows")
+    invalid_csv=${invalid_csv%,}
+    invalid_count=$(grep -c . <<<"$invalid_rows" || true)
+    [ "$invalid_count" -gt 0 ] \
+        || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; return 1; }
+    [ "$arch" = x86 ] && optin_ctx="+O"
+    ctx="$arch|families:$all_csv|lowered:$lowered_csv"
+    ctx="$ctx|runs:F+S+M+P+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
+    ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
+    ctx="$ctx|avx10v2-compiler:$avx10v2_compiler|O=DN2CPP_ENABLE_AVX10V2=1"
+    ctx="$ctx|assert:foreign-all-false+base-true+invalid-require-before-range+avx10v2-default-off+apple-avx512-false+mask-diag"
+    printf '%s' "$ctx"
+}
+
+# The native probe is the exact union of the X86 and Arm plans. Assert that
+# every table row and generated boundary is assigned once, and that each
+# partial-mask witness remains in the corresponding Lowered set.
+_platform_isa_native_plan_self_check() {
+    local arch rows name lowered_flag combined_rows="" expected_rows
+    local combined_invalid="" expected_invalid registry combined_registry=""
+    local lowered_names witness_count
+    for arch in x86 arm; do
+        rows=$(platform_isa_table_rows "$arch") || return 1
+        lowered_names=""
+        while IFS=$'\t' read -r name lowered_flag; do
+            combined_rows="$combined_rows$name"$'\n'
+            [ "$lowered_flag" = true ] && lowered_names="$lowered_names$name"$'\n'
+        done <<<"$rows"
+        _platform_isa_configure_arch "$arch" || return 1
+        witness_count=$(grep -Fxc "$PLATFORM_ISA_P_TRUE" <<<"$lowered_names" || true)
+        [ "$witness_count" -eq 1 ] \
+            || { echo "FAIL: $arch kept-mask witness is not exactly one Lowered row" >&2; return 1; }
+        witness_count=$(grep -Fxc "$PLATFORM_ISA_P_FALSE" <<<"$lowered_names" || true)
+        [ "$witness_count" -eq 1 ] \
+            || { echo "FAIL: $arch removed-mask witness is not exactly one Lowered row" >&2; return 1; }
+        rows=$(platform_isa_invalid_immediate_rows "$arch") || return 1
+        combined_invalid="$combined_invalid$rows"$'\n'
+    done
+    combined_rows=$(printf '%s' "$combined_rows" | LC_ALL=C sort)
+    expected_rows=$(_platform_isa_table_fields \
+        | awk -F'\t' '$1 == "X86" || $1 == "Arm" { print $2 }' \
+        | LC_ALL=C sort)
+    [ "$combined_rows" = "$expected_rows" ] \
+        || { echo "FAIL: combined native plan does not contain the exact X86+Arm table rows" >&2; return 1; }
+    combined_invalid=$(printf '%s' "$combined_invalid" | LC_ALL=C sort)
+    registry=$(platform_isa_invalid_immediate_registry) || return 1
+    expected_invalid=$(awk '/^(X86|Arm)\./' <<<"$registry" | LC_ALL=C sort)
+    [ "$combined_invalid" = "$expected_invalid" ] \
+        || { echo "FAIL: combined native plan does not contain the exact X86+Arm invalid-immediate registry" >&2; return 1; }
+    for arch in x86 arm wasm; do
+        rows=$(platform_isa_invalid_immediate_rows "$arch") || return 1
+        combined_registry="$combined_registry$rows"$'\n'
+    done
+    combined_registry=$(printf '%s' "$combined_registry" | LC_ALL=C sort)
+    registry=$(printf '%s\n' "$registry" | LC_ALL=C sort)
+    [ "$combined_registry" = "$registry" ] \
+        || { echo "FAIL: platform-ISA invalid-immediate registry has an unassigned row" >&2; return 1; }
+}
+
 # ── The native behaviour gate ────────────────────────────────────────────────
-# platform_isa_native_gate ARCH — the X86 or Arm contract, diffed against real
-# .NET. The gate sets PLATFORM_ISA_P_MASK (our DN2CPP_CPU_FEATURES value),
-# PLATFORM_ISA_P_KNOBS (the oracle's DOTNET_* assignments, space-separated),
-# PLATFORM_ISA_P_TRUE and PLATFORM_ISA_P_FALSE (a row the partial mask keeps
-# and one it removes) before calling.
+# One shared host-native PlatformIsaProbe executes the X86 and Arm contracts,
+# diffed against real .NET. The family selection and every policy mask are
+# run-time inputs; neither changes the transpiled or compiled program.
 #
 # Runs, each ours-vs-oracle on stdout and exit code:
 #   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
@@ -217,40 +351,20 @@ platform_isa_set_eq() {
 #      otherwise both sides stay false and the nested throwing stubs are called.
 # Rows that are not Lowered fold to false on our side whatever the CPU, so S
 # and P select the Lowered set only; F and M expect false everywhere anyway.
-platform_isa_native_gate() {
-    local arch="$1" isa base
-    _platform_isa_witness_normalization_self_check || exit 1
+_platform_isa_run_arch() {
+    local arch="$1" out="$2" project="$3" host_arch="$4" avx10v2_compiler="$5"
+    local isa base
     isa=$(platform_isa_arch_name "$arch") || exit 1
     case "$arch" in
         x86) base="X86.X86Base" ;;
         arm) base="Arm.ArmBase" ;;
-        *) echo "error: platform_isa_native_gate takes x86 or arm, not '$arch'" >&2; exit 1 ;;
+        *) echo "error: _platform_isa_run_arch takes x86 or arm, not '$arch'" >&2; exit 1 ;;
     esac
+    _platform_isa_configure_arch "$arch" || exit 1
     : "${PLATFORM_ISA_P_MASK:?the gate must set PLATFORM_ISA_P_MASK}"
     : "${PLATFORM_ISA_P_KNOBS:?the gate must set PLATFORM_ISA_P_KNOBS}"
     : "${PLATFORM_ISA_P_TRUE:?the gate must set PLATFORM_ISA_P_TRUE}"
     : "${PLATFORM_ISA_P_FALSE:?the gate must set PLATFORM_ISA_P_FALSE}"
-
-    # An inherited runtime or JIT knob would narrow or widen the default runs.
-    # Clear both .NET prefixes: COMPlus_ remains a supported alias for these
-    # legacy runtime configuration keys.
-    unset DN2CPP_CPU_FEATURES DN2CPP_CPU_FEATURES_DIAG DN2CPP_ENABLE_AVX10V2
-    unset DOTNET_EnableHWIntrinsic COMPlus_EnableHWIntrinsic
-    unset DOTNET_EnableAVX10v2 COMPlus_EnableAVX10v2
-    local knob variable
-    for knob in $PLATFORM_ISA_P_KNOBS; do
-        variable="${knob%%=*}"
-        unset "$variable"
-        case "$variable" in
-            DOTNET_*) unset "COMPlus_${variable#DOTNET_}" ;;
-        esac
-    done
-
-    local project="$PLATFORM_ISA_PROJECT" out host_arch
-    out="$(_corelib_gate_out "$project")-isa-$arch"
-    host_arch=$(platform_isa_host_arch)
-
-    _corelib_gate_core "$project" "$out"
 
     local rows name lowered_flag all=() lowered=()
     rows=$(platform_isa_table_rows "$arch") || exit 1
@@ -259,40 +373,18 @@ platform_isa_native_gate() {
         all+=("$name")
         [ "$lowered_flag" = true ] && lowered+=("$name")
     done <<<"$rows"
-    local all_csv lowered_csv invalid_rows invalid_csv invalid_count
+    local all_csv lowered_csv invalid_rows invalid_count
     all_csv=$(platform_isa_join , "${all[@]}")
     lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
     invalid_rows=$(platform_isa_invalid_immediate_rows "$arch") || exit 1
-    invalid_csv=$(tr '\n' ',' <<<"$invalid_rows")
-    invalid_csv=${invalid_csv%,}
     invalid_count=$(grep -c . <<<"$invalid_rows" || true)
     [ "$invalid_count" -gt 0 ] \
         || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; exit 1; }
 
-    local native_host=0 avx10v2_compiler=0
+    local native_host=0
     [ "$host_arch" = "$arch" ] && native_host=1
-    if [ "$host_arch" = x86 ] && platform_isa_avx10v2_compiler_capable; then
-        avx10v2_compiler=1
-    fi
-
-    local optin_ctx="" ctx="platform_isa|$arch|host:${host_arch:-other}|$_CG_CORELIB"
-    [ "$arch" = x86 ] && optin_ctx="+O"
-    ctx="$ctx|families:$all_csv|lowered:$lowered_csv"
-    ctx="$ctx|runs:F+S+M+P+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
-    ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
-    ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
-    ctx="$ctx|avx10v2-compiler:$avx10v2_compiler|O=DN2CPP_ENABLE_AVX10V2=1"
-    ctx="$ctx|assert:foreign-all-false+base-true+invalid-require-before-range+avx10v2-default-off+apple-avx512-false+mask-diag$(_gate_ctx_extras)"
-    if _corelib_gate_check "$out" "$ctx"; then
-        gate_cache_hit_msg
-        return 0
-    fi
-
-    echo "== 4/4 Compiling C++ and running the $isa contract (exact diff vs real .NET) =="
-    compile_console "$out" "$project"
-
-    gate_run_logs_init "platform_isa_$arch" "platform-isa-$arch"
-    local log_dir="$_GATE_RUN_LOG_DIR"
+    local log_dir="$_GATE_RUN_LOG_DIR/$arch"
+    mkdir -p "$log_dir"
     _PI_RUN_LABELS=()
     _PI_RUN_CODES=()
     _PI_RUN_ORACLE_CODES=()
@@ -535,8 +627,49 @@ platform_isa_native_gate() {
             rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
         fi
         # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
-        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-$arch.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where $native_runs run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
+        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-native.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where $native_runs run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
+    fi
+}
+
+# platform_isa_native_gate — transpile and compile PlatformIsaProbe once, then
+# execute both native architecture contracts. A cache entry is committed only
+# after the two plans and all their native/oracle runs have passed.
+platform_isa_native_gate() {
+    [ "$#" -eq 0 ] \
+        || { echo "error: platform_isa_native_gate takes no arguments" >&2; return 1; }
+    _platform_isa_witness_normalization_self_check || return 1
+    _platform_isa_native_plan_self_check || return 1
+    _platform_isa_clear_runtime_env || return 1
+
+    local project="$PLATFORM_ISA_PROJECT" out host_arch avx10v2_compiler=0
+    local x86_ctx arm_ctx registry registry_csv registry_count ctx
+    out="$(_corelib_gate_out "$project")-isa-native"
+    host_arch=$(platform_isa_host_arch)
+    if [ "$host_arch" = x86 ] && platform_isa_avx10v2_compiler_capable; then
+        avx10v2_compiler=1
     fi
 
+    _corelib_gate_core "$project" "$out"
+    x86_ctx=$(_platform_isa_arch_context x86 "$avx10v2_compiler") || return 1
+    arm_ctx=$(_platform_isa_arch_context arm "$avx10v2_compiler") || return 1
+    registry=$(platform_isa_invalid_immediate_registry) || return 1
+    registry_csv=$(tr '\n' ',' <<<"$registry")
+    registry_csv=${registry_csv%,}
+    registry_count=$(grep -c . <<<"$registry" || true)
+    [ "$registry_count" -gt 0 ] \
+        || { echo "error: generated exercises list no invalid-immediate boundaries" >&2; return 1; }
+    ctx="platform_isa_native|host:${host_arch:-other}|$_CG_CORELIB"
+    ctx="$ctx|invalid-registry-count:$registry_count|invalid-registry:$registry_csv"
+    ctx="$ctx|$x86_ctx|$arm_ctx$(_gate_ctx_extras)"
+    if _corelib_gate_check "$out" "$ctx"; then
+        gate_cache_hit_msg
+        return 0
+    fi
+
+    echo "== 4/4 Compiling C++ once and running the X86 + Arm contracts (exact diff vs real .NET) =="
+    compile_console "$out" "$project"
+    gate_run_logs_init "platform_isa_native" "platform-isa-native"
+    _platform_isa_run_arch x86 "$out" "$project" "$host_arch" "$avx10v2_compiler"
+    _platform_isa_run_arch arm "$out" "$project" "$host_arch" "$avx10v2_compiler"
     gate_cache_commit
 }

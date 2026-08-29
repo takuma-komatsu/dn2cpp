@@ -32,7 +32,7 @@ internal static class X86Sections
         exercises["X86.Avx"] = () =>
         {
             avxExercise();
-            AvxCompareScalarMode31Exercise();
+            AvxCompareScalarTrueModesExercise();
         };
     }
 
@@ -112,12 +112,17 @@ internal static class X86Sections
         }
     }
 
-    // Mode 31 is operand-independent, so .NET may fold it and synthesize upper
-    // lanes. Its scalar result remains the contract; mode 15 pins CopyUpperBits.
-    private static void AvxCompareScalarMode31Exercise()
+    // The all-true modes are operand-independent, so .NET may fold them and
+    // synthesize upper lanes. Their scalar result remains the contract; the
+    // generated mode-0 exercise pins CopyUpperBits with input-dependent data.
+    private static void AvxCompareScalarTrueModesExercise()
     {
         Vector128<float> left32 = Fmt.NonConstant(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f));
         Vector128<float> right32 = Fmt.NonConstant(Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f));
+        Vector128<float> quiet32 = Avx.CompareScalar(
+            left32, right32, FloatComparisonMode.UnorderedTrueNonSignaling);
+        Console.WriteLine("CompareScalar(v128f32,v128f32,u8) mode=15 lower=" +
+            Fmt.Hex(quiet32.AsUInt32().GetElement(0)));
         Vector128<float> result32 = Avx.CompareScalar(
             left32, right32, FloatComparisonMode.UnorderedTrueSignaling);
         Console.WriteLine("CompareScalar(v128f32,v128f32,u8) mode=31 lower=" +
@@ -125,6 +130,10 @@ internal static class X86Sections
 
         Vector128<double> left64 = Fmt.NonConstant(Vector128.Create(2.0, 1.5));
         Vector128<double> right64 = Fmt.NonConstant(Vector128.Create(0.5, 0.0));
+        Vector128<double> quiet64 = Avx.CompareScalar(
+            left64, right64, FloatComparisonMode.UnorderedTrueNonSignaling);
+        Console.WriteLine("CompareScalar(v128f64,v128f64,u8) mode=15 lower=" +
+            Fmt.Hex(quiet64.AsUInt64().GetElement(0)));
         Vector128<double> result64 = Avx.CompareScalar(
             left64, right64, FloatComparisonMode.UnorderedTrueSignaling);
         Console.WriteLine("CompareScalar(v128f64,v128f64,u8) mode=31 lower=" +

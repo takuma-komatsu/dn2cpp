@@ -14264,8 +14264,8 @@ internal static class Exercises
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("CompareOrdered(v256f64,v256f64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
-        Console.WriteLine("CompareScalar(v128f32,v128f32,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f)), Fmt.NonConstant(Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
-        Console.WriteLine("CompareScalar(v128f64,v128f64,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(2.0, 1.5)), Fmt.NonConstant(Vector128.Create(0.5, 0.0)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)15).AsByte()));
+        Console.WriteLine("CompareScalar(v128f32,v128f32,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f)), Fmt.NonConstant(Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)0).AsByte()));
+        Console.WriteLine("CompareScalar(v128f64,v128f64,u8)=" + Fmt.Hex(X86.Avx.CompareScalar(Fmt.NonConstant(Vector128.Create(2.0, 1.5)), Fmt.NonConstant(Vector128.Create(0.5, 0.0)), (System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)0).AsByte()));
         {
             var a0 = Vector256.Create(4.0f, 3.0f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f);
             var a1 = Vector256.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f);

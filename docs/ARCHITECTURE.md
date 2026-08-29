@@ -298,8 +298,10 @@ capability contract, not a set of independent constants:
   re-derives both rules from the csv and the header.
 - **Every Lowered helper is exercised.** `Exercises.g.cs` in the probe, written
   by the same generator, calls each mapped method with fixed inputs and prints
-  the bytes; the native gates diff it against real .NET, so a wrong lowering
-  fails on the machine that has the instruction rather than in a user's program.
+  the bytes; `gates/build-and-run-platform-isa-native.sh` transpiles and links
+  one probe, then diffs its X86 and Arm runs against real .NET, so a wrong
+  lowering fails on the machine that has the instruction rather than in a
+  user's program.
   `Wasm.PackedSimd` has no such oracle (no host .NET answers true for it), so
   its run is frozen in `gates/expected/platform-isa-wasm-simd.txt` and every
   row with a portable equivalent carries a `@ref` cross-check against the

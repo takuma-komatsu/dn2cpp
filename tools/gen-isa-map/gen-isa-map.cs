@@ -80,6 +80,8 @@
 //                      helper (DN2CPP_IMM and DN2CPP_IMM2 in parameter order, at most 256 cases)
 //     @imm{1,2,4,8}    the immediate takes the listed values only (a gather scale), through one
 //                      switch case per value; `@imm$k{...}` names the parameter
+//     @exerciseimm=0    use this valid value in the generated exercise instead of the range's
+//                      midpoint; `@exerciseimm$k=0` names one of two immediate parameters
 //     @target("isa")   per-row DN2CPP_ISA_TARGET override of the family-level `target =`
 //     @throws          documentation only: the intrinsic can raise (fault, #UD); no code effect
 //     @ref(<C#>)       a portable System.Runtime.Intrinsics expression over $0, $1, ... that
@@ -447,11 +449,12 @@ sealed class Method
 
 // One immediate parameter: constrained values are [Lo, Lo + Count), listed Values name a
 // sparse set, and Wrap masks every byte to the power-of-two Count.
-sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values = default, bool Wrap = false)
+sealed record ImmSpec(int Param, int Lo, int Count, ImmutableArray<int> Values = default,
+    bool Wrap = false, int? Exercise = null)
 {
     public bool IsSet => !Values.IsDefault;
-    // The value the exercise passes: the middle of the range, or the middle listed value.
-    public int Exercised => IsSet ? Values[Values.Length / 2] : Lo + (Count - 1) / 2;
+    // The value the exercise passes: an explicit override, otherwise the middle valid value.
+    public int Exercised => Exercise ?? (IsSet ? Values[Values.Length / 2] : Lo + (Count - 1) / 2);
     // A byte one past the nominal range. The exercise uses it to witness a range throw or,
     // for Wrap, the instruction's boundary wrap; null when no byte lies past the range.
     public int? OutOfRange
@@ -952,6 +955,7 @@ static class Maps
     static readonly Regex ImmAnn = new(@"^@imm(?:\$(\d+))?\[(\d+)\.\.(\d+)([\)\]])$", RegexOptions.Compiled);
     static readonly Regex ImmWrapAnn = new(@"^@immwrap(?:\$(\d+))?\[0\.\.(\d+)\)$", RegexOptions.Compiled);
     static readonly Regex ImmSetAnn = new(@"^@imm(?:\$(\d+))?\{(\d+(?:,\d+)*)\}$", RegexOptions.Compiled);
+    static readonly Regex ExerciseImmAnn = new(@"^@exerciseimm(?:\$(\d+))?=(\d+)$", RegexOptions.Compiled);
     static readonly Regex TargetAnn = new(@"^@target\(""([^""]+)""\)$", RegexOptions.Compiled);
     // Only identifier-like braces are placeholders, so C++ brace initializers in an
     // expression pass through.
@@ -1324,6 +1328,7 @@ static class Maps
         string? reference = null;
         bool opaque = false;
         var imms = new List<ImmSpec>();
+        var exerciseImms = new List<(int? Param, int Value, string Annotation)>();
         foreach (string raw in spec.Annotations)
         {
             string ann = Substitute(raw, w, t, where);
@@ -1368,6 +1373,16 @@ static class Maps
                     throw new ContractException($"{where}: {ann} lists a value above 255");
                 imms.Add(new ImmSpec(param, values[0], values.Length, values));
             }
+            else if (ExerciseImmAnn.Match(ann) is { Success: true } re)
+            {
+                int? param = re.Groups[1].Success
+                    ? int.Parse(re.Groups[1].Value, CultureInfo.InvariantCulture)
+                    : null;
+                int value = int.Parse(re.Groups[2].Value, CultureInfo.InvariantCulture);
+                if (value > 255)
+                    throw new ContractException($"{where}: {ann} names a value above 255");
+                exerciseImms.Add((param, value, ann));
+            }
             else if (TargetAnn.Match(ann) is { Success: true } ta)
                 target = ta.Groups[1].Value;
             else if (ann == "@opaque")
@@ -1393,6 +1408,24 @@ static class Maps
             throw new ContractException($"{where}: a wrapped immediate is dispatched alone");
         if (imms.Any(i => i.Wrap) && reference is null)
             throw new ContractException($"{where}: a wrapped immediate needs @ref for its boundary exercise");
+        foreach (var exercise in exerciseImms)
+        {
+            if (exercise.Param is null && imms.Count != 1)
+                throw new ContractException($"{where}: {exercise.Annotation} needs $k when the row has {imms.Count} immediate parameters");
+            int param = exercise.Param ?? imms[0].Param;
+            int index = imms.FindIndex(i => i.Param == param);
+            if (index < 0)
+                throw new ContractException($"{where}: {exercise.Annotation} names ${param}, which has no @imm annotation");
+            if (imms[index].Exercise is not null)
+                throw new ContractException($"{where}: immediate ${param} has two @exerciseimm annotations");
+            var imm = imms[index];
+            bool valid = imm.IsSet
+                ? imm.Values.Contains(exercise.Value)
+                : exercise.Value >= imm.Lo && exercise.Value < imm.Lo + imm.Count;
+            if (!valid)
+                throw new ContractException($"{where}: {exercise.Annotation} is outside the immediate's valid values");
+            imms[index] = imm with { Exercise = exercise.Value };
+        }
 
         string expr = Substitute(spec.Expression, w, t, where);
         mm.Row = new MapRow(expr, target, imms.ToImmutableArray(), reference, opaque, where);
