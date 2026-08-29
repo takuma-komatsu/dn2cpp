@@ -413,10 +413,19 @@ internal sealed partial class MethodCompiler
             }
             case "ToScalar":
             { var v = Pop(); PushScalar($"{Vec("to_scalar")}({Val(v, vecCpp)})"); return true; }
-            case "GetLower":
-            { var v = Pop(); string half = VecCppName(sig.ReturnType)!; Push(StackKind.Struct, half, $"{Vec("get_lower")}({Val(v, vecCpp)})"); return true; }
-            case "GetUpper":
-            { var v = Pop(); string half = VecCppName(sig.ReturnType)!; Push(StackKind.Struct, half, $"{Vec("get_upper")}({Val(v, vecCpp)})"); return true; }
+            case "GetLower" or "GetUpper":
+            {
+                // The static Vector128.GetUpper<T>(Vector128<T>) names the half as its
+                // return type, which is the primary vector here; the operand's width is
+                // the parameter's.
+                var v = Pop();
+                string srcCpp = ps.Length >= 1 && VecCppName(ps[0]) is { } pc0 ? pc0 : vecCpp;
+                int srcW = VecWidthBytes(srcCpp);
+                string half = VecCppName(sig.ReturnType)!;
+                string fn = name == "GetLower" ? "get_lower" : "get_upper";
+                Push(StackKind.Struct, half, $"dn2cpp_vec_{fn}<{et}, {srcW}>({Val(v, srcCpp)})");
+                return true;
+            }
             case "WithLower":
             { var lo = Pop(); var v = Pop(); string half = VecCppName(ps[^1])!; PushVec($"{Vec("with_lower")}({Val(v, vecCpp)}, {Val(lo, half)})"); return true; }
             case "WithUpper":
