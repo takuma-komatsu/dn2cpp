@@ -4,6 +4,7 @@
 // static-constructor guards, quiesce, the finalizer thread, and GCHandle.
 
 #include "dn2cpp_core.h"
+#include "dn2cpp_cpu_features.h" // dn2cpp_cpu_features_resolve at init
 #include <algorithm>
 #include <chrono>  // DateTime.Now/UtcNow wall clock
 #include <ctime>   // localtime_r for DateTime.Now local components
@@ -435,6 +436,10 @@ void dn2cpp_runtime_init()
     // the Type object the emitted metadata interned — is the more complete answer.
     for (int32_t i = 0; i < dn2cpp_type_bind_count; i++)
         *dn2cpp_type_binds[i].target = *dn2cpp_type_binds[i].meta;
+    // .NET reads the ISA configuration once at startup, so a later
+    // Environment.SetEnvironmentVariable("DN2CPP_CPU_FEATURES", ...) cannot
+    // change an IsSupported answer.
+    dn2cpp_cpu_features_resolve();
 #ifdef _WIN32
     // Windows CRT stdio defaults to text mode, translating every outgoing '\n' —
     // including newlines INSIDE a written string — to "\r\n". Real .NET writes a

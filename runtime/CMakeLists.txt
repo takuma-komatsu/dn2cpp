@@ -88,8 +88,13 @@ option(DN2CPP_USE_ZLIB    "Compile and link the vendored zlib for System.IO.Comp
 option(DN2CPP_USE_BROTLI  "Compile and link the vendored brotli for System.IO.Compression.Brotli" ON)
 option(DN2CPP_USE_CURL    "Compile and link the vendored libcurl (over vendored Mbed TLS + CA bundle) for HTTP/HTTPS transport" ON)
 option(DN2CPP_USE_HIGHWAY "Back the portable-SIMD ops with vendored Google Highway (static single-ISA, header-only)" ON)
+# DN2CPP_HIGHWAY_ARCH (PUBLIC: every TU linking the runtime) and DN2CPP_HOT_ARCH
+# (the [HotPath] TU) widen the ISA the compiler may assume; there the
+# target-attributed ISA helpers may inline into their generated callers, which
+# is acceptable because that code already requires the ISA everywhere it runs.
 set(DN2CPP_HIGHWAY_ARCH   ""    CACHE STRING   "Extra -march/-mcpu flags for the Highway build (e.g. -mavx2); empty = compiler default ISA")
 set(DN2CPP_HOT_ARCH       ""    CACHE STRING   "Extra ISA flags for the [HotPath] TU generated_hot.cpp (e.g. -mavx2, /arch:AVX2, -msimd128); empty = compiler default ISA")
+set(DN2CPP_CPU_FEATURES   ""    CACHE STRING   "Default DN2CPP_CPU_FEATURES mask compiled into the runtime, consulted when the environment variable is unset (browsers have no environment block); same grammar as the variable")
 option(DN2CPP_GODOT       "Build the Godot GDExtension runtime library"           OFF)
 option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"    OFF)
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
@@ -988,6 +993,9 @@ else()
             separate_arguments(_hwy_arch NATIVE_COMMAND "${DN2CPP_HIGHWAY_ARCH}")
             target_compile_options(dn2cpp_runtime PUBLIC ${_hwy_arch})
         endif()
+    endif()
+    if(DN2CPP_CPU_FEATURES)
+        target_compile_definitions(dn2cpp_runtime PRIVATE "DN2CPP_CPU_FEATURES_DEFAULT=\"${DN2CPP_CPU_FEATURES}\"")
     endif()
     add_library(dn2cpp::dn2cpp_runtime ALIAS dn2cpp_runtime)
 
