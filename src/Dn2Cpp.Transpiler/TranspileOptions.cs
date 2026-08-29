@@ -159,4 +159,10 @@ public sealed record TranspileOptions
     /// same posture — <see cref="Compilation"/> reads the OR of the two — so the
     /// driver never has to remember to copy one flag into the other.</summary>
     internal bool HotUpdatePosture { get; init; }
+
+    /// <summary>Diagnostic (<c>--dump-isa-surface &lt;file&gt;</c>): write the platform-ISA
+    /// contract surface — every facade family and every public static instruction with its
+    /// helper name — as TSV, then stop before reachability; nothing is emitted. Null
+    /// (default) transpiles normally.</summary>
+    public string? IsaSurfaceDump { get; init; }
 }

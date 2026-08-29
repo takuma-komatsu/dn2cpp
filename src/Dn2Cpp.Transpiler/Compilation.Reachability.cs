@@ -95,6 +95,12 @@ internal sealed partial class Compilation
         // the two-part test here is the backstop.
         if (m.DeclaringClass.IntrinsicCppName is not null)
             return;
+        // A platform-ISA facade's members are lowered at every call site (the
+        // MdPlatformIsa row); like the intrinsic guard above, this is the drain-side
+        // backstop that keeps the [Intrinsic] stub bodies out of the tree on every
+        // path — vtable, alloc, ldftn — not only the call-token arms.
+        if (m.DeclaringClass.PlatformIsa is not null)
+            return;
         // Bounded methods (dead-but-statically-reachable BCL paths) are cut here;
         // their call sites emit a trap instead of a call. Through the instance merge,
         // which asks the core row (CoreIntrinsics.BdCoreBounded) and unions the

@@ -85,6 +85,9 @@ internal sealed partial class MethodCompiler
             case InterceptEmitArm.IntrinsicDispatch:
                 EmitIntrinsic(callee.DeclaringClass.FullName, callee.Name, callee.Signature);
                 return true;
+            case InterceptEmitArm.PlatformIsa:
+                EmitPlatformIsaCall(callee);
+                return true;
             default:
                 throw new InvalidOperationException(
                     $"no MethodDefinition emit arm for {row.EmitArm} "
@@ -553,6 +556,12 @@ internal sealed partial class MethodCompiler
                 // corelib's Span<T> -> ThrowHelper) is emitted inline, not
                 // transpiled — its body is never pulled into the tree.
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdIntrinsicType, callee))
+                    return;
+                // A platform-ISA facade member reached intra-CoreLib (BitOperations ->
+                // Lzcnt.LeadingZeroCount, the Vector128 helpers -> Sse2/AdvSimd/PackedSimd):
+                // lowered at the site; the same row cuts the stub body's edge in
+                // Compilation.ResolveCallTarget.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdPlatformIsa, callee))
                     return;
                 // A nested intrinsic type (e.g. StringBuilder.AppendInterpolatedStringHandler,
                 // reached intra-corelib from DecoderExceptionFallbackBuffer.Throw via a
@@ -1109,6 +1118,14 @@ internal sealed partial class MethodCompiler
                     // cuts; the two rows share the arm id and the predicate).
                     if (TryEmitMethodDefIntercept(CoreIntrinsics.MdConstFoldedGetter, real))
                         return;
+                    // A platform-ISA facade member referenced cross-assembly (an app's
+                    // Sse2.Add / Lzcnt.X64.LeadingZeroCount / AdvSimd.IsSupported). This
+                    // post-resolution MethodDef-row reference IS the MemberRef arm's emit
+                    // mouth; its cut half is the PlatformIsa resolve-and-test in
+                    // Compilation.ResolveCallTarget's MemberRef arm (no MemberRef row: a
+                    // nested facade's bare name cannot gate one).
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdPlatformIsa, real))
+                        return;
                     EmitManagedCall(real, isCallvirt);
                     return;
                 }
@@ -1535,20 +1552,18 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // Hardware-intrinsic / SIMD feature gates. The portable vector types
+        // Portable-SIMD feature gates. The portable vector types
         // (System.Runtime.Intrinsics.Vector64/128/256/512<T> and System.Numerics.Vector /
         // Vector<T>) front the vectorized Enumerable.Sum/Min/Max/Average / BitArray / STJ
         // fast paths (which would otherwise read Vector<T>.Count — a throwing SIMD stub).
         // Their IsSupported / IsHardwareAccelerated getters emit the DN2CPP_SIMD_HW_ACCEL
         // token: 0 in the scalar build (the BCL takes its software fallback — the permanent
         // SIMD carve-out), 1 under the opt-in Highway backend (the fast paths run against
-        // the SIMD-backed vec ops). The platform-specific intrinsics
-        // (System.Runtime.Intrinsics.X86/.Arm/.Wasm — Sse/Avx/Lzcnt/AdvSimd/PackedSimd/…)
-        // have no lowering, so they stay folded to 0 either way. The real getters are
-        // [Intrinsic] stubs that transpile to an infinite self-recursive call (JIT would
-        // replace them), so calling one stack-overflows; folding the gate also lets e.g.
-        // BitOperations.Log2 reach its De Bruijn fallback. The vector fast-path code after
-        // the gate stays emitted (live or dead per the token).
+        // the SIMD-backed vec ops). The real getters are [Intrinsic] stubs that transpile
+        // to an infinite self-recursive call (JIT would replace them), so calling one
+        // stack-overflows. The vector fast-path code after the gate stays emitted (live or
+        // dead per the token). The platform-specific facades (X86/Arm/Wasm) never reach
+        // here: every member is intercepted by the MdPlatformIsa row.
         //
         // Inside the System.Linq assembly the gate emits the separate
         // DN2CPP_SIMD_HW_ACCEL_LINQ token — an independent lever, backend-selected now
@@ -1574,22 +1589,17 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", unsupportedElem ? "0" : SimdHwAccelToken);
                 return;
             }
-            if (simdNs.StartsWith("System.Runtime.Intrinsics")
-                || callee.DeclaringClass.CppNamePrefix.StartsWith("System.Runtime.Intrinsics."))
-            {
-                Push(StackKind.I4, "int32_t", "0");
-                return;
-            }
         }
 
         // System.Numerics.BitOperations.{TrailingZeroCount, LeadingZeroCount,
         // PopCount, Log2} over a single int/uint/long/ulong argument: lower to the
         // same clang builtins as the IBinaryInteger<T> statics on the primitive
         // integer types, taking the bit width from the argument. BitOperations is
-        // BCL-as-IL (not an intrinsic type); inside these methods the ArmBase /
-        // X86Base.IsSupported gates fold to 0, so the body would otherwise fall
-        // through to a De Bruijn software-table lookup whose getter is an out-of-line
-        // cross-TU call. The remaining BitOperations methods (RotateLeft/Right,
+        // BCL-as-IL (not an intrinsic type); inside these methods the Lzcnt / ArmBase /
+        // X86Base.IsSupported gates are platform-ISA getters (constant 0 until the
+        // family is lowered), so the body would otherwise fall through to a De Bruijn
+        // software-table lookup whose getter is an out-of-line cross-TU call. The
+        // remaining BitOperations methods (RotateLeft/Right,
         // IsPow2, RoundUpToPowerOf2, the nint/nuint overloads) have no builtin here
         // and keep falling through to BCL-as-IL.
         if (callee.IsStatic

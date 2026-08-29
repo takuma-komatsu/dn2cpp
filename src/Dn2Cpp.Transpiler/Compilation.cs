@@ -466,9 +466,14 @@ internal sealed partial class Compilation
     public static Compilation Create(IReadOnlyList<string> assemblyPaths, TranspileOptions options) =>
         new(assemblyPaths, options);
 
+    /// <summary>Set for <see cref="TranspileOptions.IsaSurfaceDump"/>: Build ends after the
+    /// vtable pass, with no reachability fixpoint run.</summary>
+    internal bool StopBeforeReachability { get; }
+
     private Compilation(IReadOnlyList<string> assemblyPaths, TranspileOptions options)
     {
         _backend = options.Backend;
+        StopBeforeReachability = options.IsaSurfaceDump is not null;
         // Must be set before Build(): the reachability drain computes the
         // typeof-equality branch folds, and a hot-update world must not prune (see the field).
         // A --hotupdate-base build IS a hot-update world, hence the OR.
@@ -1504,6 +1509,23 @@ internal sealed partial class Compilation
         _ => (null, default),
     };
 
+    /// <summary>The CLR qualified name (<c>Ns.Outer+Mid+Leaf</c>) of a TypeDef whose
+    /// outermost declaring type lives under <c>System.Runtime.Intrinsics.</c>; null for
+    /// every other type, so the ISA table is consulted only for that namespace. A
+    /// declaring-chain walk over TypeDefinition rows, like <see cref="NestedCppPrefix"/>.</summary>
+    private static string? PlatformIsaQualifiedName(MetadataReader reader, TypeDefinition td)
+    {
+        string chain = reader.GetString(td.Name);
+        var outer = td;
+        for (var declHandle = td.GetDeclaringType(); !declHandle.IsNil; declHandle = outer.GetDeclaringType())
+        {
+            outer = reader.GetTypeDefinition(declHandle);
+            chain = reader.GetString(outer.Name) + "+" + chain;
+        }
+        string ns = reader.GetString(outer.Namespace);
+        return ns.StartsWith("System.Runtime.Intrinsics.", StringComparison.Ordinal) ? ns + "." + chain : null;
+    }
+
     /// <summary>The enclosing-type qualifier for a nested type's C++ names — the
     /// declaring type chain (outermost first) plus its namespace, dot-separated and
     /// dot-terminated — or "" for a top-level type. Disambiguates same-named nested
@@ -1630,6 +1652,13 @@ internal sealed partial class Compilation
                     string declFull = string.IsNullOrEmpty(declNs) ? declNm : declNs + "." + declNm;
                     cls.IntrinsicCppName = CoreIntrinsics.IntrinsicNestedCppType(declFull, name);
                 }
+                // A CoreLib platform-ISA facade (Sse2, Lzcnt.X64, AdvSimd.Arm64, PackedSimd,
+                // …) is identified by its CLR qualified name, which for a nested facade the
+                // bare FullName cannot carry. A declaring-chain walk over TypeDefinition rows
+                // only — no member decode — so the stamp is strict-completion safe.
+                cls.PlatformIsa = PlatformIsaQualifiedName(reader, td) is { } isaName
+                    ? CoreIntrinsics.PlatformIsaFamily(isaName)
+                    : null;
                 // An intrinsic type whose C++ mapping is a by-value struct (no trailing
                 // '*') is modeled as a value type even when its metadata is a reference
                 // type — e.g. the file-backed MemoryMappedFile / view handles lowered to
@@ -1926,6 +1955,12 @@ internal sealed partial class Compilation
             EntryPoint = AppModule.MethodMap.TryGetValue(epHandle, out var ep) ? ep : null;
         }
         Timing.Mark("build-vtables");
+
+        // The ISA-surface dump reads the model as built — every TypeDef of every loaded
+        // module has its shell and stamp — and needs no reachability; stopping here keeps
+        // the dump independent of what the app happens to call.
+        if (StopBeforeReachability)
+            return;
 
         // Monomorphization: complete the generic instances reached during
         // signature decoding, then scan reachable IL for more, to a fixpoint.
