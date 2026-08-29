@@ -5248,6 +5248,188 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicateselectedscalart
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_f32(float a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_f32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_f32(float)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i16(int16_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_s16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i16(int16_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i32(int32_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_s32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i32(int32_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i8(int8_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_s8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_i8(int8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u16(uint16_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_u16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u16(uint16_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u32(uint32_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_u32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u32(uint32_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u8(uint8_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+    return dn2cpp_isa_vec<16>(vdupq_n_u8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicatetovector128_u8(uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_f32(float a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_f32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_f32(float)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i16(int16_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_s16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i16(int16_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i32(int32_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_s32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i32(int32_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i8(int8_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_s8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_i8(int8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u16(uint16_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_u16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u16(uint16_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u32(uint32_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_u32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u32(uint32_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u8(uint8_t a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+    return dn2cpp_isa_vec<8>(vdup_n_u8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_duplicatetovector64_u8(uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE float dn2cpp_isa_arm_advsimd_extract_v128f32_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Extract");
@@ -5855,6 +6037,227 @@ DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u8_v128u16(const Dn2CppVector64&, const Dn2CppVector128&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128f32_v128f32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vextq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128f32_v128f32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128f64_v128f64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vextq_f64(dn2cpp_isa_bits<float64x2_t>(a0), dn2cpp_isa_bits<float64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128f64_v128f64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vextq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vextq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vextq_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(vextq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vextq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vextq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u64_v128u64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vextq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u64_v128u64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u8_v128u8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(vextq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractvector128_v128u8_v128u8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64f32_v64f32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vext_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64f32_v64f32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vext_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vext_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vext_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vext_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vext_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u8_v64u8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vext_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractvector64_v64u8_v64u8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractVector64");
 }
 #endif
 
@@ -6756,6 +7159,45 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_insert_v64u8_u8_u8(const
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128f64_u8_v64f64(const Dn2CppVector128& a0, uint8_t a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vcopyq_lane_f64(dn2cpp_isa_bits<float64x2_t>(a0), DN2CPP_IMM, dn2cpp_isa_bits<float64x1_t>(a2), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128f64_u8_v64f64(const Dn2CppVector128&, uint8_t, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128i64_u8_v64i64(const Dn2CppVector128& a0, uint8_t a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vcopyq_lane_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM, dn2cpp_isa_bits<int64x1_t>(a2), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128i64_u8_v64i64(const Dn2CppVector128&, uint8_t, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128u64_u8_v64u64(const Dn2CppVector128& a0, uint8_t a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vcopyq_lane_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM, dn2cpp_isa_bits<uint64x1_t>(a2), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insertscalar_v128u64_u8_v64u64(const Dn2CppVector128&, uint8_t, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.InsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i16(const Dn2CppVector128& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
@@ -7081,6 +7523,97 @@ DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64_pu8(uint8_t* a0, Dn
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_f32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pf32(float*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_s16(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_s32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_s8(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_u16(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_u32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld2_u8(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load2xvector64andunzip_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load2xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64");
@@ -7172,6 +7705,97 @@ DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64_pu8(uint8_t* a0, Dn
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_f32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pf32(float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_s16(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_s32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_s8(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_u16(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_u32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld3_u8(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load3xvector64andunzip_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load3xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64");
@@ -7259,6 +7883,1046 @@ DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64_pu8(uint8_t* a0, Dn
 [[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_f32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pf32(float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_s16(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_s32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_s8(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_u16(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_u32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+    dn2cpp_isa_scatter(vld4_u8(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_load4xvector64andunzip_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Load4xVector64AndUnzip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64f32_u8_pf32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, float* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld2_lane_f32(a2, (float32x2x2_t{{dn2cpp_isa_bits<float32x2_t>(a0_1), dn2cpp_isa_bits<float32x2_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64f32_u8_pf32(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, float*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i16_u8_pi16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, int16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld2_lane_s16(a2, (int16x4x2_t{{dn2cpp_isa_bits<int16x4_t>(a0_1), dn2cpp_isa_bits<int16x4_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i16_u8_pi16(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i32_u8_pi32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, int32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld2_lane_s32(a2, (int32x2x2_t{{dn2cpp_isa_bits<int32x2_t>(a0_1), dn2cpp_isa_bits<int32x2_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i32_u8_pi32(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i8_u8_pi8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, int8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld2_lane_s8(a2, (int8x8x2_t{{dn2cpp_isa_bits<int8x8_t>(a0_1), dn2cpp_isa_bits<int8x8_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64i8_u8_pi8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u16_u8_pu16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, uint16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld2_lane_u16(a2, (uint16x4x2_t{{dn2cpp_isa_bits<uint16x4_t>(a0_1), dn2cpp_isa_bits<uint16x4_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u16_u8_pu16(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u32_u8_pu32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, uint32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld2_lane_u32(a2, (uint32x2x2_t{{dn2cpp_isa_bits<uint32x2_t>(a0_1), dn2cpp_isa_bits<uint32x2_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u32_u8_pu32(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u8_u8_pu8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, uint8_t a1, uint8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld2_lane_u8(a2, (uint8x8x2_t{{dn2cpp_isa_bits<uint8x8_t>(a0_1), dn2cpp_isa_bits<uint8x8_t>(a0_2)}}), DN2CPP_IMM), item1, item2));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t2v64u8_u8_pu8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64f32_u8_pf32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, float* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld3_lane_f32(a2, (float32x2x3_t{{dn2cpp_isa_bits<float32x2_t>(a0_1), dn2cpp_isa_bits<float32x2_t>(a0_2), dn2cpp_isa_bits<float32x2_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64f32_u8_pf32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i16_u8_pi16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, int16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld3_lane_s16(a2, (int16x4x3_t{{dn2cpp_isa_bits<int16x4_t>(a0_1), dn2cpp_isa_bits<int16x4_t>(a0_2), dn2cpp_isa_bits<int16x4_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i16_u8_pi16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i32_u8_pi32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, int32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld3_lane_s32(a2, (int32x2x3_t{{dn2cpp_isa_bits<int32x2_t>(a0_1), dn2cpp_isa_bits<int32x2_t>(a0_2), dn2cpp_isa_bits<int32x2_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i32_u8_pi32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i8_u8_pi8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, int8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld3_lane_s8(a2, (int8x8x3_t{{dn2cpp_isa_bits<int8x8_t>(a0_1), dn2cpp_isa_bits<int8x8_t>(a0_2), dn2cpp_isa_bits<int8x8_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64i8_u8_pi8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u16_u8_pu16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, uint16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld3_lane_u16(a2, (uint16x4x3_t{{dn2cpp_isa_bits<uint16x4_t>(a0_1), dn2cpp_isa_bits<uint16x4_t>(a0_2), dn2cpp_isa_bits<uint16x4_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u16_u8_pu16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u32_u8_pu32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, uint32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld3_lane_u32(a2, (uint32x2x3_t{{dn2cpp_isa_bits<uint32x2_t>(a0_1), dn2cpp_isa_bits<uint32x2_t>(a0_2), dn2cpp_isa_bits<uint32x2_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u32_u8_pu32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u8_u8_pu8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, uint8_t a1, uint8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld3_lane_u8(a2, (uint8x8x3_t{{dn2cpp_isa_bits<uint8x8_t>(a0_1), dn2cpp_isa_bits<uint8x8_t>(a0_2), dn2cpp_isa_bits<uint8x8_t>(a0_3)}}), DN2CPP_IMM), item1, item2, item3));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t3v64u8_u8_pu8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64f32_u8_pf32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, float* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld4_lane_f32(a2, (float32x2x4_t{{dn2cpp_isa_bits<float32x2_t>(a0_1), dn2cpp_isa_bits<float32x2_t>(a0_2), dn2cpp_isa_bits<float32x2_t>(a0_3), dn2cpp_isa_bits<float32x2_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64f32_u8_pf32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i16_u8_pi16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, int16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld4_lane_s16(a2, (int16x4x4_t{{dn2cpp_isa_bits<int16x4_t>(a0_1), dn2cpp_isa_bits<int16x4_t>(a0_2), dn2cpp_isa_bits<int16x4_t>(a0_3), dn2cpp_isa_bits<int16x4_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i16_u8_pi16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i32_u8_pi32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, int32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld4_lane_s32(a2, (int32x2x4_t{{dn2cpp_isa_bits<int32x2_t>(a0_1), dn2cpp_isa_bits<int32x2_t>(a0_2), dn2cpp_isa_bits<int32x2_t>(a0_3), dn2cpp_isa_bits<int32x2_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i32_u8_pi32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i8_u8_pi8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, int8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld4_lane_s8(a2, (int8x8x4_t{{dn2cpp_isa_bits<int8x8_t>(a0_1), dn2cpp_isa_bits<int8x8_t>(a0_2), dn2cpp_isa_bits<int8x8_t>(a0_3), dn2cpp_isa_bits<int8x8_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64i8_u8_pi8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u16_u8_pu16(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, uint16_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_scatter(vld4_lane_u16(a2, (uint16x4x4_t{{dn2cpp_isa_bits<uint16x4_t>(a0_1), dn2cpp_isa_bits<uint16x4_t>(a0_2), dn2cpp_isa_bits<uint16x4_t>(a0_3), dn2cpp_isa_bits<uint16x4_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u16_u8_pu16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u32_u8_pu32(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, uint32_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_scatter(vld4_lane_u32(a2, (uint32x2x4_t{{dn2cpp_isa_bits<uint32x2_t>(a0_1), dn2cpp_isa_bits<uint32x2_t>(a0_2), dn2cpp_isa_bits<uint32x2_t>(a0_3), dn2cpp_isa_bits<uint32x2_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u32_u8_pu32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u8_u8_pu8(const Dn2CppVector64& a0_1, const Dn2CppVector64& a0_2, const Dn2CppVector64& a0_3, const Dn2CppVector64& a0_4, uint8_t a1, uint8_t* a2, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_scatter(vld4_lane_u8(a2, (uint8x8x4_t{{dn2cpp_isa_bits<uint8x8_t>(a0_1), dn2cpp_isa_bits<uint8x8_t>(a0_2), dn2cpp_isa_bits<uint8x8_t>(a0_3), dn2cpp_isa_bits<uint8x8_t>(a0_4)}}), DN2CPP_IMM), item1, item2, item3, item4));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandinsertscalar_t4v64u8_u8_pu8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t, uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128f32_u8_pf32(const Dn2CppVector128& a0, uint8_t a1, float* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_vec<16>(vld1q_lane_f32(a2, dn2cpp_isa_bits<float32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128f32_u8_pf32(const Dn2CppVector128&, uint8_t, float*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128f64_u8_pf64(const Dn2CppVector128& a0, uint8_t a1, double* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vld1q_lane_f64(a2, dn2cpp_isa_bits<float64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128f64_u8_pf64(const Dn2CppVector128&, uint8_t, double*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i16_u8_pi16(const Dn2CppVector128& a0, uint8_t a1, int16_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vld1q_lane_s16(a2, dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i16_u8_pi16(const Dn2CppVector128&, uint8_t, int16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i32_u8_pi32(const Dn2CppVector128& a0, uint8_t a1, int32_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_vec<16>(vld1q_lane_s32(a2, dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i32_u8_pi32(const Dn2CppVector128&, uint8_t, int32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i64_u8_pi64(const Dn2CppVector128& a0, uint8_t a1, int64_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vld1q_lane_s64(a2, dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i64_u8_pi64(const Dn2CppVector128&, uint8_t, int64_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i8_u8_pi8(const Dn2CppVector128& a0, uint8_t a1, int8_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vld1q_lane_s8(a2, dn2cpp_isa_bits<int8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128i8_u8_pi8(const Dn2CppVector128&, uint8_t, int8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u16_u8_pu16(const Dn2CppVector128& a0, uint8_t a1, uint16_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vld1q_lane_u16(a2, dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u16_u8_pu16(const Dn2CppVector128&, uint8_t, uint16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u32_u8_pu32(const Dn2CppVector128& a0, uint8_t a1, uint32_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_vec<16>(vld1q_lane_u32(a2, dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u32_u8_pu32(const Dn2CppVector128&, uint8_t, uint32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u64_u8_pu64(const Dn2CppVector128& a0, uint8_t a1, uint64_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<16>(vld1q_lane_u64(a2, dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u64_u8_pu64(const Dn2CppVector128&, uint8_t, uint64_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u8_u8_pu8(const Dn2CppVector128& a0, uint8_t a1, uint8_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vld1q_lane_u8(a2, dn2cpp_isa_bits<uint8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v128u8_u8_pu8(const Dn2CppVector128&, uint8_t, uint8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64f32_u8_pf32(const Dn2CppVector64& a0, uint8_t a1, float* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<8>(vld1_lane_f32(a2, dn2cpp_isa_bits<float32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64f32_u8_pf32(const Dn2CppVector64&, uint8_t, float*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i16_u8_pi16(const Dn2CppVector64& a0, uint8_t a1, int16_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_vec<8>(vld1_lane_s16(a2, dn2cpp_isa_bits<int16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i16_u8_pi16(const Dn2CppVector64&, uint8_t, int16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i32_u8_pi32(const Dn2CppVector64& a0, uint8_t a1, int32_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<8>(vld1_lane_s32(a2, dn2cpp_isa_bits<int32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i32_u8_pi32(const Dn2CppVector64&, uint8_t, int32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i8_u8_pi8(const Dn2CppVector64& a0, uint8_t a1, int8_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<8>(vld1_lane_s8(a2, dn2cpp_isa_bits<int8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64i8_u8_pi8(const Dn2CppVector64&, uint8_t, int8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u16_u8_pu16(const Dn2CppVector64& a0, uint8_t a1, uint16_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a1, dn2cpp_isa_vec<8>(vld1_lane_u16(a2, dn2cpp_isa_bits<uint16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u16_u8_pu16(const Dn2CppVector64&, uint8_t, uint16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u32_u8_pu32(const Dn2CppVector64& a0, uint8_t a1, uint32_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a1, dn2cpp_isa_vec<8>(vld1_lane_u32(a2, dn2cpp_isa_bits<uint32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u32_u8_pu32(const Dn2CppVector64&, uint8_t, uint32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u8_u8_pu8(const Dn2CppVector64& a0, uint8_t a1, uint8_t* a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<8>(vld1_lane_u8(a2, dn2cpp_isa_bits<uint8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandinsertscalar_v64u8_u8_pu8(const Dn2CppVector64&, uint8_t, uint8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pf32(float* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_f32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pf32(float*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi16(int16_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_s16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi16(int16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi32(int32_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_s32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi32(int32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi8(int8_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_s8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pi8(int8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu16(uint16_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_u16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu16(uint16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu32(uint32_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_u32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu32(uint32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu8(uint8_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+    return dn2cpp_isa_vec<16>(vld1q_dup_u8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_loadandreplicatetovector128_pu8(uint8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector128");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pf32(float* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_f32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pf32(float*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi16(int16_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_s16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi16(int16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi32(int32_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_s32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi32(int32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi8(int8_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_s8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pi8(int8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu16(uint16_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_u16(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu16(uint16_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu32(uint32_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_u32(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu32(uint32_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu8(uint8_t* a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+    return dn2cpp_isa_vec<8>(vld1_dup_u8(a0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_loadandreplicatetovector64_pu8(uint8_t*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_f32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pf32(float*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_s16(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_s32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_s8(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_u16(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_u32(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+    dn2cpp_isa_scatter(vld2_dup_u8(a0), item1, item2);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x2_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x2");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_f32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pf32(float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_s16(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_s32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_s8(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_u16(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_u32(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+    dn2cpp_isa_scatter(vld3_dup_u8(a0), item1, item2, item3);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x3_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x3");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pf32(float* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_f32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pf32(float*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi16(int16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_s16(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi16(int16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi32(int32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_s32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi32(int32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi8(int8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_s8(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pi8(int8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu16(uint16_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_u16(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu16(uint16_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu32(uint32_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_u32(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu32(uint32_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu8(uint8_t* a0, Dn2CppVector64* item1, Dn2CppVector64* item2, Dn2CppVector64* item3, Dn2CppVector64* item4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
+    dn2cpp_isa_scatter(vld4_dup_u8(a0), item1, item2, item3, item4);
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_loadandreplicatetovector64x4_pu8(uint8_t*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*, Dn2CppVector64*)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LoadAndReplicateToVector64x4");
 }
 #endif
 
@@ -13165,6 +14829,318 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalstep_v64f32_v6
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<16>(vrev32q_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<16>(vrev64q_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<16>(vrev32q_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128u64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<16>(vrev64q_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement16_v128u64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<8>(vrev32_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64i64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<8>(vrev64_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64i64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<8>(vrev32_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64u64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+    return dn2cpp_isa_vec<8>(vrev64_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement16_v64u64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement16");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement32_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+    return dn2cpp_isa_vec<16>(vrev64q_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement32_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement32_v128u64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+    return dn2cpp_isa_vec<16>(vrev64q_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement32_v128u64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement32_v64i64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+    return dn2cpp_isa_vec<8>(vrev64_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement32_v64i64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement32_v64u64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+    return dn2cpp_isa_vec<8>(vrev64_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement32_v64u64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement32");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev16q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev32q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev64q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev16q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev32q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<16>(vrev64q_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reverseelement8_v128u64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev16_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev32_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev64_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64i64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev16_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev32_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+    return dn2cpp_isa_vec<8>(vrev64_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reverseelement8_v64u64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReverseElement8");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundawayfromzero_v128f32(const Dn2CppVector128& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZero");
@@ -18569,6 +20545,773 @@ DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_store_pu8_v64u8(uint8_t* a0, const
 [[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_store_pu8_v64u8(uint8_t*, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Store");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t2v64f32_u8(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst2_lane_f32(a0, (float32x2x2_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t2v64f32_u8(float*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t3v64f32_u8(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst3_lane_f32(a0, (float32x2x3_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2), dn2cpp_isa_bits<float32x2_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t3v64f32_u8(float*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t4v64f32_u8(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst4_lane_f32(a0, (float32x2x4_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2), dn2cpp_isa_bits<float32x2_t>(a1_3), dn2cpp_isa_bits<float32x2_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_t4v64f32_u8(float*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_v128f32_u8(float* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst1q_lane_f32(a0, dn2cpp_isa_bits<float32x4_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_v128f32_u8(float*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_v64f32_u8(float* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1_lane_f32(a0, dn2cpp_isa_bits<float32x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf32_v64f32_u8(float*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf64_v128f64_u8(double* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1q_lane_f64(a0, dn2cpp_isa_bits<float64x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pf64_v128f64_u8(double*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t2v64i16_u8(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst2_lane_s16(a0, (int16x4x2_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t2v64i16_u8(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t3v64i16_u8(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst3_lane_s16(a0, (int16x4x3_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2), dn2cpp_isa_bits<int16x4_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t3v64i16_u8(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t4v64i16_u8(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst4_lane_s16(a0, (int16x4x4_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2), dn2cpp_isa_bits<int16x4_t>(a1_3), dn2cpp_isa_bits<int16x4_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_t4v64i16_u8(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_v128i16_u8(int16_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst1q_lane_s16(a0, dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_v128i16_u8(int16_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_v64i16_u8(int16_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst1_lane_s16(a0, dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi16_v64i16_u8(int16_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t2v64i32_u8(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst2_lane_s32(a0, (int32x2x2_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t2v64i32_u8(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t3v64i32_u8(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst3_lane_s32(a0, (int32x2x3_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2), dn2cpp_isa_bits<int32x2_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t3v64i32_u8(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t4v64i32_u8(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst4_lane_s32(a0, (int32x2x4_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2), dn2cpp_isa_bits<int32x2_t>(a1_3), dn2cpp_isa_bits<int32x2_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_t4v64i32_u8(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_v128i32_u8(int32_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst1q_lane_s32(a0, dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_v128i32_u8(int32_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_v64i32_u8(int32_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1_lane_s32(a0, dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi32_v64i32_u8(int32_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi64_v128i64_u8(int64_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1q_lane_s64(a0, dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi64_v128i64_u8(int64_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t2v64i8_u8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst2_lane_s8(a0, (int8x8x2_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t2v64i8_u8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t3v64i8_u8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst3_lane_s8(a0, (int8x8x3_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2), dn2cpp_isa_bits<int8x8_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t3v64i8_u8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t4v64i8_u8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst4_lane_s8(a0, (int8x8x4_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2), dn2cpp_isa_bits<int8x8_t>(a1_3), dn2cpp_isa_bits<int8x8_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_t4v64i8_u8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_v128i8_u8(int8_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, vst1q_lane_s8(a0, dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_v128i8_u8(int8_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_v64i8_u8(int8_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst1_lane_s8(a0, dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pi8_v64i8_u8(int8_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t2v64u16_u8(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst2_lane_u16(a0, (uint16x4x2_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t2v64u16_u8(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t3v64u16_u8(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst3_lane_u16(a0, (uint16x4x3_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2), dn2cpp_isa_bits<uint16x4_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t3v64u16_u8(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t4v64u16_u8(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst4_lane_u16(a0, (uint16x4x4_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2), dn2cpp_isa_bits<uint16x4_t>(a1_3), dn2cpp_isa_bits<uint16x4_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_t4v64u16_u8(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_v128u16_u8(uint16_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst1q_lane_u16(a0, dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_v128u16_u8(uint16_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_v64u16_u8(uint16_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst1_lane_u16(a0, dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu16_v64u16_u8(uint16_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t2v64u32_u8(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst2_lane_u32(a0, (uint32x2x2_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t2v64u32_u8(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t3v64u32_u8(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst3_lane_u32(a0, (uint32x2x3_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2), dn2cpp_isa_bits<uint32x2_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t3v64u32_u8(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t4v64u32_u8(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst4_lane_u32(a0, (uint32x2x4_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2), dn2cpp_isa_bits<uint32x2_t>(a1_3), dn2cpp_isa_bits<uint32x2_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_t4v64u32_u8(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_v128u32_u8(uint32_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, vst1q_lane_u32(a0, dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_v128u32_u8(uint32_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_v64u32_u8(uint32_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1_lane_u32(a0, dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu32_v64u32_u8(uint32_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu64_v128u64_u8(uint64_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, vst1q_lane_u64(a0, dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu64_v128u64_u8(uint64_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t2v64u8_u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst2_lane_u8(a0, (uint8x8x2_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t2v64u8_u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t3v64u8_u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst3_lane_u8(a0, (uint8x8x3_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2), dn2cpp_isa_bits<uint8x8_t>(a1_3)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t3v64u8_u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t4v64u8_u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst4_lane_u8(a0, (uint8x8x4_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2), dn2cpp_isa_bits<uint8x8_t>(a1_3), dn2cpp_isa_bits<uint8x8_t>(a1_4)}}), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_t4v64u8_u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_v128u8_u8(uint8_t* a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, vst1q_lane_u8(a0, dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_v128u8_u8(uint8_t*, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_v64u8_u8(uint8_t* a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, vst1_lane_u8(a0, dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storeselectedscalar_pu8_v64u8_u8(uint8_t*, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreSelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t2v64f32(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_f32(a0, (float32x2x2_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t2v64f32(float*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t3v64f32(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_f32(a0, (float32x2x3_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2), dn2cpp_isa_bits<float32x2_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t3v64f32(float*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t4v64f32(float* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_f32(a0, (float32x2x4_t{{dn2cpp_isa_bits<float32x2_t>(a1_1), dn2cpp_isa_bits<float32x2_t>(a1_2), dn2cpp_isa_bits<float32x2_t>(a1_3), dn2cpp_isa_bits<float32x2_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pf32_t4v64f32(float*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t2v64i16(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_s16(a0, (int16x4x2_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t2v64i16(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t3v64i16(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_s16(a0, (int16x4x3_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2), dn2cpp_isa_bits<int16x4_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t3v64i16(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t4v64i16(int16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_s16(a0, (int16x4x4_t{{dn2cpp_isa_bits<int16x4_t>(a1_1), dn2cpp_isa_bits<int16x4_t>(a1_2), dn2cpp_isa_bits<int16x4_t>(a1_3), dn2cpp_isa_bits<int16x4_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi16_t4v64i16(int16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t2v64i32(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_s32(a0, (int32x2x2_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t2v64i32(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t3v64i32(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_s32(a0, (int32x2x3_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2), dn2cpp_isa_bits<int32x2_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t3v64i32(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t4v64i32(int32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_s32(a0, (int32x2x4_t{{dn2cpp_isa_bits<int32x2_t>(a1_1), dn2cpp_isa_bits<int32x2_t>(a1_2), dn2cpp_isa_bits<int32x2_t>(a1_3), dn2cpp_isa_bits<int32x2_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi32_t4v64i32(int32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t2v64i8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_s8(a0, (int8x8x2_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t2v64i8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t3v64i8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_s8(a0, (int8x8x3_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2), dn2cpp_isa_bits<int8x8_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t3v64i8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t4v64i8(int8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_s8(a0, (int8x8x4_t{{dn2cpp_isa_bits<int8x8_t>(a1_1), dn2cpp_isa_bits<int8x8_t>(a1_2), dn2cpp_isa_bits<int8x8_t>(a1_3), dn2cpp_isa_bits<int8x8_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pi8_t4v64i8(int8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t2v64u16(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_u16(a0, (uint16x4x2_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t2v64u16(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t3v64u16(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_u16(a0, (uint16x4x3_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2), dn2cpp_isa_bits<uint16x4_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t3v64u16(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t4v64u16(uint16_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_u16(a0, (uint16x4x4_t{{dn2cpp_isa_bits<uint16x4_t>(a1_1), dn2cpp_isa_bits<uint16x4_t>(a1_2), dn2cpp_isa_bits<uint16x4_t>(a1_3), dn2cpp_isa_bits<uint16x4_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu16_t4v64u16(uint16_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t2v64u32(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_u32(a0, (uint32x2x2_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t2v64u32(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t3v64u32(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_u32(a0, (uint32x2x3_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2), dn2cpp_isa_bits<uint32x2_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t3v64u32(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t4v64u32(uint32_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_u32(a0, (uint32x2x4_t{{dn2cpp_isa_bits<uint32x2_t>(a1_1), dn2cpp_isa_bits<uint32x2_t>(a1_2), dn2cpp_isa_bits<uint32x2_t>(a1_3), dn2cpp_isa_bits<uint32x2_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu32_t4v64u32(uint32_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t2v64u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst2_u8(a0, (uint8x8x2_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t2v64u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t3v64u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst3_u8(a0, (uint8x8x3_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2), dn2cpp_isa_bits<uint8x8_t>(a1_3)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t3v64u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t4v64u8(uint8_t* a0, const Dn2CppVector64& a1_1, const Dn2CppVector64& a1_2, const Dn2CppVector64& a1_3, const Dn2CppVector64& a1_4)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
+    vst4_u8(a0, (uint8x8x4_t{{dn2cpp_isa_bits<uint8x8_t>(a1_1), dn2cpp_isa_bits<uint8x8_t>(a1_2), dn2cpp_isa_bits<uint8x8_t>(a1_3), dn2cpp_isa_bits<uint8x8_t>(a1_4)}}));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE void dn2cpp_isa_arm_advsimd_storevectorandzip_pu8_t4v64u8(uint8_t*, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.StoreVectorAndZip");
 }
 #endif
 

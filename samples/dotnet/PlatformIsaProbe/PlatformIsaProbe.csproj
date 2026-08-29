@@ -8,9 +8,10 @@
     <Optimize>true</Optimize>
     <DebugType>none</DebugType>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <!-- Sve/Sve2 (SYSLIB5003) and X86Base.DivRem (SYSLIB5004) are [Experimental] in this
-         CoreLib; the contract covers them anyway. -->
-    <NoWarn>SYSLIB5003;SYSLIB5004</NoWarn>
+    <!-- Sve/Sve2 (SYSLIB5003) and X86Base.DivRem (SYSLIB5004) are [Experimental] and the
+         signed ShiftRightLogicalRoundedNarrowingSaturateLower overloads [Obsolete]
+         (SYSLIB0055) in this CoreLib; the contract covers them anyway. -->
+    <NoWarn>SYSLIB5003;SYSLIB5004;SYSLIB0055</NoWarn>
   </PropertyGroup>
 
 </Project>
