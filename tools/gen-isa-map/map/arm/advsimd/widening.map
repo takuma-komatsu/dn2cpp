@@ -1,0 +1,74 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — widening operations: the result element is
+# twice the operand's ({wT}); Lower reads the low half (SADDL, Vn.8B), Upper the high
+# half (SADDL2, Vn.16B), and the *W forms (SADDW) widen only the second operand.
+AbsoluteDifferenceWideningLower(v64{T},v64{T}) = vabdl_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AbsoluteDifferenceWideningLowerAndAdd(v128{wT},v64{T},v64{T}) = vabal_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+AbsoluteDifferenceWideningUpper(v128{T},v128{T}) = vabdl_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AbsoluteDifferenceWideningUpperAndAdd(v128{wT},v128{T},v128{T}) = vabal_high_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+AddPairwiseWidening(v{W}{T}) = vpaddl{q}_{neon}($0) for W in 64,128 for T in i8,u8,i16,u16
+AddPairwiseWidening(v128{T}) = vpaddlq_{neon}($0) for T in i32,u32
+AddPairwiseWideningAndAdd(v{W}{wT},v{W}{T}) = vpadal{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16
+AddPairwiseWideningAndAdd(v128{wT},v128{T}) = vpadalq_{neon}($0, $1) for T in i32,u32
+AddPairwiseWideningAndAddScalar(v64{wT},v64{T}) = vpadal_{neon}($0, $1) for T in i32,u32
+AddPairwiseWideningScalar(v64{T}) = vpaddl_{neon}($0) for T in i32,u32
+AddWideningLower(v64{T},v64{T}) = vaddl_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AddWideningLower(v128{wT},v64{T}) = vaddw_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AddWideningUpper(v128{T},v128{T}) = vaddl_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AddWideningUpper(v128{wT},v128{T}) = vaddw_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLower(v64{T},v128{T},u8) @imm[0..{N128}) = vmull_laneq_{neon}($0, $1, $2) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLower(v64{T},v64{T},u8) @imm[0..{N64}) = vmull_lane_{neon}($0, $1, $2) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLowerAndAdd(v128{wT},v64{T},v128{T},u8) @imm[0..{N128}) = vmlal_laneq_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLowerAndAdd(v128{wT},v64{T},v64{T},u8) @imm[0..{N64}) = vmlal_lane_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLowerAndSubtract(v128{wT},v64{T},v128{T},u8) @imm[0..{N128}) = vmlsl_laneq_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningLowerAndSubtract(v128{wT},v64{T},v64{T},u8) @imm[0..{N64}) = vmlsl_lane_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpper(v128{T},v128{T},u8) @imm[0..{N128}) = vmull_high_laneq_{neon}($0, $1, $2) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpper(v128{T},v64{T},u8) @imm[0..{N64}) = vmull_high_lane_{neon}($0, $1, $2) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpperAndAdd(v128{wT},v128{T},v128{T},u8) @imm[0..{N128}) = vmlal_high_laneq_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpperAndAdd(v128{wT},v128{T},v64{T},u8) @imm[0..{N64}) = vmlal_high_lane_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpperAndSubtract(v128{wT},v128{T},v128{T},u8) @imm[0..{N128}) = vmlsl_high_laneq_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyBySelectedScalarWideningUpperAndSubtract(v128{wT},v128{T},v64{T},u8) @imm[0..{N64}) = vmlsl_high_lane_{neon}($0, $1, $2, $3) for T in i16,u16,i32,u32
+MultiplyDoublingWideningLowerAndAddSaturate(v128{wT},v64{T},v64{T}) = vqdmlal_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningLowerAndSubtractSaturate(v128{wT},v64{T},v64{T}) = vqdmlsl_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningLowerByScalarAndAddSaturate(v128{wT},v64{T},v64{T}) = vqdmlal_lane_{neon}($0, $1, $2, 0) for T in i16,i32
+MultiplyDoublingWideningLowerByScalarAndSubtractSaturate(v128{wT},v64{T},v64{T}) = vqdmlsl_lane_{neon}($0, $1, $2, 0) for T in i16,i32
+MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate(v128{wT},v64{T},v128{T},u8) @imm[0..{N128}) = vqdmlal_laneq_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate(v128{wT},v64{T},v64{T},u8) @imm[0..{N64}) = vqdmlal_lane_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate(v128{wT},v64{T},v128{T},u8) @imm[0..{N128}) = vqdmlsl_laneq_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate(v128{wT},v64{T},v64{T},u8) @imm[0..{N64}) = vqdmlsl_lane_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningSaturateLower(v64{T},v64{T}) = vqdmull_{neon}($0, $1) for T in i16,i32
+MultiplyDoublingWideningSaturateLowerByScalar(v64{T},v64{T}) = vqdmull_lane_{neon}($0, $1, 0) for T in i16,i32
+MultiplyDoublingWideningSaturateLowerBySelectedScalar(v64{T},v128{T},u8) @imm[0..{N128}) = vqdmull_laneq_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningSaturateLowerBySelectedScalar(v64{T},v64{T},u8) @imm[0..{N64}) = vqdmull_lane_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningSaturateUpper(v128{T},v128{T}) = vqdmull_high_{neon}($0, $1) for T in i16,i32
+MultiplyDoublingWideningSaturateUpperByScalar(v128{T},v64{T}) = vqdmull_high_lane_{neon}($0, $1, 0) for T in i16,i32
+MultiplyDoublingWideningSaturateUpperBySelectedScalar(v128{T},v128{T},u8) @imm[0..{N128}) = vqdmull_high_laneq_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningSaturateUpperBySelectedScalar(v128{T},v64{T},u8) @imm[0..{N64}) = vqdmull_high_lane_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningUpperAndAddSaturate(v128{wT},v128{T},v128{T}) = vqdmlal_high_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningUpperAndSubtractSaturate(v128{wT},v128{T},v128{T}) = vqdmlsl_high_{neon}($0, $1, $2) for T in i16,i32
+MultiplyDoublingWideningUpperByScalarAndAddSaturate(v128{wT},v128{T},v64{T}) = vqdmlal_high_lane_{neon}($0, $1, $2, 0) for T in i16,i32
+MultiplyDoublingWideningUpperByScalarAndSubtractSaturate(v128{wT},v128{T},v64{T}) = vqdmlsl_high_lane_{neon}($0, $1, $2, 0) for T in i16,i32
+MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate(v128{wT},v128{T},v128{T},u8) @imm[0..{N128}) = vqdmlal_high_laneq_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate(v128{wT},v128{T},v64{T},u8) @imm[0..{N64}) = vqdmlal_high_lane_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate(v128{wT},v128{T},v128{T},u8) @imm[0..{N128}) = vqdmlsl_high_laneq_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate(v128{wT},v128{T},v64{T},u8) @imm[0..{N64}) = vqdmlsl_high_lane_{neon}($0, $1, $2, $3) for T in i16,i32
+MultiplyWideningLower(v64{T},v64{T}) = vmull_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningLowerAndAdd(v128{wT},v64{T},v64{T}) = vmlal_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningLowerAndSubtract(v128{wT},v64{T},v64{T}) = vmlsl_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningUpper(v128{T},v128{T}) = vmull_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningUpperAndAdd(v128{wT},v128{T},v128{T}) = vmlal_high_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningUpperAndSubtract(v128{wT},v128{T},v128{T}) = vmlsl_high_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32
+# PMULL/PMULL2 on bytes yield a poly16x8_t, whose bytes are the result.
+PolynomialMultiplyWideningLower(v64{T},v64{T}) = vmull_p8(vreinterpret_p8_u8($0:u8), vreinterpret_p8_u8($1:u8)) for T in i8,u8
+PolynomialMultiplyWideningUpper(v128{T},v128{T}) = vmull_high_p8(vreinterpretq_p8_u8($0:u8), vreinterpretq_p8_u8($1:u8)) for T in i8,u8
+# SSHLL #n takes 0..bits-1 in .NET (SHLL, the bits-wide form, is not reachable).
+ShiftLeftLogicalWideningLower(v64{T},u8) @imm[0..{bits}) = vshll_n_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+ShiftLeftLogicalWideningUpper(v128{T},u8) @imm[0..{bits}) = vshll_high_n_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+SignExtendWideningLower(v64{T}) = vmovl_{neon}($0) for T in i8,i16,i32
+SignExtendWideningUpper(v128{T}) = vmovl_high_{neon}($0) for T in i8,i16,i32
+SubtractWideningLower(v64{T},v64{T}) = vsubl_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+SubtractWideningLower(v128{wT},v64{T}) = vsubw_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+SubtractWideningUpper(v128{T},v128{T}) = vsubl_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+SubtractWideningUpper(v128{wT},v128{T}) = vsubw_high_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32
+# UXTL zero-extends whatever the sign of the operand type.
+ZeroExtendWideningLower(v64{T}) = vmovl_{uT}($0:{uT}) for T in i8,u8,i16,u16,i32,u32
+ZeroExtendWideningUpper(v128{T}) = vmovl_high_{uT}($0:{uT}) for T in i8,u8,i16,u16,i32,u32

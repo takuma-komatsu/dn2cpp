@@ -1,0 +1,36 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — narrowing operations. T is the wide operand
+# element; the result element is half its width ({nT}), and the Upper forms (XTN2,
+# ADDHN2, SQSHRN2) write the high half of a vector whose low half is the first operand.
+# A narrowing shift takes 1..half the width. The logical (UQSHRN) and the
+# signed-to-unsigned (SQSHRUN, SQXTUN) saturations are distinct instructions; the
+# former is the unsigned intrinsic over the operand's bits.
+AddHighNarrowingLower(v128{T},v128{T}) = vaddhn_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+AddHighNarrowingUpper(v64{nT},v128{T},v128{T}) = vaddhn_high_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64
+AddRoundedHighNarrowingLower(v128{T},v128{T}) = vraddhn_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+AddRoundedHighNarrowingUpper(v64{nT},v128{T},v128{T}) = vraddhn_high_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64
+ExtractNarrowingLower(v128{T}) = vmovn_{neon}($0) for T in i16,u16,i32,u32,i64,u64
+ExtractNarrowingSaturateLower(v128{T}) = vqmovn_{neon}($0) for T in i16,u16,i32,u32,i64,u64
+ExtractNarrowingSaturateUnsignedLower(v128{T}) = vqmovun_{neon}($0) for T in i16,i32,i64
+ExtractNarrowingSaturateUnsignedUpper(v64{unT},v128{T}) = vqmovun_high_{neon}($0, $1) for T in i16,i32,i64
+ExtractNarrowingSaturateUpper(v64{nT},v128{T}) = vqmovn_high_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ExtractNarrowingUpper(v64{nT},v128{T}) = vmovn_high_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightArithmeticNarrowingSaturateLower(v128{T},u8) @imm[1..{hbits}] = vqshrn_n_{neon}($0, $1) for T in i16,i32,i64
+ShiftRightArithmeticNarrowingSaturateUnsignedLower(v128{T},u8) @imm[1..{hbits}] = vqshrun_n_{neon}($0, $1) for T in i16,i32,i64
+ShiftRightArithmeticNarrowingSaturateUnsignedUpper(v64{unT},v128{T},u8) @imm[1..{hbits}] = vqshrun_high_n_{neon}($0, $1, $2) for T in i16,i32,i64
+ShiftRightArithmeticNarrowingSaturateUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vqshrn_high_n_{neon}($0, $1, $2) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateLower(v128{T},u8) @imm[1..{hbits}] = vqrshrn_n_{neon}($0, $1) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower(v128{T},u8) @imm[1..{hbits}] = vqrshrun_n_{neon}($0, $1) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper(v64{unT},v128{T},u8) @imm[1..{hbits}] = vqrshrun_high_n_{neon}($0, $1, $2) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vqrshrn_high_n_{neon}($0, $1, $2) for T in i16,i32,i64
+ShiftRightLogicalNarrowingLower(v128{T},u8) @imm[1..{hbits}] = vshrn_n_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalNarrowingSaturateLower(v128{T},u8) @imm[1..{hbits}] = vqshrn_n_{uT}($0:{uT}, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalNarrowingSaturateUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vqshrn_high_n_{uT}($0:{unT}, $1:{uT}, $2) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalNarrowingUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vshrn_high_n_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalRoundedNarrowingLower(v128{T},u8) @imm[1..{hbits}] = vrshrn_n_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalRoundedNarrowingSaturateLower(v128{T},u8) @imm[1..{hbits}] = vqrshrn_n_{uT}($0:{uT}, $1) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalRoundedNarrowingSaturateUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vqrshrn_high_n_{uT}($0:{unT}, $1:{uT}, $2) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalRoundedNarrowingUpper(v64{nT},v128{T},u8) @imm[1..{hbits}] = vrshrn_high_n_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64
+SubtractHighNarrowingLower(v128{T},v128{T}) = vsubhn_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+SubtractHighNarrowingUpper(v64{nT},v128{T},v128{T}) = vsubhn_high_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64
+SubtractRoundedHighNarrowingLower(v128{T},v128{T}) = vrsubhn_{neon}($0, $1) for T in i16,u16,i32,u32,i64,u64
+SubtractRoundedHighNarrowingUpper(v64{nT},v128{T},v128{T}) = vrsubhn_high_{neon}($0, $1, $2) for T in i16,u16,i32,u32,i64,u64

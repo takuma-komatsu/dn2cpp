@@ -1,0 +1,48 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — float rounding (FRINTA away from zero,
+# FRINTN to even, FRINTM/FRINTP towards -inf/+inf, FRINTZ towards zero), the
+# conversions with the same rounding modes (FCVTAS ... FCVTZU, SCVTF/UCVTF), the
+# reciprocal estimates and Newton steps, square root and division. A Scalar overload
+# is the 64-bit vector form's lane 0 with the other lane zeroed, the S-register
+# write; float64x1_t is one lane already.
+Ceiling(v{W}f32) = vrndp{q}_f32($0) for W in 64,128
+CeilingScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrndp_{neon}($0), 0)) for T in f32,f64
+ConvertToInt32RoundAwayFromZero(v{W}f32) = vcvta{q}_s32_f32($0) for W in 64,128
+ConvertToInt32RoundAwayFromZeroScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_s32(vcvta_s32_f32($0), 0))
+ConvertToInt32RoundToEven(v{W}f32) = vcvtn{q}_s32_f32($0) for W in 64,128
+ConvertToInt32RoundToEvenScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtn_s32_f32($0), 0))
+ConvertToInt32RoundToNegativeInfinity(v{W}f32) = vcvtm{q}_s32_f32($0) for W in 64,128
+ConvertToInt32RoundToNegativeInfinityScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtm_s32_f32($0), 0))
+ConvertToInt32RoundToPositiveInfinity(v{W}f32) = vcvtp{q}_s32_f32($0) for W in 64,128
+ConvertToInt32RoundToPositiveInfinityScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtp_s32_f32($0), 0))
+ConvertToInt32RoundToZero(v{W}f32) = vcvt{q}_s32_f32($0) for W in 64,128
+ConvertToInt32RoundToZeroScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_s32(vcvt_s32_f32($0), 0))
+ConvertToSingle(v{W}{T}) = vcvt{q}_f32_{neon}($0) for W in 64,128 for T in i32,u32
+ConvertToSingleScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_f32(vcvt_f32_{neon}($0), 0)) for T in i32,u32
+ConvertToUInt32RoundAwayFromZero(v{W}f32) = vcvta{q}_u32_f32($0) for W in 64,128
+ConvertToUInt32RoundAwayFromZeroScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_u32(vcvta_u32_f32($0), 0))
+ConvertToUInt32RoundToEven(v{W}f32) = vcvtn{q}_u32_f32($0) for W in 64,128
+ConvertToUInt32RoundToEvenScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtn_u32_f32($0), 0))
+ConvertToUInt32RoundToNegativeInfinity(v{W}f32) = vcvtm{q}_u32_f32($0) for W in 64,128
+ConvertToUInt32RoundToNegativeInfinityScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtm_u32_f32($0), 0))
+ConvertToUInt32RoundToPositiveInfinity(v{W}f32) = vcvtp{q}_u32_f32($0) for W in 64,128
+ConvertToUInt32RoundToPositiveInfinityScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtp_u32_f32($0), 0))
+ConvertToUInt32RoundToZero(v{W}f32) = vcvt{q}_u32_f32($0) for W in 64,128
+ConvertToUInt32RoundToZeroScalar(v64f32) = dn2cpp_isa_lane0<8>(vget_lane_u32(vcvt_u32_f32($0), 0))
+DivideScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vdiv_{neon}($0, $1), 0)) for T in f32,f64
+Floor(v{W}f32) = vrndm{q}_f32($0) for W in 64,128
+FloorScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrndm_{neon}($0), 0)) for T in f32,f64
+ReciprocalEstimate(v{W}{T}) = vrecpe{q}_{neon}($0) for W in 64,128 for T in f32,u32
+ReciprocalSquareRootEstimate(v{W}{T}) = vrsqrte{q}_{neon}($0) for W in 64,128 for T in f32,u32
+ReciprocalSquareRootStep(v{W}f32,v{W}f32) = vrsqrts{q}_f32($0, $1) for W in 64,128
+ReciprocalStep(v{W}f32,v{W}f32) = vrecps{q}_f32($0, $1) for W in 64,128
+RoundAwayFromZero(v{W}f32) = vrnda{q}_f32($0) for W in 64,128
+RoundAwayFromZeroScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrnda_{neon}($0), 0)) for T in f32,f64
+RoundToNearest(v{W}f32) = vrndn{q}_f32($0) for W in 64,128
+RoundToNearestScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrndn_{neon}($0), 0)) for T in f32,f64
+RoundToNegativeInfinity(v{W}f32) = vrndm{q}_f32($0) for W in 64,128
+RoundToNegativeInfinityScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrndm_{neon}($0), 0)) for T in f32,f64
+RoundToPositiveInfinity(v{W}f32) = vrndp{q}_f32($0) for W in 64,128
+RoundToPositiveInfinityScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrndp_{neon}($0), 0)) for T in f32,f64
+RoundToZero(v{W}f32) = vrnd{q}_f32($0) for W in 64,128
+RoundToZeroScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vrnd_{neon}($0), 0)) for T in f32,f64
+SqrtScalar(v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vsqrt_{neon}($0), 0)) for T in f32,f64

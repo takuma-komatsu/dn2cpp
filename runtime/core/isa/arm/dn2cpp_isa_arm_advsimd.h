@@ -113,6 +113,864 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abs_v64i8(const Dn2CppVe
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthan_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThan");
+    return dn2cpp_isa_vec<16>(vcagtq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthan_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThan");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthan_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThan");
+    return dn2cpp_isa_vec<8>(vcagt_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthan_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThan");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthanorequal_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThanOrEqual");
+    return dn2cpp_isa_vec<16>(vcageq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthanorequal_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThanOrEqual");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthanorequal_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThanOrEqual");
+    return dn2cpp_isa_vec<8>(vcage_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparegreaterthanorequal_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareGreaterThanOrEqual");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparelessthan_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThan");
+    return dn2cpp_isa_vec<16>(vcaltq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparelessthan_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThan");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparelessthan_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThan");
+    return dn2cpp_isa_vec<8>(vcalt_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparelessthan_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThan");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparelessthanorequal_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThanOrEqual");
+    return dn2cpp_isa_vec<16>(vcaleq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutecomparelessthanorequal_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThanOrEqual");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparelessthanorequal_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThanOrEqual");
+    return dn2cpp_isa_vec<8>(vcale_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutecomparelessthanorequal_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteCompareLessThanOrEqual");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<16>(vabdq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifference_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+    return dn2cpp_isa_vec<8>(vabd_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifference_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifference");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i16_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i16_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i32_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i32_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i8_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128i8_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u16_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u16_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u32_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u32_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u8_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<16>(vabaq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v128u8_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i16_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i16_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i32_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i32_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i8_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64i8_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u16_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u16_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u32_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u32_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u8_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+    return dn2cpp_isa_vec<8>(vaba_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absolutedifferenceadd_v64u8_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+    return dn2cpp_isa_vec<16>(vabdl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglower_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i16_v64i8_v64i8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i16_v64i8_v64i8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u16_v64u8_v64u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u16_v64u8_v64u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u32_v64u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u32_v64u16_v64u16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u64_v64u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideninglowerandadd_v128u64_v64u32_v64u32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+    return dn2cpp_isa_vec<16>(vabdl_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupper_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i16_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i16_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i64_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128i64_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u16_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u16_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u32_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u32_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u64_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vabal_high_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_absolutedifferencewideningupperandadd_v128u64_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsoluteDifferenceWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<16>(vqabsq_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<16>(vqabsq_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<16>(vqabsq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_abssaturate_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<8>(vqabs_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<8>(vqabs_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+    return dn2cpp_isa_vec<8>(vqabs_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_abssaturate_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vabs_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AbsScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vabs_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_absscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AbsScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_add_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Add");
@@ -321,6 +1179,721 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_add_v64u8_v64u8(const Dn
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vaddhn_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), dn2cpp_isa_bits<int64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), dn2cpp_isa_bits<uint64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vaddhn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+    return dn2cpp_isa_vec<8>(vpadd_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwise_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<16>(vpaddlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewidening_v128u8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<8>(vpaddl_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<8>(vpaddl_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64u16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<8>(vpaddl_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64u16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64u8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+    return dn2cpp_isa_vec<8>(vpaddl_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewidening_v64u8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWidening");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i16_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i16_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i32_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i32_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i64_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128i64_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u16_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u16_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u32_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u32_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u64_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<16>(vpadalq_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v128u64_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64i16_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<8>(vpadal_s8(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64i16_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64i32_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<8>(vpadal_s16(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64i32_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64u16_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<8>(vpadal_u8(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64u16_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64u32_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+    return dn2cpp_isa_vec<8>(vpadal_u16(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandadd_v64u32_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandaddscalar_v64i64_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAddScalar");
+    return dn2cpp_isa_vec<8>(vpadal_s32(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandaddscalar_v64i64_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandaddscalar_v64u64_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAddScalar");
+    return dn2cpp_isa_vec<8>(vpadal_u32(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningandaddscalar_v64u64_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningAndAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningscalar_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningScalar");
+    return dn2cpp_isa_vec<8>(vpaddl_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningscalar_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningscalar_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningScalar");
+    return dn2cpp_isa_vec<8>(vpaddl_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addpairwisewideningscalar_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddPairwiseWideningScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vraddhn_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addroundedhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), dn2cpp_isa_bits<int64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), dn2cpp_isa_bits<uint64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vraddhn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addroundedhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturate");
@@ -499,6 +2072,396 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturate_v64u8_v64u8(
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturate_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqadd_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturatescalar_v64u64_v64u64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqadd_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addsaturatescalar_v64u64_v64u64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vadd_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vadd_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s64(vadd_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64u64_v64u64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u64(vadd_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_addscalar_v64u64_v64u64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i16_v64i8(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i16_v64i8(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i32_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i32_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i64_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128i64_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u16_v64u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u16_v64u8(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u32_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u32_v64u16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u64_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddw_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v128u64_v64u32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+    return dn2cpp_isa_vec<16>(vaddl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideninglower_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i16_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i16_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i32_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i32_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i64_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i64_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u16_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u16_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u32_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u32_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u64_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddw_high_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u64_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
+    return dn2cpp_isa_vec<16>(vaddl_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_addwideningupper_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.AddWideningUpper");
 }
 #endif
 
@@ -1279,6 +3242,58 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_bitwiseselect_v64u8_v64u
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_bitwiseselect_v64u8_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.BitwiseSelect");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ceiling_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Ceiling");
+    return dn2cpp_isa_vec<16>(vrndpq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ceiling_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Ceiling");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceiling_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Ceiling");
+    return dn2cpp_isa_vec<8>(vrndp_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceiling_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Ceiling");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceilingscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.CeilingScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrndp_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceilingscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.CeilingScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceilingscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.CeilingScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrndp_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ceilingscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.CeilingScalar");
 }
 #endif
 
@@ -2375,6 +4390,500 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_comparetest_v64u8_v64u8(
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZero");
+    return dn2cpp_isa_vec<16>(vcvtaq_s32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZero");
+    return dn2cpp_isa_vec<8>(vcvta_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s32(vcvta_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundawayfromzeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundAwayFromZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtoeven_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEven");
+    return dn2cpp_isa_vec<16>(vcvtnq_s32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtoeven_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEven");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtoeven_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEven");
+    return dn2cpp_isa_vec<8>(vcvtn_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtoeven_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEven");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtoevenscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEvenScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtn_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtoevenscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToEvenScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<16>(vcvtmq_s32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<8>(vcvtm_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtm_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToNegativeInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<16>(vcvtpq_s32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<8>(vcvtp_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s32(vcvtp_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToPositiveInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtozero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZero");
+    return dn2cpp_isa_vec<16>(vcvtq_s32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttoint32roundtozero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtozero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZero");
+    return dn2cpp_isa_vec<8>(vcvt_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtozero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtozeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s32(vcvt_s32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttoint32roundtozeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToInt32RoundToZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttosingle_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+    return dn2cpp_isa_vec<16>(vcvtq_f32_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttosingle_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttosingle_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+    return dn2cpp_isa_vec<16>(vcvtq_f32_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttosingle_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosingle_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+    return dn2cpp_isa_vec<8>(vcvt_f32_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosingle_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosingle_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+    return dn2cpp_isa_vec<8>(vcvt_f32_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosingle_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingle");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosinglescalar_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingleScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vcvt_f32_s32(dn2cpp_isa_bits<int32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosinglescalar_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingleScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosinglescalar_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingleScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vcvt_f32_u32(dn2cpp_isa_bits<uint32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttosinglescalar_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToSingleScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZero");
+    return dn2cpp_isa_vec<16>(vcvtaq_u32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZero");
+    return dn2cpp_isa_vec<8>(vcvta_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u32(vcvta_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundawayfromzeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundAwayFromZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtoeven_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEven");
+    return dn2cpp_isa_vec<16>(vcvtnq_u32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtoeven_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEven");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtoeven_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEven");
+    return dn2cpp_isa_vec<8>(vcvtn_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtoeven_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEven");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtoevenscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEvenScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtn_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtoevenscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToEvenScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<16>(vcvtmq_u32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<8>(vcvtm_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtm_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToNegativeInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<16>(vcvtpq_u32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<8>(vcvtp_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u32(vcvtp_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToPositiveInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtozero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZero");
+    return dn2cpp_isa_vec<16>(vcvtq_u32_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_converttouint32roundtozero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtozero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZero");
+    return dn2cpp_isa_vec<8>(vcvt_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtozero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtozeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u32(vcvt_u32_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_converttouint32roundtozeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ConvertToUInt32RoundToZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_dividescalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DivideScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vdiv_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_dividescalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DivideScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_dividescalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DivideScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vdiv_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_dividescalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.DivideScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_duplicateselectedscalartovector128_v128f32_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.DuplicateSelectedScalarToVector128");
@@ -2960,6 +5469,1072 @@ DN2CPP_ISA_INLINE uint8_t dn2cpp_isa_arm_advsimd_extract_v64u8_u8(const Dn2CppVe
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_s64(dn2cpp_isa_bits<int64x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+    return dn2cpp_isa_vec<8>(vmovn_u64(dn2cpp_isa_bits<uint64x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowinglower_v128u64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_s64(dn2cpp_isa_bits<int64x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+    return dn2cpp_isa_vec<8>(vqmovn_u64(dn2cpp_isa_bits<uint64x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturatelower_v128u64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+    return dn2cpp_isa_vec<8>(vqmovun_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+    return dn2cpp_isa_vec<8>(vqmovun_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i64(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+    return dn2cpp_isa_vec<8>(vqmovun_s64(dn2cpp_isa_bits<int64x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedlower_v128i64(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u16_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+    return dn2cpp_isa_vec<16>(vqmovun_high_s32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u16_v128i32(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u32_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+    return dn2cpp_isa_vec<16>(vqmovun_high_s64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u32_v128i64(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u8_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+    return dn2cpp_isa_vec<16>(vqmovun_high_s16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateunsignedupper_v64u8_v128i16(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i16_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i16_v128i32(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i32_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i32_v128i64(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i8_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64i8_v128i16(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u16_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u16_v128u32(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u32_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u32_v128u64(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u8_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqmovn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingsaturateupper_v64u8_v128u16(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i16_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i16_v128i32(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i32_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i32_v128i64(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i8_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64i8_v128i16(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u16_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u16_v128u32(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u32_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u32_v128u64(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u8_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vmovn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_extractnarrowingupper_v64u8_v128u16(const Dn2CppVector64&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ExtractNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_floor_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Floor");
+    return dn2cpp_isa_vec<16>(vrndmq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_floor_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Floor");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floor_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Floor");
+    return dn2cpp_isa_vec<8>(vrndm_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floor_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Floor");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floorscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FloorScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrndm_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floorscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FloorScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floorscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FloorScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrndm_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_floorscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FloorScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<16>(vhaddq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddhalving_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+    return dn2cpp_isa_vec<8>(vhadd_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddhalving_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<16>(vrhaddq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+    return dn2cpp_isa_vec<8>(vrhadd_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedaddroundedhalving_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedAddRoundedHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedmultiplyadd_v128f32_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAdd");
+    return dn2cpp_isa_vec<16>(vfmaq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1), dn2cpp_isa_bits<float32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedmultiplyadd_v128f32_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyadd_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAdd");
+    return dn2cpp_isa_vec<8>(vfma_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyadd_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddnegatedscalar_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddNegatedScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vneg_f32(vfma_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2))), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddnegatedscalar_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddNegatedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddnegatedscalar_v64f64_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddNegatedScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vneg_f64(vfma_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1), dn2cpp_isa_bits<float64x1_t>(a2))), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddnegatedscalar_v64f64_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddNegatedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddscalar_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vfma_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddscalar_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddscalar_v64f64_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vfma_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1), dn2cpp_isa_bits<float64x1_t>(a2)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplyaddscalar_v64f64_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplyAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedmultiplysubtract_v128f32_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtract");
+    return dn2cpp_isa_vec<16>(vfmsq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1), dn2cpp_isa_bits<float32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedmultiplysubtract_v128f32_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtract_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtract");
+    return dn2cpp_isa_vec<8>(vfms_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtract_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractnegatedscalar_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractNegatedScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vneg_f32(vfms_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2))), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractnegatedscalar_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractNegatedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractnegatedscalar_v64f64_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractNegatedScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vneg_f64(vfms_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1), dn2cpp_isa_bits<float64x1_t>(a2))), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractnegatedscalar_v64f64_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractNegatedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractscalar_v64f32_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vfms_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), dn2cpp_isa_bits<float32x2_t>(a2)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractscalar_v64f32_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractscalar_v64f64_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vfms_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1), dn2cpp_isa_bits<float64x1_t>(a2)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedmultiplysubtractscalar_v64f64_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedMultiplySubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<16>(vhsubq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+    return dn2cpp_isa_vec<8>(vhsub_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_fusedsubtracthalving_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.FusedSubtractHalving");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_insert_v128f32_u8_f32(const Dn2CppVector128& a0, uint8_t a1, float a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Insert");
@@ -3177,6 +6752,240 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_insert_v64u8_u8_u8(const
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_insert_v64u8_u8_u8(const Dn2CppVector64&, uint8_t, uint8_t)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Insert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<16>(vclsq_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<16>(vclsq_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<16>(vclsq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingsigncount_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<8>(vcls_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<8>(vcls_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+    return dn2cpp_isa_vec<8>(vcls_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingsigncount_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingSignCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<16>(vclzq_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_leadingzerocount_v128u8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
+    return dn2cpp_isa_vec<8>(vclz_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_leadingzerocount_v64u8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.LeadingZeroCount");
 }
 #endif
 
@@ -3896,6 +7705,149 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_max_v64u8_v64u8(const Dn
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_maxnumber_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumber");
+    return dn2cpp_isa_vec<16>(vmaxnmq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_maxnumber_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumber");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumber_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumber");
+    return dn2cpp_isa_vec<8>(vmaxnm_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumber_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumber");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumberscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumberScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vmaxnm_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumberscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumberScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumberscalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumberScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vmaxnm_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxnumberscalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxNumberScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+    return dn2cpp_isa_vec<8>(vpmax_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_maxpairwise_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MaxPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_min_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Min");
@@ -4074,6 +8026,149 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_min_v64u8_v64u8(const Dn
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_min_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Min");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_minnumber_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinNumber");
+    return dn2cpp_isa_vec<16>(vminnmq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_minnumber_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinNumber");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumber_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinNumber");
+    return dn2cpp_isa_vec<8>(vminnm_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumber_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinNumber");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumberscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinNumberScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vminnm_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumberscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinNumberScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumberscalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinNumberScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vminnm_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minnumberscalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinNumberScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
+    return dn2cpp_isa_vec<8>(vpmin_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_minpairwise_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MinPairwise");
 }
 #endif
 
@@ -4260,6 +8355,3516 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiply_v64u8_v64u8(con
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i16_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i16_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i32_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i32_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i8_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128i8_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u16_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u16_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u32_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u32_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u8_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<16>(vmlaq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyadd_v128u8_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i16_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i16_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i32_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i32_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i8_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64i8_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u16_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u16_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u32_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u32_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u8_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+    return dn2cpp_isa_vec<8>(vmla_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyadd_v64u8_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128i16_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<16>(vmlaq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128i16_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128i32_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<16>(vmlaq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128i32_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128u16_v128u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<16>(vmlaq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128u16_v128u16_v64u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128u32_v128u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<16>(vmlaq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v128u32_v128u32_v64u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64i16_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<8>(vmla_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64i16_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64i32_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<8>(vmla_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64i32_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64u16_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<8>(vmla_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64u16_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64u32_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+    return dn2cpp_isa_vec<8>(vmla_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyscalar_v64u32_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i16_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlaq_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i16_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i16_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlaq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i16_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i32_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlaq_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i32_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i32_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlaq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128i32_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u16_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlaq_laneq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u16_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u16_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlaq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u16_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u32_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlaq_laneq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u32_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u32_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlaq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v128u32_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i16_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<8>(vmla_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i16_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i16_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmla_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i16_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i32_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmla_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i32_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i32_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<8>(vmla_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64i32_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u16_v64u16_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<8>(vmla_laneq_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u16_v64u16_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u16_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmla_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u16_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u32_v64u32_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmla_laneq_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u32_v64u32_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u32_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<8>(vmla_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyaddbyselectedscalar_v64u32_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyAddBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128f32_v64f32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<16>(vmulq_lane_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128f32_v64f32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<16>(vmulq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<16>(vmulq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<16>(vmulq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128u16_v64u16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<16>(vmulq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyscalar_v128u32_v64u32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<8>(vmul_lane_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<8>(vmul_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<8>(vmul_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<8>(vmul_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+    return dn2cpp_isa_vec<8>(vmul_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyscalar_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128f32_v128f32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmulq_laneq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128f32_v128f32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128f32_v64f32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmulq_lane_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128f32_v64f32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmulq_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmulq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmulq_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmulq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmulq_laneq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmulq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmulq_laneq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmulq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64f32_v128f32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vmul_laneq_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64f32_v128f32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64f32_v64f32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vmul_lane_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64f32_v64f32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vmul_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vmul_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vmul_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vmul_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u16_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vmul_laneq_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u16_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vmul_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u32_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vmul_laneq_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u32_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vmul_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplybyselectedscalar_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmull_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmull_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u16_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmull_laneq_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u16_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u32_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_laneq_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u32_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmull_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglower_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i32_v64i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlal_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i32_v64i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i32_v64i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i32_v64i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i64_v64i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i64_v64i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i64_v64i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlal_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128i64_v64i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u32_v64u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlal_laneq_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u32_v64u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u32_v64u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_lane_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u32_v64u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u64_v64u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_laneq_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u64_v64u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u64_v64u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlal_lane_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandadd_v128u64_v64u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i32_v64i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsl_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i32_v64i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i32_v64i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i32_v64i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i64_v64i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i64_v64i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i64_v64i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsl_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128i64_v64i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u32_v64u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsl_laneq_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u32_v64u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u32_v64u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_lane_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u32_v64u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u64_v64u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_laneq_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u64_v64u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u64_v64u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsl_lane_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideninglowerandsubtract_v128u64_v64u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmull_high_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_high_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_high_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmull_high_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vmull_high_laneq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_high_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vmull_high_laneq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vmull_high_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupper_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i32_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlal_high_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i32_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i32_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i32_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i64_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_high_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i64_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i64_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlal_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128i64_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u32_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlal_high_laneq_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u32_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u32_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_high_lane_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u32_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u64_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlal_high_laneq_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u64_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u64_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlal_high_lane_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandadd_v128u64_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i32_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsl_high_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i32_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i32_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i32_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i64_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_high_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i64_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i64_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsl_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128i64_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u32_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsl_high_laneq_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u32_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u32_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_high_lane_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u32_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u64_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsl_high_laneq_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u64_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u64_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsl_high_lane_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplybyselectedscalarwideningupperandsubtract_v128u64_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyBySelectedScalarWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqdmulhq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqdmulhq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqdmulh_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqdmulh_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyscalarsaturatehigh_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vqdmulhq_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmulhq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmulhq_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vqdmulhq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vqdmulh_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vqdmulh_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vqdmulh_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vqdmulh_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingbyselectedscalarsaturatehigh_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqdmulhq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqdmulhq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqdmulh_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqdmulh_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplydoublingsaturatehigh_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandaddsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandaddsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandaddsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandaddsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandsubtractsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandsubtractsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandsubtractsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerandsubtractsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandaddsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandaddsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandaddsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandaddsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandsubtractsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandsubtractsaturate_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandsubtractsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyscalarandsubtractsaturate_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerByScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i32_v64i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vqdmlal_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i32_v64i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i32_v64i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlal_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i32_v64i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i64_v64i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlal_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i64_v64i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i64_v64i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vqdmlal_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandaddsaturate_v128i64_v64i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i32_v64i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vqdmlsl_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i32_v64i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i32_v64i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlsl_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i32_v64i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i64_v64i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlsl_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i64_v64i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i64_v64i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vqdmlsl_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideninglowerbyselectedscalarandsubtractsaturate_v128i64_v64i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningLowerBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelower_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLower");
+    return dn2cpp_isa_vec<16>(vqdmull_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelower_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelower_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLower");
+    return dn2cpp_isa_vec<16>(vqdmull_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelower_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyscalar_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerByScalar");
+    return dn2cpp_isa_vec<16>(vqdmull_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyscalar_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyscalar_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerByScalar");
+    return dn2cpp_isa_vec<16>(vqdmull_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyscalar_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vqdmull_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmull_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmull_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vqdmull_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturatelowerbyselectedscalar_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateLowerBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupper_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqdmull_high_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupper_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupper_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpper");
+    return dn2cpp_isa_vec<16>(vqdmull_high_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupper_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyscalar_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperByScalar");
+    return dn2cpp_isa_vec<16>(vqdmull_high_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyscalar_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyscalar_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperByScalar");
+    return dn2cpp_isa_vec<16>(vqdmull_high_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyscalar_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vqdmull_high_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmull_high_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqdmull_high_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vqdmull_high_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningsaturateupperbyselectedscalar_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningSaturateUpperBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandaddsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandaddsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandaddsaturate_v128i64_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandaddsaturate_v128i64_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandsubtractsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandsubtractsaturate_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandsubtractsaturate_v128i64_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperandsubtractsaturate_v128i64_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandaddsaturate_v128i32_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandaddsaturate_v128i32_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandaddsaturate_v128i64_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndAddSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlal_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandaddsaturate_v128i64_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandsubtractsaturate_v128i32_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandsubtractsaturate_v128i32_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandsubtractsaturate_v128i64_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndSubtractSaturate");
+    return dn2cpp_isa_vec<16>(vqdmlsl_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyscalarandsubtractsaturate_v128i64_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperByScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i32_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vqdmlal_high_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i32_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i32_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlal_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i32_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i64_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlal_high_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i64_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i64_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vqdmlal_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandaddsaturate_v128i64_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndAddSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i32_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vqdmlsl_high_laneq_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i32_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i32_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlsl_high_lane_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i32_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i64_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vqdmlsl_high_laneq_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i64_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i64_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vqdmlsl_high_lane_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplydoublingwideningupperbyselectedscalarandsubtractsaturate_v128i64_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyDoublingWideningUpperBySelectedScalarAndSubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqrdmulhq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqrdmulhq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqrdmulh_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqrdmulh_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyscalarsaturatehigh_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingByScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vqrdmulhq_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqrdmulhq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<16>(vqrdmulhq_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<16>(vqrdmulhq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vqrdmulh_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vqrdmulh_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(vqrdmulh_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(vqrdmulh_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingbyselectedscalarsaturatehigh_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingBySelectedScalarSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqrdmulhq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+    return dn2cpp_isa_vec<16>(vqrdmulhq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqrdmulh_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+    return dn2cpp_isa_vec<8>(vqrdmulh_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyroundeddoublingsaturatehigh_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyRoundedDoublingSaturateHigh");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vmul_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vmul_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalarbyselectedscalar_v64f32_v128f32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalarBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a2, dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vmuls_laneq_f32(vget_lane_f32(dn2cpp_isa_bits<float32x2_t>(a0), 0), dn2cpp_isa_bits<float32x4_t>(a1), DN2CPP_IMM))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalarbyselectedscalar_v64f32_v128f32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalarBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalarbyselectedscalar_v64f32_v64f32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalarBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a2, dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vmuls_lane_f32(vget_lane_f32(dn2cpp_isa_bits<float32x2_t>(a0), 0), dn2cpp_isa_bits<float32x2_t>(a1), DN2CPP_IMM))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplyscalarbyselectedscalar_v64f32_v64f32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyScalarBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i16_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i16_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i32_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i32_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i8_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128i8_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u16_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u16_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u32_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u32_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u8_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<16>(vmlsq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtract_v128u8_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i16_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i16_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i32_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i32_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i8_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64i8_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u16_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u16_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u32_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u32_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u8_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+    return dn2cpp_isa_vec<8>(vmls_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtract_v64u8_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128i16_v128i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<16>(vmlsq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128i16_v128i16_v64i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128i32_v128i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<16>(vmlsq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128i32_v128i32_v64i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128u16_v128u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<16>(vmlsq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128u16_v128u16_v64u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128u32_v128u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<16>(vmlsq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v128u32_v128u32_v64u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64i16_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<8>(vmls_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64i16_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64i32_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<8>(vmls_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64i32_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64u16_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<8>(vmls_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64u16_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64u32_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+    return dn2cpp_isa_vec<8>(vmls_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), 0));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyscalar_v64u32_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractByScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i16_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsq_laneq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i16_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i16_v128i16_v64i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsq_lane_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i16_v128i16_v64i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i32_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsq_laneq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i32_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i32_v128i32_v64i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsq_lane_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128i32_v128i32_v64i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u16_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<16>(vmlsq_laneq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u16_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u16_v128u16_v64u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsq_lane_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u16_v128u16_v64u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u32_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<16>(vmlsq_laneq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u32_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u32_v128u32_v64u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<16>(vmlsq_lane_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v128u32_v128u32_v64u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i16_v64i16_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<8>(vmls_laneq_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i16_v64i16_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i16_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmls_lane_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i16_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i32_v64i32_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmls_laneq_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i32_v64i32_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i32_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<8>(vmls_lane_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64i32_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u16_v64u16_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a3, dn2cpp_isa_vec<8>(vmls_laneq_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u16_v64u16_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u16_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmls_lane_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u16_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u32_v64u32_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector128& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 4, a3, dn2cpp_isa_vec<8>(vmls_laneq_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u32_v64u32_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u32_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2, uint8_t a3)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 2, a3, dn2cpp_isa_vec<8>(vmls_lane_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_multiplysubtractbyselectedscalar_v64u32_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplySubtractBySelectedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglower_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i16_v64i8_v64i8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i16_v64i8_v64i8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u16_v64u8_v64u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u16_v64u8_v64u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u32_v64u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u32_v64u16_v64u16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u64_v64u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandadd_v128u64_v64u32_v64u32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i16_v64i8_v64i8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), dn2cpp_isa_bits<int8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i16_v64i8_v64i8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i32_v64i16_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), dn2cpp_isa_bits<int16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i32_v64i16_v64i16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i64_v64i32_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), dn2cpp_isa_bits<int32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128i64_v64i32_v64i32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u16_v64u8_v64u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), dn2cpp_isa_bits<uint8x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u16_v64u8_v64u8(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u32_v64u16_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), dn2cpp_isa_bits<uint16x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u32_v64u16_v64u16(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u64_v64u32_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1, const Dn2CppVector64& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), dn2cpp_isa_bits<uint32x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideninglowerandsubtract_v128u64_v64u32_v64u32(const Dn2CppVector128&, const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningLowerAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupper_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i16_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i16_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i64_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128i64_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u16_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u16_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u32_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u32_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u64_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+    return dn2cpp_isa_vec<16>(vmlal_high_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandadd_v128u64_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i16_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), dn2cpp_isa_bits<int8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i16_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i32_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i32_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i64_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128i64_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u16_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), dn2cpp_isa_bits<uint8x16_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u16_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u32_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u32_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u64_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+    return dn2cpp_isa_vec<16>(vmlsl_high_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_multiplywideningupperandsubtract_v128u64_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.MultiplyWideningUpperAndSubtract");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negate_v128f32(const Dn2CppVector128& a0)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.Negate");
@@ -4360,6 +11965,110 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negate_v64i8(const Dn2Cp
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negate_v64i8(const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Negate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<16>(vqnegq_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<16>(vqnegq_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<16>(vqnegq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_negatesaturate_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<8>(vqneg_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<8>(vqneg_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+    return dn2cpp_isa_vec<8>(vqneg_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatesaturate_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatescalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vneg_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatescalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatescalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.NegateScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vneg_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_negatescalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.NegateScalar");
 }
 #endif
 
@@ -4884,6 +12593,1462 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_or_v64u8_v64u8(const Dn2
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128f64_v128f64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128f64_v128f64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<16>(vornq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_ornot_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u64_v64u64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u64_v64u64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+    return dn2cpp_isa_vec<8>(vorn_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_ornot_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.OrNot");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiply_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+    return dn2cpp_isa_vec<16>(vmulq_p8(vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a0)), vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiply_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiply_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+    return dn2cpp_isa_vec<16>(vmulq_p8(vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a0)), vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiply_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_polynomialmultiply_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+    return dn2cpp_isa_vec<8>(vmul_p8(vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a0)), vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_polynomialmultiply_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_polynomialmultiply_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+    return dn2cpp_isa_vec<8>(vmul_p8(vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a0)), vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_polynomialmultiply_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiply");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideninglower_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_p8(vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a0)), vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideninglower_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideninglower_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningLower");
+    return dn2cpp_isa_vec<16>(vmull_p8(vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a0)), vreinterpret_p8_u8(dn2cpp_isa_bits<uint8x8_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideninglower_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideningupper_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_p8(vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a0)), vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideningupper_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideningupper_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningUpper");
+    return dn2cpp_isa_vec<16>(vmull_high_p8(vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a0)), vreinterpretq_p8_u8(dn2cpp_isa_bits<uint8x16_t>(a1))));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_polynomialmultiplywideningupper_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PolynomialMultiplyWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_popcount_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+    return dn2cpp_isa_vec<16>(vcntq_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_popcount_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_popcount_v128u8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+    return dn2cpp_isa_vec<16>(vcntq_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_popcount_v128u8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_popcount_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+    return dn2cpp_isa_vec<8>(vcnt_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_popcount_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_popcount_v64u8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+    return dn2cpp_isa_vec<8>(vcnt_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_popcount_v64u8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.PopCount");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalestimate_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+    return dn2cpp_isa_vec<16>(vrecpeq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalestimate_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalestimate_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+    return dn2cpp_isa_vec<16>(vrecpeq_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalestimate_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalestimate_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+    return dn2cpp_isa_vec<8>(vrecpe_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalestimate_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalestimate_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+    return dn2cpp_isa_vec<8>(vrecpe_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalestimate_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+    return dn2cpp_isa_vec<16>(vrsqrteq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+    return dn2cpp_isa_vec<16>(vrsqrteq_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+    return dn2cpp_isa_vec<8>(vrsqrte_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+    return dn2cpp_isa_vec<8>(vrsqrte_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootestimate_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootEstimate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootstep_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootStep");
+    return dn2cpp_isa_vec<16>(vrsqrtsq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalsquarerootstep_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootStep");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootstep_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootStep");
+    return dn2cpp_isa_vec<8>(vrsqrts_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalsquarerootstep_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalSquareRootStep");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalstep_v128f32_v128f32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalStep");
+    return dn2cpp_isa_vec<16>(vrecpsq_f32(dn2cpp_isa_bits<float32x4_t>(a0), dn2cpp_isa_bits<float32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_reciprocalstep_v128f32_v128f32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalStep");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalstep_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalStep");
+    return dn2cpp_isa_vec<8>(vrecps_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_reciprocalstep_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ReciprocalStep");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundawayfromzero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZero");
+    return dn2cpp_isa_vec<16>(vrndaq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundawayfromzero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZero");
+    return dn2cpp_isa_vec<8>(vrnda_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrnda_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzeroscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrnda_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundawayfromzeroscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundAwayFromZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtonearest_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearest");
+    return dn2cpp_isa_vec<16>(vrndnq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtonearest_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearest");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearest_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearest");
+    return dn2cpp_isa_vec<8>(vrndn_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearest_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearest");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearestscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearestScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrndn_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearestscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearestScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearestscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearestScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrndn_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonearestscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNearestScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtonegativeinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<16>(vrndmq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtonegativeinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinity");
+    return dn2cpp_isa_vec<8>(vrndm_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrndm_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinityscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrndm_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtonegativeinfinityscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToNegativeInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtopositiveinfinity_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<16>(vrndpq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtopositiveinfinity_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinity_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinity");
+    return dn2cpp_isa_vec<8>(vrndp_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinity_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinity");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrndp_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinityscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinityscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinityScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrndp_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtopositiveinfinityscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToPositiveInfinityScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtozero_v128f32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZero");
+    return dn2cpp_isa_vec<16>(vrndq_f32(dn2cpp_isa_bits<float32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_roundtozero_v128f32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozero_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZero");
+    return dn2cpp_isa_vec<8>(vrnd_f32(dn2cpp_isa_bits<float32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozero_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZero");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozeroscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vrnd_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozeroscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozeroscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZeroScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vrnd_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_roundtozeroscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.RoundToZeroScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<16>(vshlq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<16>(vshlq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<16>(vshlq_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<16>(vshlq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmetic_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<8>(vshl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<8>(vshl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+    return dn2cpp_isa_vec<8>(vshl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmetic_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<8>(vrshl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<8>(vrshl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+    return dn2cpp_isa_vec<8>(vrshl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticrounded_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturate_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqrshl_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedScalar");
+    return dn2cpp_isa_vec<8>(vrshl_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticroundedscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturate_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqshl_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticScalar");
+    return dn2cpp_isa_vec<8>(vshl_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftarithmeticscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftArithmeticScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(vsliq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a2, dn2cpp_isa_vec<16>(vsliq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a2, dn2cpp_isa_vec<16>(vsliq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vsliq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<16>(vsliq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a2, dn2cpp_isa_vec<16>(vsliq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u64_v128u64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a2, dn2cpp_isa_vec<16>(vsliq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u64_v128u64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u8_v128u8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<16>(vsliq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v128u8_v128u8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<8>(vsli_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a2, dn2cpp_isa_vec<8>(vsli_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vsli_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a2, dn2cpp_isa_vec<8>(vsli_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a2, dn2cpp_isa_vec<8>(vsli_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u8_v64u8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a2, dn2cpp_isa_vec<8>(vsli_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsert_v64u8_v64u8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsertscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a2, dn2cpp_isa_vec<8>(vsli_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsertscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsertscalar_v64u64_v64u64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a2, dn2cpp_isa_vec<8>(vsli_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftandinsertscalar_v64u64_v64u64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogical_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogical");
@@ -5053,6 +14218,1540 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogical_v64u8_u
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vqshlq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vqshlq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<16>(vqshlq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vqshlq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128i8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vqshlq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vqshlq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<16>(vqshlq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vqshlq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v128u8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<8>(vqshl_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<8>(vqshl_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<8>(vqshl_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64i8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<8>(vqshl_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<8>(vqshl_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<8>(vqshl_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturate_v64u8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturatescalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<8>(vqshl_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturatescalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturatescalar_v64u64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<8>(vqshl_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturatescalar_v64u64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vqshluq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vqshluq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<16>(vqshluq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vqshluq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v128i8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<8>(vqshlu_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<8>(vqshlu_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<8>(vqshlu_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsigned_v64i8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsigned");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsignedscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsignedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<8>(vqshlu_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalsaturateunsignedscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalSaturateUnsignedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<8>(vshl_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalscalar_v64u64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 64, a1, dn2cpp_isa_vec<8>(vshl_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftleftlogicalscalar_v64u64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vshll_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vshll_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vshll_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64i8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vshll_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vshll_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vshll_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideninglower_v64u8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vshll_high_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vshll_high_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vshll_high_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128i8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 16, a1, dn2cpp_isa_vec<16>(vshll_high_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 32, a1, dn2cpp_isa_vec<16>(vshll_high_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(0, 8, a1, dn2cpp_isa_vec<16>(vshll_high_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftleftlogicalwideningupper_v128u8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLeftLogicalWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<16>(vshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogical_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+    return dn2cpp_isa_vec<8>(vshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogical_v64u8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<16>(vrshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+    return dn2cpp_isa_vec<8>(vrshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalrounded_v64u8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<16>(vqrshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+    return dn2cpp_isa_vec<8>(vqrshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturate_v64u8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqrshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturatescalar_v64u64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqrshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedsaturatescalar_v64u64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedScalar");
+    return dn2cpp_isa_vec<8>(vrshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedscalar_v64u64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedScalar");
+    return dn2cpp_isa_vec<8>(vrshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalroundedscalar_v64u64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<16>(vqshlq_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v128u8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+    return dn2cpp_isa_vec<8>(vqshl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturate_v64u8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturatescalar_v64u64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalsaturatescalar_v64u64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalScalar");
+    return dn2cpp_isa_vec<8>(vshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalscalar_v64u64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalScalar");
+    return dn2cpp_isa_vec<8>(vshl_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftlogicalscalar_v64u64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vsriq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vsriq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vsriq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vsriq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vsriq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vsriq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u64_v128u64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vsriq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u64_v128u64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u8_v128u8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vsriq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v128u8_v128u8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vsri_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vsri_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vsri_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vsri_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vsri_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u8_v64u8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vsri_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsert_v64u8_v64u8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsert");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsertscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vsri_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsertscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsertscalar_v64u64_v64u64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsertScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vsri_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightandinsertscalar_v64u64_v64u64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightAndInsertScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmetic_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmetic");
@@ -5140,6 +15839,643 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmetic_v64
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmetic_v64i8_u8(const Dn2CppVector64&, uint8_t)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmetic");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vsraq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vsraq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vsraq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vsraq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vsra_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vsra_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vsra_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticadd_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticaddscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vsra_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticaddscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqshrn_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqshrn_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqshrn_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturatelower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqshrun_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqshrun_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqshrun_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedlower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqshrun_high_n_s32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqshrun_high_n_s64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqshrun_high_n_s16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateunsignedupper_v64u8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticnarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<16>(vrshrq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<16>(vrshrq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<16>(vrshrq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<16>(vrshrq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v128i8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vrshr_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vrshr_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vrshr_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticrounded_v64i8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vrsraq_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vrsraq_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vrsraq_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vrsraq_n_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vrsra_n_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vrsra_n_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vrsra_n_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedadd_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedaddscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vrsra_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedaddscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqrshrn_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqrshrn_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqrshrn_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturatelower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqrshrun_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqrshrun_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqrshrun_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedlower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqrshrun_high_n_s32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqrshrun_high_n_s64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqrshrun_high_n_s16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateunsignedupper_v64u8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUnsignedUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundednarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vrshr_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticroundedscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vshr_n_s64(dn2cpp_isa_bits<int64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightarithmeticscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightArithmeticScalar");
 }
 #endif
 
@@ -5322,6 +16658,1384 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogical_v64u8_
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogical_v64u8_u8(const Dn2CppVector64&, uint8_t)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogical");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vsraq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vsraq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vsraq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vsraq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vsraq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vsraq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u64_v128u64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vsraq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u64_v128u64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u8_v128u8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vsraq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v128u8_v128u8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vsra_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vsra_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vsra_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vsra_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vsra_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u8_v64u8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vsra_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladd_v64u8_v64u8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladdscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vsra_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladdscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladdscalar_v64u64_v64u64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vsra_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicaladdscalar_v64u64_v64u64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vshrn_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vshrn_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vshrn_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowinglower_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturatelower_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u16_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u16_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u32_v128u64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u32_v128u64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u8_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingsaturateupper_v64u8_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vshrn_high_n_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vshrn_high_n_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vshrn_high_n_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u16_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u16_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u32_v128u64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u32_v128u64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u8_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalnarrowingupper_v64u8_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<16>(vrshrq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<16>(vrshrq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<16>(vrshrq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<16>(vrshrq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128i8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<16>(vrshrq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<16>(vrshrq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<16>(vrshrq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u8_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<16>(vrshrq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v128u8_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vrshr_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vrshr_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vrshr_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64i8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u16_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vrshr_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u16_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u32_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vrshr_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u32_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u8_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vrshr_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalrounded_v64u8_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRounded");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i16_v128i16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vrsraq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i16_v128i16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i32_v128i32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vrsraq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i32_v128i32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i64_v128i64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vrsraq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i64_v128i64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i8_v128i8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vrsraq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128i8_v128i8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u16_v128u16_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vrsraq_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u16_v128u16_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u32_v128u32_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vrsraq_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u32_v128u32_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u64_v128u64_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<16>(vrsraq_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u64_v128u64_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u8_v128u8_u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vrsraq_n_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v128u8_v128u8_u8(const Dn2CppVector128&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i16_v64i16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vrsra_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i16_v64i16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i32_v64i32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vrsra_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i32_v64i32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i8_v64i8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vrsra_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64i8_v64i8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u16_v64u16_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<8>(vrsra_n_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u16_v64u16_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u32_v64u32_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<8>(vrsra_n_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u32_v64u32_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u8_v64u8_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<8>(vrsra_n_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedadd_v64u8_v64u8_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAdd");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedaddscalar_v64i64_v64i64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vrsra_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedaddscalar_v64i64_v64i64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedaddscalar_v64u64_v64u64_u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAddScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a2, dn2cpp_isa_vec<8>(vrsra_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedaddscalar_v64u64_v64u64_u8(const Dn2CppVector64&, const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedAddScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vrshrn_n_s16(dn2cpp_isa_bits<int16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vrshrn_n_s32(dn2cpp_isa_bits<int32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vrshrn_n_s64(dn2cpp_isa_bits<int64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vrshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vrshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vrshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowinglower_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128i64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u16_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u16(dn2cpp_isa_bits<uint16x8_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u16_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u32_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u32(dn2cpp_isa_bits<uint32x4_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u32_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u64_u8(const Dn2CppVector128& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a1, dn2cpp_isa_vec<8>(vqrshrn_n_u64(dn2cpp_isa_bits<uint64x2_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturatelower_v128u64_u8(const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u16_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u16_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u32_v128u64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u32_v128u64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u8_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vqrshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingsaturateupper_v64u8_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingSaturateUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i16_v128i32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i16_v128i32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i32_v128i64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i32_v128i64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i8_v128i16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64i8_v128i16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u16_v128u32_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 16, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u16_v128u32_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u32_v128u64_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 32, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u32_v128u64_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u8_v128u16_u8(const Dn2CppVector64& a0, const Dn2CppVector128& a1, uint8_t a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 8, a2, dn2cpp_isa_vec<16>(vrshrn_high_n_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundednarrowingupper_v64u8_v128u16_u8(const Dn2CppVector64&, const Dn2CppVector128&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vrshr_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedscalar_v64u64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vrshr_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalroundedscalar_v64u64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalRoundedScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalscalar_v64i64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vshr_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalscalar_v64i64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalscalar_v64u64_u8(const Dn2CppVector64& a0, uint8_t a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalScalar");
+    DN2CPP_ISA_IMM_RANGE_SWITCH(1, 64, a1, dn2cpp_isa_vec<8>(vshr_n_u64(dn2cpp_isa_bits<uint64x1_t>(a0), DN2CPP_IMM)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_shiftrightlogicalscalar_v64u64_u8(const Dn2CppVector64&, uint8_t)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ShiftRightLogicalScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_s16(dn2cpp_isa_bits<int16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_s32(dn2cpp_isa_bits<int32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_s8(dn2cpp_isa_bits<int8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideninglower_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_s16(dn2cpp_isa_bits<int16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_s32(dn2cpp_isa_bits<int32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_s8(dn2cpp_isa_bits<int8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_signextendwideningupper_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SignExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_sqrtscalar_v64f32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SqrtScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vsqrt_f32(dn2cpp_isa_bits<float32x2_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_sqrtscalar_v64f32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SqrtScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_sqrtscalar_v64f64(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SqrtScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vsqrt_f64(dn2cpp_isa_bits<float64x1_t>(a0)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_sqrtscalar_v64f64(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SqrtScalar");
 }
 #endif
 
@@ -6067,6 +18781,318 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtract_v64u8_v64u8(con
 #endif
 
 #if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vsubhn_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtracthighnarrowinglower_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), dn2cpp_isa_bits<int64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), dn2cpp_isa_bits<uint64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vsubhn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtracthighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_s64(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+    return dn2cpp_isa_vec<8>(vrsubhn_u64(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowinglower_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_s32(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1), dn2cpp_isa_bits<int32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i16_v128i32_v128i32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_s64(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int64x2_t>(a1), dn2cpp_isa_bits<int64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i32_v128i64_v128i64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_s16(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1), dn2cpp_isa_bits<int16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64i8_v128i16_v128i16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_u32(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1), dn2cpp_isa_bits<uint32x4_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u16_v128u32_v128u32(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_u64(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint64x2_t>(a1), dn2cpp_isa_bits<uint64x2_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u32_v128u64_v128u64(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+    return dn2cpp_isa_vec<16>(vrsubhn_high_u16(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1), dn2cpp_isa_bits<uint16x8_t>(a2)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractroundedhighnarrowingupper_v64u8_v128u16_v128u16(const Dn2CppVector64&, const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractRoundedHighNarrowingUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
 DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractsaturate_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
 {
     dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturate");
@@ -6245,6 +19271,396 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturate_v64u8_v
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturate_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturate");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturatescalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqsub_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturatescalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturatescalar_v64u64_v64u64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturateScalar");
+    return dn2cpp_isa_vec<8>(vqsub_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractsaturatescalar_v64u64_v64u64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractSaturateScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64f32_v64f32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f32(vsub_f32(dn2cpp_isa_bits<float32x2_t>(a0), dn2cpp_isa_bits<float32x2_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64f32_v64f32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64f64_v64f64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_f64(vsub_f64(dn2cpp_isa_bits<float64x1_t>(a0), dn2cpp_isa_bits<float64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64f64_v64f64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64i64_v64i64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_s64(vsub_s64(dn2cpp_isa_bits<int64x1_t>(a0), dn2cpp_isa_bits<int64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64i64_v64i64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64u64_v64u64(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+    return dn2cpp_isa_vec<8>(dn2cpp_isa_lane0<8>(vget_lane_u64(vsub_u64(dn2cpp_isa_bits<uint64x1_t>(a0), dn2cpp_isa_bits<uint64x1_t>(a1)), 0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_subtractscalar_v64u64_v64u64(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractScalar");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i16_v64i8(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i16_v64i8(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i32_v64i16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i32_v64i16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i64_v64i32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128i64_v64i32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u16_v64u8(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u16_v64u8(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u32_v64u16(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u32_v64u16(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u64_v64u32(const Dn2CppVector128& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubw_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v128u64_v64u32(const Dn2CppVector128&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i16_v64i16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_s16(dn2cpp_isa_bits<int16x4_t>(a0), dn2cpp_isa_bits<int16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i16_v64i16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i32_v64i32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_s32(dn2cpp_isa_bits<int32x2_t>(a0), dn2cpp_isa_bits<int32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i32_v64i32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i8_v64i8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_s8(dn2cpp_isa_bits<int8x8_t>(a0), dn2cpp_isa_bits<int8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64i8_v64i8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u16_v64u16(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_u16(dn2cpp_isa_bits<uint16x4_t>(a0), dn2cpp_isa_bits<uint16x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u16_v64u16(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u32_v64u32(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_u32(dn2cpp_isa_bits<uint32x2_t>(a0), dn2cpp_isa_bits<uint32x2_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u32_v64u32(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u8_v64u8(const Dn2CppVector64& a0, const Dn2CppVector64& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+    return dn2cpp_isa_vec<16>(vsubl_u8(dn2cpp_isa_bits<uint8x8_t>(a0), dn2cpp_isa_bits<uint8x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideninglower_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i16_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_s16(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i16_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i16_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_s8(dn2cpp_isa_bits<int16x8_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i16_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i32_v128i16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_s16(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i32_v128i16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_s32(dn2cpp_isa_bits<int32x4_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i64_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_s32(dn2cpp_isa_bits<int64x2_t>(a0), dn2cpp_isa_bits<int32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i64_v128i32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i8_v128i8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_s8(dn2cpp_isa_bits<int8x16_t>(a0), dn2cpp_isa_bits<int8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128i8_v128i8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u16_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u16_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u16_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_u8(dn2cpp_isa_bits<uint16x8_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u16_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u32_v128u16(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_u16(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint16x8_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u32_v128u16(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u64_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubw_high_u32(dn2cpp_isa_bits<uint64x2_t>(a0), dn2cpp_isa_bits<uint32x4_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u64_v128u32(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u8_v128u8(const Dn2CppVector128& a0, const Dn2CppVector128& a1)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
+    return dn2cpp_isa_vec<16>(vsubl_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0), dn2cpp_isa_bits<uint8x16_t>(a1)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_subtractwideningupper_v128u8_v128u8(const Dn2CppVector128&, const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.SubtractWideningUpper");
 }
 #endif
 
@@ -6713,5 +20129,161 @@ DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_xor_v64u8_v64u8(const Dn
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector64 dn2cpp_isa_arm_advsimd_xor_v64u8_v64u8(const Dn2CppVector64&, const Dn2CppVector64&)
 {
     dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.Xor");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64i8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u16(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u16(dn2cpp_isa_bits<uint16x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u16(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u32(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u32(dn2cpp_isa_bits<uint32x2_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u32(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u8(const Dn2CppVector64& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+    return dn2cpp_isa_vec<16>(vmovl_u8(dn2cpp_isa_bits<uint8x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideninglower_v64u8(const Dn2CppVector64&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningLower");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128i8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u16(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u16(dn2cpp_isa_bits<uint16x8_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u16(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u32(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u32(dn2cpp_isa_bits<uint32x4_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u32(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+}
+#endif
+
+#if DN2CPP_TARGET_ARM64
+DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u8(const Dn2CppVector128& a0)
+{
+    dn2cpp_isa_require(DN2CPP_ISA_Arm_AdvSimd, "System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
+    return dn2cpp_isa_vec<16>(vmovl_high_u8(dn2cpp_isa_bits<uint8x16_t>(a0)));
+}
+#else
+[[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_arm_advsimd_zeroextendwideningupper_v128u8(const Dn2CppVector128&)
+{
+    dn2cpp_isa_not_lowered("System.Runtime.Intrinsics.Arm.AdvSimd.ZeroExtendWideningUpper");
 }
 #endif

@@ -1,0 +1,24 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — 64-bit-element saturation and the
+# one-lane saturating forms of the narrower elements (SQADD Bd, SQSHL Hd, ...). SUQADD
+# adds an unsigned operand into a signed accumulator, USQADD the reverse. A logical
+# shift's count is a signed lane of the operand's width.
+AbsSaturate(v128i64) = vqabsq_s64($0)
+AbsSaturateScalar(v64{T}) = dn2cpp_isa_lane0<8>(vqabs{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in i8,i16,i32,i64
+AddSaturateScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqadd{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i8,u8,i16,u16,i32,u32
+AddSaturateScalar(v64{T},v64{uT}) = dn2cpp_isa_lane0<8>(vuqadd{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{uT}($1, 0))) for T in i8,i16,i32,i64
+AddSaturateScalar(v64{T},v64{sT}) = dn2cpp_isa_lane0<8>(vsqadd{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_s{bits}($1, 0))) for T in u8,u16,u32,u64
+MultiplyDoublingSaturateHighScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqdmulh{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i16,i32
+MultiplyDoublingScalarBySelectedScalarSaturateHigh(v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqdmulh{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+MultiplyDoublingScalarBySelectedScalarSaturateHigh(v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqdmulh{bhsd}_lane_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+MultiplyRoundedDoublingSaturateHighScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqrdmulh{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarSaturateHigh(v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqrdmulh{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarSaturateHigh(v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqrdmulh{bhsd}_lane_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+NegateSaturate(v128i64) = vqnegq_s64($0)
+NegateSaturateScalar(v64{T}) = dn2cpp_isa_lane0<8>(vqneg{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in i8,i16,i32,i64
+ShiftArithmeticRoundedSaturateScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqrshl{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i8,i16,i32
+ShiftArithmeticSaturateScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqshl{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i8,i16,i32
+ShiftLeftLogicalSaturateScalar(v64{T},u8) @imm[0..{bits}) = dn2cpp_isa_lane0<8>(vqshl{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i8,u8,i16,u16,i32,u32
+ShiftLeftLogicalSaturateUnsignedScalar(v64{T},u8) @imm[0..{bits}) = dn2cpp_isa_lane0<8>(vqshlu{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i8,i16,i32
+ShiftLogicalRoundedSaturateScalar(v64{T},v64{sT}) = dn2cpp_isa_lane0<8>(vqrshl{bhsd}_{uT}(vget_lane_{uT}($0:{uT}, 0), vget_lane_s{bits}($1, 0))) for T in i8,u8,i16,u16,i32,u32
+ShiftLogicalSaturateScalar(v64{T},v64{sT}) = dn2cpp_isa_lane0<8>(vqshl{bhsd}_{uT}(vget_lane_{uT}($0:{uT}, 0), vget_lane_s{bits}($1, 0))) for T in i8,u8,i16,u16,i32,u32
+SubtractSaturateScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqsub{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i8,u8,i16,u16,i32,u32
