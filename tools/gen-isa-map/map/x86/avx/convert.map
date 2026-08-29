@@ -1,0 +1,13 @@
+# System.Runtime.Intrinsics.X86.Avx — conversions between the 256-bit float lanes and the
+# 128- or 256-bit integer and float forms. Float-to-integer rounds under MXCSR (nearest-even
+# by default, which the portable Round is) or truncates; a double result of four lanes is
+# the widened lower and upper halves of the source.
+target = avx
+ConvertToVector128Int32(v256f64) @ref(Vector128.Create((int)Math.Round($0.GetElement(0)), (int)Math.Round($0.GetElement(1)), (int)Math.Round($0.GetElement(2)), (int)Math.Round($0.GetElement(3)))) = _mm256_cvtpd_epi32($0)
+ConvertToVector128Int32WithTruncation(v256f64) @ref(Vector128.Create((int)$0.GetElement(0), (int)$0.GetElement(1), (int)$0.GetElement(2), (int)$0.GetElement(3))) = _mm256_cvttpd_epi32($0)
+ConvertToVector128Single(v256f64) @ref(Vector128.Narrow($0.GetLower(), $0.GetUpper())) = _mm256_cvtpd_ps($0)
+ConvertToVector256Double(v128f32) @ref(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0))) = _mm256_cvtps_pd($0)
+ConvertToVector256Double(v128i32) @ref(Vector256.ConvertToDouble(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)))) = _mm256_cvtepi32_pd($0)
+ConvertToVector256Int32(v256f32) @ref(Vector256.ConvertToInt32(Vector256.Round($0))) = _mm256_cvtps_epi32($0)
+ConvertToVector256Int32WithTruncation(v256f32) @ref(Vector256.ConvertToInt32($0)) = _mm256_cvttps_epi32($0)
+ConvertToVector256Single(v256i32) @ref(Vector256.ConvertToSingle($0)) = _mm256_cvtepi32_ps($0)

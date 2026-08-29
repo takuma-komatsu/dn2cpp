@@ -1,0 +1,38 @@
+# System.Runtime.Intrinsics.X86.Avx — lane movement. Every immediate here is FullRangeIMM in
+# .NET (any byte, no range check); the hardware reads the bits it needs and ignores the
+# rest, and where the compiler's intrinsic accepts only those bits the immediate is
+# masked. Permute, Shuffle, the unpacks and the duplicates work within each 128-bit lane
+# with one control for both; Permute2x128 selects a 128-bit half of either operand for each
+# result half (two bits) or zeroes it (bit 3 / bit 7). PermuteVar reads the low two bits of
+# each 32-bit index lane, or bit 1 of each 64-bit one. ExtractVector128 and InsertVector128
+# read bit 0. The blends take one control bit per lane (BLENDPS eight, BLENDPD four) or
+# the sign bit of each mask lane.
+target = avx
+Blend(v256f32,v256f32,u8) @imm8 @ref(Vector256.ConditionalSelect(Vector256.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1), -(($2 >> 4) & 1), -(($2 >> 5) & 1), -(($2 >> 6) & 1), -(($2 >> 7) & 1)).AsSingle(), $1, $0)) = _mm256_blend_ps($0, $1, $2)
+Blend(v256f64,v256f64,u8) @imm8 @ref(Vector256.ConditionalSelect(Vector256.Create(-(long)($2 & 1), -(long)(($2 >> 1) & 1), -(long)(($2 >> 2) & 1), -(long)(($2 >> 3) & 1)).AsDouble(), $1, $0)) = _mm256_blend_pd($0, $1, $2 & 15)
+BlendVariable(v256f32,v256f32,v256f32) @ref(Vector256.ConditionalSelect(Vector256.IsNegative($2), $1, $0)) = _mm256_blendv_ps($0, $1, $2)
+BlendVariable(v256f64,v256f64,v256f64) @ref(Vector256.ConditionalSelect(Vector256.IsNegative($2), $1, $0)) = _mm256_blendv_pd($0, $1, $2)
+DuplicateEvenIndexed(v256f32) @ref(Vector256.Create($0.GetElement(0), $0.GetElement(0), $0.GetElement(2), $0.GetElement(2), $0.GetElement(4), $0.GetElement(4), $0.GetElement(6), $0.GetElement(6))) = _mm256_moveldup_ps($0)
+DuplicateEvenIndexed(v256f64) @ref(Vector256.Create($0.GetElement(0), $0.GetElement(0), $0.GetElement(2), $0.GetElement(2))) = _mm256_movedup_pd($0)
+DuplicateOddIndexed(v256f32) @ref(Vector256.Create($0.GetElement(1), $0.GetElement(1), $0.GetElement(3), $0.GetElement(3), $0.GetElement(5), $0.GetElement(5), $0.GetElement(7), $0.GetElement(7))) = _mm256_movehdup_ps($0)
+ExtractVector128(v256{T},u8) @imm8 @ref(($1 & 1) != 0 ? $0.GetUpper() : $0.GetLower()) = _mm256_extractf128_si256($0, $1 & 1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+ExtractVector128(v256{T},u8) @imm8 @ref(($1 & 1) != 0 ? $0.GetUpper() : $0.GetLower()) = _mm256_extractf128_{ps|pd}($0, $1 & 1) for T in f32,f64
+InsertVector128(v256{T},v128{T},u8) @imm8 @ref(($2 & 1) != 0 ? $0.WithUpper($1) : $0.WithLower($1)) = _mm256_insertf128_si256($0, $1, $2 & 1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+InsertVector128(v256{T},v128{T},u8) @imm8 @ref(($2 & 1) != 0 ? $0.WithUpper($1) : $0.WithLower($1)) = _mm256_insertf128_{ps|pd}($0, $1, $2 & 1) for T in f32,f64
+MoveMask(v256{T}) @ref((int)Vector256.ExtractMostSignificantBits($0)) = _mm256_movemask_{ps|pd}($0) for T in f32,f64
+Permute(v128f32,u8) @imm8 @ref(Vector128.Create($0.GetElement($1 & 3), $0.GetElement(($1 >> 2) & 3), $0.GetElement(($1 >> 4) & 3), $0.GetElement(($1 >> 6) & 3))) = _mm_permute_ps($0, $1)
+Permute(v128f64,u8) @imm8 @ref(Vector128.Create($0.GetElement($1 & 1), $0.GetElement(($1 >> 1) & 1))) = _mm_permute_pd($0, $1 & 3)
+Permute(v256f32,u8) @imm8 @ref(Vector256.Create($0.GetElement($1 & 3), $0.GetElement(($1 >> 2) & 3), $0.GetElement(($1 >> 4) & 3), $0.GetElement(($1 >> 6) & 3), $0.GetElement(4 + ($1 & 3)), $0.GetElement(4 + (($1 >> 2) & 3)), $0.GetElement(4 + (($1 >> 4) & 3)), $0.GetElement(4 + (($1 >> 6) & 3)))) = _mm256_permute_ps($0, $1)
+Permute(v256f64,u8) @imm8 @ref(Vector256.Create($0.GetElement($1 & 1), $0.GetElement(($1 >> 1) & 1), $0.GetElement(2 + (($1 >> 2) & 1)), $0.GetElement(2 + (($1 >> 3) & 1)))) = _mm256_permute_pd($0, $1 & 15)
+Permute2x128(v256{T},v256{T},u8) @imm8 @ref(Vector256.Create(($2 & 8) != 0 ? Vector128<{cs}>.Zero : ($2 & 2) != 0 ? (($2 & 1) != 0 ? $1.GetUpper() : $1.GetLower()) : (($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower()), ($2 & 128) != 0 ? Vector128<{cs}>.Zero : ($2 & 32) != 0 ? (($2 & 16) != 0 ? $1.GetUpper() : $1.GetLower()) : (($2 & 16) != 0 ? $0.GetUpper() : $0.GetLower()))) = _mm256_permute2f128_si256($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Permute2x128(v256{T},v256{T},u8) @imm8 @ref(Vector256.Create(($2 & 8) != 0 ? Vector128<{cs}>.Zero : ($2 & 2) != 0 ? (($2 & 1) != 0 ? $1.GetUpper() : $1.GetLower()) : (($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower()), ($2 & 128) != 0 ? Vector128<{cs}>.Zero : ($2 & 32) != 0 ? (($2 & 16) != 0 ? $1.GetUpper() : $1.GetLower()) : (($2 & 16) != 0 ? $0.GetUpper() : $0.GetLower()))) = _mm256_permute2f128_{ps|pd}($0, $1, $2) for T in f32,f64
+PermuteVar(v128f32,v128i32) @ref(Vector128.Shuffle($0, $1 & Vector128.Create(3))) = _mm_permutevar_ps($0, $1)
+PermuteVar(v128f64,v128i64) @ref(Vector128.Shuffle($0, ($1 >> 1) & Vector128.Create(1L))) = _mm_permutevar_pd($0, $1)
+PermuteVar(v256f32,v256i32) @ref(Vector256.Shuffle($0, ($1 & Vector256.Create(3)) + Vector256.Create(0, 0, 0, 0, 4, 4, 4, 4))) = _mm256_permutevar_ps($0, $1)
+PermuteVar(v256f64,v256i64) @ref(Vector256.Shuffle($0, (($1 >> 1) & Vector256.Create(1L)) + Vector256.Create(0L, 0L, 2L, 2L))) = _mm256_permutevar_pd($0, $1)
+Shuffle(v256f32,v256f32,u8) @imm8 @ref(Vector256.Create($0.GetElement($2 & 3), $0.GetElement(($2 >> 2) & 3), $1.GetElement(($2 >> 4) & 3), $1.GetElement(($2 >> 6) & 3), $0.GetElement(4 + ($2 & 3)), $0.GetElement(4 + (($2 >> 2) & 3)), $1.GetElement(4 + (($2 >> 4) & 3)), $1.GetElement(4 + (($2 >> 6) & 3)))) = _mm256_shuffle_ps($0, $1, $2)
+Shuffle(v256f64,v256f64,u8) @imm8 @ref(Vector256.Create($0.GetElement($2 & 1), $1.GetElement(($2 >> 1) & 1), $0.GetElement(2 + (($2 >> 2) & 1)), $1.GetElement(2 + (($2 >> 3) & 1)))) = _mm256_shuffle_pd($0, $1, $2 & 15)
+UnpackHigh(v256f32,v256f32) @ref(Vector256.Create($0.GetElement(2), $1.GetElement(2), $0.GetElement(3), $1.GetElement(3), $0.GetElement(6), $1.GetElement(6), $0.GetElement(7), $1.GetElement(7))) = _mm256_unpackhi_ps($0, $1)
+UnpackHigh(v256f64,v256f64) @ref(Vector256.Create($0.GetElement(1), $1.GetElement(1), $0.GetElement(3), $1.GetElement(3))) = _mm256_unpackhi_pd($0, $1)
+UnpackLow(v256f32,v256f32) @ref(Vector256.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(1), $1.GetElement(1), $0.GetElement(4), $1.GetElement(4), $0.GetElement(5), $1.GetElement(5))) = _mm256_unpacklo_ps($0, $1)
+UnpackLow(v256f64,v256f64) @ref(Vector256.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(2), $1.GetElement(2))) = _mm256_unpacklo_pd($0, $1)
