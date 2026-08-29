@@ -11,14 +11,15 @@ source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_platform_isa.sh"
 
 # The partial-mask pair for run P: our mask vs the .NET JIT knob that removes
-# the same family. Bmi1 sits in .NET 10's AVX2 instruction set, which AVX
-# implies, so removing AVX removes Bmi1 on both sides, together with Avx,
-# Avx2, Fma, AvxVnni, Lzcnt and Bmi2, while every SSE-level family stays. The
-# Lowered set (X86Base, X86Serialize, Sse through Sse42, Ssse3, Popcnt,
-# Pclmulqdq, Aes, Avx, Avx2, Fma, AvxVnni, Lzcnt, Bmi1, Bmi2, each with its X64
-# type) is diffed unmasked in S and under the mask in P, with X86Base as the
-# kept witness and Bmi1 as the removed one; _platform_isa.sh asserts each
-# witness only while its family is in the Lowered set, and both are now.
+# the same families. AVX is the root of .NET 10's AVX-level, AVX-512 and AVX10
+# instruction sets, so removing it removes everything above the SSE level on
+# both sides — Avx, Avx2, Fma, AvxVnni, Lzcnt, Bmi1, Bmi2, AvxVnniInt8/Int16,
+# the Avx512 families with Vbmi and Vbmi2, Avx10v1, Avx10v2 and the V256 / V512
+# nested types of Gfni and Pclmulqdq — while every SSE-level family and Gfni
+# itself stay. Every x86 family is Lowered, so S diffs the whole x86 surface
+# unmasked and P the whole surface under the mask, with X86Base as the kept
+# witness and Bmi1 as the removed one; _platform_isa.sh asserts each witness
+# only while its family is in the Lowered set, and both are.
 # The knob names are read off an x86-64 host's libclrjit (`strings
 # libclrjit.so | grep '^Enable'`) and confirmed there — a wrong name fails
 # loudly (oracle True vs ours False), never silently.

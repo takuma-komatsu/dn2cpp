@@ -844,12 +844,12 @@ instruction surface lowers, a promotion
 table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
 family answers false, so the BCL software fallback runs, and calling one of
 its instructions throws `PlatformNotSupportedException` exactly as .NET does
-when `IsSupported` is false. The whole `Arm.*` surface lowers, and on x86 so
-do `X86Base`, `X86Serialize`, the SSE families through `Sse42` with `Ssse3`,
-`Popcnt`, `Pclmulqdq` and `Aes`, and the AVX level: `Avx`, `Avx2`, `Fma`,
-`AvxVnni` with the `Lzcnt`, `Bmi1` and `Bmi2` they carry; the AVX-512 and
-AVX10 families, `AvxVnniInt8/Int16`, `Gfni` and the wider nested types of
-`Pclmulqdq` and `Gfni` are open work. `Wasm.PackedSimd` lowers, but a wasm module
+when `IsSupported` is false. Every family with feature bits lowers: the whole `X86.*` surface through
+the AVX-512 and AVX10 families, the whole `Arm.*` surface, and
+`Wasm.PackedSimd`; `Arm.Sve` and `Arm.Sve2`, experimental in .NET 10 and
+without a fixed register width, have no feature bits and answer false by
+design. On x86 the AVX, AVX-512 and AVX10 helpers are compiled but have run on
+no host yet (`docs/STATUS.md`). `Wasm.PackedSimd` lowers, but a wasm module
 either carries SIMD instructions or can load on an engine without them, so
 it answers true only in a `DN2CPP_WASM_SIMD` (`-msimd128`) build; the default
 console build and the Godot Web export stay non-SIMD and answer false, and
