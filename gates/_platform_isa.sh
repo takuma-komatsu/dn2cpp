@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+# Shared helpers for the platform-ISA gates (build-and-run-platform-isa-*.sh).
+# Sourced after _common.sh. The source of truth for the family set and its
+# Lowered flags is the generated transpiler table; everything here reads it
+# rather than keeping a second copy.
+
+PLATFORM_ISA_TABLE=src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs
+PLATFORM_ISA_PROJECT=PlatformIsaProbe
+
+# One table row per line:
+#   new(IsaArch.X86, "System.Runtime.Intrinsics.X86.Lzcnt+X64", "DN2CPP_ISA_X86_Lzcnt_X64", "System.Runtime.Intrinsics.X86.Lzcnt", false),
+# Anchored on the whole line so a row the parser cannot read is a hard error
+# below, never a silently dropped family.
+_PLATFORM_ISA_ROW_RE='^[[:space:]]*new\(IsaArch\.(X86|Arm|Wasm), "System\.Runtime\.Intrinsics\.([A-Za-z0-9_.+]+)", "(DN2CPP_ISA_[A-Za-z0-9_]+)", ("[^"]*"|null), (true|false)\),?[[:space:]]*$'
+
+# _platform_isa_table_fields — every row as `Arch<TAB>RowName<TAB>Token<TAB>lowered`
+# in file order; RowName is the qualified name minus the namespace with `+`
+# rewritten to `.` (X86.Lzcnt.X64), the spelling the probe and the CLI use.
+_platform_isa_table_fields() {
+    [ -f "$PLATFORM_ISA_TABLE" ] \
+        || { echo "error: $PLATFORM_ISA_TABLE not found (the generated platform-ISA table)" >&2; return 1; }
+    local parsed n_rows n_parsed
+    # A literal tab in the replacement: BSD sed does not expand \t there.
+    local tab=$'\t'
+    parsed=$(sed -nE "s/$_PLATFORM_ISA_ROW_RE/\1$tab\2$tab\3$tab\5/p" "$PLATFORM_ISA_TABLE" | tr '+' '.')
+    n_rows=$(grep -cE '^[[:space:]]*new\(IsaArch\.' "$PLATFORM_ISA_TABLE" || true)
+    n_parsed=$(grep -c . <<<"$parsed" || true)
+    if [ "$n_rows" -ne "$n_parsed" ]; then
+        echo "error: $PLATFORM_ISA_TABLE has $n_rows IsaArch rows but only $n_parsed parse; a row's shape changed" >&2
+        return 1
+    fi
+    printf '%s\n' "$parsed"
+}
+
+# platform_isa_table_rows ARCH — `RowName<TAB>lowered` for ARCH (x86|arm|wasm),
+# table order.
+platform_isa_table_rows() {
+    local isa
+    isa=$(platform_isa_arch_name "$1") || return 1
+    _platform_isa_table_fields | awk -F'\t' -v a="$isa" '$1 == a { print $2 "\t" $4 }'
+}
+
+# platform_isa_arch_name ARCH — the table's spelling (X86 / Arm / Wasm).
+platform_isa_arch_name() {
+    case "$1" in
+        x86)  printf 'X86\n' ;;
+        arm)  printf 'Arm\n' ;;
+        wasm) printf 'Wasm\n' ;;
+        *) echo "error: unknown platform-ISA arch '$1' (x86|arm|wasm)" >&2; return 1 ;;
+    esac
+}
+
+# platform_isa_host_arch — x86, arm, or empty for anything else.
+platform_isa_host_arch() {
+    case "$(uname -m)" in
+        x86_64|amd64)  printf 'x86\n' ;;
+        arm64|aarch64) printf 'arm\n' ;;
+        *) printf '\n' ;;
+    esac
+}
+
+# platform_isa_join SEP ITEM... — ITEMs joined by SEP; empty when none.
+platform_isa_join() {
+    local sep="$1"; shift
+    local out="" item
+    for item in "$@"; do
+        out="${out:+$out$sep}$item"
+    done
+    printf '%s\n' "$out"
+}
+
+# platform_isa_contract_block TEXT — the `== contract ==` lines of a probe run.
+platform_isa_contract_block() {
+    awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' <<<"$1"
+}
+
+# ── The surface gate's set helpers ───────────────────────────────────────────
+# Same shape as gates/build-and-run-doc-claims.sh's, which keeps its own local.
+PLATFORM_ISA_FAILS=0
+PLATFORM_ISA_CHECKS=0
+
+platform_isa_ok()  { PLATFORM_ISA_CHECKS=$((PLATFORM_ISA_CHECKS + 1)); printf '  ok    %s\n' "$1"; }
+platform_isa_bad() { PLATFORM_ISA_CHECKS=$((PLATFORM_ISA_CHECKS + 1)); PLATFORM_ISA_FAILS=$((PLATFORM_ISA_FAILS + 1)); printf '  FAIL  %s\n' "$1" >&2; }
+
+# platform_isa_eq LABEL EXPECTED ACTUAL
+platform_isa_eq() {
+    if [ "$2" = "$3" ]; then
+        platform_isa_ok "$1 = $3"
+    else
+        platform_isa_bad "$1: expected '$2', measured '$3'"
+    fi
+}
+
+# platform_isa_set_eq LABEL LEFT_NAME LEFT RIGHT_NAME RIGHT — sorted,
+# newline-separated sets; each side of the difference is reported by name.
+# Callers export LC_ALL=C so `comm` and `sort` agree on the collation.
+platform_isa_set_eq() {
+    local label="$1" lname="$2" rname="$4" only_l only_r
+    only_l=$(comm -23 <(printf '%s\n' "$3") <(printf '%s\n' "$5") | tr '\n' ' ')
+    only_r=$(comm -13 <(printf '%s\n' "$3") <(printf '%s\n' "$5") | tr '\n' ' ')
+    if [ -z "${only_l// }" ] && [ -z "${only_r// }" ]; then
+        platform_isa_ok "$label (both sides identical)"
+    else
+        platform_isa_bad "$label: $lname only: [${only_l:-none}]; $rname only: [${only_r:-none}]"
+    fi
+}
+
+# ── The native behaviour gate ────────────────────────────────────────────────
+# platform_isa_native_gate ARCH — the X86 or Arm contract, diffed against real
+# .NET. The gate sets PLATFORM_ISA_P_MASK (our DN2CPP_CPU_FEATURES value),
+# PLATFORM_ISA_P_KNOBS (the oracle's DOTNET_* assignments, space-separated),
+# PLATFORM_ISA_P_TRUE and PLATFORM_ISA_P_FALSE (a row the partial mask keeps
+# and one it removes) before calling.
+#
+# Runs, each ours-vs-oracle on stdout and exit code:
+#   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
+#   S  native host, Lowered rows only, no mask on either side. Witness: the
+#      base family is true once it is Lowered.
+#   M  always: every row, DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0.
+#      Witnesses: no `=True`, and exactly one `effective=(none)` diag line.
+#   P  native host, Lowered rows only, the partial mask vs the oracle's knobs.
+#      Witnesses: PLATFORM_ISA_P_TRUE stays true, PLATFORM_ISA_P_FALSE goes false.
+# Rows that are not Lowered fold to false on our side whatever the CPU, so S
+# and P select the Lowered set only; F and M expect false everywhere anyway.
+platform_isa_native_gate() {
+    local arch="$1" isa base
+    isa=$(platform_isa_arch_name "$arch") || exit 1
+    case "$arch" in
+        x86) base="X86.X86Base" ;;
+        arm) base="Arm.ArmBase" ;;
+        *) echo "error: platform_isa_native_gate takes x86 or arm, not '$arch'" >&2; exit 1 ;;
+    esac
+    : "${PLATFORM_ISA_P_MASK:?the gate must set PLATFORM_ISA_P_MASK}"
+    : "${PLATFORM_ISA_P_KNOBS:?the gate must set PLATFORM_ISA_P_KNOBS}"
+    : "${PLATFORM_ISA_P_TRUE:?the gate must set PLATFORM_ISA_P_TRUE}"
+    : "${PLATFORM_ISA_P_FALSE:?the gate must set PLATFORM_ISA_P_FALSE}"
+
+    # An inherited mask would narrow the unmasked runs and, through the cache
+    # key, record that narrowed answer as this gate's green.
+    unset DN2CPP_CPU_FEATURES DN2CPP_CPU_FEATURES_DIAG
+
+    local project="$PLATFORM_ISA_PROJECT" out host_arch
+    out="$(_corelib_gate_out "$project")-isa-$arch"
+    host_arch=$(platform_isa_host_arch)
+
+    _corelib_gate_core "$project" "$out"
+
+    local rows name lowered_flag all=() lowered=()
+    rows=$(platform_isa_table_rows "$arch") || exit 1
+    [ -n "$rows" ] || { echo "error: $PLATFORM_ISA_TABLE lists no $isa family" >&2; exit 1; }
+    while IFS=$'\t' read -r name lowered_flag; do
+        all+=("$name")
+        [ "$lowered_flag" = true ] && lowered+=("$name")
+    done <<<"$rows"
+    local all_csv lowered_csv
+    all_csv=$(platform_isa_join , "${all[@]}")
+    lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
+
+    local native_host=0
+    [ "$host_arch" = "$arch" ] && native_host=1
+
+    local ctx="platform_isa|$arch|host:${host_arch:-other}|$_CG_CORELIB"
+    ctx="$ctx|families:$all_csv|lowered:$lowered_csv"
+    ctx="$ctx|runs:F+S+M+P|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
+    ctx="$ctx|assert:foreign-all-false+base-true+mask-diag$(_gate_ctx_extras)"
+    if _corelib_gate_check "$out" "$ctx"; then
+        gate_cache_hit_msg
+        return 0
+    fi
+
+    echo "== 4/4 Compiling C++ and running the $isa contract (exact diff vs real .NET) =="
+    compile_console "$out" "$project"
+
+    gate_run_logs_init "platform_isa_$arch" "platform-isa-$arch"
+    local log_dir="$_GATE_RUN_LOG_DIR"
+    _PI_RUN_LABELS=()
+    _PI_RUN_CODES=()
+    _PI_RUN_OUTS=()
+    _PI_RUN_LOGS=()
+
+    gate_run_diagnostics() {
+        local i
+        for ((i = 0; i < ${#_PI_RUN_LABELS[@]}; i++)); do
+            gate_run_diag "${_PI_RUN_LABELS[$i]}" "${_PI_RUN_CODES[$i]}" "${_PI_RUN_OUTS[$i]}" "${_PI_RUN_LOGS[$i]}"
+        done
+    }
+
+    # _pi_run LABEL ARGV OURS_ENV ORACLE_ENV — one arm: ours under OURS_ENV vs
+    # `dotnet` under ORACLE_ENV (space-separated NAME=VALUE lists, may be empty).
+    # Sets _PI_OURS / _PI_LOG; fails the gate on any stdout or exit-code diff.
+    _pi_run() {
+        local label="$1" argv="$2" ours_env="$3" oracle_env="$4"
+        local ours ours_code expected expected_code
+        _PI_LOG="$log_dir/$label.log"
+        # `$(...)` is already a subshell, so exporting inside it scopes the ISA
+        # env to one side; `env` cannot be used, run_bounded is a function.
+        set +e
+        # shellcheck disable=SC2086
+        ours=$(if [ -n "$ours_env" ]; then export $ours_env; fi
+               run_bounded "./$out/$project" "$argv" 2>"$_PI_LOG"); ours_code=$?
+        # shellcheck disable=SC2086
+        expected=$(if [ -n "$oracle_env" ]; then export $oracle_env; fi
+                   run_bounded dotnet "$_CG_APP" "$argv" 2>"$log_dir/$label.oracle.log"); expected_code=$?
+        set -e
+        _PI_RUN_LABELS+=("$label")
+        _PI_RUN_CODES+=("$ours_code")
+        _PI_RUN_OUTS+=("$ours")
+        _PI_RUN_LOGS+=("$_PI_LOG")
+        echo "-- run $label: argv=$argv ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
+        local failed=0
+        assert_output "$ours" "$expected" || failed=1
+        assert_exit_code "$ours_code" "$expected_code" || failed=1
+        if [ "$failed" -ne 0 ]; then
+            echo "FAIL: run $label of the $isa contract diverged from real .NET" >&2
+            gate_run_diag_once
+            exit 1
+        fi
+        _PI_OURS="$ours"
+    }
+
+    # _pi_require_count LABEL WANT ACTUAL WHAT
+    _pi_require_count() {
+        if [ "$3" -ne "$2" ]; then
+            echo "FAIL: run $1: expected $2 $4, found $3" >&2
+            gate_run_diag_once
+            exit 1
+        fi
+    }
+
+    local block n
+    if [ "$native_host" -eq 0 ]; then
+        _pi_run F "$all_csv" "" ""
+        block=$(platform_isa_contract_block "$_PI_OURS")
+        n=$(grep -c '=True$' <<<"$block" || true)
+        _pi_require_count F 0 "$n" "'=True' rows on a non-$isa host"
+    fi
+
+    if [ "$native_host" -eq 1 ] && [ -n "$lowered_csv" ]; then
+        _pi_run S "$lowered_csv" "" ""
+        case ",$lowered_csv," in
+            *",$base,"*)
+                n=$(grep -c "^$base=True\$" <<<"$_PI_OURS" || true)
+                _pi_require_count S 1 "$n" "'$base=True' line (the base family is Lowered and this IS an $isa host)"
+                ;;
+        esac
+    fi
+
+    _pi_run M "$all_csv" "DN2CPP_CPU_FEATURES=none DN2CPP_CPU_FEATURES_DIAG=1" "DOTNET_EnableHWIntrinsic=0"
+    block=$(platform_isa_contract_block "$_PI_OURS")
+    n=$(grep -c '=True$' <<<"$block" || true)
+    _pi_require_count M 0 "$n" "'=True' rows under DN2CPP_CPU_FEATURES=none"
+    n=$(grep -c 'effective=(none)' "$_PI_LOG" || true)
+    _pi_require_count M 1 "$n" "'effective=(none)' diag line on stderr (DN2CPP_CPU_FEATURES_DIAG=1 prints exactly one)"
+
+    if [ "$native_host" -eq 1 ] && [ -n "$lowered_csv" ]; then
+        _pi_run P "$lowered_csv" "DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK" "$PLATFORM_ISA_P_KNOBS"
+        case ",$lowered_csv," in
+            *",$PLATFORM_ISA_P_TRUE,"*)
+                n=$(grep -c "^$PLATFORM_ISA_P_TRUE=True\$" <<<"$_PI_OURS" || true)
+                _pi_require_count P 1 "$n" "'$PLATFORM_ISA_P_TRUE=True' line (kept by the partial mask)"
+                ;;
+        esac
+        case ",$lowered_csv," in
+            *",$PLATFORM_ISA_P_FALSE,"*)
+                n=$(grep -c "^$PLATFORM_ISA_P_FALSE=False\$" <<<"$_PI_OURS" || true)
+                _pi_require_count P 1 "$n" "'$PLATFORM_ISA_P_FALSE=False' line (removed by the partial mask)"
+                ;;
+        esac
+    elif [ "$native_host" -eq 1 ]; then
+        echo "runs S and P select the Lowered $isa families and none is Lowered yet: nothing to run, nothing omitted"
+    fi
+
+    if [ "$native_host" -eq 0 ]; then
+        local rosetta=""
+        [ "$arch" = x86 ] && rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
+        # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
+        gate_expected_partial "runs S and P (the $isa families' supported and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-$arch.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where S and P run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
+    fi
+
+    gate_cache_commit
+}

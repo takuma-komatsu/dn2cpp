@@ -2288,7 +2288,11 @@ gate_cache_check() {
             printf 'context:%s\n' "$context"
             # Every env var that selects a build axis MUST appear here: add an
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
-            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+            # So must every RUN-TIME knob the runtime reads that changes a
+            # program's output when a gate inherits it (DN2CPP_CPU_FEATURES
+            # narrows every IsSupported answer): a green recorded under an
+            # inherited knob would replay for the unmasked run.
+            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
                 "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" \
                 "${IOS_SIM:-}" "${IOS_DEV:-}" "${ANDROID:-}" "${DN2CPP_NO_GC:-}" \
                 "${DN2CPP_GC_BACKEND:-}" \
@@ -2297,7 +2301,8 @@ gate_cache_check() {
                 "${CMAKE_CXX_COMPILER:-}" "${DN2CPP_EXTRA_CMAKE_ARGS:-}" \
                 "${DN2CPP_EXTRA_LINK_FLAGS:-}" "${DN2CPP_EXTRA_LINK_LIBS:-}" \
                 "${DN2CPP_HIGHWAY_ARCH:-}" \
-                "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}"
+                "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}" \
+                "${DN2CPP_CPU_FEATURES:-}"
             printf 'os:%s\n' "$(uname -sm)"
             printf 'cc:%s\n' "$(first_line "$(cc --version 2>/dev/null)")"
             if [ -n "${WASM:-}" ]; then
