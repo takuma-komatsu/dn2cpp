@@ -9,12 +9,15 @@ namespace PlatformIsaProbe;
 
 // The platform-ISA capability contract, diffed against real .NET.
 //
-//   PlatformIsaProbe [selection]
+//   PlatformIsaProbe [selection] [--invalid-immediates]
 //
 // selection: comma-separated contract row names (X86.Lzcnt.X64), an arch name
 // (X86 / Arm / Wasm) for every row of that arch, `all`, or absent (= all).
 // Output order follows the selection; an arch or `all` expands in the table's
 // landing order below.
+// Out-of-contract immediate values execute only under the explicit second
+// argument. The managed oracle covers valid and wrapping values; the native-only
+// mode covers range rejection without handing an invalid value to a JIT.
 //
 // The contract block prints every selected row's IsSupported. Then each
 // selected top-level family gets a section: when supported it runs the
@@ -174,15 +177,27 @@ internal static class Program
     // nested calls live here and prove that false still routes to a throwing helper.
     private static readonly Dictionary<string, Action> NestedProbes = new(StringComparer.Ordinal);
 
+    // Out-of-contract immediate calls are separate from the oracle-diffed
+    // exercises so the native gates can prove require-before-range-check order.
+    private static readonly Dictionary<string, Action> InvalidImmediates = new(StringComparer.Ordinal);
+
     private static int Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+        bool invalidImmediates = args.Length == 2 && args[1] == "--invalid-immediates";
+        if (args.Length > 1 && !invalidImmediates)
+        {
+            Console.Error.WriteLine("PlatformIsaProbe: unknown option");
+            return 2;
+        }
+
         X86Sections.RegisterExercises(Exercises, NestedProbes);
         ArmSections.RegisterExercises(Exercises);
         WasmSections.RegisterExercises(Exercises);
+        global::PlatformIsaProbe.Exercises.RegisterInvalidImmediates(InvalidImmediates);
 
         string selection = args.Length > 0 ? args[0] : "all";
         List<Row> rows = Select(selection);
@@ -196,6 +211,19 @@ internal static class Program
         foreach (Row row in rows)
         {
             Console.WriteLine(row.Name + "=" + (row.IsSupported() ? "True" : "False"));
+        }
+
+        if (invalidImmediates)
+        {
+            foreach (Row row in rows)
+            {
+                if (InvalidImmediates.TryGetValue(row.Name, out Action exercise))
+                {
+                    Console.WriteLine("== invalid " + row.Name + " ==");
+                    exercise();
+                }
+            }
+            return 0;
         }
 
         foreach (Row row in rows)

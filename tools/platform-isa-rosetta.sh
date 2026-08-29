@@ -7,10 +7,11 @@
 # A developer procedure, not a gate. The x86 gate excludes Rosetta on purpose: no
 # real .NET oracle runs here (the host SDK is arm64), and Rosetta's CPUID is a
 # feature set no shipping CPU has. So the checks are the probe's own — every
-# `ref=` cross-check of a generated exercise prints ref=OK, each immediate
-# boundary either throws or wraps according to its contract, DN2CPP_CPU_FEATURES=none folds
-# every row to False with one diag line, and a partial mask removes the named
-# family together with the families that imply it.
+# `ref=` cross-check of a generated exercise prints ref=OK, each wrapping
+# boundary agrees with its portable reference, each native-only invalid
+# immediate follows token-before-range order, DN2CPP_CPU_FEATURES=none folds every
+# row to False with one diag line, and a partial mask removes the named family
+# together with the families that imply it.
 #
 #   tools/platform-isa-rosetta.sh [--preview Arch.Family,...] [--mask MASK]... [SELECTION]
 #
@@ -24,6 +25,7 @@
 # artifacts/.cmake-runtime-rosetta (the x86-64 runtime) and
 # artifacts/platformisaprobe-rosetta (the transpiled probe and its build).
 source "$(dirname "$0")/../gates/_common.sh"
+source "$(dirname "$0")/../gates/_platform_isa.sh"
 
 preview=""
 masks=()
@@ -94,23 +96,30 @@ bin="$build_dir/$project"
 grep -q x86_64 <<<"$(file "$bin")" || { echo "error: $bin is not an x86_64 binary" >&2; exit 1; }
 
 fails=0
-# run LABEL ENV... — one probe run under Rosetta; prints the contract block and the
-# exercise summary, fails on a MISMATCH or a non-zero exit.
+# run LABEL ENV... — the oracle-safe exercise and native-only immediate modes
+# under Rosetta; prints the contract block and fails on a mismatch, an exception
+# contract violation, or a non-zero exit.
 run() {
     local label="$1"; shift
     local log="$build_dir/$label.log" err="$build_dir/$label.err" rc=0
+    local invalid_log="$build_dir/$label.invalid.log"
+    local invalid_err="$build_dir/$label.invalid.err" invalid_rc=0
     echo "== run $label: ${*:-<no mask>} =="
     env "$@" arch -x86_64 "$bin" "$selection" >"$log" 2>"$err" || rc=$?
+    env "$@" arch -x86_64 "$bin" X86 --invalid-immediates \
+        >"$invalid_log" 2>"$invalid_err" || invalid_rc=$?
     awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' "$log" | sed 's/^/  /'
-    local ok mismatch thrown probes
+    local ok mismatch thrown pnse probes violations
     ok=$(grep -c ' ref=OK' "$log" || true)
     mismatch=$(grep -c ' ref=MISMATCH' "$log" || true)
-    thrown=$(grep -c 'ArgumentOutOfRangeException$' "$log" || true)
+    thrown=$(grep -c 'ArgumentOutOfRangeException$' "$invalid_log" || true)
+    pnse=$(grep -c 'PlatformNotSupportedException$' "$invalid_log" || true)
     probes=$(grep -c '^probe=PlatformNotSupportedException$' "$log" || true)
-    echo "  exit=$rc lines=$(grep -c . "$log") ref=OK:$ok ref=MISMATCH:$mismatch out-of-range-immediates:$thrown unsupported-probes:$probes"
-    if [ "$rc" -ne 0 ]; then
-        echo "  FAIL: the probe exited $rc; stderr follows" >&2
+    echo "  exit=$rc invalid-exit=$invalid_rc lines=$(grep -c . "$log") ref=OK:$ok ref=MISMATCH:$mismatch invalid-AOOE:$thrown invalid-PNSE:$pnse unsupported-probes:$probes"
+    if [ "$rc" -ne 0 ] || [ "$invalid_rc" -ne 0 ]; then
+        echo "  FAIL: the probe exited $rc and its invalid-immediate mode exited $invalid_rc; stderr follows" >&2
         sed 's/^/    /' "$err" >&2
+        sed 's/^/    /' "$invalid_err" >&2
         fails=$((fails + 1))
     fi
     if [ "$mismatch" -ne 0 ]; then
@@ -122,7 +131,13 @@ run() {
         echo "  FAIL: an unsupported family's probe returned instead of throwing" >&2
         fails=$((fails + 1))
     fi
-    echo "  full output: $log"
+    violations=$(platform_isa_invalid_immediate_violations "$(tr -d '\r' < "$invalid_log")")
+    if [ -n "$violations" ]; then
+        echo "  FAIL: invalid-immediate token/exception contract:" >&2
+        printf '    %s\n' "$violations" >&2
+        fails=$((fails + 1))
+    fi
+    echo "  full output: $log; invalid-immediate output: $invalid_log"
 }
 
 echo "== 4/5 Running under Rosetta =="

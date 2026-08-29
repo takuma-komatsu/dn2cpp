@@ -6,6 +6,7 @@
 
 PLATFORM_ISA_TABLE=src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs
 PLATFORM_ISA_PROJECT=PlatformIsaProbe
+PLATFORM_ISA_EXERCISES=samples/dotnet/PlatformIsaProbe/Exercises.g.cs
 
 # One table row per line:
 #   new(IsaArch.X86, "System.Runtime.Intrinsics.X86.Lzcnt+X64", "DN2CPP_ISA_X86_Lzcnt_X64", "System.Runtime.Intrinsics.X86.Lzcnt", false),
@@ -88,6 +89,48 @@ platform_isa_join() {
 # platform_isa_contract_block TEXT — the `== contract ==` lines of a probe run.
 platform_isa_contract_block() {
     awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' <<<"$1"
+}
+
+# platform_isa_invalid_immediate_rows ARCH — family rows with a generated
+# dn2cpp-only out-of-contract immediate exercise, in registry order.
+platform_isa_invalid_immediate_rows() {
+    local isa
+    isa=$(platform_isa_arch_name "$1") || return 1
+    [ -f "$PLATFORM_ISA_EXERCISES" ] \
+        || { echo "error: $PLATFORM_ISA_EXERCISES not found" >&2; return 1; }
+    tr -d '\r' < "$PLATFORM_ISA_EXERCISES" \
+        | sed -nE "s/^[[:space:]]*exercises\[\"($isa\.[^\"]+)\"\] = \(\) =>$/\1/p"
+}
+
+# platform_isa_invalid_immediate_violations TEXT — one diagnostic per boundary
+# result that disagrees with its token. Helpers require the token before their
+# immediate dispatch: true therefore throws AOOE, false PNSE.
+platform_isa_invalid_immediate_violations() {
+    awk '
+        /^== contract ==$/ { contract = 1; next }
+        /^== / { contract = 0 }
+        contract && /^[A-Za-z0-9.]+=(True|False)$/ {
+            row = $0; sub(/=.*/, "", row)
+            value = $0; sub(/.*=/, "", value)
+            supported[row] = value
+            next
+        }
+        /^== invalid [A-Za-z0-9.]+ ==$/ {
+            row = $0; sub(/^== invalid /, "", row); sub(/ ==$/, "", row)
+            sections++
+            if (++seen[row] != 1) print "duplicate invalid-immediate section: " row
+            if (!(row in supported)) print "invalid-immediate section has no contract row: " row
+            if ((getline result) <= 0) {
+                print "invalid-immediate section has no result: " row
+                next
+            }
+            got = result; sub(/^.*=/, "", got)
+            want = supported[row] == "True" \
+                ? "ArgumentOutOfRangeException" : "PlatformNotSupportedException"
+            if (got != want) print row ": expected " want ", got " got
+        }
+        END { if (sections == 0) print "no invalid-immediate sections" }
+    ' <<<"$1"
 }
 
 _platform_isa_witness_signature() {
@@ -216,9 +259,15 @@ platform_isa_native_gate() {
         all+=("$name")
         [ "$lowered_flag" = true ] && lowered+=("$name")
     done <<<"$rows"
-    local all_csv lowered_csv
+    local all_csv lowered_csv invalid_rows invalid_csv invalid_count
     all_csv=$(platform_isa_join , "${all[@]}")
     lowered_csv=$(platform_isa_join , ${lowered[@]+"${lowered[@]}"})
+    invalid_rows=$(platform_isa_invalid_immediate_rows "$arch") || exit 1
+    invalid_csv=$(tr '\n' ',' <<<"$invalid_rows")
+    invalid_csv=${invalid_csv%,}
+    invalid_count=$(grep -c . <<<"$invalid_rows" || true)
+    [ "$invalid_count" -gt 0 ] \
+        || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; exit 1; }
 
     local native_host=0 avx10v2_compiler=0
     [ "$host_arch" = "$arch" ] && native_host=1
@@ -229,10 +278,11 @@ platform_isa_native_gate() {
     local optin_ctx="" ctx="platform_isa|$arch|host:${host_arch:-other}|$_CG_CORELIB"
     [ "$arch" = x86 ] && optin_ctx="+O"
     ctx="$ctx|families:$all_csv|lowered:$lowered_csv"
-    ctx="$ctx|runs:F+S+M+P$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|runs:F+S+M+P+N+NM$optin_ctx|M=DN2CPP_CPU_FEATURES=none+DOTNET_EnableHWIntrinsic=0"
     ctx="$ctx|P=DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK+$PLATFORM_ISA_P_KNOBS"
+    ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
     ctx="$ctx|avx10v2-compiler:$avx10v2_compiler|O=DN2CPP_ENABLE_AVX10V2=1"
-    ctx="$ctx|assert:foreign-all-false+base-true+avx10v2-default-off+apple-avx512-false+mask-diag$(_gate_ctx_extras)"
+    ctx="$ctx|assert:foreign-all-false+base-true+invalid-require-before-range+avx10v2-default-off+apple-avx512-false+mask-diag$(_gate_ctx_extras)"
     if _corelib_gate_check "$out" "$ctx"; then
         gate_cache_hit_msg
         return 0
@@ -275,9 +325,11 @@ platform_isa_native_gate() {
         for ((i = 0; i < ${#_PI_RUN_LABELS[@]}; i++)); do
             _pi_run_diag_file "${_PI_RUN_LABELS[$i]} native" \
                 "${_PI_RUN_CODES[$i]}" "${_PI_RUN_OUTS[$i]}" "${_PI_RUN_LOGS[$i]}"
-            _pi_run_diag_file "${_PI_RUN_LABELS[$i]} oracle" \
-                "${_PI_RUN_ORACLE_CODES[$i]}" "${_PI_RUN_ORACLE_OUTS[$i]}" \
-                "${_PI_RUN_ORACLE_LOGS[$i]}"
+            if [ -n "${_PI_RUN_ORACLE_OUTS[$i]}" ]; then
+                _pi_run_diag_file "${_PI_RUN_LABELS[$i]} oracle" \
+                    "${_PI_RUN_ORACLE_CODES[$i]}" "${_PI_RUN_ORACLE_OUTS[$i]}" \
+                    "${_PI_RUN_ORACLE_LOGS[$i]}"
+            fi
         done
     }
 
@@ -328,6 +380,35 @@ platform_isa_native_gate() {
         fi
         # The raw files above enforce byte parity. This copy is text-only witness
         # input, so remove Windows CR without weakening that exact comparison.
+        _PI_OURS=$(tr -d '\r' < "$ours_out")
+    }
+
+    # _pi_run_native LABEL ARGV ENV — dn2cpp-only boundary mode. Managed JITs
+    # are not an oracle for out-of-contract ConstantExpected values.
+    _pi_run_native() {
+        local label="$1" argv="$2" ours_env="$3" ours_code ours_out
+        _PI_LOG="$log_dir/$label.log"
+        ours_out="$log_dir/$label.out"
+        set +e
+        # shellcheck disable=SC2086
+        (if [ -n "$ours_env" ]; then export $ours_env; fi
+         run_bounded "./$out/$project" "$argv" --invalid-immediates) \
+            >"$ours_out" 2>"$_PI_LOG"; ours_code=$?
+        set -e
+        _PI_RUN_LABELS+=("$label")
+        _PI_RUN_CODES+=("$ours_code")
+        _PI_RUN_ORACLE_CODES+=("")
+        _PI_RUN_OUTS+=("$ours_out")
+        _PI_RUN_ORACLE_OUTS+=("")
+        _PI_RUN_LOGS+=("$_PI_LOG")
+        _PI_RUN_ORACLE_LOGS+=("")
+        echo "-- run $label: argv=$argv --invalid-immediates ours=[${ours_env:-<no ISA env>}]"
+        if [ "$ours_code" -ne 0 ]; then
+            echo "FAIL: run $label of the $isa invalid-immediate contract exited $ours_code" >&2
+            gate_run_diag_once
+            exit 1
+        fi
+        cat "$ours_out"
         _PI_OURS=$(tr -d '\r' < "$ours_out")
     }
 
@@ -415,6 +496,36 @@ platform_isa_native_gate() {
         esac
     elif [ "$native_host" -eq 1 ]; then
         echo "runs S and P select the Lowered $isa families and none is Lowered yet: nothing to run, nothing omitted"
+    fi
+
+    local violations
+    _pi_run_native N "$all_csv" ""
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_PI_OURS" || true)
+    _pi_require_count N "$invalid_count" "$n" "generated invalid-immediate sections"
+    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS")
+    if [ -n "$violations" ]; then
+        echo "FAIL: run N invalid-immediate token/exception contract:" >&2
+        printf '%s\n' "$violations" >&2
+        gate_run_diag_once
+        exit 1
+    fi
+
+    _pi_run_native NM "$all_csv" "DN2CPP_CPU_FEATURES=none"
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_PI_OURS" || true)
+    _pi_require_count NM "$invalid_count" "$n" "generated invalid-immediate sections"
+    block=$(platform_isa_contract_block "$_PI_OURS")
+    n=$(grep -c '=True$' <<<"$block" || true)
+    _pi_require_count NM 0 "$n" "'=True' rows under DN2CPP_CPU_FEATURES=none"
+    n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_PI_OURS" || true)
+    _pi_require_count NM 0 "$n" "AOOE results while every token is false"
+    n=$(grep -c '=PlatformNotSupportedException$' <<<"$_PI_OURS" || true)
+    _pi_require_count NM "$invalid_count" "$n" "PNSE results before immediate dispatch"
+    violations=$(platform_isa_invalid_immediate_violations "$_PI_OURS")
+    if [ -n "$violations" ]; then
+        echo "FAIL: run NM invalid-immediate token/exception contract:" >&2
+        printf '%s\n' "$violations" >&2
+        gate_run_diag_once
+        exit 1
     fi
 
     if [ "$native_host" -eq 0 ]; then

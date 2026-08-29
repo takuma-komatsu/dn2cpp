@@ -230,10 +230,14 @@ pattern, immediates at the middle of their range or list, pointers into a filled
 load, store, masked or compressed form reaches past 64 bytes) whose bytes are printed
 after a store, a gather's index lanes folded so every lane stays inside that buffer — and
 prints `Method(argcodes)=<hex bytes>`; nested types run behind their own `IsSupported`. One
-immediate method per family is also called one past its range or list inside `Fmt.Thrown`,
-which must print `ArgumentOutOfRangeException`. Real .NET is the
-oracle for the x86 and Arm families: the native gates diff the output byte for byte, so no
-reference value is computed. PackedSimd has no such oracle — no host .NET answers true for
+immediate method per family also supplies an out-of-contract range or list value. Those calls
+live in a separate generated registry and run only under the probe's explicit
+`--invalid-immediates` mode: a supported token must produce `ArgumentOutOfRangeException`,
+while a false token must produce `PlatformNotSupportedException` before the range check. The
+ordinary managed oracle receives only valid immediates and wrapping boundaries, because an
+out-of-contract value is not a stable JIT execution contract. Real .NET is the oracle for the
+other x86 and Arm output: the native gates diff it byte for byte, so no reference value is
+computed. PackedSimd has no such oracle — no host .NET answers true for
 it — so `gates/build-and-run-platform-isa-wasm.sh` diffs its output against the frozen
 `gates/expected/platform-isa-wasm-simd.txt`, and every row with a `@ref` prints its
 portable cross-check beside the bytes; the gate refuses a `MISMATCH`. The registration

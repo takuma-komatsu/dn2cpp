@@ -144,6 +144,10 @@ internal static class Fmt
         {
             return "ArgumentOutOfRangeException";
         }
+        catch (PlatformNotSupportedException)
+        {
+            return "PlatformNotSupportedException";
+        }
         catch (Exception)
         {
             return "Exception";

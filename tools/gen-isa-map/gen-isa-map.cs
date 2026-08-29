@@ -1793,9 +1793,10 @@ static class Emit
 // ---------------------------------------------------------------------------------------
 // samples/dotnet/PlatformIsaProbe/Exercises.g.cs — one exercise per lowered family that has
 // no hand-written one: every mapped method called once with fixed inputs, its result printed
-// as hex bytes. Real .NET is the oracle (the native gates diff the output), so no reference
-// value is computed here except a row's @ref cross-check, the portable computation printed as
-// agreement or disagreement beside the bytes. Nothing machine-dependent is printed.
+// as hex bytes. Real .NET is the instruction-result oracle; out-of-contract immediates
+// execute only in dn2cpp's explicit boundary mode. A row's @ref is the only portable result
+// computed here, printed as agreement or disagreement beside the bytes. Nothing
+// machine-dependent is printed.
 // ---------------------------------------------------------------------------------------
 
 static class Exercises
@@ -1820,11 +1821,16 @@ static class Exercises
     const int BufferBytes = 64;
     const int BufferAlign = 64;
     const int GatherIndexModulus = 5;
+    const int InvalidImmediateWitnesses = 18;
+    const int WrappedImmediateWitnesses = 3;
+
+    sealed record InvalidImmediateWitness(
+        string Row, string Setup, string Label, int Past, string Statement);
 
     public static string File(List<Family> families)
     {
         var sb = new StringBuilder();
-        sb.Append(Emit.CsBanner("The exercise of every lowered family without a hand-written one: each mapped method called once with fixed inputs, its result printed as hex bytes; real .NET is the oracle."));
+        sb.Append(Emit.CsBanner("The exercise of every lowered family without a hand-written one: each mapped method called once with fixed inputs and printed as hex bytes; real .NET is the instruction-result oracle, while out-of-contract immediates execute only in dn2cpp's explicit boundary mode."));
         sb.Append("""
             using System;
             using System.Collections.Generic;
@@ -1839,6 +1845,8 @@ static class Exercises
             {
 
             """);
+        var invalidImmediateWitnesses = new List<InvalidImmediateWitness>();
+        int wrappedImmediateWitnesses = 0;
         var tops = families.Where(f => f.Enclosing is null && f.Lowered && !HandWritten.Contains(f.QualifiedName)).ToList();
         foreach (string arch in Contract.Archs)
         {
@@ -1848,7 +1856,22 @@ static class Exercises
             sb.Append("    }\n\n");
         }
         foreach (var f in tops)
-            Exercise(sb, families, f);
+            Exercise(sb, families, f, invalidImmediateWitnesses,
+                ref wrappedImmediateWitnesses);
+        if (invalidImmediateWitnesses.Count != InvalidImmediateWitnesses)
+            throw new ContractException($"generated {invalidImmediateWitnesses.Count} invalid-immediate witnesses; expected {InvalidImmediateWitnesses}; audit the dn2cpp-only boundary set");
+        if (wrappedImmediateWitnesses != WrappedImmediateWitnesses)
+            throw new ContractException($"generated {wrappedImmediateWitnesses} wrapped-immediate witnesses; expected {WrappedImmediateWitnesses}; audit the oracle-parity boundary set");
+        sb.Append("    internal static unsafe void RegisterInvalidImmediates(Dictionary<string, Action> exercises)\n    {\n");
+        foreach (var witness in invalidImmediateWitnesses)
+        {
+            sb.Append($"        exercises[\"{witness.Row}\"] = () =>\n        {{\n");
+            foreach (string line in witness.Setup.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                sb.Append("            ").Append(line.TrimStart()).Append('\n');
+            sb.Append($"            Console.WriteLine(\"{witness.Label} imm={witness.Past}=\" + Fmt.Thrown(() => {{ {witness.Statement} }}));\n");
+            sb.Append("        };\n");
+        }
+        sb.Append("    }\n\n");
         sb.Append("}\n");
         return sb.ToString();
     }
@@ -1864,22 +1887,29 @@ static class Exercises
         return plus < 0 ? "" : f.TypePath.Substring(plus + 1).Replace('+', '.') + ".";
     }
 
-    static void Exercise(StringBuilder sb, List<Family> families, Family f)
+    static void Exercise(StringBuilder sb, List<Family> families, Family f,
+        List<InvalidImmediateWitness> invalidImmediateWitnesses,
+        ref int wrappedImmediateWitnesses)
     {
         sb.Append($"    private static unsafe void {MethodName(f)}()\n    {{\n");
-        Calls(sb, families, f, "        ");
+        Calls(sb, families, f, "        ", invalidImmediateWitnesses,
+            ref wrappedImmediateWitnesses);
         sb.Append("    }\n\n");
     }
 
-    static void Calls(StringBuilder sb, List<Family> families, Family f, string indent)
+    static void Calls(StringBuilder sb, List<Family> families, Family f, string indent,
+        List<InvalidImmediateWitness> invalidImmediateWitnesses,
+        ref int wrappedImmediateWitnesses)
     {
         bool witnessed = false;
         foreach (var m in f.Methods.Where(m => m.Row is not null).OrderBy(m => m.HelperName, StringComparer.Ordinal))
-            Call(sb, f, m, indent, ref witnessed);
+            Call(sb, f, m, indent, ref witnessed, invalidImmediateWitnesses,
+                ref wrappedImmediateWitnesses);
         foreach (var nested in families.Where(g => g.Enclosing == f.QualifiedName && g.Lowered && HasCalls(families, g)))
         {
             sb.Append($"{indent}if ({CsFamily(nested)}.IsSupported)\n{indent}{{\n");
-            Calls(sb, families, nested, indent + "    ");
+            Calls(sb, families, nested, indent + "    ", invalidImmediateWitnesses,
+                ref wrappedImmediateWitnesses);
             sb.Append($"{indent}}}\n");
         }
     }
@@ -1891,7 +1921,9 @@ static class Exercises
     // cross-check gets a block. With a cross-check the operands are bound to locals a<k>,
     // which the reference expression names through $k, and the line ends in ` ref=OK` or
     // ` ref=MISMATCH(<reference bytes>)`.
-    static void Call(StringBuilder outer, Family f, Method m, string indent, ref bool witnessed)
+    static void Call(StringBuilder outer, Family f, Method m, string indent, ref bool witnessed,
+        List<InvalidImmediateWitness> invalidImmediateWitnesses,
+        ref int wrappedImmediateWitnesses)
     {
         var row = m.Row!;
         string member = f.QualifiedName + "." + m.Name;
@@ -1947,6 +1979,7 @@ static class Exercises
             args.Add(value);
             refArgs.Add(value);
         }
+        string argumentSetup = sb.ToString();
         string call = $"{CsFamily(f)}.{m.Name}({string.Join(", ", args)})";
         string mem = m.Return.Kind == TyKind.Void
             ? string.Concat(pointers.Select(k => $" + \" mem{k}=\" + Fmt.Hex(p{k}, {BufferBytes})"))
@@ -2011,6 +2044,7 @@ static class Exercises
             string outCall = $"{CsFamily(f)}.{m.Name}({string.Join(", ", outArgs)})";
             if (imm.Wrap)
             {
+                wrappedImmediateWitnesses++;
                 string outReference = RefParam.Replace(row.Ref!, x =>
                 {
                     int k = int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture);
@@ -2040,7 +2074,8 @@ static class Exercises
             else
             {
                 string stmt = m.Return.Kind == TyKind.Void ? $"{outCall};" : $"_ = {outCall};";
-                sb.Append($"{inner}Console.WriteLine(\"{label} imm={past}=\" + Fmt.Thrown(() => {{ {stmt} }}));\n");
+                invalidImmediateWitnesses.Add(new InvalidImmediateWitness(
+                    Contract.Display(f.QualifiedName), argumentSetup, label, past, stmt));
             }
             witnessed = true;
         }

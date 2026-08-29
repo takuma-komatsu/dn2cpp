@@ -17,7 +17,8 @@
 # host-independent. Two things keep a frozen file honest here: every exercise
 # line that has a portable equivalent carries a `ref=` cross-check computed by the
 # Vector128 layer (an independent implementation), and the file must contain no
-# MISMATCH; and the witnesses below (PackedSimd=True, the immediate range check).
+# MISMATCH; and the witnesses below (PackedSimd=True and the native-only
+# immediate contract).
 # To refresh after an intentional change to the lowering or the exercise, run the
 # gate, then copy `node artifacts/platformisaprobe-wasm-simd/PlatformIsaProbe.js
 # Wasm.PackedSimd` over the expected file and read the diff.
@@ -106,11 +107,18 @@ fi
     export DN2CPP_WASM_SIMD=1
     out_simd="$out-simd"
     _corelib_gate_core "$project" "$out_simd"
+    invalid_rows=$(platform_isa_invalid_immediate_rows wasm) || exit 1
+    invalid_count=$(grep -c . <<<"$invalid_rows" || true)
+    [ "$invalid_count" -gt 0 ] \
+        || { echo "error: generated exercises list no Wasm invalid-immediate boundary" >&2; exit 1; }
+    invalid_csv=$(tr '\n' ',' <<<"$invalid_rows")
+    invalid_csv=${invalid_csv%,}
 
     ctx="platform_isa_wasm|simd|$_CG_CORELIB|argv:Wasm.PackedSimd+all"
     ctx="$ctx|expected:$(shasum -a 256 < "$expected_simd" | cut -d' ' -f1)"
     ctx="$ctx|masked:DN2CPP_CPU_FEATURES=none+DN2CPP_CPU_FEATURES_DIAG=1|oracle:DOTNET_EnableHWIntrinsic=0"
-    ctx="$ctx|assert:packedsimd-true+imm-range+no-mismatch+mask-diag"
+    ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
+    ctx="$ctx|assert:packedsimd-true+invalid-require-before-range+no-mismatch+mask-diag"
     if gate_cache_check "$out_simd" "$ctx" \
             "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" "$expected_simd"; then
         gate_cache_hit_msg
@@ -123,9 +131,12 @@ fi
     gate_run_logs_init "platform_isa_wasm_simd" "platform-isa-wasm-simd"
     log_dir="$_GATE_RUN_LOG_DIR"
     _B_OUT=""; _B_CODE=""; _M_OUT=""; _M_CODE=""
+    _N_OUT=""; _N_CODE=""; _NM_OUT=""; _NM_CODE=""
     gate_run_diagnostics() {
         gate_run_diag B "$_B_CODE" "$_B_OUT" "$log_dir/B.log"
         gate_run_diag B-masked "$_M_CODE" "$_M_OUT" "$log_dir/B-masked.log"
+        gate_run_diag N "$_N_CODE" "$_N_OUT" "$log_dir/N.log"
+        gate_run_diag NM "$_NM_CODE" "$_NM_OUT" "$log_dir/NM.log"
     }
 
     set +e
@@ -146,7 +157,7 @@ fi
     n=$(grep -c '^Wasm\.PackedSimd=True$' <<<"$_B_OUT" || true)
     require_count B 1 "$n" "'Wasm.PackedSimd=True' line (the SIMD build detects the instruction set)"
     n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_B_OUT" || true)
-    require_count B 1 "$n" "'ArgumentOutOfRangeException' witness (a lane index one past its range takes .NET's check)"
+    require_count B 0 "$n" "out-of-contract immediate results in oracle-parity output"
     n=$(grep -c 'ref=MISMATCH' <<<"$_B_OUT" || true)
     require_count B 0 "$n" "'ref=MISMATCH' lines (a helper disagreeing with the portable Vector128 computation)"
     n_ref=$(grep -c ' ref=OK$' <<<"$_B_OUT" || true)
@@ -175,6 +186,47 @@ fi
     n=$(grep -c 'effective=(none)' "$log_dir/B-masked.log" || true)
     require_count B-masked 1 "$n" "'effective=(none)' diag line on stderr (the pre-js forwarded both variables; DN2CPP_CPU_FEATURES_DIAG=1 prints exactly one)"
     echo "OK: the masked SIMD module answers as the default build does, with one diag line"
+
+    # The out-of-contract immediate is executed only by dn2cpp. With the SIMD
+    # token true it reaches the range check; with the token masked false it must
+    # fail the capability requirement first.
+    set +e
+    _N_OUT=$(run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
+        --invalid-immediates 2>"$log_dir/N.log"); _N_CODE=$?
+    set -e
+    echo "-- run N: argv=Wasm.PackedSimd --invalid-immediates ours=[<no ISA env>]"
+    assert_exit_code "$_N_CODE" 0 || { gate_run_diag_once; exit 1; }
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_N_OUT" || true)
+    require_count N "$invalid_count" "$n" "generated invalid-immediate sections"
+    violations=$(platform_isa_invalid_immediate_violations "$_N_OUT")
+    if [ -n "$violations" ]; then
+        echo "FAIL: run N invalid-immediate token/exception contract:" >&2
+        printf '%s\n' "$violations" >&2
+        gate_run_diag_once
+        exit 1
+    fi
+
+    set +e
+    _NM_OUT=$(export DN2CPP_CPU_FEATURES=none
+              run_bounded node "./$out_simd/$project.js" Wasm.PackedSimd \
+                  --invalid-immediates 2>"$log_dir/NM.log"); _NM_CODE=$?
+    set -e
+    echo "-- run NM: argv=Wasm.PackedSimd --invalid-immediates ours=[DN2CPP_CPU_FEATURES=none]"
+    assert_exit_code "$_NM_CODE" 0 || { gate_run_diag_once; exit 1; }
+    n=$(grep -c '^== invalid [A-Za-z0-9.]* ==$' <<<"$_NM_OUT" || true)
+    require_count NM "$invalid_count" "$n" "generated invalid-immediate sections"
+    n=$(grep -c '=ArgumentOutOfRangeException$' <<<"$_NM_OUT" || true)
+    require_count NM 0 "$n" "AOOE results while the PackedSimd token is false"
+    n=$(grep -c '=PlatformNotSupportedException$' <<<"$_NM_OUT" || true)
+    require_count NM "$invalid_count" "$n" "PNSE results before immediate dispatch"
+    violations=$(platform_isa_invalid_immediate_violations "$_NM_OUT")
+    if [ -n "$violations" ]; then
+        echo "FAIL: run NM invalid-immediate token/exception contract:" >&2
+        printf '%s\n' "$violations" >&2
+        gate_run_diag_once
+        exit 1
+    fi
+    echo "OK: native-only immediate checks follow token-before-range order"
 
     gate_cache_commit
 )
