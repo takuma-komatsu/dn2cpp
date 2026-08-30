@@ -1,0 +1,36 @@
+# System.Runtime.Intrinsics.X86.Sse2 — integer and double arithmetic. An integer add or
+# subtract has one spelling per lane width that the signed and unsigned overloads share;
+# the saturating, min/max, average and high-multiply forms exist in one signedness each.
+# PMULUDQ multiplies the even 32-bit lanes into 64-bit products. SqrtScalar(value) is
+# SQRTSD with both operands the same register, which .NET documents as the one-operand
+# form; SqrtScalar(upper, value) is the intrinsic itself. PAVG rounds the mean up, which
+# the reference spells over the widened lanes.
+target = sse2
+Add(v128{T},v128{T}) @ref(Vector128.Add($0, $1)) = _mm_add_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Add(v128f64,v128f64) @ref(Vector128.Add($0, $1)) = _mm_add_pd($0, $1)
+AddScalar(v128f64,v128f64) @ref($0.WithElement(0, $0.GetElement(0) + $1.GetElement(0))) = _mm_add_sd($0, $1)
+AddSaturate(v128{T},v128{T}) @ref(Vector128.AddSaturate($0, $1)) = _mm_adds_{ep}($0, $1) for T in i8,u8,i16,u16
+Subtract(v128{T},v128{T}) @ref(Vector128.Subtract($0, $1)) = _mm_sub_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Subtract(v128f64,v128f64) @ref(Vector128.Subtract($0, $1)) = _mm_sub_pd($0, $1)
+SubtractScalar(v128f64,v128f64) @ref($0.WithElement(0, $0.GetElement(0) - $1.GetElement(0))) = _mm_sub_sd($0, $1)
+SubtractSaturate(v128{T},v128{T}) @ref(Vector128.SubtractSaturate($0, $1)) = _mm_subs_{ep}($0, $1) for T in i8,u8,i16,u16
+Multiply(v128f64,v128f64) @ref(Vector128.Multiply($0, $1)) = _mm_mul_pd($0, $1)
+MultiplyScalar(v128f64,v128f64) @ref($0.WithElement(0, $0.GetElement(0) * $1.GetElement(0))) = _mm_mul_sd($0, $1)
+Multiply(v128u32,v128u32) @ref(Vector128.Create((ulong)$0.GetElement(0) * $1.GetElement(0), (ulong)$0.GetElement(2) * $1.GetElement(2))) = _mm_mul_epu32($0, $1)
+MultiplyLow(v128{T},v128{T}) @ref(Vector128.Multiply($0, $1)) = _mm_mullo_epi16($0, $1) for T in i16,u16
+MultiplyHigh(v128{T},v128{T}) = _mm_mulhi_{ep}($0, $1) for T in i16,u16
+MultiplyAddAdjacent(v128i16,v128i16) = _mm_madd_epi16($0, $1)
+SumAbsoluteDifferences(v128u8,v128u8) = _mm_sad_epu8($0, $1)
+Average(v128u8,v128u8) @ref(Vector128.Narrow(Vector128.ShiftRightLogical(Vector128.WidenLower($0) + Vector128.WidenLower($1) + Vector128<ushort>.One, 1), Vector128.ShiftRightLogical(Vector128.WidenUpper($0) + Vector128.WidenUpper($1) + Vector128<ushort>.One, 1))) = _mm_avg_epu8($0, $1)
+Average(v128u16,v128u16) @ref(Vector128.Narrow(Vector128.ShiftRightLogical(Vector128.WidenLower($0) + Vector128.WidenLower($1) + Vector128<uint>.One, 1), Vector128.ShiftRightLogical(Vector128.WidenUpper($0) + Vector128.WidenUpper($1) + Vector128<uint>.One, 1))) = _mm_avg_epu16($0, $1)
+Divide(v128f64,v128f64) @ref(Vector128.Divide($0, $1)) = _mm_div_pd($0, $1)
+DivideScalar(v128f64,v128f64) @ref($0.WithElement(0, $0.GetElement(0) / $1.GetElement(0))) = _mm_div_sd($0, $1)
+Max(v128{T},v128{T}) @ref(Vector128.Max($0, $1)) = _mm_max_{ep}($0, $1) for T in i16,u8
+Max(v128f64,v128f64) @ref(Vector128.Max($0, $1)) = _mm_max_pd($0, $1)
+MaxScalar(v128f64,v128f64) @ref($0.WithElement(0, Math.Max($0.GetElement(0), $1.GetElement(0)))) = _mm_max_sd($0, $1)
+Min(v128{T},v128{T}) @ref(Vector128.Min($0, $1)) = _mm_min_{ep}($0, $1) for T in i16,u8
+Min(v128f64,v128f64) @ref(Vector128.Min($0, $1)) = _mm_min_pd($0, $1)
+MinScalar(v128f64,v128f64) @ref($0.WithElement(0, Math.Min($0.GetElement(0), $1.GetElement(0)))) = _mm_min_sd($0, $1)
+Sqrt(v128f64) @ref(Vector128.Sqrt($0)) = _mm_sqrt_pd($0)
+SqrtScalar(v128f64) @ref($0.WithElement(0, Math.Sqrt($0.GetElement(0)))) = _mm_sqrt_sd($0, $0)
+SqrtScalar(v128f64,v128f64) @ref($0.WithElement(0, Math.Sqrt($1.GetElement(0)))) = _mm_sqrt_sd($0, $1)

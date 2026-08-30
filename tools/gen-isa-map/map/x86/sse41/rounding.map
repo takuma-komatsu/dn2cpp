@@ -1,0 +1,29 @@
+# System.Runtime.Intrinsics.X86.Sse41 — ROUNDPS / ROUNDPD and the scalar ROUNDSS /
+# ROUNDSD. The immediate is the rounding mode the .NET method names (nearest-even, down,
+# up, toward zero, or MXCSR's current mode — nearest-even by default), with the
+# exception-suppression bit as .NET emits it; that bit changes flags, never results. The
+# one-operand scalar form is the instruction with both operands the same register; the
+# two-operand form writes lane 0 of `value` into `upper`. Vector128.Round rounds to even,
+# which is the default MXCSR mode too.
+target = sse4.1
+Ceiling(v128{T}) @ref(Vector128.Ceiling($0)) = _mm_ceil_{ps|pd}($0) for T in f32,f64
+Floor(v128{T}) @ref(Vector128.Floor($0)) = _mm_floor_{ps|pd}($0) for T in f32,f64
+RoundToNearestInteger(v128{T}) @ref(Vector128.Round($0)) = _mm_round_{ps|pd}($0, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToNegativeInfinity(v128{T}) @ref(Vector128.Floor($0)) = _mm_round_{ps|pd}($0, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToPositiveInfinity(v128{T}) @ref(Vector128.Ceiling($0)) = _mm_round_{ps|pd}($0, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToZero(v128{T}) @ref(Vector128.Truncate($0)) = _mm_round_{ps|pd}($0, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundCurrentDirection(v128{T}) @ref(Vector128.Round($0)) = _mm_round_{ps|pd}($0, _MM_FROUND_CUR_DIRECTION) for T in f32,f64
+CeilingScalar(v128{T}) @ref($0.WithElement(0, Vector128.Ceiling($0).GetElement(0))) = _mm_ceil_{ss|sd}($0, $0) for T in f32,f64
+CeilingScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Ceiling($1).GetElement(0))) = _mm_ceil_{ss|sd}($0, $1) for T in f32,f64
+FloorScalar(v128{T}) @ref($0.WithElement(0, Vector128.Floor($0).GetElement(0))) = _mm_floor_{ss|sd}($0, $0) for T in f32,f64
+FloorScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Floor($1).GetElement(0))) = _mm_floor_{ss|sd}($0, $1) for T in f32,f64
+RoundToNearestIntegerScalar(v128{T}) @ref($0.WithElement(0, Vector128.Round($0).GetElement(0))) = _mm_round_{ss|sd}($0, $0, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToNearestIntegerScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Round($1).GetElement(0))) = _mm_round_{ss|sd}($0, $1, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToNegativeInfinityScalar(v128{T}) @ref($0.WithElement(0, Vector128.Floor($0).GetElement(0))) = _mm_round_{ss|sd}($0, $0, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToNegativeInfinityScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Floor($1).GetElement(0))) = _mm_round_{ss|sd}($0, $1, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToPositiveInfinityScalar(v128{T}) @ref($0.WithElement(0, Vector128.Ceiling($0).GetElement(0))) = _mm_round_{ss|sd}($0, $0, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToPositiveInfinityScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Ceiling($1).GetElement(0))) = _mm_round_{ss|sd}($0, $1, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToZeroScalar(v128{T}) @ref($0.WithElement(0, Vector128.Truncate($0).GetElement(0))) = _mm_round_{ss|sd}($0, $0, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToZeroScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Truncate($1).GetElement(0))) = _mm_round_{ss|sd}($0, $1, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundCurrentDirectionScalar(v128{T}) @ref($0.WithElement(0, Vector128.Round($0).GetElement(0))) = _mm_round_{ss|sd}($0, $0, _MM_FROUND_CUR_DIRECTION) for T in f32,f64
+RoundCurrentDirectionScalar(v128{T},v128{T}) @ref($0.WithElement(0, Vector128.Round($1).GetElement(0))) = _mm_round_{ss|sd}($0, $1, _MM_FROUND_CUR_DIRECTION) for T in f32,f64

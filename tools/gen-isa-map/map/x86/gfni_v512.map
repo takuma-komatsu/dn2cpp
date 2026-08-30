@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Gfni.V512 — the 512-bit forms of the GF(2^8) operations
+# (EVEX encoding, eight 64-bit matrix lanes); see gfni.map.
+target = avx512f,gfni
+GaloisFieldAffineTransform(v512u8,v512u8,u8) @imm8 = _mm512_gf2p8affine_epi64_epi8($0, $1, $2)
+GaloisFieldAffineTransformInverse(v512u8,v512u8,u8) @imm8 = _mm512_gf2p8affineinv_epi64_epi8($0, $1, $2)
+GaloisFieldMultiply(v512u8,v512u8) = _mm512_gf2p8mul_epi8($0, $1)

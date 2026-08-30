@@ -261,6 +261,70 @@ leave the shape test to the emitter, which has already paid for the signature;
 receiver's static type, say), make the cut agree or **delete the cut** and let
 the real body be reachable — never approximate it.
 
+#### Platform ISA contract
+
+The `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` families are one
+capability contract, not a set of independent constants:
+
+- **One token macro per family.** `runtime/core/isa/dn2cpp_isa_tokens.g.h`
+  defines `DN2CPP_ISA_<Arch>_<Type>` from the target macro
+  (`DN2CPP_TARGET_X64` / `ARM64` / `WASM32`, `runtime/core/dn2cpp_cpu_features.h`)
+  and the run-time feature word. The transpiler emits the **token**, never a
+  host-derived constant: the self-host fixpoint requires the emitted text to be
+  a function of the inputs alone, and the machine running the transpiler is
+  not one of them.
+- **Non-lowered getters const-fold to 0.** `BranchLiveness` then prunes the
+  guarded arms, so their icalls never enter the reachability tree, and a call
+  to one of the family's instructions routes to a `PlatformNotSupportedException`
+  throw — what .NET does when `IsSupported` is false. Lowered getters read the
+  token at run time, and every lowered helper re-reads it before executing
+  (`dn2cpp_isa_require`): a call made while the token is false — the CPU lacks
+  the ISA, or `DN2CPP_CPU_FEATURES` masked it — throws
+  `PlatformNotSupportedException` as .NET does, never the instruction.
+  `X86Base.CpuId` is the target-capability exception: .NET implements it as
+  an x86 QCall, so disabling hardware intrinsics makes `X86Base.IsSupported`
+  false without disabling `CpuId`. Its generated helper omits the token check
+  on x86 and retains the foreign-target throwing stub.
+- **Cut ⟹ route via the `MdPlatformIsa` row.** Its predicate is the
+  `ClassInfo.PlatformIsa` stamp rather than a name table: the nested types
+  (`X64`, `Arm64`, `VL`, `V256`, `V512`) have bare names, so only a stamp made
+  when the class is classified can tell `Sse2.X64` from any other `X64`.
+- **Lowered is a proof, not a flag.** `tools/gen-isa-map` writes a family as
+  Lowered into `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` only
+  when every public static method of it has a helper
+  (`dn2cpp_isa_<arch>_<type>_<method>_<argsig>`) under `runtime/core/isa/`, and
+  every family it implies is Lowered too — the families whose feature bits lie
+  in the implication closure of its own (`DN2CPP_CPU_FEATURE_TABLE` parents),
+  which covers the enclosing family and .NET's instruction-set implications
+  (`Dp` ⟹ `AdvSimd`, `Popcnt` ⟹ `Sse42`). A child true beside a parent folded
+  to 0 is a state .NET never has, and BCL code guarded by the child would reach
+  the parent's throwing calls. `gates/build-and-run-platform-isa-surface.sh`
+  re-derives both rules from the csv and the header.
+- **Every Lowered helper is exercised.** `Exercises.g.cs` in the probe, written
+  by the same generator, calls each mapped method with fixed inputs and prints
+  the bytes; `gates/build-and-run-platform-isa-native.sh` transpiles and links
+  one probe, then diffs its X86 and Arm runs against real .NET, so a wrong
+  lowering fails on the machine that has the instruction rather than in a
+  user's program.
+  `Wasm.PackedSimd` has no such oracle (no host .NET answers true for it), so
+  its run is frozen in `gates/expected/platform-isa-wasm-simd.txt` and every
+  row with a portable equivalent carries a `@ref` cross-check against the
+  `Vector128` layer, an independent implementation; the gate refuses a mismatch.
+- **wasm SIMD is a build axis.** A module either carries SIMD instructions or
+  loads on an engine without them, so the wasm detector answers from
+  `__wasm_simd128__` and the CMake option `DN2CPP_WASM_SIMD` (`-msimd128`,
+  PUBLIC on the runtime so every TU agrees with the detector) is what makes
+  `PackedSimd.IsSupported` true. The helpers' real bodies exist only under that
+  macro; a default wasm build compiles their throwing stubs.
+- **AVX10.2 needs a positive policy decision.** Raw CPUID detection retains the
+  hardware fact, but `Avx10v2` and the V512 `AvxVnniInt8` / `AvxVnniInt16`
+  surface enter the effective set only under `DN2CPP_ENABLE_AVX10V2=1`, matching
+  .NET 10's default-off policy. The compiler-capability guard is an independent
+  requirement, so the opt-in cannot expose helpers the compiler cannot build.
+- **The mask intersects policy.** `DN2CPP_CPU_FEATURES` narrows the post-policy
+  detected set (the effective set is the implication closure of policy ∩ allowed)
+  and can never opt into AVX10.2 or make a getter true that detection left false.
+
 #### Adopting a third-party async task type
 
 `Compilation.AdoptCustomAsyncTaskTypes` is the one place a non-BCL type is
@@ -491,6 +555,7 @@ that answer a fault differently are directly observable by a hot-update program.
 | Runtime-instantiation templates (`MakeGenericType` over a typeof-only definition, any argument) | `Compilation.BuildRuntimeInstantiationTemplates` (trigger + `$CnAny` rooting + shape bound), `Compilation.JudgeRuntimeTemplates` (per-body/per-slot eligibility), `CppEmitter.EmitRuntimeTemplates` (the `dn2cpp_runtime_templates` rows), `runtime/core/intrinsics/dn2cpp_system_reflection.cpp` (`dn2cpp_try_synthesize_generic`: clone, intern, rgctx fill) |
 | Reachability tree-shake | `Compilation` (walks call/newobj/ldftn from roots). Unreached bodies are never decoded |
 | Const-folded capability getters + dead-arm pruning | `CoreIntrinsics.ConstFoldedGetter` (the oracle: add a `(type, method) → bool` entry), `BranchLiveness` (per-body live-offset walk shared by the reachability scanner and `MethodCompiler`, so a dead arm's icalls/P-Invokes never enter the tree), `Compilation.ResolveCallTarget` (the getter's own body edge is cut) |
+| Platform ISA contract (`X86.*` / `Arm.*` / `Wasm.*` `IsSupported` and instructions) | `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs` (the generated family table: token, enclosing family, Lowered), the `MdPlatformIsa` intercept row keyed on the `ClassInfo.PlatformIsa` stamp, `runtime/core/dn2cpp_cpu_features.h` + `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` (detection, AVX10.2 opt-in policy, the `DN2CPP_CPU_FEATURES` mask), `runtime/core/isa/` (tokens and per-family helpers, written by `tools/gen-isa-map`) |
 | Multi-assembly | the `Module` abstraction + `ResolveTypeRef` (cross-assembly TypeRef/MemberRef resolution) |
 | Exception handling | `MethodCompiler` (structural EH-region reconstruction → nested C++ try/catch, `isinst` dispatch) |
 | vtables / interfaces | `Compilation` (slot assignment), `CppEmitter` (vtable/interface table emission) |

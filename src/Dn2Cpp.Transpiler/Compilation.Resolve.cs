@@ -50,6 +50,12 @@ internal sealed partial class Compilation
                     return null;
                 if (CoreIntrinsics.MdIntrinsicType.Matches(mi))
                     return null;
+                // A static member of a platform-ISA facade (Sse2, Lzcnt.X64, AdvSimd, …),
+                // reached intra-CoreLib: every call is lowered at its site (the same row's
+                // arm in MethodCompiler.TranslateCall), so the [Intrinsic] stub body — a
+                // self-recursive call the JIT would have replaced — is never an edge.
+                if (CoreIntrinsics.MdPlatformIsa.Matches(mi))
+                    return null;
                 // The sub-word integers' ToString/Parse/TryParse/TryFormat are lowered inline
                 // at every call site (the MemberRef branch, the MethodDefinition arm of
                 // MethodCompiler.TranslateCall, and the constrained static-virtual dispatch),
@@ -391,8 +397,14 @@ internal sealed partial class Compilation
                 // handler is modeled as the underlying StringBuilder pointer and every member
                 // is lowered inline, so its IL is never transpiled (same shape
                 // as the Lock.Scope cut). Resolve the TypeRef parent and check IntrinsicCppName.
+                // The same resolve-and-test also cuts every member of a platform-ISA facade
+                // referenced cross-assembly (an app's Sse2.Add, Lzcnt.X64.LeadingZeroCount,
+                // AdvSimd.IsSupported): the MemberRef arm has no MethodInfo for the
+                // MdPlatformIsa row, so this is its cut half, paired with the
+                // post-resolution MdPlatformIsa reference in MethodCompiler.TranslateCall.
                 if (mr.Parent.Kind == HandleKind.TypeReference
-                    && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is { IntrinsicCppName: not null })
+                    && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is { } pc
+                    && (pc.IntrinsicCppName is not null || pc.PlatformIsa is not null))
                     return null;
                 // SafeBuffer.AcquirePointer/ReleasePointer/get_ByteLength and
                 // SafeHandle.DangerousGetHandle are deliberately NOT cut, even though the
@@ -1149,7 +1161,10 @@ internal sealed partial class Compilation
     /// const-folded getter (see <see cref="CoreIntrinsics.ConstFoldedGetter"/>),
     /// or null for any other call. Works on raw metadata names only — it must
     /// not resolve or reach the target — and name-checks before touching the
-    /// declaring type so the per-call-site probe stays cheap.</summary>
+    /// declaring type so the per-call-site probe stays cheap. The const-folded table
+    /// is asked first and always wins; the platform-ISA fold only answers a
+    /// <c>get_IsSupported</c> that table has no row for, so a row it gains by that
+    /// name can never be shadowed.</summary>
     internal bool? ConstFoldedCallTarget(Module module, int token)
     {
         if (token == 0 || (uint)token >> 24 == 0x70)
@@ -1161,21 +1176,75 @@ internal sealed partial class Compilation
             {
                 var h = (MethodDefinitionHandle)handle;
                 string name = module.Reader.GetString(module.Reader.GetMethodDefinition(h).Name);
-                if (!CoreIntrinsics.IsConstFoldedGetterName(name))
-                    return null;
-                return MethodDefParentTypeName(module, h) is { } declType
-                    ? CoreIntrinsics.ConstFoldedGetter(declType, name)
-                    : null;
+                if (CoreIntrinsics.IsConstFoldedGetterName(name)
+                    && MethodDefParentTypeName(module, h) is { } declType
+                    && CoreIntrinsics.ConstFoldedGetter(declType, name) is { } folded)
+                    return folded;
+                return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
             }
             case HandleKind.MemberReference:
             {
                 var h = (MemberReferenceHandle)handle;
                 string name = module.Reader.GetString(module.Reader.GetMemberReference(h).Name);
-                if (!CoreIntrinsics.IsConstFoldedGetterName(name))
+                if (CoreIntrinsics.IsConstFoldedGetterName(name)
+                    && MemberRefParentTypeName(module, h) is { } declType
+                    && CoreIntrinsics.ConstFoldedGetter(declType, name) is { } folded)
+                    return folded;
+                return name == "get_IsSupported" ? PlatformIsaGetterFold(module, handle) : null;
+            }
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The <see cref="BranchLiveness"/> verdict for a <c>get_IsSupported</c> call
+    /// token: the platform-ISA fold (<see cref="CoreIntrinsics.IsaGetterFold"/>) when the
+    /// parent is a facade, null for every other <c>IsSupported</c> (the portable
+    /// <c>Vector128&lt;T&gt;.IsSupported</c> is a runtime token, never a fold). Keyed on the
+    /// QUALIFIED parent name because a nested facade's bare name (<c>X64</c>) names
+    /// nothing; raw metadata reads only, no resolution.</summary>
+    private static bool? PlatformIsaGetterFold(Module module, EntityHandle callTarget) =>
+        CallTargetQualifiedTypeName(module, callTarget) is { } q
+        && CoreIntrinsics.PlatformIsaFamily(q) is { } f
+            ? CoreIntrinsics.IsaGetterFold(f)
+            : null;
+
+    /// <summary>The CLR qualified name (<c>Ns.Outer+Leaf</c>) of a call token's parent
+    /// type, from metadata alone: a MethodDef walks <c>TypeDefinition.GetDeclaringType</c>,
+    /// a MemberRef walks <c>TypeReference.ResolutionScope</c> while it is a TypeReference.
+    /// Null for a parent that is not a plain type row (a TypeSpec, a MethodSpec).</summary>
+    private static string? CallTargetQualifiedTypeName(Module module, EntityHandle callTarget)
+    {
+        var reader = module.Reader;
+        switch (callTarget.Kind)
+        {
+            case HandleKind.MethodDefinition:
+            {
+                var td = reader.GetTypeDefinition(
+                    reader.GetMethodDefinition((MethodDefinitionHandle)callTarget).GetDeclaringType());
+                string chain = reader.GetString(td.Name);
+                for (var dh = td.GetDeclaringType(); !dh.IsNil; dh = td.GetDeclaringType())
+                {
+                    td = reader.GetTypeDefinition(dh);
+                    chain = reader.GetString(td.Name) + "+" + chain;
+                }
+                string ns = reader.GetString(td.Namespace);
+                return string.IsNullOrEmpty(ns) ? chain : ns + "." + chain;
+            }
+            case HandleKind.MemberReference:
+            {
+                var mr = reader.GetMemberReference((MemberReferenceHandle)callTarget);
+                if (mr.Parent.Kind != HandleKind.TypeReference)
                     return null;
-                return MemberRefParentTypeName(module, h) is { } declType
-                    ? CoreIntrinsics.ConstFoldedGetter(declType, name)
-                    : null;
+                var tr = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
+                string chain = reader.GetString(tr.Name);
+                while (tr.ResolutionScope.Kind == HandleKind.TypeReference)
+                {
+                    tr = reader.GetTypeReference((TypeReferenceHandle)tr.ResolutionScope);
+                    chain = reader.GetString(tr.Name) + "+" + chain;
+                }
+                string ns = reader.GetString(tr.Namespace);
+                return string.IsNullOrEmpty(ns) ? chain : ns + "." + chain;
             }
             default:
                 return null;

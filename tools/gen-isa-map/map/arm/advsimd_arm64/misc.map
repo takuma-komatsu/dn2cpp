@@ -1,0 +1,47 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — 64-bit-element absolute compares and
+# differences, the one-lane compares (FCMEQ Sd / CMEQ Dd: an all-ones or all-zeros
+# lane 0, the rest zero), 128-bit pairwise arithmetic with its D/S-register
+# reductions, IEEE-754 maxNum/minNum across and pairwise, and the one-lane
+# arithmetic. CMTST has no double form: the double overload tests the bits.
+AbsoluteCompareGreaterThan(v128f64,v128f64) = vcagtq_f64($0, $1)
+AbsoluteCompareGreaterThanOrEqual(v128f64,v128f64) = vcageq_f64($0, $1)
+AbsoluteCompareGreaterThanOrEqualScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcage{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+AbsoluteCompareGreaterThanScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcagt{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+AbsoluteCompareLessThan(v128f64,v128f64) = vcaltq_f64($0, $1)
+AbsoluteCompareLessThanOrEqual(v128f64,v128f64) = vcaleq_f64($0, $1)
+AbsoluteCompareLessThanOrEqualScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcale{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+AbsoluteCompareLessThanScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcalt{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+AbsoluteDifference(v128f64,v128f64) = vabdq_f64($0, $1)
+AbsoluteDifferenceScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vabd{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+AbsScalar(v64i64) = vabs_s64($0)
+AddPairwise(v128{T},v128{T}) = vpaddq_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+AddPairwiseScalar(v128{T}) = dn2cpp_isa_lane0<8>(vpaddd_{neon}($0)) for T in i64,u64,f64
+AddPairwiseScalar(v64f32) = dn2cpp_isa_lane0<8>(vpadds_f32($0))
+CompareEqualScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vceq{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64,f32,f64
+CompareGreaterThanOrEqualScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcge{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64,f32,f64
+CompareGreaterThanScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcgt{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64,f32,f64
+CompareLessThanOrEqualScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vcle{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64,f32,f64
+CompareLessThanScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vclt{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64,f32,f64
+CompareTestScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vtstd_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i64,u64
+CompareTestScalar(v64f64,v64f64) = dn2cpp_isa_lane0<8>(vtstd_u64(vget_lane_u64($0:u64, 0), vget_lane_u64($1:u64, 0)))
+MaxNumber(v128f64,v128f64) = vmaxnmq_f64($0, $1)
+MaxNumberAcross(v128f32) = dn2cpp_isa_lane0<8>(vmaxnmvq_f32($0))
+MaxNumberPairwise(v128{T},v128{T}) = vpmaxnmq_{neon}($0, $1) for T in f32,f64
+MaxNumberPairwise(v64f32,v64f32) = vpmaxnm_f32($0, $1)
+MaxNumberPairwiseScalar(v128f64) = dn2cpp_isa_lane0<8>(vpmaxnmqd_f64($0))
+MaxNumberPairwiseScalar(v64f32) = dn2cpp_isa_lane0<8>(vpmaxnms_f32($0))
+MaxPairwise(v128{T},v128{T}) = vpmaxq_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32,f64
+MaxPairwiseScalar(v128f64) = dn2cpp_isa_lane0<8>(vpmaxqd_f64($0))
+MaxPairwiseScalar(v64f32) = dn2cpp_isa_lane0<8>(vpmaxs_f32($0))
+MaxScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vmax_{neon}($0, $1), 0)) for T in f32,f64
+MinNumber(v128f64,v128f64) = vminnmq_f64($0, $1)
+MinNumberAcross(v128f32) = dn2cpp_isa_lane0<8>(vminnmvq_f32($0))
+MinNumberPairwise(v128{T},v128{T}) = vpminnmq_{neon}($0, $1) for T in f32,f64
+MinNumberPairwise(v64f32,v64f32) = vpminnm_f32($0, $1)
+MinNumberPairwiseScalar(v128f64) = dn2cpp_isa_lane0<8>(vpminnmqd_f64($0))
+MinNumberPairwiseScalar(v64f32) = dn2cpp_isa_lane0<8>(vpminnms_f32($0))
+MinPairwise(v128{T},v128{T}) = vpminq_{neon}($0, $1) for T in i8,u8,i16,u16,i32,u32,f32,f64
+MinPairwiseScalar(v128f64) = dn2cpp_isa_lane0<8>(vpminqd_f64($0))
+MinPairwiseScalar(v64f32) = dn2cpp_isa_lane0<8>(vpmins_f32($0))
+MinScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vmin_{neon}($0, $1), 0)) for T in f32,f64
+NegateScalar(v64i64) = vneg_s64($0)

@@ -1,0 +1,22 @@
+# System.Runtime.Intrinsics.X86.Sse — loads, stores, the store fence and the prefetch
+# hints. The aligned forms fault on a misaligned address, as in .NET; the exercise's
+# stackalloc buffers are 16-byte aligned on both sides. LoadHigh / LoadLow and their
+# stores move the 64-bit half a MOVHPS / MOVLPS names; the prefetches take the whole
+# hint set (T0, T1, T2, NTA) and change no architectural state.
+target = sse
+LoadVector128(pf32) @ref(Vector128.Load($0)) = _mm_loadu_ps($0)
+LoadAlignedVector128(pf32) @ref(Vector128.Load($0)) = _mm_load_ps($0)
+LoadScalarVector128(pf32) @ref(Vector128.CreateScalar(*$0)) = _mm_load_ss($0)
+LoadHigh(v128f32,pf32) @ref($0.WithUpper(Vector64.Load($1))) = _mm_loadh_pi($0, (const __m64*)$1)
+LoadLow(v128f32,pf32) @ref($0.WithLower(Vector64.Load($1))) = _mm_loadl_pi($0, (const __m64*)$1)
+Store(pf32,v128f32) = _mm_storeu_ps($0, $1)
+StoreAligned(pf32,v128f32) = _mm_store_ps($0, $1)
+StoreAlignedNonTemporal(pf32,v128f32) = _mm_stream_ps($0, $1)
+StoreScalar(pf32,v128f32) = _mm_store_ss($0, $1)
+StoreHigh(pf32,v128f32) = _mm_storeh_pi((__m64*)$0, $1)
+StoreLow(pf32,v128f32) = _mm_storel_pi((__m64*)$0, $1)
+StoreFence() = _mm_sfence()
+Prefetch0(pvoid) = _mm_prefetch((const char*)$0, _MM_HINT_T0)
+Prefetch1(pvoid) = _mm_prefetch((const char*)$0, _MM_HINT_T1)
+Prefetch2(pvoid) = _mm_prefetch((const char*)$0, _MM_HINT_T2)
+PrefetchNonTemporal(pvoid) = _mm_prefetch((const char*)$0, _MM_HINT_NTA)

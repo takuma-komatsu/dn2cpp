@@ -1,0 +1,5 @@
+# System.Runtime.Intrinsics.X86.Sse+X64 — the 64-bit integer conversions of lane 0.
+target = sse
+ConvertScalarToVector128Single(v128f32,i64) @ref($0.WithElement(0, (float)$1)) = _mm_cvtsi64_ss($0, $1)
+ConvertToInt64(v128f32) @ref((long)MathF.Round($0.GetElement(0))) = _mm_cvtss_si64($0)
+ConvertToInt64WithTruncation(v128f32) @ref((long)$0.GetElement(0)) = _mm_cvttss_si64($0)

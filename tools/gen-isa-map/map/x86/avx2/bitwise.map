@@ -1,0 +1,8 @@
+# System.Runtime.Intrinsics.X86.Avx2 — bitwise operations, one 256-bit spelling for every
+# lane type. AndNot is VPANDN: the complement of the FIRST operand, so the portable AndNot's
+# operands swap.
+target = avx2
+And(v256{T},v256{T}) @ref(Vector256.BitwiseAnd($0, $1)) = _mm256_and_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+AndNot(v256{T},v256{T}) @ref(Vector256.AndNot($1, $0)) = _mm256_andnot_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Or(v256{T},v256{T}) @ref(Vector256.BitwiseOr($0, $1)) = _mm256_or_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Xor(v256{T},v256{T}) @ref(Vector256.Xor($0, $1)) = _mm256_xor_si256($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64

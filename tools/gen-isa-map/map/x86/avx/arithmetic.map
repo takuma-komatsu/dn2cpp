@@ -1,0 +1,22 @@
+# System.Runtime.Intrinsics.X86.Avx — 256-bit float arithmetic: the packed operations of Sse
+# and Sse2 at twice the width, and the horizontal pairs and alternating add/subtract of Sse3
+# within each 128-bit lane. DPPS applies one control to both 128-bit lanes: the high nibble
+# selects the products summed in each lane, the low nibble the result lanes written. The
+# reciprocal estimates are hardware approximations and carry no reference.
+target = avx
+Add(v256{T},v256{T}) @ref(Vector256.Add($0, $1)) = _mm256_add_{ps|pd}($0, $1) for T in f32,f64
+Subtract(v256{T},v256{T}) @ref(Vector256.Subtract($0, $1)) = _mm256_sub_{ps|pd}($0, $1) for T in f32,f64
+Multiply(v256{T},v256{T}) @ref(Vector256.Multiply($0, $1)) = _mm256_mul_{ps|pd}($0, $1) for T in f32,f64
+Divide(v256{T},v256{T}) @ref(Vector256.Divide($0, $1)) = _mm256_div_{ps|pd}($0, $1) for T in f32,f64
+Max(v256{T},v256{T}) @ref(Vector256.Max($0, $1)) = _mm256_max_{ps|pd}($0, $1) for T in f32,f64
+Min(v256{T},v256{T}) @ref(Vector256.Min($0, $1)) = _mm256_min_{ps|pd}($0, $1) for T in f32,f64
+Sqrt(v256{T}) @ref(Vector256.Sqrt($0)) = _mm256_sqrt_{ps|pd}($0) for T in f32,f64
+Reciprocal(v256f32) = _mm256_rcp_ps($0)
+ReciprocalSqrt(v256f32) = _mm256_rsqrt_ps($0)
+AddSubtract(v256f32,v256f32) @ref(Vector256.ConditionalSelect(Vector256.Create(-1, 0, -1, 0, -1, 0, -1, 0).AsSingle(), Vector256.Subtract($0, $1), Vector256.Add($0, $1))) = _mm256_addsub_ps($0, $1)
+AddSubtract(v256f64,v256f64) @ref(Vector256.ConditionalSelect(Vector256.Create(-1L, 0L, -1L, 0L).AsDouble(), Vector256.Subtract($0, $1), Vector256.Add($0, $1))) = _mm256_addsub_pd($0, $1)
+HorizontalAdd(v256f32,v256f32) @ref(Vector256.Create($0.GetElement(0) + $0.GetElement(1), $0.GetElement(2) + $0.GetElement(3), $1.GetElement(0) + $1.GetElement(1), $1.GetElement(2) + $1.GetElement(3), $0.GetElement(4) + $0.GetElement(5), $0.GetElement(6) + $0.GetElement(7), $1.GetElement(4) + $1.GetElement(5), $1.GetElement(6) + $1.GetElement(7))) = _mm256_hadd_ps($0, $1)
+HorizontalAdd(v256f64,v256f64) @ref(Vector256.Create($0.GetElement(0) + $0.GetElement(1), $1.GetElement(0) + $1.GetElement(1), $0.GetElement(2) + $0.GetElement(3), $1.GetElement(2) + $1.GetElement(3))) = _mm256_hadd_pd($0, $1)
+HorizontalSubtract(v256f32,v256f32) @ref(Vector256.Create($0.GetElement(0) - $0.GetElement(1), $0.GetElement(2) - $0.GetElement(3), $1.GetElement(0) - $1.GetElement(1), $1.GetElement(2) - $1.GetElement(3), $0.GetElement(4) - $0.GetElement(5), $0.GetElement(6) - $0.GetElement(7), $1.GetElement(4) - $1.GetElement(5), $1.GetElement(6) - $1.GetElement(7))) = _mm256_hsub_ps($0, $1)
+HorizontalSubtract(v256f64,v256f64) @ref(Vector256.Create($0.GetElement(0) - $0.GetElement(1), $1.GetElement(0) - $1.GetElement(1), $0.GetElement(2) - $0.GetElement(3), $1.GetElement(2) - $1.GetElement(3))) = _mm256_hsub_pd($0, $1)
+DotProduct(v256f32,v256f32,u8) @imm8 @ref(Vector256.ConditionalSelect(Vector256.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1), -($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1)).AsSingle(), Vector256.Create(Vector128.Create(Vector128.Sum(Vector128.ConditionalSelect(Vector128.Create(-(($2 >> 4) & 1), -(($2 >> 5) & 1), -(($2 >> 6) & 1), -(($2 >> 7) & 1)).AsSingle(), Vector128.Multiply($0.GetLower(), $1.GetLower()), Vector128<float>.Zero))), Vector128.Create(Vector128.Sum(Vector128.ConditionalSelect(Vector128.Create(-(($2 >> 4) & 1), -(($2 >> 5) & 1), -(($2 >> 6) & 1), -(($2 >> 7) & 1)).AsSingle(), Vector128.Multiply($0.GetUpper(), $1.GetUpper()), Vector128<float>.Zero)))), Vector256<float>.Zero)) = _mm256_dp_ps($0, $1, $2)

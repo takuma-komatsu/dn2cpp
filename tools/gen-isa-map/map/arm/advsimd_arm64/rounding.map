@@ -1,0 +1,52 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — double rounding and conversion
+# (FCVTL/FCVTL2 widen singles, FCVTN/FCVTN2 and the round-to-odd FCVTXN/FCVTXN2
+# narrow doubles), the double reciprocal estimates and steps, FRECPX, square root
+# and division. A Scalar overload on Vector64<double> is the whole register.
+Ceiling(v128f64) = vrndpq_f64($0)
+ConvertToDouble(v128{T}) = vcvtq_f64_{neon}($0) for T in i64,u64
+ConvertToDouble(v64f32) = vcvt_f64_f32($0)
+ConvertToDoubleScalar(v64{T}) = vcvt_f64_{neon}($0) for T in i64,u64
+ConvertToDoubleUpper(v128f32) = vcvt_high_f64_f32($0)
+ConvertToInt64RoundAwayFromZero(v128f64) = vcvtaq_s64_f64($0)
+ConvertToInt64RoundAwayFromZeroScalar(v64f64) = vcvta_s64_f64($0)
+ConvertToInt64RoundToEven(v128f64) = vcvtnq_s64_f64($0)
+ConvertToInt64RoundToEvenScalar(v64f64) = vcvtn_s64_f64($0)
+ConvertToInt64RoundToNegativeInfinity(v128f64) = vcvtmq_s64_f64($0)
+ConvertToInt64RoundToNegativeInfinityScalar(v64f64) = vcvtm_s64_f64($0)
+ConvertToInt64RoundToPositiveInfinity(v128f64) = vcvtpq_s64_f64($0)
+ConvertToInt64RoundToPositiveInfinityScalar(v64f64) = vcvtp_s64_f64($0)
+ConvertToInt64RoundToZero(v128f64) = vcvtq_s64_f64($0)
+ConvertToInt64RoundToZeroScalar(v64f64) = vcvt_s64_f64($0)
+ConvertToSingleLower(v128f64) = vcvt_f32_f64($0)
+ConvertToSingleRoundToOddLower(v128f64) = vcvtx_f32_f64($0)
+ConvertToSingleRoundToOddUpper(v64f32,v128f64) = vcvtx_high_f32_f64($0, $1)
+ConvertToSingleUpper(v64f32,v128f64) = vcvt_high_f32_f64($0, $1)
+ConvertToUInt64RoundAwayFromZero(v128f64) = vcvtaq_u64_f64($0)
+ConvertToUInt64RoundAwayFromZeroScalar(v64f64) = vcvta_u64_f64($0)
+ConvertToUInt64RoundToEven(v128f64) = vcvtnq_u64_f64($0)
+ConvertToUInt64RoundToEvenScalar(v64f64) = vcvtn_u64_f64($0)
+ConvertToUInt64RoundToNegativeInfinity(v128f64) = vcvtmq_u64_f64($0)
+ConvertToUInt64RoundToNegativeInfinityScalar(v64f64) = vcvtm_u64_f64($0)
+ConvertToUInt64RoundToPositiveInfinity(v128f64) = vcvtpq_u64_f64($0)
+ConvertToUInt64RoundToPositiveInfinityScalar(v64f64) = vcvtp_u64_f64($0)
+ConvertToUInt64RoundToZero(v128f64) = vcvtq_u64_f64($0)
+ConvertToUInt64RoundToZeroScalar(v64f64) = vcvt_u64_f64($0)
+Divide(v128{T},v128{T}) = vdivq_{neon}($0, $1) for T in f32,f64
+Divide(v64f32,v64f32) = vdiv_f32($0, $1)
+Floor(v128f64) = vrndmq_f64($0)
+ReciprocalEstimate(v128f64) = vrecpeq_f64($0)
+ReciprocalEstimateScalar(v64{T}) = dn2cpp_isa_lane0<8>(vrecpe{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in f32,f64
+ReciprocalExponentScalar(v64{T}) = dn2cpp_isa_lane0<8>(vrecpx{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in f32,f64
+ReciprocalSquareRootEstimate(v128f64) = vrsqrteq_f64($0)
+ReciprocalSquareRootEstimateScalar(v64{T}) = dn2cpp_isa_lane0<8>(vrsqrte{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in f32,f64
+ReciprocalSquareRootStep(v128f64,v128f64) = vrsqrtsq_f64($0, $1)
+ReciprocalSquareRootStepScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vrsqrts{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+ReciprocalStep(v128f64,v128f64) = vrecpsq_f64($0, $1)
+ReciprocalStepScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vrecps{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+RoundAwayFromZero(v128f64) = vrndaq_f64($0)
+RoundToNearest(v128f64) = vrndnq_f64($0)
+RoundToNegativeInfinity(v128f64) = vrndmq_f64($0)
+RoundToPositiveInfinity(v128f64) = vrndpq_f64($0)
+RoundToZero(v128f64) = vrndq_f64($0)
+Sqrt(v128{T}) = vsqrtq_{neon}($0) for T in f32,f64
+Sqrt(v64f32) = vsqrt_f32($0)

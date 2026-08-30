@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — bitwise operations, defined for every
+# element type including floats; the unsigned-integer intrinsic of the same width
+# is the instruction, so operands are viewed as that type. BIC is a & ~b; BSL is
+# (mask & a) | (~mask & b), .NET's BitwiseSelect(select, left, right).
+And(v{W}{T},v{W}{T}) = vand{q}_{uT}($0:{uT}, $1:{uT}) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+BitwiseClear(v{W}{T},v{W}{T}) = vbic{q}_{uT}($0:{uT}, $1:{uT}) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+BitwiseSelect(v{W}{T},v{W}{T},v{W}{T}) = vbsl{q}_{uT}($0:{uT}, $1:{uT}, $2:{uT}) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Not(v{W}{T}) = vmvn{q}_u8($0:u8) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Or(v{W}{T},v{W}{T}) = vorr{q}_{uT}($0:{uT}, $1:{uT}) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Xor(v{W}{T},v{W}{T}) = veor{q}_{uT}($0:{uT}, $1:{uT}) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64

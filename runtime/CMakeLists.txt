@@ -88,8 +88,21 @@ option(DN2CPP_USE_ZLIB    "Compile and link the vendored zlib for System.IO.Comp
 option(DN2CPP_USE_BROTLI  "Compile and link the vendored brotli for System.IO.Compression.Brotli" ON)
 option(DN2CPP_USE_CURL    "Compile and link the vendored libcurl (over vendored Mbed TLS + CA bundle) for HTTP/HTTPS transport" ON)
 option(DN2CPP_USE_HIGHWAY "Back the portable-SIMD ops with vendored Google Highway (static single-ISA, header-only)" ON)
+# DN2CPP_HIGHWAY_ARCH (PUBLIC: every TU linking the runtime) and DN2CPP_HOT_ARCH
+# (the [HotPath] TU) widen the ISA the compiler may assume; there the
+# target-attributed ISA helpers may inline into their generated callers, which
+# is acceptable because that code already requires the ISA everywhere it runs.
 set(DN2CPP_HIGHWAY_ARCH   ""    CACHE STRING   "Extra -march/-mcpu flags for the Highway build (e.g. -mavx2); empty = compiler default ISA")
 set(DN2CPP_HOT_ARCH       ""    CACHE STRING   "Extra ISA flags for the [HotPath] TU generated_hot.cpp (e.g. -mavx2, /arch:AVX2, -msimd128); empty = compiler default ISA")
+set(DN2CPP_CPU_FEATURES   ""    CACHE STRING   "Default DN2CPP_CPU_FEATURES mask compiled into an ISA-using app, consulted when the environment variable is unset (browsers have no environment block); same grammar as the variable")
+# The wasm SIMD axis. PackedSimd's detection is the compile-time __wasm_simd128__
+# of the app's generated platform-ISA TU, while the selected helper headers
+# test the same macro in EVERY TU that includes them: a TU compiled without the
+# flag sees the throwing stubs while the token answers true. So the flag is
+# PUBLIC on dn2cpp_runtime, never per-target, and the whole build agrees. The
+# helpers may then inline everywhere, as under DN2CPP_HIGHWAY_ARCH above: every
+# TU requires the ISA.
+option(DN2CPP_WASM_SIMD   "Compile the wasm runtime and app with SIMD (-msimd128); PackedSimd answers true" OFF)
 option(DN2CPP_GODOT       "Build the Godot GDExtension runtime library"           OFF)
 option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"    OFF)
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
@@ -820,6 +833,11 @@ else()
     # PLATFORM_UNITS auto-discovery: a new file under intrinsics/ or platform/posix/
     # is picked up with no edit here (re-run cmake to re-glob).
     file(GLOB DN2CPP_INTRINSIC_SRCS CONFIGURE_DEPENDS "${DN2CPP_ROOT}/runtime/core/intrinsics/*.cpp")
+    # Platform-ISA detection is compiled by generated_platform_isa.cpp only when
+    # reachability emits an IsSupported token or helper. The shared runtime archive
+    # cannot decide that per app.
+    list(REMOVE_ITEM DN2CPP_INTRINSIC_SRCS
+        "${DN2CPP_ROOT}/runtime/core/intrinsics/dn2cpp_cpu_features.cpp")
     if(DN2CPP_PAL_REFERENCE)
         # The reference PAL: platform/reference/ replaces the host's PAL
         # implementation and NOTHING ELSE changes — the exact claim
@@ -989,6 +1007,10 @@ else()
             target_compile_options(dn2cpp_runtime PUBLIC ${_hwy_arch})
         endif()
     endif()
+    if(EMSCRIPTEN AND DN2CPP_WASM_SIMD)
+        # PUBLIC: see the option. The default wasm build is untouched by this arm.
+        target_compile_options(dn2cpp_runtime PUBLIC -msimd128)
+    endif()
     add_library(dn2cpp::dn2cpp_runtime ALIAS dn2cpp_runtime)
 
     # Godot GDExtension runtime (table-driven bridge). Off by default; the gdext
@@ -1064,6 +1086,13 @@ if(DN2CPP_APP_DIR)
         set_source_files_properties("${DN2CPP_HOT_FAST_TU}" PROPERTIES
             SKIP_PRECOMPILE_HEADERS ON
             COMPILE_OPTIONS "${_hot_fast_opts}")
+    endif()
+    set(DN2CPP_PLATFORM_ISA_TU "${DN2CPP_APP_DIR}/generated_platform_isa.cpp")
+    if(EXISTS "${DN2CPP_PLATFORM_ISA_TU}")
+        # This TU defines detection/policy once and needs none of the app's managed
+        # declarations or selected inline helpers.
+        set_source_files_properties("${DN2CPP_PLATFORM_ISA_TU}" PROPERTIES
+            SKIP_PRECOMPILE_HEADERS ON)
     endif()
 
     # V8 caps a wasm function body at ~7.6 MB, and a side module's synthesized
@@ -1189,6 +1218,15 @@ if(DN2CPP_APP_DIR)
             # buys. A side module owns none of that.
             target_link_options(${DN2CPP_APP_NAME} PRIVATE
                 -sEXIT_RUNTIME=1 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576)
+            # Under node the console executable copies the process's DN2CPP_*
+            # variables into the wasm environment block (the runtime's
+            # DN2CPP_CPU_FEATURES / _DIAG knobs), which is what lets a gate run
+            # the masked configuration of a wasm binary. Console only: a browser
+            # page has no process.env (DN2CPP_CPU_FEATURES_DEFAULT is the knob
+            # there), and a side module owns no runtime and no ENV to fill.
+            set(_dn2cpp_env_node_js "${DN2CPP_ROOT}/runtime/core/platform/wasm/dn2cpp_env_node.js")
+            target_link_options(${DN2CPP_APP_NAME} PRIVATE "SHELL:--pre-js ${_dn2cpp_env_node_js}")
+            set_property(TARGET ${DN2CPP_APP_NAME} APPEND PROPERTY LINK_DEPENDS "${_dn2cpp_env_node_js}")
             if(DN2CPP_USE_GC)
                 # SpillPointers finds __stack_pointer BY NAME, but emcc's finalize
                 # strips the wasm name section BEFORE it invokes wasm-opt — so the
@@ -1229,6 +1267,11 @@ if(DN2CPP_APP_DIR)
     endif()
     if(NOT DN2CPP_ARITH_CHECKS)
         target_compile_definitions(${DN2CPP_APP_NAME} PRIVATE DN2CPP_NO_ARITH_CHECKS)
+    endif()
+    if(EXISTS "${DN2CPP_PLATFORM_ISA_TU}" AND DN2CPP_CPU_FEATURES)
+        # The detector is an app TU, including when the runtime target was imported.
+        target_compile_definitions(${DN2CPP_APP_NAME} PRIVATE
+            "DN2CPP_CPU_FEATURES_DEFAULT=\"${DN2CPP_CPU_FEATURES}\"")
     endif()
 
     # ── Precompiled header ────────────────────────────────────────────────────

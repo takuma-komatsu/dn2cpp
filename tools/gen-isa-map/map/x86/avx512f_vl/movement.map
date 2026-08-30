@@ -1,0 +1,27 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — lane movement at 128 and 256 bits, with
+# avx512f/movement.map's conventions: AlignRight32/64 take the count modulo the lane count,
+# the x2 permutes index the lower:upper pair (the bit above the lane index picks the upper
+# operand), PermuteVar4x64 indexes the whole 256-bit register, and Shuffle2x128 selects one
+# 128-bit lane of the left operand for the low half and one of the right for the high half.
+target = avx512f,avx512bw,avx512dq,avx512vl
+AlignRight32(v{W}{T},v{W}{T},u8) @imm8 = {mm}_alignr_epi32($0, $1, $2 & ({N} - 1)) for W in 128,256 for T in i32,u32
+AlignRight64(v{W}{T},v{W}{T},u8) @imm8 = {mm}_alignr_epi64($0, $1, $2 & ({N} - 1)) for W in 128,256 for T in i64,u64
+PermuteVar2x64x2(v128f64,v128i64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(2L), Vector128.Create(2L)).AsDouble(), Vector128.Shuffle($2, $1 & Vector128.Create(1L)), Vector128.Shuffle($0, $1 & Vector128.Create(1L)))) = _mm_permutex2var_pd($0, $1, $2)
+PermuteVar2x64x2(v128i64,v128i64,v128i64) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(2L), Vector128.Create(2L)), Vector128.Shuffle($2, $1 & Vector128.Create(1L)), Vector128.Shuffle($0, $1 & Vector128.Create(1L)))) = _mm_permutex2var_epi64($0, $1, $2)
+PermuteVar2x64x2(v128u64,v128u64,v128u64) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(2UL), Vector128.Create(2UL)), Vector128.Shuffle($2, $1 & Vector128.Create(1UL)), Vector128.Shuffle($0, $1 & Vector128.Create(1UL)))) = _mm_permutex2var_epi64($0, $1, $2)
+PermuteVar4x32x2(v128f32,v128i32,v128f32) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(4), Vector128.Create(4)).AsSingle(), Vector128.Shuffle($2, $1 & Vector128.Create(3)), Vector128.Shuffle($0, $1 & Vector128.Create(3)))) = _mm_permutex2var_ps($0, $1, $2)
+PermuteVar4x32x2(v128i32,v128i32,v128i32) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(4), Vector128.Create(4)), Vector128.Shuffle($2, $1 & Vector128.Create(3)), Vector128.Shuffle($0, $1 & Vector128.Create(3)))) = _mm_permutex2var_epi32($0, $1, $2)
+PermuteVar4x32x2(v128u32,v128u32,v128u32) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create(4U), Vector128.Create(4U)), Vector128.Shuffle($2, $1 & Vector128.Create(3U)), Vector128.Shuffle($0, $1 & Vector128.Create(3U)))) = _mm_permutex2var_epi32($0, $1, $2)
+PermuteVar4x64(v256f64,v256i64) @ref(Vector256.Shuffle($0, $1 & Vector256.Create(3L))) = _mm256_permutexvar_pd($1, $0)
+PermuteVar4x64(v256i64,v256i64) @ref(Vector256.Shuffle($0, $1 & Vector256.Create(3L))) = _mm256_permutexvar_epi64($1, $0)
+PermuteVar4x64(v256u64,v256u64) @ref(Vector256.Shuffle($0, $1 & Vector256.Create(3UL))) = _mm256_permutexvar_epi64($1, $0)
+PermuteVar4x64x2(v256f64,v256i64,v256f64) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(4L), Vector256.Create(4L)).AsDouble(), Vector256.Shuffle($2, $1 & Vector256.Create(3L)), Vector256.Shuffle($0, $1 & Vector256.Create(3L)))) = _mm256_permutex2var_pd($0, $1, $2)
+PermuteVar4x64x2(v256i64,v256i64,v256i64) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(4L), Vector256.Create(4L)), Vector256.Shuffle($2, $1 & Vector256.Create(3L)), Vector256.Shuffle($0, $1 & Vector256.Create(3L)))) = _mm256_permutex2var_epi64($0, $1, $2)
+PermuteVar4x64x2(v256u64,v256u64,v256u64) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(4UL), Vector256.Create(4UL)), Vector256.Shuffle($2, $1 & Vector256.Create(3UL)), Vector256.Shuffle($0, $1 & Vector256.Create(3UL)))) = _mm256_permutex2var_epi64($0, $1, $2)
+PermuteVar8x32x2(v256f32,v256i32,v256f32) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(8), Vector256.Create(8)).AsSingle(), Vector256.Shuffle($2, $1 & Vector256.Create(7)), Vector256.Shuffle($0, $1 & Vector256.Create(7)))) = _mm256_permutex2var_ps($0, $1, $2)
+PermuteVar8x32x2(v256i32,v256i32,v256i32) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(8), Vector256.Create(8)), Vector256.Shuffle($2, $1 & Vector256.Create(7)), Vector256.Shuffle($0, $1 & Vector256.Create(7)))) = _mm256_permutex2var_epi32($0, $1, $2)
+PermuteVar8x32x2(v256u32,v256u32,v256u32) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create(8U), Vector256.Create(8U)), Vector256.Shuffle($2, $1 & Vector256.Create(7U)), Vector256.Shuffle($0, $1 & Vector256.Create(7U)))) = _mm256_permutex2var_epi32($0, $1, $2)
+Shuffle2x128(v256{T},v256{T},u8) @imm8 @ref(Vector256.Create(($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower(), (($2 >> 1) & 1) != 0 ? $1.GetUpper() : $1.GetLower())) = _mm256_shuffle_i32x4($0, $1, $2 & 3) for T in i32,u32
+Shuffle2x128(v256{T},v256{T},u8) @imm8 @ref(Vector256.Create(($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower(), (($2 >> 1) & 1) != 0 ? $1.GetUpper() : $1.GetLower())) = _mm256_shuffle_i64x2($0, $1, $2 & 3) for T in i64,u64
+Shuffle2x128(v256f32,v256f32,u8) @imm8 @ref(Vector256.Create(($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower(), (($2 >> 1) & 1) != 0 ? $1.GetUpper() : $1.GetLower())) = _mm256_shuffle_f32x4($0, $1, $2 & 3)
+Shuffle2x128(v256f64,v256f64,u8) @imm8 @ref(Vector256.Create(($2 & 1) != 0 ? $0.GetUpper() : $0.GetLower(), (($2 >> 1) & 1) != 0 ? $1.GetUpper() : $1.GetLower())) = _mm256_shuffle_f64x2($0, $1, $2 & 3)

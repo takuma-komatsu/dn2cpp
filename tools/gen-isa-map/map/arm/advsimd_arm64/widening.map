@@ -1,0 +1,23 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — the widening reduction (SADDLV) and
+# the one-lane widening / narrowing forms (SQDMLAL Sd, Hn, Hm; SQXTN Bd, Hn; SQSHRN
+# Bd, Hn, #n): operands are lane 0 of each Vector64, the result lane 0 with the rest
+# zero. The scalar-register letter is the operand's width.
+AddAcrossWidening(v{W}{T}) = dn2cpp_isa_lane0<8>(vaddlv{q}_{neon}($0)) for W in 64,128 for T in i8,u8,i16,u16
+AddAcrossWidening(v128{T}) = dn2cpp_isa_lane0<8>(vaddlvq_{neon}($0)) for T in i32,u32
+ExtractNarrowingSaturateScalar(v64{T}) = dn2cpp_isa_lane0<8>(vqmovn{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in i16,u16,i32,u32,i64,u64
+ExtractNarrowingSaturateUnsignedScalar(v64{T}) = dn2cpp_isa_lane0<8>(vqmovun{bhsd}_{neon}(vget_lane_{neon}($0, 0))) for T in i16,i32,i64
+MultiplyDoublingWideningAndAddSaturateScalar(v64{wT},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqdmlal{bhsd}_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), vget_lane_{neon}($2, 0))) for T in i16,i32
+MultiplyDoublingWideningAndSubtractSaturateScalar(v64{wT},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqdmlsl{bhsd}_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), vget_lane_{neon}($2, 0))) for T in i16,i32
+MultiplyDoublingWideningSaturateScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqdmull{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in i16,i32
+MultiplyDoublingWideningSaturateScalarBySelectedScalar(v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqdmull{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+MultiplyDoublingWideningSaturateScalarBySelectedScalar(v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqdmull{bhsd}_lane_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in i16,i32
+MultiplyDoublingWideningScalarBySelectedScalarAndAddSaturate(v64{wT},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqdmlal{bhsd}_laneq_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyDoublingWideningScalarBySelectedScalarAndAddSaturate(v64{wT},v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqdmlal{bhsd}_lane_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyDoublingWideningScalarBySelectedScalarAndSubtractSaturate(v64{wT},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqdmlsl{bhsd}_laneq_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyDoublingWideningScalarBySelectedScalarAndSubtractSaturate(v64{wT},v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqdmlsl{bhsd}_lane_{neon}(vget_lane_{wneon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+ShiftRightArithmeticNarrowingSaturateScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqshrn{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i16,i32,i64
+ShiftRightArithmeticNarrowingSaturateUnsignedScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqshrun{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqrshrn{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i16,i32,i64
+ShiftRightArithmeticRoundedNarrowingSaturateUnsignedScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqrshrun{bhsd}_n_{neon}(vget_lane_{neon}($0, 0), $1)) for T in i16,i32,i64
+ShiftRightLogicalNarrowingSaturateScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqshrn{bhsd}_n_{uT}(vget_lane_{uT}($0:{uT}, 0), $1)) for T in i16,u16,i32,u32,i64,u64
+ShiftRightLogicalRoundedNarrowingSaturateScalar(v64{T},u8) @imm[1..{hbits}] = dn2cpp_isa_lane0<8>(vqrshrn{bhsd}_n_{uT}(vget_lane_{uT}($0:{uT}, 0), $1)) for T in i16,u16,i32,u32,i64,u64

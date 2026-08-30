@@ -1,0 +1,18 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — conversions. The float-to-integer forms
+# saturate (trunc_sat), the double forms convert the two lanes and zero the upper
+# half (the _zero suffix; the reference narrows against a zero upper operand), and
+# the double-producing forms read the lower two lanes.
+ConvertToSingle(v128i32) @ref(Vector128.ConvertToSingle($0)) = wasm_f32x4_convert_i32x4($0)
+ConvertToSingle(v128u32) @ref(Vector128.ConvertToSingle($0)) = wasm_f32x4_convert_u32x4($0)
+ConvertToSingle(v128f64) @ref(Vector128.Narrow($0, Vector128<double>.Zero)) = wasm_f32x4_demote_f64x2_zero($0)
+ConvertToDoubleLower(v128i32) @ref(Vector128.ConvertToDouble(Vector128.WidenLower($0))) = wasm_f64x2_convert_low_i32x4($0)
+ConvertToDoubleLower(v128u32) @ref(Vector128.ConvertToDouble(Vector128.WidenLower($0))) = wasm_f64x2_convert_low_u32x4($0)
+ConvertToDoubleLower(v128f32) @ref(Vector128.WidenLower($0)) = wasm_f64x2_promote_low_f32x4($0)
+ConvertToInt32Saturate(v128f32) @ref(Vector128.ConvertToInt32($0)) = wasm_i32x4_trunc_sat_f32x4($0)
+ConvertToUInt32Saturate(v128f32) @ref(Vector128.ConvertToUInt32($0)) = wasm_u32x4_trunc_sat_f32x4($0)
+ConvertToInt32Saturate(v128f64) = wasm_i32x4_trunc_sat_f64x2_zero($0)
+ConvertToUInt32Saturate(v128f64) = wasm_u32x4_trunc_sat_f64x2_zero($0)
+ConvertNarrowingSaturateSigned(v128i16,v128i16) = wasm_i8x16_narrow_i16x8($0, $1)
+ConvertNarrowingSaturateSigned(v128i32,v128i32) = wasm_i16x8_narrow_i32x4($0, $1)
+ConvertNarrowingSaturateUnsigned(v128i16,v128i16) = wasm_u8x16_narrow_i16x8($0, $1)
+ConvertNarrowingSaturateUnsigned(v128i32,v128i32) = wasm_u16x8_narrow_i32x4($0, $1)

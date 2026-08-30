@@ -1,0 +1,131 @@
+# families.csv — the human-owned half of the hardware-intrinsics family contract.
+#
+# One row per family: every public abstract class under System.Runtime.Intrinsics.X86,
+# .Arm and .Wasm, nested classes included at any depth (X64, Arm64, VL, V256, V512).
+# gen-isa-map asserts this set equals the CoreLib metadata set, so a CoreLib update
+# that adds or removes a family fails there before anything is generated.
+#
+# Checked against: System.Private.CoreLib 10.0.11 (.NET 10.0.11). The public static
+# surface is identical across the x64 and arm64 flavours, so either host may regenerate.
+#
+# Columns:
+#   qualified_name       Namespace.Type with nested types joined by '+'
+#   arch                 x86 | arm | wasm
+#   bits                 '|'-joined runtime feature bits (dn2cpp_cpu_features.h enumerators
+#                        without the DN2CPP_CPU_ prefix); empty means never lowered
+#   landing_order_group  the order families are expected to gain map coverage
+#
+# Row order is the contract order the gates print: groups ascend, each top-level type is
+# immediately followed by its nested types in ordinal order of the nested name, and a
+# nested type's own nested types follow it in turn. The generator enforces this.
+#
+# Bit assignments follow the family's IsSupported condition in .NET 10. The bits are finer
+# than the JIT's consolidated instruction sets (SSE4.2 = Sse3/Ssse3/Sse41/Sse42/Popcnt,
+# AVX2 = Avx2/Bmi1/Bmi2/Lzcnt/Fma, AVX512v2 = Avx512Vbmi, AVX512v3 = Avx512Vbmi2, one set
+# for AvxVnniInt8/Int16), but the runtime detector sets each such group only together and
+# the parent table in dn2cpp_cpu_features.h repeats the JIT's implications, so every
+# getter answers as .NET's does; the extra bits only keep the tokens one per type.
+# Avx512F/BW/CD/DQ and their VL nested types share one AVX512 bit: .NET 10 requires all
+# of F+BW+CD+DQ+VL for any of them to report support. Nested X64/Arm64 types carry their
+# enclosing type's bits because every target is 64-bit. A V256/V512 nested type adds the
+# vector-width prerequisite (AVX, AVX512, or the AVX10 512-bit bit) to its own feature bit.
+# Sve and Sve2 are experimental scalable vectors in .NET 10 and are never lowered.
+#
+# Sources: the IsSupported properties in System.Private.CoreLib and the .NET 10 JIT's
+# instruction-set description (InstructionSetDesc.txt) for the implication groups.
+qualified_name,arch,bits,landing_order_group
+System.Runtime.Intrinsics.X86.X86Base,x86,X86_X86BASE,1
+System.Runtime.Intrinsics.X86.X86Base+X64,x86,X86_X86BASE,1
+System.Runtime.Intrinsics.X86.Lzcnt,x86,X86_LZCNT,1
+System.Runtime.Intrinsics.X86.Lzcnt+X64,x86,X86_LZCNT,1
+System.Runtime.Intrinsics.X86.Popcnt,x86,X86_POPCNT,1
+System.Runtime.Intrinsics.X86.Popcnt+X64,x86,X86_POPCNT,1
+System.Runtime.Intrinsics.X86.Bmi1,x86,X86_BMI1,1
+System.Runtime.Intrinsics.X86.Bmi1+X64,x86,X86_BMI1,1
+System.Runtime.Intrinsics.X86.Bmi2,x86,X86_BMI2,1
+System.Runtime.Intrinsics.X86.Bmi2+X64,x86,X86_BMI2,1
+System.Runtime.Intrinsics.X86.X86Serialize,x86,X86_X86SERIALIZE,1
+System.Runtime.Intrinsics.X86.X86Serialize+X64,x86,X86_X86SERIALIZE,1
+System.Runtime.Intrinsics.Arm.ArmBase,arm,ARM_ARMBASE,2
+System.Runtime.Intrinsics.Arm.ArmBase+Arm64,arm,ARM_ARMBASE,2
+System.Runtime.Intrinsics.Arm.Crc32,arm,ARM_CRC32,2
+System.Runtime.Intrinsics.Arm.Crc32+Arm64,arm,ARM_CRC32,2
+System.Runtime.Intrinsics.Arm.AdvSimd,arm,ARM_ADVSIMD,3
+System.Runtime.Intrinsics.Arm.AdvSimd+Arm64,arm,ARM_ADVSIMD,3
+System.Runtime.Intrinsics.Arm.Aes,arm,ARM_AES,3
+System.Runtime.Intrinsics.Arm.Aes+Arm64,arm,ARM_AES,3
+System.Runtime.Intrinsics.Arm.Sha1,arm,ARM_SHA1,3
+System.Runtime.Intrinsics.Arm.Sha1+Arm64,arm,ARM_SHA1,3
+System.Runtime.Intrinsics.Arm.Sha256,arm,ARM_SHA256,3
+System.Runtime.Intrinsics.Arm.Sha256+Arm64,arm,ARM_SHA256,3
+System.Runtime.Intrinsics.Arm.Dp,arm,ARM_DP,3
+System.Runtime.Intrinsics.Arm.Dp+Arm64,arm,ARM_DP,3
+System.Runtime.Intrinsics.Arm.Rdm,arm,ARM_RDM,3
+System.Runtime.Intrinsics.Arm.Rdm+Arm64,arm,ARM_RDM,3
+System.Runtime.Intrinsics.Wasm.PackedSimd,wasm,WASM_PACKEDSIMD,4
+System.Runtime.Intrinsics.X86.Sse,x86,X86_SSE,5
+System.Runtime.Intrinsics.X86.Sse+X64,x86,X86_SSE,5
+System.Runtime.Intrinsics.X86.Sse2,x86,X86_SSE2,5
+System.Runtime.Intrinsics.X86.Sse2+X64,x86,X86_SSE2,5
+System.Runtime.Intrinsics.X86.Sse3,x86,X86_SSE3,5
+System.Runtime.Intrinsics.X86.Sse3+X64,x86,X86_SSE3,5
+System.Runtime.Intrinsics.X86.Ssse3,x86,X86_SSSE3,5
+System.Runtime.Intrinsics.X86.Ssse3+X64,x86,X86_SSSE3,5
+System.Runtime.Intrinsics.X86.Sse41,x86,X86_SSE41,5
+System.Runtime.Intrinsics.X86.Sse41+X64,x86,X86_SSE41,5
+System.Runtime.Intrinsics.X86.Sse42,x86,X86_SSE42,5
+System.Runtime.Intrinsics.X86.Sse42+X64,x86,X86_SSE42,5
+System.Runtime.Intrinsics.X86.Pclmulqdq,x86,X86_PCLMULQDQ,5
+System.Runtime.Intrinsics.X86.Pclmulqdq+V256,x86,X86_VPCLMULQDQ|X86_AVX,5
+System.Runtime.Intrinsics.X86.Pclmulqdq+V512,x86,X86_VPCLMULQDQ|X86_AVX512,5
+System.Runtime.Intrinsics.X86.Pclmulqdq+X64,x86,X86_PCLMULQDQ,5
+System.Runtime.Intrinsics.X86.Aes,x86,X86_AES,5
+System.Runtime.Intrinsics.X86.Aes+X64,x86,X86_AES,5
+System.Runtime.Intrinsics.X86.Avx,x86,X86_AVX,6
+System.Runtime.Intrinsics.X86.Avx+X64,x86,X86_AVX,6
+System.Runtime.Intrinsics.X86.Avx2,x86,X86_AVX2,6
+System.Runtime.Intrinsics.X86.Avx2+X64,x86,X86_AVX2,6
+System.Runtime.Intrinsics.X86.Fma,x86,X86_FMA,6
+System.Runtime.Intrinsics.X86.Fma+X64,x86,X86_FMA,6
+System.Runtime.Intrinsics.X86.AvxVnni,x86,X86_AVXVNNI,6
+System.Runtime.Intrinsics.X86.AvxVnni+X64,x86,X86_AVXVNNI,6
+System.Runtime.Intrinsics.X86.Avx512F,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512F+VL,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512F+X64,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512BW,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512BW+VL,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512BW+X64,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512CD,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512CD+VL,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512CD+X64,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512DQ,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512DQ+VL,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512DQ+X64,x86,X86_AVX512,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi,x86,X86_AVX512VBMI,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi+VL,x86,X86_AVX512VBMI,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi+X64,x86,X86_AVX512VBMI,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi2,x86,X86_AVX512VBMI2,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi2+VL,x86,X86_AVX512VBMI2,7
+System.Runtime.Intrinsics.X86.Avx512Vbmi2+X64,x86,X86_AVX512VBMI2,7
+System.Runtime.Intrinsics.X86.Avx10v1,x86,X86_AVX10V1,7
+System.Runtime.Intrinsics.X86.Avx10v1+V512,x86,X86_AVX10V1_512,7
+System.Runtime.Intrinsics.X86.Avx10v1+V512+X64,x86,X86_AVX10V1_512,7
+System.Runtime.Intrinsics.X86.Avx10v1+X64,x86,X86_AVX10V1,7
+System.Runtime.Intrinsics.X86.Avx10v2,x86,X86_AVX10V2,7
+System.Runtime.Intrinsics.X86.Avx10v2+V512,x86,X86_AVX10V2_512,7
+System.Runtime.Intrinsics.X86.Avx10v2+V512+X64,x86,X86_AVX10V2_512,7
+System.Runtime.Intrinsics.X86.Avx10v2+X64,x86,X86_AVX10V2,7
+System.Runtime.Intrinsics.X86.AvxVnniInt8,x86,X86_AVXVNNIINT8,7
+System.Runtime.Intrinsics.X86.AvxVnniInt8+V512,x86,X86_AVXVNNIINT8|X86_AVX10V2_512,7
+System.Runtime.Intrinsics.X86.AvxVnniInt8+X64,x86,X86_AVXVNNIINT8,7
+System.Runtime.Intrinsics.X86.AvxVnniInt16,x86,X86_AVXVNNIINT16,7
+System.Runtime.Intrinsics.X86.AvxVnniInt16+V512,x86,X86_AVXVNNIINT16|X86_AVX10V2_512,7
+System.Runtime.Intrinsics.X86.AvxVnniInt16+X64,x86,X86_AVXVNNIINT16,7
+System.Runtime.Intrinsics.X86.Gfni,x86,X86_GFNI,7
+System.Runtime.Intrinsics.X86.Gfni+V256,x86,X86_GFNI|X86_AVX,7
+System.Runtime.Intrinsics.X86.Gfni+V512,x86,X86_GFNI|X86_AVX512,7
+System.Runtime.Intrinsics.X86.Gfni+X64,x86,X86_GFNI,7
+System.Runtime.Intrinsics.Arm.Sve,arm,,8
+System.Runtime.Intrinsics.Arm.Sve+Arm64,arm,,8
+System.Runtime.Intrinsics.Arm.Sve2,arm,,8
+System.Runtime.Intrinsics.Arm.Sve2+Arm64,arm,,8

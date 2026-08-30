@@ -1577,6 +1577,32 @@ static inline Dn2CppVec<N> dn2cpp_vec_widen_upper(const Dn2CppVec<N>& v) {
     return r;
 }
 
+// Unpack low / high: interleave the low (high) halves of two vectors,
+// r[2i] = a[i], r[2i+1] = b[i] over the first (second) half of the lanes —
+// SSE2 UNPCKL/UNPCKH, NEON ZIP1/ZIP2, the internal Vector128.UnpackLow/High the
+// BCL's hex and ASCII paths use.
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_unpack_low(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
+    Dn2CppVec<N> r;
+    const int half = N / (int)sizeof(T) / 2;
+    for (int i = 0; i < half; ++i) {
+        dn2cpp_vec_set<T>(r, 2 * i, dn2cpp_vec_get<T>(a, i));
+        dn2cpp_vec_set<T>(r, 2 * i + 1, dn2cpp_vec_get<T>(b, i));
+    }
+    return r;
+}
+
+template <class T, int N>
+static inline Dn2CppVec<N> dn2cpp_vec_unpack_high(const Dn2CppVec<N>& a, const Dn2CppVec<N>& b) {
+    Dn2CppVec<N> r;
+    const int half = N / (int)sizeof(T) / 2;
+    for (int i = 0; i < half; ++i) {
+        dn2cpp_vec_set<T>(r, 2 * i, dn2cpp_vec_get<T>(a, half + i));
+        dn2cpp_vec_set<T>(r, 2 * i + 1, dn2cpp_vec_get<T>(b, half + i));
+    }
+    return r;
+}
+
 // ---------------------------------------------------------------------------
 // Shuffle
 // ---------------------------------------------------------------------------

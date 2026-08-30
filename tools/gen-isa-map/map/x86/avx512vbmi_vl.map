@@ -1,0 +1,13 @@
+# System.Runtime.Intrinsics.X86.Avx512Vbmi.VL — VPERMB and VPMULTISHIFTQB at 128 and 256 bits;
+# see avx512vbmi.map (the x2 forms' upper-operand bit is 4 at 128 bits and 5 at 256).
+target = avx512vbmi,avx512f,avx512bw,avx512dq,avx512vl
+PermuteVar16x8(v128i8,v128i8) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((sbyte)15))) = _mm_permutexvar_epi8($1, $0)
+PermuteVar16x8(v128u8,v128u8) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((byte)15))) = _mm_permutexvar_epi8($1, $0)
+PermuteVar16x8x2(v128i8,v128i8,v128i8) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create((sbyte)16), Vector128.Create((sbyte)16)), Vector128.Shuffle($2, $1 & Vector128.Create((sbyte)15)), Vector128.Shuffle($0, $1 & Vector128.Create((sbyte)15)))) = _mm_permutex2var_epi8($0, $1, $2)
+PermuteVar16x8x2(v128u8,v128u8,v128u8) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create((byte)16), Vector128.Create((byte)16)), Vector128.Shuffle($2, $1 & Vector128.Create((byte)15)), Vector128.Shuffle($0, $1 & Vector128.Create((byte)15)))) = _mm_permutex2var_epi8($0, $1, $2)
+PermuteVar32x8(v256i8,v256i8) @ref(Vector256.Shuffle($0, $1 & Vector256.Create((sbyte)31))) = _mm256_permutexvar_epi8($1, $0)
+PermuteVar32x8(v256u8,v256u8) @ref(Vector256.Shuffle($0, $1 & Vector256.Create((byte)31))) = _mm256_permutexvar_epi8($1, $0)
+PermuteVar32x8x2(v256i8,v256i8,v256i8) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create((sbyte)32), Vector256.Create((sbyte)32)), Vector256.Shuffle($2, $1 & Vector256.Create((sbyte)31)), Vector256.Shuffle($0, $1 & Vector256.Create((sbyte)31)))) = _mm256_permutex2var_epi8($0, $1, $2)
+PermuteVar32x8x2(v256u8,v256u8,v256u8) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create((byte)32), Vector256.Create((byte)32)), Vector256.Shuffle($2, $1 & Vector256.Create((byte)31)), Vector256.Shuffle($0, $1 & Vector256.Create((byte)31)))) = _mm256_permutex2var_epi8($0, $1, $2)
+MultiShift(v{W}i8,v{W}i64) = {mm}_multishift_epi64_epi8($0, $1) for W in 128,256
+MultiShift(v{W}u8,v{W}u64) = {mm}_multishift_epi64_epi8($0, $1) for W in 128,256

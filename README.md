@@ -675,7 +675,7 @@ optimization changed no results. All are on by default except
 - **Highway SIMD backend** (CMake `DN2CPP_USE_HIGHWAY`) behind the
   portable-SIMD surface; `-DDN2CPP_USE_HIGHWAY=OFF` returns to the scalar
   emulation, byte-identically in behavior. Platform-specific hardware
-  intrinsics are not emitted yet — see *Transient limitations*.
+  intrinsics lower per family; see *Transient limitations*.
 - **`--trim-reflection`** drops the member tables of types the program
   cannot plausibly reflect over (the Godot Web export turns it on). The
   analysis is unsound by nature, so a stripped type **throws** rather than
@@ -838,10 +838,35 @@ authoritative list**. Representative examples as of now: the forked
 editor's distributable `.app` is ad-hoc signed and not notarized. iOS
 *device* execution is likewise unverified (provisioning required) — the
 simulator lane is E2E-verified and the device build path is exercised
-headlessly. Platform-specific `System.Runtime.Intrinsics` families also remain
-unsupported: their `IsSupported` getters stay false so the BCL selects software
-fallbacks until the matching instruction bodies and target-CPU feature checks
-can be enabled together. Portable SIMD remains available through Highway.
+headlessly. The platform-specific `System.Runtime.Intrinsics` families
+(`X86.*`, `Arm.*`, `Wasm.*`) form one capability contract: a family answers
+`IsSupported` from the target's run-time CPU detection and required build
+capabilities only once its whole instruction surface lowers, a promotion
+`gates/build-and-run-platform-isa-surface.sh` decides from the generated
+table `src/Dn2Cpp.Transpiler/CoreIntrinsics.PlatformIsa.g.cs`. Every other
+family answers false, so the BCL software fallback runs, and calling one of
+its instructions throws `PlatformNotSupportedException` exactly as .NET does
+when `IsSupported` is false. Every family with feature bits lowers: the whole `X86.*` surface through
+the AVX-512 and AVX10 families, the whole `Arm.*` surface, and
+`Wasm.PackedSimd`; `Arm.Sve` and `Arm.Sve2`, experimental in .NET 10 and
+without a fixed register width, have no feature bits and answer false by
+design. On x86 the AVX, AVX-512 and AVX10 instruction bodies have run on no
+supporting host yet (`docs/STATUS.md`). Like .NET 10, dn2cpp keeps `Avx10v2`
+and the V512 `AvxVnniInt8` / `AvxVnniInt16` surface disabled until the positive
+run-time opt-in `DN2CPP_ENABLE_AVX10V2=1`. AVX10.2 also uses a compiler-intrinsic
+capability: a compiler without the checked spellings reports those families
+false and compiles the same throwing stubs used on a foreign architecture.
+`Wasm.PackedSimd` lowers, but a wasm module
+either carries SIMD instructions or can load on an engine without them, so
+it answers true only in a `DN2CPP_WASM_SIMD` (`-msimd128`) build; the default
+console build and the Godot Web export stay non-SIMD and answer false, and
+whether the export ever turns the axis on is a separate decision.
+The opt-in only permits detected hardware; it cannot invent it.
+`DN2CPP_CPU_FEATURES` then masks detection for tests
+(`none`, `all`, a family list with what each family implies, `-Name` to
+exclude) and never widens it;
+`DN2CPP_CPU_FEATURES_DIAG=1` prints the detected, allowed and effective sets
+once on stderr. Portable SIMD remains available through Highway.
 
 ### Runtime quirks
 

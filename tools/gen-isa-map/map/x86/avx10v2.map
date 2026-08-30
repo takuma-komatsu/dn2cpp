@@ -1,0 +1,20 @@
+# System.Runtime.Intrinsics.X86.Avx10v2 — the AVX10.2 additions at 128 and 256 bits. The
+# saturating float-to-byte conversions (VCVTPS2IBS / VCVTPS2IUBS, and the truncating
+# VCVTTPS2IBS / VCVTTPS2IUBS) round under MXCSR or truncate, clamp to the signed or unsigned
+# byte range and leave the byte zero-extended in each 32-bit lane; a NaN or out-of-range input
+# has no portable spelling, so they carry no reference. MinMax is VMINMAXPS/PD: the immediate's
+# low two bits pick minimum / maximum / minimum-magnitude / maximum-magnitude and the next two
+# the sign handling, over the 32 values .NET range-checks; the scalar form works on lane 0 and
+# keeps the upper lanes of the first operand. MoveScalar (VMOVW / VMOVD) keeps lane 0 and
+# zeroes the rest; StoreScalar writes the 16 bits of lane 0. The intrinsic spellings are
+# clang 21's (LLVM renamed the AVX10.2 conversions between releases).
+target = avx10.2-256
+ConvertToByteWithSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvts_ps_epu8($0) for W in 128,256
+ConvertToByteWithTruncatedSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvtts_ps_epu8($0) for W in 128,256
+ConvertToSByteWithSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvts_ps_epi8($0) for W in 128,256
+ConvertToSByteWithTruncatedSaturationAndZeroExtendToInt32(v{W}f32) = {mm}_ipcvtts_ps_epi8($0) for W in 128,256
+MinMax(v{W}{T},v{W}{T},u8) @imm[0..32) = {mm}_minmax_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+MinMaxScalar(v128{T},v128{T},u8) @imm[0..32) = _mm_minmax_{ss|sd}($0, $1, $2) for T in f32,f64
+MoveScalar(v128{T}) @ref(Vector128.CreateScalar($0.ToScalar())) = _mm_move_epi16($0) for T in i16,u16
+MoveScalar(v128{T}) @ref(Vector128.CreateScalar($0.ToScalar())) = _mm_move_epi32($0) for T in i32,u32
+StoreScalar(p{T},v128{T}) = _mm_storeu_si16($0, $1) for T in i16,u16

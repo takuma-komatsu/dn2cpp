@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.X86.Avx — VROUNDPS / VROUNDPD at 256 bits, with the rounding
+# mode the .NET method names (nearest-even, down, up, toward zero, or MXCSR's current mode —
+# nearest-even by default) and the exception-suppression bit as .NET emits it; that bit
+# changes flags, never results. Vector256.Round rounds to even, the default MXCSR mode.
+target = avx
+Ceiling(v256{T}) @ref(Vector256.Ceiling($0)) = _mm256_ceil_{ps|pd}($0) for T in f32,f64
+Floor(v256{T}) @ref(Vector256.Floor($0)) = _mm256_floor_{ps|pd}($0) for T in f32,f64
+RoundToNearestInteger(v256{T}) @ref(Vector256.Round($0)) = _mm256_round_{ps|pd}($0, _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToNegativeInfinity(v256{T}) @ref(Vector256.Floor($0)) = _mm256_round_{ps|pd}($0, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToPositiveInfinity(v256{T}) @ref(Vector256.Ceiling($0)) = _mm256_round_{ps|pd}($0, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundToZero(v256{T}) @ref(Vector256.Truncate($0)) = _mm256_round_{ps|pd}($0, _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC) for T in f32,f64
+RoundCurrentDirection(v256{T}) @ref(Vector256.Round($0)) = _mm256_round_{ps|pd}($0, _MM_FROUND_CUR_DIRECTION) for T in f32,f64

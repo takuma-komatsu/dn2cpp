@@ -1,0 +1,31 @@
+# System.Runtime.Intrinsics.X86.Sse2 — lane movement: the sign-bit masks, the scalar
+# moves (MOVQ zeroes the upper lane), the immediate shuffles (two control bits per result
+# lane; ShuffleHigh / ShuffleLow permute one 64-bit half and keep the other), the
+# interleaving unpacks, the saturating packs, and the 16-bit lane extract and insert whose
+# encoded index wraps modulo the lane count. SHUFPD reads two control bits and ignores the rest, which
+# .NET's jump table over the whole byte relies on; the compiler's intrinsic accepts only
+# those two bits, so the immediate is masked to them.
+target = sse2
+MoveMask(v128{T}) @ref((int)Vector128.ExtractMostSignificantBits($0)) = _mm_movemask_epi8($0) for T in i8,u8
+MoveMask(v128f64) @ref((int)Vector128.ExtractMostSignificantBits($0)) = _mm_movemask_pd($0)
+MoveScalar(v128f64,v128f64) @ref($0.WithElement(0, $1.GetElement(0))) = _mm_move_sd($0, $1)
+MoveScalar(v128{T}) @ref(Vector128.CreateScalar($0.GetElement(0))) = _mm_move_epi64($0) for T in i64,u64
+Shuffle(v128{T},u8) @imm8 @ref(Vector128.Shuffle($0, Vector128.Create(({cs})($1 & 3), ({cs})(($1 >> 2) & 3), ({cs})(($1 >> 4) & 3), ({cs})(($1 >> 6) & 3)))) = _mm_shuffle_epi32($0, $1) for T in i32,u32
+Shuffle(v128f64,v128f64,u8) @imm8 @ref(Vector128.Create($0.GetElement($2 & 1), $1.GetElement(($2 >> 1) & 1))) = _mm_shuffle_pd($0, $1, $2 & 3)
+ShuffleHigh(v128{T},u8) @imm8 @ref(Vector128.Shuffle($0, Vector128.Create(({cs})0, ({cs})1, ({cs})2, ({cs})3, ({cs})(4 + ($1 & 3)), ({cs})(4 + (($1 >> 2) & 3)), ({cs})(4 + (($1 >> 4) & 3)), ({cs})(4 + (($1 >> 6) & 3))))) = _mm_shufflehi_epi16($0, $1) for T in i16,u16
+ShuffleLow(v128{T},u8) @imm8 @ref(Vector128.Shuffle($0, Vector128.Create(({cs})($1 & 3), ({cs})(($1 >> 2) & 3), ({cs})(($1 >> 4) & 3), ({cs})(($1 >> 6) & 3), ({cs})4, ({cs})5, ({cs})6, ({cs})7))) = _mm_shufflelo_epi16($0, $1) for T in i16,u16
+UnpackLow(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(1), $1.GetElement(1), $0.GetElement(2), $1.GetElement(2), $0.GetElement(3), $1.GetElement(3), $0.GetElement(4), $1.GetElement(4), $0.GetElement(5), $1.GetElement(5), $0.GetElement(6), $1.GetElement(6), $0.GetElement(7), $1.GetElement(7))) = _mm_unpacklo_{epi}($0, $1) for T in i8,u8
+UnpackLow(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(1), $1.GetElement(1), $0.GetElement(2), $1.GetElement(2), $0.GetElement(3), $1.GetElement(3))) = _mm_unpacklo_{epi}($0, $1) for T in i16,u16
+UnpackLow(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0), $0.GetElement(1), $1.GetElement(1))) = _mm_unpacklo_{epi}($0, $1) for T in i32,u32
+UnpackLow(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0))) = _mm_unpacklo_{epi}($0, $1) for T in i64,u64
+UnpackLow(v128f64,v128f64) @ref(Vector128.Create($0.GetElement(0), $1.GetElement(0))) = _mm_unpacklo_pd($0, $1)
+UnpackHigh(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(8), $1.GetElement(8), $0.GetElement(9), $1.GetElement(9), $0.GetElement(10), $1.GetElement(10), $0.GetElement(11), $1.GetElement(11), $0.GetElement(12), $1.GetElement(12), $0.GetElement(13), $1.GetElement(13), $0.GetElement(14), $1.GetElement(14), $0.GetElement(15), $1.GetElement(15))) = _mm_unpackhi_{epi}($0, $1) for T in i8,u8
+UnpackHigh(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(4), $1.GetElement(4), $0.GetElement(5), $1.GetElement(5), $0.GetElement(6), $1.GetElement(6), $0.GetElement(7), $1.GetElement(7))) = _mm_unpackhi_{epi}($0, $1) for T in i16,u16
+UnpackHigh(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(2), $1.GetElement(2), $0.GetElement(3), $1.GetElement(3))) = _mm_unpackhi_{epi}($0, $1) for T in i32,u32
+UnpackHigh(v128{T},v128{T}) @ref(Vector128.Create($0.GetElement(1), $1.GetElement(1))) = _mm_unpackhi_{epi}($0, $1) for T in i64,u64
+UnpackHigh(v128f64,v128f64) @ref(Vector128.Create($0.GetElement(1), $1.GetElement(1))) = _mm_unpackhi_pd($0, $1)
+PackSignedSaturate(v128i16,v128i16) = _mm_packs_epi16($0, $1)
+PackSignedSaturate(v128i32,v128i32) = _mm_packs_epi32($0, $1)
+PackUnsignedSaturate(v128i16,v128i16) = _mm_packus_epi16($0, $1)
+Extract(v128u16,u8) @immwrap[0..8) @ref($0.GetElement($1 & 7)) = (uint16_t)_mm_extract_epi16($0, $1)
+Insert(v128{T},{T},u8) @immwrap$2[0..8) @ref($0.WithElement($2 & 7, $1)) = _mm_insert_epi16($0, (int)$1, $2) for T in i16,u16

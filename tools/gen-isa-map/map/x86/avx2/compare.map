@@ -1,0 +1,5 @@
+# System.Runtime.Intrinsics.X86.Avx2 — integer comparisons: equality at every lane width and
+# the signed greater-than, an all-ones or all-zeros lane.
+target = avx2
+CompareEqual(v256{T},v256{T}) @ref(Vector256.Equals($0, $1)) = _mm256_cmpeq_{epi}($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+CompareGreaterThan(v256{T},v256{T}) @ref(Vector256.GreaterThan($0, $1)) = _mm256_cmpgt_{epi}($0, $1) for T in i8,i16,i32,i64

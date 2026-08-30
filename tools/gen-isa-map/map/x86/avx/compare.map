@@ -1,0 +1,26 @@
+# System.Runtime.Intrinsics.X86.Avx — comparisons. VCMPPS / VCMPPD take the predicate as an
+# immediate; the named forms are the predicates the JIT emits for them (the ordered
+# signaling ones for the positive predicates, the unordered ones for Not*, quiet for
+# ordered / unordered), and follow Sse's semantics: an all-ones or all-zeros lane, a Not*
+# predicate true for an unordered pair too, which the complement of the positive predicate
+# spells for the exercise's NaN-free operands. The Compare forms take the predicate as a
+# FloatComparisonMode, the 32 values of the immediate; .NET range-checks a non-constant
+# mode against those 32 and throws outside them. CompareScalar compares lane 0 and keeps
+# the other lanes of the first operand. Its opaque mode-0 exercise is input-dependent so
+# the .NET oracle cannot replace the scalar operation with an all-true packed constant.
+target = avx
+CompareEqual(v256{T},v256{T}) @ref(Vector256.Equals($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_EQ_OQ) for T in f32,f64
+CompareGreaterThan(v256{T},v256{T}) @ref(Vector256.GreaterThan($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_GT_OS) for T in f32,f64
+CompareGreaterThanOrEqual(v256{T},v256{T}) @ref(Vector256.GreaterThanOrEqual($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_GE_OS) for T in f32,f64
+CompareLessThan(v256{T},v256{T}) @ref(Vector256.LessThan($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_LT_OS) for T in f32,f64
+CompareLessThanOrEqual(v256{T},v256{T}) @ref(Vector256.LessThanOrEqual($0, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_LE_OS) for T in f32,f64
+CompareNotEqual(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.Equals($0, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_NEQ_UQ) for T in f32,f64
+CompareNotGreaterThan(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.GreaterThan($0, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_NGT_US) for T in f32,f64
+CompareNotGreaterThanOrEqual(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.GreaterThanOrEqual($0, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_NGE_US) for T in f32,f64
+CompareNotLessThan(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.LessThan($0, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_NLT_US) for T in f32,f64
+CompareNotLessThanOrEqual(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.LessThanOrEqual($0, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_NLE_US) for T in f32,f64
+CompareOrdered(v256{T},v256{T}) @ref(Vector256.Equals($0, $0) & Vector256.Equals($1, $1)) = _mm256_cmp_{ps|pd}($0, $1, _CMP_ORD_Q) for T in f32,f64
+CompareUnordered(v256{T},v256{T}) @ref(Vector256.OnesComplement(Vector256.Equals($0, $0) & Vector256.Equals($1, $1))) = _mm256_cmp_{ps|pd}($0, $1, _CMP_UNORD_Q) for T in f32,f64
+Compare(v128{T},v128{T},u8) @imm[0..32) = _mm_cmp_{ps|pd}($0, $1, $2) for T in f32,f64
+Compare(v256{T},v256{T},u8) @imm[0..32) = _mm256_cmp_{ps|pd}($0, $1, $2) for T in f32,f64
+CompareScalar(v128{T},v128{T},u8) @imm[0..32) @exerciseimm=0 @opaque = _mm_cmp_{ss|sd}($0, $1, $2) for T in f32,f64

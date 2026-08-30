@@ -29,6 +29,18 @@ if grep -q 'native imports bounded' "$transpile_log"; then
     echo "      or the report fires unconditionally; it must be silent at zero" >&2
     exit 1
 fi
+# HelloWorld is the zero-platform-ISA control. Portable vectors remain available
+# through dn2cpp_vectors.h, but no platform detector, token, helper or generated
+# detector translation unit may enter this output.
+if [ -e "$OUT/generated_platform_isa.cpp" ]; then
+    echo "FAIL: HelloWorld emitted generated_platform_isa.cpp without a platform-ISA call" >&2
+    exit 1
+fi
+if grep -Eq 'dn2cpp_cpu_features|DN2CPP_ISA_|dn2cpp_isa_|#include "isa/' \
+        "$OUT"/generated.h "$OUT"/generated*.cpp; then
+    echo "FAIL: HelloWorld generated surface contains platform-ISA support" >&2
+    exit 1
+fi
 if gate_cache_check "$OUT" "sample|console" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
@@ -36,7 +48,21 @@ if gate_cache_check "$OUT" "sample|console" \
 fi
 
 echo "== 3/4 Compiling C++ =="
-compile_console "$OUT" HelloWorld
+( export DN2CPP_EXTRA_CMAKE_ARGS="${DN2CPP_EXTRA_CMAKE_ARGS:-} -DDN2CPP_CPU_FEATURES=-Avx"
+  compile_console "$OUT" HelloWorld )
+app_ninja="$(_cmake_app_builddir "$OUT")/build.ninja"
+[ -f "$app_ninja" ] || { echo "FAIL: HelloWorld native manifest missing: $app_ninja" >&2; exit 1; }
+if grep -Eq 'generated_platform_isa|dn2cpp_cpu_features|DN2CPP_CPU_FEATURES_DEFAULT' "$app_ninja"; then
+    echo "FAIL: HelloWorld native manifest compiles platform-ISA support" >&2
+    exit 1
+fi
+runtime_export=$(ensure_cmake_runtime)
+runtime_ninja="$(dirname "$runtime_export")/build.ninja"
+[ -f "$runtime_ninja" ] || { echo "FAIL: runtime native manifest missing: $runtime_ninja" >&2; exit 1; }
+if grep -Eq 'dn2cpp_cpu_features|DN2CPP_CPU_FEATURES_DEFAULT' "$runtime_ninja"; then
+    echo "FAIL: the shared runtime compiles app-specific platform-ISA detection" >&2
+    exit 1
+fi
 
 echo "== 4/4 Running native binary =="
 "./$OUT/HelloWorld"

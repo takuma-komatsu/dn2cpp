@@ -1,0 +1,31 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — multiply-accumulate and fused arithmetic.
+# .NET's accumulator is the first operand (MLA Vd, Vn, Vm adds Vn*Vm into Vd). A
+# ByScalar form multiplies by lane 0 of a Vector64, the _lane intrinsic at lane 0.
+# FMADD/FMSUB and their negated forms are the scalar fused operations: the vector
+# vfma/vfms compute a + b*c and a - b*c with one rounding, and negation is exact.
+# The halving forms are SHADD/SRHADD/SHSUB.
+FusedAddHalving(v{W}{T},v{W}{T}) = vhadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+FusedAddRoundedHalving(v{W}{T},v{W}{T}) = vrhadd{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+FusedMultiplyAdd(v{W}f32,v{W}f32,v{W}f32) = vfma{q}_f32($0, $1, $2) for W in 64,128
+FusedMultiplyAddNegatedScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vneg_{neon}(vfma_{neon}($0, $1, $2)), 0)) for T in f32,f64
+FusedMultiplyAddScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vfma_{neon}($0, $1, $2), 0)) for T in f32,f64
+FusedMultiplySubtract(v{W}f32,v{W}f32,v{W}f32) = vfms{q}_f32($0, $1, $2) for W in 64,128
+FusedMultiplySubtractNegatedScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vneg_{neon}(vfms_{neon}($0, $1, $2)), 0)) for T in f32,f64
+FusedMultiplySubtractScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vfms_{neon}($0, $1, $2), 0)) for T in f32,f64
+FusedSubtractHalving(v{W}{T},v{W}{T}) = vhsub{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+MultiplyAdd(v{W}{T},v{W}{T},v{W}{T}) = vmla{q}_{neon}($0, $1, $2) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+MultiplyAddByScalar(v{W}{T},v{W}{T},v64{T}) = vmla{q}_lane_{neon}($0, $1, $2, 0) for W in 64,128 for T in i16,u16,i32,u32
+MultiplyAddBySelectedScalar(v{W}{T},v{W}{T},v128{T},u8) @imm[0..{N128}) = vmla{q}_laneq_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,u16,i32,u32
+MultiplyAddBySelectedScalar(v{W}{T},v{W}{T},v64{T},u8) @imm[0..{N64}) = vmla{q}_lane_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,u16,i32,u32
+MultiplyByScalar(v{W}{T},v64{T}) = vmul{q}_lane_{neon}($0, $1, 0) for W in 64,128 for T in i16,u16,i32,u32,f32
+MultiplyBySelectedScalar(v{W}{T},v128{T},u8) @imm[0..{N128}) = vmul{q}_laneq_{neon}($0, $1, $2) for W in 64,128 for T in i16,u16,i32,u32,f32
+MultiplyBySelectedScalar(v{W}{T},v64{T},u8) @imm[0..{N64}) = vmul{q}_lane_{neon}($0, $1, $2) for W in 64,128 for T in i16,u16,i32,u32,f32
+MultiplyScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vget_lane_{neon}(vmul_{neon}($0, $1), 0)) for T in f32,f64
+MultiplyScalarBySelectedScalar(v64f32,v128f32,u8) @imm[0..4) = dn2cpp_isa_lane0<8>(vmuls_laneq_f32(vget_lane_f32($0, 0), $1, $2))
+MultiplyScalarBySelectedScalar(v64f32,v64f32,u8) @imm[0..2) = dn2cpp_isa_lane0<8>(vmuls_lane_f32(vget_lane_f32($0, 0), $1, $2))
+MultiplySubtract(v{W}{T},v{W}{T},v{W}{T}) = vmls{q}_{neon}($0, $1, $2) for W in 64,128 for T in i8,u8,i16,u16,i32,u32
+MultiplySubtractByScalar(v{W}{T},v{W}{T},v64{T}) = vmls{q}_lane_{neon}($0, $1, $2, 0) for W in 64,128 for T in i16,u16,i32,u32
+MultiplySubtractBySelectedScalar(v{W}{T},v{W}{T},v128{T},u8) @imm[0..{N128}) = vmls{q}_laneq_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,u16,i32,u32
+MultiplySubtractBySelectedScalar(v{W}{T},v{W}{T},v64{T},u8) @imm[0..{N64}) = vmls{q}_lane_{neon}($0, $1, $2, $3) for W in 64,128 for T in i16,u16,i32,u32
+# PMUL is the carry-less byte multiply; the poly8 intrinsic takes the bytes as such.
+PolynomialMultiply(v{W}{T},v{W}{T}) = vmul{q}_p8(vreinterpret{q}_p8_u8($0:u8), vreinterpret{q}_p8_u8($1:u8)) for W in 64,128 for T in i8,u8

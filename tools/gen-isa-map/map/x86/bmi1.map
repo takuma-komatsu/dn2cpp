@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.X86.Bmi1
+# BitFieldExtract is BEXTR: the control word is start in bits 0-7 and length in
+# bits 8-15, which the three-argument intrinsic assembles from its two operands.
+target = bmi
+AndNot(u32,u32) = _andn_u32($0, $1)
+BitFieldExtract(u32,u16) = _bextr_u32($0, (uint32_t)($1 & 0xFFu), (uint32_t)($1 >> 8))
+BitFieldExtract(u32,u8,u8) = _bextr_u32($0, $1, $2)
+ExtractLowestSetBit(u32) = _blsi_u32($0)
+GetMaskUpToLowestSetBit(u32) = _blsmsk_u32($0)
+ResetLowestSetBit(u32) = _blsr_u32($0)
+TrailingZeroCount(u32) = _tzcnt_u32($0)

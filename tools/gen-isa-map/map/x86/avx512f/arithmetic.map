@@ -1,0 +1,40 @@
+# System.Runtime.Intrinsics.X86.Avx512F — 512-bit arithmetic. .NET 10 gates Avx512F, BW, CD,
+# DQ and VL as one instruction set (the token here requires all of them), and the JIT lowers
+# this family's methods with instructions from any of them, so every Avx512F map file is
+# compiled for that whole set. The FloatRoundingMode overloads embed the rounding in the
+# instruction with exceptions suppressed: .NET range-checks a non-constant mode against
+# [0, 11] and the JIT encodes the low two bits as the rounding control, so the helpers
+# dispatch over those twelve values and hand the compiler the mode's low bits with
+# _MM_FROUND_NO_EXC (the only spelling its intrinsics accept). Abs returns the unsigned lane
+# type; the 32x32 Multiply forms take the low 32 bits of each 64-bit lane. The reciprocal
+# estimates are hardware approximations and carry no reference.
+target = avx512f,avx512bw,avx512dq,avx512vl
+Add(v512{T},v512{T}) @ref(Vector512.Add($0, $1)) = _mm512_add_{epi}($0, $1) for T in i32,u32,i64,u64
+Add(v512{T},v512{T}) @ref(Vector512.Add($0, $1)) = _mm512_add_{ps|pd}($0, $1) for T in f32,f64
+Add(v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_add_round_{ps|pd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+Subtract(v512{T},v512{T}) @ref(Vector512.Subtract($0, $1)) = _mm512_sub_{epi}($0, $1) for T in i32,u32,i64,u64
+Subtract(v512{T},v512{T}) @ref(Vector512.Subtract($0, $1)) = _mm512_sub_{ps|pd}($0, $1) for T in f32,f64
+Subtract(v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_sub_round_{ps|pd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+Multiply(v512{T},v512{T}) @ref(Vector512.Multiply($0, $1)) = _mm512_mul_{ps|pd}($0, $1) for T in f32,f64
+Multiply(v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_mul_round_{ps|pd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+Multiply(v512i32,v512i32) @ref(Vector512.Create((long)$0.GetElement(0) * $1.GetElement(0), (long)$0.GetElement(2) * $1.GetElement(2), (long)$0.GetElement(4) * $1.GetElement(4), (long)$0.GetElement(6) * $1.GetElement(6), (long)$0.GetElement(8) * $1.GetElement(8), (long)$0.GetElement(10) * $1.GetElement(10), (long)$0.GetElement(12) * $1.GetElement(12), (long)$0.GetElement(14) * $1.GetElement(14))) = _mm512_mul_epi32($0, $1)
+Multiply(v512u32,v512u32) @ref(Vector512.Create((ulong)$0.GetElement(0) * $1.GetElement(0), (ulong)$0.GetElement(2) * $1.GetElement(2), (ulong)$0.GetElement(4) * $1.GetElement(4), (ulong)$0.GetElement(6) * $1.GetElement(6), (ulong)$0.GetElement(8) * $1.GetElement(8), (ulong)$0.GetElement(10) * $1.GetElement(10), (ulong)$0.GetElement(12) * $1.GetElement(12), (ulong)$0.GetElement(14) * $1.GetElement(14))) = _mm512_mul_epu32($0, $1)
+MultiplyLow(v512{T},v512{T}) @ref(Vector512.Multiply($0, $1)) = _mm512_mullo_epi32($0, $1) for T in i32,u32
+Divide(v512{T},v512{T}) @ref(Vector512.Divide($0, $1)) = _mm512_div_{ps|pd}($0, $1) for T in f32,f64
+Divide(v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_div_round_{ps|pd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+Sqrt(v512{T}) @ref(Vector512.Sqrt($0)) = _mm512_sqrt_{ps|pd}($0) for T in f32,f64
+Sqrt(v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_sqrt_round_{ps|pd}($0, ($1 & 3) | 8) for T in f32,f64
+Abs(v512i32) @ref(Vector512.Abs($0).AsUInt32()) = _mm512_abs_epi32($0)
+Abs(v512i64) @ref(Vector512.Abs($0).AsUInt64()) = _mm512_abs_epi64($0)
+Max(v512{T},v512{T}) @ref(Vector512.Max($0, $1)) = _mm512_max_{ep}($0, $1) for T in i32,u32,i64,u64
+Max(v512{T},v512{T}) @ref(Vector512.Max($0, $1)) = _mm512_max_{ps|pd}($0, $1) for T in f32,f64
+Min(v512{T},v512{T}) @ref(Vector512.Min($0, $1)) = _mm512_min_{ep}($0, $1) for T in i32,u32,i64,u64
+Min(v512{T},v512{T}) @ref(Vector512.Min($0, $1)) = _mm512_min_{ps|pd}($0, $1) for T in f32,f64
+Reciprocal14(v512{T}) = _mm512_rcp14_{ps|pd}($0) for T in f32,f64
+ReciprocalSqrt14(v512{T}) = _mm512_rsqrt14_{ps|pd}($0) for T in f32,f64
+Scale(v512{T},v512{T}) = _mm512_scalef_{ps|pd}($0, $1) for T in f32,f64
+Scale(v512{T},v512{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm512_scalef_round_{ps|pd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+GetExponent(v512{T}) = _mm512_getexp_{ps|pd}($0) for T in f32,f64
+GetMantissa(v512{T},u8) @imm[0..16) = _mm512_getmant_{ps|pd}($0, (_MM_MANTISSA_NORM_ENUM)($1 & 3), (_MM_MANTISSA_SIGN_ENUM)($1 >> 2)) for T in f32,f64
+RoundScale(v512{T},u8) @imm8 = _mm512_roundscale_{ps|pd}($0, $1) for T in f32,f64
+Fixup(v512{T},v512{T},v512{sT},u8) @imm8 = _mm512_fixupimm_{ps|pd}($0, $1, $2, $3) for T in f32,f64

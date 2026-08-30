@@ -1,0 +1,27 @@
+# System.Runtime.Intrinsics.X86.Avx512F — comparisons. AVX-512 compares write a mask register,
+# and .NET returns the lanes the mask selects as all-ones or all-zeros, which VPMOVM2D /
+# VPMOVM2Q spell; the named float forms use the predicates the JIT emits (ordered signaling
+# for the positive predicates, unordered for Not*, quiet for ordered / unordered), a Not*
+# predicate true for an unordered pair too. Compare takes the predicate as a
+# FloatComparisonMode, the 32 values of the immediate, and .NET range-checks a non-constant
+# mode against those 32.
+target = avx512f,avx512bw,avx512dq,avx512vl
+CompareEqual(v512{T},v512{T}) @ref(Vector512.Equals($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpeq_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareGreaterThan(v512{T},v512{T}) @ref(Vector512.GreaterThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpgt_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareGreaterThanOrEqual(v512{T},v512{T}) @ref(Vector512.GreaterThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmpge_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareLessThan(v512{T},v512{T}) @ref(Vector512.LessThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmplt_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareLessThanOrEqual(v512{T},v512{T}) @ref(Vector512.LessThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmple_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareNotEqual(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.Equals($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmpneq_{ep}_mask($0, $1)) for T in i32,u32,i64,u64
+CompareEqual(v512{T},v512{T}) @ref(Vector512.Equals($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_EQ_OQ)) for T in f32,f64
+CompareGreaterThan(v512{T},v512{T}) @ref(Vector512.GreaterThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_GT_OS)) for T in f32,f64
+CompareGreaterThanOrEqual(v512{T},v512{T}) @ref(Vector512.GreaterThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_GE_OS)) for T in f32,f64
+CompareLessThan(v512{T},v512{T}) @ref(Vector512.LessThan($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_LT_OS)) for T in f32,f64
+CompareLessThanOrEqual(v512{T},v512{T}) @ref(Vector512.LessThanOrEqual($0, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_LE_OS)) for T in f32,f64
+CompareNotEqual(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.Equals($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_NEQ_UQ)) for T in f32,f64
+CompareNotGreaterThan(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.GreaterThan($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_NGT_US)) for T in f32,f64
+CompareNotGreaterThanOrEqual(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.GreaterThanOrEqual($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_NGE_US)) for T in f32,f64
+CompareNotLessThan(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.LessThan($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_NLT_US)) for T in f32,f64
+CompareNotLessThanOrEqual(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.LessThanOrEqual($0, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_NLE_US)) for T in f32,f64
+CompareOrdered(v512{T},v512{T}) @ref(Vector512.Equals($0, $0) & Vector512.Equals($1, $1)) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_ORD_Q)) for T in f32,f64
+CompareUnordered(v512{T},v512{T}) @ref(Vector512.OnesComplement(Vector512.Equals($0, $0) & Vector512.Equals($1, $1))) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, _CMP_UNORD_Q)) for T in f32,f64
+Compare(v512{T},v512{T},u8) @imm[0..32) = _mm512_movm_epi{bits}(_mm512_cmp_{ps|pd}_mask($0, $1, $2)) for T in f32,f64

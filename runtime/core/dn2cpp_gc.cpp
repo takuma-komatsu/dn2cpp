@@ -425,7 +425,7 @@ static void dn2cpp_gc_register_host_image_roots()
 }
 #endif
 
-void dn2cpp_runtime_init()
+void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
 {
     // Hand the generated metadata to the type-info handles the runtime owns, before
     // anything can allocate or throw one of them. Each handle ships as a stub (name +
@@ -435,6 +435,11 @@ void dn2cpp_runtime_init()
     // the Type object the emitted metadata interned — is the more complete answer.
     for (int32_t i = 0; i < dn2cpp_type_bind_count; i++)
         *dn2cpp_type_binds[i].target = *dn2cpp_type_binds[i].meta;
+    // An ISA-using image supplies its detector. The runtime archive is shared by
+    // ISA and non-ISA outputs, so it cannot own an unconditional reference to the
+    // app-specific detector TU. Resolution still happens once at startup.
+    if (initCpuFeatures != nullptr)
+        initCpuFeatures();
 #ifdef _WIN32
     // Windows CRT stdio defaults to text mode, translating every outgoing '\n' —
     // including newlines INSIDE a written string — to "\r\n". Real .NET writes a

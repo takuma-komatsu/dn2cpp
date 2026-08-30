@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.Avx512BW.VL — the mask-register byte and word comparisons at
+# 128 and 256 bits, returned as all-ones / all-zeros lanes through VPMOVM2B / VPMOVM2W. The
+# token requires the whole .NET 10 AVX-512 unit (see avx512bw/arithmetic.map).
+target = avx512f,avx512bw,avx512dq,avx512vl
+CompareEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.Equals($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpeq_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16
+CompareGreaterThan(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpgt_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16
+CompareGreaterThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpge_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16
+CompareLessThan(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmplt_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16
+CompareLessThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmple_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16
+CompareNotEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.Equals($0, $1))) = {mm}_movm_epi{bits}({mm}_cmpneq_{ep}_mask($0, $1)) for W in 128,256 for T in i8,u8,i16,u16

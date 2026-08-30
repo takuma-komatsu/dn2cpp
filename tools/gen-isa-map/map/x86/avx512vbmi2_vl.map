@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Avx512Vbmi2.VL — the byte and word compress / expand forms at
+# 128 and 256 bits; see avx512vbmi2.map.
+target = avx512vbmi2,avx512f,avx512bw,avx512dq,avx512vl
+Compress(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_compress_epi{bits}($0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i8,u8,i16,u16
+CompressStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_compressstoreu_epi{bits}((void*)$0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i8,u8,i16,u16
+Expand(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_expand_epi{bits}($0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i8,u8,i16,u16
+ExpandLoad(p{T},v{W}{T},v{W}{T}) = {mm}_mask_expandloadu_epi{bits}($2, {mm}_movepi{bits}_mask($1), (const void*)$0) for W in 128,256 for T in i8,u8,i16,u16

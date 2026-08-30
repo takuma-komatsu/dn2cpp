@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — LD1/ST1 of two to four
+# consecutive 128-bit registers.
+Load2xVector128(p{T}) = dn2cpp_isa_scatter(vld1q_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Store(p{T},t2v128{T}) = vst1q_{neon}_x2($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Store(p{T},t3v128{T}) = vst1q_{neon}_x3($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Store(p{T},t4v128{T}) = vst1q_{neon}_x4($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64

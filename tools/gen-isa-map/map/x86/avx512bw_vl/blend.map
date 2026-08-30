@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Avx512BW.VL — byte-mask blends and masked loads and stores
+# at 128 and 256 bits. BlendVariable retains the byte-mask contract of Sse41 and Avx2;
+# MaskLoad and MaskStore select by element sign bits.
+target = avx512f,avx512bw,avx512dq,avx512vl
+BlendVariable(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.LessThan($2.AsSByte(), Vector{W}<sbyte>.Zero).As<sbyte, {cs}>(), $1, $0)) = {mm}_mask_blend_epi8({mm}_movepi8_mask($2), $0, $1) for W in 128,256 for T in i8,u8,i16,u16
+MaskLoad(p{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($1.As<{cs}, {scs}>()).As<{scs}, {cs}>(), Vector{W}.Load($0), $2)) = {mm}_mask_loadu_epi{bits}($2, {mm}_movepi{bits}_mask($1), (const void*)$0) for W in 128,256 for T in i8,u8,i16,u16
+MaskStore(p{T},v{W}{T},v{W}{T}) = {mm}_mask_storeu_epi{bits}((void*)$0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i8,u8,i16,u16

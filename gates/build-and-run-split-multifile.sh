@@ -33,7 +33,7 @@ export DN2CPP_OUT_SUFFIX=-split
 # above by construction and disagree with the wrapper's -hwy/-scalar axes, which is how
 # a chunk-count assert ends up reading another build's directory.
 gate_extra_asserts() {
-    local out="$1" n left sweep
+    local out="$1" n left sweep chunk_files
     n=$(ls "$out"/generated*.cpp 2>/dev/null | wc -l | tr -d ' ')
     if [ ! -f "$out/generated_b1.cpp" ] || [ ! -f "$out/generated_m1.cpp" ]; then
         echo "FAIL: DN2CPP_SPLIT_BYTES=$DN2CPP_SPLIT_BYTES did not split bodies AND metadata (found $n TU)" >&2
@@ -66,12 +66,15 @@ gate_extra_asserts() {
     ( export DN2CPP_SPLIT_BYTES=0
       invoke_cli "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
           -r "$(locate_corelib)" -o "$sweep" > /dev/null )
-    # find, not ls: a glob that matches nothing makes ls exit 1, and under `set -o pipefail`
-    # that would fail the gate exactly when the sweep WORKED.
-    left=$(find "$sweep" -maxdepth 1 -name 'generated_*.cpp' | wc -l | tr -d ' ')
+    # Only the numeric body/metadata namespaces and the legacy numeric namespace
+    # are chunks. Fixed optional TUs also begin with generated_ and may correctly
+    # be recreated by the unsplit run.
+    chunk_files=$(find "$sweep" -maxdepth 1 -type f -name 'generated*.cpp' \
+        | awk '/\/generated_(b|m)?[0-9]+\.cpp$/')
+    left=$(grep -c . <<<"$chunk_files" || true)
     if [ "$left" -ne 0 ]; then
         echo "FAIL: an unsplit re-transpile left $left stale chunk(s) behind:" >&2
-        find "$sweep" -maxdepth 1 -name 'generated_*.cpp' >&2
+        printf '%s\n' "$chunk_files" >&2
         exit 1
     fi
     echo "OK: stale chunks from a previous run are swept before the new ones land"

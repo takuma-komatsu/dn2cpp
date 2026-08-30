@@ -1,0 +1,17 @@
+# System.Runtime.Intrinsics.X86.Avx512BW.VL — the word permutes at 128 and 256 bits (the whole
+# register indexed; the x2 forms index the lower:upper pair, the bit above the lane index
+# picking the upper operand), the per-lane variable word shifts (saturating lane by lane) and
+# VDBPSADBW with its 32-bit-block selection control (every byte valid).
+target = avx512f,avx512bw,avx512dq,avx512vl
+PermuteVar8x16(v128i16,v128i16) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((short)7))) = _mm_permutexvar_epi16($1, $0)
+PermuteVar8x16(v128u16,v128u16) @ref(Vector128.Shuffle($0, $1 & Vector128.Create((ushort)7))) = _mm_permutexvar_epi16($1, $0)
+PermuteVar8x16x2(v128i16,v128i16,v128i16) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create((short)8), Vector128.Create((short)8)), Vector128.Shuffle($2, $1 & Vector128.Create((short)7)), Vector128.Shuffle($0, $1 & Vector128.Create((short)7)))) = _mm_permutex2var_epi16($0, $1, $2)
+PermuteVar8x16x2(v128u16,v128u16,v128u16) @ref(Vector128.ConditionalSelect(Vector128.Equals($1 & Vector128.Create((ushort)8), Vector128.Create((ushort)8)), Vector128.Shuffle($2, $1 & Vector128.Create((ushort)7)), Vector128.Shuffle($0, $1 & Vector128.Create((ushort)7)))) = _mm_permutex2var_epi16($0, $1, $2)
+PermuteVar16x16(v256i16,v256i16) @ref(Vector256.Shuffle($0, $1 & Vector256.Create((short)15))) = _mm256_permutexvar_epi16($1, $0)
+PermuteVar16x16(v256u16,v256u16) @ref(Vector256.Shuffle($0, $1 & Vector256.Create((ushort)15))) = _mm256_permutexvar_epi16($1, $0)
+PermuteVar16x16x2(v256i16,v256i16,v256i16) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create((short)16), Vector256.Create((short)16)), Vector256.Shuffle($2, $1 & Vector256.Create((short)15)), Vector256.Shuffle($0, $1 & Vector256.Create((short)15)))) = _mm256_permutex2var_epi16($0, $1, $2)
+PermuteVar16x16x2(v256u16,v256u16,v256u16) @ref(Vector256.ConditionalSelect(Vector256.Equals($1 & Vector256.Create((ushort)16), Vector256.Create((ushort)16)), Vector256.Shuffle($2, $1 & Vector256.Create((ushort)15)), Vector256.Shuffle($0, $1 & Vector256.Create((ushort)15)))) = _mm256_permutex2var_epi16($0, $1, $2)
+ShiftLeftLogicalVariable(v{W}{T},v{W}u16) = {mm}_sllv_epi16($0, $1) for W in 128,256 for T in i16,u16
+ShiftRightLogicalVariable(v{W}{T},v{W}u16) = {mm}_srlv_epi16($0, $1) for W in 128,256 for T in i16,u16
+ShiftRightArithmeticVariable(v{W}i16,v{W}u16) = {mm}_srav_epi16($0, $1) for W in 128,256
+SumAbsoluteDifferencesInBlock32(v{W}u8,v{W}u8,u8) @imm8 = {mm}_dbsad_epu8($0, $1, $2) for W in 128,256

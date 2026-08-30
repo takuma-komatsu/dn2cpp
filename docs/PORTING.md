@@ -205,7 +205,7 @@ cheapest kind of port; it needs one `list(APPEND)` and a comment saying why.
 Files outside `runtime/core/platform/` also branch on the target. Enumerate them:
 
 ```bash
-grep -rlE '__APPLE__|__linux__|__ANDROID__|_WIN32|_MSC_VER|__EMSCRIPTEN__|TARGET_OS_IPHONE' \
+grep -rlE '__APPLE__|__linux__|__ANDROID__|_WIN32|_MSC_VER|__EMSCRIPTEN__|TARGET_OS_IPHONE|DN2CPP_TARGET_(X64|ARM64|WASM32|OTHER)' \
     runtime/ | grep -v '^runtime/core/platform/' | sort
 ```
 
@@ -223,6 +223,49 @@ The distribution is the useful part:
 
 Budget for this. A port that plans only for `platform/<os>/` has planned for about
 half of it.
+
+### 2.5 CPU feature detection
+
+`runtime/core/dn2cpp_cpu_features.h` derives exactly one of `DN2CPP_TARGET_X64`,
+`DN2CPP_TARGET_ARM64`, `DN2CPP_TARGET_WASM32` (else `DN2CPP_TARGET_OTHER`) from
+the compiler's architecture macros, and
+`runtime/core/intrinsics/dn2cpp_cpu_features.cpp` supplies the detection behind
+every `System.Runtime.Intrinsics.X86` / `.Arm` / `.Wasm` `IsSupported`: CPUID
+with the OSXSAVE and XGETBV checks the AVX families need on x86-64,
+`getauxval(AT_HWCAP)` on Linux arm64, `sysctlbyname("hw.optional.arm.FEAT_*")`
+on Darwin arm64, `IsProcessorFeaturePresent` on Windows. A target that supplies
+none of these is not broken — every family answers false and the BCL's software
+fallback runs — but it has left the hardware paths on the table.
+
+Detection is a **run-time** fact, never a build-time one. AVX10.2 retains that
+raw fact but follows .NET 10's default-off policy: only
+`DN2CPP_ENABLE_AVX10V2=1` permits its detected bits, and the compiler must also
+provide the generated helper intrinsics. This positive policy precedes
+`DN2CPP_CPU_FEATURES`, so the mask remains narrowing-only and cannot opt in.
+The binary that runs
+under Rosetta on an iOS-simulator lane was compiled for x86-64 and executes on an
+arm64 machine whose CPUID emulation exposes a feature set no shipping CPU has;
+a build-time answer would be wrong on either side of that line. The same rule
+gives the tests their handle: `DN2CPP_CPU_FEATURES` intersects the policy set
+and never widens it, so `none` is the software-fallback build of the same
+binary.
+
+wasm32 is the one target where the build decides: a module that carries SIMD
+instructions cannot instantiate on an engine without them, so the wasm arm
+answers `PackedSimd` from `__wasm_simd128__`, and the CMake option
+`DN2CPP_WASM_SIMD` (`-msimd128`, PUBLIC on the runtime so the detector TU and
+every generated TU agree) is the axis that turns it on. The mask still applies
+on top: `DN2CPP_CPU_FEATURES=none` makes a SIMD module take every software
+fallback. A browser has no environment block — `DN2CPP_CPU_FEATURES` as a
+CMake cache entry bakes the default mask for that case — while the console
+executable links `runtime/core/platform/wasm/dn2cpp_env_node.js` as a pre-js
+that copies the node process's `DN2CPP_*` variables into the module, which is
+what lets `gates/build-and-run-platform-isa-wasm.sh` run the masked
+configuration. Its SIMD run is diffed against a frozen snapshot
+(`gates/expected/platform-isa-wasm-simd.txt`) because no host .NET answers
+true for `PackedSimd`; the generated exercise's `ref=` cross-checks against the
+portable `Vector128` layer stand in for the missing oracle, and the gate's
+header says how to refresh the snapshot after an intentional change.
 
 ---
 
@@ -264,6 +307,7 @@ The ones a port has to think about:
 | `DN2CPP_DEAD_STRIP` / `DN2CPP_STRIP` | `ON` | Each has three per-linker flavours; a new linker needs an arm in both. |
 | `DN2CPP_MAX_STACK_FRAME` | `4096` | The runtime's per-function stack-frame ceiling, as `-Werror=frame-larger-than`. Applied to the runtime's own targets, never to the generated app (whose frames are a function of the input program) and never to vendored third-party ones. Raise it only as a decision about the smallest thread stack dn2cpp intends to run on; MSVC has no equivalent flag, so the ceiling is absent there. |
 | `DN2CPP_PAL_REFERENCE` | `OFF` | Swaps the host's PAL implementation for `runtime/core/platform/reference/`. A porting-contract assertion, not a shipping configuration — set only by `gates/build-and-run-pal-reference.sh`. |
+| `DN2CPP_WASM_SIMD` | `OFF` | Emscripten only: `-msimd128` on the runtime and, through the exported target, every generated TU, which is what makes `PackedSimd.IsSupported` true (§2.5). A build axis rather than a run-time fact because a SIMD module cannot load on an engine without SIMD. |
 
 One asymmetry that is invisible from the file: `DN2CPP_APP_LINK_FLAGS` is declared,
 but **`DN2CPP_APP_LINK_LIBS` is not** — it exists only as a `-D` the gates pass, and
@@ -591,9 +635,13 @@ loudly.
    surface so it answers rather than fails to link (H8).
 6. **Wire `gates/_common.sh`**: build dir, toolchain args, and the *same* args in
    both the runtime configure and `cmake_build_app` (§3.3).
-7. **Write the gate, and make its skip honest**: `gate_skip` with a reason whose
+7. **Decide the CPU-feature story** (§2.5): a detection arm in
+   `runtime/core/intrinsics/dn2cpp_cpu_features.cpp` for the target's OS, or the
+   documented all-false answer. Prove it with `DN2CPP_CPU_FEATURES_DIAG=1`, whose
+   one stderr line names the detected set, before trusting any `IsSupported`.
+8. **Write the gate, and make its skip honest**: `gate_skip` with a reason whose
    stated remedy actually works on the host that will read it (§4).
-8. **Then install the toolchain and run it.** An axis that has only ever skipped has
+9. **Then install the toolchain and run it.** An axis that has only ever skipped has
    never run (H1.2).
 
 ---

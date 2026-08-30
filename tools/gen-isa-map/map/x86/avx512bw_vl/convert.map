@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Avx512BW.VL — the word-to-byte narrows at 128 and 256 bits
+# (VPMOVWB truncating, VPMOVSWB / VPMOVUSWB saturating), zeroing the lanes above the result.
+target = avx512f,avx512bw,avx512dq,avx512vl
+ConvertToVector128Byte(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsByte()) = _mm_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector128Byte(v256{T}) @ref(Vector128.Narrow($0.GetLower(), $0.GetUpper()).AsByte()) = _mm256_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector128ByteWithSaturation(v{W}u16) = {mm}_cvtusepi16_epi8($0) for W in 128,256
+ConvertToVector128SByte(v128{T}) @ref(Vector128.Narrow($0, Vector128<{cs}>.Zero).AsSByte()) = _mm_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector128SByte(v256{T}) @ref(Vector128.Narrow($0.GetLower(), $0.GetUpper()).AsSByte()) = _mm256_cvtepi16_epi8($0) for T in i16,u16
+ConvertToVector128SByteWithSaturation(v{W}i16) = {mm}_cvtsepi16_epi8($0) for W in 128,256

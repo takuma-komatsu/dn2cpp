@@ -1,0 +1,27 @@
+# System.Runtime.Intrinsics.X86.Avx — loads, stores, broadcasts and the masked forms. An
+# integer vector loads and stores as 256 bits whatever its lane type; the aligned forms
+# fault below 32-byte alignment, as in .NET (the exercise aligns its buffers to 32 bytes on
+# both sides). LDDQU is the unaligned integer load that may read across a cache line. The
+# masked forms read or write the lanes whose mask lane has its sign bit set and leave the
+# others zero (load) or untouched (store); the mask is the integer register of the lane
+# width.
+target = avx
+LoadVector256(p{T}) @ref(Vector256.Load($0)) = _mm256_loadu_si256((const __m256i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+LoadVector256(p{T}) @ref(Vector256.Load($0)) = _mm256_loadu_{ps|pd}($0) for T in f32,f64
+LoadAlignedVector256(p{T}) @ref(Vector256.Load($0)) = _mm256_load_si256((const __m256i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+LoadAlignedVector256(p{T}) @ref(Vector256.Load($0)) = _mm256_load_{ps|pd}($0) for T in f32,f64
+LoadDquVector256(p{T}) @ref(Vector256.Load($0)) = _mm256_lddqu_si256((const __m256i*)$0) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Store(p{T},v256{T}) = _mm256_storeu_si256((__m256i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+Store(p{T},v256{T}) = _mm256_storeu_{ps|pd}($0, $1) for T in f32,f64
+StoreAligned(p{T},v256{T}) = _mm256_store_si256((__m256i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+StoreAligned(p{T},v256{T}) = _mm256_store_{ps|pd}($0, $1) for T in f32,f64
+StoreAlignedNonTemporal(p{T},v256{T}) = _mm256_stream_si256((__m256i*)$0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64
+StoreAlignedNonTemporal(p{T},v256{T}) = _mm256_stream_{ps|pd}($0, $1) for T in f32,f64
+BroadcastScalarToVector128(pf32) @ref(Vector128.Create(*$0)) = _mm_broadcast_ss($0)
+BroadcastScalarToVector256(p{T}) @ref(Vector256.Create(*$0)) = _mm256_broadcast_{ss|sd}($0) for T in f32,f64
+BroadcastVector128ToVector256(pf32) @ref(Vector256.Create(Vector128.Load($0), Vector128.Load($0))) = _mm256_broadcast_ps((const __m128*)$0)
+BroadcastVector128ToVector256(pf64) @ref(Vector256.Create(Vector128.Load($0), Vector128.Load($0))) = _mm256_broadcast_pd((const __m128d*)$0)
+MaskLoad(p{T},v128{T}) @ref(Vector128.ConditionalSelect(Vector128.IsNegative($1), Vector128.Load($0), Vector128<{cs}>.Zero)) = _mm_maskload_{ps|pd}($0, $1:{sT}) for T in f32,f64
+MaskLoad(p{T},v256{T}) @ref(Vector256.ConditionalSelect(Vector256.IsNegative($1), Vector256.Load($0), Vector256<{cs}>.Zero)) = _mm256_maskload_{ps|pd}($0, $1:{sT}) for T in f32,f64
+MaskStore(p{T},v128{T},v128{T}) = _mm_maskstore_{ps|pd}($0, $1:{sT}, $2) for T in f32,f64
+MaskStore(p{T},v256{T},v256{T}) = _mm256_maskstore_{ps|pd}($0, $1:{sT}, $2) for T in f32,f64

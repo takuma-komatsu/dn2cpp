@@ -1,0 +1,18 @@
+# System.Runtime.Intrinsics.X86.Avx2 — the widening conversions VPMOVSX / VPMOVZX in the source
+# element's signedness, from a register or from memory, and VMOVD of lane 0. The memory forms
+# read only the bytes the result needs (16, 8 or 4), which the load spells, then convert.
+target = avx2
+ConvertToInt32(v256i32) @ref($0.GetElement(0)) = _mm256_cvtsi256_si32($0)
+ConvertToUInt32(v256u32) @ref($0.GetElement(0)) = (uint32_t)_mm256_cvtsi256_si32($0)
+ConvertToVector256Int16(v128{T}) @ref(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)).AsInt16()) = _mm256_cvt{ep}_epi16($0) for T in i8,u8
+ConvertToVector256Int16(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.Load($0)), Vector128.WidenUpper(Vector128.Load($0))).AsInt16()) = _mm256_cvt{ep}_epi16(_mm_loadu_si128((const __m128i*)$0)) for T in i8,u8
+ConvertToVector256Int32(v128{T}) @ref(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)).AsInt32()) = _mm256_cvt{ep}_epi32($0) for T in i16,u16
+ConvertToVector256Int32(v128{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower($0)), Vector128.WidenUpper(Vector128.WidenLower($0))).AsInt32()) = _mm256_cvt{ep}_epi32($0) for T in i8,u8
+ConvertToVector256Int32(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.Load($0)), Vector128.WidenUpper(Vector128.Load($0))).AsInt32()) = _mm256_cvt{ep}_epi32(_mm_loadu_si128((const __m128i*)$0)) for T in i16,u16
+ConvertToVector256Int32(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load($0))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load($0)))).AsInt32()) = _mm256_cvt{ep}_epi32(_mm_loadl_epi64((const __m128i*)$0)) for T in i8,u8
+ConvertToVector256Int64(v128{T}) @ref(Vector256.Create(Vector128.WidenLower($0), Vector128.WidenUpper($0)).AsInt64()) = _mm256_cvt{ep}_epi64($0) for T in i32,u32
+ConvertToVector256Int64(v128{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower($0)), Vector128.WidenUpper(Vector128.WidenLower($0))).AsInt64()) = _mm256_cvt{ep}_epi64($0) for T in i16,u16
+ConvertToVector256Int64(v128{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower($0))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower($0)))).AsInt64()) = _mm256_cvt{ep}_epi64($0) for T in i8,u8
+ConvertToVector256Int64(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.Load($0)), Vector128.WidenUpper(Vector128.Load($0))).AsInt64()) = _mm256_cvt{ep}_epi64(_mm_loadu_si128((const __m128i*)$0)) for T in i32,u32
+ConvertToVector256Int64(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load($0))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.Load($0)))).AsInt64()) = _mm256_cvt{ep}_epi64(_mm_loadl_epi64((const __m128i*)$0)) for T in i16,u16
+ConvertToVector256Int64(p{T}) @ref(Vector256.Create(Vector128.WidenLower(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load($0)))), Vector128.WidenUpper(Vector128.WidenLower(Vector128.WidenLower(Vector128.Load($0))))).AsInt64()) = _mm256_cvt{ep}_epi64(_mm_loadu_si32($0)) for T in i8,u8

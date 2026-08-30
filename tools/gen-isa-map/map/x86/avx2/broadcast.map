@@ -1,0 +1,25 @@
+# System.Runtime.Intrinsics.X86.Avx2 — VPBROADCAST: lane 0 of a register, or the scalar at a
+# pointer, into every lane. The memory forms are the instruction's memory operand, which the
+# set1 intrinsics compile to; VBROADCASTI128 repeats sixteen bytes into both halves.
+target = avx2
+BroadcastScalarToVector128(v128{T}) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastb_epi8($0) for T in i8,u8
+BroadcastScalarToVector128(v128{T}) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastw_epi16($0) for T in i16,u16
+BroadcastScalarToVector128(v128{T}) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastd_epi32($0) for T in i32,u32
+BroadcastScalarToVector128(v128{T}) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastq_epi64($0) for T in i64,u64
+BroadcastScalarToVector128(v128f32) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastss_ps($0)
+BroadcastScalarToVector128(v128f64) @ref(Vector128.Create($0.GetElement(0))) = _mm_broadcastsd_pd($0)
+BroadcastScalarToVector128(p{T}) @ref(Vector128.Create(*$0)) = _mm_set1_epi8((char)*$0) for T in i8,u8
+BroadcastScalarToVector128(p{T}) @ref(Vector128.Create(*$0)) = _mm_set1_epi16((short)*$0) for T in i16,u16
+BroadcastScalarToVector128(p{T}) @ref(Vector128.Create(*$0)) = _mm_set1_epi32((int)*$0) for T in i32,u32
+BroadcastScalarToVector128(p{T}) @ref(Vector128.Create(*$0)) = _mm_set1_epi64x((long long)*$0) for T in i64,u64
+BroadcastScalarToVector256(v128{T}) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastb_epi8($0) for T in i8,u8
+BroadcastScalarToVector256(v128{T}) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastw_epi16($0) for T in i16,u16
+BroadcastScalarToVector256(v128{T}) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastd_epi32($0) for T in i32,u32
+BroadcastScalarToVector256(v128{T}) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastq_epi64($0) for T in i64,u64
+BroadcastScalarToVector256(v128f32) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastss_ps($0)
+BroadcastScalarToVector256(v128f64) @ref(Vector256.Create($0.GetElement(0))) = _mm256_broadcastsd_pd($0)
+BroadcastScalarToVector256(p{T}) @ref(Vector256.Create(*$0)) = _mm256_set1_epi8((char)*$0) for T in i8,u8
+BroadcastScalarToVector256(p{T}) @ref(Vector256.Create(*$0)) = _mm256_set1_epi16((short)*$0) for T in i16,u16
+BroadcastScalarToVector256(p{T}) @ref(Vector256.Create(*$0)) = _mm256_set1_epi32((int)*$0) for T in i32,u32
+BroadcastScalarToVector256(p{T}) @ref(Vector256.Create(*$0)) = _mm256_set1_epi64x((long long)*$0) for T in i64,u64
+BroadcastVector128ToVector256(p{T}) @ref(Vector256.Create(Vector128.Load($0), Vector128.Load($0))) = _mm256_broadcastsi128_si256(_mm_loadu_si128((const __m128i*)$0)) for T in i8,u8,i16,u16,i32,u32,i64,u64

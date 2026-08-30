@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Pclmulqdq.V256 — VPCLMULQDQ on two 128-bit lanes: within
+# each lane the carry-less product of one 64-bit half of each operand, selected by bits 0
+# and 4 of the control as in pclmulqdq.map; every byte value is valid.
+target = vpclmulqdq
+CarrylessMultiply(v256i64,v256i64,u8) @imm8 = _mm256_clmulepi64_epi128($0, $1, $2)
+CarrylessMultiply(v256u64,v256u64,u8) @imm8 = _mm256_clmulepi64_epi128($0, $1, $2)

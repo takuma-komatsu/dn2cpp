@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — shifts by a run-time count. The count is
+# taken modulo the lane width, as the instruction does and as the reference makes
+# explicit; shl and shr_s have one spelling per width, shr_u the unsigned one.
+ShiftLeft(v128{T},i32) @ref(Vector128.ShiftLeft($0, $1 & ({bits} - 1))) = wasm_{slane}_shl($0, (uint32_t)$1) for T in i8,u8,i16,u16,i32,u32,i64,u64,nint,nuint
+ShiftRightArithmetic(v128{T},i32) @ref(Vector128.ShiftRightArithmetic($0.As<{cs}, {scs}>(), $1 & ({bits} - 1))) = wasm_{slane}_shr($0, (uint32_t)$1) for T in i8,u8,i16,u16,i32,u32,i64,u64,nint,nuint
+ShiftRightLogical(v128{T},i32) @ref(Vector128.ShiftRightLogical($0, $1 & ({bits} - 1))) = wasm_{ulane}_shr($0, (uint32_t)$1) for T in i8,u8,i16,u16,i32,u32,i64,u64,nint,nuint

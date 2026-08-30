@@ -1,0 +1,23 @@
+# System.Runtime.Intrinsics.X86.Fma — a*b+c in one rounding. The Negated forms negate the
+# product, the Subtract forms negate c, and the AddSubtract / SubtractAdd forms alternate by
+# lane: even lanes take the name's first operation, odd lanes the second. The scalar forms
+# operate on lane 0 and keep the upper lanes of the first operand, as the instruction does.
+# The portable FusedMultiplyAdd rounds once too, and negating an operand is exact, so every
+# form has a reference through it.
+target = fma
+MultiplyAdd(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.FusedMultiplyAdd($0, $1, $2)) = {mm}_fmadd_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+MultiplyAddNegated(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.FusedMultiplyAdd(-$0, $1, $2)) = {mm}_fnmadd_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+MultiplySubtract(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.FusedMultiplyAdd($0, $1, -$2)) = {mm}_fmsub_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+MultiplySubtractNegated(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.FusedMultiplyAdd(-$0, $1, -$2)) = {mm}_fnmsub_{ps|pd}($0, $1, $2) for W in 128,256 for T in f32,f64
+MultiplyAddSubtract(v128f32,v128f32,v128f32) @ref(Vector128.ConditionalSelect(Vector128.Create(0, -1, 0, -1).AsSingle(), Vector128.FusedMultiplyAdd($0, $1, $2), Vector128.FusedMultiplyAdd($0, $1, -$2))) = _mm_fmaddsub_ps($0, $1, $2)
+MultiplyAddSubtract(v128f64,v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.Create(0L, -1L).AsDouble(), Vector128.FusedMultiplyAdd($0, $1, $2), Vector128.FusedMultiplyAdd($0, $1, -$2))) = _mm_fmaddsub_pd($0, $1, $2)
+MultiplyAddSubtract(v256f32,v256f32,v256f32) @ref(Vector256.ConditionalSelect(Vector256.Create(0, -1, 0, -1, 0, -1, 0, -1).AsSingle(), Vector256.FusedMultiplyAdd($0, $1, $2), Vector256.FusedMultiplyAdd($0, $1, -$2))) = _mm256_fmaddsub_ps($0, $1, $2)
+MultiplyAddSubtract(v256f64,v256f64,v256f64) @ref(Vector256.ConditionalSelect(Vector256.Create(0L, -1L, 0L, -1L).AsDouble(), Vector256.FusedMultiplyAdd($0, $1, $2), Vector256.FusedMultiplyAdd($0, $1, -$2))) = _mm256_fmaddsub_pd($0, $1, $2)
+MultiplySubtractAdd(v128f32,v128f32,v128f32) @ref(Vector128.ConditionalSelect(Vector128.Create(0, -1, 0, -1).AsSingle(), Vector128.FusedMultiplyAdd($0, $1, -$2), Vector128.FusedMultiplyAdd($0, $1, $2))) = _mm_fmsubadd_ps($0, $1, $2)
+MultiplySubtractAdd(v128f64,v128f64,v128f64) @ref(Vector128.ConditionalSelect(Vector128.Create(0L, -1L).AsDouble(), Vector128.FusedMultiplyAdd($0, $1, -$2), Vector128.FusedMultiplyAdd($0, $1, $2))) = _mm_fmsubadd_pd($0, $1, $2)
+MultiplySubtractAdd(v256f32,v256f32,v256f32) @ref(Vector256.ConditionalSelect(Vector256.Create(0, -1, 0, -1, 0, -1, 0, -1).AsSingle(), Vector256.FusedMultiplyAdd($0, $1, -$2), Vector256.FusedMultiplyAdd($0, $1, $2))) = _mm256_fmsubadd_ps($0, $1, $2)
+MultiplySubtractAdd(v256f64,v256f64,v256f64) @ref(Vector256.ConditionalSelect(Vector256.Create(0L, -1L, 0L, -1L).AsDouble(), Vector256.FusedMultiplyAdd($0, $1, -$2), Vector256.FusedMultiplyAdd($0, $1, $2))) = _mm256_fmsubadd_pd($0, $1, $2)
+MultiplyAddScalar(v128{T},v128{T},v128{T}) @ref($0.WithElement(0, {cs}.FusedMultiplyAdd($0.GetElement(0), $1.GetElement(0), $2.GetElement(0)))) = _mm_fmadd_{ss|sd}($0, $1, $2) for T in f32,f64
+MultiplyAddNegatedScalar(v128{T},v128{T},v128{T}) @ref($0.WithElement(0, {cs}.FusedMultiplyAdd(-$0.GetElement(0), $1.GetElement(0), $2.GetElement(0)))) = _mm_fnmadd_{ss|sd}($0, $1, $2) for T in f32,f64
+MultiplySubtractScalar(v128{T},v128{T},v128{T}) @ref($0.WithElement(0, {cs}.FusedMultiplyAdd($0.GetElement(0), $1.GetElement(0), -$2.GetElement(0)))) = _mm_fmsub_{ss|sd}($0, $1, $2) for T in f32,f64
+MultiplySubtractNegatedScalar(v128{T},v128{T},v128{T}) @ref($0.WithElement(0, {cs}.FusedMultiplyAdd(-$0.GetElement(0), $1.GetElement(0), -$2.GetElement(0)))) = _mm_fnmsub_{ss|sd}($0, $1, $2) for T in f32,f64

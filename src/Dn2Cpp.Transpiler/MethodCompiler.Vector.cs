@@ -13,9 +13,13 @@ internal sealed partial class MethodCompiler
     // (runtime/core/dn2cpp_vectors.h). The C++ vector type is keyed only on byte WIDTH
     // (Dn2CppVector128 == Dn2CppVec<16> for every element type), so two same-width
     // operands share a type regardless of element; the element only selects the template
-    // T. There are no hardware intrinsics — IsSupported/IsHardwareAccelerated fold to
-    // false (the BCL keeps its scalar fallback) and this runtime only needs to make the
-    // few unconditional vector uses (and the dead-but-emitted SIMD branches) compile.
+    // T. This layer has no hardware intrinsics of its own: the portable
+    // IsSupported/IsHardwareAccelerated getters emit the DN2CPP_SIMD_HW_ACCEL token (0
+    // by default, so the BCL keeps its portable-vector fallback). The platform-ISA
+    // facades (AdvSimd, Sse2, …) are a separate axis: a Lowered family's IsSupported is a
+    // run-time token and its instructions call dn2cpp_isa_* helpers
+    // (MethodCompiler.PlatformIsa.cs), so a BCL arm guarded by AdvSimd.IsSupported alone
+    // runs, and the Dn2CppVec<N> values it hands those helpers come from this layer.
 
     /// <summary>The token emitted for IsSupported / IsHardwareAccelerated of the portable
     /// vector types. Inside the System.Linq assembly this is the separate
@@ -409,10 +413,19 @@ internal sealed partial class MethodCompiler
             }
             case "ToScalar":
             { var v = Pop(); PushScalar($"{Vec("to_scalar")}({Val(v, vecCpp)})"); return true; }
-            case "GetLower":
-            { var v = Pop(); string half = VecCppName(sig.ReturnType)!; Push(StackKind.Struct, half, $"{Vec("get_lower")}({Val(v, vecCpp)})"); return true; }
-            case "GetUpper":
-            { var v = Pop(); string half = VecCppName(sig.ReturnType)!; Push(StackKind.Struct, half, $"{Vec("get_upper")}({Val(v, vecCpp)})"); return true; }
+            case "GetLower" or "GetUpper":
+            {
+                // The static Vector128.GetUpper<T>(Vector128<T>) names the half as its
+                // return type, which is the primary vector here; the operand's width is
+                // the parameter's.
+                var v = Pop();
+                string srcCpp = ps.Length >= 1 && VecCppName(ps[0]) is { } pc0 ? pc0 : vecCpp;
+                int srcW = VecWidthBytes(srcCpp);
+                string half = VecCppName(sig.ReturnType)!;
+                string fn = name == "GetLower" ? "get_lower" : "get_upper";
+                Push(StackKind.Struct, half, $"dn2cpp_vec_{fn}<{et}, {srcW}>({Val(v, srcCpp)})");
+                return true;
+            }
             case "WithLower":
             { var lo = Pop(); var v = Pop(); string half = VecCppName(ps[^1])!; PushVec($"{Vec("with_lower")}({Val(v, vecCpp)}, {Val(lo, half)})"); return true; }
             case "WithUpper":
@@ -683,7 +696,11 @@ internal sealed partial class MethodCompiler
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Vector Widen shape is not supported (expected the two-out or tuple-return form)");
             }
 
-            // --- shuffle ---
+            // --- shuffle / interleave ---
+            // The internal Vector128.UnpackLow/UnpackHigh (UNPCKL/UNPCKH, ZIP1/ZIP2) the
+            // BCL's hex and ASCII arms reach once an ISA guard answers true.
+            case "UnpackLow": return Bin("unpack_low");
+            case "UnpackHigh": return Bin("unpack_high");
             case "Shuffle" or "ShuffleNative":
             {
                 var idx = Pop();

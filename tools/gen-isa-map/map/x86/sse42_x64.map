@@ -1,0 +1,4 @@
+# System.Runtime.Intrinsics.X86.Sse42+X64 — CRC32C over eight bytes; the accumulator is
+# 32 bits wide whatever the register, so the upper half of the result is zero.
+target = sse4.2
+Crc32(u64,u64) @ref((ulong)Fmt.Crc32Ref((uint)$0, $1, 8, 0x82F63B78u)) = _mm_crc32_u64($0, $1)

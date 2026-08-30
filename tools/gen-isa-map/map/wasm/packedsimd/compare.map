@@ -1,0 +1,15 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — comparisons; all-ones / all-zeros lanes.
+# Equality has one spelling per width; an ordering compare follows the element's
+# signedness. .NET documents i64x2.lt_u and its siblings for the ulong overloads, an
+# instruction wasm SIMD does not have: the signed 64-bit compare over both operands
+# with their sign bit flipped is that unsigned compare.
+CompareEqual(v128{T},v128{T}) @ref(Vector128.Equals($0, $1)) = wasm_{slane}_eq($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+CompareNotEqual(v128{T},v128{T}) @ref(Vector128.OnesComplement(Vector128.Equals($0, $1))) = wasm_{slane}_ne($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+CompareLessThan(v128{T},v128{T}) @ref(Vector128.LessThan($0, $1)) = wasm_{lane}_lt($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,f32,f64,nint,nuint
+CompareLessThanOrEqual(v128{T},v128{T}) @ref(Vector128.LessThanOrEqual($0, $1)) = wasm_{lane}_le($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,f32,f64,nint,nuint
+CompareGreaterThan(v128{T},v128{T}) @ref(Vector128.GreaterThan($0, $1)) = wasm_{lane}_gt($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,f32,f64,nint,nuint
+CompareGreaterThanOrEqual(v128{T},v128{T}) @ref(Vector128.GreaterThanOrEqual($0, $1)) = wasm_{lane}_ge($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,f32,f64,nint,nuint
+CompareLessThan(v128u64,v128u64) @ref(Vector128.LessThan($0, $1)) = wasm_i64x2_lt(dn2cpp_isa_wasm_flip_sign64($0), dn2cpp_isa_wasm_flip_sign64($1))
+CompareLessThanOrEqual(v128u64,v128u64) @ref(Vector128.LessThanOrEqual($0, $1)) = wasm_i64x2_le(dn2cpp_isa_wasm_flip_sign64($0), dn2cpp_isa_wasm_flip_sign64($1))
+CompareGreaterThan(v128u64,v128u64) @ref(Vector128.GreaterThan($0, $1)) = wasm_i64x2_gt(dn2cpp_isa_wasm_flip_sign64($0), dn2cpp_isa_wasm_flip_sign64($1))
+CompareGreaterThanOrEqual(v128u64,v128u64) @ref(Vector128.GreaterThanOrEqual($0, $1)) = wasm_i64x2_ge(dn2cpp_isa_wasm_flip_sign64($0), dn2cpp_isa_wasm_flip_sign64($1))

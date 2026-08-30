@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.AvxVnni — VPDPBUSD / VPDPWSSD and their saturating forms in
+# the VEX encoding (the _avx_ intrinsics, distinct from the AVX-512 VNNI ones): each 32-bit
+# lane of the addend gains four unsigned-byte × signed-byte products, or two signed 16-bit
+# products; the Saturate forms clamp the sum to the int32 range.
+target = avxvnni
+MultiplyWideningAndAdd(v{W}i32,v{W}u8,v{W}i8) = {mm}_dpbusd_avx_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAdd(v{W}i32,v{W}i16,v{W}i16) = {mm}_dpwssd_avx_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}u8,v{W}i8) = {mm}_dpbusds_avx_epi32($0, $1, $2) for W in 128,256
+MultiplyWideningAndAddSaturate(v{W}i32,v{W}i16,v{W}i16) = {mm}_dpwssds_avx_epi32($0, $1, $2) for W in 128,256

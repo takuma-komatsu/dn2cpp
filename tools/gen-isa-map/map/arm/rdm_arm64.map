@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.Rdm+Arm64 — the one-lane SQRDMLAH/SQRDMLSH forms:
+# operands are lane 0 of each Vector64, the result lane 0 with the rest zero.
+target = +rdm
+MultiplyRoundedDoublingAndAddSaturateHighScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqrdmlah{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), vget_lane_{neon}($2, 0))) for T in i16,i32
+MultiplyRoundedDoublingAndSubtractSaturateHighScalar(v64{T},v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vqrdmlsh{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), vget_lane_{neon}($2, 0))) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarAndAddSaturateHigh(v64{T},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqrdmlah{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarAndAddSaturateHigh(v64{T},v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqrdmlah{bhsd}_lane_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarAndSubtractSaturateHigh(v64{T},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vqrdmlsh{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32
+MultiplyRoundedDoublingScalarBySelectedScalarAndSubtractSaturateHigh(v64{T},v64{T},v64{T},u8) @imm[0..{N64}) = dn2cpp_isa_lane0<8>(vqrdmlsh{bhsd}_lane_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in i16,i32

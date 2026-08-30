@@ -1,0 +1,23 @@
+# System.Runtime.Intrinsics.X86.Sse2 — conversions. The scalar forms write lane 0 of the
+# first operand (or of a zero register for the integer-to-vector moves). CVTSD2SI and the
+# packed CVTPS2DQ / CVTPD2DQ round under MXCSR, nearest-even by default, which
+# Math.Round and Vector128.Round are; the WithTruncation forms truncate. A double-to-int32
+# or double-to-single pack fills the low half of the result and zeroes the high half.
+target = sse2
+ConvertScalarToVector128Double(v128f64,i32) @ref($0.WithElement(0, (double)$1)) = _mm_cvtsi32_sd($0, $1)
+ConvertScalarToVector128Double(v128f64,v128f32) @ref($0.WithElement(0, (double)$1.GetElement(0))) = _mm_cvtss_sd($0, $1)
+ConvertScalarToVector128Int32(i32) @ref(Vector128.CreateScalar($0)) = _mm_cvtsi32_si128($0)
+ConvertScalarToVector128UInt32(u32) @ref(Vector128.CreateScalar($0)) = _mm_cvtsi32_si128((int)$0)
+ConvertScalarToVector128Single(v128f32,v128f64) @ref($0.WithElement(0, (float)$1.GetElement(0))) = _mm_cvtsd_ss($0, $1)
+ConvertToInt32(v128f64) @ref((int)Math.Round($0.GetElement(0))) = _mm_cvtsd_si32($0)
+ConvertToInt32(v128i32) @ref($0.GetElement(0)) = _mm_cvtsi128_si32($0)
+ConvertToInt32WithTruncation(v128f64) @ref((int)$0.GetElement(0)) = _mm_cvttsd_si32($0)
+ConvertToUInt32(v128u32) @ref($0.GetElement(0)) = (uint32_t)_mm_cvtsi128_si32($0)
+ConvertToVector128Double(v128f32) @ref(Vector128.WidenLower($0)) = _mm_cvtps_pd($0)
+ConvertToVector128Double(v128i32) @ref(Vector128.ConvertToDouble(Vector128.WidenLower($0))) = _mm_cvtepi32_pd($0)
+ConvertToVector128Int32(v128f32) @ref(Vector128.ConvertToInt32(Vector128.Round($0))) = _mm_cvtps_epi32($0)
+ConvertToVector128Int32(v128f64) @ref(Vector128.Create((int)Math.Round($0.GetElement(0)), (int)Math.Round($0.GetElement(1)), 0, 0)) = _mm_cvtpd_epi32($0)
+ConvertToVector128Int32WithTruncation(v128f32) @ref(Vector128.ConvertToInt32($0)) = _mm_cvttps_epi32($0)
+ConvertToVector128Int32WithTruncation(v128f64) @ref(Vector128.Create((int)$0.GetElement(0), (int)$0.GetElement(1), 0, 0)) = _mm_cvttpd_epi32($0)
+ConvertToVector128Single(v128f64) @ref(Vector128.Narrow($0, Vector128<double>.Zero)) = _mm_cvtpd_ps($0)
+ConvertToVector128Single(v128i32) @ref(Vector128.ConvertToSingle($0)) = _mm_cvtepi32_ps($0)

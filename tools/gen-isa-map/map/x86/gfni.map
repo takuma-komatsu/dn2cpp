@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Gfni — GF(2^8) arithmetic on bytes: the affine transform
+# multiplies each byte, as a bit vector, by the 8x8 bit matrix held in the matching 64-bit
+# lane of the second operand and adds the immediate byte (the Inverse form first inverts
+# the byte in the AES field); the multiply is the field product under the AES polynomial.
+# The immediate is FullRangeIMM in .NET: every byte is a constant to add.
+target = gfni
+GaloisFieldAffineTransform(v128u8,v128u8,u8) @imm8 = _mm_gf2p8affine_epi64_epi8($0, $1, $2)
+GaloisFieldAffineTransformInverse(v128u8,v128u8,u8) @imm8 = _mm_gf2p8affineinv_epi64_epi8($0, $1, $2)
+GaloisFieldMultiply(v128u8,v128u8) = _mm_gf2p8mul_epi8($0, $1)

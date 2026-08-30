@@ -1,0 +1,8 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — 64-bit-element comparisons.
+CompareEqual(v128{T},v128{T}) = vceqq_{neon}($0, $1) for T in i64,u64,f64
+CompareGreaterThan(v128{T},v128{T}) = vcgtq_{neon}($0, $1) for T in i64,u64,f64
+CompareGreaterThanOrEqual(v128{T},v128{T}) = vcgeq_{neon}($0, $1) for T in i64,u64,f64
+CompareLessThan(v128{T},v128{T}) = vcltq_{neon}($0, $1) for T in i64,u64,f64
+CompareLessThanOrEqual(v128{T},v128{T}) = vcleq_{neon}($0, $1) for T in i64,u64,f64
+CompareTest(v128{T},v128{T}) = vtstq_{neon}($0, $1) for T in i64,u64
+CompareTest(v128f64,v128f64) = vtstq_u64($0:u64, $1:u64)

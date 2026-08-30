@@ -577,16 +577,6 @@ internal static partial class CoreIntrinsics
         [("System.IO.Stream", "BeginWriteInternal")] = BoundedVerdict.Silent,
         [("System.IO.Stream", "BeginEndReadAsync")] = BoundedVerdict.Silent,
         [("System.IO.Stream", "BeginEndWriteAsync")] = BoundedVerdict.Silent,
-        // HexConverter's Vector128 fast-path arms (Guid formatting/parsing, hex
-        // string encode/decode). Runtime-dead: every caller guards them with
-        // Vector128.IsHardwareAccelerated / Ssse3.IsSupported, which the vector
-        // intrinsic layer folds to false (scalar-emulation carve-out), so the
-        // scalar fallback always runs — yet their bodies reach unfolded internal
-        // vector helpers (Vector128.UnpackLow and friends). Cutting them turns
-        // the folded-false branch's call into an unreachable trap.
-        [("System.HexConverter", "AsciiToHexVector128")] = BoundedVerdict.Silent,
-        [("System.HexConverter", "EncodeToUtf16_Vector128")] = BoundedVerdict.Silent,
-        [("System.HexConverter", "TryDecodeFromUtf16_Vector128")] = BoundedVerdict.Silent,
         // The lazy message builder FileNotFoundException/FileLoadException.SetMessageField
         // falls to in its `else` arm. Its body reaches the GetFileLoadExceptionMessage /
         // GetMessageForHR VM QCalls. Runtime-dead for any FileNotFoundException constructed

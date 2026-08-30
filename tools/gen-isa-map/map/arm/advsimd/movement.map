@@ -1,0 +1,39 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — data movement: DUP from a scalar, EXT, INS
+# of a D lane, LD1/ST1 of one lane (LD2-LD4/ST2-ST4 for the tuple forms), LD1R-LD4R,
+# the de-interleaving LD2-LD4 (`AndUnzip`) and interleaving ST2-ST4 (`AndZip`), and
+# the byte/halfword/word reversals. REV16/REV32/REV64 reverse the 8/16/32-bit
+# elements inside each 16/32/64-bit container, so the instruction follows the
+# container (the .NET element type) and the intrinsic the reversed unit, viewed
+# unsigned. ExtractVector takes (upper, lower, index) in the ACLE (a, b, n) order.
+DuplicateToVector128({T}) = vdupq_n_{neon}($0) for T in i8,u8,i16,u16,i32,u32,f32
+DuplicateToVector64({T}) = vdup_n_{neon}($0) for T in i8,u8,i16,u16,i32,u32,f32
+ExtractVector128(v128{T},v128{T},u8) @imm[0..{N128}) = vextq_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+ExtractVector64(v64{T},v64{T},u8) @imm[0..{N64}) = vext_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,f32
+InsertScalar(v128{T},u8,v64{T}) @imm$1[0..2) = vcopyq_lane_{neon}($0, $1, $2, 0) for T in i64,u64,f64
+Load2xVector64AndUnzip(p{T}) = dn2cpp_isa_scatter(vld2_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+Load3xVector64AndUnzip(p{T}) = dn2cpp_isa_scatter(vld3_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+Load4xVector64AndUnzip(p{T}) = dn2cpp_isa_scatter(vld4_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndInsertScalar(v128{T},u8,p{T}) @imm$1[0..{N128}) = vld1q_lane_{neon}($2, $0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndInsertScalar(v64{T},u8,p{T}) @imm$1[0..{N64}) = vld1_lane_{neon}($2, $0, $1) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndInsertScalar(t2v64{T},u8,p{T}) @imm$1[0..{N64}) = dn2cpp_isa_scatter(vld2_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndInsertScalar(t3v64{T},u8,p{T}) @imm$1[0..{N64}) = dn2cpp_isa_scatter(vld3_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndInsertScalar(t4v64{T},u8,p{T}) @imm$1[0..{N64}) = dn2cpp_isa_scatter(vld4_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndReplicateToVector128(p{T}) = vld1q_dup_{neon}($0) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndReplicateToVector64(p{T}) = vld1_dup_{neon}($0) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndReplicateToVector64x2(p{T}) = dn2cpp_isa_scatter(vld2_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndReplicateToVector64x3(p{T}) = dn2cpp_isa_scatter(vld3_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadAndReplicateToVector64x4(p{T}) = dn2cpp_isa_scatter(vld4_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+ReverseElement16(v{W}{T}) = vrev32{q}_u16($0:u16) for W in 64,128 for T in i32,u32
+ReverseElement16(v{W}{T}) = vrev64{q}_u16($0:u16) for W in 64,128 for T in i64,u64
+ReverseElement32(v{W}{T}) = vrev64{q}_u32($0:u32) for W in 64,128 for T in i64,u64
+ReverseElement8(v{W}{T}) = vrev16{q}_u8($0:u8) for W in 64,128 for T in i16,u16
+ReverseElement8(v{W}{T}) = vrev32{q}_u8($0:u8) for W in 64,128 for T in i32,u32
+ReverseElement8(v{W}{T}) = vrev64{q}_u8($0:u8) for W in 64,128 for T in i64,u64
+StoreSelectedScalar(p{T},v128{T},u8) @imm[0..{N128}) = vst1q_lane_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreSelectedScalar(p{T},v64{T},u8) @imm[0..{N64}) = vst1_lane_{neon}($0, $1, $2) for T in i8,u8,i16,u16,i32,u32,f32
+StoreSelectedScalar(p{T},t2v64{T},u8) @imm[0..{N64}) = vst2_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,f32
+StoreSelectedScalar(p{T},t3v64{T},u8) @imm[0..{N64}) = vst3_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,f32
+StoreSelectedScalar(p{T},t4v64{T},u8) @imm[0..{N64}) = vst4_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,f32
+StoreVectorAndZip(p{T},t2v64{T}) = vst2_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32
+StoreVectorAndZip(p{T},t3v64{T}) = vst3_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32
+StoreVectorAndZip(p{T},t4v64{T}) = vst4_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32

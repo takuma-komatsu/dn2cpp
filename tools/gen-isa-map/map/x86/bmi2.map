@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.X86.Bmi2
+# MultiplyNoFlags returns the high half of the product; the pointer overload
+# stores the low half through it.
+target = bmi2
+MultiplyNoFlags(u32,u32) = (uint32_t)(((uint64_t)$0 * $1) >> 32)
+MultiplyNoFlags(u32,u32,pu32) = dn2cpp_isa_mulx32($0, $1, $2)
+ParallelBitDeposit(u32,u32) = _pdep_u32($0, $1)
+ParallelBitExtract(u32,u32) = _pext_u32($0, $1)
+ZeroHighBits(u32,u32) = _bzhi_u32($0, $1)

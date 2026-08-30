@@ -1150,9 +1150,12 @@ _ccache_pch_env() {
 
 # _cmake_app_builddir OUT — per-app CMake build dir for the active build axis.
 # Each axis gets its own dir so different builds of one OUT never clobber or
-# race each other; add an axis below and it must gain an arm here too.
+# race each other; add an axis below and it must gain an arm here too. The
+# wasm SIMD axis (DN2CPP_WASM_SIMD, a sub-axis of WASM) is a different binary
+# of the same sources, so it has a dir of its own.
 _cmake_app_builddir() {
-    if [ -n "${WASM:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-wasm"
+    if [ -n "${WASM:-}" ] && [ -n "${DN2CPP_WASM_SIMD:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-wasm-simd"
+    elif [ -n "${WASM:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-wasm"
     elif [ -n "${IOS_DEV:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-ios-dev"
     elif [ -n "${IOS_SIM:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-ios-sim"
     elif [ -n "${ANDROID:-}" ]; then printf '%s\n' "$PWD/$1/.cmake-android"
@@ -1252,10 +1255,10 @@ $want"
 # ensure_cmake_runtime — build the runtime libraries once into a shared dir and
 # echo the exported dn2cpp-targets.cmake; honors DN2CPP_CMAKE_RUNTIME_EXPORT*
 # when run-all-gates.sh prebuilt that axis. Axes, each in its own dir: SCALAR,
-# HIGHWAY (isolates a DN2CPP_HIGHWAY_ARCH override), WASM (emcmake), IOS_DEV,
-# IOS_SIM, ANDROID, DN2CPP_NO_CURL, PAL_REFERENCE, DN2CPP_NO_GC,
-# DN2CPP_GC_BACKEND (non-unity) — an axis never falls through to the native
-# export. Always builds; configure per the stamp.
+# HIGHWAY (isolates a DN2CPP_HIGHWAY_ARCH override), WASM (emcmake), WASM with
+# DN2CPP_WASM_SIMD (-msimd128), IOS_DEV, IOS_SIM, ANDROID, DN2CPP_NO_CURL,
+# PAL_REFERENCE, DN2CPP_NO_GC, DN2CPP_GC_BACKEND (non-unity) — an axis never
+# falls through to the native export. Always builds; configure per the stamp.
 ensure_cmake_runtime() {
     # GC=OFF makes the source-tree choice moot, and the two together would
     # otherwise silently pick one (dir naming order) rather than say so.
@@ -1263,7 +1266,13 @@ ensure_cmake_runtime() {
         echo "error: DN2CPP_NO_GC and DN2CPP_GC_BACKEND=${DN2CPP_GC_BACKEND} together — GC is off, so the backend choice is moot" >&2
         return 1
     fi
-    if [ -n "${WASM:-}" ]; then
+    if [ -n "${WASM:-}" ] && [ -n "${DN2CPP_WASM_SIMD:-}" ]; then
+        # Never pre-built: run-all-gates.sh pre-builds nothing for this axis
+        # because it has one consumer (the SIMD run of
+        # gates/build-and-run-platform-isa-wasm.sh), and the arm stops the WASM
+        # one below handing back the non-SIMD export.
+        :
+    elif [ -n "${WASM:-}" ]; then
         [ -n "${DN2CPP_CMAKE_RUNTIME_EXPORT_WASM:-}" ] && { printf '%s\n' "$DN2CPP_CMAKE_RUNTIME_EXPORT_WASM"; return 0; }
     elif [ -n "${IOS_DEV:-}" ]; then
         [ -n "${DN2CPP_CMAKE_RUNTIME_EXPORT_IOS_DEV:-}" ] && { printf '%s\n' "$DN2CPP_CMAKE_RUNTIME_EXPORT_IOS_DEV"; return 0; }
@@ -1297,6 +1306,13 @@ ensure_cmake_runtime() {
         dir="$PWD/artifacts/.cmake-runtime-wasm"
         configure=(emcmake "$CMAKE")
         args=(-S runtime -G Ninja -DDN2CPP_GODOT=OFF -DDN2CPP_DOTNET_MODULE=ON -DDN2CPP_USE_GC="$gc")
+        if [ -n "${DN2CPP_WASM_SIMD:-}" ]; then
+            # -msimd128 is PUBLIC on the exported runtime target, so the app
+            # configure needs no flag of its own; the dir keeps the two wasm
+            # runtimes apart.
+            dir="$PWD/artifacts/.cmake-runtime-wasm-simd"
+            args+=(-DDN2CPP_WASM_SIMD=ON)
+        fi
     elif [ -n "${IOS_DEV:-}" ] || [ -n "${IOS_SIM:-}" ]; then
         # Native source set (POSIX PAL, Boehm GC) retargeted at the iOS SDK;
         # the .NET-module host is a desktop-engine concern, so off.
@@ -2288,8 +2304,13 @@ gate_cache_check() {
             printf 'context:%s\n' "$context"
             # Every env var that selects a build axis MUST appear here: add an
             # axis (ensure_cmake_runtime, _cmake_app_builddir) ⇒ add it here.
-            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-                "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" \
+            # So must every RUN-TIME knob the runtime reads that changes a
+            # program's output when a gate inherits it (DN2CPP_CPU_FEATURES
+            # narrows every IsSupported answer, and the AVX10.2 opt-in permits
+            # that policy-disabled family): a green recorded under an inherited
+            # knob would replay for the default run.
+            printf 'env:%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+                "${CONFIG:-}" "${TFM:-}" "${SCALAR:-}" "${HIGHWAY:-}" "${WASM:-}" "${DN2CPP_WASM_SIMD:-}" \
                 "${IOS_SIM:-}" "${IOS_DEV:-}" "${ANDROID:-}" "${DN2CPP_NO_GC:-}" \
                 "${DN2CPP_GC_BACKEND:-}" \
                 "${DN2CPP_NO_CURL:-}" "${PAL_REFERENCE:-}" \
@@ -2297,7 +2318,8 @@ gate_cache_check() {
                 "${CMAKE_CXX_COMPILER:-}" "${DN2CPP_EXTRA_CMAKE_ARGS:-}" \
                 "${DN2CPP_EXTRA_LINK_FLAGS:-}" "${DN2CPP_EXTRA_LINK_LIBS:-}" \
                 "${DN2CPP_HIGHWAY_ARCH:-}" \
-                "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}"
+                "${IOS_DEPLOYMENT_TARGET:-}" "${LANG:-}" "${LC_ALL:-}" "${TZ:-}" \
+                "${DN2CPP_CPU_FEATURES:-}" "${DN2CPP_ENABLE_AVX10V2:-}"
             printf 'os:%s\n' "$(uname -sm)"
             printf 'cc:%s\n' "$(first_line "$(cc --version 2>/dev/null)")"
             if [ -n "${WASM:-}" ]; then

@@ -1,0 +1,7 @@
+# System.Runtime.Intrinsics.X86.Sse — conversions between lane 0 and a 32-bit integer.
+# CVTSS2SI rounds under MXCSR, nearest-even by default, which MathF.Round is; CVTTSS2SI
+# truncates. The integer-to-single form writes lane 0 of the first operand.
+target = sse
+ConvertScalarToVector128Single(v128f32,i32) @ref($0.WithElement(0, (float)$1)) = _mm_cvtsi32_ss($0, $1)
+ConvertToInt32(v128f32) @ref((int)MathF.Round($0.GetElement(0))) = _mm_cvtss_si32($0)
+ConvertToInt32WithTruncation(v128f32) @ref((int)$0.GetElement(0)) = _mm_cvttss_si32($0)

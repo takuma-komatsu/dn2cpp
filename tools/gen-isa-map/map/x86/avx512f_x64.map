@@ -1,0 +1,21 @@
+# System.Runtime.Intrinsics.X86.Avx512F.X64 — the 64-bit scalar conversions: a long or ulong
+# into lane 0 of a float vector (upper lanes from the first operand) and lane 0 out to a long
+# or ulong, with the embedded rounding of avx512f/arithmetic.map where a mode is given. The
+# unsigned results have no portable reference (the integer indefinite for a negative or
+# out-of-range input, where the portable conversion saturates); the signed ones follow the
+# mode through Math.Round / Floor / Ceiling / Truncate.
+target = avx512f
+ConvertScalarToVector128Double(v128f64,i64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundsi64_sd($0, $1, ($2 & 3) | 8)
+ConvertScalarToVector128Double(v128f64,u64) @ref($0.WithElement(0, (double)$1)) = _mm_cvtu64_sd($0, $1)
+ConvertScalarToVector128Double(v128f64,u64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundu64_sd($0, $1, ($2 & 3) | 8)
+ConvertScalarToVector128Single(v128f32,i64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundsi64_ss($0, $1, ($2 & 3) | 8)
+ConvertScalarToVector128Single(v128f32,u64) @ref($0.WithElement(0, (float)$1)) = _mm_cvtu64_ss($0, $1)
+ConvertScalarToVector128Single(v128f32,u64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundu64_ss($0, $1, ($2 & 3) | 8)
+ConvertToInt64(v128f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref((long)(((int)$1 & 3) == 0 ? Math.Round((double)$0.ToScalar()) : ((int)$1 & 3) == 1 ? Math.Floor((double)$0.ToScalar()) : ((int)$1 & 3) == 2 ? Math.Ceiling((double)$0.ToScalar()) : Math.Truncate((double)$0.ToScalar()))) = _mm_cvt_roundss_si64($0, ($1 & 3) | 8)
+ConvertToInt64(v128f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref((long)(((int)$1 & 3) == 0 ? Math.Round($0.ToScalar()) : ((int)$1 & 3) == 1 ? Math.Floor($0.ToScalar()) : ((int)$1 & 3) == 2 ? Math.Ceiling($0.ToScalar()) : Math.Truncate($0.ToScalar()))) = _mm_cvt_roundsd_si64($0, ($1 & 3) | 8)
+ConvertToUInt64(v128f32) = _mm_cvtss_u64($0)
+ConvertToUInt64(v128f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundss_u64($0, ($1 & 3) | 8)
+ConvertToUInt64(v128f64) = _mm_cvtsd_u64($0)
+ConvertToUInt64(v128f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundsd_u64($0, ($1 & 3) | 8)
+ConvertToUInt64WithTruncation(v128f32) = _mm_cvttss_u64($0)
+ConvertToUInt64WithTruncation(v128f64) = _mm_cvttsd_u64($0)

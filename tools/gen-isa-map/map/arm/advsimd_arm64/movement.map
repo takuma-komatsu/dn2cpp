@@ -1,0 +1,51 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — data movement on 128-bit vectors and
+# 64-bit elements: DUP, LD1R-LD4R, LD1 x3/x4, LD2-LD4 / ST2-ST4 (whole and one lane),
+# RBIT, and the permutes TRN1/TRN2, UZP1/UZP2, ZIP1/ZIP2.
+#
+# The register pairs: LDP Qt1, Qt2 reads 32 consecutive bytes into two registers,
+# exactly what LD1 {Vn, Vn+1} (vld1q_x2) reads; STP is the two consecutive stores;
+# LDP St1, St2 puts each word in lane 0 of a zeroed Vector64, an S-register write.
+# The NonTemporal forms (LDNP/STNP) differ only in the cache hint, which the ACLE
+# does not expose, so they lower to the same loads and stores.
+DuplicateToVector128({T}) = vdupq_n_{neon}($0) for T in i64,u64,f64
+Load2xVector128AndUnzip(p{T}) = dn2cpp_isa_scatter(vld2q_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Load3xVector128(p{T}) = dn2cpp_isa_scatter(vld1q_{neon}_x3($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Load3xVector128AndUnzip(p{T}) = dn2cpp_isa_scatter(vld3q_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Load4xVector128(p{T}) = dn2cpp_isa_scatter(vld1q_{neon}_x4($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Load4xVector128AndUnzip(p{T}) = dn2cpp_isa_scatter(vld4q_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndInsertScalar(t2v128{T},u8,p{T}) @imm$1[0..{N128}) = dn2cpp_isa_scatter(vld2q_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndInsertScalar(t3v128{T},u8,p{T}) @imm$1[0..{N128}) = dn2cpp_isa_scatter(vld3q_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndInsertScalar(t4v128{T},u8,p{T}) @imm$1[0..{N128}) = dn2cpp_isa_scatter(vld4q_lane_{neon}($2, $0.*, $1), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndReplicateToVector128(p{T}) = vld1q_dup_{neon}($0) for T in i64,u64,f64
+LoadAndReplicateToVector128x2(p{T}) = dn2cpp_isa_scatter(vld2q_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndReplicateToVector128x3(p{T}) = dn2cpp_isa_scatter(vld3q_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadAndReplicateToVector128x4(p{T}) = dn2cpp_isa_scatter(vld4q_dup_{neon}($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadPairScalarVector64(p{T}) = (void)($r1 = dn2cpp_isa_lane0<8>($0[0]), $r2 = dn2cpp_isa_lane0<8>($0[1])) for T in i32,u32,f32
+LoadPairScalarVector64NonTemporal(p{T}) = (void)($r1 = dn2cpp_isa_lane0<8>($0[0]), $r2 = dn2cpp_isa_lane0<8>($0[1])) for T in i32,u32,f32
+LoadPairVector128(p{T}) = dn2cpp_isa_scatter(vld1q_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadPairVector128NonTemporal(p{T}) = dn2cpp_isa_scatter(vld1q_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadPairVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadPairVector64NonTemporal(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+ReverseElementBits(v{W}{T}) = vrbit{q}_{neon}($0) for W in 64,128 for T in i8,u8
+StorePair(p{T},v{W}{T},v{W}{T}) = (vst1{q}_{neon}($0, $1), vst1{q}_{neon}($0 + {N}, $2)) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StorePairNonTemporal(p{T},v{W}{T},v{W}{T}) = (vst1{q}_{neon}($0, $1), vst1{q}_{neon}($0 + {N}, $2)) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StorePairScalar(p{T},v64{T},v64{T}) = (void)($0[0] = vget_lane_{neon}($1, 0), $0[1] = vget_lane_{neon}($2, 0)) for T in i32,u32,f32
+StorePairScalarNonTemporal(p{T},v64{T},v64{T}) = (void)($0[0] = vget_lane_{neon}($1, 0), $0[1] = vget_lane_{neon}($2, 0)) for T in i32,u32,f32
+StoreSelectedScalar(p{T},t2v128{T},u8) @imm[0..{N128}) = vst2q_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreSelectedScalar(p{T},t3v128{T},u8) @imm[0..{N128}) = vst3q_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreSelectedScalar(p{T},t4v128{T},u8) @imm[0..{N128}) = vst4q_lane_{neon}($0, $1.*, $2) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreVectorAndZip(p{T},t2v128{T}) = vst2q_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreVectorAndZip(p{T},t3v128{T}) = vst3q_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+StoreVectorAndZip(p{T},t4v128{T}) = vst4q_{neon}($0, $1.*) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+TransposeEven(v{W}{T},v{W}{T}) = vtrn1{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+TransposeEven(v128{T},v128{T}) = vtrn1q_{neon}($0, $1) for T in i64,u64,f64
+TransposeOdd(v{W}{T},v{W}{T}) = vtrn2{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+TransposeOdd(v128{T},v128{T}) = vtrn2q_{neon}($0, $1) for T in i64,u64,f64
+UnzipEven(v{W}{T},v{W}{T}) = vuzp1{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+UnzipEven(v128{T},v128{T}) = vuzp1q_{neon}($0, $1) for T in i64,u64,f64
+UnzipOdd(v{W}{T},v{W}{T}) = vuzp2{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+UnzipOdd(v128{T},v128{T}) = vuzp2q_{neon}($0, $1) for T in i64,u64,f64
+ZipHigh(v{W}{T},v{W}{T}) = vzip2{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+ZipHigh(v128{T},v128{T}) = vzip2q_{neon}($0, $1) for T in i64,u64,f64
+ZipLow(v{W}{T},v{W}{T}) = vzip1{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,f32
+ZipLow(v128{T},v128{T}) = vzip1q_{neon}($0, $1) for T in i64,u64,f64

@@ -1,0 +1,44 @@
+# System.Runtime.Intrinsics.X86.Avx512F — the lane-0 forms. Every scalar operation keeps the
+# upper lanes of its first operand, as the instruction does; the one-operand forms of the
+# EVEX-only scalars (GETEXP, GETMANT, RCP14, RSQRT14, RNDSCALE) pass the value as both
+# operands, which is what .NET emits, so the upper lanes come from the value. The rounding
+# modes embed as in arithmetic.map. The unsigned conversions have no portable reference: a
+# negative or out-of-range input yields the integer indefinite, where the portable
+# conversion saturates. The signed integer results follow the mode through Math.Round /
+# Floor / Ceiling / Truncate, which are exact on a float widened to double.
+target = avx512f,avx512bw,avx512dq,avx512vl
+AddScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_add_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+SubtractScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_sub_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+MultiplyScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_mul_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+DivideScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_div_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+SqrtScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_sqrt_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+FusedMultiplyAddScalar(v128{T},v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_fmadd_round_{ss|sd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplyAddNegatedScalar(v128{T},v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_fnmadd_round_{ss|sd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplySubtractScalar(v128{T},v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_fmsub_round_{ss|sd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+FusedMultiplySubtractNegatedScalar(v128{T},v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_fnmsub_round_{ss|sd}($0, $1, $2, ($3 & 3) | 8) for T in f32,f64
+ScaleScalar(v128{T},v128{T}) = _mm_scalef_{ss|sd}($0, $1) for T in f32,f64
+ScaleScalar(v128{T},v128{T},u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_scalef_round_{ss|sd}($0, $1, ($2 & 3) | 8) for T in f32,f64
+GetExponentScalar(v128{T}) = _mm_getexp_{ss|sd}($0, $0) for T in f32,f64
+GetExponentScalar(v128{T},v128{T}) = _mm_getexp_{ss|sd}($0, $1) for T in f32,f64
+GetMantissaScalar(v128{T},u8) @imm[0..16) = _mm_getmant_{ss|sd}($0, $0, (_MM_MANTISSA_NORM_ENUM)($1 & 3), (_MM_MANTISSA_SIGN_ENUM)($1 >> 2)) for T in f32,f64
+GetMantissaScalar(v128{T},v128{T},u8) @imm[0..16) = _mm_getmant_{ss|sd}($0, $1, (_MM_MANTISSA_NORM_ENUM)($2 & 3), (_MM_MANTISSA_SIGN_ENUM)($2 >> 2)) for T in f32,f64
+Reciprocal14Scalar(v128{T}) = _mm_rcp14_{ss|sd}($0, $0) for T in f32,f64
+Reciprocal14Scalar(v128{T},v128{T}) = _mm_rcp14_{ss|sd}($0, $1) for T in f32,f64
+ReciprocalSqrt14Scalar(v128{T}) = _mm_rsqrt14_{ss|sd}($0, $0) for T in f32,f64
+ReciprocalSqrt14Scalar(v128{T},v128{T}) = _mm_rsqrt14_{ss|sd}($0, $1) for T in f32,f64
+RoundScaleScalar(v128{T},u8) @imm8 = _mm_roundscale_{ss|sd}($0, $0, $1) for T in f32,f64
+RoundScaleScalar(v128{T},v128{T},u8) @imm8 = _mm_roundscale_{ss|sd}($0, $1, $2) for T in f32,f64
+FixupScalar(v128{T},v128{T},v128{sT},u8) @imm8 = _mm_fixupimm_{ss|sd}($0, $1, $2, $3) for T in f32,f64
+ConvertScalarToVector128Double(v128f64,u32) @ref($0.WithElement(0, (double)$1)) = _mm_cvtu32_sd($0, $1)
+ConvertScalarToVector128Single(v128f32,i32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundi32_ss($0, $1, ($2 & 3) | 8)
+ConvertScalarToVector128Single(v128f32,u32) @ref($0.WithElement(0, (float)$1)) = _mm_cvtu32_ss($0, $1)
+ConvertScalarToVector128Single(v128f32,u32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundu32_ss($0, $1, ($2 & 3) | 8)
+ConvertScalarToVector128Single(v128f32,v128f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundsd_ss($0, $1, ($2 & 3) | 8)
+ConvertToInt32(v128f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref((int)(((int)$1 & 3) == 0 ? Math.Round((double)$0.ToScalar()) : ((int)$1 & 3) == 1 ? Math.Floor((double)$0.ToScalar()) : ((int)$1 & 3) == 2 ? Math.Ceiling((double)$0.ToScalar()) : Math.Truncate((double)$0.ToScalar()))) = _mm_cvt_roundss_si32($0, ($1 & 3) | 8)
+ConvertToInt32(v128f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} @ref((int)(((int)$1 & 3) == 0 ? Math.Round($0.ToScalar()) : ((int)$1 & 3) == 1 ? Math.Floor($0.ToScalar()) : ((int)$1 & 3) == 2 ? Math.Ceiling($0.ToScalar()) : Math.Truncate($0.ToScalar()))) = _mm_cvt_roundsd_si32($0, ($1 & 3) | 8)
+ConvertToUInt32(v128f32) = _mm_cvtss_u32($0)
+ConvertToUInt32(v128f32,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundss_u32($0, ($1 & 3) | 8)
+ConvertToUInt32(v128f64) = _mm_cvtsd_u32($0)
+ConvertToUInt32(v128f64,u8) @imm{0,1,2,3,4,5,6,7,8,9,10,11} = _mm_cvt_roundsd_u32($0, ($1 & 3) | 8)
+ConvertToUInt32WithTruncation(v128f32) = _mm_cvttss_u32($0)
+ConvertToUInt32WithTruncation(v128f64) = _mm_cvttsd_u32($0)

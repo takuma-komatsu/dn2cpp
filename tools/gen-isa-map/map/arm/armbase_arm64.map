@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.ArmBase+Arm64
+LeadingSignCount(i32) = dn2cpp_isa_cls32($0)
+LeadingSignCount(i64) = dn2cpp_isa_cls64($0)
+LeadingZeroCount(i64) = dn2cpp_isa_clz64((uint64_t)$0)
+LeadingZeroCount(u64) = dn2cpp_isa_clz64($0)
+MultiplyHigh(i64,i64) = dn2cpp_isa_smulh64($0, $1)
+MultiplyHigh(u64,u64) = dn2cpp_isa_umulh64($0, $1)
+ReverseElementBits(i64) = (int64_t)dn2cpp_isa_rbit64((uint64_t)$0)
+ReverseElementBits(u64) = dn2cpp_isa_rbit64($0)

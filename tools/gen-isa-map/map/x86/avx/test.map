@@ -1,0 +1,14 @@
+# System.Runtime.Intrinsics.X86.Avx — VPTEST at 256 bits and VTESTPS / VTESTPD. The integer
+# forms test every bit: TestZ is ZF (a & b == 0), TestC is CF (~a & b == 0), TestNotZAndNotC
+# both flags clear; one 256-bit spelling serves every lane type. The float forms test the
+# sign bits of the lanes alone, which the most-significant-bit masks spell.
+target = avx
+TestZ(v256{T},v256{T}) @ref(($0 & $1) == Vector256<{cs}>.Zero) = _mm256_testz_si256($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64
+TestC(v256{T},v256{T}) @ref(Vector256.AndNot($1, $0) == Vector256<{cs}>.Zero) = _mm256_testc_si256($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64
+TestNotZAndNotC(v256{T},v256{T}) @ref(($0 & $1) != Vector256<{cs}>.Zero && Vector256.AndNot($1, $0) != Vector256<{cs}>.Zero) = _mm256_testnzc_si256($0, $1) != 0 for T in i8,u8,i16,u16,i32,u32,i64,u64
+TestZ(v128{T},v128{T}) @ref((Vector128.ExtractMostSignificantBits($0) & Vector128.ExtractMostSignificantBits($1)) == 0) = _mm_testz_{ps|pd}($0, $1) != 0 for T in f32,f64
+TestC(v128{T},v128{T}) @ref((~Vector128.ExtractMostSignificantBits($0) & Vector128.ExtractMostSignificantBits($1)) == 0) = _mm_testc_{ps|pd}($0, $1) != 0 for T in f32,f64
+TestNotZAndNotC(v128{T},v128{T}) @ref((Vector128.ExtractMostSignificantBits($0) & Vector128.ExtractMostSignificantBits($1)) != 0 && (~Vector128.ExtractMostSignificantBits($0) & Vector128.ExtractMostSignificantBits($1)) != 0) = _mm_testnzc_{ps|pd}($0, $1) != 0 for T in f32,f64
+TestZ(v256{T},v256{T}) @ref((Vector256.ExtractMostSignificantBits($0) & Vector256.ExtractMostSignificantBits($1)) == 0) = _mm256_testz_{ps|pd}($0, $1) != 0 for T in f32,f64
+TestC(v256{T},v256{T}) @ref((~Vector256.ExtractMostSignificantBits($0) & Vector256.ExtractMostSignificantBits($1)) == 0) = _mm256_testc_{ps|pd}($0, $1) != 0 for T in f32,f64
+TestNotZAndNotC(v256{T},v256{T}) @ref((Vector256.ExtractMostSignificantBits($0) & Vector256.ExtractMostSignificantBits($1)) != 0 && (~Vector256.ExtractMostSignificantBits($0) & Vector256.ExtractMostSignificantBits($1)) != 0) = _mm256_testnzc_{ps|pd}($0, $1) != 0 for T in f32,f64

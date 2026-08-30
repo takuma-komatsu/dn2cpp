@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — widening of the lower or upper half.
+# SignExtend* is extend_*_s and ZeroExtend* extend_*_u whatever the operand's C#
+# signedness (the overloads differ only in the result type), so the reference
+# reinterprets the operand before widening; extmul and extadd_pairwise follow the
+# element's own signedness.
+SignExtendWideningLower(v128{T}) @ref(Vector128.WidenLower($0.As<{cs}, {scs}>())) = wasm_{swlane}_extend_low_{slane}($0) for T in i8,u8,i16,u16,i32,u32
+SignExtendWideningUpper(v128{T}) @ref(Vector128.WidenUpper($0.As<{cs}, {scs}>())) = wasm_{swlane}_extend_high_{slane}($0) for T in i8,u8,i16,u16,i32,u32
+ZeroExtendWideningLower(v128{T}) @ref(Vector128.WidenLower($0.As<{cs}, {ucs}>())) = wasm_{uwlane}_extend_low_{ulane}($0) for T in i8,u8,i16,u16,i32,u32
+ZeroExtendWideningUpper(v128{T}) @ref(Vector128.WidenUpper($0.As<{cs}, {ucs}>())) = wasm_{uwlane}_extend_high_{ulane}($0) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningLower(v128{T},v128{T}) @ref(Vector128.Multiply(Vector128.WidenLower($0), Vector128.WidenLower($1))) = wasm_{wlane}_extmul_low_{lane}($0, $1) for T in i8,u8,i16,u16,i32,u32
+MultiplyWideningUpper(v128{T},v128{T}) @ref(Vector128.Multiply(Vector128.WidenUpper($0), Vector128.WidenUpper($1))) = wasm_{wlane}_extmul_high_{lane}($0, $1) for T in i8,u8,i16,u16,i32,u32
+AddPairwiseWidening(v128{T}) = wasm_{wlane}_extadd_pairwise_{lane}($0) for T in i8,u8,i16,u16

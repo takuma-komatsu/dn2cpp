@@ -1,0 +1,8 @@
+# System.Runtime.Intrinsics.X86.Sse42 — the 64-bit signed compare and CRC32C, one
+# instruction per operand width: the reflected Castagnoli update over the operand's bytes
+# with no initial or final inversion, which the probe's Crc32Ref computes bit by bit.
+target = sse4.2
+CompareGreaterThan(v128i64,v128i64) @ref(Vector128.GreaterThan($0, $1)) = _mm_cmpgt_epi64($0, $1)
+Crc32(u32,u8) @ref(Fmt.Crc32Ref($0, $1, 1, 0x82F63B78u)) = _mm_crc32_u8($0, $1)
+Crc32(u32,u16) @ref(Fmt.Crc32Ref($0, $1, 2, 0x82F63B78u)) = _mm_crc32_u16($0, $1)
+Crc32(u32,u32) @ref(Fmt.Crc32Ref($0, $1, 4, 0x82F63B78u)) = _mm_crc32_u32($0, $1)

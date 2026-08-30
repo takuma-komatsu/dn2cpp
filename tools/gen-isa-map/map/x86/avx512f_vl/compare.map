@@ -1,0 +1,23 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — the mask-register comparisons at 128 and 256
+# bits, returned as all-ones / all-zeros lanes through VPMOVM2D / VPMOVM2Q; the predicates
+# and the Compare range are avx512f/compare.map's.
+target = avx512f,avx512bw,avx512dq,avx512vl
+CompareEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.Equals($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpeq_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareGreaterThan(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpgt_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareGreaterThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmpge_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareLessThan(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmplt_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareLessThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmple_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareNotEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.Equals($0, $1))) = {mm}_movm_epi{bits}({mm}_cmpneq_{ep}_mask($0, $1)) for W in 128,256 for T in i32,u32,i64,u64
+CompareEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.Equals($0, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_EQ_OQ)) for W in 128,256 for T in f32,f64
+CompareGreaterThan(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_GT_OS)) for W in 128,256 for T in f32,f64
+CompareGreaterThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.GreaterThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_GE_OS)) for W in 128,256 for T in f32,f64
+CompareLessThan(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThan($0, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_LT_OS)) for W in 128,256 for T in f32,f64
+CompareLessThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.LessThanOrEqual($0, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_LE_OS)) for W in 128,256 for T in f32,f64
+CompareNotEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.Equals($0, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_NEQ_UQ)) for W in 128,256 for T in f32,f64
+CompareNotGreaterThan(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.GreaterThan($0, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_NGT_US)) for W in 128,256 for T in f32,f64
+CompareNotGreaterThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.GreaterThanOrEqual($0, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_NGE_US)) for W in 128,256 for T in f32,f64
+CompareNotLessThan(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.LessThan($0, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_NLT_US)) for W in 128,256 for T in f32,f64
+CompareNotLessThanOrEqual(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.LessThanOrEqual($0, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_NLE_US)) for W in 128,256 for T in f32,f64
+CompareOrdered(v{W}{T},v{W}{T}) @ref(Vector{W}.Equals($0, $0) & Vector{W}.Equals($1, $1)) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_ORD_Q)) for W in 128,256 for T in f32,f64
+CompareUnordered(v{W}{T},v{W}{T}) @ref(Vector{W}.OnesComplement(Vector{W}.Equals($0, $0) & Vector{W}.Equals($1, $1))) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, _CMP_UNORD_Q)) for W in 128,256 for T in f32,f64
+Compare(v{W}{T},v{W}{T},u8) @imm[0..32) = {mm}_movm_epi{bits}({mm}_cmp_{ps|pd}_mask($0, $1, $2)) for W in 128,256 for T in f32,f64

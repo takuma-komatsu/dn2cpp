@@ -1,0 +1,16 @@
+# System.Runtime.Intrinsics.X86.Sse41 — the integer min/max forms SSE2 lacks, PMULLD and
+# PMULDQ (the even 32-bit lanes into 64-bit products), PACKUSDW, PHMINPOSUW (the smallest
+# ushort lane and the index of its first occurrence, the rest zero), MPSADBW and DPPS /
+# DPPD. The dot-product control selects the products to sum in its high nibble and the
+# result lanes to write in its low nibble; MPSADBW reads three control bits; both take
+# the whole byte in .NET and in hardware.
+target = sse4.1
+Max(v128{T},v128{T}) @ref(Vector128.Max($0, $1)) = _mm_max_{ep}($0, $1) for T in i8,u16,i32,u32
+Min(v128{T},v128{T}) @ref(Vector128.Min($0, $1)) = _mm_min_{ep}($0, $1) for T in i8,u16,i32,u32
+MinHorizontal(v128u16) @ref(Fmt.MinHorizontalRef($0)) = _mm_minpos_epu16($0)
+Multiply(v128i32,v128i32) @ref(Vector128.Create((long)$0.GetElement(0) * $1.GetElement(0), (long)$0.GetElement(2) * $1.GetElement(2))) = _mm_mul_epi32($0, $1)
+MultiplyLow(v128{T},v128{T}) @ref(Vector128.Multiply($0, $1)) = _mm_mullo_epi32($0, $1) for T in i32,u32
+MultipleSumAbsoluteDifferences(v128u8,v128u8,u8) @imm8 = _mm_mpsadbw_epu8($0, $1, $2)
+PackUnsignedSaturate(v128i32,v128i32) = _mm_packus_epi32($0, $1)
+DotProduct(v128f32,v128f32,u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-($2 & 1), -(($2 >> 1) & 1), -(($2 >> 2) & 1), -(($2 >> 3) & 1)).AsSingle(), Vector128.Create(Vector128.Sum(Vector128.ConditionalSelect(Vector128.Create(-(($2 >> 4) & 1), -(($2 >> 5) & 1), -(($2 >> 6) & 1), -(($2 >> 7) & 1)).AsSingle(), Vector128.Multiply($0, $1), Vector128<float>.Zero))), Vector128<float>.Zero)) = _mm_dp_ps($0, $1, $2)
+DotProduct(v128f64,v128f64,u8) @imm8 @ref(Vector128.ConditionalSelect(Vector128.Create(-(long)($2 & 1), -(long)(($2 >> 1) & 1)).AsDouble(), Vector128.Create(Vector128.Sum(Vector128.ConditionalSelect(Vector128.Create(-(long)(($2 >> 4) & 1), -(long)(($2 >> 5) & 1)).AsDouble(), Vector128.Multiply($0, $1), Vector128<double>.Zero))), Vector128<double>.Zero)) = _mm_dp_pd($0, $1, $2)

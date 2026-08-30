@@ -1,4 +1,6 @@
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Metadata;
 
 namespace Dn2Cpp;
 
@@ -15,6 +17,64 @@ public static class TranspileDriver
     /// always lands on <see cref="Run"/>'s null-backend console default.</summary>
     public static int RunConsole(TranspileOptions options)
         => Run(options);
+
+    /// <summary>The <c>--dump-isa-surface</c> report: one <c>family</c> line per
+    /// platform-ISA facade stamped on a loaded TypeDef
+    /// (<c>family\t&lt;contract name&gt;\t&lt;arch&gt;\t&lt;token&gt;\t&lt;lowered&gt;</c>) and one
+    /// <c>method</c> line per public static instruction other than <c>get_IsSupported</c>
+    /// (<c>method\t&lt;contract name&gt;\t&lt;method&gt;\t&lt;helper name&gt;</c>), preceded by a
+    /// <c>corelib\t&lt;path&gt;</c> line. Lines are ordinal-sorted so two runs over one
+    /// CoreLib diff clean. A method whose parameter shape the helper-name contract cannot
+    /// spell is reported, not skipped: its fourth column is <c>!</c> followed by the
+    /// reason, so the report stays total over the surface and the gap is visible.</summary>
+    private static void WriteIsaSurface(Compilation compilation, IReadOnlyList<string> loadSet, string path)
+    {
+        var lines = new List<string>();
+        foreach (var module in compilation.Modules)
+        {
+            var reader = module.Reader;
+            foreach (var tdh in reader.TypeDefinitions)
+            {
+                if (!module.ClassMap.TryGetValue(tdh, out var cls) || cls.PlatformIsa is not { } family)
+                    continue;
+                string contract = CoreIntrinsics.IsaContractName(family);
+                lines.Add(string.Join('\t', new[]
+                {
+                    "family", contract, family.Arch.ToString(), family.Token,
+                    family.Lowered ? "true" : "false",
+                }));
+                foreach (var mh in reader.GetTypeDefinition(tdh).GetMethods())
+                {
+                    var md = reader.GetMethodDefinition(mh);
+                    string name = reader.GetString(md.Name);
+                    if (name is ".ctor" or ".cctor" or "get_IsSupported")
+                        continue;
+                    if ((md.Attributes & MethodAttributes.Static) == 0
+                        || (md.Attributes & MethodAttributes.MemberAccessMask) != MethodAttributes.Public)
+                        continue;
+                    var sig = md.DecodeSignature(compilation.SigProvider, GenericContext.Empty);
+                    if (sig.GenericParameterCount != 0)
+                        throw new InvalidOperationException(
+                            $"{contract}.{name}: a platform-ISA instruction is never generic");
+                    string helper;
+                    try
+                    {
+                        helper = CoreIntrinsics.IsaHelperName(family, name, sig);
+                    }
+                    catch (NotSupportedException e)
+                    {
+                        helper = "!" + e.Message;
+                    }
+                    lines.Add(string.Join('\t', new[] { "method", contract, name, helper }));
+                }
+            }
+        }
+        lines.Sort(StringComparer.Ordinal);
+        string corelib = loadSet.FirstOrDefault(p =>
+            Path.GetFileName(p).Equals("System.Private.CoreLib.dll", StringComparison.OrdinalIgnoreCase)) ?? "";
+        lines.Insert(0, "corelib\t" + corelib);
+        File.WriteAllText(path, string.Concat(lines.Select(l => l + "\n")));
+    }
 
     /// <summary>Backend-agnostic core: the full CLI sets
     /// <see cref="TranspileOptions.Backend"/> (Godot / dotnet-module / console); the
@@ -106,6 +166,15 @@ public static class TranspileDriver
             Timing.Mark("setup");
             var compilation = Compilation.Create(paths, options);
 
+            if (options.IsaSurfaceDump is { } isaDump)
+            {
+                // Build stopped before reachability (Compilation.StopBeforeReachability);
+                // the model holds every loaded TypeDef, which is all the surface needs.
+                WriteIsaSurface(compilation, paths, isaDump);
+                Console.WriteLine($"dn2cpp: platform-ISA surface -> {isaDump}");
+                return 0;
+            }
+
             if (measure)
             {
                 // Enumerate every reachable transpilation gap in one pass. Writes a
@@ -173,11 +242,11 @@ public static class TranspileDriver
             RemoveStaleChunks(outDir, "generated_b", ".cpp");
             RemoveStaleChunks(outDir, "generated_m", ".cpp");
             RemoveStaleChunks(outDir, "generated_", ".cpp");
-            // The two [HotPath] TUs each have one fixed name, so they are swept
-            // rewrite-or-remove style like the sidecars below: deleted up front,
-            // recreated during emission only when this run marks anything (the
-            // FastMath one only when a marked body sets that knob).
-            foreach (string hotTu in new[] { "generated_hot.cpp", "generated_hot_fast.cpp" })
+            // Optional generated TUs have fixed names, so they are swept rewrite-or-
+            // remove style like the sidecars below: deleted up front and recreated
+            // during emission only when this run marks their feature.
+            foreach (string hotTu in new[]
+                { "generated_hot.cpp", "generated_hot_fast.cpp", "generated_platform_isa.cpp" })
             {
                 string hotTuPath = Path.Combine(outDir, hotTu);
                 if (File.Exists(hotTuPath))

@@ -1,0 +1,11 @@
+# System.Runtime.Intrinsics.Arm.Sha1 — SHA1C/M/P/H/SU0/SU1. The hash_e operand
+# and the SHA1H result are one 32-bit lane: .NET passes and returns them as lane
+# 0 of a Vector64<uint>, the register's other lane zero after an S-register write.
+# "+sha2" is the AArch64 feature that carries both the SHA1 and SHA256 instructions.
+target = +sha2
+FixedRotate(v64u32) = dn2cpp_isa_lane0<8>(vsha1h_u32(vget_lane_u32($0, 0)))
+HashUpdateChoose(v128u32,v64u32,v128u32) = vsha1cq_u32($0, vget_lane_u32($1, 0), $2)
+HashUpdateMajority(v128u32,v64u32,v128u32) = vsha1mq_u32($0, vget_lane_u32($1, 0), $2)
+HashUpdateParity(v128u32,v64u32,v128u32) = vsha1pq_u32($0, vget_lane_u32($1, 0), $2)
+ScheduleUpdate0(v128u32,v128u32,v128u32) = vsha1su0q_u32($0, $1, $2)
+ScheduleUpdate1(v128u32,v128u32) = vsha1su1q_u32($0, $1)

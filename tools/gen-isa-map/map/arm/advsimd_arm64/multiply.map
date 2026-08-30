@@ -1,0 +1,33 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd+Arm64 — 64-bit-element fused multiply-add,
+# the by-lane forms (FMLA Vd, Vn, Vm.S[lane]), and FMULX. A ByScalar form is lane 0.
+FusedMultiplyAdd(v128f64,v128f64,v128f64) = vfmaq_f64($0, $1, $2)
+FusedMultiplyAddByScalar(v128{T},v128{T},v64{T}) = vfmaq_lane_{neon}($0, $1, $2, 0) for T in f32,f64
+FusedMultiplyAddByScalar(v64f32,v64f32,v64f32) = vfma_lane_f32($0, $1, $2, 0)
+FusedMultiplyAddBySelectedScalar(v128{T},v128{T},v128{T},u8) @imm[0..{N128}) = vfmaq_laneq_{neon}($0, $1, $2, $3) for T in f32,f64
+FusedMultiplyAddBySelectedScalar(v128f32,v128f32,v64f32,u8) @imm[0..2) = vfmaq_lane_f32($0, $1, $2, $3)
+FusedMultiplyAddBySelectedScalar(v64f32,v64f32,v128f32,u8) @imm[0..4) = vfma_laneq_f32($0, $1, $2, $3)
+FusedMultiplyAddBySelectedScalar(v64f32,v64f32,v64f32,u8) @imm[0..2) = vfma_lane_f32($0, $1, $2, $3)
+FusedMultiplyAddScalarBySelectedScalar(v64{T},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vfma{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in f32,f64
+FusedMultiplyAddScalarBySelectedScalar(v64f32,v64f32,v64f32,u8) @imm[0..2) = dn2cpp_isa_lane0<8>(vfmas_lane_f32(vget_lane_f32($0, 0), vget_lane_f32($1, 0), $2, $3))
+FusedMultiplySubtract(v128f64,v128f64,v128f64) = vfmsq_f64($0, $1, $2)
+FusedMultiplySubtractByScalar(v128{T},v128{T},v64{T}) = vfmsq_lane_{neon}($0, $1, $2, 0) for T in f32,f64
+FusedMultiplySubtractByScalar(v64f32,v64f32,v64f32) = vfms_lane_f32($0, $1, $2, 0)
+FusedMultiplySubtractBySelectedScalar(v128{T},v128{T},v128{T},u8) @imm[0..{N128}) = vfmsq_laneq_{neon}($0, $1, $2, $3) for T in f32,f64
+FusedMultiplySubtractBySelectedScalar(v128f32,v128f32,v64f32,u8) @imm[0..2) = vfmsq_lane_f32($0, $1, $2, $3)
+FusedMultiplySubtractBySelectedScalar(v64f32,v64f32,v128f32,u8) @imm[0..4) = vfms_laneq_f32($0, $1, $2, $3)
+FusedMultiplySubtractBySelectedScalar(v64f32,v64f32,v64f32,u8) @imm[0..2) = vfms_lane_f32($0, $1, $2, $3)
+FusedMultiplySubtractScalarBySelectedScalar(v64{T},v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vfms{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0), $2, $3)) for T in f32,f64
+FusedMultiplySubtractScalarBySelectedScalar(v64f32,v64f32,v64f32,u8) @imm[0..2) = dn2cpp_isa_lane0<8>(vfmss_lane_f32(vget_lane_f32($0, 0), vget_lane_f32($1, 0), $2, $3))
+MultiplyByScalar(v128f64,v64f64) = vmulq_lane_f64($0, $1, 0)
+MultiplyBySelectedScalar(v128f64,v128f64,u8) @imm[0..2) = vmulq_laneq_f64($0, $1, $2)
+MultiplyExtended(v128{T},v128{T}) = vmulxq_{neon}($0, $1) for T in f32,f64
+MultiplyExtended(v64f32,v64f32) = vmulx_f32($0, $1)
+MultiplyExtendedByScalar(v128f64,v64f64) = vmulxq_lane_f64($0, $1, 0)
+MultiplyExtendedBySelectedScalar(v128{T},v128{T},u8) @imm[0..{N128}) = vmulxq_laneq_{neon}($0, $1, $2) for T in f32,f64
+MultiplyExtendedBySelectedScalar(v128f32,v64f32,u8) @imm[0..2) = vmulxq_lane_f32($0, $1, $2)
+MultiplyExtendedBySelectedScalar(v64f32,v128f32,u8) @imm[0..4) = vmulx_laneq_f32($0, $1, $2)
+MultiplyExtendedBySelectedScalar(v64f32,v64f32,u8) @imm[0..2) = vmulx_lane_f32($0, $1, $2)
+MultiplyExtendedScalar(v64{T},v64{T}) = dn2cpp_isa_lane0<8>(vmulx{bhsd}_{neon}(vget_lane_{neon}($0, 0), vget_lane_{neon}($1, 0))) for T in f32,f64
+MultiplyExtendedScalarBySelectedScalar(v64{T},v128{T},u8) @imm[0..{N128}) = dn2cpp_isa_lane0<8>(vmulx{bhsd}_laneq_{neon}(vget_lane_{neon}($0, 0), $1, $2)) for T in f32,f64
+MultiplyExtendedScalarBySelectedScalar(v64f32,v64f32,u8) @imm[0..2) = dn2cpp_isa_lane0<8>(vmulxs_lane_f32(vget_lane_f32($0, 0), $1, $2))
+MultiplyScalarBySelectedScalar(v64f64,v128f64,u8) @imm[0..2) = dn2cpp_isa_lane0<8>(vmuld_laneq_f64(vget_lane_f64($0, 0), $1, $2))

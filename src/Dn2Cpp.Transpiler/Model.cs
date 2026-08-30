@@ -952,6 +952,17 @@ internal sealed class ClassInfo
     /// type is modeled by a hand-written runtime struct — its IL is never
     /// transpiled and no struct/vtable/type-info is emitted for it.</summary>
     public string? IntrinsicCppName;
+    /// <summary>Non-null exactly for the CoreLib platform-ISA facade types
+    /// (<c>System.Runtime.Intrinsics.X86/Arm/Wasm</c> — <c>Sse2</c>, <c>Lzcnt.X64</c>,
+    /// <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …), stamped in Build's pass 1 from the
+    /// metadata declaring chain alone. Every static member of such a type is lowered at
+    /// the call site — to the runtime capability token, a constant, a
+    /// <c>dn2cpp_isa_*</c> helper, or a PlatformNotSupportedException — so its IL is
+    /// never a reachability edge and no body, method table or type-info is emitted for
+    /// it (the descriptor row is <see cref="CoreIntrinsics.MdPlatformIsa"/>). A nested
+    /// facade's <see cref="FullName"/> is its bare simple name, which is why this stamp,
+    /// not a name table, is the identity test.</summary>
+    public IsaFamily? PlatformIsa;
     /// <summary>A closed specialization is completed in two stages, and the seam is not
     /// arbitrary.
     ///

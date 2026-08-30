@@ -352,6 +352,15 @@ internal enum InterceptEmitArm
     /// in <c>MethodCompiler.EmitManagedCall</c> plus the three address/allocation
     /// mouths, none of which is one of the two descriptor funnels.</para></summary>
     AbsentNetworkPalThrow,
+    /// <summary>A static member of a CoreLib platform-ISA facade
+    /// (<c>ClassInfo.PlatformIsa</c> is stamped) — <c>MethodCompiler.EmitPlatformIsaCall</c>,
+    /// total over the predicate: <c>IsSupported</c> pushes the runtime capability token
+    /// (a lowered family) or constant 0; an instruction of a lowered family calls its
+    /// <c>dn2cpp_isa_*</c> helper; an instruction of an unlowered family throws
+    /// PlatformNotSupportedException, as real .NET does when <c>IsSupported</c> is false.
+    /// Nothing leaves through <c>EmitManagedCall</c>: the real bodies are
+    /// <c>[Intrinsic]</c> self-recursive stubs the JIT would have replaced.</summary>
+    PlatformIsa,
 }
 
 /// <summary>One MethodDefinition-arm intercept: the single truth source both askers
@@ -705,6 +714,20 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.IntrinsicDispatch,
         extra: static mi => IsIntrinsicType(mi.DeclaringClass.FullName));
 
+    /// <summary>Every static member of a CoreLib platform-ISA facade
+    /// (<c>Sse2</c>, <c>Lzcnt.X64</c>, <c>AdvSimd.Arm64</c>, <c>PackedSimd</c>, …): the
+    /// whole type is the member set, so the predicate is the <c>ClassInfo.PlatformIsa</c>
+    /// stamp — a precomputed field, read without a decode, so the row stays pure. Nested
+    /// facades have a bare <c>FullName</c> (<c>X64</c>), which is why no name gate can
+    /// express this set. The MemberReference arm has no MethodInfo and therefore no row:
+    /// its two askers (<c>Compilation.ResolveCallTarget</c>'s MemberRef arm and the
+    /// post-resolution chain of <c>MethodCompiler.TranslateCall</c>) resolve the parent
+    /// TypeRef to its ClassInfo and test the same stamp, each commented with the other
+    /// — the documented non-pure-predicate shape (docs/ARCHITECTURE.md §4-B).</summary>
+    public static readonly MethodDefIntercept MdPlatformIsa = new(
+        InterceptCutKind.Cut, InterceptEmitArm.PlatformIsa,
+        extra: static mi => mi.DeclaringClass.PlatformIsa is not null);
+
     /// <summary>Every MethodDefinition-arm row — a REGISTRY, not a chain: the
     /// order here carries no meaning, because each asker references the rows it
     /// needs at its own chain position (see <see cref="MethodDefIntercept"/> on
@@ -726,6 +749,7 @@ internal static partial class CoreIntrinsics
         MdSyncContextSlot,
         MdMemoryMarshalArrayData,
         MdIntrinsicType,
+        MdPlatformIsa,
     ];
 
     /// <summary>First row in <paramref name="rows"/> matching
@@ -1722,6 +1746,9 @@ internal static partial class CoreIntrinsics
         CheckNameKeyedTable("ConstrainedVirtualIntercepts", ConstrainedVirtualIntercepts, false, false);
         CheckNameKeyedTable("ScanIntercepts", ScanIntercepts, true, false);
         CheckNameKeyedTable("BoundedIntercepts", BoundedIntercepts, false, true);
+        // The platform-ISA table is static data the MdPlatformIsa row and the getter fold
+        // read; its shape is checked with the rows for the same reason.
+        CheckPlatformIsaTable();
     }
 
     /// <summary>The checks every row shape shares: an arm was named, and neither gate is

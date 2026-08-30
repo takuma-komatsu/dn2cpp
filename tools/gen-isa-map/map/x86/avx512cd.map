@@ -1,0 +1,6 @@
+# System.Runtime.Intrinsics.X86.Avx512CD — VPCONFLICTD/Q: each lane receives one bit per
+# lower-indexed lane that holds an equal value; VPLZCNTD/Q: the leading zero count of each
+# lane (the lane width for zero). Neither has a portable Vector512 equivalent in .NET 10.
+target = avx512cd
+DetectConflicts(v512{T}) = _mm512_conflict_{epi}($0) for T in i32,u32,i64,u64
+LeadingZeroCount(v512{T}) = _mm512_lzcnt_{epi}($0) for T in i32,u32,i64,u64

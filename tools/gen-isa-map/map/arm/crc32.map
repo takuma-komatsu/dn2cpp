@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.Arm.Crc32 — CRC32B/H/W (ISO 3309 polynomial) and
+# CRC32CB/CH/CW (Castagnoli). "+crc" is the spelling both clang and gcc accept
+# for an AArch64 target attribute.
+target = +crc
+ComputeCrc32(u32,u8) = __crc32b($0, $1)
+ComputeCrc32(u32,u16) = __crc32h($0, $1)
+ComputeCrc32(u32,u32) = __crc32w($0, $1)
+ComputeCrc32C(u32,u8) = __crc32cb($0, $1)
+ComputeCrc32C(u32,u16) = __crc32ch($0, $1)
+ComputeCrc32C(u32,u32) = __crc32cw($0, $1)

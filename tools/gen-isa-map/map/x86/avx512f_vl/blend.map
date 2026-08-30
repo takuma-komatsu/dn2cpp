@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.X86.Avx512F.VL — the mask-driven operations at 128 and 256 bits.
+# The integer BlendVariable overloads retain the byte-mask contract of Sse41 and Avx2;
+# the floating-point overloads select by their element sign bits.
+target = avx512f,avx512bw,avx512dq,avx512vl
+BlendVariable(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.LessThan($2.AsSByte(), Vector{W}<sbyte>.Zero).As<sbyte, {cs}>(), $1, $0)) = {mm}_mask_blend_epi8({mm}_movepi8_mask($2), $0, $1) for W in 128,256 for T in i32,u32,i64,u64
+BlendVariable(v{W}{T},v{W}{T},v{W}{T}) @ref(Vector{W}.ConditionalSelect(Vector{W}.IsNegative($2), $1, $0)) = {mm}_mask_blend_{ps|pd}({mm}_movepi{bits}_mask($2:{sT}), $0, $1) for W in 128,256 for T in f32,f64
+Compress(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_compress_epi{bits}($0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i32,u32,i64,u64
+Compress(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_compress_{ps|pd}($0, {mm}_movepi{bits}_mask($1:{sT}), $2) for W in 128,256 for T in f32,f64
+Expand(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_expand_epi{bits}($0, {mm}_movepi{bits}_mask($1), $2) for W in 128,256 for T in i32,u32,i64,u64
+Expand(v{W}{T},v{W}{T},v{W}{T}) = {mm}_mask_expand_{ps|pd}($0, {mm}_movepi{bits}_mask($1:{sT}), $2) for W in 128,256 for T in f32,f64

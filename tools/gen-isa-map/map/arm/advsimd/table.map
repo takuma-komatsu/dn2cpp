@@ -1,0 +1,10 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — TBL/TBX with one to four 128-bit table
+# registers and a 64-bit index vector; the index is always read as bytes.
+VectorTableLookup(v128{T},v64{T}) = vqtbl1_{neon}($0, $1:u8) for T in i8,u8
+VectorTableLookup(t2v128{T},v64{T}) = vqtbl2_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookup(t3v128{T},v64{T}) = vqtbl3_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookup(t4v128{T},v64{T}) = vqtbl4_{neon}($0.*, $1:u8) for T in i8,u8
+VectorTableLookupExtension(v64{T},v128{T},v64{T}) = vqtbx1_{neon}($0, $1, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v64{T},t2v128{T},v64{T}) = vqtbx2_{neon}($0, $1.*, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v64{T},t3v128{T},v64{T}) = vqtbx3_{neon}($0, $1.*, $2:u8) for T in i8,u8
+VectorTableLookupExtension(v64{T},t4v128{T},v64{T}) = vqtbx4_{neon}($0, $1.*, $2:u8) for T in i8,u8

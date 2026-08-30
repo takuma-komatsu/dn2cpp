@@ -1,0 +1,5 @@
+# System.Runtime.Intrinsics.X86.Pclmulqdq.V512 — VPCLMULQDQ on four 128-bit lanes; see
+# pclmulqdq_v256.map.
+target = avx512f,vpclmulqdq
+CarrylessMultiply(v512i64,v512i64,u8) @imm8 = _mm512_clmulepi64_epi128($0, $1, $2)
+CarrylessMultiply(v512u64,v512u64,u8) @imm8 = _mm512_clmulepi64_epi128($0, $1, $2)

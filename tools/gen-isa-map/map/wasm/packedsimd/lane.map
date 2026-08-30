@@ -1,0 +1,18 @@
+# System.Runtime.Intrinsics.Wasm.PackedSimd — splat, and lane access by immediate index.
+# extract_lane has _s / _u forms below 32 bits (the .NET result is int / uint), one
+# form above; replace_lane takes the lane type, which the 8- and 16-bit .NET
+# overloads pass as a 32-bit integer.
+Splat({T}) @ref(Vector128.Create($0)) = wasm_{slane}_splat($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+ExtractScalar(v128{T},u8) @imm[0..{N128}) @ref($0.GetElement($1)) = wasm_{lane}_extract_lane($0, $1) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64,nint,nuint
+ReplaceScalar(v128i8,u8,i32) @imm$1[0..16) @ref($0.WithElement($1, (sbyte)$2)) = wasm_i8x16_replace_lane($0, $1, (int8_t)$2)
+ReplaceScalar(v128u8,u8,u32) @imm$1[0..16) @ref($0.WithElement($1, (byte)$2)) = wasm_u8x16_replace_lane($0, $1, (uint8_t)$2)
+ReplaceScalar(v128i16,u8,i32) @imm$1[0..8) @ref($0.WithElement($1, (short)$2)) = wasm_i16x8_replace_lane($0, $1, (int16_t)$2)
+ReplaceScalar(v128u16,u8,u32) @imm$1[0..8) @ref($0.WithElement($1, (ushort)$2)) = wasm_u16x8_replace_lane($0, $1, (uint16_t)$2)
+ReplaceScalar(v128i32,u8,i32) @imm$1[0..4) @ref($0.WithElement($1, $2)) = wasm_i32x4_replace_lane($0, $1, $2)
+ReplaceScalar(v128u32,u8,u32) @imm$1[0..4) @ref($0.WithElement($1, $2)) = wasm_u32x4_replace_lane($0, $1, $2)
+ReplaceScalar(v128i64,u8,i64) @imm$1[0..2) @ref($0.WithElement($1, $2)) = wasm_i64x2_replace_lane($0, $1, $2)
+ReplaceScalar(v128u64,u8,u64) @imm$1[0..2) @ref($0.WithElement($1, $2)) = wasm_u64x2_replace_lane($0, $1, $2)
+ReplaceScalar(v128f32,u8,f32) @imm$1[0..4) @ref($0.WithElement($1, $2)) = wasm_f32x4_replace_lane($0, $1, $2)
+ReplaceScalar(v128f64,u8,f64) @imm$1[0..2) @ref($0.WithElement($1, $2)) = wasm_f64x2_replace_lane($0, $1, $2)
+ReplaceScalar(v128nint,u8,nint) @imm$1[0..4) @ref($0.WithElement($1, $2)) = wasm_i32x4_replace_lane($0, $1, (int32_t)$2)
+ReplaceScalar(v128nuint,u8,nuint) @imm$1[0..4) @ref($0.WithElement($1, $2)) = wasm_u32x4_replace_lane($0, $1, (uint32_t)$2)

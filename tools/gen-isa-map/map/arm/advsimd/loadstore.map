@@ -1,0 +1,12 @@
+# System.Runtime.Intrinsics.Arm.AdvSimd — LD1/ST1 of one register and of two to
+# four consecutive registers (the ValueTuple overloads: LD1 {Vn, Vn+1}, not the
+# de-interleaving LD2).
+Load2xVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x2($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+Load3xVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x3($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+Load4xVector64(p{T}) = dn2cpp_isa_scatter(vld1_{neon}_x4($0), &$r*) for T in i8,u8,i16,u16,i32,u32,f32
+LoadVector128(p{T}) = vld1q_{neon}($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+LoadVector64(p{T}) = vld1_{neon}($0) for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Store(p{T},v{W}{T}) = vst1{q}_{neon}($0, $1) for W in 64,128 for T in i8,u8,i16,u16,i32,u32,i64,u64,f32,f64
+Store(p{T},t2v64{T}) = vst1_{neon}_x2($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32
+Store(p{T},t3v64{T}) = vst1_{neon}_x3($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32
+Store(p{T},t4v64{T}) = vst1_{neon}_x4($0, $1.*) for T in i8,u8,i16,u16,i32,u32,f32

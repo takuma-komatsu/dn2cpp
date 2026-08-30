@@ -1,0 +1,9 @@
+# System.Runtime.Intrinsics.Arm.Dp — SDOT/UDOT. The selected quadruplet is one
+# 32-bit lane of the third operand, so the index range is that operand's lanes.
+target = +dotprod
+DotProduct(v{W}i32,v{W}i8,v{W}i8) = vdot{q}_s32($0, $1, $2) for W in 64,128
+DotProduct(v{W}u32,v{W}u8,v{W}u8) = vdot{q}_u32($0, $1, $2) for W in 64,128
+DotProductBySelectedQuadruplet(v{W}i32,v{W}i8,v128i8,u8) @imm[0..4) = vdot{q}_laneq_s32($0, $1, $2, $3) for W in 64,128
+DotProductBySelectedQuadruplet(v{W}i32,v{W}i8,v64i8,u8) @imm[0..2) = vdot{q}_lane_s32($0, $1, $2, $3) for W in 64,128
+DotProductBySelectedQuadruplet(v{W}u32,v{W}u8,v128u8,u8) @imm[0..4) = vdot{q}_laneq_u32($0, $1, $2, $3) for W in 64,128
+DotProductBySelectedQuadruplet(v{W}u32,v{W}u8,v64u8,u8) @imm[0..2) = vdot{q}_lane_u32($0, $1, $2, $3) for W in 64,128
