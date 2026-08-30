@@ -22136,7 +22136,7 @@ internal static class Exercises
                 var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
                 var a2 = Vector128.Create(12023634, 16756341, 21489048, 26221755);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<int, int>()).As<int, int>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, int>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128i32,v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22145,7 +22145,7 @@ internal static class Exercises
                 var a1 = Vector128.Create(8718138975195L, 13680771930306L);
                 var a2 = Vector128.Create(12607770210282L, 17570403165393L);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<long, long>()).As<long, long>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, long>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128i64,v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22154,7 +22154,7 @@ internal static class Exercises
                 var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
                 var a2 = Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<uint, int>()).As<int, uint>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, uint>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128u32,v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22163,7 +22163,7 @@ internal static class Exercises
                 var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
                 var a2 = Vector128.Create(12607770210282UL, 17570403165393UL);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<ulong, long>()).As<long, ulong>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, ulong>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128u64,v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22190,7 +22190,7 @@ internal static class Exercises
                 var a1 = Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164);
                 var a2 = Vector256.Create(12023634, 16756341, 21489048, 26221755, 30954462, 35687169, 40419876, 45152583);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<int, int>()).As<int, int>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, int>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256i32,v256i32,v256i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22199,7 +22199,7 @@ internal static class Exercises
                 var a1 = Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L);
                 var a2 = Vector256.Create(12607770210282L, 17570403165393L, 22533036120504L, 27495669075615L);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<long, long>()).As<long, long>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, long>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256i64,v256i64,v256i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22208,7 +22208,7 @@ internal static class Exercises
                 var a1 = Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U);
                 var a2 = Vector256.Create(12023634U, 16756341U, 21489048U, 26221755U, 30954462U, 35687169U, 40419876U, 45152583U);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<uint, int>()).As<int, uint>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, uint>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256u32,v256u32,v256u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -22217,7 +22217,7 @@ internal static class Exercises
                 var a1 = Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL);
                 var a2 = Vector256.Create(12607770210282UL, 17570403165393UL, 22533036120504UL, 27495669075615UL);
                 var r = X86.Avx512F.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<ulong, long>()).As<long, ulong>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, ulong>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256u64,v256u64,v256u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25321,7 +25321,7 @@ internal static class Exercises
                 var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
                 var a2 = Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<short, short>()).As<short, short>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, short>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128i16,v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25330,7 +25330,7 @@ internal static class Exercises
                 var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
                 var a2 = Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<sbyte, sbyte>()).As<sbyte, sbyte>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, sbyte>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128i8,v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25339,7 +25339,7 @@ internal static class Exercises
                 var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
                 var a2 = Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<ushort, short>()).As<short, ushort>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, ushort>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128u16,v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25348,7 +25348,7 @@ internal static class Exercises
                 var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
                 var a2 = Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<byte, sbyte>()).As<sbyte, byte>(), a1, a0);
+                var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, byte>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v128u8,v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25357,7 +25357,7 @@ internal static class Exercises
                 var a1 = Vector256.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604, (short)-16469, (short)1994, (short)20457, (short)-26616, (short)-8153, (short)10310, (short)28773, (short)-18300);
                 var a2 = Vector256.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461, (short)-1998, (short)16465, (short)-30608, (short)-12145, (short)6318, (short)24781, (short)-22292, (short)-3829);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<short, short>()).As<short, short>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, short>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256i16,v256i16,v256i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25366,7 +25366,7 @@ internal static class Exercises
                 var a1 = Vector256.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108, (sbyte)-111, (sbyte)-74, (sbyte)-37, (sbyte)0, (sbyte)37, (sbyte)74, (sbyte)111, (sbyte)-108, (sbyte)-71, (sbyte)-34, (sbyte)3, (sbyte)40, (sbyte)77, (sbyte)114, (sbyte)-105, (sbyte)-68);
                 var a2 = Vector256.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119, (sbyte)-82, (sbyte)-45, (sbyte)-8, (sbyte)29, (sbyte)66, (sbyte)103, (sbyte)-116, (sbyte)-79, (sbyte)-42, (sbyte)-5, (sbyte)32, (sbyte)69, (sbyte)106, (sbyte)-113, (sbyte)-76, (sbyte)-39);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<sbyte, sbyte>()).As<sbyte, sbyte>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, sbyte>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256i8,v256i8,v256i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25375,7 +25375,7 @@ internal static class Exercises
                 var a1 = Vector256.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604, (ushort)49067, (ushort)1994, (ushort)20457, (ushort)38920, (ushort)57383, (ushort)10310, (ushort)28773, (ushort)47236);
                 var a2 = Vector256.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075, (ushort)63538, (ushort)16465, (ushort)34928, (ushort)53391, (ushort)6318, (ushort)24781, (ushort)43244, (ushort)61707);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<ushort, short>()).As<short, ushort>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, ushort>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256u16,v256u16,v256u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -25384,7 +25384,7 @@ internal static class Exercises
                 var a1 = Vector256.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108, (byte)145, (byte)182, (byte)219, (byte)0, (byte)37, (byte)74, (byte)111, (byte)148, (byte)185, (byte)222, (byte)3, (byte)40, (byte)77, (byte)114, (byte)151, (byte)188);
                 var a2 = Vector256.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137, (byte)174, (byte)211, (byte)248, (byte)29, (byte)66, (byte)103, (byte)140, (byte)177, (byte)214, (byte)251, (byte)32, (byte)69, (byte)106, (byte)143, (byte)180, (byte)217);
                 var r = X86.Avx512BW.VL.BlendVariable(a0, a1, a2);
-                var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<byte, sbyte>()).As<sbyte, byte>(), a1, a0);
+                var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, byte>(), a1, a0);
                 string h = Fmt.Hex(r.AsByte());
                 Console.WriteLine("VL.BlendVariable(v256u8,v256u8,v256u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
             }
@@ -27069,7 +27069,7 @@ internal static class Exercises
             var a1 = Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604);
             var a2 = Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<short, short>()).As<short, short>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, short>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128i16,v128i16,v128i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27078,7 +27078,7 @@ internal static class Exercises
             var a1 = Vector128.Create(8314215, 13046922, 17779629, 22512336);
             var a2 = Vector128.Create(12023634, 16756341, 21489048, 26221755);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<int, int>()).As<int, int>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, int>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128i32,v128i32,v128i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27087,7 +27087,7 @@ internal static class Exercises
             var a1 = Vector128.Create(8718138975195L, 13680771930306L);
             var a2 = Vector128.Create(12607770210282L, 17570403165393L);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<long, long>()).As<long, long>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, long>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128i64,v128i64,v128i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27096,7 +27096,7 @@ internal static class Exercises
             var a1 = Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108);
             var a2 = Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<sbyte, sbyte>()).As<sbyte, sbyte>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, sbyte>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128i8,v128i8,v128i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27105,7 +27105,7 @@ internal static class Exercises
             var a1 = Vector128.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604);
             var a2 = Vector128.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<ushort, short>()).As<short, ushort>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, ushort>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128u16,v128u16,v128u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27114,7 +27114,7 @@ internal static class Exercises
             var a1 = Vector128.Create(8314215U, 13046922U, 17779629U, 22512336U);
             var a2 = Vector128.Create(12023634U, 16756341U, 21489048U, 26221755U);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<uint, int>()).As<int, uint>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, uint>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128u32,v128u32,v128u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27123,7 +27123,7 @@ internal static class Exercises
             var a1 = Vector128.Create(8718138975195UL, 13680771930306UL);
             var a2 = Vector128.Create(12607770210282UL, 17570403165393UL);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<ulong, long>()).As<long, ulong>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, ulong>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128u64,v128u64,v128u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27132,7 +27132,7 @@ internal static class Exercises
             var a1 = Vector128.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108);
             var a2 = Vector128.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector128.ConditionalSelect(Vector128.IsNegative(a2.As<byte, sbyte>()).As<sbyte, byte>(), a1, a0);
+            var q = Vector128.ConditionalSelect(Vector128.LessThan(a2.AsSByte(), Vector128<sbyte>.Zero).As<sbyte, byte>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v128u8,v128u8,v128u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27159,7 +27159,7 @@ internal static class Exercises
             var a1 = Vector256.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604, (short)-16469, (short)1994, (short)20457, (short)-26616, (short)-8153, (short)10310, (short)28773, (short)-18300);
             var a2 = Vector256.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461, (short)-1998, (short)16465, (short)-30608, (short)-12145, (short)6318, (short)24781, (short)-22292, (short)-3829);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<short, short>()).As<short, short>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, short>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256i16,v256i16,v256i16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27168,7 +27168,7 @@ internal static class Exercises
             var a1 = Vector256.Create(8314215, 13046922, 17779629, 22512336, 27245043, 31977750, 36710457, 41443164);
             var a2 = Vector256.Create(12023634, 16756341, 21489048, 26221755, 30954462, 35687169, 40419876, 45152583);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<int, int>()).As<int, int>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, int>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256i32,v256i32,v256i32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27177,7 +27177,7 @@ internal static class Exercises
             var a1 = Vector256.Create(8718138975195L, 13680771930306L, 18643404885417L, 23606037840528L);
             var a2 = Vector256.Create(12607770210282L, 17570403165393L, 22533036120504L, 27495669075615L);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<long, long>()).As<long, long>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, long>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256i64,v256i64,v256i64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27186,7 +27186,7 @@ internal static class Exercises
             var a1 = Vector256.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108, (sbyte)-111, (sbyte)-74, (sbyte)-37, (sbyte)0, (sbyte)37, (sbyte)74, (sbyte)111, (sbyte)-108, (sbyte)-71, (sbyte)-34, (sbyte)3, (sbyte)40, (sbyte)77, (sbyte)114, (sbyte)-105, (sbyte)-68);
             var a2 = Vector256.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119, (sbyte)-82, (sbyte)-45, (sbyte)-8, (sbyte)29, (sbyte)66, (sbyte)103, (sbyte)-116, (sbyte)-79, (sbyte)-42, (sbyte)-5, (sbyte)32, (sbyte)69, (sbyte)106, (sbyte)-113, (sbyte)-76, (sbyte)-39);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<sbyte, sbyte>()).As<sbyte, sbyte>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, sbyte>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256i8,v256i8,v256i8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27195,7 +27195,7 @@ internal static class Exercises
             var a1 = Vector256.Create((ushort)32435, (ushort)50898, (ushort)3825, (ushort)22288, (ushort)40751, (ushort)59214, (ushort)12141, (ushort)30604, (ushort)49067, (ushort)1994, (ushort)20457, (ushort)38920, (ushort)57383, (ushort)10310, (ushort)28773, (ushort)47236);
             var a2 = Vector256.Create((ushort)46906, (ushort)65369, (ushort)18296, (ushort)36759, (ushort)55222, (ushort)8149, (ushort)26612, (ushort)45075, (ushort)63538, (ushort)16465, (ushort)34928, (ushort)53391, (ushort)6318, (ushort)24781, (ushort)43244, (ushort)61707);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<ushort, short>()).As<short, ushort>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, ushort>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256u16,v256u16,v256u16)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27204,7 +27204,7 @@ internal static class Exercises
             var a1 = Vector256.Create(8314215U, 13046922U, 17779629U, 22512336U, 27245043U, 31977750U, 36710457U, 41443164U);
             var a2 = Vector256.Create(12023634U, 16756341U, 21489048U, 26221755U, 30954462U, 35687169U, 40419876U, 45152583U);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<uint, int>()).As<int, uint>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, uint>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256u32,v256u32,v256u32)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27213,7 +27213,7 @@ internal static class Exercises
             var a1 = Vector256.Create(8718138975195UL, 13680771930306UL, 18643404885417UL, 23606037840528UL);
             var a2 = Vector256.Create(12607770210282UL, 17570403165393UL, 22533036120504UL, 27495669075615UL);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<ulong, long>()).As<long, ulong>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, ulong>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256u64,v256u64,v256u64)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }
@@ -27222,7 +27222,7 @@ internal static class Exercises
             var a1 = Vector256.Create((byte)65, (byte)102, (byte)139, (byte)176, (byte)213, (byte)250, (byte)31, (byte)68, (byte)105, (byte)142, (byte)179, (byte)216, (byte)253, (byte)34, (byte)71, (byte)108, (byte)145, (byte)182, (byte)219, (byte)0, (byte)37, (byte)74, (byte)111, (byte)148, (byte)185, (byte)222, (byte)3, (byte)40, (byte)77, (byte)114, (byte)151, (byte)188);
             var a2 = Vector256.Create((byte)94, (byte)131, (byte)168, (byte)205, (byte)242, (byte)23, (byte)60, (byte)97, (byte)134, (byte)171, (byte)208, (byte)245, (byte)26, (byte)63, (byte)100, (byte)137, (byte)174, (byte)211, (byte)248, (byte)29, (byte)66, (byte)103, (byte)140, (byte)177, (byte)214, (byte)251, (byte)32, (byte)69, (byte)106, (byte)143, (byte)180, (byte)217);
             var r = X86.Avx10v1.BlendVariable(a0, a1, a2);
-            var q = Vector256.ConditionalSelect(Vector256.IsNegative(a2.As<byte, sbyte>()).As<sbyte, byte>(), a1, a0);
+            var q = Vector256.ConditionalSelect(Vector256.LessThan(a2.AsSByte(), Vector256<sbyte>.Zero).As<sbyte, byte>(), a1, a0);
             string h = Fmt.Hex(r.AsByte());
             Console.WriteLine("BlendVariable(v256u8,v256u8,v256u8)=" + h + Fmt.Ref(h, Fmt.Hex(q.AsByte())));
         }

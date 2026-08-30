@@ -168,7 +168,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128i32_v128i32_v128i32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi32(_mm_movepi32_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
+    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi8(_mm_movepi8_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128i32_v128i32_v128i32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -181,7 +181,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128i64_v128i64_v128i64(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi64(_mm_movepi64_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
+    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi8(_mm_movepi8_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128i64_v128i64_v128i64(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -194,7 +194,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128u32_v128u32_v128u32(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi32(_mm_movepi32_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
+    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi8(_mm_movepi8_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128u32_v128u32_v128u32(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -207,7 +207,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128u64_v128u64_v128u64(const Dn2CppVector128& a0, const Dn2CppVector128& a1, const Dn2CppVector128& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi64(_mm_movepi64_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
+    return dn2cpp_isa_vec<16>(_mm_mask_blend_epi8(_mm_movepi8_mask(dn2cpp_isa_bits<__m128i>(a2)), dn2cpp_isa_bits<__m128i>(a0), dn2cpp_isa_bits<__m128i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector128 dn2cpp_isa_x86_avx512f_vl_blendvariable_v128u64_v128u64_v128u64(const Dn2CppVector128&, const Dn2CppVector128&, const Dn2CppVector128&)
@@ -246,7 +246,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256i32_v256i32_v256i32(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi32(_mm256_movepi32_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
+    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi8(_mm256_movepi8_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256i32_v256i32_v256i32(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -259,7 +259,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256i64_v256i64_v256i64(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi64(_mm256_movepi64_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
+    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi8(_mm256_movepi8_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256i64_v256i64_v256i64(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -272,7 +272,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256u32_v256u32_v256u32(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi32(_mm256_movepi32_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
+    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi8(_mm256_movepi8_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256u32_v256u32_v256u32(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)
@@ -285,7 +285,7 @@ DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2Cpp
 DN2CPP_ISA_TARGET("avx512f,avx512bw,avx512dq,avx512vl") DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256u64_v256u64_v256u64(const Dn2CppVector256& a0, const Dn2CppVector256& a1, const Dn2CppVector256& a2)
 {
     dn2cpp_isa_require(DN2CPP_ISA_X86_Avx512F_VL, "System.Runtime.Intrinsics.X86.Avx512F+VL.BlendVariable");
-    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi64(_mm256_movepi64_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
+    return dn2cpp_isa_vec<32>(_mm256_mask_blend_epi8(_mm256_movepi8_mask(dn2cpp_isa_bits<__m256i>(a2)), dn2cpp_isa_bits<__m256i>(a0), dn2cpp_isa_bits<__m256i>(a1)));
 }
 #else
 [[noreturn]] DN2CPP_ISA_INLINE Dn2CppVector256 dn2cpp_isa_x86_avx512f_vl_blendvariable_v256u64_v256u64_v256u64(const Dn2CppVector256&, const Dn2CppVector256&, const Dn2CppVector256&)

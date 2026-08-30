@@ -188,6 +188,9 @@ jobs:
 
       # Normal mode on purpose. DN2CPP_REQUIRE_ALL=1 would fail on the
       # cross-toolchain gates this runner cannot satisfy — see the header.
+      # Keep two gate workers on the hosted Windows image. The wide ISA build
+      # has a large temporary footprint, and running it beside every available
+      # MSVC worker can exhaust the runner while a native probe is writing.
       #
       # openssl: Git for Windows ships openssl.exe under usr/bin, which this
       # bash step's PATH should resolve — but that is unverified as of this
@@ -195,7 +198,7 @@ jobs:
       # openssl as a hard failure, not a gate_skip (see its command -v check),
       # so this is the first thing to look at if suite-smoke goes red here.
       - name: Run the non-Godot suite
-        run: SKIP_GODOT=1 ./gates/run-all-gates.sh
+        run: JOBS=2 SKIP_GODOT=1 ./gates/run-all-gates.sh
 
       # Before the log upload so a lingering build-server handle on a log file
       # cannot make the upload step see a partially-flushed file.

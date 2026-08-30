@@ -254,6 +254,15 @@ static class Program
 
         second.Join();
 
+        // A saturated host may run every inline frame before the worker that
+        // owns the fire-and-forget task gets another slice. Completion is the
+        // invariant; the gate watchdog supplies the bound if progress stops.
+        while (Volatile.Read(ref s_loadDone) == 0)
+            Thread.Yield();
+
+        if (loadSeenOnFrame < 0)
+            loadSeenOnFrame = frames;
+
         int aTotal = 0;
         int bTotal = 0;
         for (int i = 0; i < 3; ++i)

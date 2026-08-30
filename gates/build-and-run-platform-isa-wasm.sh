@@ -63,8 +63,13 @@ set +e
 oracle=$(DOTNET_EnableHWIntrinsic=0 run_bounded dotnet "$_CG_APP" all); oracle_code=$?
 set -e
 oracle=$(strip_cr_win "$oracle")
+# CpuId is an x86 target-capability exception to the disabled-intrinsics mask.
+# An x64 host therefore prints its target witness before Pause throws, while the
+# wasm subject throws from CpuId itself.  That host-only witness has no wasm
+# oracle; the contract row still proves the family's false token.
+oracle=$(sed '/^CpuId(0,0)\.target=/d' <<<"$oracle")
 
-if gate_cache_check "$out" "platform_isa_wasm|default|$_CG_CORELIB|argv:all|oracle:DOTNET_EnableHWIntrinsic=0" \
+if gate_cache_check "$out" "platform_isa_wasm|default|$_CG_CORELIB|argv:all|oracle:DOTNET_EnableHWIntrinsic=0+foreign-target-cpuid-elided" \
         "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json"; then
     gate_cache_hit_msg
 else
@@ -116,7 +121,7 @@ fi
 
     ctx="platform_isa_wasm|simd|$_CG_CORELIB|argv:Wasm.PackedSimd+all"
     ctx="$ctx|expected:$(shasum -a 256 < "$expected_simd" | cut -d' ' -f1)"
-    ctx="$ctx|masked:DN2CPP_CPU_FEATURES=none+DN2CPP_CPU_FEATURES_DIAG=1|oracle:DOTNET_EnableHWIntrinsic=0"
+    ctx="$ctx|masked:DN2CPP_CPU_FEATURES=none+DN2CPP_CPU_FEATURES_DIAG=1|oracle:DOTNET_EnableHWIntrinsic=0+foreign-target-cpuid-elided"
     ctx="$ctx|invalid-immediates:$invalid_csv|N=default+--invalid-immediates|NM=DN2CPP_CPU_FEATURES=none+--invalid-immediates"
     ctx="$ctx|assert:packedsimd-true+invalid-require-before-range+no-mismatch+mask-diag"
     if gate_cache_check "$out_simd" "$ctx" \
