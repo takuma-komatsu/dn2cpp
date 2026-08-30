@@ -56,4 +56,17 @@ internal static class Timing
             $"dn2cpp-time: {phase} {now - _lastMs} ms total {now - _firstMs} ms heap {heapMb} MB{pop}");
         _lastMs = now;
     }
+
+    /// <summary>Reports the body scheduler's aggregate fan-out. Kept separate
+    /// from <see cref="Mark"/> because the counts describe all planning and
+    /// emission passes owned by one emitter rather than one timed phase.</summary>
+    internal static void ParallelBodies(
+        int requested, int effective, int peak, int retries, int eligible, int serial)
+    {
+        if (!Enabled)
+            return;
+        Console.Error.WriteLine(
+            $"dn2cpp-time: parallel-bodies requested {requested} effective {effective} "
+            + $"peak {peak} retries {retries} eligible {eligible} serial {serial}");
+    }
 }

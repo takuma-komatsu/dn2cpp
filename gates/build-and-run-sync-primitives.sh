@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Blocking synchronization primitives on real threads — SemaphoreSlim (N consumers
 # wait, producer releases N), ManualResetEventSlim (gate N workers, one Set releases all,
-# IsSet), AutoResetEvent (strict ping-pong, 3 turns each), Monitor condition signaling,
+# IsSet), AutoResetEvent (strict ping-pong, 3 turns each), Monitor condition signaling
+# (Pulse/PulseAll preserve the wait-set identity),
 # CountdownEvent (N workers Signal, main Wait), and Barrier (N threads run P phases,
 # with a post-phase action). MethodImplSubset.cs adds MethodImplAttribute:
 # [MethodImpl(Synchronized)] instance/static/recursive/throwing bodies hammered

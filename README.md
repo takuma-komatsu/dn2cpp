@@ -652,6 +652,10 @@ under *Backends* above):
 - **Gap-inventory measurement** (`--measure`) records a body's compile
   failure as a gap row instead of aborting the run, so it can drain a whole
   real-world assembly and report what would not emit.
+- **Parallel transpilation** uses the host's logical processor count as its
+  default concurrency ceiling and adapts worker fan-out to each batch of
+  reachable method bodies, including `--measure`. Pass `--jobs <n>` to set an
+  explicit ceiling, or `--jobs 1` for serial execution.
 
 ## Optimization
 

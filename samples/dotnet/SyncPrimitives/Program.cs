@@ -28,6 +28,44 @@ static class Program
     static bool s_producerDone;
     static int s_consumedSum;
 
+    static int ProbeLateMonitorWait(bool broadcast)
+    {
+        const int waiterCount = 16;
+        var mon = new object();
+        var parked = new CountdownEvent(waiterCount);
+        var threads = new Thread[waiterCount];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new Thread(() =>
+            {
+                lock (mon)
+                {
+                    parked.Signal();
+                    Monitor.Wait(mon);
+                }
+            });
+            threads[i].Start();
+        }
+        parked.Wait();
+
+        int stolen = 0;
+        lock (mon)
+        {
+            if (broadcast)
+                Monitor.PulseAll(mon);
+            else
+                Monitor.Pulse(mon);
+            for (int i = 0; i < waiterCount; i++)
+                if (Monitor.Wait(mon, 0))
+                    stolen++;
+            // Release any original waiter that the first notification did not cover.
+            Monitor.PulseAll(mon);
+        }
+        for (int i = 0; i < threads.Length; i++)
+            threads[i].Join();
+        return stolen;
+    }
+
     static void Main()
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
@@ -361,5 +399,22 @@ static class Program
 
         // ReaderWriterLockSlim per-thread ownership and the recursion matrix.
         RwLockRecursion.Program.__GateEntry();
+
+        // A notification belongs to the wait set present at the Pulse call. Later
+        // zero-timeout waits must not consume it, even while its original recipients
+        // are still reacquiring the monitor.
+        int pulseStolen = 0;
+        int pulseAllStolen = 0;
+        int waitSetProbes = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            pulseStolen += ProbeLateMonitorWait(false);
+            waitSetProbes++;
+            pulseAllStolen += ProbeLateMonitorWait(true);
+            waitSetProbes++;
+        }
+        Console.WriteLine(waitSetProbes);          // 8 (every probe joined)
+        Console.WriteLine(pulseStolen);            // 0
+        Console.WriteLine(pulseAllStolen);         // 0
     }
 }
