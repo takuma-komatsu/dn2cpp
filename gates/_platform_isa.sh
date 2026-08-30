@@ -86,6 +86,37 @@ platform_isa_join() {
     printf '%s\n' "$out"
 }
 
+PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS=8
+
+# A supported X86 probe touches a large fraction of the wide generated image.
+# Bound its Windows working-set high-water mark by giving each native process a
+# fixed slice of the selection; the oracle uses the identical slices.
+platform_isa_supported_chunks() {
+    local csv="$1" limit="$PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS"
+    local rest="$csv" item chunk="" count=0
+    while [ -n "$rest" ]; do
+        case "$rest" in
+            *,*) item=${rest%%,*}; rest=${rest#*,} ;;
+            *)   item=$rest; rest="" ;;
+        esac
+        chunk="${chunk:+$chunk,}$item"
+        count=$((count + 1))
+        if [ "$count" -eq "$limit" ]; then
+            printf '%s\n' "$chunk"
+            chunk=""
+            count=0
+        fi
+    done
+    [ -z "$chunk" ] || printf '%s\n' "$chunk"
+}
+
+platform_isa_is_windows_shell() {
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*) return 0 ;;
+        *)                    return 1 ;;
+    esac
+}
+
 # platform_isa_contract_block TEXT — the `== contract ==` lines of a probe run.
 platform_isa_contract_block() {
     awk '/^== contract ==$/ { c = 1; next } /^== / { c = 0 } c' <<<"$1"
@@ -294,7 +325,13 @@ _platform_isa_arch_context() {
 _platform_isa_native_plan_self_check() {
     local arch rows name lowered_flag combined_rows="" expected_rows
     local combined_invalid="" expected_invalid registry combined_registry=""
-    local lowered_names witness_count
+    local lowered_names witness_count chunks flattened
+    chunks=$(platform_isa_supported_chunks 'a,b,c,d,e,f,g,h,i') || return 1
+    flattened=${chunks//$'\n'/,}
+    [ "$flattened" = 'a,b,c,d,e,f,g,h,i' ] \
+        || { echo "FAIL: platform-ISA supported-run chunks changed selection order" >&2; return 1; }
+    [ "$(grep -c . <<<"$chunks" || true)" -eq 2 ] \
+        || { echo "FAIL: platform-ISA supported-run chunk bound is not enforced" >&2; return 1; }
     for arch in x86 arm; do
         rows=$(platform_isa_table_rows "$arch") || return 1
         lowered_names=""
@@ -430,23 +467,40 @@ _platform_isa_run_arch() {
     # Sets _PI_OURS / _PI_LOG; fails the gate on any stdout or exit-code diff.
     _pi_run() {
         local label="$1" argv="$2" ours_env="$3" oracle_env="$4"
-        local ours_code expected_code ours_out expected_out oracle_log
+        local ours_code=0 expected_code=0 ours_out expected_out oracle_log
+        local chunk chunk_code expected_chunk_code chunks=("$argv")
         _PI_LOG="$log_dir/$label.log"
         oracle_log="$log_dir/$label.oracle.log"
         ours_out="$log_dir/$label.out"
         expected_out="$log_dir/$label.oracle.out"
-        # Scope each ISA environment in a subshell: `env` cannot invoke the
-        # run_bounded shell function. Direct files avoid MSYS native-pipe loss.
-        set +e
-        # shellcheck disable=SC2086
-        (if [ -n "$ours_env" ]; then export $ours_env; fi
-         run_bounded "./$out/$project" "$argv") \
-            >"$ours_out" 2>"$_PI_LOG"; ours_code=$?
-        # shellcheck disable=SC2086
-        (if [ -n "$oracle_env" ]; then export $oracle_env; fi
-         run_bounded dotnet "$_CG_APP" "$argv") \
-            >"$expected_out" 2>"$oracle_log"; expected_code=$?
-        set -e
+        if { [ "$label" = S ] || [ "$label" = P ]; } && platform_isa_is_windows_shell; then
+            chunks=()
+            while IFS= read -r chunk; do chunks+=("$chunk"); done \
+                < <(platform_isa_supported_chunks "$argv")
+        fi
+        : >"$ours_out"
+        : >"$expected_out"
+        : >"$_PI_LOG"
+        : >"$oracle_log"
+        for chunk in "${chunks[@]}"; do
+            # Scope each ISA environment in a subshell: `env` cannot invoke the
+            # run_bounded shell function. Direct files avoid MSYS native-pipe loss.
+            set +e
+            # shellcheck disable=SC2086
+            (if [ -n "$ours_env" ]; then export $ours_env; fi
+             run_bounded "./$out/$project" "$chunk") \
+                >>"$ours_out" 2>>"$_PI_LOG"; chunk_code=$?
+            # shellcheck disable=SC2086
+            (if [ -n "$oracle_env" ]; then export $oracle_env; fi
+             run_bounded dotnet "$_CG_APP" "$chunk") \
+                >>"$expected_out" 2>>"$oracle_log"; expected_chunk_code=$?
+            set -e
+            [ "$ours_code" -ne 0 ] || ours_code=$chunk_code
+            [ "$expected_code" -ne 0 ] || expected_code=$expected_chunk_code
+            if [ "$chunk_code" -ne 0 ] || [ "$expected_chunk_code" -ne 0 ]; then
+                break
+            fi
+        done
         _PI_RUN_LABELS+=("$label")
         _PI_RUN_CODES+=("$ours_code")
         _PI_RUN_ORACLE_CODES+=("$expected_code")
@@ -454,7 +508,7 @@ _platform_isa_run_arch() {
         _PI_RUN_ORACLE_OUTS+=("$expected_out")
         _PI_RUN_LOGS+=("$_PI_LOG")
         _PI_RUN_ORACLE_LOGS+=("$oracle_log")
-        echo "-- run $label: argv=$argv ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
+        echo "-- run $label: argv=$argv chunks=${#chunks[@]} ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
         local failed=0
         if cmp -s "$ours_out" "$expected_out"; then
             cat "$ours_out"
@@ -659,6 +713,7 @@ platform_isa_native_gate() {
     [ "$registry_count" -gt 0 ] \
         || { echo "error: generated exercises list no invalid-immediate boundaries" >&2; return 1; }
     ctx="platform_isa_native|host:${host_arch:-other}|$_CG_CORELIB"
+    ctx="$ctx|windows-supported-chunk-rows:$PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS"
     ctx="$ctx|invalid-registry-count:$registry_count|invalid-registry:$registry_csv"
     ctx="$ctx|$x86_ctx|$arm_ctx$(_gate_ctx_extras)"
     if _corelib_gate_check "$out" "$ctx"; then

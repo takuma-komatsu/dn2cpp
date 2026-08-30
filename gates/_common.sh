@@ -3704,7 +3704,27 @@ stage_editor_toolchain() {
         local entry base reuse_emsdk=0
         if [ -d "$dest/emsdk" ] && [ -f "$layout/emsdk/.emsdk-stamp" ] \
                 && cmp -s "$dest/emsdk/.emsdk-stamp" "$layout/emsdk/.emsdk-stamp"; then
-            mv "$dest/emsdk" "$stage/emsdk"
+            # Some filesystems reject moving a read-only directory across
+            # parents. The bundled SDK is intentionally frozen, so retry with
+            # only its top-level write bit enabled and restore that bit after
+            # the rename; the SDK contents are never copied or modified.
+            if ! mv "$dest/emsdk" "$stage/emsdk" 2>/dev/null; then
+                chmod u+w "$dest/emsdk" || {
+                    echo "FAIL: could not make the staged emsdk directory movable: $dest/emsdk" >&2
+                    _toolchain_stage_unlock "$lock_parent"
+                    exit 1
+                }
+                mv "$dest/emsdk" "$stage/emsdk" || {
+                    echo "FAIL: could not move the staged emsdk directory into $stage" >&2
+                    _toolchain_stage_unlock "$lock_parent"
+                    exit 1
+                }
+                chmod a-w "$stage/emsdk" || {
+                    echo "FAIL: could not re-freeze the staged emsdk directory: $stage/emsdk" >&2
+                    _toolchain_stage_unlock "$lock_parent"
+                    exit 1
+                }
+            fi
             reuse_emsdk=1
         fi
         for entry in "$layout"/* "$layout"/.[!.]*; do
@@ -3721,7 +3741,17 @@ stage_editor_toolchain() {
         }
         [ -e "$dest" ] && mv "$dest" "$old"
         mv "$stage" "$dest"
-        rm -rf "$old"
+        # The packaged buildtools (and any non-reused SDK) are frozen too.
+        # Make only the retired tree writable before deleting it; the new
+        # staged tree keeps the read-only permissions required by the bundle.
+        if [ -e "$old" ]; then
+            chmod -R u+w "$old" || {
+                echo "FAIL: could not make the retired toolchain removable: $old" >&2
+                _toolchain_stage_unlock "$lock_parent"
+                exit 1
+            }
+            rm -rf "$old"
+        fi
     fi
     _toolchain_stage_unlock "$lock_parent"
 
