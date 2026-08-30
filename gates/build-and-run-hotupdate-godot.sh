@@ -52,6 +52,12 @@ OUT=artifacts/hotupdate-godot
 GODOT=${GODOT:-godot}
 PROJECT=samples/godot/godot-project-hotupdate
 
+HOTUPDATE_GODOT_USER_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-hotupdate-godot.XXXXXX")
+hotupdate_godot_cleanup() {
+    rm -rf "$HOTUPDATE_GODOT_USER_ROOT"
+}
+gate_add_exit_hook hotupdate_godot_cleanup
+
 echo "== 1/7 Building base + patch C# assemblies =="
 build_proj samples/godot/HotUpdateGodotSample/HotUpdateGodotSample.csproj
 build_proj samples/dotnet/HotUpdateGodotPatch/HotUpdateGodotPatch.csproj
@@ -74,7 +80,7 @@ grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
 # them after this point — unchanged inputs mean the compile, both bakes, and
 # both engine runs would only repeat the last green result.
 if gate_cache_check "$OUT" \
-        "hotupdate-godot|godot=$(or_none "$(first_line "$("$GODOT" --version 2>/dev/null)")")" \
+        "hotupdate-godot|godot=$(or_none "$(first_line "$(run_godot_isolated "$HOTUPDATE_GODOT_USER_ROOT" "$GODOT" --version 2>/dev/null)")")" \
         "$base_app" "$patch_app" "$badmathf_app" \
         samples/godot/HotUpdateGodotSample/hotupdate-refs.txt \
         "$PROJECT"; then
@@ -107,11 +113,13 @@ cp "$OUT/HotUpdateGodotBadPatchMathf.bpi" "$OUT/patches-mathf/mathf.bpi"
 echo "== 5/7 Importing Godot project (registers the extension) =="
 # Note: the first import may abort during editor teardown (Godot headless
 # doc-gen bug; harmless — .godot/extension_list.cfg is already written).
-run_with_watchdog 300 "$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
+run_with_watchdog 300 run_godot_isolated "$HOTUPDATE_GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
 
 echo "== 6/7 Running the scene (deploy from _Ready, observe on _Process frames) =="
 rc=0
-SCENE_OUT=$(run_with_watchdog 120 env DN2CPP_HOTPATCH_DIR="$PWD/$OUT/patches" \
+SCENE_OUT=$(run_with_watchdog 120 run_godot_isolated "$HOTUPDATE_GODOT_USER_ROOT" \
+    env DN2CPP_HOTPATCH_DIR="$PWD/$OUT/patches" \
     "$GODOT" --headless --path "$PROJECT" main.tscn --quit-after 6 2>&1) || rc=$?
 echo "$SCENE_OUT"
 if [ "$rc" -ne 0 ]; then
@@ -188,7 +196,8 @@ echo "== 7/7 Negative deployment: a patch importing a placeholder shim body =="
 # unresolved-import bind failure (caught + surfaced by the base), the patch
 # entry must never run, and the engine keeps running unpatched.
 rc=0
-NEG_OUT=$(run_with_watchdog 120 env DN2CPP_HOTPATCH_DIR="$PWD/$OUT/patches-mathf" \
+NEG_OUT=$(run_with_watchdog 120 run_godot_isolated "$HOTUPDATE_GODOT_USER_ROOT" \
+    env DN2CPP_HOTPATCH_DIR="$PWD/$OUT/patches-mathf" \
     "$GODOT" --headless --path "$PROJECT" main.tscn --quit-after 6 2>&1) || rc=$?
 echo "$NEG_OUT"
 if [ "$rc" -ne 0 ]; then

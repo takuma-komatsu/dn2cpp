@@ -10,6 +10,12 @@ GODOT=${GODOT:-godot}
 PROJECT=samples/godot/godot-project-sdk
 SAMPLE=samples/godot/SdkSample
 
+SDK_GODOT_USER_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-sdk-sample.XXXXXX")
+sdk_sample_cleanup() {
+    rm -rf "$SDK_GODOT_USER_ROOT"
+}
+gate_add_exit_hook sdk_sample_cleanup
+
 echo "== 1/6 Building sample C# assembly (against the GodotSharp shim) =="
 build_proj "$SAMPLE/SdkSample.csproj"
 
@@ -23,7 +29,7 @@ invoke_cli \
 # the Godot project unchanged since the last green pass, the compile and the
 # engine run would only repeat that result.
 if gate_cache_check "$OUT" \
-        "sdk-sample|godot=$(or_none "$(first_line "$("$GODOT" --version 2>/dev/null)")")" \
+        "sdk-sample|godot=$(or_none "$(first_line "$(run_godot_isolated "$SDK_GODOT_USER_ROOT" "$GODOT" --version 2>/dev/null)")")" \
         "$SAMPLE/bin/$CONFIG/$TFM/SdkSample.dll" \
         "$SAMPLE/bin/$CONFIG/$TFM/GodotSharp.dll" \
         "$PROJECT"; then
@@ -38,8 +44,10 @@ compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name "$DN2CPP_GDEXT_LIB")"
 echo "== 4/6 Importing Godot project (registers the extension) =="
 # The first import may abort during editor teardown (Godot headless doc-gen bug;
 # harmless — .godot/extension_list.cfg is already written).
-"$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
+run_godot_isolated "$SDK_GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
 
 echo "== 5/6 Running inside Godot (headless, GDScript -> standard C# node) =="
-"$GODOT" --headless --path "$PROJECT" --script res://test.gd
+run_godot_isolated "$SDK_GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" --script res://test.gd
 gate_cache_commit
