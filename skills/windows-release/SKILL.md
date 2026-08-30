@@ -1,6 +1,6 @@
 ---
 name: windows-release
-description: Run and verify the dn2cpp Windows-side Godot editor release workflow, including macOS handoff retrieval, pinned toolchain setup, self-host rebuild, Windows packaging, smoke tests, draft cleanup, four-lane publication, and post-publish checks. Use when finishing a Godot editor release on Windows, rebuilding Windows release artifacts, or diagnosing handoff, MSVC, emcc, prebuilt-axis, checksum, or publish failures.
+description: Run and verify the dn2cpp Windows-side Godot editor release workflow, including macOS handoff retrieval, pinned toolchain setup, self-host rebuild, Windows editor and release/debug template packaging, smoke tests, draft cleanup, five-lane publication, and post-publish checks. Use when finishing a Godot editor release on Windows, rebuilding Windows release artifacts, or diagnosing handoff, MSVC, emcc, prebuilt-axis, checksum, or publish failures.
 ---
 
 # Windows Release Workflow
@@ -22,7 +22,8 @@ fixes the Windows continuation's ordering and stop conditions.
   `_common.sh` imports the MSVC environment. Do not rely on a Developer Prompt
   being the parent of Git Bash.
 - Do not run `gates/setup-godot-fork-web.sh`: the Mac phase supplies the one
-  Web template and `web_emcc.txt` for this release.
+  Web bundle containing the Release/Debug pair, plus `web_emcc.txt`, for this
+  release.
 - Do not use `--allow-partial-prebuilt`, `--no-smoke`, `CRI=1`, or a custom
   `--out` for the setup scripts. Missing prerequisites are release failures.
 
@@ -89,8 +90,8 @@ editor-macos.metadata
 web.metadata
 macos.metadata
 SHA256SUMS.txt                         # exactly 3 rows at this point
-godot-$V-web-template.zip
-godot-$V-web-template.zip.provenance
+godot-$V-web-templates.zip
+godot-$V-web-templates.zip.provenance
 ```
 
 Require `web_emcc.txt` under `FORK_ROOT`. Read `dn2cpp_commit` from
@@ -147,8 +148,9 @@ otherwise continue with a stale transpiler.
 ## Phase C-2: confirm emcc agreement
 
 Compare the emcc recorded in the staged Windows bundle with the Mac Web
-metadata. Discover the layout from the size report instead of hard-coding its
-version:
+metadata. The metadata must also say `flavor=stock`, name distinct Release and
+Debug inner archives, and record distinct SHA-256 values for them. Discover the
+layout from the size report instead of hard-coding its version:
 
 ```bash
 BUNDLE="$(awk -F '\t' '$1 == "# bundle" { print $2 }' artifacts/toolchain/size-report.txt)"
@@ -162,11 +164,13 @@ These values must be identical. Only the Mac host can re-bake the Web
 template; if they differ, stop and rerun the Mac Web setup and packaging in
 order.
 
-## Phase C-3: package and smoke-test the Windows editor
+## Phase C-3: package the Windows templates and smoke-test the editor
 
-Package from the pinned commit, leaving the default smoke tests enabled:
+Package both Windows template configurations, then package the editor from the
+pinned commit with the default smoke tests enabled:
 
 ```bash
+./dist/package-windows-template.sh --version "$V"
 ./dist/package-editor-windows.sh \
     --version "$V" \
     --dn2cpp-commit "$DN2CPP_PIN" \
@@ -177,13 +181,18 @@ Require the log to show:
 
 - bundled cmake and ninja, not host fallbacks;
 - prebuilt `host`, `android-arm64-v8a`, and `web-wasm32` axes;
-- the Web template's emcc matching `web.metadata`;
+- both Web templates selected by their respective presets, with emcc matching
+  `web.metadata`;
 - both desktop and browser editor-export smoke gates green;
 - deterministic archive round-trip with all files SHA-256 identical.
 
-The script must produce `editor-windows.metadata`,
-`Godot-$V-windows-x86_64.zip`, and a fourth row in `SHA256SUMS.txt`. Check
-the metadata and checksum row; never edit either file manually.
+The template packager must produce `windows.metadata` and
+`godot-$V-windows-x86_64-templates.zip`. Require that archive to contain
+exactly `godot_windows_release_x86_64.exe` and
+`godot_windows_debug_x86_64.exe`. The editor packager must produce
+`editor-windows.metadata` and `Godot-$V-windows-x86_64.zip`. Together they add
+the fourth and fifth rows to `SHA256SUMS.txt`. Check both metadata files and
+checksum rows; never edit them manually.
 
 ## Phase C-4/C-5: remove transport and rehearse publication
 
@@ -193,7 +202,7 @@ Remove the internal handoff before any publish attempt:
 ./dist/release-handoff.sh drop --repo "$REPO" --version "$V"
 ```
 
-Run the complete four-lane dry run. Naming only `editor-windows` would drop
+Run the complete five-lane dry run. Naming only the Windows lanes would drop
 the other lanes from the rendered notes and checksum claims.
 
 ```bash
@@ -201,6 +210,7 @@ the other lanes from the rendered notes and checksum claims.
     --repo "$REPO" \
     --version "$V" \
     --prev-version "$PREV" \
+    --lane windows \
     --lane editor-windows \
     --uploaded-lane editor-macos \
     --uploaded-lane web \
@@ -229,6 +239,7 @@ Repeat the exact dry-run lane set without `--dry-run`:
     --repo "$REPO" \
     --version "$V" \
     --prev-version "$PREV" \
+    --lane windows \
     --lane editor-windows \
     --uploaded-lane editor-macos \
     --uploaded-lane web \
@@ -244,8 +255,8 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 gh release view "$V" --repo "$REPO" --json body --jq .body
 ```
 
-Require `isDraft: false`, the fork commit as `targetCommitish`, exactly five
-assets (two editors, two templates, and `SHA256SUMS.txt`), no internal handoff,
+Require `isDraft: false`, the fork commit as `targetCommitish`, exactly six
+assets (two editors, three template archives, and `SHA256SUMS.txt`), no internal handoff,
 and no `@@` or `<!--` markers. Check both guide URLs in the body at the fixed
 dn2cpp commit, including that the verification fragment names an existing
 heading, then download and verify the release once if the host is also the
@@ -261,5 +272,5 @@ consumer.
 - Never run `setup-godot-fork-web.sh` on Windows or hand-copy metadata from
   the Mac host.
 - If publication fails after the package succeeds, leave the release as a
-  draft and rerun the complete four-lane command; never rerun with a subset.
+  draft and rerun the complete five-lane command; never rerun with a subset.
 - Do not delete or recreate a tag or release to work around a validation error.

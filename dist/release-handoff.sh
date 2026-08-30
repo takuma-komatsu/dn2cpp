@@ -2,9 +2,9 @@
 # dist/release-handoff.sh — carry the macOS→Windows handoff on the draft release
 # itself, instead of by a file transfer nobody can describe afterwards.
 #
-# A release spans two hosts, and the second one needs seven small things the
+# A release spans two hosts, and the second one needs eight small things the
 # first produced: the three lanes' metadata, SHA256SUMS.txt, the Web template
-# zip with its provenance stamp, and the fork root's web_emcc.txt. Both hosts
+# bundle with its provenance stamp, and both fork-root Web emcc stamps. Both hosts
 # already have gh authenticated against the repo and the draft already exists,
 # so the draft is the transport that is certainly there.
 #
@@ -14,7 +14,7 @@
 #
 # Usage:
 #   dist/release-handoff.sh <put|get|drop> --version <V> [options]
-#     put           macOS, right after the draft is cut: check the seven items,
+#     put           macOS, right after the draft is cut: check the eight items,
 #                   pack them, upload
 #     get           Windows: download, verify, and place them
 #     drop          Windows, before publishing: take the asset off the release
@@ -86,8 +86,8 @@ trap 'rm -rf "$WORK"' EXIT
 # drift, and the drift is silent in the direction that matters — an archive
 # member nobody checks is a file nobody places.
 MEMBERS_OUT="editor-macos.metadata web.metadata macos.metadata SHA256SUMS.txt
-godot-$VERSION-web-template.zip godot-$VERSION-web-template.zip.provenance"
-MEMBERS_FORK="web_emcc.txt"
+godot-$VERSION-web-templates.zip godot-$VERSION-web-templates.zip.provenance"
+MEMBERS_FORK="web_emcc.txt web_emcc_debug.txt"
 
 # member_source NAME — the script that produces the member, for a death that
 # names the remedy rather than only the symptom.
@@ -97,7 +97,7 @@ member_source() {
         macos.metadata)        printf 'dist/package-macos-template.sh\n' ;;
         web.metadata|godot-*)  printf 'dist/package-web-template.sh\n' ;;
         SHA256SUMS.txt)        printf 'the packaging scripts (every lane appends its row)\n' ;;
-        web_emcc.txt)          printf 'gates/setup-godot-fork-web.sh\n' ;;
+        web_emcc*.txt)         printf 'gates/setup-godot-fork-web.sh\n' ;;
     esac
 }
 
@@ -105,6 +105,82 @@ member_source() {
 # the FILE (no pipeline), so its `exit` is not an early-exiting pipe consumer.
 meta_get() {
     awk -F= -v k="$2" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$1"
+}
+
+# web_bundle_assert DIR — the handoff is a trust boundary between hosts. Check
+# both the metadata-only pair invariants and the local nested archive before it
+# is uploaded or placed.
+web_bundle_assert() {
+    local dir="$1" stamps_dir="$2" meta="$1/web.metadata"
+    local archive="$1/godot-$VERSION-web-templates.zip" py check
+    py="$(resolve_python)" || die "Python 3 is required to inspect the Web template bundle"
+    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+    if ! check="$($py - "$archive" "$meta" \
+            "$stamps_dir/web_emcc.txt" "$stamps_dir/web_emcc_debug.txt" \
+            "$archive.provenance" 2>&1 <<'PY'
+import hashlib
+import sys
+import zipfile
+
+archive, metadata_path, release_emcc_path, debug_emcc_path, provenance_path = sys.argv[1:]
+try:
+    with open(metadata_path, encoding="utf-8") as source:
+        metadata = dict(line.rstrip("\n").split("=", 1) for line in source if "=" in line)
+    required = ("flavor", "emcc", "engine_provenance",
+                "release_template", "release_template_sha256",
+                "debug_template", "debug_template_sha256")
+    missing = [key for key in required if not metadata.get(key)]
+    if missing:
+        raise ValueError("metadata carries no value for: %s" % ", ".join(missing))
+    if metadata["flavor"] != "stock":
+        raise ValueError("flavor is %s, expected stock" % metadata["flavor"])
+    release_name, debug_name = metadata["release_template"], metadata["debug_template"]
+    if release_name != "godot_web_release.zip":
+        raise ValueError("release template is %s, expected godot_web_release.zip" % release_name)
+    if debug_name != "godot_web_debug.zip":
+        raise ValueError("debug template is %s, expected godot_web_debug.zip" % debug_name)
+    release_sha = metadata["release_template_sha256"]
+    debug_sha = metadata["debug_template_sha256"]
+    if release_name == debug_name:
+        raise ValueError("release and debug both name %s" % release_name)
+    if release_sha == debug_sha:
+        raise ValueError("release and debug both have sha256 %s" % release_sha)
+    with open(release_emcc_path, encoding="utf-8") as source:
+        release_emcc = source.readline().rstrip("\r\n")
+    with open(debug_emcc_path, encoding="utf-8") as source:
+        debug_emcc = source.readline().rstrip("\r\n")
+    if release_emcc != metadata["emcc"] or debug_emcc != metadata["emcc"]:
+        raise ValueError(
+            "transported emcc stamps (%r, %r) do not both equal metadata emcc %r"
+            % (release_emcc, debug_emcc, metadata["emcc"])
+        )
+    with open(provenance_path, encoding="utf-8") as source:
+        provenance = source.readline().rstrip("\r\n")
+    if provenance != metadata["engine_provenance"]:
+        raise ValueError(
+            "bundle provenance %r does not equal metadata engine_provenance %r"
+            % (provenance, metadata["engine_provenance"])
+        )
+    expected = [release_name, debug_name]
+    with zipfile.ZipFile(archive) as bundle:
+        names = bundle.namelist()
+        if len(names) != 2 or sorted(names) != sorted(expected):
+            raise ValueError("entries are %r, expected exactly %r" % (names, expected))
+        for name, wanted in ((release_name, release_sha), (debug_name, debug_sha)):
+            digest = hashlib.sha256()
+            with bundle.open(name) as entry:
+                for chunk in iter(lambda: entry.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            actual = digest.hexdigest()
+            if actual != wanted:
+                raise ValueError("%s hashes to %s, metadata says %s" % (name, actual, wanted))
+except (OSError, KeyError, ValueError, zipfile.BadZipFile) as error:
+    print("Web template bundle is invalid: %s" % error, file=sys.stderr)
+    sys.exit(1)
+PY
+    )"; then
+        die "$check"
+    fi
 }
 
 # run_step CMD... — run it, or print it under --dry-run. %q so the printed line
@@ -142,7 +218,7 @@ release_asset_digest() {
 case "$MODE" in
 
 put)
-    # ── 2. The seven items are here ───────────────────────────────────────────
+    # ── 2. The eight items are here ───────────────────────────────────────────
     [ -d "$OUT" ] || die "no asset directory at $OUT (--out names it)"
     for m in $MEMBERS_OUT; do
         [ -f "$OUT/$m" ] || die "$OUT/$m is missing — $(member_source "$m") produces it"
@@ -163,10 +239,11 @@ put)
             || die "$OUT/$m says release_version=$v, but --version is $VERSION"
     done
     want="$(meta_get "$OUT/web.metadata" asset_sha256)"
-    got="$(shasum -a 256 "$OUT/godot-$VERSION-web-template.zip" | awk '{print $1}')"
+    got="$(shasum -a 256 "$OUT/godot-$VERSION-web-templates.zip" | awk '{print $1}')"
     [ "$want" = "$got" ] \
-        || die "$OUT/web.metadata says asset_sha256=$want, but the template zip hashes to $got"
-    echo "-- release_version: $VERSION (every metadata file agrees; the template zip matches its hash)"
+        || die "$OUT/web.metadata says asset_sha256=$want, but the template bundle hashes to $got"
+    web_bundle_assert "$OUT" "$FORK_ROOT"
+    echo "-- release_version: $VERSION (every metadata file agrees; the template bundle matches its hash)"
 
     # ── 4. The release exists and is still a draft ────────────────────────────
     # The handoff is a draft-only asset by construction rather than by habit:
@@ -223,7 +300,7 @@ get)
         || die "release $TAG serves '$ASSET' as $digest, but the downloaded bytes hash to $got"
     echo "-- digest: matches the downloaded bytes"
 
-    # ── 5. The archive holds exactly the declared seven ───────────────────────
+    # ── 5. The archive holds exactly the declared eight ───────────────────────
     # Both directions, before anything is unpacked: an eighth member, an absolute
     # path or a `..` is refused rather than written somewhere unexpected.
     got_members="$(tar tzf "$WORK/$ASSET" | grep -Ev '(^|/)\._' | sort)"
@@ -240,11 +317,12 @@ get)
     # Extract only the verified members, not the whole archive — otherwise a
     # `._` sidecar excluded above by the member-list check would still land.
     tar xzf "$WORK/$ASSET" -C "$WORK/x" $MEMBERS_OUT $MEMBERS_FORK
+    web_bundle_assert "$WORK/x" "$WORK/x"
     echo "-- archive: the declared $(printf '%s\n' "$want_members" | wc -l | tr -d ' ') members, extracted to a temp dir"
 
     # ── 6. Nothing here is newer than what is arriving ────────────────────────
-    # A Windows packaging run has already appended its fourth row, and placing
-    # the incoming three-row file over it reverts that silently — nothing
+    # A Windows packaging run has already appended a later row, and placing the
+    # incoming three-row file over it reverts that silently — nothing
     # downstream reads the file again until the release is rendered from it.
     if [ -f "$OUT/SHA256SUMS.txt" ]; then
         lost="$(comm -23 <(sort "$OUT/SHA256SUMS.txt") <(sort "$WORK/x/SHA256SUMS.txt") | tr '\n' ' ')"
@@ -262,9 +340,8 @@ get)
     done
 
     # ── 7. Place them ─────────────────────────────────────────────────────────
-    # web_emcc.txt goes to the fork root here rather than in a follow-up step,
-    # because forgetting that move is what surfaces later as `the fork root has
-    # no web_emcc.txt` from the Windows editor smoke.
+    # Both Web emcc stamps go to the fork root here rather than in a follow-up
+    # step; forgetting either move only surfaces later in Windows editor smoke.
     run_step mkdir -p "$OUT"
     for m in $MEMBERS_OUT; do
         run_step cp -f "$WORK/x/$m" "$OUT/$m"

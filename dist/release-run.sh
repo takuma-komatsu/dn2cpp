@@ -14,8 +14,9 @@
 #     -h | --help
 #
 # The Mac host path builds editor-macos / web / macos and creates the draft
-# release. The Windows host path expects the handoff tarball, builds editor-windows,
-# drops the handoff, then publishes with --uploaded-lane for the other three lanes.
+# release. The Windows host path expects the handoff tarball, builds the Windows
+# release/debug template bundle and editor lanes, drops the handoff, then publishes with
+# --uploaded-lane for the other three lanes.
 #
 # See docs/RELEASE.md / docs/RELEASE.ja.md for the full manual procedure and
 # prerequisites. This wrapper intentionally keeps the command order and checks from
@@ -123,12 +124,14 @@ case "$HOST" in
 
         dn2cpp_commit="$(meta_get "$OUT/editor-macos.metadata" dn2cpp_commit)"
         [ -n "$dn2cpp_commit" ] || die "$OUT/editor-macos.metadata has no dn2cpp_commit. Did you run the macOS flow for this version?"
+        run "package Windows release/debug templates" \
+            ./dist/package-windows-template.sh --version "$VERSION" --out "$OUT"
         run "package Windows editor" \
             ./dist/package-editor-windows.sh --version "$VERSION" --dn2cpp-commit "$dn2cpp_commit" --out "$OUT"
 
         if [ "$DRY_RUN_ONLY" -eq 1 ]; then
             run "release dry-run (Windows lane)" ./dist/release-github.sh --version "$VERSION" --prev-version "$PREV_VERSION" --repo "$REPO" --out "$OUT" \
-                --lane editor-windows \
+                --lane windows --lane editor-windows \
                 --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
                 --dry-run
             log "dry-run-only: skipping handoff drop and publish"
@@ -139,12 +142,12 @@ case "$HOST" in
         run "remove handoff" ./dist/release-handoff.sh drop --version "$VERSION" --repo "$REPO" --out "$OUT"
 
         run "release dry-run (Windows lane)" ./dist/release-github.sh --version "$VERSION" --prev-version "$PREV_VERSION" --repo "$REPO" --out "$OUT" \
-            --lane editor-windows \
+            --lane windows --lane editor-windows \
             --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
             --publish --dry-run
         log "release publish (Windows lane)"
         run "publish" ./dist/release-github.sh --version "$VERSION" --prev-version "$PREV_VERSION" --repo "$REPO" --out "$OUT" \
-            --lane editor-windows \
+            --lane windows --lane editor-windows \
             --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
             --publish
         ;;

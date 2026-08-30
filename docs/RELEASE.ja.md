@@ -47,10 +47,10 @@ handoff を残すため、Windows の dry-only 版は `release-github` に `--pu
 | ホスト | 担当レーン | 必須 |
 |---|---|---|
 | macOS（Apple Silicon） | `editor-macos` / `web` / `macos` | Xcode Command Line Tools、Xcode（iOS 軸）、Android NDK、本物の python3（Xcode 同梱のスタブは不可）、`gh`（認証済み） |
-| Windows（x86_64） | `editor-windows` | Visual Studio の C++ ワークロード、Android NDK、ホストの Python 3、`gh`（認証済み） |
+| Windows（x86_64） | `editor-windows` / `windows` | Visual Studio の C++ ワークロード、Android NDK、ホストの Python 3、`gh`（認証済み） |
 
 - **順序は固定**（macOS → Windows）。理由は §B の冒頭。
-- レーン名は 4 つで固定（`editor-macos` `editor-windows` `web` `macos`）。
+- レーン名は 5 つで固定（`editor-macos` `editor-windows` `windows` `web` `macos`）。
   `dist/release-github.sh` のレーン表がその唯一の定義。
 - **シェルは普段のもので構わない**（macOS は zsh のままで通る）。Windows だけは
   Git Bash / MSYS が前提。macOS で python3 の版が問われるのは Web エクスポート
@@ -63,7 +63,8 @@ handoff を残すため、Windows の dry-only 版は `release-github` に `--pu
 受け付けない。判定は `gates/_common.sh` の `release_version_split` 1 つで、
 `dist/release-github.sh`、`dist/package-editor-macos.sh`、
 `dist/package-editor-windows.sh`、`dist/package-macos-template.sh`、
-`dist/package-web-template.sh` がそこを通る。エディタパッケージャはさらに、
+`dist/package-web-template.sh`、`dist/package-windows-template.sh` がそこを通る。
+エディタパッケージャはさらに、
 `<godot のバージョン>` がフォークの `version.py` と一致することを要求する。
 
 `<X>.<Y>` は dn2cpp 自身の semver で、何が動いたかで採番する:
@@ -300,18 +301,20 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
 このログには MSBuild の出力がホストのロケールで混ざる。**ログを機械判定に
 使うなら英語を前提にしないこと。**
 
-### A-4. Web テンプレートをビルドする
+### A-4. Web テンプレートのペアをビルドする
 
 ```bash
 ./gates/setup-godot-fork-web.sh 2>&1 | tee /tmp/setup-godot-fork-web.log
 ```
 
 - engine hash が動いていなければ、ここは実質スキップになる。フォークの差分が
-  managed 側だけなら再ビルドは起きず、**zip の中身は前バージョンとバイト一致に
-  なりうる**。それでも A-5 の `dist/package-web-template.sh` は必ず走らせる ——
+  managed 側だけなら再ビルドは起きず、**各構成の zip は前バージョンの同じ構成と
+  バイト一致になりうる**。それでも A-5 の `dist/package-web-template.sh` は必ず走らせる ——
   アセット名にバージョンが入り、`web.metadata` の `release_version` は全レーン
   一致検査の対象だから、前バージョンのファイルを流用することはできない。
-- `CRI=1` を付けないこと。CRI 版は第三者 SDK を含む variant で、
+- setup は stock の artifact root に `template_release` と `template_debug` を作る。
+  両方が fresh で、emcc と provenance が一致し、バイト列が異なることを確認する。
+- `CRI=1` を付けないこと。CRI のペアは第三者 SDK を含む variant で、
   リリースアセットにしてはならない（`dist/package-web-template.sh` が
   flavor を検査して落とす）。
 
@@ -330,8 +333,9 @@ cat artifacts/selfhost-fullcli/dn2cpp.src-hash
   この値をこのレーンの metadata から取る（§C-3）。
 
 - **順序は強制。** `dist/package-editor-macos.sh` の smoke は、
-  `<out>/godot-$V-web-template.zip` とその `.provenance` を
-  **リリース資産として**読み、それでエクスポートする。無ければ「先に Web
+  `<out>/godot-$V-web-templates.zip` とその `.provenance` を
+  **リリース資産として**読み、正確な `godot_web_release.zip` /
+  `godot_web_debug.zip` のペアを展開して両方でエクスポートする。無ければ「先に Web
   テンプレートを切れ」というメッセージを出して die する。同梱 SDK の `emcc_version` が
   `web.metadata` と一致することも要求する。食い違ったら順に:
   `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`。
@@ -356,11 +360,17 @@ Web エクスポートの smoke は、終了時に必ず `Terminated: 15 ... htt
 出力（`artifacts/release/`）:
 
 ```
-Godot-$V-macos-arm64.zip                + editor-macos.metadata
-godot-$V-web-template.zip{,.provenance} + web.metadata
-godot-$V-macos-arm64-template.zip       + macos.metadata
-SHA256SUMS.txt                          ← この時点で 3 行
+Godot-$V-macos-arm64.zip                 + editor-macos.metadata
+godot-$V-web-templates.zip{,.provenance} + web.metadata
+godot-$V-macos-arm64-template.zip        + macos.metadata
+SHA256SUMS.txt                           ← この時点で 3 行
 ```
+
+Web の outer zip に入るのは `godot_web_release.zip` と
+`godot_web_debug.zip` だけ。`web.metadata` は `flavor=stock` を必須とし、
+両 inner の名前と SHA-256 を `release_template*` / `debug_template*` として
+記録する。名前も hash も同じであってはならない。outer zip は 1 レーンの
+1 アセットなので、checksum の行は引き続き 1 行だけ。
 
 ### A-6. dry-run
 
@@ -388,7 +398,7 @@ SHA256SUMS.txt                          ← この時点で 3 行
   「アセットが途中までしか載っていない状態が誰にも見えない」唯一の状態。
 - **`SHA256SUMS.txt` を 3 行のまま置く。** Windows のアセット行を先回りして
   足すと、行集合とアクティブレーンの照合で die する
-  （"rows for no active lane"）。4 行目は Windows のパッケージャが自分で足す。
+  （"rows for no active lane"）。残り 2 行は Windows のパッケージャが自分で足す。
 - タグはここで作られて push される。以後の再実行では「既に origin にある」と
   報告してタグには触らない。
 - **次に引き渡し用の tarball をこの draft に載せる**（§B）。載っている間
@@ -406,9 +416,9 @@ Windows ホストへ渡すのは、`artifacts/release/` の **6 ファイル**�
 | 渡すもの | なぜ |
 |---|---|
 | `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` はメタデータを**ローカルの `<out>/<lane>.metadata` から読む**。全スキーマを引き続き必須とし、公開 Provenance は draft 本文と照合し、該当する整合性・レーン間一致検査も維持するので、手で書き直してはいけない |
-| `SHA256SUMS.txt`（3 行） | Windows のパッケージャが 4 行目を追記する。全 4 行を最終的なアクティブレーンのアセット集合と照合する |
-| `godot-$V-web-template.zip` | 実体が要る。Windows エディタの smoke が**リリース版の**テンプレートでエクスポートするため |
-| `godot-$V-web-template.zip.provenance` | 同 smoke がエンジンの provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
+| `SHA256SUMS.txt`（3 行） | Windows のテンプレートとエディタのパッケージャが 2 行を追記する。全 5 行を最終的なアクティブレーンのアセット集合と照合する |
+| `godot-$V-web-templates.zip` | 実体が要る。Windows エディタの smoke が展開し、異なる Release / Debug の内側テンプレートで 1 回ずつエクスポートするため |
+| `godot-$V-web-templates.zip.provenance` | 同 smoke がペアのエンジン provenance を読む。無い場合は `web.metadata` から導出されるが、その場合ハッシュ一致が必須 |
 | フォークルートの `web_emcc.txt` | `dist/package-editor-windows.sh` の smoke が smoke-root へコピーする必須ファイルの 1 つで、無ければ `the fork root has no web_emcc.txt` で die する。**書くのは `gates/setup-godot-fork-web.sh` だけ**で、Windows はそれを走らせない（C-1）ので macOS 側のものを置くしかない |
 
 `web_emcc.txt` の**中身**は emcc の版文字列で、Web エクスポートゲートの
@@ -510,8 +520,8 @@ export CMAKE_CXX_COMPILER=cl
 `engine hash:` が macOS 側で控えた値と一致すること。**違ったらここで止める。**
 一致しないまま進めると `engine_provenance` の照合で必ず die する。
 
-`gates/setup-godot-fork-web.sh` は **走らせない**。Web テンプレートは 1 リリースに
-1 本で、macOS 側でビルドしたものを使う。
+`gates/setup-godot-fork-web.sh` は **走らせない**。Web テンプレート bundle は
+1 リリースに 1 本で、macOS 側でビルドした Release / Debug のペアを含む。
 
 ### C-2. emcc の一致を先に確認する
 
@@ -521,11 +531,12 @@ sed -n 's/^emcc=//p' artifacts/release/web.metadata
 ```
 
 **2 つが一致すること。** 一致しないと C-3 が die する。Windows 側に逃げ道は
-無い（Web テンプレートをビルドし直せるのは macOS 側だけ）。
+無い（Web テンプレートのペアをビルドし直せるのは macOS 側だけ）。
 
-### C-3. Windows エディタをパッケージ
+### C-3. Windows テンプレートとエディタをパッケージ
 
 ```bash
+./dist/package-windows-template.sh --version "$V"
 ./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
     "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)" \
     2>&1 | tee /tmp/pkg-editor-windows.log
@@ -534,13 +545,16 @@ sed -n 's/^emcc=//p' artifacts/release/web.metadata
 確認:
 
 - `web template:  emcc matches the bundled toolchain (.../artifacts/release/web.metadata)`
+- `OK: ...-windows-x86_64-templates.zip`
+- アーカイブの中身が `godot_windows_release_x86_64.exe` と
+  `godot_windows_debug_x86_64.exe` の 2 ファイルだけであること
 - `prebuilt:` に host / android / web の 3 軸が並ぶ
 - smoke の 2 ゲートが緑
 - 末尾 `OK: ...-windows-x86_64.zip`
 
 ```bash
 grep '^fork_commit=' artifacts/release/editor-windows.metadata   # macOS 側と同じ SHA
-wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
+wc -l < artifacts/release/SHA256SUMS.txt                          # → 5
 ```
 
 ### C-4. 引き渡しアセットを落とす
@@ -556,7 +570,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
-  --lane editor-windows \
+  --lane windows --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish --dry-run
 ```
@@ -564,7 +578,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 - **ここでの `--publish` は無害で、「レーン外のアセットがあれば拒否」の
   リハーサルになる。** C-4 の忘れが本番の公開ではなくここで表面化する。
 - `--uploaded-lane` は「そのレーンを active にする」+「アセットは既にリリース上に
-  ある」の 2 つを意味する。**4 レーンすべてを名指すこと。**
+  ある」の 2 つを意味する。**5 レーンすべてを名指すこと。**
 - 各 uploaded レーンについて
   `on the release as ..., digest and published notes agree` が出ること。
 - 公開されるノートをレンダリングするのはこのホスト。`--dry-run` でも本文は
@@ -575,7 +589,7 @@ wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
-  --lane editor-windows \
+  --lane windows --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish 2>&1 | tee /tmp/release-windows.log
 ```
@@ -594,7 +608,7 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 ```
 
 - `isDraft: false`
-- アセットは 5 点（エディタ 2 + テンプレート 2 + `SHA256SUMS.txt`）。今はこれが
+- アセットは 6 点（エディタ 2 + テンプレート 3 + `SHA256SUMS.txt`）。今はこれが
   `--publish` の強制した内容でもあり、単にこちらが確認するだけのものではない
 - `targetCommitish` がタグを張ったフォークのコミット
 
@@ -705,7 +719,7 @@ Windows なら zip のブロック解除。
 | `put` が拒否: リリースが draft ではない | 既に公開済み。引き渡すものは残っていない |
 | `get` が拒否: リリースに引き渡しアセットが無い | macOS 側で `put` していないか、既に `drop` した |
 | `get` が拒否: ダウンロードした tarball が配信中の digest と一致しない | 壊れたダウンロード。やり直す |
-| `get` が拒否: 手元の `SHA256SUMS.txt` に引き渡しに無い行がある | Windows のパッケージングが既に 4 行目を足している。引き渡しの方が古く、工程はもう先（C-3） |
+| `get` が拒否: 手元の `SHA256SUMS.txt` に引き渡しに無い行がある | Windows のパッケージングが既に後続行を足している。引き渡しの方が古く、工程はもう先（C-3） |
 
 **紛らわしいが失敗ではないログ:**
 
@@ -719,10 +733,10 @@ Windows なら zip のブロック解除。
 ガードは無いので、リポジトリ外のスクリプトから source すると die せず、
 別のディレクトリをルートと信じたまま静かに走る。
 
-**アセットを触らずノート本文だけ直したいとき:** 全 4 レーンを
+**アセットを触らずノート本文だけ直したいとき:** 全 5 レーンを
 `--uploaded-lane` で宣言して再実行する。アップロード対象が空になり、
 `SHA256SUMS.txt` の再アップロードとノートの再レンダリングだけが走る。
-metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが条件。
+metadata 5 本と 5 行の `SHA256SUMS.txt` が手元に揃っていることが条件。
 
 ---
 
@@ -738,7 +752,7 @@ metadata 4 本と 4 行の `SHA256SUMS.txt` が手元に揃っていることが
    しない。**やり直すときは常に全レーンを名指す。
 3. **macOS 側で `--publish` しない。** draft のまま渡す。引き渡しアセットが
    載っている間は機構的にも拒否されるが、それは C-4 で落とすまでの間だけ。
-4. **macOS 側で `SHA256SUMS.txt` を 4 行にしない。**
+4. **macOS 側で `SHA256SUMS.txt` に Windows の行を加えない。**
 5. **`--uploaded-lane` 用の metadata を手で書かない。** パッケージしたホストの
    ものをそのままコピーする。必須キーの集合はバージョンをまたいで増えるので
    （`node_version` はある版で追加された）、**古い metadata を手直しして新しい

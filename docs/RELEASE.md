@@ -47,11 +47,11 @@ way is `docs/EDITOR-EXPORT-DESIGN.md` §11 and is not repeated here.
 | host | lanes it bakes | required |
 |---|---|---|
 | macOS (Apple Silicon) | `editor-macos` / `web` / `macos` | Xcode Command Line Tools, Xcode (iOS axes), Android NDK, a real python3, `gh` (authenticated) |
-| Windows (x86_64) | `editor-windows` | Visual Studio's C++ workload, Android NDK, a host Python 3, `gh` (authenticated) |
+| Windows (x86_64) | `editor-windows` / `windows` | Visual Studio's C++ workload, Android NDK, a host Python 3, `gh` (authenticated) |
 
 - **The order is fixed** (macOS → Windows). The reason opens §B.
-- There are exactly four lane names (`editor-macos` `editor-windows` `web`
-  `macos`); the lane table in `dist/release-github.sh` is their only definition.
+- There are exactly five lane names (`editor-macos` `editor-windows` `windows`
+  `web` `macos`); the lane table in `dist/release-github.sh` is their only definition.
 - **Use your normal shell** — plain zsh works on macOS. Only Windows assumes
   Git Bash / MSYS. The python3 version matters on macOS only inside the Web
   export gates (`gates/build-and-run-godot-editor-export-web.sh` and friends),
@@ -62,8 +62,9 @@ way is `docs/EDITOR-EXPORT-DESIGN.md` §11 and is not repeated here.
 **The version number.** No form but `<godot version>-dn2cpp.<X>.<Y>` is
 accepted: `release_version_split` in `gates/_common.sh` is the one judgement,
 and `dist/release-github.sh`, `dist/package-editor-macos.sh`,
-`dist/package-editor-windows.sh`, `dist/package-macos-template.sh` and
-`dist/package-web-template.sh` all pass through it. The editor packagers
+`dist/package-editor-windows.sh`, `dist/package-macos-template.sh`,
+`dist/package-web-template.sh` and `dist/package-windows-template.sh` all pass
+through it. The editor packagers
 additionally require `<godot version>` to match the fork's `version.py`.
 
 `<X>.<Y>` is dn2cpp's own semver, bumped by what changed:
@@ -308,19 +309,22 @@ Note the `engine hash:` from the log. **If the two hosts disagree on it, the
 That log interleaves MSBuild output in the host's locale. **Do not assume
 English if you parse it mechanically.**
 
-### A-4. Bake the Web template
+### A-4. Bake the Web template pair
 
 ```bash
 ./gates/setup-godot-fork-web.sh 2>&1 | tee /tmp/setup-godot-fork-web.log
 ```
 
 - With an unchanged engine hash this is effectively a no-op. If the fork's
-  changes are managed-side only, nothing is re-baked and **the zip's contents
-  can be byte-identical to the previous version's**. Run `dist/package-web-template.sh`
+  changes are managed-side only, nothing is re-baked and **each configuration's
+  zip can be byte-identical to the previous version's counterpart**. Run `dist/package-web-template.sh`
   in A-5 regardless — the asset name carries the version and `web.metadata`'s
   `release_version` takes part in the all-lane agreement check, so the previous
   version's file cannot be reused.
-- Do not pass `CRI=1`. The CRI build is a variant carrying a third-party SDK and
+- The setup produces `template_release` and `template_debug` under the stock
+  artifact root. Both must be fresh; their emcc and provenance must agree, and
+  their bytes must differ.
+- Do not pass `CRI=1`. The CRI pair is a variant carrying a third-party SDK and
   must never become a release asset (`dist/package-web-template.sh` checks the
   flavor and fails).
 
@@ -339,9 +343,10 @@ English if you parse it mechanically.**
   Windows takes the value from this lane's metadata (§C-3).
 
 - **The order is enforced.** The smoke in `dist/package-editor-macos.sh` reads
-  `<out>/godot-$V-web-template.zip` and its `.provenance` **as release
-  artifacts** and exports with them; absent, it dies telling you to cut the Web
-  template first. It also requires the bundled SDK's `emcc_version` to match
+  `<out>/godot-$V-web-templates.zip` and its `.provenance` **as release
+  artifacts**, unpacks its exact `godot_web_release.zip` / `godot_web_debug.zip`
+  pair, and exports with both; absent, it dies telling you to cut the Web
+  templates first. It also requires the bundled SDK's `emcc_version` to match
   `web.metadata`. On a mismatch, in order:
   `FORCE=1 ./gates/setup-godot-fork-web.sh` → `./dist/package-web-template.sh --version "$V"`.
 - **Re-bake the macOS template every version too.** Its input is the **official
@@ -366,11 +371,17 @@ is the teardown SIGTERM, not a failure.**
 Output (`artifacts/release/`):
 
 ```
-Godot-$V-macos-arm64.zip                + editor-macos.metadata
-godot-$V-web-template.zip{,.provenance} + web.metadata
-godot-$V-macos-arm64-template.zip       + macos.metadata
-SHA256SUMS.txt                          ← 3 rows at this point
+Godot-$V-macos-arm64.zip                 + editor-macos.metadata
+godot-$V-web-templates.zip{,.provenance} + web.metadata
+godot-$V-macos-arm64-template.zip        + macos.metadata
+SHA256SUMS.txt                           ← 3 rows at this point
 ```
+
+The Web outer zip must contain exactly `godot_web_release.zip` and
+`godot_web_debug.zip`. `web.metadata` formally records `flavor=stock`, both
+inner names, and both inner SHA-256 values as `release_template*` and
+`debug_template*`; the names and hashes must differ. The outer zip is one lane
+asset, so the checksum still contributes one row.
 
 ### A-6. Dry run
 
@@ -399,7 +410,7 @@ line that fails is the cause.
   only state in which a half-populated asset list is invisible to everyone else.
 - **Leave `SHA256SUMS.txt` at 3 rows.** Adding the Windows asset's row ahead of
   time dies on the row-set / active-lane check (`rows for no active lane`). The
-  Windows packager adds the fourth row itself.
+  Windows packagers add their rows themselves.
 - The tag is created and pushed here. Later runs report it as already on origin
   and leave it alone.
 - **The handoff tarball goes onto this draft next** (§B). `--publish` refuses
@@ -418,9 +429,9 @@ seven.
 | item | why |
 |---|---|
 | `editor-macos.metadata` `web.metadata` `macos.metadata` | `--uploaded-lane` reads metadata **from the local `<out>/<lane>.metadata`**; the full schema remains required, public provenance is checked against the draft body, and applicable integrity and cross-lane checks still run — never rewrite these by hand |
-| `SHA256SUMS.txt` (3 rows) | the Windows packager appends the fourth; all four rows are checked against the final active-lane asset set |
-| `godot-$V-web-template.zip` | needed in the flesh: the Windows editor's smoke exports with **the release** template |
-| `godot-$V-web-template.zip.provenance` | that same smoke reads the engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
+| `SHA256SUMS.txt` (3 rows) | the Windows template and editor packagers append two rows; all five rows are checked against the final active-lane asset set |
+| `godot-$V-web-templates.zip` | needed in the flesh: the Windows editor's smoke unpacks it and exports once with each of the distinct Release and Debug inner templates |
+| `godot-$V-web-templates.zip.provenance` | that same smoke reads the pair's engine provenance from it; without it the value is derived from `web.metadata`, and then the hashes must agree |
 | `web_emcc.txt` from the fork root | one of the files `dist/package-editor-windows.sh`'s smoke copies into the smoke root; absent, it dies with `the fork root has no web_emcc.txt`. **Only `gates/setup-godot-fork-web.sh` writes it**, and Windows does not run that (C-1), so the macOS copy is the only source |
 
 The **contents** of `web_emcc.txt` are an emcc version string, and they only
@@ -525,8 +536,8 @@ export CMAKE_CXX_COMPILER=cl
 `engine hash:` must equal the value noted on macOS. **If it differs, stop
 here.** Carrying on guarantees death at the `engine_provenance` check.
 
-Do **not** run `gates/setup-godot-fork-web.sh`. There is one Web template per
-release and it is the one macOS baked.
+Do **not** run `gates/setup-godot-fork-web.sh`. There is one Web template bundle
+per release, containing the Release/Debug pair that macOS baked.
 
 ### C-2. Confirm the emcc agreement first
 
@@ -536,11 +547,12 @@ sed -n 's/^emcc=//p' artifacts/release/web.metadata
 ```
 
 **The two must match.** If they do not, C-3 dies, and Windows has no way out —
-only macOS can re-bake the Web template.
+only macOS can re-bake the Web template pair.
 
-### C-3. Package the Windows editor
+### C-3. Package the Windows template and editor
 
 ```bash
+./dist/package-windows-template.sh --version "$V"
 ./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
     "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)" \
     2>&1 | tee /tmp/pkg-editor-windows.log
@@ -549,13 +561,16 @@ only macOS can re-bake the Web template.
 Check:
 
 - `web template:  emcc matches the bundled toolchain (.../artifacts/release/web.metadata)`
+- `OK: ...-windows-x86_64-templates.zip`
+- the archive contains exactly `godot_windows_release_x86_64.exe` and
+  `godot_windows_debug_x86_64.exe`
 - `prebuilt:` lists the three axes host / android / web
 - both smoke gates green
 - a final `OK: ...-windows-x86_64.zip`
 
 ```bash
 grep '^fork_commit=' artifacts/release/editor-windows.metadata   # same SHA as macOS
-wc -l < artifacts/release/SHA256SUMS.txt                          # → 4
+wc -l < artifacts/release/SHA256SUMS.txt                          # → 5
 ```
 
 ### C-4. Drop the handoff asset
@@ -571,7 +586,7 @@ Idempotent — it prints a line and exits 0 when the asset is not there.
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
-  --lane editor-windows \
+  --lane windows --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish --dry-run
 ```
@@ -580,7 +595,7 @@ Idempotent — it prints a line and exits 0 when the asset is not there.
   the lanes" refusal**, so a forgotten C-4 surfaces here instead of at the real
   publish.
 - `--uploaded-lane` means two things: make that lane active, and its asset is
-  already on the release. **Name all four lanes.**
+  already on the release. **Name all five lanes.**
 - Every uploaded lane must report
   `on the release as ..., digest and published notes agree`.
 - This host renders the notes that get published, so read the rendered body and
@@ -591,7 +606,7 @@ Idempotent — it prints a line and exits 0 when the asset is not there.
 
 ```bash
 ./dist/release-github.sh --version "$V" --prev-version "$PREV" \
-  --lane editor-windows \
+  --lane windows --lane editor-windows \
   --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos \
   --publish 2>&1 | tee /tmp/release-windows.log
 ```
@@ -611,7 +626,7 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 ```
 
 - `isDraft: false`
-- five assets (2 editors + 2 templates + `SHA256SUMS.txt`) — now what `--publish`
+- six assets (2 editors + 3 templates + `SHA256SUMS.txt`) — now what `--publish`
   enforced, not only what you are checking
 - `targetCommitish` is the fork commit the tag landed on
 
@@ -727,7 +742,7 @@ There is nothing to argue about when accounts of the state disagree.
 | `put` refuses: the release is not a draft | it is already published; there is nothing left to hand over |
 | `get` refuses: the release carries no handoff asset | `put` was not run on macOS, or `drop` already ran |
 | `get` refuses: the downloaded tarball does not match the served digest | a corrupt download; re-run it |
-| `get` refuses: local `SHA256SUMS.txt` carries rows the handoff does not | a Windows packaging run already appended its fourth row. The handoff is stale — you are past it (C-3) |
+| `get` refuses: local `SHA256SUMS.txt` carries rows the handoff does not | a Windows packaging run already appended a later row. The handoff is stale — you are past it (C-3) |
 
 **Log lines that look like failures and are not:**
 
@@ -741,10 +756,10 @@ repository root from `BASH_SOURCE[1]` — its caller — and nothing validates t
 result, so a script outside the repository that sources it does not die: it runs
 on quietly believing some other directory is the root.
 
-**To fix only the notes body, touching no asset:** re-run with all four lanes
+**To fix only the notes body, touching no asset:** re-run with all five lanes
 declared as `--uploaded-lane`. Nothing is left to upload, and only the
-`SHA256SUMS.txt` re-upload and the notes re-render happen. It requires the four
-metadata files and the four-row `SHA256SUMS.txt` to be present locally.
+`SHA256SUMS.txt` re-upload and the notes re-render happen. It requires the five
+metadata files and the five-row `SHA256SUMS.txt` to be present locally.
 
 ---
 
@@ -761,7 +776,7 @@ metadata files and the four-row `SHA256SUMS.txt` to be present locally.
 3. **Do not `--publish` from macOS.** Hand it over as a draft. While the handoff
    asset is attached `--publish` refuses mechanically — but only until C-4 drops
    it.
-4. **Do not let `SHA256SUMS.txt` reach 4 rows on macOS.**
+4. **Do not add either Windows row to `SHA256SUMS.txt` on macOS.**
 5. **Do not hand-write metadata for `--uploaded-lane`.** Copy the packaging
    host's verbatim. The required key set grows across versions (`node_version`
    was added in one), so **an old metadata file cannot be edited into claiming a

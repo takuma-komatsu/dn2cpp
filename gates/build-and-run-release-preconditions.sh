@@ -13,7 +13,7 @@
 # `gate_skip` and deliberately takes no result cache — the same reasoning as
 # gates/build-and-run-doc-claims.sh, whose shape this copies.
 #
-# Four fixtures, because the subjects ask different questions:
+# Five fixtures, because the subjects ask different questions:
 #   * a throwaway git repository for `dn2cpp_commit_pin_resolve`, which asks
 #     about the tree it is run in. Asking it about THIS tree would mean dirtying
 #     the tree the rest of the suite is hashing, and would answer differently
@@ -21,6 +21,8 @@
 #   * a directory holding a file called `dn2cpp` and a stamp beside it, for
 #     `dn2cpp_pin_bin_assert` — which compares two arguments and reads nothing
 #     ambient, which is what lets a fixture supply both sides.
+#   * a synthetic Windows fork and Python writer for the template packager's
+#     failure path, where the public archive must remain unchanged.
 #   * a synthetic artifacts directory of `<lane>.metadata` + empty assets for
 #     dist/release-github.sh, whose agreement checks read nothing else.
 #   * a complete synthetic release with stubbed git and gh views, which reaches
@@ -64,8 +66,8 @@ refused() {
     fi
 }
 
-# ── 1/5 the pin resolver's arms ──────────────────────────────────────────────
-echo "== 1/5 dn2cpp_commit_pin_resolve — against a throwaway repository =="
+# ── 1/6 the pin resolver's arms ──────────────────────────────────────────────
+echo "== 1/6 dn2cpp_commit_pin_resolve — against a throwaway repository =="
 FIX="$WORK/pinrepo"
 mkdir -p "$FIX/src" "$FIX/runtime" "$FIX/third_party"
 # src_tree_hash enumerates exactly these three, and a git checkout is its own
@@ -150,13 +152,13 @@ refused "an untracked file, in a repo configured to hide untracked files" \
 fixture_git config --unset status.showUntrackedFiles
 rm -f "$FIX/src/stray.txt"
 
-# ── 2/5 the pinned bundle's own CLI ──────────────────────────────────────────
+# ── 2/6 the pinned bundle's own CLI ──────────────────────────────────────────
 # The tree being the pinned commit says nothing about a binary built elsewhere,
 # and under --dn2cpp-bin the stamp beside it is the only witness. Driven against
 # a fixture rather than the real artifacts/: asking about the real one needs this
 # tree to be clean AND at the pin, which a suite run cannot promise — and an
 # assertion that runs only when it happens to be both is the fail-open shape.
-echo "== 2/5 dn2cpp_pin_bin_assert — a named binary's stamp =="
+echo "== 2/6 dn2cpp_pin_bin_assert — a named binary's stamp =="
 BINFIX="$WORK/bin"
 mkdir -p "$BINFIX"
 : > "$BINFIX/dn2cpp"
@@ -195,12 +197,12 @@ else
     bad "dist/package-toolchain.sh no longer calls dn2cpp_pin_bin_assert on its --dn2cpp-bin — a pinned bundle would carry an unvouched-for CLI"
 fi
 
-# ── 3/5 the editor packagers demand a pin at all ─────────────────────────────
+# ── 3/6 the editor packagers demand a pin at all ─────────────────────────────
 # The arm that makes the rest reachable: without the flag there is no pin to
 # verify, and the metadata falls back to whatever HEAD said. Both scripts exit
 # on it before touching a fork, a host check or a file, so this costs nothing
 # and runs on either host.
-echo "== 3/5 the editor packagers' required --dn2cpp-commit =="
+echo "== 3/6 the editor packagers' required --dn2cpp-commit =="
 V=4.7.1-dn2cpp.3.1
 for lane in macos windows; do
     out="$(bash "dist/package-editor-$lane.sh" --version "$V" 2>&1)" && rc=0 || rc=$?
@@ -212,8 +214,96 @@ for lane in macos windows; do
         "--dn2cpp-commit is required" "$hint"
 done
 
-# ── 4/5 dist/release-github.sh's cross-lane agreement ────────────────────────
-echo "== 4/5 dist/release-github.sh — one value per release, across the lanes =="
+# ── 4/6 the Windows template packager's atomic publication ───────────────────
+echo "== 4/6 dist/package-windows-template.sh — preserve the public ZIP on failure =="
+WIN_PKG="$WORK/windows-package"
+WIN_PKG_FORK="$WIN_PKG/fork"
+WIN_PKG_ROOT="$WIN_PKG/root"
+WIN_PKG_OUT="$WIN_PKG/out"
+WIN_PKG_STUB="$WIN_PKG/stub"
+WIN_PKG_PY="$(resolve_python)"
+mkdir -p "$WIN_PKG_FORK/modules/mono/mono_gd" "$WIN_PKG_ROOT" \
+    "$WIN_PKG_OUT" "$WIN_PKG_STUB"
+: > "$WIN_PKG_FORK/modules/mono/mono_gd/gd_mono.cpp"
+printf '%s\n' "$WIN_PKG_FORK" > "$WIN_PKG_ROOT/clone.txt"
+
+cat > "$WIN_PKG_STUB/git" <<'GITEOF'
+#!/bin/sh
+case "$1" in
+    diff|ls-files) exit 0 ;;
+    *) echo "stub git: unsupported command: $*" >&2; exit 1 ;;
+esac
+GITEOF
+cat > "$WIN_PKG_STUB/uname" <<'UNAMEEOF'
+#!/bin/sh
+case "$1" in
+    -m) echo x86_64 ;;
+    -s) echo MINGW64_NT ;;
+    *) echo MINGW64_NT ;;
+esac
+UNAMEEOF
+cat > "$WIN_PKG_STUB/chcp.com" <<'CHCPEOF'
+#!/bin/sh
+exit 0
+CHCPEOF
+cat > "$WIN_PKG_STUB/python3" <<'PYEOF'
+#!/bin/sh
+if [ "$1" = -c ]; then
+    # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+    exec $TEST_REAL_PY "$@"
+fi
+if [ "$1" = - ] && [ ! -f "$TEST_PY_SEEN" ]; then
+    : > "$TEST_PY_SEEN"
+    printf 'incomplete archive\n' > "$2"
+    exit 0
+fi
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+exec $TEST_REAL_PY "$@"
+PYEOF
+chmod +x "$WIN_PKG_STUB/git" "$WIN_PKG_STUB/uname" \
+    "$WIN_PKG_STUB/chcp.com" "$WIN_PKG_STUB/python3"
+
+for config in release debug; do
+    template="$WIN_PKG/$config.exe"
+    cat > "$template" <<'TEMPLATEEOF'
+#!/bin/sh
+echo 4.7.1.stable.mono.custom_build.fixture
+TEMPLATEEOF
+    chmod +x "$template"
+done
+
+WIN_PKG_BASE="$(head -1 gates/expected/godot-fork-pin.txt)"
+WIN_PKG_ENGINE_HASH="$(printf 'base %s\n' "$WIN_PKG_BASE" | shasum -a 256 | cut -c1-16)"
+WIN_PKG_PROVENANCE="engine=$WIN_PKG_ENGINE_HASH base=$WIN_PKG_BASE"
+printf '%s\n' "$WIN_PKG_PROVENANCE" > "$WIN_PKG/release.exe.provenance"
+printf '%s\n' "$WIN_PKG_PROVENANCE" > "$WIN_PKG/debug.exe.provenance"
+
+WIN_PKG_ASSET="$WIN_PKG_OUT/godot-$V-windows-x86_64-templates.zip"
+printf 'previous published archive\n' > "$WIN_PKG_ASSET"
+cp "$WIN_PKG_ASSET" "$WIN_PKG/asset-before.zip"
+WIN_PKG_OUT_TEXT="$(TEST_REAL_PY="$WIN_PKG_PY" TEST_PY_SEEN="$WIN_PKG/python-used" \
+    DN2CPP_PYTHON="$WIN_PKG_STUB/python3" DN2CPP_OS=windows \
+    DN2CPP_GODOT_FORK_ROOT="$WIN_PKG_ROOT" \
+    DN2CPP_GODOT_FORK_CLONE="$WIN_PKG_FORK" PATH="$WIN_PKG_STUB:$PATH" \
+    bash dist/package-windows-template.sh --version "$V" --out "$WIN_PKG_OUT" \
+    --release-src "$WIN_PKG/release.exe" --debug-src "$WIN_PKG/debug.exe" 2>&1)" \
+    && WIN_PKG_RC=0 || WIN_PKG_RC=$?
+WIN_PKG_FAULT=
+[ "$WIN_PKG_RC" -ne 0 ] || WIN_PKG_FAULT="$WIN_PKG_FAULT package unexpectedly succeeded;"
+cmp -s "$WIN_PKG/asset-before.zip" "$WIN_PKG_ASSET" \
+    || WIN_PKG_FAULT="$WIN_PKG_FAULT public archive changed;"
+if compgen -G "$WIN_PKG_OUT/.$(basename "$WIN_PKG_ASSET").tmp.*" >/dev/null; then
+    WIN_PKG_FAULT="$WIN_PKG_FAULT temporary archive remained;"
+fi
+if [ -z "$WIN_PKG_FAULT" ]; then
+    ok "a failed Windows archive verification preserves the published ZIP"
+else
+    bad "Windows archive failure was not atomic:$WIN_PKG_FAULT rc=$WIN_PKG_RC"
+    printf '%s\n' "$WIN_PKG_OUT_TEXT" | sed 's/^/        | /' >&2
+fi
+
+# ── 5/6 dist/release-github.sh's cross-lane agreement ────────────────────────
+echo "== 5/6 dist/release-github.sh — one value per release, across the lanes =="
 STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/gh" <<'STUBEOF'
@@ -230,19 +320,63 @@ mkdir -p "$PRISTINE"
 FORK_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 BASE_SHA=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 DN2_SHA=cccccccccccccccccccccccccccccccccccccccc
+WIN_RELEASE_NAME=godot_windows_release_x86_64.exe
+WIN_DEBUG_NAME=godot_windows_debug_x86_64.exe
+WEB_RELEASE_NAME=godot_web_release.zip
+WEB_DEBUG_NAME=godot_web_debug.zip
+printf 'release template fixture\n' > "$WORK/$WIN_RELEASE_NAME"
+printf 'debug template fixture\n' > "$WORK/$WIN_DEBUG_NAME"
+printf 'web release template fixture\n' > "$WORK/$WEB_RELEASE_NAME"
+printf 'web debug template fixture\n' > "$WORK/$WEB_DEBUG_NAME"
+WIN_RELEASE_SHA="$(shasum -a 256 "$WORK/$WIN_RELEASE_NAME" | awk '{print $1}')"
+WIN_DEBUG_SHA="$(shasum -a 256 "$WORK/$WIN_DEBUG_NAME" | awk '{print $1}')"
+WEB_RELEASE_SHA="$(shasum -a 256 "$WORK/$WEB_RELEASE_NAME" | awk '{print $1}')"
+WEB_DEBUG_SHA="$(shasum -a 256 "$WORK/$WEB_DEBUG_NAME" | awk '{print $1}')"
+PY="$(resolve_python)"
 lane_asset_name() {
     case "$1" in
         editor-macos)   printf 'Godot-%s-macos-arm64.zip\n' "$V" ;;
         editor-windows) printf 'Godot-%s-windows-x86_64.zip\n' "$V" ;;
-        web)            printf 'godot-%s-web-template.zip\n' "$V" ;;
+        windows)        printf 'godot-%s-windows-x86_64-templates.zip\n' "$V" ;;
+        web)            printf 'godot-%s-web-templates.zip\n' "$V" ;;
         macos)          printf 'Godot-%s-macos-template.zip\n' "$V" ;;
     esac
 }
 # The keys are the lane table's own demand (dist/release-github.sh, lane_row):
 # section 2 requires every one of them non-empty before an agreement is asked.
-for lane in editor-macos editor-windows web macos; do
+for lane in editor-macos editor-windows windows web macos; do
     asset="$(lane_asset_name "$lane")"
-    : > "$PRISTINE/$asset"
+    if [ "$lane" = windows ]; then
+        # A real archive makes the positive path exercise the inner contract;
+        # empty stand-ins can only test checks that run before zip inspection.
+        # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+        $PY - "$PRISTINE/$asset" "$WORK/$WIN_RELEASE_NAME" "$WIN_RELEASE_NAME" \
+                "$WORK/$WIN_DEBUG_NAME" "$WIN_DEBUG_NAME" <<'PY'
+import sys
+import zipfile
+
+archive, release_path, release_name, debug_path, debug_name = sys.argv[1:]
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+    z.write(release_path, release_name)
+    z.write(debug_path, debug_name)
+PY
+    elif [ "$lane" = web ]; then
+        # Web is likewise a nested pair; release validation checks its exact
+        # member set and hashes, not merely the outer digest.
+        # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+        $PY - "$PRISTINE/$asset" "$WORK/$WEB_RELEASE_NAME" "$WEB_RELEASE_NAME" \
+                "$WORK/$WEB_DEBUG_NAME" "$WEB_DEBUG_NAME" <<'PY'
+import sys
+import zipfile
+
+archive, release_path, release_name, debug_path, debug_name = sys.argv[1:]
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as z:
+    z.write(release_path, release_name)
+    z.write(debug_path, debug_name)
+PY
+    else
+        : > "$PRISTINE/$asset"
+    fi
     sha="$(shasum -a 256 "$PRISTINE/$asset" | awk '{print $1}')"
     {
         printf 'release_version=%s\nasset=%s\nasset_sha256=%s\n' "$V" "$asset" "$sha"
@@ -253,13 +387,23 @@ for lane in editor-macos editor-windows web macos; do
                 printf 'toolchain_content_hash=stubhash\ncorelib_framework=10.0.0\n'
                 printf 'prebuilt_axes=host\ncmake_version=0.0.0\nninja_version=0.0.0\nnode_version=0.0.0\n' ;;
             web)
-                printf 'engine_provenance=stub engine\nemcc=stub emcc 6.0.5-git (abcdef)\nemsdk_version=6.0.5\n' ;;
+                printf 'flavor=stock\nengine_provenance=stub engine\nemcc=stub emcc 6.0.5-git (abcdef)\nemsdk_version=6.0.5\n'
+                printf 'release_template=%s\nrelease_template_sha256=%s\n' "$WEB_RELEASE_NAME" "$WEB_RELEASE_SHA"
+                printf 'debug_template=%s\ndebug_template_sha256=%s\n' "$WEB_DEBUG_NAME" "$WEB_DEBUG_SHA" ;;
+            windows)
+                printf 'architecture=x86_64\nbase_pin=%s\nengine_provenance=stub engine\n' "$BASE_SHA"
+                printf 'release_template=%s\n' "$WIN_RELEASE_NAME"
+                printf 'release_template_sha256=%s\n' "$WIN_RELEASE_SHA"
+                printf 'release_template_version_string=4.7.1.stable.mono.custom_build.stub\n'
+                printf 'debug_template=%s\n' "$WIN_DEBUG_NAME"
+                printf 'debug_template_sha256=%s\n' "$WIN_DEBUG_SHA"
+                printf 'debug_template_version_string=4.7.1.stable.mono.custom_build.stub\n' ;;
             macos)
                 printf 'base_pin=%s\nupstream_template=stubsha\n' "$BASE_SHA" ;;
         esac
     } > "$PRISTINE/$lane.metadata"
 done
-( cd "$PRISTINE" && for lane in editor-macos editor-windows web macos; do
+( cd "$PRISTINE" && for lane in editor-macos editor-windows windows web macos; do
     asset="$(lane_asset_name "$lane")"
     sha="$(shasum -a 256 "$asset")"
     printf '%s  %s\n' "${sha%% *}" "$asset"
@@ -272,13 +416,18 @@ meta_set() {
     mv -f "$1.new" "$1"
 }
 
+meta_drop() {
+    awk -F= -v k="$2" '$1 != k' "$1" > "$1.new"
+    mv -f "$1.new" "$1"
+}
+
 # rel_try — the release script over $REL, restored from pristine first, with the
 # caller's `meta_set` edits applied in between.
 rel_reset() { rm -rf "$REL"; cp -R "$PRISTINE" "$REL"; }
 rel_try() {
     REL_OUT="$(PATH="$STUB:$PATH" bash dist/release-github.sh --dry-run \
         --version "$V" --prev-version 4.7.1-dn2cpp.3 --out "$REL" \
-        --lane editor-macos --lane editor-windows --lane web --lane macos 2>&1)" \
+        --lane editor-macos --lane editor-windows --lane windows --lane web --lane macos 2>&1)" \
         && REL_RC=0 || REL_RC=$?
 }
 
@@ -295,6 +444,164 @@ else
     bad "agreeing lanes did not get past the agreement checks: rc=$REL_RC"
     printf '%s\n' "$REL_OUT" | sed 's/^/        | /' >&2
 fi
+
+# The Windows lane is one archive and one metadata row, but the row must retain
+# the identity of both files inside it. This is the durable witness that the
+# archive was assembled from distinct release and debug products rather than a
+# renamed single-template package.
+for key in release_template release_template_sha256 release_template_version_string \
+        debug_template debug_template_sha256 debug_template_version_string; do
+    rel_reset
+    meta_drop "$REL/windows.metadata" "$key"
+    rel_try
+    refused "Windows template metadata without $key" "$REL_RC" "$REL_OUT" \
+        "windows.metadata carries no '$key=' value"
+done
+
+rel_reset
+meta_set "$REL/windows.metadata" debug_template "$WIN_RELEASE_NAME"
+rel_try
+refused "Windows metadata that names one executable for both configurations" \
+    "$REL_RC" "$REL_OUT" \
+    "names '$WIN_RELEASE_NAME' as both the release and debug template"
+
+rel_reset
+meta_set "$REL/windows.metadata" debug_template_sha256 "$WIN_RELEASE_SHA"
+rel_try
+refused "Windows metadata that gives both configurations the same bytes" \
+    "$REL_RC" "$REL_OUT" \
+    "release and debug templates the same sha256: $WIN_RELEASE_SHA"
+
+rel_reset
+meta_set "$REL/windows.metadata" release_template unexpected-release.exe
+rel_try
+refused "Windows metadata with a noncanonical release entry name" \
+    "$REL_RC" "$REL_OUT" "names release template 'unexpected-release.exe'" \
+    "expected godot_windows_release_x86_64.exe"
+
+rel_reset
+meta_set "$REL/windows.metadata" debug_template unexpected-debug.exe
+rel_try
+refused "Windows metadata with a noncanonical debug entry name" \
+    "$REL_RC" "$REL_OUT" "names debug template 'unexpected-debug.exe'" \
+    "expected godot_windows_debug_x86_64.exe"
+
+rel_reset
+windows_asset="$(lane_asset_name windows)"
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PY - "$REL/$windows_asset" "$WORK/$WIN_RELEASE_NAME" \
+        "$WORK/$WIN_DEBUG_NAME" "$WIN_DEBUG_NAME" <<'PY'
+import sys
+import zipfile
+
+archive, release_path, debug_path, debug_name = sys.argv[1:]
+with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+    z.write(release_path, "unexpected-release.exe")
+    z.write(debug_path, debug_name)
+PY
+rel_try
+refused "a Windows archive whose entry names differ from metadata" \
+    "$REL_RC" "$REL_OUT" "Windows template archive" "unexpected-release.exe" \
+    "expected exactly ['$WIN_RELEASE_NAME', '$WIN_DEBUG_NAME']"
+
+rel_reset
+wrong_inner_sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+meta_set "$REL/windows.metadata" release_template_sha256 "$wrong_inner_sha"
+rel_try
+refused "a Windows archive whose entry hash differs from metadata" \
+    "$REL_RC" "$REL_OUT" \
+    "$WIN_RELEASE_NAME hashes to $WIN_RELEASE_SHA, metadata says $wrong_inner_sha"
+
+rel_reset
+printf 'unexpected archive entry\n' > "$WORK/unexpected.txt"
+windows_asset="$(lane_asset_name windows)"
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PY - "$REL/$windows_asset" "$WORK/unexpected.txt" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "a", zipfile.ZIP_DEFLATED) as z:
+    z.write(sys.argv[2], "unexpected.txt")
+PY
+rel_try
+refused "a Windows archive with an undeclared entry" "$REL_RC" "$REL_OUT" \
+    "entries are" "unexpected.txt" "expected exactly"
+
+# Web exposes the same pair contract, with stock flavor as an additional public
+# invariant. Each malformed nested archive must fail before ambient git state.
+for key in flavor release_template release_template_sha256 \
+        debug_template debug_template_sha256; do
+    rel_reset
+    meta_drop "$REL/web.metadata" "$key"
+    rel_try
+    refused "Web template metadata without $key" "$REL_RC" "$REL_OUT" \
+        "web.metadata carries no '$key=' value"
+done
+
+rel_reset
+meta_set "$REL/web.metadata" flavor cri
+rel_try
+refused "a non-stock public Web bundle" "$REL_RC" "$REL_OUT" \
+    "web.metadata says flavor=cri" "must be stock"
+
+rel_reset
+meta_set "$REL/web.metadata" debug_template "$WEB_RELEASE_NAME"
+rel_try
+refused "Web metadata that names one inner ZIP for both configurations" \
+    "$REL_RC" "$REL_OUT" \
+    "names '$WEB_RELEASE_NAME' as both the release and debug template"
+
+rel_reset
+meta_set "$REL/web.metadata" debug_template_sha256 "$WEB_RELEASE_SHA"
+rel_try
+refused "Web metadata that gives both configurations the same bytes" \
+    "$REL_RC" "$REL_OUT" \
+    "release and debug templates the same sha256: $WEB_RELEASE_SHA"
+
+rel_reset
+meta_set "$REL/web.metadata" release_template unexpected-web-release.zip
+rel_try
+refused "Web metadata with a noncanonical release entry name" \
+    "$REL_RC" "$REL_OUT" \
+    "names release template 'unexpected-web-release.zip'" \
+    "expected godot_web_release.zip"
+
+rel_reset
+meta_set "$REL/web.metadata" debug_template unexpected-web-debug.zip
+rel_try
+refused "Web metadata with a noncanonical debug entry name" \
+    "$REL_RC" "$REL_OUT" \
+    "names debug template 'unexpected-web-debug.zip'" \
+    "expected godot_web_debug.zip"
+
+rel_reset
+meta_set "$REL/web.metadata" release_template_sha256 "$wrong_inner_sha"
+rel_try
+refused "a Web archive whose entry hash differs from metadata" \
+    "$REL_RC" "$REL_OUT" \
+    "$WEB_RELEASE_NAME hashes to $WEB_RELEASE_SHA, metadata says $wrong_inner_sha"
+
+rel_reset
+web_asset="$(lane_asset_name web)"
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PY - "$REL/$web_asset" "$WORK/unexpected.txt" <<'PY'
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1], "a", zipfile.ZIP_STORED) as z:
+    z.write(sys.argv[2], "unexpected.txt")
+PY
+rel_try
+refused "a Web archive with an undeclared entry" "$REL_RC" "$REL_OUT" \
+    "entries are" "unexpected.txt" "expected exactly"
+
+rel_reset
+REL_OUT="$(PATH="$STUB:$PATH" bash dist/release-github.sh --dry-run \
+    --version "$V" --prev-version 4.7.1-dn2cpp.3 --out "$REL" \
+    --lane editor-macos --lane editor-windows --lane web --lane macos 2>&1)" \
+    && REL_RC=0 || REL_RC=$?
+refused "a Windows editor without its fork-built export template" "$REL_RC" "$REL_OUT" \
+    "lanes 'editor-windows' and 'windows' must be released together"
 
 rel_reset
 meta_set "$REL/editor-windows.metadata" dn2cpp_commit dddddddddddddddddddddddddddddddddddddddd
@@ -322,12 +629,12 @@ rel_try
 refused "two .NET SDKs" "$REL_RC" "$REL_OUT" \
     "disagree on corelib_framework" "re-package the stale one"
 
-# ── 5/5 uploaded lanes and the simplified public notes ───────────────────────
+# ── 6/6 uploaded lanes and the simplified public notes ───────────────────────
 # This fixture reaches the read-only GitHub view and renderer. git supplies the
 # two repository identities the release script asks about; gh serves one draft,
 # its asset digests and its body. Any command outside that read-only vocabulary
 # is a gate failure, so --dry-run cannot accidentally mutate external state.
-echo "== 5/5 dist/release-github.sh — uploaded lanes and public-note bindings =="
+echo "== 6/6 dist/release-github.sh — uploaded lanes and public-note bindings =="
 FULL_STUB="$WORK/full-stub"
 FULL_FORK_ROOT="$WORK/full-fork-root"
 FULL_FORK="$WORK/full-fork"
@@ -424,10 +731,12 @@ public_body_drop() {
 
 full_reset() {
     rel_reset
-    # macos is an uploaded-only lane: its checksum row and metadata remain here,
-    # but only GitHub's digest can speak for the absent asset bytes. Web stays
-    # local so the same fixture also exercises shasum and lane_zip validation.
+    # macos and windows are uploaded-only lanes: their checksum rows and
+    # metadata remain here, but only GitHub's digest can speak for the absent
+    # asset bytes. Web stays local so the same fixture also exercises shasum and
+    # lane_zip validation; section 4 exercises the local Windows ZIP itself.
     rm -f "$REL/$(lane_asset_name macos)"
+    rm -f "$REL/$(lane_asset_name windows)"
     public_body_write
     FULL_BAD_DIGEST=
 }
@@ -441,7 +750,7 @@ full_try() {
         bash dist/release-github.sh --dry-run --version "$V" \
         --prev-version 4.7.1-dn2cpp.3 --out "$REL" \
         --uploaded-lane editor-macos --uploaded-lane editor-windows \
-        --uploaded-lane web --uploaded-lane macos 2>&1)" \
+        --uploaded-lane windows --uploaded-lane web --uploaded-lane macos 2>&1)" \
         && FULL_RC=0 || FULL_RC=$?
 }
 
@@ -457,7 +766,7 @@ meta_set "$REL/editor-macos.metadata" prebuilt_axes macos-axes
 meta_set "$REL/editor-windows.metadata" prebuilt_axes windows-axes
 full_try
 if [ "$FULL_RC" -eq 0 ] && [[ "$FULL_OUT" == *"every precondition passed"* ]] \
-        && [[ "$FULL_OUT" == *"3 row(s) checked against the files here, 1 against the release's digests"* ]]; then
+        && [[ "$FULL_OUT" == *"3 row(s) checked against the files here, 2 against the release's digests"* ]]; then
     ok "an uploaded draft regenerates notes without body witnesses for internal metadata"
 else
     bad "the simplified uploaded draft did not regenerate: rc=$FULL_RC"
@@ -476,6 +785,72 @@ if [ -z "$render_faults" ]; then
 else
     bad "rendered notes retain removed or unrendered material:$render_faults"
 fi
+
+# With no Windows ZIP on this host, metadata is the only remaining witness for
+# the release/debug distinction. These checks must therefore run before and
+# independently of archive inspection.
+full_reset
+meta_set "$REL/windows.metadata" debug_template "$WIN_RELEASE_NAME"
+full_try
+refused "an uploaded-only Windows lane with one name for both templates" \
+    "$FULL_RC" "$FULL_OUT" "as both the release and debug template"
+
+full_reset
+meta_set "$REL/windows.metadata" debug_template_sha256 "$WIN_RELEASE_SHA"
+full_try
+refused "an uploaded-only Windows lane with one hash for both templates" \
+    "$FULL_RC" "$FULL_OUT" "release and debug templates the same sha256"
+
+full_reset
+meta_set "$REL/windows.metadata" release_template uploaded-release.exe
+full_try
+refused "uploaded-only Windows metadata with a noncanonical release name" \
+    "$FULL_RC" "$FULL_OUT" "names release template 'uploaded-release.exe'" \
+    "expected godot_windows_release_x86_64.exe"
+
+full_reset
+meta_set "$REL/windows.metadata" debug_template uploaded-debug.exe
+full_try
+refused "uploaded-only Windows metadata with a noncanonical debug name" \
+    "$FULL_RC" "$FULL_OUT" "names debug template 'uploaded-debug.exe'" \
+    "expected godot_windows_debug_x86_64.exe"
+
+full_reset
+rm -f "$REL/$(lane_asset_name web)"
+meta_set "$REL/web.metadata" debug_template "$WEB_RELEASE_NAME"
+full_try
+refused "an uploaded-only Web lane with one name for both templates" \
+    "$FULL_RC" "$FULL_OUT" "as both the release and debug template"
+
+full_reset
+rm -f "$REL/$(lane_asset_name web)"
+meta_set "$REL/web.metadata" debug_template_sha256 "$WEB_RELEASE_SHA"
+full_try
+refused "an uploaded-only Web lane with one hash for both templates" \
+    "$FULL_RC" "$FULL_OUT" "release and debug templates the same sha256"
+
+full_reset
+rm -f "$REL/$(lane_asset_name web)"
+meta_set "$REL/web.metadata" flavor cri
+full_try
+refused "an uploaded-only non-stock Web lane" "$FULL_RC" "$FULL_OUT" \
+    "web.metadata says flavor=cri" "must be stock"
+
+full_reset
+rm -f "$REL/$(lane_asset_name web)"
+meta_set "$REL/web.metadata" release_template uploaded-release.zip
+full_try
+refused "uploaded-only Web metadata with a noncanonical release name" \
+    "$FULL_RC" "$FULL_OUT" "names release template 'uploaded-release.zip'" \
+    "expected godot_web_release.zip"
+
+full_reset
+rm -f "$REL/$(lane_asset_name web)"
+meta_set "$REL/web.metadata" debug_template uploaded-debug.zip
+full_try
+refused "uploaded-only Web metadata with a noncanonical debug name" \
+    "$FULL_RC" "$FULL_OUT" "names debug template 'uploaded-debug.zip'" \
+    "expected godot_web_debug.zip"
 
 # Every value still published has the existing body as its uploaded-lane
 # witness. Web provenance is one public item backed by two scalar metadata

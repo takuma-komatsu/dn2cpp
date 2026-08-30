@@ -242,16 +242,22 @@ if [ "${DN2CPP_PREMERGE_PROBE:-0}" = "forkweb" ]; then
     for probe_flavor in stock cri; do
         case "$probe_flavor" in
             stock)
-                probe_zip="$FORK_ROOT/web_template.zip"
-                probe_emcc_stamp="$FORK_ROOT/web_emcc.txt"
+                probe_release_zip="$FORK_ROOT/web_template.zip"
+                probe_debug_zip="$FORK_ROOT/web_template_debug.zip"
+                probe_release_emcc_stamp="$FORK_ROOT/web_emcc.txt"
+                probe_debug_emcc_stamp="$FORK_ROOT/web_emcc_debug.txt"
                 ;;
             cri)
-                probe_zip="$FORK_ROOT/web_template_cri.zip"
-                probe_emcc_stamp="$FORK_ROOT/web_emcc_cri.txt"
+                probe_release_zip="$FORK_ROOT/web_template_cri.zip"
+                probe_debug_zip="$FORK_ROOT/web_template_cri_debug.zip"
+                probe_release_emcc_stamp="$FORK_ROOT/web_emcc_cri.txt"
+                probe_debug_emcc_stamp="$FORK_ROOT/web_emcc_cri_debug.txt"
                 ;;
         esac
-        if ! godot_fork_web_template_fresh "$probe_zip" "$probe_flavor" \
-            "$probe_emcc_stamp" "$probe_emcc" "$probe_want"; then
+        if ! godot_fork_web_template_pair_fresh \
+                "$probe_release_zip" "$probe_debug_zip" "$probe_flavor" \
+                "$probe_release_emcc_stamp" "$probe_debug_emcc_stamp" \
+                "$probe_emcc" "$probe_want"; then
             probe_stale="$probe_stale $probe_flavor"
         fi
     done
@@ -1048,9 +1054,16 @@ godot_fork_cache_fresh() {
 }
 godot_fork_web_template_fresh() {
     local zip="$1" flavor="$2" emcc_stamp="$3" emcc="$4" engine="$5"
-    [ -f "$zip" ] && [ "$(cat "$zip")" = "$flavor" ] \
+    [ -f "$zip" ] && [ "$(head -1 "$zip")" = "$flavor" ] \
         && [ "$(head -1 "$emcc_stamp" 2>/dev/null || true)" = "$emcc" ] \
         && [ "$(head -1 "$zip.provenance" 2>/dev/null || true)" = "$engine" ]
+}
+godot_fork_web_template_pair_fresh() {
+    local release_zip="$1" debug_zip="$2" flavor="$3" release_stamp="$4"
+    local debug_stamp="$5" emcc="$6" engine="$7"
+    godot_fork_web_template_fresh "$release_zip" "$flavor" "$release_stamp" "$emcc" "$engine" \
+        && godot_fork_web_template_fresh "$debug_zip" "$flavor" "$debug_stamp" "$emcc" "$engine" \
+        && ! cmp -s "$release_zip" "$debug_zip"
 }
 godot_fork_ios_ready() {
     local zip="$1"
@@ -1067,18 +1080,21 @@ GFSTUB
 
     # A fork artifact root the forkweb probe can read for real. The probe logic is
     # the subject — "which flavors are due" — so its INPUTS are faked and it runs
-    # unmodified: two zips, each stamped with the provenance the stub helper
+    # unmodified: four zips, each stamped with the provenance the stub helper
     # reports, which is the state "nothing due" looks like.
     ST_FORKROOT="$ST_TMP/forkroot"
     mkdir -p "$ST_FORKROOT" "$FAKE/gates/expected"
     printf 'stubbase\n' > "$FAKE/gates/expected/godot-fork-pin.txt"
-    for z in web_template web_template_cri; do
-        [ "$z" = web_template ] && flavor=stock || flavor=cri
-        printf '%s\n' "$flavor" > "$ST_FORKROOT/$z.zip"
+    for z in web_template web_template_debug web_template_cri web_template_cri_debug; do
+        case "$z" in web_template|web_template_debug) flavor=stock ;; *) flavor=cri ;; esac
+        case "$z" in *_debug) config=debug ;; *) config=release ;; esac
+        printf '%s\n%s\n' "$flavor" "$config" > "$ST_FORKROOT/$z.zip"
         printf 'engine=stubengine base=stubbase\n' > "$ST_FORKROOT/$z.zip.provenance"
     done
     printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc.txt"
+    printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc_debug.txt"
     printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc_cri.txt"
+    printf 'stub-emcc\n' > "$ST_FORKROOT/web_emcc_cri_debug.txt"
     printf 'not a real iOS template\n' > "$ST_FORKROOT/ios_template.zip"
     printf 'engine=stubengine base=stubbase\n' > "$ST_FORKROOT/ios_template.zip.provenance"
 
@@ -1279,8 +1295,11 @@ GFSTUB
     fi
     ST_IOSLESS="$ST_TMP/forkroot-iosless"
     mkdir -p "$ST_IOSLESS"
-    for f in web_template.zip web_template.zip.provenance web_template_cri.zip \
-            web_template_cri.zip.provenance web_emcc.txt web_emcc_cri.txt; do
+    for f in web_template.zip web_template.zip.provenance web_template_debug.zip \
+            web_template_debug.zip.provenance web_template_cri.zip \
+            web_template_cri.zip.provenance web_template_cri_debug.zip \
+            web_template_cri_debug.zip.provenance web_emcc.txt web_emcc_debug.txt \
+            web_emcc_cri.txt web_emcc_cri_debug.txt; do
         cp "$ST_FORKROOT/$f" "$ST_IOSLESS/$f"
     done
     DN2CPP_STUB_FORKROOT="$ST_IOSLESS" e2e forkios-stale-artifact 2 0 0 ""
@@ -1346,8 +1365,13 @@ GFSTUB
         cp -R "$ST_FORKROOT" "$root"
         case "$name" in
             missing-emcc) rm -f "$root/web_emcc.txt" ;;
-            wrong-flavor) printf 'cri\n' > "$root/web_template.zip" ;;
+            missing-debug) rm -f "$root/web_template_debug.zip" ;;
+            missing-debug-emcc) rm -f "$root/web_emcc_cri_debug.txt" ;;
+            wrong-flavor) printf 'cri\nrelease\n' > "$root/web_template.zip" ;;
+            wrong-debug-flavor) printf 'cri\ndebug\n' > "$root/web_template_debug.zip" ;;
+            identical-pair) cp "$root/web_template.zip" "$root/web_template_debug.zip" ;;
             stale-engine) printf 'engine=old base=stubbase\n' > "$root/web_template_cri.zip.provenance" ;;
+            stale-debug-engine) printf 'engine=old base=stubbase\n' > "$root/web_template_cri_debug.zip.provenance" ;;
         esac
         got="$(DN2CPP_GODOT_FORK_ROOT="$root" DN2CPP_PREMERGE_PROBE=forkweb \
             bash "$FAKE/gates/pre-merge.sh" 2>/dev/null || true)"
@@ -1358,21 +1382,30 @@ GFSTUB
         fi
     }
     web_probe_case missing-emcc "ok stock"
+    web_probe_case missing-debug "ok stock"
+    web_probe_case missing-debug-emcc "ok cri"
     web_probe_case wrong-flavor "ok stock"
+    web_probe_case wrong-debug-flavor "ok stock"
+    web_probe_case identical-pair "ok stock"
     web_probe_case stale-engine "ok cri"
+    web_probe_case stale-debug-engine "ok cri"
 
     say "fork artifact freshness predicates (real helpers, synthetic artifacts)"
 
     ST_WEB_REAL="$ST_TMP/web-real"
-    mkdir -p "$ST_WEB_REAL/good" "$ST_WEB_REAL/bad"
+    mkdir -p "$ST_WEB_REAL/good" "$ST_WEB_REAL/debug" "$ST_WEB_REAL/bad"
     printf 'plain stock glue\n' > "$ST_WEB_REAL/good/godot.js"
     printf '__cpp_exception\n' > "$ST_WEB_REAL/good/godot.wasm"
     printf 'side\n' > "$ST_WEB_REAL/good/godot.side.wasm"
     (cd "$ST_WEB_REAL/good" && zip -q "$ST_WEB_REAL/good.zip" godot.js godot.wasm godot.side.wasm)
+    printf 'plain stock debug glue\n' > "$ST_WEB_REAL/debug/godot.js"
+    printf '__cpp_exception debug\n' > "$ST_WEB_REAL/debug/godot.wasm"
+    printf 'debug side\n' > "$ST_WEB_REAL/debug/godot.side.wasm"
+    (cd "$ST_WEB_REAL/debug" && zip -q "$ST_WEB_REAL/debug.zip" godot.js godot.wasm godot.side.wasm)
     printf 'plain stock glue\n' > "$ST_WEB_REAL/bad/godot.js"
     printf '__cpp_exception\n' > "$ST_WEB_REAL/bad/godot.wasm"
     (cd "$ST_WEB_REAL/bad" && zip -q "$ST_WEB_REAL/bad.zip" godot.js godot.wasm)
-    for z in good bad; do
+    for z in good debug bad; do
         printf 'stub-emcc\n' > "$ST_WEB_REAL/$z.emcc"
         printf 'engine=stub base=stubbase\n' > "$ST_WEB_REAL/$z.zip.provenance"
     done
@@ -1394,6 +1427,26 @@ GFSTUB
         st_bad "Web predicate accepted a template with no godot.side.wasm"
     else
         st_ok "Web predicate rejects a structurally incomplete template"
+    fi
+    web_real_pair_fresh() {
+        (
+            export DN2CPP_GODOT_FORK_ROOT="$ST_WEB_REAL"
+            DN2CPP_OS=linux
+            source "$REPO/gates/_godot_fork.sh"
+            godot_fork_web_template_pair_fresh "$ST_WEB_REAL/$1.zip" \
+                "$ST_WEB_REAL/$2.zip" stock "$ST_WEB_REAL/$1.emcc" \
+                "$ST_WEB_REAL/$2.emcc" stub-emcc 'engine=stub base=stubbase'
+        )
+    }
+    if web_real_pair_fresh good debug; then
+        st_ok "Web pair predicate accepts fresh, distinct Release/Debug modules"
+    else
+        st_bad "Web pair predicate rejected a fresh, distinct configuration pair"
+    fi
+    if web_real_pair_fresh good good; then
+        st_bad "Web pair predicate accepted byte-identical Release/Debug modules"
+    else
+        st_ok "Web pair predicate rejects byte-identical Release/Debug modules"
     fi
 
     ST_IOS_REAL="$ST_TMP/ios-real"

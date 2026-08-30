@@ -22,8 +22,10 @@
 #                        cannot even be instantiated. Godot's own default is
 #                        -fno-exceptions, which does not define the tag.
 #
-# CRI=1 builds the CRI-enabled VARIANT instead, published beside the stock
-# template as web_template_cri.zip. Emscripten JS libraries can only live in
+# CRI=1 builds the CRI-enabled VARIANT instead. Each flavor publishes a
+# Release/Debug pair; the established web_template{,_cri}.zip names remain the
+# Release members and the Debug members add _debug. Emscripten JS libraries can
+# only live in
 # the MAIN module -- the export template -- so a CRI game needs a template
 # whose main-runtime link carries the package's three .jslib files (+ the
 # $dynCall helper, per the package's own .targets recipe). It is a variant,
@@ -57,7 +59,7 @@
 # and that stamp is the one the export gates read. Nothing else can: a preset's
 # custom_template is validated by Godot with FileAccess::exists alone, so a
 # template a patch release behind exports, runs, and matches every expectation
-# while shipping the wrong engine. After the 4.7.1 re-pin all three baked zips
+# while shipping the wrong engine. After the 4.7.1 re-pin the baked zips
 # were still 4.7 and only `strings` on the artifacts said so. Why a
 # missing stamp is a refusal rather than a warning is written out at
 # godot_fork_template_check.
@@ -86,10 +88,10 @@
 #
 # Idempotent: the scons build and the copy are skipped when their product is
 # current *and of the requested flavor* *and stamped with this emcc* *and
-# stamped with these engine sources* -- both flavors share one bin/ zip, so the
-# skip probes the built zip's flavor rather than its existence, and a flavor
-# switch costs a relink + zip (scons reuses every compiled object; only the link
-# action's signature moves). FORCE=1 rebuilds.
+# stamped with these engine sources* -- both flavors share each configuration's
+# bin/ zip, so the skip probes the built zip's flavor rather than its existence,
+# and a flavor switch costs a relink + zip (scons reuses every compiled object;
+# only the link action's signature moves). FORCE=1 rebuilds.
 set -euo pipefail
 # _common.sh is sourced for the CRI asset resolvers (cri_wasm_native_files);
 # its only source-time side effect is a cd to the repo root, which this
@@ -164,29 +166,21 @@ echo "fork:  $FORK"
 echo "emcc:  $EMCC_VERSION"
 echo "engine: $ENGINE_PROVENANCE"
 
-BUILT="$FORK/bin/godot.web.template_release.wasm32.nothreads.dlink.mono.zip"
-# The emcc that built the zip now in bin/, recorded beside it (see header). The
-# fork's bin/ is covered by Godot's .gitignore, like the .engine-hash stamps.
-BUILT_STAMP="$BUILT.emcc"
-# The engine sources that zip was built from, same placement and same rule. Two
-# stamps rather than one line holding both, because they answer to different
-# owners: the emcc stamp moves when the toolchain on PATH changes and the engine
-# stamp when the fork's C++ does, and a single string would force a relink on
-# either -- while the published copies are read by different consumers (the
-# gates' cache key takes web_emcc*.txt verbatim).
-BUILT_ENGINE_STAMP="$BUILT.provenance"
 if [ "$CRI" = 1 ]; then
-    OUT="$FORK_ROOT/web_template_cri.zip"
-    STAMP="$FORK_ROOT/web_emcc_cri.txt"
+    OUT_RELEASE="$FORK_ROOT/web_template_cri.zip"
+    OUT_DEBUG="$FORK_ROOT/web_template_cri_debug.zip"
+    STAMP_RELEASE="$FORK_ROOT/web_emcc_cri.txt"
+    STAMP_DEBUG="$FORK_ROOT/web_emcc_cri_debug.txt"
     WANT=cri
 else
-    OUT="$FORK_ROOT/web_template.zip"
-    STAMP="$FORK_ROOT/web_emcc.txt"
+    OUT_RELEASE="$FORK_ROOT/web_template.zip"
+    OUT_DEBUG="$FORK_ROOT/web_template_debug.zip"
+    STAMP_RELEASE="$FORK_ROOT/web_emcc.txt"
+    STAMP_DEBUG="$FORK_ROOT/web_emcc_debug.txt"
     WANT=stock
 fi
-# Beside the published template, which is what a gate reads
-# (godot_fork_template_check).
-ENGINE_STAMP="$OUT.provenance"
+PUBLISH_DIR="$(mktemp -d)"
+trap 'rm -rf "$PUBLISH_DIR"' EXIT
 
 # The custom `linkflags` reach BOTH links -- the MAIN_MODULE=1 runtime and the
 # SIDE_MODULE=2 engine (SConstruct appends them to the base env before the web
@@ -309,7 +303,20 @@ EOF
     LINKFLAGS="$LINKFLAGS --js-library=$(godot_fork_native_path "$SIG_JSLIB")"
 fi
 
-echo "== 1/3 scons: the Web template ($WANT) =="
+for CONFIG in release debug; do
+    if [ "$CONFIG" = release ]; then
+        OUT="$OUT_RELEASE"
+        STAMP="$STAMP_RELEASE"
+    else
+        OUT="$OUT_DEBUG"
+        STAMP="$STAMP_DEBUG"
+    fi
+    ENGINE_STAMP="$OUT.provenance"
+    BUILT="$FORK/bin/godot.web.template_${CONFIG}.wasm32.nothreads.dlink.mono.zip"
+    BUILT_STAMP="$BUILT.emcc"
+    BUILT_ENGINE_STAMP="$BUILT.provenance"
+
+echo "== 1/3 scons: the Web $CONFIG template ($WANT) =="
 built_emcc="$(cat "$BUILT_STAMP" 2>/dev/null || echo '<no stamp>')"
 built_engine="$(head -1 "$BUILT_ENGINE_STAMP" 2>/dev/null || echo '<no stamp>')"
 [ -n "$built_engine" ] || built_engine='<no stamp>'
@@ -334,7 +341,7 @@ else
     # this run's product (install_binary in setup-godot-fork.sh, same rule).
     rm -f "$BUILT_STAMP" "$BUILT_ENGINE_STAMP"
     # shellcheck disable=SC2086
-    (cd "$FORK" && $SCONS platform=web target=template_release \
+    (cd "$FORK" && $SCONS platform=web target="template_$CONFIG" \
         module_mono_enabled=yes dlink_enabled=yes threads=no \
         disable_exceptions=no \
         cxxflags=-fwasm-exceptions "linkflags=$LINKFLAGS" \
@@ -360,7 +367,6 @@ if [ "$flavor_now" != "$WANT" ]; then
 fi
 if [ "$CRI" = 1 ]; then
     tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
     unzip -q "$BUILT" -d "$tmp"
     # The CRI JS surface lives in the glue (see header), one probe per .jslib.
     for sym in "${CRI_PROBE_SYMS[@]}"; do
@@ -413,28 +419,73 @@ if [ "$CRI" = 1 ]; then
         exit 1
     fi
     echo "ok: every GOT-imported CRI .jslib function carries a signature in the glue"
+    rm -rf "$tmp"
 fi
 
-echo "== 3/3 publishing =="
+echo "== 3/3 staging the $CONFIG template for pair publication =="
 # Stamps removed first, the 57 MB copy next, stamps written last — the rule
 # install_binary (setup-godot-fork.sh) applies to a binary, applied here to the
 # published pair. An interrupted publish must leave an UNSTAMPED template rather
 # than a half-written one under the stamps of the template it was replacing:
 # unstamped is refused, mis-stamped is used.
-rm -f "$STAMP" "$ENGINE_STAMP"
-cp -f "$BUILT" "$OUT"
+cp -f "$BUILT" "$PUBLISH_DIR/$(basename "$OUT")"
 # COPIED, not re-derived: the published stamps must name the emcc and the engine
 # tree that built the zip beside them, which on a skipped run are not necessarily
 # this run's (header). Step 1 leaves both stamps on every path that reaches here.
-cp -f "$BUILT_STAMP" "$STAMP"
-cp -f "$BUILT_ENGINE_STAMP" "$ENGINE_STAMP"
+cp -f "$BUILT_STAMP" "$PUBLISH_DIR/$(basename "$STAMP")"
+cp -f "$BUILT_ENGINE_STAMP" "$PUBLISH_DIR/$(basename "$ENGINE_STAMP")"
+done
+
+echo "== publishing the verified Release/Debug pair =="
+if cmp -s "$PUBLISH_DIR/$(basename "$OUT_RELEASE")" "$PUBLISH_DIR/$(basename "$OUT_DEBUG")"; then
+    echo "error: the $WANT Release and Debug Web templates are byte-identical" >&2
+    exit 1
+fi
+PAIR_COMPARE_DIR="$(mktemp -d)"
+unzip -qp "$PUBLISH_DIR/$(basename "$OUT_RELEASE")" godot.wasm > "$PAIR_COMPARE_DIR/release.wasm"
+unzip -qp "$PUBLISH_DIR/$(basename "$OUT_RELEASE")" godot.side.wasm > "$PAIR_COMPARE_DIR/release.side.wasm"
+unzip -qp "$PUBLISH_DIR/$(basename "$OUT_DEBUG")" godot.wasm > "$PAIR_COMPARE_DIR/debug.wasm"
+unzip -qp "$PUBLISH_DIR/$(basename "$OUT_DEBUG")" godot.side.wasm > "$PAIR_COMPARE_DIR/debug.side.wasm"
+if cmp -s "$PAIR_COMPARE_DIR/release.wasm" "$PAIR_COMPARE_DIR/debug.wasm" || \
+   cmp -s "$PAIR_COMPARE_DIR/release.side.wasm" "$PAIR_COMPARE_DIR/debug.side.wasm"; then
+    echo "error: the $WANT Release and Debug main/side wasm modules are not distinct" >&2
+    exit 1
+fi
+rm -rf "$PAIR_COMPARE_DIR"
+for suffix in "" .provenance; do
+    if [ "$suffix" = .provenance ]; then
+        left="$PUBLISH_DIR/$(basename "$OUT_RELEASE").provenance"
+        right="$PUBLISH_DIR/$(basename "$OUT_DEBUG").provenance"
+        pair_field="engine provenance"
+    else
+        left="$PUBLISH_DIR/$(basename "$STAMP_RELEASE")"
+        right="$PUBLISH_DIR/$(basename "$STAMP_DEBUG")"
+        pair_field="emcc"
+    fi
+    cmp -s "$left" "$right" || {
+        echo "error: the $WANT Release and Debug Web templates disagree on $pair_field" >&2
+        exit 1
+    }
+done
+# Publication is a pair transaction: all four validity stamps disappear before
+# either payload moves, and return only after both payloads are in place. Any
+# interrupted run therefore leaves the pair observably incomplete.
+rm -f "$STAMP_RELEASE" "$STAMP_DEBUG" "$OUT_RELEASE.provenance" "$OUT_DEBUG.provenance"
+cp -f "$PUBLISH_DIR/$(basename "$OUT_RELEASE")" "$OUT_RELEASE"
+cp -f "$PUBLISH_DIR/$(basename "$OUT_DEBUG")" "$OUT_DEBUG"
+cp -f "$PUBLISH_DIR/$(basename "$STAMP_RELEASE")" "$STAMP_RELEASE"
+cp -f "$PUBLISH_DIR/$(basename "$STAMP_DEBUG")" "$STAMP_DEBUG"
+cp -f "$PUBLISH_DIR/$(basename "$OUT_RELEASE").provenance" "$OUT_RELEASE.provenance"
+cp -f "$PUBLISH_DIR/$(basename "$OUT_DEBUG").provenance" "$OUT_DEBUG.provenance"
 
 echo
-echo "web template:  $OUT"
-echo "emcc stamp:    $STAMP"
-echo "engine stamp:  $ENGINE_STAMP"
+echo "release template: $OUT_RELEASE"
+echo "debug template:   $OUT_DEBUG"
+echo "emcc stamps:      $STAMP_RELEASE, $STAMP_DEBUG"
+echo "engine stamps:    $OUT_RELEASE.provenance, $OUT_DEBUG.provenance"
 echo
-echo "Point a Web export preset's custom_template/release at the template, with"
+echo "Point a Web export preset's custom_template/release and custom_template/debug"
+echo "at the corresponding templates, with"
 echo "  variant/extensions_support = true   (dlink)"
 echo "  variant/thread_support     = false  (the drop-in is single-threaded)"
 if [ "$CRI" = 1 ]; then

@@ -51,8 +51,8 @@ PROJECT_NAME=EditorExportSample
 V8_MAX_FUNCTION_SIZE=7654321
 
 godot_fork_preflight
-if [ ! -f "$FORK_ROOT/web_template.zip" ]; then
-    gate_skip "no Web template at $FORK_ROOT/web_template.zip — run gates/setup-godot-fork-web.sh"
+if [ ! -f "$FORK_ROOT/web_template.zip" ] || [ ! -f "$FORK_ROOT/web_template_debug.zip" ]; then
+    gate_skip "no Release/Debug Web template pair under $FORK_ROOT — run gates/setup-godot-fork-web.sh"
 fi
 # Bundled SDK: the subject is the export shape its frozen cache is baked to.
 dn2cpp_emsdk_resolve
@@ -156,6 +156,8 @@ godot_fork_pin_abi_check
 # key replays a green *because* nothing changed.
 godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
     "FORCE=1 gates/setup-godot-fork-web.sh"
+godot_fork_template_check "$FORK_ROOT/web_template_debug.zip" "Debug Web export template" \
+    "FORCE=1 gates/setup-godot-fork-web.sh"
 
 # gate_cache_check is (OUT, CONTEXT, MATERIAL...). The OUT argument was missing
 # here, which shifted every other one: the context string landed in OUT (so the
@@ -188,7 +190,7 @@ godot_fork_template_check "$FORK_ROOT/web_template.zip" "Web export template" \
 # refreshes that binary.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
+    "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|tmpl_debug=$(file_sig "$FORK_ROOT/web_template_debug.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emcc_debug=$(file_text "$FORK_ROOT/web_emcc_debug.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
@@ -256,15 +258,19 @@ EOF
 # preset ADDED after the Web one (the Windows desktop preset is preset.4), and
 # would then write a Web template zip into a desktop preset's custom_template.
 WEB_TEMPLATE_NATIVE="$(godot_fork_native_path "$FORK_ROOT/web_template.zip")"
+WEB_TEMPLATE_DEBUG_NATIVE="$(godot_fork_native_path "$FORK_ROOT/web_template_debug.zip")"
 presets_tmp="$(mktemp)"
-awk -v tmpl="$WEB_TEMPLATE_NATIVE" '
+awk -v tmpl="$WEB_TEMPLATE_NATIVE" -v debug_tmpl="$WEB_TEMPLATE_DEBUG_NATIVE" '
     /^\[preset\./ { inweb = ($0 ~ /^\[preset\.3[.\]]/) }
     inweb && /^custom_template\/release=""/ { print "custom_template/release=\"" tmpl "\""; next }
+    inweb && /^custom_template\/debug=""/ { print "custom_template/debug=\"" debug_tmpl "\""; next }
     { print }
 ' "$PROJ/export_presets.cfg" > "$presets_tmp"
 mv "$presets_tmp" "$PROJ/export_presets.cfg"
 grep -qF "$WEB_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
     || { echo "FAIL: could not patch custom_template/release into the Web preset" >&2; exit 1; }
+grep -qF "$WEB_TEMPLATE_DEBUG_NATIVE" "$PROJ/export_presets.cfg" \
+    || { echo "FAIL: could not patch custom_template/debug into the Web preset" >&2; exit 1; }
 
 echo "== 4/9 Importing the project (fork editor, headless) =="
 run_with_watchdog 600 "$FORK_EDITOR" --headless \
@@ -406,6 +412,8 @@ echo "Web diagnostic symbols OK: false -> true -> false reused one CMake slot; p
 
 echo "== 6/9 Asserting the artifacts =="
 DROPIN="$WEBDIR/$PROJECT_NAME.so"
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template.zip" \
+    "$FORK_ROOT/web_template_debug.zip" "$WEBDIR" "stock Release"
 # (a) the drop-in is beside the HTML, under the exact name the engine will dlopen
 [ -f "$DROPIN" ] || {
     echo "FAIL: no drop-in beside index.html at $DROPIN" >&2; ls -la "$WEBDIR" >&2; exit 1; }
@@ -628,7 +636,24 @@ for bad in truncated badversion; do
 done
 echo "checker fixtures OK: lexical glue traps, env tag, --peer-module, malformed-input exit 2"
 
-echo "== 7/9 Running the exported game in a real browser =="
+DEBUG_WEBDIR="$PWD/$OUT/web-debug"
+rm -rf "$DEBUG_WEBDIR"
+mkdir -p "$DEBUG_WEBDIR"
+if ! godot_export_step 2400 "$OUT/export-debug.log" "$DEBUG_WEBDIR/index.html" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-debug dn2cpp-web "$DEBUG_WEBDIR/index.html"; then
+    echo "FAIL: --export-debug failed (see below)" >&2
+    cat "$OUT/export-debug.log" >&2
+    exit 1
+fi
+godot_fork_web_export_template_assert "$FORK_ROOT/web_template_debug.zip" \
+    "$FORK_ROOT/web_template.zip" "$DEBUG_WEBDIR" "stock Debug"
+
+echo "== 7/9 Running the Debug export in a real browser =="
+# Browser execution is deliberately the Debug arm. Release received the deeper
+# linker/checker assertions above; running Debug closes the other template slot
+# through the actual loader instead of duplicating a second Release launch.
+WEBDIR="$DEBUG_WEBDIR"
 # node cannot host a Godot web build (the engine JS targets ENVIRONMENT=web,worker
 # and needs a DOM), so this runs in a real Chrome — see gates/_run_in_chrome.js for
 # why that browser is not headless and rasterizes through SwiftShader.

@@ -21,8 +21,8 @@
 # engine's fixed identifiers — and any change of the pinned SDK drop
 # (DN2CPP_CRI_VERSION) is expected to show up here as a red diff.
 #
-# The last section diffs import closures against the CRI-enabled Web export
-# template (web_template_cri.zip, baked by CRI=1 gates/setup-godot-fork-web.sh).
+# The last section diffs import closures against the stock/CRI Release/Debug Web
+# template matrix baked by gates/setup-godot-fork-web.sh.
 # What the Web lane ships is a game SIDE MODULE the exported page dlopens, and
 # emscripten's dlopen never fails on a missing symbol — the first call dies
 # naming a function index — so the closure must be asserted statically, and it
@@ -52,8 +52,8 @@
 #       template baked before that knob leaves the cri_* remainder open, and
 #       the section degrades to a PARTIAL naming it and the rebuild remedy.
 #
-# Both templates are REFERENCES here, never subjects — every verdict in section 6
-# is read off their glue — so both are provenance-checked up front
+# All four templates are REFERENCES here, never subjects — every verdict in
+# section 6 is read off their glue — so all are provenance-checked up front
 # (godot_fork_template_check_soft, gates/_godot_fork.sh), in the degrading form:
 # this gate holds no $FORK and an absent template is a supported state, so the
 # check runs on what is present and the absence keeps its existing gate_partial.
@@ -84,11 +84,13 @@ OUT="artifacts/criwasmsmoke"
 LIBDIR="$PWD/$OUT/lib"
 
 TEMPLATE_CRI="$FORK_ROOT/web_template_cri.zip"
+TEMPLATE_CRI_DEBUG="$FORK_ROOT/web_template_cri_debug.zip"
 TEMPLATE_STOCK="$FORK_ROOT/web_template.zip"
+TEMPLATE_STOCK_DEBUG="$FORK_ROOT/web_template_debug.zip"
 
-# Section 6 diffs this program's import closure against these two templates'
-# glue, so both are REFERENCES this gate's verdicts are read off — and neither
-# is checked anywhere else. The soft form, because unlike the three export gates
+# Section 6 diffs this program's import closure against this template matrix's
+# glue, so all are REFERENCES this gate's verdicts are read off. The soft form,
+# because unlike the three export gates
 # this one has no $FORK and tolerates an absent template by design: absent stays
 # the caller's business (the gate_partial arms in section 6 name which half went
 # unasserted), unresolvable degrades to a loud warning, present-and-wrong is the
@@ -102,7 +104,11 @@ TEMPLATE_STOCK="$FORK_ROOT/web_template.zip"
 # a warm key replay a green over the very artifact it was meant to refuse.
 godot_fork_template_check_soft "$TEMPLATE_CRI" "CRI Web export template" \
     "CRI=1 gates/setup-godot-fork-web.sh"
+godot_fork_template_check_soft "$TEMPLATE_CRI_DEBUG" "CRI Debug Web export template" \
+    "CRI=1 gates/setup-godot-fork-web.sh"
 godot_fork_template_check_soft "$TEMPLATE_STOCK" "stock Web export template" \
+    "gates/setup-godot-fork-web.sh"
+godot_fork_template_check_soft "$TEMPLATE_STOCK_DEBUG" "stock Debug Web export template" \
     "gates/setup-godot-fork-web.sh"
 
 echo "== 1/6 Locating the real CoreLib =="
@@ -120,13 +126,13 @@ grep -qx 'cri_atom' <<<"$(strip_cr_win_file "$OUT/pinvoke-libs.txt")" \
 
 # Key inputs beyond the transpile surface: the browser-flavor managed DLL, the
 # whole browser-wasm native artifact directory (both archives + the three
-# jslibs are link inputs below), the two Web export templates section 6 diffs
+# jslibs are link inputs below), the four Web export templates section 6 diffs
 # against (file_sig echoes "none" for an absent one, so template
 # presence/absence moves the key too — a cached partial from before the CRI
 # template existed does not outlive its arrival), and the wasm symbol checker
 # whose verdicts section 6 asserts.
 if gate_cache_check "$OUT" \
-        "cri-wasm-smoke|$corelib|$BROWSER_DLL|$CRI_WASM_DIR|tmpl_cri=$(file_sig "$TEMPLATE_CRI")|tmpl_stock=$(file_sig "$TEMPLATE_STOCK")" \
+        "cri-wasm-smoke|$corelib|$BROWSER_DLL|$CRI_WASM_DIR|tmpl_cri=$(file_sig "$TEMPLATE_CRI")|tmpl_cri_debug=$(file_sig "$TEMPLATE_CRI_DEBUG")|tmpl_stock=$(file_sig "$TEMPLATE_STOCK")|tmpl_stock_debug=$(file_sig "$TEMPLATE_STOCK_DEBUG")" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
         "$BROWSER_DLL" "$CRI_WASM_DIR" gates/_wasm_symbols.js; then
     gate_cache_hit_msg
@@ -290,6 +296,37 @@ else
     fork's dlink_main_extra_libs option does — this template predates it. Rebuild
     with FORCE=1 CRI=1 gates/setup-godot-fork-web.sh on a fork that has the
     option; the JS half above and the non-CRI closure DID run and hold."
+    fi
+
+    if [ ! -f "$TEMPLATE_CRI_DEBUG" ] || [ ! -f "$TEMPLATE_STOCK_DEBUG" ]; then
+        gate_partial "the Debug CRI/stock Web template pair is absent; run both flavors of
+    gates/setup-godot-fork-web.sh so the stock/CRI × Release/Debug closure matrix can run"
+    else
+        mkdir -p "$TDIR/cri-debug" "$TDIR/stock-debug"
+        unzip -q "$TEMPLATE_CRI_DEBUG" godot.wasm godot.js -d "$TDIR/cri-debug"
+        unzip -q "$TEMPLATE_STOCK_DEBUG" godot.wasm godot.js -d "$TDIR/stock-debug"
+        debug_jslib_gap=$(node gates/_wasm_symbols.js unsatisfied "$OUT/$PROJECT.wasm" \
+            "$TDIR/cri-debug/godot.wasm" "$TDIR/cri-debug/godot.js" \
+            | grep -E '^(GOT\.(mem|func)\.)?(criFsIoJs_|WAJS_|WAASRJS_)' || true)
+        [ -z "$debug_jslib_gap" ] || {
+            echo "FAIL: the CRI Debug template leaves CRI jslib imports unsatisfied:" >&2
+            printf '%s\n' "$debug_jslib_gap" | LC_ALL=C sed 's/^/  /' >&2
+            exit 1
+        }
+        grep -qE '^(criFsIoJs_|WAJS_|WAASRJS_)' \
+            <<<"$(node gates/_wasm_symbols.js unsatisfied "$OUT/$PROJECT.wasm" \
+                "$TDIR/stock-debug/godot.wasm" "$TDIR/stock-debug/godot.js")" || {
+            echo "FAIL: the stock Debug template appears to satisfy the CRI jslib demand" >&2
+            exit 1
+        }
+        debug_unsat_side=$(node gates/_wasm_symbols.js unsatisfied "$SIDE_SO" \
+            "$TDIR/cri-debug/godot.wasm" "$TDIR/cri-debug/godot.js")
+        [ -z "$debug_unsat_side" ] || {
+            echo "FAIL: the CRI Debug template does not close the side-module imports:" >&2
+            printf '%s\n' "$debug_unsat_side" | LC_ALL=C sed 's/^/  /' >&2
+            exit 1
+        }
+        echo "Debug closure OK: CRI supplies JS/native imports; stock remains the negative control"
     fi
 fi
 
