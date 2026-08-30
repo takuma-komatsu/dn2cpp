@@ -27,7 +27,7 @@
 
   <Target Name="GenerateGodotBindings" BeforeTargets="BeforeCompile"
           Inputs="$(GodotApiJson)" Outputs="$(GodotShims)">
-    <Exec Command="dotnet run --project $(MSBuildThisFileDirectory)../Dn2Cpp.Cli -- --generate-bindings &quot;$(GodotApiJson)&quot; &quot;$(GodotShims)&quot;" />
+    <Exec Command="dotnet run --project $(MSBuildThisFileDirectory)../Dn2Cpp.Cli -p:BuildInParallel=false -- --generate-bindings &quot;$(GodotApiJson)&quot; &quot;$(GodotShims)&quot;" />
   </Target>
 
 </Project>

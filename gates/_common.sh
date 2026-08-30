@@ -267,12 +267,23 @@ resolve_net10_corelib() {
 }
 
 # invoke_cli ARGS... — run the dn2cpp CLI. `dotnet exec` on DN2CPP_CLI_DLL when
-# set (skips MSBuild), else `dotnet run --project`.
+# set (skips MSBuild), else build once without a parallel restore graph and run
+# that DLL. Some SDKs can fail a parallel graph build without reporting an
+# MSBuild error, so standalone gates use the same explicit artifact as the suite.
 invoke_cli() {
     if [ -n "${DN2CPP_CLI_DLL:-}" ]; then
         dotnet exec "${DN2CPP_CLI_DLL}" "$@"
     else
-        dotnet run --project src/Dn2Cpp.Cli -c "${CONFIG}" -- "$@"
+        dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c "${CONFIG}" \
+            --nologo -v q -p:BuildInParallel=false || return 1
+        local cli_dll="$PWD/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
+        if [ ! -f "$cli_dll" ]; then
+            echo "error: CLI build produced no $cli_dll" >&2
+            return 1
+        fi
+        DN2CPP_CLI_DLL="$cli_dll"
+        export DN2CPP_CLI_DLL
+        dotnet exec "$DN2CPP_CLI_DLL" "$@"
     fi
 }
 
@@ -481,6 +492,35 @@ godot_editor_config_dir() {
                 /*) config_home="$XDG_CONFIG_HOME" ;;
             esac
             printf '%s\n' "$config_home/godot"
+            ;;
+    esac
+}
+
+# run_godot_isolated ROOT COMMAND... — keep editor state and user:// writes below
+# ROOT. The isolated environment reaches COMMAND and its descendants without
+# leaking into the calling shell. Godot has no command-line override for it.
+run_godot_isolated() {
+    local root="$1"
+    shift
+    mkdir -p "$root"
+    case "$DN2CPP_OS" in
+        macos)
+            mkdir -p "$root/home"
+            HOME="$root/home" "$@"
+            ;;
+        windows)
+            local appdata localappdata tempdir
+            appdata=$(native_path "$root/appdata")
+            localappdata=$(native_path "$root/localappdata")
+            tempdir=$(native_path "$root/temp")
+            mkdir -p "$root/appdata" "$root/localappdata" "$root/temp"
+            APPDATA="$appdata" LOCALAPPDATA="$localappdata" \
+                TEMP="$tempdir" TMP="$tempdir" "$@"
+            ;;
+        *)
+            mkdir -p "$root/data" "$root/config" "$root/cache"
+            XDG_DATA_HOME="$root/data" XDG_CONFIG_HOME="$root/config" \
+                XDG_CACHE_HOME="$root/cache" "$@"
             ;;
     esac
 }
@@ -1138,10 +1178,20 @@ resolve_python() {
 # Console output with the console code page. Force 65001 so oracles match.
 [ "$DN2CPP_OS" = windows ] && chcp.com 65001 >/dev/null 2>&1
 
-# _ccache_pch_env — pch_defines + time_macros sloppiness, ccache's requirement
-# for PCH (DN2CPP_PCH); without them every PCH compile is a miss. Appends,
-# idempotent. CCACHE_PCH_EXTSUM stays unset: CMake drops no .sum for it.
+# _ccache_pch_env — keep the default cache below the writable build tree, then
+# set ccache's PCH sloppiness requirements. An explicit CCACHE_DIR wins. Windows
+# ccache is native and therefore receives a native path. Appends, idempotent.
+# CCACHE_PCH_EXTSUM stays unset: CMake drops no .sum for it.
 _ccache_pch_env() {
+    if [ -z "${CCACHE_DIR:-}" ]; then
+        mkdir -p "$PWD/artifacts/.ccache"
+        if [ "$DN2CPP_OS" = windows ]; then
+            CCACHE_DIR=$(native_path "$PWD/artifacts/.ccache")
+        else
+            CCACHE_DIR="$PWD/artifacts/.ccache"
+        fi
+        export CCACHE_DIR
+    fi
     case ",${CCACHE_SLOPPINESS:-}," in
         *,pch_defines,*) ;;
         *) export CCACHE_SLOPPINESS="${CCACHE_SLOPPINESS:+${CCACHE_SLOPPINESS},}pch_defines,time_macros" ;;

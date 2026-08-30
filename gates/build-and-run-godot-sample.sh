@@ -6,6 +6,14 @@ OUT=artifacts/godot
 GODOT=${GODOT:-godot}
 PROJECT=samples/godot/godot-project
 
+# This gate writes through user:// and may run where the real user profile is
+# read-only. Keep all engine-owned state process-private on every host.
+GODOT_USER_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-godot-sample.XXXXXX")
+godot_sample_cleanup() {
+    rm -rf "$GODOT_USER_ROOT"
+}
+gate_add_exit_hook godot_sample_cleanup
+
 echo "== 1/7 Building sample C# assembly =="
 build_proj samples/godot/GodotSample/GodotSample.csproj
 
@@ -23,7 +31,7 @@ invoke_cli \
 # input dlls, the engine version, and the Godot project unchanged since the
 # last green pass, the compile and both engine runs would only repeat it.
 if gate_cache_check "$OUT" \
-        "godot-sample|godot=$(or_none "$(first_line "$("$GODOT" --version 2>/dev/null)")")" \
+        "godot-sample|godot=$(or_none "$(first_line "$(run_godot_isolated "$GODOT_USER_ROOT" "$GODOT" --version 2>/dev/null)")")" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSample.dll" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSharp.dll" \
         "$PROJECT"; then
@@ -38,11 +46,13 @@ compile_gdextension "$OUT" "$PROJECT/bin/$(lib_name "$DN2CPP_GDEXT_LIB")"
 echo "== 4/7 Importing Godot project (registers the extension) =="
 # Note: the first import may abort during editor teardown (Godot headless
 # doc-gen bug; harmless — .godot/extension_list.cfg is already written).
-run_with_watchdog 300 "$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
+run_with_watchdog 300 run_godot_isolated "$GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" --import >/dev/null 2>&1 || true
 
 echo "== 5/7 Running inside Godot (headless, GDScript -> C#) =="
 rc=0
-SCRIPT_OUT=$(run_with_watchdog 120 "$GODOT" --headless --path "$PROJECT" --script res://test.gd 2>&1) || rc=$?
+SCRIPT_OUT=$(run_with_watchdog 120 run_godot_isolated "$GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" --script res://test.gd 2>&1) || rc=$?
 echo "$SCRIPT_OUT"
 if [ "$rc" -ne 0 ]; then
     echo "FAIL: script run exited with $rc (137 = watchdog kill — a hung run)" >&2
@@ -174,7 +184,8 @@ grep -qE "SCRIPT ERROR|Parse Error" <<<"$SCRIPT_OUT" \
 
 echo "== 6/7 Running scene with a C# node (_Ready/_Process bridge) =="
 rc=0
-SCENE_OUT=$(run_with_watchdog 120 "$GODOT" --headless --path "$PROJECT" main.tscn --quit-after 3 2>&1) || rc=$?
+SCENE_OUT=$(run_with_watchdog 120 run_godot_isolated "$GODOT_USER_ROOT" \
+    "$GODOT" --headless --path "$PROJECT" main.tscn --quit-after 3 2>&1) || rc=$?
 echo "$SCENE_OUT"
 if [ "$rc" -ne 0 ]; then
     echo "FAIL: scene run exited with $rc (137 = watchdog kill — a hung run)" >&2

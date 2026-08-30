@@ -278,7 +278,8 @@ gate_name() {
 header "Phase 1/5 — Building CLI"
 T_SUITE=$(now)
 T_PHASE=$T_SUITE
-dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c "$CONFIG" --nologo -v q
+dotnet build src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj -c "$CONFIG" --nologo -v q \
+    -p:BuildInParallel=false
 
 CLI_DLL="$(pwd)/src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll"
 if [ ! -f "$CLI_DLL" ]; then
