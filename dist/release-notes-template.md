@@ -12,7 +12,7 @@
 - [PR #92](https://github.com/takuma-komatsu/dn2cpp/pull/92) で、読み取り専用環境におけるエディタツールチェーンのステージング処理およびメモリ上限対応を行いました
 - [PR #91](https://github.com/takuma-komatsu/dn2cpp/pull/91) で、Godot 関連の検証ゲートの完全な独立性と隔離の強化を行いました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/e5f3b41522e64d258fb18b4150682cffa8d2e34c...730121fc66dbe1e13e00fc9e663a8a3ce2ea7d0c> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/e5f3b41522e64d258fb18b4150682cffa8d2e34c...d24ab4174859108a0d9fd0f6abc23657b342bb0a> を参照してください。
 
 ## ダウンロード
 
