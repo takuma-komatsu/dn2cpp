@@ -14,7 +14,7 @@
 # CLI arg handling: it transpiles (never compiles), so it needs no C++/Godot/
 # Emscripten/NDK toolchain and always RUNS (never gate_skip).
 #
-# Four assertions, one flag apart:
+# Assertions, one flag family apart:
 #   1. Baseline — the same input with correct flags transpiles and exits 0. The
 #      regression guard that keeps the unknown-arg check from over-rejecting valid
 #      flags (a check that rejected everything would pass 2-4 while being useless).
@@ -31,13 +31,19 @@
 #      was accepted as a no-op would leave the shim injected while the caller
 #      believed it had been declined — the same silent-ignore failure shape the
 #      whole gate exists to prevent, one flag later.
+#   7. Both frontends accept `--jobs 1` and `--jobs 2`.
+#   8. Both frontends reject a missing, zero, negative, or non-numeric jobs value.
 source "$(dirname "$0")/_common.sh"
 
 PROJECT=HelloWorld
 
 echo "== Building the sample assembly =="
 build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
+build_proj src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj
 APP="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
+CONSOLE_CLI="src/Dn2Cpp.Cli.Console/bin/$CONFIG/$TFM/dn2cpp-console.dll"
+[ -f "$CONSOLE_CLI" ] \
+    || { echo "FAIL: console CLI not built: $CONSOLE_CLI" >&2; exit 1; }
 CORELIB=$(locate_corelib)
 echo "corelib: $CORELIB"
 
@@ -56,19 +62,30 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 # transpile into an abort, strict/assert modes, drain order) must move the
 # context explicitly, or a warm hit would replay a green a live run cannot give.
 tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
-if gate_cache_check "$OUT" "cli-args|cli:$(_gate_cli_hash)|$CORELIB|$tenv" "$APP"; then
+if gate_cache_check "$OUT" "cli-args|cli:$(_gate_cli_hash)|$CORELIB|$tenv" \
+        "$APP" "$CONSOLE_CLI"; then
     gate_cache_hit_msg
     exit 0
 fi
 
-# assert_rejected LABEL NEEDLE -- CLI-ARGS...
+# run_frontend FRONTEND -- CLI-ARGS...
+run_frontend() {
+    local frontend="$1"; shift
+    case "$frontend" in
+        full) invoke_cli "$@" ;;
+        console) dotnet exec "$CONSOLE_CLI" "$@" ;;
+        *) echo "FAIL: unknown CLI frontend '$frontend'" >&2; return 2 ;;
+    esac
+}
+
+# assert_rejected LABEL NEEDLE FRONTEND -- CLI-ARGS...
 # Run the CLI with the given args; the run must exit NONZERO and its stderr must
 # contain NEEDLE (the offending token).
 assert_rejected() {
-    local label="$1" needle="$2"; shift 2
+    local label="$1" needle="$2" frontend="$3"; shift 3
     local err rc
     set +e
-    err=$(invoke_cli "$@" 2>&1 >/dev/null)
+    err=$(run_frontend "$frontend" "$@" 2>&1 >/dev/null)
     rc=$?
     set -e
     if [ "$rc" -eq 0 ]; then
@@ -85,15 +102,15 @@ assert_rejected() {
     printf '%s\n' "$err" | LC_ALL=C sed 's/^/    /'
 }
 
-# assert_accepted LABEL -- CLI-ARGS...
+# assert_accepted LABEL FRONTEND -- CLI-ARGS...
 # The mirror of assert_rejected: the run must exit ZERO. Guards against an
 # over-rejecting arg loop, which would pass every rejection assertion above while
 # being useless.
 assert_accepted() {
-    local label="$1"; shift
+    local label="$1" frontend="$2"; shift 2
     local err rc
     set +e
-    err=$(invoke_cli "$@" 2>&1 >/dev/null)
+    err=$(run_frontend "$frontend" "$@" 2>&1 >/dev/null)
     rc=$?
     set -e
     if [ "$rc" -ne 0 ]; then
@@ -105,7 +122,7 @@ assert_accepted() {
 }
 
 # ── Assertion 1: baseline — valid flags must still transpile (exit 0) ──────────
-echo "== 1/6 baseline: valid input + flags transpiles and exits 0 =="
+echo "== 1/10 baseline: valid input + flags transpiles and exits 0 =="
 set +e
 invoke_cli "$APP" -r "$CORELIB" -o "$OUT" >/dev/null 2>&1
 base_rc=$?
@@ -119,20 +136,20 @@ fi
 echo "OK: valid transpile exit 0, emitted generated.cpp"
 
 # ── Assertion 2: a bogus flag is a hard error naming the token ─────────────────
-echo "== 2/6 an unrecognized flag must fail loudly =="
-assert_rejected "bogus flag" "--bogus-flag" "$APP" -r "$CORELIB" -o "$OUT" --bogus-flag
+echo "== 2/10 an unrecognized flag must fail loudly =="
+assert_rejected "bogus flag" "--bogus-flag" full "$APP" -r "$CORELIB" -o "$OUT" --bogus-flag
 
 # ── Assertion 3: a near-miss typo of a real flag is rejected, not dropped ───────
 # The concrete failure: `--tirm-reflection` (transposed) must NOT be silently
 # ignored and leave reflection metadata IN while the caller believes it was stripped.
-echo "== 3/6 a typo of a real flag must fail loudly, not be silently dropped =="
-assert_rejected "typo flag" "--tirm-reflection" "$APP" -r "$CORELIB" -o "$OUT" --tirm-reflection
+echo "== 3/10 a typo of a real flag must fail loudly, not be silently dropped =="
+assert_rejected "typo flag" "--tirm-reflection" full "$APP" -r "$CORELIB" -o "$OUT" --tirm-reflection
 
 # ── Assertion 4: a second positional is a hard error ───────────────────────────
 # `extra.dll` need not exist: the arg loop rejects the extra positional before any
 # file access, so this stays a pure, deterministic arg-loop check.
-echo "== 4/6 an extra positional argument must fail loudly =="
-assert_rejected "extra positional" "extra.dll" "$APP" extra.dll -o "$OUT"
+echo "== 4/10 an extra positional argument must fail loudly =="
+assert_rejected "extra positional" "extra.dll" full "$APP" extra.dll -o "$OUT"
 
 # ── Assertion 5: --no-default-ref with a KNOWN name is accepted ────────────────
 # HelloWorld references no System.IO.Compression, so nothing would have been
@@ -140,15 +157,35 @@ assert_rejected "extra positional" "extra.dll" "$APP" extra.dll -o "$OUT"
 # terms, whether or not the shim it declines was ever in play; a name-set check
 # that ran only when the shim was live would let a typo through on every other
 # program.
-echo "== 5/6 --no-default-ref with a known shim name must be accepted (exit 0) =="
-assert_accepted "no-default-ref known" "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnZlib
+echo "== 5/10 --no-default-ref with a known shim name must be accepted (exit 0) =="
+assert_accepted "no-default-ref known" full "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnZlib
 
 # ── Assertion 6: --no-default-ref with an UNKNOWN name is a hard error ─────────
 # A silently-accepted typo is the worst outcome available here: the caller
 # believes the shim was declined, the shim is injected anyway, and the only
 # symptom is a backend they did not choose.
-echo "== 6/6 --no-default-ref with an unknown name must fail loudly =="
-assert_rejected "no-default-ref unknown" "DnBogus" "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnBogus
+echo "== 6/10 --no-default-ref with an unknown name must fail loudly =="
+assert_rejected "no-default-ref unknown" "DnBogus" full "$APP" -r "$CORELIB" -o "$OUT" --no-default-ref DnBogus
+
+echo "== 7/10 full CLI accepts explicit sequential and parallel worker counts =="
+assert_accepted "full jobs 1" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 1
+assert_accepted "full jobs 2" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
+
+echo "== 8/10 console CLI accepts explicit sequential and parallel worker counts =="
+assert_accepted "console jobs 1" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 1
+assert_accepted "console jobs 2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 2
+
+echo "== 9/10 full CLI rejects malformed worker counts =="
+assert_rejected "full jobs missing" "--jobs" full "$APP" -r "$CORELIB" -o "$OUT" --jobs
+assert_rejected "full jobs zero" "0" full "$APP" -r "$CORELIB" -o "$OUT" --jobs 0
+assert_rejected "full jobs negative" "-2" full "$APP" -r "$CORELIB" -o "$OUT" --jobs -2
+assert_rejected "full jobs non-numeric" "many" full "$APP" -r "$CORELIB" -o "$OUT" --jobs many
+
+echo "== 10/10 console CLI rejects malformed worker counts =="
+assert_rejected "console jobs missing" "--jobs" console "$APP" -r "$CORELIB" -o "$OUT" --jobs
+assert_rejected "console jobs zero" "0" console "$APP" -r "$CORELIB" -o "$OUT" --jobs 0
+assert_rejected "console jobs negative" "-2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs -2
+assert_rejected "console jobs non-numeric" "many" console "$APP" -r "$CORELIB" -o "$OUT" --jobs many
 
 gate_cache_commit
-echo "PASS: unrecognized options, extra positionals and unknown --no-default-ref names are hard errors; valid flags still transpile"
+echo "PASS: both CLIs accept positive --jobs counts and reject malformed values; other invalid arguments remain hard errors"

@@ -236,6 +236,12 @@ internal sealed partial class Compilation
     /// <see cref="ClassInfo.SharedUsers"/>) — emission is unchanged until shared
     /// body emission lands.</summary>
     public bool SharedGenericsEnabled { get; }
+    /// <summary>The CLI's requested body-compilation worker limit. Zero means the
+    /// host processor count; retained separately so timing diagnostics can say
+    /// whether the effective limit was automatic.</summary>
+    internal int BodyCompileJobsRequested { get; }
+    /// <summary>The resolved positive body-compilation worker limit.</summary>
+    internal int BodyCompileJobs { get; }
 
     /// <summary>Opt-in shadow stack (<c>--shadow-stack</c>): every body
     /// compiled through <c>MethodCompiler.Compile</c> opens with a
@@ -494,6 +500,11 @@ internal sealed partial class Compilation
             ? new() : new(options.Backend.AdditionalBoundedMethods);
         _genericRoots = options.HotupdateRefs;
         SharedGenericsEnabled = options.SharedGenerics;
+        BodyCompileJobsRequested = options.MaxDegreeOfParallelism;
+        int processorCount = System.Math.Max(1, Environment.ProcessorCount);
+        BodyCompileJobs = options.MaxDegreeOfParallelism == 0
+            ? processorCount
+            : System.Math.Min(options.MaxDegreeOfParallelism, processorCount);
         ShadowStackEnabled = options.ShadowStack;
         // Grouped specializations name their canonical owner's struct layout
         // (ClassInfo.CppStructName) only when sharing is on; a per-process

@@ -86,11 +86,12 @@ platform_isa_join() {
     printf '%s\n' "$out"
 }
 
-PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS=8
+PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS=1
 
 # A supported X86 probe touches a large fraction of the wide generated image.
 # Bound its Windows working-set high-water mark by giving each native process a
-# fixed slice of the selection; the oracle uses the identical slices.
+# single registry row; row costs vary too much for a wider fixed-size slice to
+# be a memory bound. The oracle uses the identical slices.
 platform_isa_supported_chunks() {
     local csv="$1" limit="$PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS"
     local rest="$csv" item chunk="" count=0
@@ -330,7 +331,7 @@ _platform_isa_native_plan_self_check() {
     flattened=${chunks//$'\n'/,}
     [ "$flattened" = 'a,b,c,d,e,f,g,h,i' ] \
         || { echo "FAIL: platform-ISA supported-run chunks changed selection order" >&2; return 1; }
-    [ "$(grep -c . <<<"$chunks" || true)" -eq 2 ] \
+    [ "$(grep -c . <<<"$chunks" || true)" -eq 9 ] \
         || { echo "FAIL: platform-ISA supported-run chunk bound is not enforced" >&2; return 1; }
     for arch in x86 arm; do
         rows=$(platform_isa_table_rows "$arch") || return 1

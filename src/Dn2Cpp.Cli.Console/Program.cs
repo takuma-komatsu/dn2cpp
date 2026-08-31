@@ -20,6 +20,7 @@ bool verbose = false;
 bool autoRef = false;
 bool sharedGenerics = true;
 bool shadowStack = false;
+int maxDegreeOfParallelism = 0;
 var references = new List<string>();
 var noDefaultRefs = new List<string>();
 var projectRoots = new List<string>();
@@ -51,6 +52,21 @@ for (int i = 0; i < args.Length; i++)
         // reachable unsupported-IL / unmapped-intrinsic gap (instead of stopping at
         // the first), rather than emitting C++. See gates/selfhost-measure-console.sh.
         measure = true;
+    }
+    else if (args[i] == "--jobs")
+    {
+        if (i + 1 >= args.Length)
+        {
+            Console.Error.WriteLine("error: --jobs expects a positive integer");
+            return 1;
+        }
+        string value = args[++i];
+        if (!int.TryParse(value, out int jobs) || jobs <= 0)
+        {
+            Console.Error.WriteLine($"error: --jobs expects a positive integer, got '{value}'");
+            return 1;
+        }
+        maxDegreeOfParallelism = jobs;
     }
     else if (args[i] == "--verbose")
     {
@@ -111,7 +127,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
     return 1;
 }
 
@@ -122,6 +138,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     NoDefaultRefs = noDefaultRefs,
     OutDir = outDir,
     Measure = measure,
+    MaxDegreeOfParallelism = maxDegreeOfParallelism,
     Verbose = verbose,
     AutoRef = autoRef,
     SharedGenerics = sharedGenerics,

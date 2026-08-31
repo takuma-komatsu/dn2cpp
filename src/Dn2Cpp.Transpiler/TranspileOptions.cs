@@ -22,6 +22,12 @@ public sealed record TranspileOptions
     /// report every reachable transpilation gap instead of emitting C++.</summary>
     public bool Measure { get; init; }
 
+    /// <summary>Maximum number of method bodies compiled concurrently
+    /// (<c>--jobs</c>). Zero selects <see cref="Environment.ProcessorCount"/>;
+    /// a positive value sets an explicit limit. Negative values are rejected by
+    /// <see cref="TranspileDriver"/>.</summary>
+    public int MaxDegreeOfParallelism { get; init; }
+
     /// <summary>Opt-in (<c>--verbose</c>): expand the driver's end-of-run reports that
     /// print a count by default into their per-item detail. A flag rather than an env
     /// knob — those reports answer "what did this build quietly decline to do", and an

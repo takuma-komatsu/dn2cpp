@@ -86,6 +86,11 @@ public static class TranspileDriver
         string input = options.Input;
         string outDir = options.OutDir;
         bool measure = options.Measure;
+        if (options.MaxDegreeOfParallelism < 0)
+        {
+            Console.Error.WriteLine("error: MaxDegreeOfParallelism must be zero or a positive integer");
+            return 1;
+        }
         if (!File.Exists(input))
         {
             Console.Error.WriteLine($"error: input assembly not found: {input}");

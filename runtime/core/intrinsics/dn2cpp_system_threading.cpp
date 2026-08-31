@@ -281,25 +281,64 @@ int64_t dn2cpp_interlocked_and_i8(int64_t* loc, int64_t value)
 // bounded leak — acceptable, mirrors how a real CLR's sync-block table retains
 // inflated locks).
 //
-// The lock is a hand-rolled recursive mutex built on a plain std::mutex plus two
+// The lock is a hand-rolled recursive mutex built on a plain std::mutex and
 // condition variables, rather than std::recursive_mutex. We need this because
 // Monitor.Wait must atomically (a) fully release the lock — including the entire
 // recursion depth — (b) block on a condition signaled by Pulse/PulseAll, and
 // (c) re-acquire to the saved depth on wake; std::recursive_mutex exposes none of
 // that. Tracking the owner thread id and recursion count by hand gives us all
-// three. `lock_cv` wakes threads waiting to acquire the lock; `wait_cv` wakes
-// threads parked in Monitor.Wait.
+// three. `lock_cv` wakes threads waiting to acquire the lock. Each Wait has its
+// own condition variable so a thread that parks after Pulse/PulseAll cannot
+// consume a notification issued to the earlier wait set.
+struct Dn2CppMonitorWaiter
+{
+    std::condition_variable cv;
+    Dn2CppMonitorWaiter* prev = nullptr;
+    Dn2CppMonitorWaiter* next = nullptr;
+    bool released = false;
+};
+
 struct Dn2CppMonitor
 {
     std::mutex mtx;                   // guards the fields below + serializes enter/exit
     std::condition_variable lock_cv; // signaled when the lock becomes free (enter-waiters)
-    std::condition_variable wait_cv; // signaled by Pulse/PulseAll (Wait-waiters)
     std::thread::id owner;
     bool has_owner = false;
     uint32_t count = 0;              // recursion depth
-    int waiters = 0;                 // threads currently parked in Wait()
-    int to_release = 0;             // pending Pulse credits (waiters cleared to wake)
+    Dn2CppMonitorWaiter* wait_head = nullptr;
+    Dn2CppMonitorWaiter* wait_tail = nullptr;
 };
+
+static void dn2cpp_monitor_enqueue_waiter(Dn2CppMonitor* mon, Dn2CppMonitorWaiter* waiter)
+{
+    waiter->prev = mon->wait_tail;
+    if (mon->wait_tail != nullptr)
+        mon->wait_tail->next = waiter;
+    else
+        mon->wait_head = waiter;
+    mon->wait_tail = waiter;
+}
+
+static void dn2cpp_monitor_unlink_waiter(Dn2CppMonitor* mon, Dn2CppMonitorWaiter* waiter)
+{
+    if (waiter->prev != nullptr)
+        waiter->prev->next = waiter->next;
+    else
+        mon->wait_head = waiter->next;
+    if (waiter->next != nullptr)
+        waiter->next->prev = waiter->prev;
+    else
+        mon->wait_tail = waiter->prev;
+    waiter->prev = nullptr;
+    waiter->next = nullptr;
+}
+
+static void dn2cpp_monitor_release_waiter(Dn2CppMonitor* mon, Dn2CppMonitorWaiter* waiter)
+{
+    dn2cpp_monitor_unlink_waiter(mon, waiter);
+    waiter->released = true;
+    waiter->cv.notify_one();
+}
 
 // The object -> monitor table is STRIPED: one global mutex here used to be
 // taken twice per `lock` statement (enter + exit), serializing every monitor
@@ -424,25 +463,23 @@ int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms)
 }
 
 // Monitor.Wait: the caller owns the monitor. Fully release the lock (saving the
-// recursion depth), park on wait_cv until Pulse/PulseAll grants a credit, then
+// recursion depth), enqueue this waiter's identity for Pulse/PulseAll, then
 // re-acquire the lock to the saved depth. The no-timeout form always wakes on a
-// credit, so it reacquires and returns 1 (true).
+// notification, so it reacquires and returns 1 (true).
 int32_t dn2cpp_monitor_wait(Dn2CppObject* o)
 {
     Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
     std::unique_lock<std::mutex> lk(mon->mtx);
     std::thread::id self = std::this_thread::get_id();
     uint32_t saved = mon->count;
+    Dn2CppMonitorWaiter waiter;
     // Fully release the lock — including the whole recursion depth — and let an
     // enter-waiter in.
     mon->count = 0;
     mon->has_owner = false;
-    mon->waiters++;
+    dn2cpp_monitor_enqueue_waiter(mon, &waiter);
     mon->lock_cv.notify_one();
-    // Park until a Pulse/PulseAll credit is available.
-    mon->wait_cv.wait(lk, [&] { return mon->to_release > 0; });
-    mon->to_release--;
-    mon->waiters--;
+    waiter.cv.wait(lk, [&] { return waiter.released; });
     // Re-acquire the lock (re-block if the pulser still holds it), restoring depth.
     mon->lock_cv.wait(lk, [&] { return !mon->has_owner; });
     mon->has_owner = true;
@@ -452,10 +489,10 @@ int32_t dn2cpp_monitor_wait(Dn2CppObject* o)
 }
 
 // Monitor.Wait(obj, int)/(obj, TimeSpan): as above, but park for at most ms. Returns 1 if
-// woken by a Pulse/PulseAll credit (consuming it), 0 on timeout. Either way the waiter
+// woken by Pulse/PulseAll, 0 on timeout. Either way the waiter
 // re-acquires the monitor to its saved recursion depth before returning (the .NET
 // contract — a timed-out waiter still owns the lock on return). A negative ms is an
-// infinite wait. CRITICAL: on timeout the pending-credit count is left untouched.
+// infinite wait.
 int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
     if (ms < 0)
@@ -464,21 +501,15 @@ int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms)
     std::unique_lock<std::mutex> lk(mon->mtx);
     std::thread::id self = std::this_thread::get_id();
     uint32_t saved = mon->count;
+    Dn2CppMonitorWaiter waiter;
     mon->count = 0;
     mon->has_owner = false;
-    mon->waiters++;
+    dn2cpp_monitor_enqueue_waiter(mon, &waiter);
     mon->lock_cv.notify_one();
-    int32_t acquired;
-    if (mon->wait_cv.wait_for(lk, std::chrono::milliseconds(ms), [&] { return mon->to_release > 0; }))
-    {
-        mon->to_release--; // a credit was granted: consume it
-        acquired = 1;
-    }
-    else
-    {
-        acquired = 0; // timed out with no credit — leave to_release untouched
-    }
-    mon->waiters--;
+    int32_t acquired = waiter.cv.wait_for(
+        lk, std::chrono::milliseconds(ms), [&] { return waiter.released; }) ? 1 : 0;
+    if (acquired == 0)
+        dn2cpp_monitor_unlink_waiter(mon, &waiter);
     // A timed-out waiter must still re-acquire the monitor before returning.
     mon->lock_cv.wait(lk, [&] { return !mon->has_owner; });
     mon->has_owner = true;
@@ -487,26 +518,22 @@ int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms)
     return acquired;
 }
 
-// Monitor.Pulse: wake at most one parked waiter (grant one credit, but never more
-// credits than there are uncredited waiters).
+// Monitor.Pulse: wake at most one thread from the wait set that exists now.
 void dn2cpp_monitor_pulse(Dn2CppObject* o)
 {
     Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
     std::unique_lock<std::mutex> lk(mon->mtx);
-    if (mon->waiters > mon->to_release)
-    {
-        mon->to_release++;
-        mon->wait_cv.notify_one();
-    }
+    if (mon->wait_head != nullptr)
+        dn2cpp_monitor_release_waiter(mon, mon->wait_head);
 }
 
-// Monitor.PulseAll: wake every parked waiter (grant a credit to each).
+// Monitor.PulseAll: detach and wake exactly the wait set that exists now.
 void dn2cpp_monitor_pulse_all(Dn2CppObject* o)
 {
     Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
     std::unique_lock<std::mutex> lk(mon->mtx);
-    mon->to_release = mon->waiters;
-    mon->wait_cv.notify_all();
+    while (mon->wait_head != nullptr)
+        dn2cpp_monitor_release_waiter(mon, mon->wait_head);
 }
 
 // ---- Volatile.Read/Write (float/double) ----

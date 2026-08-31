@@ -1005,9 +1005,19 @@ grep -qi 'certificate' "$tlsdir/untrusted.err" && grep -qi 'trusted CA' "$tlsdir
     echo "FAIL: the transport's error does not name the certificate and the trust anchors:" >&2
     cat "$tlsdir/untrusted.err" >&2; exit 1; }
 # Corroboration from the other end of the wire, and the tightest form of "verification ran":
-# the server recorded a FAILED handshake and served nothing. With CURLOPT_SSL_VERIFYPEER at 0
-# the handshake would complete and this would be a `served` line instead.
-grep -q '^handshake-failed ' "$tlsdir/tls.log" || {
+# the server recorded a FAILED handshake and served nothing. The client can finish handling
+# its alert before the server's accept thread catches and logs the peer's alert, so wait for
+# that independent observation instead of racing it. With CURLOPT_SSL_VERIFYPEER at 0 the
+# handshake would complete and this would be a `served` line instead.
+handshake_failed=
+for _ in $(seq 1 50); do
+    if grep -q '^handshake-failed ' "$tlsdir/tls.log"; then
+        handshake_failed=1
+        break
+    fi
+    sleep 0.1
+done
+[ -n "$handshake_failed" ] || {
     echo "FAIL: the TLS server recorded no failed handshake — the client did not reject the certificate" >&2
     cat "$tlsdir/tls.log" >&2; exit 1; }
 servedafter="$(grep -c '^served ' "$tlsdir/tls.log" || true)"

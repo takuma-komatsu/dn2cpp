@@ -26,10 +26,22 @@ public static class Program
     [DllImport("libc")]
     private static extern void dn2cpp_never_linked_byvaltstr(FixedName s);
 
+    // These independent scalar bodies make the measure-mode refusal a real
+    // worker-scheduling subject before Main records the marshalling gap.
+    private static int Increment(int value)
+    {
+        // The loop forces primitive locals into IL without adding token-bearing operations.
+        int result = value;
+        for (int i = 0; i < 1; i++)
+            result++;
+        return result;
+    }
+
+    private static int Double(int value) => value * 2;
+
     public static void Main()
     {
-        var s = new FixedName { Id = 1, Name = "x" };
+        var s = new FixedName { Id = Double(Increment(0)), Name = "x" };
         dn2cpp_never_linked_byvaltstr(s);
-        Console.WriteLine(s.Id);
     }
 }
