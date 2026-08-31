@@ -8,6 +8,8 @@ using System.Threading;
 // or leaked element — or a missed CompleteAdding wake — would not reproduce these totals.
 static class Program
 {
+    sealed class StringOutHolder { internal string? Value; }
+
     static int s_consumedCount;
     static int s_consumedSum;
 
@@ -167,7 +169,10 @@ static class Program
         strings.Add("alpha");
         strings.Add("beta");
         strings.Add("gamma");
-        Console.WriteLine(strings.Take() + "|" + strings.Take() + "|" + strings.Take());
+        var stringOut = new StringOutHolder();
+        if (!strings.TryTake(out stringOut.Value))
+            throw new InvalidOperationException("reference TryTake unexpectedly failed");
+        Console.WriteLine(stringOut.Value + "|" + strings.Take() + "|" + strings.Take());
 
         // 64-bit value T (long): exercises the i8 box/unbox kind.
         var longs = new BlockingCollection<long>();

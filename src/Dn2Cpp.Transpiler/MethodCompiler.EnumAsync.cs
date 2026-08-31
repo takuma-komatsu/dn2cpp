@@ -132,6 +132,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{arr} = dn2cpp_newarr_ref_t({ordered.Count}, {PreciseArrayTypeInfoExpr(strElem)});");
                 for (int i = 0; i < ordered.Count; i++)
                     Emit($"{arr}->data[{i}] = (Dn2CppObject*){_literals.GetOrAdd(ordered[i].name)};");
+                if (ordered.Count > 0)
+                    Emit($"dn2cpp_gc_write_barrier((void*)({arr}));");
                 Push(StackKind.Ref, "Dn2CppArrayRef*", arr);
                 _stack[^1] = _stack[^1] with { StaticType = TypeDesc.MakeSZArray(strElem) };
                 return;
@@ -659,7 +661,8 @@ internal sealed partial class MethodCompiler
                     ? $"{{ {smCpp}* __sm = ({smCpp}*)({smRef.Expr}); " +
                       $"if (__sm->{builderField.CppName}.boxed == nullptr) {{ " +
                       $"{smCpp}* __h = ({smCpp}*)dn2cpp_alloc(sizeof({smCpp})); *__h = *__sm; " +
-                      $"__h->{builderField.CppName}.boxed = __h; __sm = __h; }} " +
+                      $"__h->{builderField.CppName}.boxed = __h; " +
+                      "dn2cpp_gc_write_barrier((void*)__h); __sm = __h; } " +
                       $"{resume} }}"
                     : $"{{ {smCpp}* __sm = {StateMachinePtr(sm, smRef)}; {resume} }}");
                 return;
@@ -709,7 +712,8 @@ internal sealed partial class MethodCompiler
              + $"((Dn2CppObject*)__act)->type = &{action.CppTypeInfoName}; "
              + $"__act->f_target = (Dn2CppObject*)__sm; "
              + $"__act->f_method = (void*)&{moveNext.Emittable.CppName}; "
-             + $"__act->f_prev = nullptr; ";
+             + $"__act->f_prev = nullptr; "
+             + "dn2cpp_gc_write_barrier((void*)__act); ";
         // An interface-typed awaiter (a GetAwaiter whose declared return type is
         // an awaiter interface) only declares the registration method — on
         // itself or an inherited INotifyCompletion — so dispatch it through

@@ -451,7 +451,10 @@ internal sealed partial class MethodCompiler
             foreach (var (sb, buf, uni) in sbWritebacks)
                 Emit($"dn2cpp_pinvoke_sb_from_buffer({sb}, {buf}, {(uni ? 1 : 0)});");
             foreach (var (slot, tmp, inbuf, enc) in byrefStrWritebacks)
+            {
                 Emit($"*{slot} = dn2cpp_pinvoke_byref_str_result({tmp}, {inbuf}, {enc});");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({slot}));");
+            }
             foreach (var (arr, buf) in charArrWritebacks)
                 Emit($"dn2cpp_pinvoke_chararr_from_ansi({arr}, {buf});");
             foreach (var (arr, buf) in structArrWritebacks)
@@ -2004,6 +2007,7 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            Emit($"dn2cpp_gc_write_barrier((void*)({dg}));");
             _stack.Add(new StackEntry(dg, StackKind.Ref, cls.CppStructName + "*"));
             return;
         }

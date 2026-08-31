@@ -45,6 +45,10 @@ class Program
         string[] sdst = new string[2];
         ((Span<string>)ssrc).CopyTo(sdst);
         Console.WriteLine($"{sdst[0]},{sdst[1]}");              // p,q
+        string[] sdstTry = new string[2];
+        if (!((Span<string>)ssrc).TryCopyTo(sdstTry)
+            || sdstTry[0] != "p" || sdstTry[1] != "q")
+            throw new InvalidOperationException("Span<string>.TryCopyTo failed");
 
         // --- Span.ToArray (a fresh copy, independent of the source) ---
         int[] orig = { 1, 2, 3 };

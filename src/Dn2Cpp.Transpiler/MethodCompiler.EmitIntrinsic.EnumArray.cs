@@ -182,6 +182,7 @@ internal sealed partial class MethodCompiler
                 string ok = NewTemp("int32_t");
                 Emit($"{ok} = dn2cpp_enum_try_parse_type({Cast(t, "Dn2CppType*")}, {Cast(s, "Dn2CppString*")}, {icExpr}, &{res});");
                 Emit($"*({Cast(outRef, "Dn2CppObject**")}) = {res};");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({outRef.Expr}));");
                 Push(StackKind.I4, "int32_t", ok);
                 return true;
             }
@@ -201,6 +202,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{ok} = dn2cpp_enum_try_parse_type({Cast(t, "Dn2CppType*")}, "
                     + $"dn2cpp_string_from_chars((const char16_t*){sv}.f__reference, {sv}.f__length), {icExpr}, &{res});");
                 Emit($"*({Cast(outRef, "Dn2CppObject**")}) = {res};");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({outRef.Expr}));");
                 Push(StackKind.I4, "int32_t", ok);
                 return true;
             }
