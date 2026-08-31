@@ -634,8 +634,8 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     // ctor body; the finalize registration below still fires for those that reach here.
     if (ti->finalize != nullptr)
         dn2cpp_register_finalizer(e);
-    e->message = message;
-    e->inner = inner;
+    dn2cpp_gc_store_ref(&e->message, message);
+    dn2cpp_gc_store_ref(&e->inner, inner);
     // System.Exception's base ctor default (COR_E_EXCEPTION). A derived ctor that
     // runs (the AOT/interp newobj paths) overwrites this with its per-type value via
     // set_HResult; a runtime-RAISED exception (no ctor body) keeps the base default
@@ -1210,7 +1210,7 @@ Dn2CppStackFrame* dn2cpp_stackframe_new(Dn2CppString* fileName, int32_t line, in
 {
     auto* f = static_cast<Dn2CppStackFrame*>(dn2cpp_alloc(sizeof(Dn2CppStackFrame)));
     f->type = &dn2cpp_stackframe_type;
-    f->fileName = fileName;
+    dn2cpp_gc_store_ref(&f->fileName, fileName);
     f->lineNumber = line;
     f->columnNumber = column;
     f->methodDesc = nullptr; // only a materialized capture (below) fills it
@@ -1286,7 +1286,7 @@ static Dn2CppStackTrace* dn2cpp_stacktrace_wrap(Dn2CppArrayRef* frames, int32_t 
 {
     auto* st = static_cast<Dn2CppStackTrace*>(dn2cpp_alloc(sizeof(Dn2CppStackTrace)));
     st->type = &dn2cpp_stacktrace_type;
-    st->frames = frames;
+    dn2cpp_gc_store_ref(&st->frames, frames);
     st->dropped = dropped;
     return st;
 }
@@ -1401,7 +1401,7 @@ Dn2CppStackTrace* dn2cpp_stacktrace_of_exception(const Dn2CppTypeInfo* frameArrT
 Dn2CppStackTrace* dn2cpp_stacktrace_of_frame(const Dn2CppTypeInfo* frameArrTi, Dn2CppObject* frame)
 {
     Dn2CppArrayRef* frames = dn2cpp_newarr_ref_t(1, frameArrTi);
-    frames->data[0] = frame;
+    dn2cpp_gc_store_ref(&frames->data[0], frame);
     return dn2cpp_stacktrace_wrap(frames, 0);
 }
 
@@ -1506,8 +1506,9 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
     Dn2CppString* msgStr = dn2cpp_string_from_utf8(msg.c_str(), static_cast<int32_t>(msg.size()));
     auto* e = static_cast<Dn2CppAggregateExceptionObject*>(dn2cpp_alloc(sizeof(Dn2CppAggregateExceptionObject)));
     e->type = &dn2cpp_aggregate_exception_type;
-    e->message = msgStr;
-    e->inner = (inner != nullptr && inner->length > 0) ? inner->data[0] : nullptr;
+    dn2cpp_gc_store_ref(&e->message, msgStr);
+    dn2cpp_gc_store_ref(&e->inner,
+                        (inner != nullptr && inner->length > 0) ? inner->data[0] : nullptr);
     e->hresult = static_cast<int32_t>(0x80131500); // base default; get_HResult reads the shared prefix slot
     // `inner` is whatever its caller allocated, and the four runtime callers
     // (dn2cpp_task_block_wait, Task.WaitAll, dn2cpp_task_exception, the Parallel fault
@@ -1517,7 +1518,7 @@ Dn2CppObject* dn2cpp_aggregate_exception_new(Dn2CppArrayRef* inner)
     // back. Re-tagging at allocation would need a handle the runtime cannot name —
     // dn2cpp_exception_type is the RUNTIME's Exception, not the transpiled CoreLib's.
     // A reader that bypasses the getter is what would make this a defect.
-    e->innerExceptions = inner; // trace stays null (GC alloc zero-fills) until the throw stamps it
+    dn2cpp_gc_store_ref(&e->innerExceptions, inner); // trace stays null (GC alloc zero-fills) until the throw stamps it
     return e;
 }
 

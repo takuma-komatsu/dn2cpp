@@ -44,7 +44,9 @@ Dn2CppStringBuilder* dn2cpp_sb_new_cap(int32_t capacity)
     auto* sb = static_cast<Dn2CppStringBuilder*>(dn2cpp_alloc(sizeof(Dn2CppStringBuilder)));
     sb->type = &dn2cpp_stringbuilder_type;
     int32_t cap = capacity > 0 ? capacity : 16;
-    sb->buf = static_cast<char16_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(cap) * sizeof(char16_t)));
+    dn2cpp_gc_store_ref(
+        &sb->buf,
+        static_cast<char16_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(cap) * sizeof(char16_t))));
     sb->length = 0;
     sb->capacity = cap;
     return sb;

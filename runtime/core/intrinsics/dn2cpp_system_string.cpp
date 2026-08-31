@@ -935,7 +935,7 @@ static Dn2CppArrayRef* dn2cpp_split_sole_value(Dn2CppString* s, bool removeEmpty
         return dn2cpp_newarr_ref(0);
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(1);
     Dn2CppString* v = (a == 0 && b == s->length) ? s : dn2cpp_str_substring(s, a, b - a);
-    arr->data[0] = reinterpret_cast<Dn2CppObject*>(v);
+    dn2cpp_gc_store_ref(&arr->data[0], reinterpret_cast<Dn2CppObject*>(v));
     return arr;
 }
 
@@ -1110,7 +1110,7 @@ Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t
     if (sep == nullptr || sep->length == 0)
         return dn2cpp_split_sole_value(s, (opts & 1) != 0, (opts & 2) != 0);
     Dn2CppArrayRef* one = dn2cpp_newarr_ref(1);
-    one->data[0] = reinterpret_cast<Dn2CppObject*>(sep);
+    dn2cpp_gc_store_ref(&one->data[0], reinterpret_cast<Dn2CppObject*>(sep));
     return dn2cpp_str_split(s, nullptr, 0, one, count, opts);
 }
 
@@ -1610,7 +1610,7 @@ Dn2CppString* dn2cpp_string_concat_objects_n(Dn2CppArrayRef* objs, int32_t n)
         n = 0;
     auto** parts = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        parts[i] = dn2cpp_object_tostring(objs->data[i]);
+        dn2cpp_gc_store_ref(&parts[i], dn2cpp_object_tostring(objs->data[i]));
     return dn2cpp_string_concat_n(parts, n);
 }
 
@@ -1629,9 +1629,9 @@ static Dn2CppString* dn2cpp_join_strings(Dn2CppString* sep, Dn2CppString** elems
     auto** parts = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * pc));
     for (int32_t i = 0; i < n; i++)
     {
-        parts[2 * i] = elems[i];
+        dn2cpp_gc_store_ref(&parts[2 * i], elems[i]);
         if (i < n - 1)
-            parts[2 * i + 1] = sep;
+            dn2cpp_gc_store_ref(&parts[2 * i + 1], sep);
     }
     return dn2cpp_string_concat_n(parts, pc);
 }
@@ -1644,7 +1644,7 @@ Dn2CppString* dn2cpp_string_join_i4_n(Dn2CppString* sep, Dn2CppArrayI4* a, int32
     if (a == nullptr || n < 0) n = 0;
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_int_to_string(a->data[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_int_to_string(a->data[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1659,7 +1659,7 @@ Dn2CppString* dn2cpp_string_join_i8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_
     auto* d = reinterpret_cast<int64_t*>(a->data);
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_long_to_string(d[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_long_to_string(d[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1675,7 +1675,7 @@ Dn2CppString* dn2cpp_string_join_u4_n(Dn2CppString* sep, Dn2CppArrayI4* a, int32
     if (a == nullptr || n < 0) n = 0;
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_format_uint(static_cast<uint32_t>(a->data[i]), 4, nullptr);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_format_uint(static_cast<uint32_t>(a->data[i]), 4, nullptr));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1690,7 +1690,7 @@ Dn2CppString* dn2cpp_string_join_u8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_
     auto* d = reinterpret_cast<uint64_t*>(a->data);
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_format_uint(d[i], 8, nullptr);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_format_uint(d[i], 8, nullptr));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1705,7 +1705,7 @@ Dn2CppString* dn2cpp_string_join_r8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_
     auto* d = reinterpret_cast<double*>(a->data);
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_double_to_string(d[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_double_to_string(d[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1723,7 +1723,7 @@ Dn2CppString* dn2cpp_string_join_ch_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_
         return dn2cpp_string_from_chars(d, n);
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_char_to_string(d[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_char_to_string(d[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1737,7 +1737,7 @@ Dn2CppString* dn2cpp_string_join_ref_n(Dn2CppString* sep, Dn2CppArrayRef* a, int
     if (a == nullptr || n < 0) n = 0;
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_object_tostring(a->data[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(a->data[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1755,7 +1755,7 @@ Dn2CppString* dn2cpp_string_join_objs(Dn2CppString* sep, Dn2CppObject* const* d,
     if (d == nullptr || n < 0) n = 0;
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_object_tostring(d[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(d[i]));
     return dn2cpp_join_strings(sep, e, n);
 }
 
@@ -1764,7 +1764,7 @@ Dn2CppString* dn2cpp_string_concat_objs(Dn2CppObject* const* d, int32_t n)
     if (d == nullptr || n < 0) n = 0;
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
-        e[i] = dn2cpp_object_tostring(d[i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(d[i]));
     return dn2cpp_string_concat_n(e, n);
 }
 
@@ -1781,7 +1781,7 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
         dn2cpp_throw_argument_out_of_range();
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (count > 0 ? count : 1)));
     for (int32_t i = 0; i < count; i++)
-        e[i] = dn2cpp_object_tostring(a->data[startIndex + i]);
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(a->data[startIndex + i]));
     return dn2cpp_join_strings(sep, e, count);
 }
 

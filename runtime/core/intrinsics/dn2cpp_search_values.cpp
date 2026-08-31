@@ -23,7 +23,9 @@ static Dn2CppSearchValues* sv_create(const T* vals, int32_t n)
         if (static_cast<uint32_t>(vals[i]) > 255u) hiN++;
     if (hiN > 0)
     {
-        sv->hi = static_cast<int32_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(hiN) * sizeof(int32_t)));
+        dn2cpp_gc_store_ref(
+            &sv->hi,
+            static_cast<int32_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(hiN) * sizeof(int32_t))));
         int32_t k = 0;
         for (int32_t i = 0; i < n; i++)
         {
@@ -99,12 +101,14 @@ int32_t dn2cpp_search_values_contains_u16(uint16_t value, const Dn2CppSearchValu
 Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t n, int32_t ignoreCase)
 {
     Dn2CppSearchValues* sv = static_cast<Dn2CppSearchValues*>(dn2cpp_alloc(sizeof(Dn2CppSearchValues)));
-    sv->strs = static_cast<Dn2CppString**>(dn2cpp_alloc(static_cast<size_t>(n) * sizeof(Dn2CppString*)));
+    dn2cpp_gc_store_ref(
+        &sv->strs,
+        static_cast<Dn2CppString**>(dn2cpp_alloc(static_cast<size_t>(n) * sizeof(Dn2CppString*))));
     for (int32_t i = 0; i < n; i++)
     {
         if (vals[i] == nullptr)
             dn2cpp_throw_argument_null();
-        sv->strs[i] = vals[i];
+        dn2cpp_gc_store_ref(&sv->strs[i], vals[i]);
     }
     sv->strCount = n;
     sv->strIgnoreCase = ignoreCase;

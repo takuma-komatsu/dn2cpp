@@ -64,7 +64,8 @@ Dn2CppArrayRef* dn2cpp_type_get_generic_arguments(Dn2CppType* t)
     int32_t n = ti->genericArgCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(ti->genericArgs[i]));
+        dn2cpp_gc_store_ref(&arr->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(ti->genericArgs[i])));
     return arr;
 }
 
@@ -394,7 +395,8 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(eff.Count());
     int32_t k = 0;
     eff.ForEach([&](const Dn2CppTypeInfo* itf) {
-        arr->data[k++] = reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(itf));
+        dn2cpp_gc_store_ref(&arr->data[k++],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(itf)));
     });
     return arr;
 }
@@ -499,8 +501,8 @@ Dn2CppArrayRef* dn2cpp_assembly_get_types(const char* asmName)
     int32_t i = 0;
     for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
         if (owned(k))
-            arr->data[i++] = reinterpret_cast<Dn2CppObject*>(
-                dn2cpp_get_type_from_handle(dn2cpp_type_registry[k].type));
+            dn2cpp_gc_store_ref(&arr->data[i++], reinterpret_cast<Dn2CppObject*>(
+                dn2cpp_get_type_from_handle(dn2cpp_type_registry[k].type)));
     return arr;
 }
 
@@ -736,8 +738,8 @@ static int32_t dn2cpp_enum_parse_type_core(Dn2CppType* t, Dn2CppString* s, int32
     for (int32_t i = 0; i < n; i++)
     {
         values[i] = ti->enumMembers[i].value;
-        names[i] = dn2cpp_string_from_utf8(ti->enumMembers[i].name,
-            static_cast<int32_t>(std::strlen(ti->enumMembers[i].name)));
+        dn2cpp_gc_store_ref(&names[i], dn2cpp_string_from_utf8(ti->enumMembers[i].name,
+            static_cast<int32_t>(std::strlen(ti->enumMembers[i].name))));
     }
     int32_t uWidth = 4;
     bool uUnsigned = false;
@@ -951,7 +953,8 @@ Dn2CppArrayRef* dn2cpp_type_get_nested_types(Dn2CppType* t)
     int32_t n = ti->nestedCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(ti->nestedTypes[i]));
+        dn2cpp_gc_store_ref(&arr->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(ti->nestedTypes[i])));
     return arr;
 }
 
@@ -1327,8 +1330,8 @@ static int32_t dn2cpp_collect_fields(const Dn2CppTypeInfo* type, int32_t flags, 
             if (dn2cpp_field_matches(&ti->fields[i], flags, inherited))
             {
                 if (out != nullptr)
-                    out[n] = reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_fieldref(&ti->fields[i], type));
+                    dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
+                        dn2cpp_make_fieldref(&ti->fields[i], type)));
                 n++;
             }
         if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -1664,7 +1667,8 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                     seen[seenCount++] = mi->vtableSlot;
             }
             if (out != nullptr)
-                out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type));
+                dn2cpp_gc_store_ref(&out[n],
+                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type)));
             n++;
         }
         if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2333,14 +2337,14 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
     node->type = &dn2cpp_reflbind_type;
     node->method = mi;
-    node->target = target;
+    dn2cpp_gc_store_ref(&node->target, target);
     node->mode = mode;
     size_t sz = sizeof(Dn2CppDelegate);
     if (dti->instanceSize > 0 && static_cast<size_t>(dti->instanceSize) > sz)
         sz = static_cast<size_t>(dti->instanceSize);
     auto* dg = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sz));
     dg->type = dti;
-    dg->target = reinterpret_cast<Dn2CppObject*>(node);
+    dn2cpp_gc_store_ref(&dg->target, reinterpret_cast<Dn2CppObject*>(node));
     dg->method = tramp;
     dg->prev = nullptr;
     return reinterpret_cast<Dn2CppObject*>(dg);
@@ -2419,7 +2423,8 @@ static int32_t dn2cpp_collect_ctors(const Dn2CppTypeInfo* ti, int32_t flags, Dn2
         if (dn2cpp_member_matches(ti->ctors[i].attrs, flags, false))
         {
             if (out != nullptr)
-                out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(&ti->ctors[i], ti));
+                dn2cpp_gc_store_ref(&out[n],
+                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(&ti->ctors[i], ti)));
             n++;
         }
     return n;
@@ -2559,7 +2564,8 @@ static int32_t dn2cpp_collect_props(const Dn2CppTypeInfo* type, int32_t flags, D
             if (seenCount < 256)
                 seen[seenCount++] = p->name;
             if (out != nullptr)
-                out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type));
+                dn2cpp_gc_store_ref(&out[n],
+                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type)));
             n++;
         }
         if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2813,7 +2819,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                 if (hidden || !dn2cpp_name_pattern_matches(mi->name, name))
                     continue;
                 if (out != nullptr)
-                    out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type));
+                    dn2cpp_gc_store_ref(&out[n],
+                        reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type)));
                 n++;
             }
             if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2828,7 +2835,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                 || !dn2cpp_name_pattern_matches(ci->name, name))
                 continue;
             if (out != nullptr)
-                out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(ci, type));
+                dn2cpp_gc_store_ref(&out[n],
+                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(ci, type)));
             n++;
         }
     if (memberTypes & DN2CPP_MT_PROPERTY)
@@ -2859,7 +2867,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                 if (!dn2cpp_name_pattern_matches(p->name, name))
                     continue;
                 if (out != nullptr)
-                    out[n] = reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type));
+                    dn2cpp_gc_store_ref(&out[n],
+                        reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type)));
                 n++;
             }
             if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2877,8 +2886,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                     || !dn2cpp_name_pattern_matches(ti->fields[i].name, name))
                     continue;
                 if (out != nullptr)
-                    out[n] = reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_fieldref(&ti->fields[i], type));
+                    dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
+                        dn2cpp_make_fieldref(&ti->fields[i], type)));
                 n++;
             }
             if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2895,8 +2904,8 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
                     dn2cpp_simple_type_name(type->nestedTypes[i]->name), name))
                 continue;
             if (out != nullptr)
-                out[n] = reinterpret_cast<Dn2CppObject*>(
-                    dn2cpp_get_type_from_handle(type->nestedTypes[i]));
+                dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
+                    dn2cpp_get_type_from_handle(type->nestedTypes[i])));
             n++;
         }
     return n;
@@ -3966,11 +3975,11 @@ Dn2CppArrayRef* dn2cpp_type_find_interfaces(Dn2CppType* t, Dn2CppObject* filter,
     eff.ForEach([&](const Dn2CppTypeInfo* row) {
         auto* itf = reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(row));
         if (fn(d->target, itf, criteria) != 0)
-            keep[n++] = itf;
+            dn2cpp_gc_store_ref(&keep[n++], itf);
     });
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = keep[i];
+        dn2cpp_gc_store_ref(&arr->data[i], keep[i]);
     return arr;
 }
 
@@ -4103,7 +4112,8 @@ Dn2CppArrayRef* dn2cpp_methodref_get_generic_arguments(Dn2CppMethodRef* m)
     int32_t n = (mi->genericArgs != nullptr) ? mi->genericParamCount : 0;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        arr->data[i] = reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(mi->genericArgs[i]));
+        dn2cpp_gc_store_ref(&arr->data[i],
+            reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(mi->genericArgs[i])));
     return arr;
 }
 

@@ -103,6 +103,7 @@ Dn2CppTask* dn2cpp_task_from_result(uint64_t result)
     auto* t = dn2cpp_task_alloc();
     t->status.store(DN2CPP_TASK_SUCCEEDED, std::memory_order_relaxed);
     t->result = result;
+    dn2cpp_gc_write_barrier(&t->result);
     return t;
 }
 
@@ -512,6 +513,7 @@ static void dn2cpp_sched_post_to(Dn2CppScheduler* s, void (*fn)(void*), void* st
     auto* c = static_cast<Dn2CppCont*>(dn2cpp_alloc(sizeof(Dn2CppCont)));
     c->fn = fn;
     c->state = state;
+    dn2cpp_gc_write_barrier(&c->state);
     c->owner = s;
     dn2cpp_sched_enqueue(s, c);
 }
@@ -604,6 +606,7 @@ static bool dn2cpp_task_try_queue_cont(Dn2CppTask* t, void (*fn)(void*), void* s
     auto* c = static_cast<Dn2CppCont*>(dn2cpp_alloc(sizeof(Dn2CppCont)));
     c->fn = fn;
     c->state = state;
+    dn2cpp_gc_write_barrier(&c->state);
     c->owner = dn2cpp_sched_self();
     std::lock_guard<std::mutex> lk(g_task_mtx);
     if (t->status != DN2CPP_TASK_PENDING)
@@ -781,7 +784,7 @@ Dn2CppTask* dn2cpp_task_delay(int64_t ms)
     }
     Dn2CppScheduler* s = dn2cpp_sched_self();
     auto* e = static_cast<Dn2CppTimer*>(dn2cpp_alloc(sizeof(Dn2CppTimer)));
-    e->task = t;
+    dn2cpp_gc_store_ref(&e->task, t);
     e->due = s->virtual_now + ms;
     e->seq = s->timer_seq++;
     e->next = nullptr;
@@ -1051,8 +1054,8 @@ Dn2CppTask* dn2cpp_task_when_any(Dn2CppArrayRef* tasks)
     for (int32_t i = 0; i < tasks->length; i++)
     {
         auto* e = static_cast<Dn2CppWhenAnyEntry*>(dn2cpp_alloc(sizeof(Dn2CppWhenAnyEntry)));
-        e->shared = s;
-        e->task = reinterpret_cast<Dn2CppTask*>(tasks->data[i]);
+        dn2cpp_gc_store_ref(&e->shared, s);
+        dn2cpp_gc_store_ref(&e->task, reinterpret_cast<Dn2CppTask*>(tasks->data[i]));
         // Synchronous registration, so a settled input wins the join before this
         // returns; the winner is then the FIRST settled input in array order, as on
         // real .NET. Stop once one has won: a continuation on a still-pending input
@@ -1131,7 +1134,7 @@ Dn2CppArrayRef* dn2cpp_refspan_to_array(Dn2CppObject** data, int32_t len)
 Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception)
 {
     auto* t = dn2cpp_task_alloc();
-    t->exception = exception;
+    dn2cpp_gc_store_ref(&t->exception, exception);
     t->status.store(DN2CPP_TASK_FAULTED, std::memory_order_relaxed);
     return t;
 }
@@ -2327,7 +2330,7 @@ Dn2CppThread* dn2cpp_thread_new(Dn2CppObject* start)
 {
     auto* t = static_cast<Dn2CppThread*>(dn2cpp_alloc(sizeof(Dn2CppThread)));
     t->type = &dn2cpp_thread_type;
-    t->start = start;
+    dn2cpp_gc_store_ref(&t->start, start);
     t->arg = nullptr;
     t->handle = nullptr;
     t->sync = nullptr;
@@ -2582,9 +2585,9 @@ static void dn2cpp_pool_unlink(Dn2CppPoolNode* node)
 static Dn2CppPoolNode* dn2cpp_pool_node_new(Dn2CppTask* task, Dn2CppObject* del, Dn2CppObject* state)
 {
     auto* node = static_cast<Dn2CppPoolNode*>(dn2cpp_alloc(sizeof(Dn2CppPoolNode)));
-    node->task = task;
-    node->del = del;
-    node->state = state;
+    dn2cpp_gc_store_ref(&node->task, task);
+    dn2cpp_gc_store_ref(&node->del, del);
+    dn2cpp_gc_store_ref(&node->state, state);
     node->next = nullptr;
     return node;
 }
@@ -3208,8 +3211,8 @@ static Dn2CppTask* dn2cpp_task_cold(Dn2CppObject* del, Dn2CppObject* state,
     dn2cpp_task_require_delegate(del, "action");
     Dn2CppTask* t = dn2cpp_task_alloc();
     auto* c = static_cast<Dn2CppTaskCold*>(dn2cpp_alloc(sizeof(Dn2CppTaskCold)));
-    c->del = del;
-    c->state = state;
+    dn2cpp_gc_store_ref(&c->del, del);
+    dn2cpp_gc_store_ref(&c->state, state);
     c->invoke = invoke;
     c->invoke2 = invoke2;
     dn2cpp_gc_store_ref(&t->cold, c);
@@ -3435,10 +3438,10 @@ Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppOb
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
     auto* c = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));
-    c->antecedent = t;
-    c->task = ct;
-    c->del = del;
-    c->state = state;
+    dn2cpp_gc_store_ref(&c->antecedent, t);
+    dn2cpp_gc_store_ref(&c->task, ct);
+    dn2cpp_gc_store_ref(&c->del, del);
+    dn2cpp_gc_store_ref(&c->state, state);
     c->kind = kind;
     c->options = options;
     c->invokeStruct = nullptr;
@@ -3482,8 +3485,8 @@ Dn2CppTask* dn2cpp_task_wait_async(Dn2CppTask* t, Dn2CppCancelSource* src)
 {
     Dn2CppTask* wt = dn2cpp_task_alloc();
     auto* w = static_cast<Dn2CppWaitAsync*>(dn2cpp_alloc(sizeof(Dn2CppWaitAsync)));
-    w->antecedent = t;
-    w->task = wt;
+    dn2cpp_gc_store_ref(&w->antecedent, t);
+    dn2cpp_gc_store_ref(&w->task, wt);
     // THE ANTECEDENT'S COMPLETION WINS OVER AN ALREADY-REQUESTED TOKEN, and the order of
     // these two blocks is that rule. .NET's WaitAsyncCore tests `IsCompleted` and returns
     // `this` BEFORE it ever looks at the token, so `Task.FromResult(5).WaitAsync(ct)` on an
@@ -3547,9 +3550,9 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
     auto* c = static_cast<Dn2CppContWith*>(dn2cpp_alloc(sizeof(Dn2CppContWith)));
-    c->antecedent = t;
-    c->task = ct;
-    c->del = del;
+    dn2cpp_gc_store_ref(&c->antecedent, t);
+    dn2cpp_gc_store_ref(&c->task, ct);
+    dn2cpp_gc_store_ref(&c->del, del);
     c->state = nullptr;
     c->kind = DN2CPP_CONTWITH_STRUCT;
     c->options = options;
@@ -3628,11 +3631,11 @@ int32_t dn2cpp_threadpool_queue_workitem(Dn2CppObject* wi, const void* executeFn
 {
     auto* inv = static_cast<Dn2CppWorkItemInvoker*>(dn2cpp_alloc(sizeof(Dn2CppWorkItemInvoker)));
     inv->header.type = &dn2cpp_workitem_invoker_type;
-    inv->wi = wi;
+    dn2cpp_gc_store_ref(&inv->wi, wi);
     inv->fn = executeFn;
     auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     del->type = &dn2cpp_workitem_invoker_type; // opaque header; only {target, method} are read
-    del->target = &inv->header;
+    dn2cpp_gc_store_ref(&del->target, &inv->header);
     del->method = reinterpret_cast<void*>(&dn2cpp_workitem_execute_thunk);
     del->prev = nullptr;
     return dn2cpp_threadpool_queue(del, nullptr);
@@ -3658,7 +3661,7 @@ void dn2cpp_task_throw_async(Dn2CppObject* exc, Dn2CppObject* /*syncCtx*/)
         return;
     auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     del->type = &dn2cpp_workitem_invoker_type; // opaque header; only {target, method, prev} read
-    del->target = exc;
+    dn2cpp_gc_store_ref(&del->target, exc);
     del->method = reinterpret_cast<void*>(&dn2cpp_rethrow_thunk);
     del->prev = nullptr;
     dn2cpp_threadpool_queue(del, nullptr);
@@ -3906,7 +3909,7 @@ Dn2CppTask* dn2cpp_vts_task(Dn2CppObject* vts, int16_t version,
     dn2cpp_gc_store_ref(&t->vtsBridge, &b->header);
     auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     del->type = actionTi;
-    del->target = &b->header;
+    dn2cpp_gc_store_ref(&del->target, &b->header);
     del->method = reinterpret_cast<void*>(&dn2cpp_vts_continuation);
     del->prev = nullptr;
     // Count the bridge in flight BEFORE registering: OnCompleted may invoke the

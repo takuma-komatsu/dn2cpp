@@ -4684,11 +4684,14 @@ inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
     item->type = &dn2cpp_object_type;
     item->callback = callback;
     item->state = state;
+    // T may itself be a managed reference or contain managed references.
+    dn2cpp_gc_write_barrier(item);
     auto* del = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     del->type = &dn2cpp_object_type;
     del->target = item;
     del->method = reinterpret_cast<void*>(&dn2cpp_threadpool_value_thunk<T>);
     del->prev = nullptr;
+    dn2cpp_gc_write_barrier(del);
     return dn2cpp_threadpool_queue(del, nullptr);
 }
 // ThreadPool.UnsafeQueueUserWorkItem(IThreadPoolWorkItem, bool) — fire-and-forget
