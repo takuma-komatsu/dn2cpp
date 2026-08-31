@@ -18,22 +18,28 @@ internal static class X86Sections
         Dictionary<string, Action> exercises,
         Dictionary<string, Action> nestedProbes)
     {
-        exercises["X86.X86Base"] = X86BaseExercise;
-        exercises["X86.Lzcnt"] = LzcntExercise;
-        exercises["X86.Popcnt"] = PopcntExercise;
-        exercises["X86.Bmi1"] = Bmi1Exercise;
-        exercises["X86.Bmi2"] = Bmi2Exercise;
-        exercises["X86.X86Serialize"] = X86SerializeExercise;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.X86Base", X86BaseExercise);
+        exercises.Add("X86.Lzcnt", LzcntExercise);
+        exercises.Add("X86.Popcnt", PopcntExercise);
+        exercises.Add("X86.Bmi1", Bmi1Exercise);
+        exercises.Add("X86.Bmi2", Bmi2Exercise);
+        exercises.Add("X86.X86Serialize", X86SerializeExercise);
+#endif
         Exercises.RegisterX86(exercises);
-        nestedProbes["X86.Avx10v2.V512"] = ProbeAvx10v2V512;
-        nestedProbes["X86.AvxVnniInt8.V512"] = ProbeAvxVnniInt8V512;
-        nestedProbes["X86.AvxVnniInt16.V512"] = ProbeAvxVnniInt16V512;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        nestedProbes.Add("X86.Avx10v2.V512", ProbeAvx10v2V512);
+        nestedProbes.Add("X86.AvxVnniInt8.V512", ProbeAvxVnniInt8V512);
+        nestedProbes.Add("X86.AvxVnniInt16.V512", ProbeAvxVnniInt16V512);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
         Action avxExercise = exercises["X86.Avx"];
         exercises["X86.Avx"] = () =>
         {
             avxExercise();
             AvxCompareScalarTrueModesExercise();
         };
+#endif
     }
 
     internal static void ProbeX86Base()

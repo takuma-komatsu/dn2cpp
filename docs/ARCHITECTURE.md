@@ -302,10 +302,15 @@ capability contract, not a set of independent constants:
   re-derives both rules from the csv and the header.
 - **Every Lowered helper is exercised.** `Exercises.g.cs` in the probe, written
   by the same generator, calls each mapped method with fixed inputs and prints
-  the bytes; `gates/build-and-run-platform-isa-native.sh` transpiles and links
-  one probe, then diffs its X86 and Arm runs against real .NET, so a wrong
-  lowering fails on the machine that has the instruction rather than in a
-  user's program.
+  the bytes. The native gate compiles the probe in bounded reachability shards:
+  each managed variant omits the other families' table and exercise roots, so
+  their helper headers and immediate dispatches cannot enter that native image.
+  The gate proves the shards assign every row, top-level exercise and invalid
+  immediate witness exactly once, and that each generated image contains only
+  its assigned exercise bodies. It then concatenates their output and diffs it
+  against the identically sharded real-.NET runs. A wrong lowering therefore
+  fails on the machine that has the instruction rather than in a user's
+  program, without one compiler or process owning the full ISA surface.
   `Wasm.PackedSimd` has no such oracle (no host .NET answers true for it), so
   its run is frozen in `gates/expected/platform-isa-wasm-simd.txt` and every
   row with a portable equivalent carries a `@ref` cross-check against the

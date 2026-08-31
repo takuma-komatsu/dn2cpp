@@ -9,7 +9,8 @@ namespace PlatformIsaProbe;
 
 // The platform-ISA capability contract, diffed against real .NET.
 //
-//   PlatformIsaProbe [selection] [--invalid-immediates]
+//   PlatformIsaProbe [selection] [--contract-only|--invalid-immediates]
+//   PlatformIsaProbe --dump-plan
 //
 // selection: comma-separated contract row names (X86.Lzcnt.X64), an arch name
 // (X86 / Arm / Wasm) for every row of that arch, `all`, or absent (= all).
@@ -71,6 +72,7 @@ internal static class Program
     // types in ordinal order. This order IS the contract table's order.
     private static readonly Family[] Table =
     {
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
         new("X86", "X86Base", () => X86.X86Base.IsSupported, X86Sections.ProbeX86Base,
             ("X64", () => X86.X86Base.X64.IsSupported)),
         new("X86", "Lzcnt", () => X86.Lzcnt.IsSupported, X86Sections.ProbeLzcnt,
@@ -83,6 +85,8 @@ internal static class Program
             ("X64", () => X86.Bmi2.X64.IsSupported)),
         new("X86", "X86Serialize", () => X86.X86Serialize.IsSupported, X86Sections.ProbeX86Serialize,
             ("X64", () => X86.X86Serialize.X64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
         new("Arm", "ArmBase", () => Arm.ArmBase.IsSupported, ArmSections.ProbeArmBase,
             ("Arm64", () => Arm.ArmBase.Arm64.IsSupported)),
         new("Arm", "Crc32", () => Arm.Crc32.IsSupported, ArmSections.ProbeCrc32,
@@ -99,7 +103,11 @@ internal static class Program
             ("Arm64", () => Arm.Dp.Arm64.IsSupported)),
         new("Arm", "Rdm", () => Arm.Rdm.IsSupported, ArmSections.ProbeRdm,
             ("Arm64", () => Arm.Rdm.Arm64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_WASM
         new("Wasm", "PackedSimd", () => Wasm.PackedSimd.IsSupported, WasmSections.ProbePackedSimd),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
         new("X86", "Sse", () => X86.Sse.IsSupported, X86Sections.ProbeSse,
             ("X64", () => X86.Sse.X64.IsSupported)),
         new("X86", "Sse2", () => X86.Sse2.IsSupported, X86Sections.ProbeSse2,
@@ -118,6 +126,8 @@ internal static class Program
             ("X64", () => X86.Pclmulqdq.X64.IsSupported)),
         new("X86", "Aes", () => X86.Aes.IsSupported, X86Sections.ProbeAes,
             ("X64", () => X86.Aes.X64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
         new("X86", "Avx", () => X86.Avx.IsSupported, X86Sections.ProbeAvx,
             ("X64", () => X86.Avx.X64.IsSupported)),
         new("X86", "Avx2", () => X86.Avx2.IsSupported, X86Sections.ProbeAvx2,
@@ -126,6 +136,8 @@ internal static class Program
             ("X64", () => X86.Fma.X64.IsSupported)),
         new("X86", "AvxVnni", () => X86.AvxVnni.IsSupported, X86Sections.ProbeAvxVnni,
             ("X64", () => X86.AvxVnni.X64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
         new("X86", "Avx512F", () => X86.Avx512F.IsSupported, X86Sections.ProbeAvx512F,
             ("VL", () => X86.Avx512F.VL.IsSupported),
             ("X64", () => X86.Avx512F.X64.IsSupported)),
@@ -138,6 +150,8 @@ internal static class Program
         new("X86", "Avx512DQ", () => X86.Avx512DQ.IsSupported, X86Sections.ProbeAvx512DQ,
             ("VL", () => X86.Avx512DQ.VL.IsSupported),
             ("X64", () => X86.Avx512DQ.X64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
         new("X86", "Avx512Vbmi", () => X86.Avx512Vbmi.IsSupported, X86Sections.ProbeAvx512Vbmi,
             ("VL", () => X86.Avx512Vbmi.VL.IsSupported),
             ("X64", () => X86.Avx512Vbmi.X64.IsSupported)),
@@ -162,10 +176,13 @@ internal static class Program
             ("V256", () => X86.Gfni.V256.IsSupported),
             ("V512", () => X86.Gfni.V512.IsSupported),
             ("X64", () => X86.Gfni.X64.IsSupported)),
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
         new("Arm", "Sve", () => Arm.Sve.IsSupported, ArmSections.ProbeSve,
             ("Arm64", () => Arm.Sve.Arm64.IsSupported)),
         new("Arm", "Sve2", () => Arm.Sve2.IsSupported, ArmSections.ProbeSve2,
             ("Arm64", () => Arm.Sve2.Arm64.IsSupported)),
+#endif
     };
 
     // Exercise hook, keyed by top-level row name (X86.Lzcnt). A supported family
@@ -188,7 +205,8 @@ internal static class Program
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
         bool invalidImmediates = args.Length == 2 && args[1] == "--invalid-immediates";
-        if (args.Length > 1 && !invalidImmediates)
+        bool contractOnly = args.Length == 2 && args[1] == "--contract-only";
+        if (args.Length > 1 && !invalidImmediates && !contractOnly)
         {
             Console.Error.WriteLine("PlatformIsaProbe: unknown option");
             return 2;
@@ -198,6 +216,27 @@ internal static class Program
         ArmSections.RegisterExercises(Exercises);
         WasmSections.RegisterExercises(Exercises);
         global::PlatformIsaProbe.Exercises.RegisterInvalidImmediates(InvalidImmediates);
+
+        if (args.Length == 1 && args[0] == "--dump-plan")
+        {
+            foreach (Family family in Table)
+            {
+                Console.WriteLine("row=" + family.RowName);
+                foreach ((string name, Func<bool> _) in family.Nested)
+                {
+                    Console.WriteLine("row=" + family.RowName + "." + name);
+                }
+            }
+            foreach (string name in Exercises.Keys)
+            {
+                Console.WriteLine("exercise=" + name);
+            }
+            foreach (string name in InvalidImmediates.Keys)
+            {
+                Console.WriteLine("invalid=" + name);
+            }
+            return 0;
+        }
 
         string selection = args.Length > 0 ? args[0] : "all";
         List<Row> rows = Select(selection);
@@ -241,7 +280,7 @@ internal static class Program
             Console.WriteLine("== " + family.RowName + " ==");
             if (family.IsSupported())
             {
-                if (Exercises.TryGetValue(family.RowName, out Action exercise))
+                if (!contractOnly && Exercises.TryGetValue(family.RowName, out Action exercise))
                 {
                     exercise();
                 }

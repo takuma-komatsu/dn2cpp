@@ -12,6 +12,40 @@
          signed ShiftRightLogicalRoundedNarrowingSaturateLower overloads [Obsolete]
          (SYSLIB0055) in this CoreLib; the contract covers them anyway. -->
     <NoWarn>SYSLIB5003;SYSLIB5004;SYSLIB0055</NoWarn>
+    <PlatformIsaShard Condition="'$(PlatformIsaShard)' == ''">all</PlatformIsaShard>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'all'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_ALL</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'x86-base'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_BASE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'x86-avx'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_AVX</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'x86-avx512'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_AVX512</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'x86-avx10'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_X86_AVX10</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'arm'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_ARM</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(PlatformIsaShard)' == 'wasm'">
+    <DefineConstants>$(DefineConstants);PLATFORM_ISA_SHARD_WASM</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="ValidatePlatformIsaShard" BeforeTargets="CoreCompile">
+    <Error Condition="'$(PlatformIsaShard)' != 'all' and
+                      '$(PlatformIsaShard)' != 'x86-base' and
+                      '$(PlatformIsaShard)' != 'x86-avx' and
+                      '$(PlatformIsaShard)' != 'x86-avx512' and
+                      '$(PlatformIsaShard)' != 'x86-avx10' and
+                      '$(PlatformIsaShard)' != 'arm' and
+                      '$(PlatformIsaShard)' != 'wasm'"
+           Text="Unknown PlatformIsaShard '$(PlatformIsaShard)'." />
+  </Target>
 
 </Project>
