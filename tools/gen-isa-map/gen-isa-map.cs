@@ -1922,7 +1922,11 @@ static class Exercises
         {
             sb.Append($"    internal static void Register{Contract.IsaArch(arch)}(Dictionary<string, Action> exercises)\n    {{\n");
             foreach (var f in tops.Where(f => f.Arch == arch))
-                sb.Append($"        exercises[\"{Contract.Display(f.QualifiedName)}\"] = {MethodName(f)};\n");
+            {
+                sb.Append("#if ").Append(ShardCondition(f.QualifiedName)).Append('\n');
+                sb.Append($"        exercises.Add(\"{Contract.Display(f.QualifiedName)}\", {MethodName(f)});\n");
+                sb.Append("#endif\n");
+            }
             sb.Append("    }\n\n");
         }
         foreach (var f in tops)
@@ -1935,11 +1939,13 @@ static class Exercises
         sb.Append("    internal static unsafe void RegisterInvalidImmediates(Dictionary<string, Action> exercises)\n    {\n");
         foreach (var witness in invalidImmediateWitnesses)
         {
-            sb.Append($"        exercises[\"{witness.Row}\"] = () =>\n        {{\n");
+            sb.Append("#if ").Append(ShardCondition(witness.Row)).Append('\n');
+            sb.Append($"        exercises.Add(\"{witness.Row}\", () =>\n        {{\n");
             foreach (string line in witness.Setup.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                 sb.Append("            ").Append(line.TrimStart()).Append('\n');
             sb.Append($"            Console.WriteLine(\"{witness.Label} imm={witness.Past}=\" + Fmt.Thrown(() => {{ {witness.Statement} }}));\n");
-            sb.Append("        };\n");
+            sb.Append("        });\n");
+            sb.Append("#endif\n");
         }
         sb.Append("    }\n\n");
         sb.Append("}\n");
@@ -1947,6 +1953,36 @@ static class Exercises
     }
 
     static string MethodName(Family f) => Contract.IsaArch(f.Arch) + f.TypePath.Replace("+", "");
+
+    static string ShardCondition(string qualifiedName)
+    {
+        string display = qualifiedName.StartsWith(Contract.IntrinsicsPrefix, StringComparison.Ordinal)
+            ? Contract.Display(qualifiedName)
+            : qualifiedName;
+        display = display.Replace('+', '.');
+        if (display.StartsWith("Arm.", StringComparison.Ordinal))
+            return "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM";
+        if (display.StartsWith("Wasm.", StringComparison.Ordinal))
+            return "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_WASM";
+
+        string family = display.Split('.')[1];
+        return family switch
+        {
+            "X86Base" or "Lzcnt" or "Popcnt" or "Bmi1" or "Bmi2" or
+            "X86Serialize" or "Sse" or "Sse2" or "Sse3" or "Ssse3" or
+            "Sse41" or "Sse42" or "Pclmulqdq" or "Aes" =>
+                "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE",
+            "Avx" or "Avx2" or "Fma" or "AvxVnni" =>
+                "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX",
+            "Avx512F" or "Avx512BW" or "Avx512CD" or "Avx512DQ" =>
+                "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512",
+            "Avx512Vbmi" or "Avx512Vbmi2" or "Avx10v1" or "Avx10v2" or
+            "AvxVnniInt8" or "AvxVnniInt16" or "Gfni" =>
+                "PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10",
+            _ => throw new InvalidOperationException(
+                $"X86 family '{family}' has no platform-ISA reachability shard"),
+        };
+    }
 
     static string CsFamily(Family f) => Contract.IsaArch(f.Arch) + "." + f.TypePath.Replace('+', '.');
 

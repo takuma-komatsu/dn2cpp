@@ -86,36 +86,34 @@ platform_isa_join() {
     printf '%s\n' "$out"
 }
 
-PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS=1
+PLATFORM_ISA_NATIVE_SHARDS="x86-base x86-avx x86-avx512 x86-avx10 arm"
 
-# A supported X86 probe touches a large fraction of the wide generated image.
-# Bound its Windows working-set high-water mark by giving each native process a
-# single registry row; row costs vary too much for a wider fixed-size slice to
-# be a memory bound. The oracle uses the identical slices.
-platform_isa_supported_chunks() {
-    local csv="$1" limit="$PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS"
-    local rest="$csv" item chunk="" count=0
-    while [ -n "$rest" ]; do
-        case "$rest" in
-            *,*) item=${rest%%,*}; rest=${rest#*,} ;;
-            *)   item=$rest; rest="" ;;
-        esac
-        chunk="${chunk:+$chunk,}$item"
-        count=$((count + 1))
-        if [ "$count" -eq "$limit" ]; then
-            printf '%s\n' "$chunk"
-            chunk=""
-            count=0
-        fi
-    done
-    [ -z "$chunk" ] || printf '%s\n' "$chunk"
+platform_isa_shard_arch() {
+    case "$1" in
+        x86-*) printf 'x86\n' ;;
+        arm)   printf 'arm\n' ;;
+        *) echo "error: unknown native platform-ISA shard '$1'" >&2; return 1 ;;
+    esac
 }
 
-platform_isa_is_windows_shell() {
-    case "$(uname -s)" in
-        MINGW*|MSYS*|CYGWIN*) return 0 ;;
-        *)                    return 1 ;;
+platform_isa_exercise_body_markers() {
+    local name="$1" family
+    case "$name" in
+        X86.X86Base|X86.Lzcnt|X86.Popcnt|X86.Bmi1|X86.Bmi2|X86.X86Serialize)
+            family=${name#X86.}
+            printf 'PlatformIsaProbe.X86Sections::%sExercise\n' "$family"
+            ;;
+        Arm.ArmBase|Arm.Crc32)
+            family=${name#Arm.}
+            printf 'PlatformIsaProbe.ArmSections::%sExercise\n' "$family"
+            ;;
+        *)
+            printf 'PlatformIsaProbe.Exercises::%s\n' "${name//./}"
+            ;;
     esac
+    if [ "$name" = X86.Avx ]; then
+        printf 'PlatformIsaProbe.X86Sections::AvxCompareScalarTrueModesExercise\n'
+    fi
 }
 
 # platform_isa_contract_block TEXT — the `== contract ==` lines of a probe run.
@@ -131,7 +129,7 @@ platform_isa_invalid_immediate_rows() {
     [ -f "$PLATFORM_ISA_EXERCISES" ] \
         || { echo "error: $PLATFORM_ISA_EXERCISES not found" >&2; return 1; }
     tr -d '\r' < "$PLATFORM_ISA_EXERCISES" \
-        | sed -nE "s/^[[:space:]]*exercises\[\"($isa\.[^\"]+)\"\] = \(\) =>$/\1/p"
+        | sed -nE "s/^[[:space:]]*exercises\.Add\(\"($isa\.[^\"]+)\", \(\) =>$/\1/p"
 }
 
 # platform_isa_invalid_immediate_registry — every generated native-only
@@ -142,7 +140,7 @@ platform_isa_invalid_immediate_registry() {
     [ -f "$PLATFORM_ISA_EXERCISES" ] \
         || { echo "error: $PLATFORM_ISA_EXERCISES not found" >&2; return 1; }
     tr -d '\r' < "$PLATFORM_ISA_EXERCISES" \
-        | sed -nE 's/^[[:space:]]*exercises\["((X86|Arm|Wasm)\.[^"]+)"\] = \(\) =>$/\1/p'
+        | sed -nE 's/^[[:space:]]*exercises\.Add\("((X86|Arm|Wasm)\.[^"]+)", \(\) =>$/\1/p'
 }
 
 # platform_isa_invalid_immediate_violations TEXT — one diagnostic per boundary
@@ -326,13 +324,7 @@ _platform_isa_arch_context() {
 _platform_isa_native_plan_self_check() {
     local arch rows name lowered_flag combined_rows="" expected_rows
     local combined_invalid="" expected_invalid registry combined_registry=""
-    local lowered_names witness_count chunks flattened
-    chunks=$(platform_isa_supported_chunks 'a,b,c,d,e,f,g,h,i') || return 1
-    flattened=${chunks//$'\n'/,}
-    [ "$flattened" = 'a,b,c,d,e,f,g,h,i' ] \
-        || { echo "FAIL: platform-ISA supported-run chunks changed selection order" >&2; return 1; }
-    [ "$(grep -c . <<<"$chunks" || true)" -eq 9 ] \
-        || { echo "FAIL: platform-ISA supported-run chunk bound is not enforced" >&2; return 1; }
+    local lowered_names witness_count
     for arch in x86 arm; do
         rows=$(platform_isa_table_rows "$arch") || return 1
         lowered_names=""
@@ -372,25 +364,24 @@ _platform_isa_native_plan_self_check() {
 }
 
 # ── The native behaviour gate ────────────────────────────────────────────────
-# One shared host-native PlatformIsaProbe executes the X86 and Arm contracts,
-# diffed against real .NET. The family selection and every policy mask are
-# run-time inputs; neither changes the transpiled or compiled program.
+# Compile-time shards execute the X86 and Arm contracts diffed against real
+# .NET. A shard omits every other family's table and exercise registration, so
+# the transpiler cannot retain their helpers through a run-time selection arm.
 #
 # Runs, each ours-vs-oracle on stdout and exit code:
 #   F  foreign host only: every row of ARCH, no mask. Witness: no `=True`.
-#   S  native host, Lowered rows only, no mask on either side. Witness: the
+#   S  native host, every shard with exhaustive exercises enabled. Witness: the
 #      base family is true once it is Lowered.
 #   M  always: every row, DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0.
 #      Witnesses: no `=True`, and exactly one `effective=(none)` diag line.
-#   P  native host, Lowered rows only, the partial mask vs the oracle's knobs.
-#      Witnesses: PLATFORM_ISA_P_TRUE stays true, PLATFORM_ISA_P_FALSE goes false.
+#   P  native host, the two partial-mask witnesses in their one shard. The true
+#      witness executes its helper; the false witness executes its throwing probe.
 #   O  native x86 host, the AVX10.2 policy rows under the positive opt-in. The
 #      oracle opts in only when the configured compiler has the helper surface;
 #      otherwise both sides stay false and the nested throwing stubs are called.
-# Rows that are not Lowered fold to false on our side whatever the CPU, so S
-# and P select the Lowered set only; F and M expect false everywhere anyway.
+# Rows that are not Lowered fold to false on our side whatever the CPU.
 _platform_isa_run_arch() {
-    local arch="$1" out="$2" project="$3" host_arch="$4" avx10v2_compiler="$5"
+    local arch="$1" host_arch="$2" avx10v2_compiler="$3"
     local isa base
     isa=$(platform_isa_arch_name "$arch") || exit 1
     case "$arch" in
@@ -418,6 +409,33 @@ _platform_isa_run_arch() {
     invalid_count=$(grep -c . <<<"$invalid_rows" || true)
     [ "$invalid_count" -gt 0 ] \
         || { echo "error: generated exercises list no $isa invalid-immediate boundary" >&2; exit 1; }
+
+    local shard_names=() shard_outs=() shard_apps=() i
+    for ((i = 0; i < ${#PLATFORM_ISA_BUILT_SHARDS[@]}; i++)); do
+        if [ "${PLATFORM_ISA_BUILT_ARCHES[$i]}" = "$arch" ]; then
+            shard_names+=("${PLATFORM_ISA_BUILT_SHARDS[$i]}")
+            shard_outs+=("${PLATFORM_ISA_BUILT_OUTS[$i]}")
+            shard_apps+=("${PLATFORM_ISA_BUILT_APPS[$i]}")
+        fi
+    done
+    [ "${#shard_names[@]}" -gt 0 ] \
+        || { echo "error: no compiled platform-ISA shard for $arch" >&2; exit 1; }
+
+    local p_shard="" p_plan p_true_here p_false_here
+    for ((i = 0; i < ${#shard_names[@]}; i++)); do
+        p_plan=$(dotnet "${shard_apps[$i]}" --dump-plan) || exit 1
+        p_true_here=$(grep -Fxc "row=$PLATFORM_ISA_P_TRUE" <<<"$p_plan" || true)
+        p_false_here=$(grep -Fxc "row=$PLATFORM_ISA_P_FALSE" <<<"$p_plan" || true)
+        if [ "$p_true_here" -ne 0 ] || [ "$p_false_here" -ne 0 ]; then
+            [ "$p_true_here" -eq 1 ] && [ "$p_false_here" -eq 1 ] \
+                || { echo "error: partial-mask witnesses span native ISA shards" >&2; exit 1; }
+            [ -z "$p_shard" ] \
+                || { echo "error: partial-mask witnesses occur in multiple native ISA shards" >&2; exit 1; }
+            p_shard="${shard_names[$i]}"
+        fi
+    done
+    [ -n "$p_shard" ] \
+        || { echo "error: no native ISA shard contains the partial-mask witnesses" >&2; exit 1; }
 
     local native_host=0
     [ "$host_arch" = "$arch" ] && native_host=1
@@ -469,31 +487,45 @@ _platform_isa_run_arch() {
     _pi_run() {
         local label="$1" argv="$2" ours_env="$3" oracle_env="$4"
         local ours_code=0 expected_code=0 ours_out expected_out oracle_log
-        local chunk chunk_code expected_chunk_code chunks=("$argv")
+        local shard out app chunk_code expected_chunk_code executed_shards=0
+        local run_args=()
         _PI_LOG="$log_dir/$label.log"
         oracle_log="$log_dir/$label.oracle.log"
         ours_out="$log_dir/$label.out"
         expected_out="$log_dir/$label.oracle.out"
-        if { [ "$label" = S ] || [ "$label" = P ]; } && platform_isa_is_windows_shell; then
-            chunks=()
-            while IFS= read -r chunk; do chunks+=("$chunk"); done \
-                < <(platform_isa_supported_chunks "$argv")
-        fi
         : >"$ours_out"
         : >"$expected_out"
         : >"$_PI_LOG"
         : >"$oracle_log"
-        for chunk in "${chunks[@]}"; do
+        for ((i = 0; i < ${#shard_names[@]}; i++)); do
+            shard="${shard_names[$i]}"
+            out="${shard_outs[$i]}"
+            app="${shard_apps[$i]}"
+            if [ "$label" = O ] && [ "$shard" != x86-avx10 ]; then
+                continue
+            fi
+            if [ "$label" = P ] && [ "$shard" != "$p_shard" ]; then
+                continue
+            fi
+            if [ "$label" = O ] || [ "$label" = P ]; then
+                run_args=("$argv")
+            else
+                run_args=(all)
+            fi
+            case "$label" in
+                F|M) run_args+=(--contract-only) ;;
+            esac
+            executed_shards=$((executed_shards + 1))
             # Scope each ISA environment in a subshell: `env` cannot invoke the
             # run_bounded shell function. Direct files avoid MSYS native-pipe loss.
             set +e
             # shellcheck disable=SC2086
             (if [ -n "$ours_env" ]; then export $ours_env; fi
-             run_bounded "./$out/$project" "$chunk") \
+             run_bounded "./$out/$PLATFORM_ISA_PROJECT" "${run_args[@]}") \
                 >>"$ours_out" 2>>"$_PI_LOG"; chunk_code=$?
             # shellcheck disable=SC2086
             (if [ -n "$oracle_env" ]; then export $oracle_env; fi
-             run_bounded dotnet "$_CG_APP" "$chunk") \
+             run_bounded dotnet "$app" "${run_args[@]}") \
                 >>"$expected_out" 2>>"$oracle_log"; expected_chunk_code=$?
             set -e
             [ "$ours_code" -ne 0 ] || ours_code=$chunk_code
@@ -509,7 +541,7 @@ _platform_isa_run_arch() {
         _PI_RUN_ORACLE_OUTS+=("$expected_out")
         _PI_RUN_LOGS+=("$_PI_LOG")
         _PI_RUN_ORACLE_LOGS+=("$oracle_log")
-        echo "-- run $label: argv=$argv chunks=${#chunks[@]} ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
+        echo "-- run $label: argv=$argv shards=$executed_shards ours=[${ours_env:-<no ISA env>}] oracle=[${oracle_env:-<no ISA env>}]"
         local failed=0
         if cmp -s "$ours_out" "$expected_out"; then
             cat "$ours_out"
@@ -534,14 +566,24 @@ _platform_isa_run_arch() {
     # are not an oracle for out-of-contract ConstantExpected values.
     _pi_run_native() {
         local label="$1" argv="$2" ours_env="$3" ours_code ours_out
+        local shard out shard_code=0
         _PI_LOG="$log_dir/$label.log"
         ours_out="$log_dir/$label.out"
-        set +e
-        # shellcheck disable=SC2086
-        (if [ -n "$ours_env" ]; then export $ours_env; fi
-         run_bounded "./$out/$project" "$argv" --invalid-immediates) \
-            >"$ours_out" 2>"$_PI_LOG"; ours_code=$?
-        set -e
+        : >"$ours_out"
+        : >"$_PI_LOG"
+        ours_code=0
+        for ((i = 0; i < ${#shard_names[@]}; i++)); do
+            shard="${shard_names[$i]}"
+            out="${shard_outs[$i]}"
+            set +e
+            # shellcheck disable=SC2086
+            (if [ -n "$ours_env" ]; then export $ours_env; fi
+             run_bounded "./$out/$PLATFORM_ISA_PROJECT" all --invalid-immediates) \
+                >>"$ours_out" 2>>"$_PI_LOG"; shard_code=$?
+            set -e
+            [ "$ours_code" -ne 0 ] || ours_code=$shard_code
+            [ "$shard_code" -eq 0 ] || break
+        done
         _PI_RUN_LABELS+=("$label")
         _PI_RUN_CODES+=("$ours_code")
         _PI_RUN_ORACLE_CODES+=("")
@@ -549,7 +591,7 @@ _platform_isa_run_arch() {
         _PI_RUN_ORACLE_OUTS+=("")
         _PI_RUN_LOGS+=("$_PI_LOG")
         _PI_RUN_ORACLE_LOGS+=("")
-        echo "-- run $label: argv=$argv --invalid-immediates ours=[${ours_env:-<no ISA env>}]"
+        echo "-- run $label: argv=$argv shards=${#shard_names[@]} --invalid-immediates ours=[${ours_env:-<no ISA env>}]"
         if [ "$ours_code" -ne 0 ]; then
             echo "FAIL: run $label of the $isa invalid-immediate contract exited $ours_code" >&2
             gate_run_diag_once
@@ -625,10 +667,11 @@ _platform_isa_run_arch() {
     n=$(grep -c '=True$' <<<"$block" || true)
     _pi_require_count M 0 "$n" "'=True' rows under DN2CPP_CPU_FEATURES=none"
     n=$(grep -c 'effective=(none)' "$_PI_LOG" || true)
-    _pi_require_count M 1 "$n" "'effective=(none)' diag line on stderr (DN2CPP_CPU_FEATURES_DIAG=1 prints exactly one)"
+    _pi_require_count M "${#shard_names[@]}" "$n" "'effective=(none)' diag lines on stderr (one per shard process)"
 
     if [ "$native_host" -eq 1 ] && [ -n "$lowered_csv" ]; then
-        _pi_run P "$lowered_csv" "DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK" "$PLATFORM_ISA_P_KNOBS"
+        _pi_run P "$PLATFORM_ISA_P_TRUE,$PLATFORM_ISA_P_FALSE" \
+            "DN2CPP_CPU_FEATURES=$PLATFORM_ISA_P_MASK" "$PLATFORM_ISA_P_KNOBS"
         case ",$lowered_csv," in
             *",$PLATFORM_ISA_P_TRUE,"*)
                 n=$(grep -c "^$PLATFORM_ISA_P_TRUE=True\$" <<<"$_PI_OURS" || true)
@@ -682,13 +725,13 @@ _platform_isa_run_arch() {
             rosetta=" Rosetta is excluded on purpose: its CPUID exposes a feature set no shipping CPU has, and the oracle would be an emulated .NET rather than the host's."
         fi
         # One line: run-all-gates.sh's summary takes the FIRST line of the reason.
-        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-native.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where $native_runs run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with the one diag line) did run in this invocation and hold."
+        gate_expected_partial "runs $native_runs (the $isa families' supported, opt-in where applicable, and partially-masked paths) have no reachable state on this ${host_arch:-$(uname -m)} host: no software installable here creates an $isa CPU, so nothing this gate could do makes an $isa family's IsSupported true on either side.$rosetta Structural and permanent, not an absent prerequisite — which is why this is not a gate_skip/gate_partial. The uncovered surface IS asserted for real by this same gate, gates/build-and-run-platform-isa-native.sh, run on an $isa host (the linux-x64 and windows-x64 lanes for x86, macos-arm64 for arm), where $native_runs run end to end. Runs F (every $isa row false and every $isa family throwing PlatformNotSupportedException, exactly as real .NET does here) and M (DN2CPP_CPU_FEATURES=none vs DOTNET_EnableHWIntrinsic=0, with one diag line per shard process) did run in this invocation and hold."
     fi
 }
 
-# platform_isa_native_gate — transpile and compile PlatformIsaProbe once, then
-# execute both native architecture contracts. A cache entry is committed only
-# after the two plans and all their native/oracle runs have passed.
+# platform_isa_native_gate — compile each bounded reachability shard, then
+# execute the combined native architecture contracts. A cache entry is
+# committed only after every shard and native/oracle run has passed.
 platform_isa_native_gate() {
     [ "$#" -eq 0 ] \
         || { echo "error: platform_isa_native_gate takes no arguments" >&2; return 1; }
@@ -696,15 +739,114 @@ platform_isa_native_gate() {
     _platform_isa_native_plan_self_check || return 1
     _platform_isa_clear_runtime_env || return 1
 
-    local project="$PLATFORM_ISA_PROJECT" out host_arch avx10v2_compiler=0
+    local project="$PLATFORM_ISA_PROJECT" host_arch avx10v2_compiler=0
     local x86_ctx arm_ctx registry registry_csv registry_count ctx
-    out="$(_corelib_gate_out "$project")-isa-native"
+    local corelib project_file shard arch managed out app surface shard_surfaces=""
+    local expected_rows actual_rows expected_exercises actual_exercises
+    local expected_invalid actual_invalid first_out="" i
+    local plan plan_rows plan_exercises plan_invalid misplaced
+    local expected_body_markers actual_body_markers exercise marker
+    local key_inputs=()
     host_arch=$(platform_isa_host_arch)
     if [ "$host_arch" = x86 ] && platform_isa_avx10v2_compiler_capable; then
         avx10v2_compiler=1
     fi
 
-    _corelib_gate_core "$project" "$out"
+    echo "== 1/4 Locating the real CoreLib =="
+    corelib=$(locate_corelib)
+    _CG_CORELIB="$corelib"
+    echo "corlib: $corelib"
+
+    echo "== 2/4 Building compile-time reachability shards =="
+    project_file="samples/dotnet/$project/$project.csproj"
+    PLATFORM_ISA_BUILT_SHARDS=()
+    PLATFORM_ISA_BUILT_ARCHES=()
+    PLATFORM_ISA_BUILT_OUTS=()
+    PLATFORM_ISA_BUILT_APPS=()
+    for shard in $PLATFORM_ISA_NATIVE_SHARDS; do
+        arch=$(platform_isa_shard_arch "$shard") || return 1
+        managed="artifacts/platformisaprobe-managed-$shard"
+        out="artifacts/platformisaprobe-isa-native-$shard"
+        # The suite prebuild covers only the default all-family variant. These
+        # distinct IL reachability roots are part of this gate's subject.
+        dotnet build "$project_file" -c "$CONFIG" --nologo -v q \
+            -p:PlatformIsaShard="$shard" \
+            -p:OutputPath="../../../$managed/" \
+            -p:IntermediateOutputPath="../../../$managed/obj/" || return 1
+        app="$managed/$project.dll"
+        [ -f "$app" ] \
+            || { echo "error: $shard build produced no $app" >&2; return 1; }
+        PLATFORM_ISA_BUILT_SHARDS+=("$shard")
+        PLATFORM_ISA_BUILT_ARCHES+=("$arch")
+        PLATFORM_ISA_BUILT_OUTS+=("$out")
+        PLATFORM_ISA_BUILT_APPS+=("$app")
+        key_inputs+=("$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json")
+    done
+
+    echo "== 3/4 Transpiling shards and checking their exact coverage =="
+    expected_exercises=$(_platform_isa_table_fields \
+        | awk -F'\t' '$1 != "Wasm" && $4 == "true" && $2 !~ /\.[^.]+\.[^.]+$/ { print $2 }' \
+        | LC_ALL=C sort)
+    actual_rows=""
+    actual_exercises=""
+    actual_invalid=""
+    for ((i = 0; i < ${#PLATFORM_ISA_BUILT_SHARDS[@]}; i++)); do
+        shard="${PLATFORM_ISA_BUILT_SHARDS[$i]}"
+        out="${PLATFORM_ISA_BUILT_OUTS[$i]}"
+        app="${PLATFORM_ISA_BUILT_APPS[$i]}"
+        invoke_cli "$app" -r "$corelib" -o "$out" || return 1
+        surface=$(_gate_surface_lines "$out") || return 1
+        shard_surfaces="$shard_surfaces$shard:$(printf '%s\n' "$surface" | shasum -a 256 | awk '{print $1}')|"
+        [ -n "$first_out" ] || first_out="$out"
+        plan=$(dotnet "$app" --dump-plan) || return 1
+        plan_rows=$(sed -n 's/^row=//p' <<<"$plan" | LC_ALL=C sort)
+        plan_exercises=$(sed -n 's/^exercise=//p' <<<"$plan" | LC_ALL=C sort)
+        plan_invalid=$(sed -n 's/^invalid=//p' <<<"$plan" | LC_ALL=C sort)
+        misplaced=$(comm -23 <(printf '%s\n' "$plan_exercises") <(printf '%s\n' "$plan_rows"))
+        [ -z "$misplaced" ] \
+            || { echo "FAIL: $shard registers exercises outside its table: $misplaced" >&2; return 1; }
+        misplaced=$(comm -23 <(printf '%s\n' "$plan_invalid") <(printf '%s\n' "$plan_rows"))
+        [ -z "$misplaced" ] \
+            || { echo "FAIL: $shard registers invalid-immediate witnesses outside its table: $misplaced" >&2; return 1; }
+        expected_body_markers=""
+        while IFS= read -r exercise; do
+            [ -n "$exercise" ] || continue
+            while IFS= read -r marker; do
+                expected_body_markers="$expected_body_markers$marker"$'\n'
+            done < <(platform_isa_exercise_body_markers "$exercise")
+        done <<<"$plan_exercises"
+        expected_body_markers=$(printf '%s' "$expected_body_markers" | sed '/^$/d' | LC_ALL=C sort)
+        actual_body_markers=""
+        while IFS= read -r exercise; do
+            [ -n "$exercise" ] || continue
+            while IFS= read -r marker; do
+                if grep -Fqx -- "// $marker" "$out/generated.h" "$out"/generated*.cpp; then
+                    actual_body_markers="$actual_body_markers$marker"$'\n'
+                fi
+            done < <(platform_isa_exercise_body_markers "$exercise")
+        done <<<"$expected_exercises"
+        actual_body_markers=$(printf '%s' "$actual_body_markers" | sed '/^$/d' | LC_ALL=C sort)
+        [ "$actual_body_markers" = "$expected_body_markers" ] \
+            || { echo "FAIL: $shard generated exercise bodies escape their reachability shard" >&2; return 1; }
+        actual_rows="$actual_rows$plan_rows"$'\n'
+        actual_exercises="$actual_exercises$plan_exercises"$'\n'
+        actual_invalid="$actual_invalid$plan_invalid"$'\n'
+    done
+    actual_rows=$(printf '%s' "$actual_rows" | sed '/^$/d' | LC_ALL=C sort)
+    expected_rows=$(_platform_isa_table_fields \
+        | awk -F'\t' '$1 == "X86" || $1 == "Arm" { print $2 }' \
+        | LC_ALL=C sort)
+    [ "$actual_rows" = "$expected_rows" ] \
+        || { echo "FAIL: native shards do not assign every X86+Arm row exactly once" >&2; return 1; }
+    actual_exercises=$(printf '%s' "$actual_exercises" | sed '/^$/d' | LC_ALL=C sort)
+    [ "$actual_exercises" = "$expected_exercises" ] \
+        || { echo "FAIL: native shards do not assign every Lowered X86+Arm top-level exercise exactly once" >&2; return 1; }
+    actual_invalid=$(printf '%s' "$actual_invalid" | sed '/^$/d' | LC_ALL=C sort)
+    expected_invalid=$(platform_isa_invalid_immediate_registry \
+        | awk '/^(X86|Arm)\./' | LC_ALL=C sort)
+    [ "$actual_invalid" = "$expected_invalid" ] \
+        || { echo "FAIL: native shards do not assign every X86+Arm invalid-immediate witness exactly once" >&2; return 1; }
+
     x86_ctx=$(_platform_isa_arch_context x86 "$avx10v2_compiler") || return 1
     arm_ctx=$(_platform_isa_arch_context arm "$avx10v2_compiler") || return 1
     registry=$(platform_isa_invalid_immediate_registry) || return 1
@@ -714,18 +856,22 @@ platform_isa_native_gate() {
     [ "$registry_count" -gt 0 ] \
         || { echo "error: generated exercises list no invalid-immediate boundaries" >&2; return 1; }
     ctx="platform_isa_native|host:${host_arch:-other}|$_CG_CORELIB"
-    ctx="$ctx|windows-supported-chunk-rows:$PLATFORM_ISA_WINDOWS_SUPPORTED_CHUNK_ROWS"
+    ctx="$ctx|shards:$PLATFORM_ISA_NATIVE_SHARDS|surfaces:$shard_surfaces"
     ctx="$ctx|invalid-registry-count:$registry_count|invalid-registry:$registry_csv"
     ctx="$ctx|$x86_ctx|$arm_ctx$(_gate_ctx_extras)"
-    if _corelib_gate_check "$out" "$ctx"; then
+    while IFS= read -r app; do key_inputs+=("$app"); done < <(_gate_extra_inputs)
+    if gate_cache_check "$first_out" "$ctx" "${key_inputs[@]}"; then
         gate_cache_hit_msg
         return 0
     fi
 
-    echo "== 4/4 Compiling C++ once and running the X86 + Arm contracts (exact diff vs real .NET) =="
-    compile_console "$out" "$project"
+    echo "== 4/4 Compiling bounded shards and running the X86 + Arm contracts (exact diff vs real .NET) =="
+    for ((i = 0; i < ${#PLATFORM_ISA_BUILT_SHARDS[@]}; i++)); do
+        echo "-- compile ${PLATFORM_ISA_BUILT_SHARDS[$i]}"
+        compile_console "${PLATFORM_ISA_BUILT_OUTS[$i]}" "$project"
+    done
     gate_run_logs_init "platform_isa_native" "platform-isa-native"
-    _platform_isa_run_arch x86 "$out" "$project" "$host_arch" "$avx10v2_compiler"
-    _platform_isa_run_arch arm "$out" "$project" "$host_arch" "$avx10v2_compiler"
+    _platform_isa_run_arch x86 "$host_arch" "$avx10v2_compiler"
+    _platform_isa_run_arch arm "$host_arch" "$avx10v2_compiler"
     gate_cache_commit
 }

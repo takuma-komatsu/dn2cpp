@@ -12,9 +12,11 @@ internal static class ArmSections
 {
     internal static void RegisterExercises(Dictionary<string, Action> exercises)
     {
-        exercises["Arm.ArmBase"] = ArmBaseExercise;
-        exercises["Arm.Crc32"] = Crc32Exercise;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.ArmBase", ArmBaseExercise);
+        exercises.Add("Arm.Crc32", Crc32Exercise);
         Exercises.RegisterArm(exercises);
+#endif
     }
 
     internal static void ProbeArmBase() { _ = ArmBase.LeadingZeroCount(1); }

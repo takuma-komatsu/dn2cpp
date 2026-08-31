@@ -15,44 +15,104 @@ internal static class Exercises
 {
     internal static void RegisterX86(Dictionary<string, Action> exercises)
     {
-        exercises["X86.Sse"] = X86Sse;
-        exercises["X86.Sse2"] = X86Sse2;
-        exercises["X86.Sse3"] = X86Sse3;
-        exercises["X86.Ssse3"] = X86Ssse3;
-        exercises["X86.Sse41"] = X86Sse41;
-        exercises["X86.Sse42"] = X86Sse42;
-        exercises["X86.Pclmulqdq"] = X86Pclmulqdq;
-        exercises["X86.Aes"] = X86Aes;
-        exercises["X86.Avx"] = X86Avx;
-        exercises["X86.Avx2"] = X86Avx2;
-        exercises["X86.Fma"] = X86Fma;
-        exercises["X86.AvxVnni"] = X86AvxVnni;
-        exercises["X86.Avx512F"] = X86Avx512F;
-        exercises["X86.Avx512BW"] = X86Avx512BW;
-        exercises["X86.Avx512CD"] = X86Avx512CD;
-        exercises["X86.Avx512DQ"] = X86Avx512DQ;
-        exercises["X86.Avx512Vbmi"] = X86Avx512Vbmi;
-        exercises["X86.Avx512Vbmi2"] = X86Avx512Vbmi2;
-        exercises["X86.Avx10v1"] = X86Avx10v1;
-        exercises["X86.Avx10v2"] = X86Avx10v2;
-        exercises["X86.AvxVnniInt8"] = X86AvxVnniInt8;
-        exercises["X86.AvxVnniInt16"] = X86AvxVnniInt16;
-        exercises["X86.Gfni"] = X86Gfni;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Sse", X86Sse);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Sse2", X86Sse2);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Sse3", X86Sse3);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Ssse3", X86Ssse3);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Sse41", X86Sse41);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Sse42", X86Sse42);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Pclmulqdq", X86Pclmulqdq);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_BASE
+        exercises.Add("X86.Aes", X86Aes);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.Avx", X86Avx);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.Avx2", X86Avx2);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.Fma", X86Fma);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.AvxVnni", X86AvxVnni);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512F", X86Avx512F);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512BW", X86Avx512BW);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512CD", X86Avx512CD);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512DQ", X86Avx512DQ);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx512Vbmi", X86Avx512Vbmi);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx512Vbmi2", X86Avx512Vbmi2);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v1", X86Avx10v1);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v2", X86Avx10v2);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.AvxVnniInt8", X86AvxVnniInt8);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.AvxVnniInt16", X86AvxVnniInt16);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Gfni", X86Gfni);
+#endif
     }
 
     internal static void RegisterArm(Dictionary<string, Action> exercises)
     {
-        exercises["Arm.AdvSimd"] = ArmAdvSimd;
-        exercises["Arm.Aes"] = ArmAes;
-        exercises["Arm.Sha1"] = ArmSha1;
-        exercises["Arm.Sha256"] = ArmSha256;
-        exercises["Arm.Dp"] = ArmDp;
-        exercises["Arm.Rdm"] = ArmRdm;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.AdvSimd", ArmAdvSimd);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Aes", ArmAes);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Sha1", ArmSha1);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Sha256", ArmSha256);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Dp", ArmDp);
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Rdm", ArmRdm);
+#endif
     }
 
     internal static void RegisterWasm(Dictionary<string, Action> exercises)
     {
-        exercises["Wasm.PackedSimd"] = WasmPackedSimd;
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_WASM
+        exercises.Add("Wasm.PackedSimd", WasmPackedSimd);
+#endif
     }
 
     private static unsafe void ArmAdvSimd()
@@ -31217,82 +31277,118 @@ internal static class Exercises
 
     internal static unsafe void RegisterInvalidImmediates(Dictionary<string, Action> exercises)
     {
-        exercises["Arm.AdvSimd"] = () =>
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.AdvSimd", () =>
         {
             Console.WriteLine("DuplicateSelectedScalarToVector128(v128f32,u8) imm=4=" + Fmt.Thrown(() => { _ = Arm.AdvSimd.DuplicateSelectedScalarToVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Fmt.NonConstant((byte)4)); }));
-        };
-        exercises["Arm.AdvSimd.Arm64"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.AdvSimd.Arm64", () =>
         {
             Console.WriteLine("Arm64.DuplicateSelectedScalarToVector128(v128f64,u8) imm=2=" + Fmt.Thrown(() => { _ = Arm.AdvSimd.Arm64.DuplicateSelectedScalarToVector128(Vector128.Create(2.0, 1.5), Fmt.NonConstant((byte)2)); }));
-        };
-        exercises["Arm.Dp"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Dp", () =>
         {
             Console.WriteLine("DotProductBySelectedQuadruplet(v128i32,v128i8,v128i8,u8) imm=4=" + Fmt.Thrown(() => { _ = Arm.Dp.DotProductBySelectedQuadruplet(Vector128.Create(4604796, 9337503, 14070210, 18802917), Vector128.Create((sbyte)65, (sbyte)102, (sbyte)-117, (sbyte)-80, (sbyte)-43, (sbyte)-6, (sbyte)31, (sbyte)68, (sbyte)105, (sbyte)-114, (sbyte)-77, (sbyte)-40, (sbyte)-3, (sbyte)34, (sbyte)71, (sbyte)108), Vector128.Create((sbyte)94, (sbyte)-125, (sbyte)-88, (sbyte)-51, (sbyte)-14, (sbyte)23, (sbyte)60, (sbyte)97, (sbyte)-122, (sbyte)-85, (sbyte)-48, (sbyte)-11, (sbyte)26, (sbyte)63, (sbyte)100, (sbyte)-119), Fmt.NonConstant((byte)4)); }));
-        };
-        exercises["Arm.Rdm"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Rdm", () =>
         {
             Console.WriteLine("MultiplyRoundedDoublingBySelectedScalarAndAddSaturateHigh(v128i16,v128i16,v128i16,u8) imm=8=" + Fmt.Thrown(() => { _ = Arm.Rdm.MultiplyRoundedDoublingBySelectedScalarAndAddSaturateHigh(Vector128.Create((short)17964, (short)-29109, (short)-10646, (short)7817, (short)26280, (short)-20793, (short)-2330, (short)16133), Vector128.Create((short)32435, (short)-14638, (short)3825, (short)22288, (short)-24785, (short)-6322, (short)12141, (short)30604), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461), Fmt.NonConstant((byte)8)); }));
-        };
-        exercises["Arm.Rdm.Arm64"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_ARM
+        exercises.Add("Arm.Rdm.Arm64", () =>
         {
             Console.WriteLine("Arm64.MultiplyRoundedDoublingScalarBySelectedScalarAndAddSaturateHigh(v64i16,v64i16,v128i16,u8) imm=8=" + Fmt.Thrown(() => { _ = Arm.Rdm.Arm64.MultiplyRoundedDoublingScalarBySelectedScalarAndAddSaturateHigh(Vector64.Create((short)17964, (short)-29109, (short)-10646, (short)7817), Vector64.Create((short)32435, (short)-14638, (short)3825, (short)22288), Vector128.Create((short)-18630, (short)-167, (short)18296, (short)-28777, (short)-10314, (short)8149, (short)26612, (short)-20461), Fmt.NonConstant((byte)8)); }));
-        };
-        exercises["Wasm.PackedSimd"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_WASM
+        exercises.Add("Wasm.PackedSimd", () =>
         {
             var a0 = Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f);
             Console.WriteLine("ExtractScalar(v128f32,u8) imm=4=" + Fmt.Thrown(() => { _ = Wasm.PackedSimd.ExtractScalar(a0, Fmt.NonConstant((byte)4)); }));
-        };
-        exercises["X86.Avx"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.Avx", () =>
         {
             Console.WriteLine("Compare(v128f32,v128f32,u8) imm=32=" + Fmt.Thrown(() => { _ = X86.Avx.Compare(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)32)); }));
-        };
-        exercises["X86.Avx2"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX
+        exercises.Add("X86.Avx2", () =>
         {
             byte* raw1 = stackalloc byte[128];
             byte* p1 = Fmt.Align(raw1, 64);
             Fmt.Fill(p1, 64, 2);
             Console.WriteLine("GatherMaskVector128(v128f32,pf32,v128i32,v128f32,u8) imm=9=" + Fmt.Thrown(() => { _ = X86.Avx2.GatherMaskVector128(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), (float*)p1, Vector128.Create(4, 1, 3, 0), Vector128.Create(-5.0f, 4.25f, 3.25f, 2.25f), Fmt.NonConstant((byte)9)); }));
-        };
-        exercises["X86.Avx512F"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512F", () =>
         {
             Console.WriteLine("Add(v512f32,v512f32,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx512F.Add(Vector512.Create(4.0f, 3.0f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f, 3.25f, 2.25f, 1.25f, 0.25f, -0.75f), Vector512.Create(1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f, 3.25f, 2.25f, 1.25f, 0.25f, -0.75f, -1.75f, -2.75f, -3.75f), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx512F.VL"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512F.VL", () =>
         {
             Console.WriteLine("VL.Compare(v128f32,v128f32,u8) imm=32=" + Fmt.Thrown(() => { _ = X86.Avx512F.VL.Compare(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatComparisonMode)(byte)32)); }));
-        };
-        exercises["X86.Avx512F.X64"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512F.X64", () =>
         {
             Console.WriteLine("X64.ConvertScalarToVector128Double(v128f64,i64,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx512F.X64.ConvertScalarToVector128Double(Vector128.Create(2.0, 1.5), 8718138975195L, Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx512DQ"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512DQ", () =>
         {
             Console.WriteLine("ConvertToVector256Single(v512i64,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx512DQ.ConvertToVector256Single(Vector512.Create(4828507740108L, 9791140695219L, 14753773650330L, 19716406605441L, 24679039560552L, 29641672515663L, 34604305470774L, 39566938425885L), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx512DQ.VL"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX512
+        exercises.Add("X86.Avx512DQ.VL", () =>
         {
             Console.WriteLine("VL.Range(v128f32,v128f32,u8) imm=16=" + Fmt.Thrown(() => { _ = X86.Avx512DQ.VL.Range(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Fmt.NonConstant((byte)16)); }));
-        };
-        exercises["X86.Avx10v1"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v1", () =>
         {
             Console.WriteLine("AddScalar(v128f32,v128f32,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx10v1.AddScalar(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx10v1.V512"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v1.V512", () =>
         {
             Console.WriteLine("V512.ConvertToVector256Single(v512i64,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx10v1.V512.ConvertToVector256Single(Vector512.Create(4828507740108L, 9791140695219L, 14753773650330L, 19716406605441L, 24679039560552L, 29641672515663L, 34604305470774L, 39566938425885L), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx10v1.X64"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v1.X64", () =>
         {
             Console.WriteLine("X64.ConvertScalarToVector128Double(v128f64,i64,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx10v1.X64.ConvertScalarToVector128Double(Vector128.Create(2.0, 1.5), 8718138975195L, Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
-        exercises["X86.Avx10v2"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v2", () =>
         {
             Console.WriteLine("MinMax(v128f32,v128f32,u8) imm=32=" + Fmt.Thrown(() => { _ = X86.Avx10v2.MinMax(Vector128.Create(4.0f, 3.0f, 2.0f, 1.0f), Vector128.Create(1.0f, 0.0f, -1.0f, -2.0f), Fmt.NonConstant((byte)32)); }));
-        };
-        exercises["X86.Avx10v2.V512"] = () =>
+        });
+#endif
+#if PLATFORM_ISA_SHARD_ALL || PLATFORM_ISA_SHARD_X86_AVX10
+        exercises.Add("X86.Avx10v2.V512", () =>
         {
             Console.WriteLine("V512.ConvertToByteWithSaturationAndZeroExtendToInt32(v512f32,u8) imm=12=" + Fmt.Thrown(() => { _ = X86.Avx10v2.V512.ConvertToByteWithSaturationAndZeroExtendToInt32(Vector512.Create(4.0f, 3.0f, 2.0f, 1.0f, 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.25f, 3.25f, 2.25f, 1.25f, 0.25f, -0.75f), Fmt.NonConstant((System.Runtime.Intrinsics.X86.FloatRoundingMode)(byte)12)); }));
-        };
+        });
+#endif
     }
 
 }
