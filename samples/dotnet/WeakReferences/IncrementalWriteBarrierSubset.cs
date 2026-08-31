@@ -6,7 +6,7 @@ namespace IncrementalWriteBarrierSubset
     internal static class Program
     {
         private const int HolderCount = 384;
-        private const int PathCount = 10;
+        private const int PathCount = 11;
         private const int CollectionCount = 4;
         private const int AllocationLimit = 100_000;
 
@@ -41,11 +41,17 @@ namespace IncrementalWriteBarrierSubset
             internal Payload Volatile;
             internal readonly Payload[] Fill = new Payload[1];
             internal readonly RefPair[] PairBulk = new RefPair[1];
+            internal Payload[] Resize = new Payload[1];
         }
 
         private static void StoreByRef(ref Payload slot, Payload value)
         {
             slot = value;
+        }
+
+        private static void Resize(ref Payload[] array, int length)
+        {
+            Array.Resize(ref array, length);
         }
 
         private static void Store(Holder holder, int path, Payload value)
@@ -79,11 +85,15 @@ namespace IncrementalWriteBarrierSubset
                 case 8:
                     Array.Fill(holder.Fill, value);
                     break;
-                default:
+                case 9:
                     // The source must be statically RefPair[]: an Array-typed one
                     // fails the same-element proof and takes the dynamic helper.
                     var pairs = new RefPair[] { new RefPair { Value = value } };
                     Array.Copy(pairs, holder.PairBulk, 1);
+                    break;
+                default:
+                    Resize(ref holder.Resize, holder.Resize.Length + 1);
+                    holder.Resize[holder.Resize.Length - 1] = value;
                     break;
             }
         }
@@ -101,7 +111,8 @@ namespace IncrementalWriteBarrierSubset
                 6 => holder.Atomic,
                 7 => holder.Volatile,
                 8 => holder.Fill[0],
-                _ => holder.PairBulk[0].Value,
+                9 => holder.PairBulk[0].Value,
+                _ => holder.Resize[holder.Resize.Length - 1],
             };
         }
 
@@ -183,6 +194,7 @@ namespace IncrementalWriteBarrierSubset
             GC.KeepAlive(holders);
             GC.KeepAlive(pressure);
             Console.WriteLine("incremental write barriers: True");
+            Console.WriteLine("Array.Resize field barrier: True");
         }
     }
 }

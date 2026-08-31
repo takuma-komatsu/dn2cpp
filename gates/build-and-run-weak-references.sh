@@ -12,8 +12,9 @@
 # collector, and real .NET's JIT-driven liveness, can both retain any one
 # specific referent indefinitely via incidental register/stack copies).
 # IncrementalWriteBarrier mutates old holders through field, array, byref,
-# reference-containing struct, bulk-copy, Interlocked and Volatile stores while
-# allocation advances collection cycles; both GC modes run from one native image.
+# reference-containing struct, bulk-copy, Interlocked, Volatile and Array.Resize
+# stores while allocation advances collection cycles; both GC modes run from one
+# native image.
 # It also drives Array.Fill of a reference element and the only proven-same-element
 # Array.Copy of a reference-bearing struct array in the corpus — the two inline
 # fast paths that bypass the barriered runtime helpers. InternBarrier covers
@@ -41,6 +42,17 @@ do
     fi
 done
 
+resize_barriers=$(awk '
+    /\/\/ IncrementalWriteBarrierSubset\.Program::Resize/ { in_method = 1; next }
+    in_method && /^\/\/ / { in_method = 0 }
+    in_method && /dn2cpp_gc_write_barrier_if_heap/ { count++ }
+    END { print count + 0 }
+' "$out/generated.h" "$out"/generated*.cpp)
+if [ "$resize_barriers" -ne 1 ]; then
+    echo "FAIL: Array.Resize ref write-back emitted $resize_barriers heap barriers, expected 1" >&2
+    exit 1
+fi
+
 pending_barriers=$(awk '
     /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
     in_method && /^\/\/ / { in_method = 0 }
@@ -52,7 +64,7 @@ if [ "$pending_barriers" -ne 1 ]; then
     exit 1
 fi
 
-ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+memmove-refs+pending-web-liveness"
+ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness"
 ctx="$ctx$(_gate_ctx_extras)"
 if _corelib_gate_check "$out" "$ctx"; then
     gate_cache_hit_msg
@@ -112,6 +124,10 @@ if ! grep -qF '[dn2cpp] GC mode: incremental' "$log_dir/incremental.log"; then
 fi
 if [ "$(grep -cF 'incremental write barriers:' <<<"$incremental")" -ne 1 ]; then
     echo "FAIL: incremental write-barrier section did not run exactly once" >&2
+    exit 1
+fi
+if [ "$(grep -cF 'Array.Resize field barrier:' <<<"$incremental")" -ne 1 ]; then
+    echo "FAIL: Array.Resize field-barrier section did not run exactly once" >&2
     exit 1
 fi
 

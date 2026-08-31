@@ -1366,6 +1366,9 @@ internal sealed partial class MethodCompiler
                 sameElementByConstruction: true, elementType: t);
             Emit("}");
             Emit($"{slot} = {nw};");
+            // The ref may name a heap field; the conditional helper also accepts
+            // local and static slots.
+            Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({arrRef.Expr}));");
             return;
         }
 
