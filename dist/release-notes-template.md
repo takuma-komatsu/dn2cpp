@@ -6,14 +6,13 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークで Web エクスポート時の診断シンボル保持オプション（`dotnet/dn2cpp/keep_symbols`）に対応しました（[godot-dn2cpp PR #5](https://github.com/takuma-komatsu/godot-dn2cpp/pull/5)）
-- Web エクスポートテンプレートを Release / Debug の 2 構成で配布し、デバッグ付きエクスポートが対応する Debug テンプレートを使うようになりました
-- Godot フォークで Windows エクスポート時の NativeAOT 依存 DLL 探索処理を修正しました（[godot-dn2cpp PR #6](https://github.com/takuma-komatsu/godot-dn2cpp/pull/6)）
-- [PR #81](https://github.com/takuma-komatsu/dn2cpp/pull/81) で、Windows 上での NativeAOT 依存ライブラリのリンクおよび探索パス解決に対応しました
-- [PR #80](https://github.com/takuma-komatsu/dn2cpp/pull/80) で、Web 環境における入れ子呼び出し引数の GC 保護および文字列診断処理の堅牢化を行いました
-- [PR #78](https://github.com/takuma-komatsu/dn2cpp/pull/78) で、Windows 上でのプロセス待機ハンドル・スレッド同期プリミティブ・HRESULT 変換などの互換性を改善しました
+- [PR #82](https://github.com/takuma-komatsu/dn2cpp/pull/82) で、Windows エクスポートテンプレートの Release / Debug ペア配布（`godot-<リリース名>-windows-x86_64-templates.zip`）および各プリセットのリリース／デバッグテンプレート指定に対応しました
+- [PR #90](https://github.com/takuma-komatsu/dn2cpp/pull/90) で、クロスプラットフォーム ISA コントラクト（x86 SIMD / AVX / AVX-512 / ARM Neon 等）の体系化とトランスパイル対応を統合しました
+- [PR #93](https://github.com/takuma-komatsu/dn2cpp/pull/93) で、安全なメソッド本体のトランスパイル処理を並列化し、トランスパイル性能を改善しました
+- [PR #92](https://github.com/takuma-komatsu/dn2cpp/pull/92) で、読み取り専用環境におけるエディタツールチェーンのステージング処理およびメモリ上限対応を行いました
+- [PR #91](https://github.com/takuma-komatsu/dn2cpp/pull/91) で、Godot 関連の検証ゲートの完全な独立性と隔離の強化を行いました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/6600b909fb8359a11f4ca2ff95016cba1ad6d823...45edcbd89cf5e0622557e4e1329aee5d7a641198> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/e5f3b41522e64d258fb18b4150682cffa8d2e34c...730121fc66dbe1e13e00fc9e663a8a3ce2ea7d0c> を参照してください。
 
 ## ダウンロード
 
