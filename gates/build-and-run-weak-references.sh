@@ -21,6 +21,10 @@
 # string.Intern / IsInterned over a run-time-built string, whose only root is the
 # intern cell. PendingCallArgument keeps a Dictionary/string graph on the IL
 # evaluation stack while the next nested-call argument forces collection.
+# The Array.Resize run is a stress signal, not a deterministic proof of the GC's
+# held window. The exact generated store-before-barrier check below and the
+# deterministic runtime helper probe in build-and-run-gc-write-barrier.sh provide
+# the two deterministic layers.
 # Former gates: none (new area).
 source "$(dirname "$0")/_common.sh"
 
@@ -42,19 +46,35 @@ do
     fi
 done
 
-resize_barriers=$(awk '
-    /\/\/ IncrementalWriteBarrierSubset\.Program::Resize/ { in_method = 1; next }
+resize_shape=$(awk '
+    FNR == 1 { in_method = 0 }
+    $0 == "// IncrementalWriteBarrierSubset.Program::Resize" {
+        in_method = 1
+        methods++
+        saw_store = 0
+        next
+    }
     in_method && /^\/\/ / { in_method = 0 }
-    in_method && /dn2cpp_gc_write_barrier_if_heap/ { count++ }
-    END { print count + 0 }
+    in_method && /^[[:space:]]*\(\*\(Dn2CppArrayRef\*\*\)\([^)]*\)\) =/ {
+        stores++
+        saw_store = 1
+        next
+    }
+    in_method && /dn2cpp_gc_write_barrier_if_heap/ {
+        barriers++
+        if (saw_store)
+            ordered++
+    }
+    END { print methods + 0 ":" stores + 0 ":" barriers + 0 ":" ordered + 0 }
 ' "$out/generated.h" "$out"/generated*.cpp)
-if [ "$resize_barriers" -ne 1 ]; then
-    echo "FAIL: Array.Resize ref write-back emitted $resize_barriers heap barriers, expected 1" >&2
+if [ "$resize_shape" != "1:1:1:1" ]; then
+    echo "FAIL: Array.Resize method/store/barrier/ordered counts were $resize_shape, expected 1:1:1:1" >&2
     exit 1
 fi
 
 pending_barriers=$(awk '
-    /\/\/ PendingCallArgumentSubset\.Program::__GateEntry/ { in_method = 1; next }
+    FNR == 1 { in_method = 0 }
+    $0 == "// PendingCallArgumentSubset.Program::__GateEntry" { in_method = 1; next }
     in_method && /^\/\/ / { in_method = 0 }
     in_method && /DN2CPP_WEB_GC_LIVENESS\(/ { count++ }
     END { print count + 0 }
@@ -126,8 +146,8 @@ if [ "$(grep -cF 'incremental write barriers:' <<<"$incremental")" -ne 1 ]; then
     echo "FAIL: incremental write-barrier section did not run exactly once" >&2
     exit 1
 fi
-if [ "$(grep -cF 'Array.Resize field barrier:' <<<"$incremental")" -ne 1 ]; then
-    echo "FAIL: Array.Resize field-barrier section did not run exactly once" >&2
+if [ "$(grep -cF 'Array.Resize field stress:' <<<"$incremental")" -ne 1 ]; then
+    echo "FAIL: Array.Resize field-stress section did not run exactly once" >&2
     exit 1
 fi
 
