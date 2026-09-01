@@ -151,6 +151,8 @@ internal sealed partial class MethodCompiler
                     Emit($"{recv}->message = {message};");
                 if (inner != "nullptr")
                     Emit($"{recv}->inner = {inner};");
+                if (message != "nullptr" || inner != "nullptr")
+                    Emit($"dn2cpp_gc_write_barrier((void*)({recv}));");
                 return true;
             }
             // System.Exception.set_HResult: store the int32 onto the hresult slot of
@@ -1212,6 +1214,7 @@ internal sealed partial class MethodCompiler
                 string arr = NewTemp("Dn2CppArrayRef*");
                 Emit($"{arr} = dn2cpp_newarr_ref_t(1, {PreciseArrayTypeInfoExpr(cultElem)});");
                 Emit($"{arr}->data[0] = dn2cpp_nfi_wrap(dn2cpp_nfi_invariant(), DN2CPP_NFI_KIND_CULTURE);");
+                Emit($"dn2cpp_gc_write_barrier((void*)({arr}));");
                 Push(StackKind.Ref, "Dn2CppArrayRef*", arr, TypeDesc.MakeSZArray(cultElem));
                 return true;
             }
@@ -1396,6 +1399,7 @@ internal sealed partial class MethodCompiler
                 string val = Cast(Pop(), "Dn2CppString*");
                 string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
                 Emit($"{recv}->currencyDecimal = {val};");
+                Emit($"dn2cpp_gc_write_barrier((void*)({recv}));");
                 return true;
             }
             case ("System.Globalization.NumberFormatInfo", "set_CurrencyGroupSeparator"):
@@ -1403,6 +1407,7 @@ internal sealed partial class MethodCompiler
                 string val = Cast(Pop(), "Dn2CppString*");
                 string recv = Cast(Pop(), "Dn2CppNumberFormatInfo*");
                 Emit($"{recv}->currencyGroup = {val};");
+                Emit($"dn2cpp_gc_write_barrier((void*)({recv}));");
                 return true;
             }
             // set_CurrencyDecimalDigits(int) — PLAIN FIELD WRITE (the currencyDigits slot

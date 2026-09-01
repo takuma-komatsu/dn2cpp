@@ -444,7 +444,7 @@ Dn2CppResourceManager* dn2cpp_resourcemanager_new(Dn2CppString* baseName, const 
         dn2cpp_throw_argument_null();
     auto* rm = static_cast<Dn2CppResourceManager*>(dn2cpp_alloc(sizeof(Dn2CppResourceManager)));
     rm->type = &dn2cpp_resourcemanager_type;
-    rm->baseName = baseName;
+    dn2cpp_gc_store_ref(&rm->baseName, baseName);
     // A null assembly handle would mean "no registry row", which every lookup below
     // would then report as a missing SET — true, but naming no assembly. The empty
     // name is what dn2cpp_assembly_reg_find already treats as unknown, and it prints.

@@ -116,6 +116,8 @@ internal sealed partial class MethodCompiler
                     Emit($"*(({st}*)({itemRef.Expr})) = ({st})0;"); // default(T) on the !ok path
                     Emit($"if ({ok}) *(({st}*)({itemRef.Expr})) = ({st})(*(({ct}*)dn2cpp_unbox({box}, {ti})));");
                 }
+                if (elemT.ContainsGcReferences())
+                    Emit($"if ({ok}) dn2cpp_gc_write_barrier_if_heap((void*)({itemRef.Expr}));");
                 Push(StackKind.I4, "int32_t", ok);
                 return true;
             }

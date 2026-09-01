@@ -1417,9 +1417,9 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
         return source; // no match further down
     auto* copy = static_cast<Dn2CppDelegate*>(dn2cpp_alloc(sizeof(Dn2CppDelegate)));
     copy->type = s->type;
-    copy->target = s->target;
+    dn2cpp_gc_store_ref(&copy->target, s->target);
     copy->method = s->method;
-    copy->prev = rest;
+    dn2cpp_gc_store_ref(&copy->prev, rest);
     return copy;
 }
 

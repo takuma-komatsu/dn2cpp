@@ -338,6 +338,7 @@ internal sealed partial class MethodCompiler
                     string awaiter = ValueTaskSourceAwaiter(vtsItf);
                     var vtsSelf = Pop(); // ref this (address of the ValueTask being initialized)
                     Emit($"*(Dn2CppTaskAwaiter*)({vtsSelf.Expr}) = {awaiter};");
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({vtsSelf.Expr}));");
                     return true;
                 }
                 if (sig.ParameterTypes.Length != 1)
@@ -353,6 +354,7 @@ internal sealed partial class MethodCompiler
                     : StampTask($"dn2cpp_task_from_result({EmitTaskResultStore(arg)})",
                         TaskTypeForResult(sig.ParameterTypes[0]));
                 Emit($"*(Dn2CppTaskAwaiter*)({self.Expr}) = Dn2CppTaskAwaiter{{ {task} }};");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({self.Expr}));");
                 return true;
             }
             case ("System.Threading.Tasks.ValueTask", "GetAwaiter"):
@@ -551,6 +553,7 @@ internal sealed partial class MethodCompiler
                 var self = Pop(); // ref this
                 EmitCanceledExcRegistration();
                 Emit($"*(Dn2CppCancelToken*)({self.Expr}) = Dn2CppCancelToken{{ ({arg.Expr}) ? dn2cpp_cts_canceled() : nullptr }};");
+                Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({self.Expr}));");
                 return true;
             }
             case ("System.Threading.CancellationToken", "get_None"):

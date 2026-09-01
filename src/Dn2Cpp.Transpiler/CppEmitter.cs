@@ -4172,7 +4172,12 @@ internal sealed partial class CppEmitter
             if (f is null)
                 return null;
             string cppT = CppTypes.Of(f.Type);
-            return cppT.EndsWith("*") ? $"o->{f.CppName} = ({cppT})({val});" : $"o->{f.CppName} = {val};";
+            string store = cppT.EndsWith("*")
+                ? $"o->{f.CppName} = ({cppT})({val});"
+                : $"o->{f.CppName} = {val};";
+            return f.Type.ContainsGcReferences()
+                ? store + " dn2cpp_gc_write_barrier((void*)o);"
+                : store;
         }
         var setter = cls.InstanceMethodOnBaseChain("set_" + name);
         if (setter is null || !_c.Reachable.Contains(setter)
@@ -4286,6 +4291,8 @@ internal sealed partial class CppEmitter
                 : $"Dn2CppArrayRef* {name} = dn2cpp_newarr_ref({elemExprs.Count});");
             for (int i = 0; i < elemExprs.Count; i++)
                 pre.Add($"{name}->data[{i}] = (Dn2CppObject*)({elemExprs[i]});");
+            if (elemExprs.Count > 0)
+                pre.Add($"dn2cpp_gc_write_barrier((void*){name});");
         }
         else if (hdr == "Dn2CppArrayI4*")
         {
@@ -5489,6 +5496,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine("    dg->f_target = dn2cpp_box(&dn2cpp_intptr_type, &ip, sizeof(intptr_t));");
             sb.AppendLine($"    dg->f_method = (void*)&dn2cpp_fpfwd_{cls.CppName};");
             sb.AppendLine("    dg->f_prev = nullptr;");
+            sb.AppendLine("    dn2cpp_gc_write_barrier((void*)dg);");
             sb.AppendLine("    return (Dn2CppObject*)dg;");
             sb.AppendLine("}");
         }
@@ -5942,7 +5950,11 @@ internal sealed partial class CppEmitter
             o.Data.AppendLine($"void dn2cpp_marshalout_{cls.CppName}({tn}* src, {tm}* dst, {tn}* insnap)");
             o.Data.AppendLine("{");
             foreach (var f in fields)
+            {
                 o.Data.AppendLine("    " + MarshalOutField(f, unicode));
+                if (f.Type.ContainsGcReferences())
+                    o.Data.AppendLine("    dn2cpp_gc_write_barrier_if_heap((void*)dst);");
+            }
             o.Data.AppendLine("}");
         }
         o.Header.AppendLine();

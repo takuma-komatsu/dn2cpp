@@ -2495,8 +2495,7 @@ Dn2CppDependentHandle dn2cpp_dependenthandle_alloc(Dn2CppObject* target, Dn2CppO
 {
     auto* cell = static_cast<Dn2CppDependentCell*>(dn2cpp_alloc(sizeof(Dn2CppDependentCell)));
     cell->targetWeak = dn2cpp_gchandle_internal_alloc(target, 0); // 0 = Weak (short link)
-    cell->dependent = dependent;
-    dn2cpp_gc_write_barrier(cell); // one barrier covers both plain stores above
+    dn2cpp_gc_store_ref(&cell->dependent, dependent);
     return Dn2CppDependentHandle{cell};
 }
 
@@ -2516,6 +2515,7 @@ Dn2CppObject* dn2cpp_dependenthandle_target_and_dependent(Dn2CppDependentHandle 
     // target is still alive (a collected/nulled target yields (null, null)).
     Dn2CppObject* target = dn2cpp_dependenthandle_target(h);
     *dependent = target != nullptr ? h.cell->dependent : nullptr;
+    dn2cpp_gc_write_barrier_if_heap(dependent);
     return target;
 }
 

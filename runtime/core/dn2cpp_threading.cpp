@@ -368,7 +368,7 @@ static void dn2cpp_parallel_run(int64_t count, void* ctx, void (*fn)(void*, int6
         Dn2CppArrayRef* inner = dn2cpp_newarr_ref(excCount);
         int32_t k = 0;
         for (ExcNode* n = excHead; n != nullptr; n = n->next)
-            inner->data[k++] = n->exc;
+            dn2cpp_gc_store_ref(&inner->data[k++], n->exc);
         // Real .NET Parallel.* always wraps in an AggregateException — even a single
         // iteration's exception.
         dn2cpp_throw(dn2cpp_aggregate_exception_new(inner));
@@ -2080,8 +2080,8 @@ static Dn2CppObject* dn2cpp_timer_new_with_type(Dn2CppTypeInfo* type,
     auto* t = static_cast<Dn2CppManagedTimer*>(dn2cpp_alloc(sizeof(Dn2CppManagedTimer)));
     new (t) Dn2CppManagedTimer();
     t->type = type;
-    t->callback = callback;
-    t->state = state;
+    dn2cpp_gc_store_ref(&t->callback, callback);
+    dn2cpp_gc_store_ref(&t->state, state);
     t->dueMs = dueMs;
     t->periodMs = periodMs;
     t->disposed = false;

@@ -975,8 +975,8 @@ void** dn2cpp_pinvoke_ptrarr_dup(void** buf, int32_t n)
         return nullptr;
     void** copy = static_cast<void**>(
         dn2cpp_alloc(static_cast<size_t>(n > 0 ? n : 1) * sizeof(void*)));
-    for (int32_t i = 0; i < n; i++)
-        copy[i] = buf[i];
+    if (n > 0)
+        dn2cpp_gc_memmove_refs(copy, buf, static_cast<size_t>(n) * sizeof(void*));
     return copy;
 }
 
@@ -1151,4 +1151,3 @@ void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName)
     return ::dlsym(handle, narrow.c_str());
 #endif
 }
-

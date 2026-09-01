@@ -347,7 +347,7 @@ Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj)
             bytes = floor;
     }
     auto* clone = static_cast<Dn2CppObject*>(dn2cpp_alloc(bytes));
-    std::memcpy(clone, obj, bytes);
+    dn2cpp_gc_memmove_refs(clone, obj, bytes);
     // .NET finalizes the CLONE as well as the original — measured on CoreCLR 10.0.9, a
     // clone of a finalizable class runs its finalizer, so a program that clones N
     // objects sees N+1 finalizations. dn2cpp registers at newobj and at the reflective

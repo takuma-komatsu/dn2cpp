@@ -43,9 +43,19 @@ namespace IncrementalWriteBarrierSubset
             internal readonly RefPair[] PairBulk = new RefPair[1];
         }
 
+        private sealed class ResizeHolder
+        {
+            internal Payload[] Values = new Payload[1];
+        }
+
         private static void StoreByRef(ref Payload slot, Payload value)
         {
             slot = value;
+        }
+
+        private static void Resize(ref Payload[] array, int length)
+        {
+            Array.Resize(ref array, length);
         }
 
         private static void Store(Holder holder, int path, Payload value)
@@ -103,6 +113,59 @@ namespace IncrementalWriteBarrierSubset
                 8 => holder.Fill[0],
                 _ => holder.PairBulk[0].Value,
             };
+        }
+
+        private static void ExerciseResizeBarrier(byte[][] pressure)
+        {
+            var holders = new ResizeHolder[HolderCount];
+            for (int i = 0; i < holders.Length; i++)
+                holders[i] = new ResizeHolder();
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            var arrayWeaks = new WeakReference<Payload[]>[HolderCount];
+            var payloadWeaks = new WeakReference<Payload>[HolderCount];
+            int completed = GC.CollectionCount(0);
+            for (int cycle = 0; cycle < CollectionCount; cycle++)
+            {
+                int target = completed + 1;
+                for (int i = 0; i < HolderCount; i++)
+                {
+                    ResizeHolder holder = holders[i];
+                    Resize(ref holder.Values, holder.Values.Length + 1);
+                    var payload = new Payload(cycle * HolderCount + i + 1);
+                    holder.Values[holder.Values.Length - 1] = payload;
+                    arrayWeaks[i] = new WeakReference<Payload[]>(holder.Values);
+                    payloadWeaks[i] = new WeakReference<Payload>(payload);
+                    pressure[i & (pressure.Length - 1)] = new byte[4096];
+                }
+
+                int allocations = 0;
+                while (GC.CollectionCount(0) < target && allocations < AllocationLimit)
+                {
+                    pressure[allocations & (pressure.Length - 1)] = new byte[4096];
+                    allocations++;
+                }
+                if (GC.CollectionCount(0) < target)
+                    throw new InvalidOperationException("allocation pressure did not complete a resize GC cycle");
+                completed = GC.CollectionCount(0);
+
+                for (int i = 0; i < HolderCount; i++)
+                {
+                    Payload[] values = holders[i].Values;
+                    Payload payload = values[values.Length - 1];
+                    if (!arrayWeaks[i].TryGetTarget(out Payload[] weakValues)
+                        || !ReferenceEquals(values, weakValues))
+                        throw new InvalidOperationException("resized array became weakly unreachable");
+                    if (payload is null
+                        || !payloadWeaks[i].TryGetTarget(out Payload weakPayload)
+                        || !ReferenceEquals(payload, weakPayload))
+                        throw new InvalidOperationException("resized array lost its payload");
+                }
+            }
+
+            GC.KeepAlive(holders);
         }
 
         private static void Mutate(Holder[] holders, int[,] expected,
@@ -183,6 +246,14 @@ namespace IncrementalWriteBarrierSubset
             GC.KeepAlive(holders);
             GC.KeepAlive(pressure);
             Console.WriteLine("incremental write barriers: True");
+        }
+
+        internal static void __ResizeGateEntry()
+        {
+            var pressure = new byte[64][];
+            ExerciseResizeBarrier(pressure);
+            GC.KeepAlive(pressure);
+            Console.WriteLine("Array.Resize field stress: True");
         }
     }
 }

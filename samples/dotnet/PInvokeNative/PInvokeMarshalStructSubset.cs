@@ -15,6 +15,8 @@ internal static class Program
     [StructLayout(LayoutKind.Sequential)]
     private struct Person { public int Id; public string Name; }
 
+    private sealed class PersonHolder { internal Person Value; }
+
     // The same under CharSet.Unicode, so the string field is UTF-16.
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct WidePerson { public int Id; public string Name; }
@@ -46,9 +48,9 @@ internal static class Program
         Console.WriteLine(dn2cpptest_person_score(p));          // 15
 
         // by-ref [In,Out]: the native replaces the name slot, leaving our GC buffer alone.
-        var b = new Person { Id = 3, Name = "abc" };
-        dn2cpptest_person_bump(ref b);
-        Console.WriteLine($"{b.Id} {b.Name}");                  // 4 ABC
+        var b = new PersonHolder { Value = new Person { Id = 3, Name = "abc" } };
+        dn2cpptest_person_bump(ref b.Value);
+        Console.WriteLine($"{b.Value.Id} {b.Value.Name}");      // 4 ABC
 
         // [In] ref: the native still mutates its copy, but nothing writes back.
         var q = new Person { Id = 3, Name = "abc" };

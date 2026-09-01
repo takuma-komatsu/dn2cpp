@@ -74,7 +74,7 @@ Dn2CppString* dn2cpp_string_alloc(char16_t** outBuf, int32_t length)
     auto* s = static_cast<Dn2CppString*>(dn2cpp_alloc(sizeof(Dn2CppString)));
     s->type = &dn2cpp_string_type;
     s->length = length;
-    s->chars = buf;
+    dn2cpp_gc_store_ref(&s->chars, static_cast<const char16_t*>(buf));
     *outBuf = buf;
     return s;
 }
@@ -285,7 +285,7 @@ Dn2CppString* dn2cpp_string_from_utf8(const char* utf8, int32_t byteLength)
     auto* s = static_cast<Dn2CppString*>(dn2cpp_alloc(sizeof(Dn2CppString)));
     s->type = &dn2cpp_string_type;
     s->length = out;
-    s->chars = buf;
+    dn2cpp_gc_store_ref(&s->chars, static_cast<const char16_t*>(buf));
     return s;
 }
 
@@ -386,7 +386,7 @@ Dn2CppString* dn2cpp_string_from_ansi(const char* bytes, int32_t byteLength)
     auto* s = static_cast<Dn2CppString*>(dn2cpp_alloc(sizeof(Dn2CppString)));
     s->type = &dn2cpp_string_type;
     s->length = n;
-    s->chars = buf;
+    dn2cpp_gc_store_ref(&s->chars, static_cast<const char16_t*>(buf));
     return s;
 }
 

@@ -34,26 +34,31 @@ namespace EnumTryParseTypeSubset
     // string forms.
     internal static class Program
     {
+        private sealed class OutHolder { internal object Value; }
+
         private static void TryColor(string label, string s)
         {
-            object v;
-            bool ok = Enum.TryParse(typeof(Color), s, out v);
+            var holder = new OutHolder();
+            bool ok = Enum.TryParse(typeof(Color), s, out holder.Value);
+            object v = holder.Value;
             Console.WriteLine(label + ": " + ok + " " + (ok ? (int)(Color)v : -1)
                 + " null=" + (v == null));
         }
 
         private static void TryColorIc(string label, string s)
         {
-            object v;
-            bool ok = Enum.TryParse(typeof(Color), s, true, out v);
+            var holder = new OutHolder();
+            bool ok = Enum.TryParse(typeof(Color), s, true, out holder.Value);
+            object v = holder.Value;
             Console.WriteLine(label + ": " + ok + " " + (ok ? (int)(Color)v : -1)
                 + " null=" + (v == null));
         }
 
         private static void TryPerm(string label, string s)
         {
-            object v;
-            bool ok = Enum.TryParse(typeof(Perm), s, out v);
+            var holder = new OutHolder();
+            bool ok = Enum.TryParse(typeof(Perm), s, out holder.Value);
+            object v = holder.Value;
             Console.WriteLine(label + ": " + ok + " " + (ok ? (int)(Perm)v : -1));
         }
 

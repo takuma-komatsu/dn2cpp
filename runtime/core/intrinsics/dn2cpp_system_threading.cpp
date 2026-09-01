@@ -668,7 +668,7 @@ Dn2CppObject* dn2cpp_threadlocal_new(Dn2CppObject* factory, const Dn2CppTypeInfo
 {
     auto* h = static_cast<Dn2CppThreadLocal*>(dn2cpp_alloc(sizeof(Dn2CppThreadLocal)));
     h->type = &dn2cpp_threadlocal_type;
-    h->factory = factory;
+    dn2cpp_gc_store_ref(&h->factory, factory);
     h->ti = ti;
     h->size = size;
     h->kind = kind;

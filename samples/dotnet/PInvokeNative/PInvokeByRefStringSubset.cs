@@ -10,6 +10,8 @@ namespace PInvokeByRefStringSubset;
 
 internal static class Program
 {
+    private sealed class StringHolder { internal string Value; }
+
     [DllImport("dn2cpptest", CharSet = CharSet.Ansi)]
     private static extern void dn2cpptest_out_str(out string s);
     [DllImport("dn2cpptest", CharSet = CharSet.Unicode)]
@@ -23,8 +25,9 @@ internal static class Program
 
     internal static void __GateEntry()
     {
-        dn2cpptest_out_str(out string a);
-        Console.WriteLine(a);                  // native-made
+        var holder = new StringHolder();
+        dn2cpptest_out_str(out holder.Value);
+        Console.WriteLine(holder.Value);         // native-made
 
         dn2cpptest_out_wstr(out string w);
         Console.WriteLine(w);                  // Ok☺

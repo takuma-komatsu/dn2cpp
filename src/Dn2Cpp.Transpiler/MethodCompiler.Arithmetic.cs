@@ -1405,6 +1405,8 @@ internal sealed partial class MethodCompiler
                 string vt = NewTemp(elemCt);
                 Emit($"{vt} = {Cast(value, elemCt)};");
                 Emit($"for ({i} = 0; {i} < {sp}->f__length; {i}++) (({elemSt}*){sp}->f__reference)[{i}] = ({elemSt})({vt});");
+                if (elem.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({sp}->f__reference));");
                 return true;
             }
             case "CopyTo":
@@ -1416,6 +1418,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{dt} = {(dest.Kind == StackKind.Ptr ? $"*({destCt}*)({dest.Expr})" : Cast(dest, destCt))};");
                 Emit($"if ({sp}->f__length > {dt}.f__length) dn2cpp_fail(\"Destination too short (Span.CopyTo)\");");
                 Emit($"for ({i} = 0; {i} < {sp}->f__length; {i}++) (({elemSt}*){dt}.f__reference)[{i}] = (({elemSt}*){sp}->f__reference)[{i}];");
+                if (elem.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({dt}.f__reference));");
                 return true;
             }
             // TryCopyTo(destination) — like CopyTo but returns false instead of throwing
@@ -1433,6 +1437,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{okT} = ({sp}->f__length <= {dt}.f__length) ? 1 : 0;");
                 Emit($"if ({okT}) for ({i} = 0; {i} < {sp}->f__length; {i}++) "
                     + $"(({elemSt}*){dt}.f__reference)[{i}] = (({elemSt}*){sp}->f__reference)[{i}];");
+                if (elem.ContainsGcReferences())
+                    Emit($"if ({okT}) dn2cpp_gc_write_barrier_if_heap((void*)({dt}.f__reference));");
                 Push(StackKind.I4, "int32_t", okT);
                 return true;
             }
@@ -1455,6 +1461,8 @@ internal sealed partial class MethodCompiler
                 Emit($"    {bt} = {baseExpr};");
                 Emit($"    for ({i} = 0; {i} < {lenT}; {i}++) {bt}[{i}] = (({elemSt}*){sp}->f__reference)[{i}];");
                 Emit("}");
+                if (elem.ContainsGcReferences())
+                    Emit($"dn2cpp_gc_write_barrier((void*)({arr.Expr}));");
                 _stack.Add(arr);
                 return true;
             }

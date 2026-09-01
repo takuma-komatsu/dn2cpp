@@ -3577,7 +3577,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
-                                    dg->target = reinterpret_cast<Dn2CppObject*>(c);
+                                    dn2cpp_gc_store_ref(
+                                        &dg->target, reinterpret_cast<Dn2CppObject*>(c));
                                     dg->method = const_cast<void*>(thunk);
                                 }
                                 else
@@ -3609,7 +3610,8 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                     // caller never set.
                                     if (!dg_aot_signature_ok(c, dti))
                                         interp_fail(kDgSigFail);
-                                    dg->target = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(
+                                        &dg->target, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     dg->method = c->aotFn;
                                 }
                                 Slot v{};
@@ -4794,7 +4796,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     const void* thunk = find_dg_thunk(dti);
                                     if (thunk == nullptr)
                                         interp_fail("BPI bind: no delegate thunk (Invoke signature outside the bridged surface)");
-                                    dg->target = reinterpret_cast<Dn2CppObject*>(c);
+                                    dn2cpp_gc_store_ref(
+                                        &dg->target, reinterpret_cast<Dn2CppObject*>(c));
                                     dg->method = const_cast<void*>(thunk);
                                 }
                                 else
@@ -4821,7 +4824,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     // caller never set.
                                     if (!dg_aot_signature_ok(c, dti))
                                         interp_fail(kDgSigFail);
-                                    dg->target = static_cast<Dn2CppObject*>(targetSlot.ref);
+                                    dn2cpp_gc_store_ref(
+                                        &dg->target, static_cast<Dn2CppObject*>(targetSlot.ref));
                                     dg->method = c->aotFn;
                                 }
                                 regs[r0].ref = dg;

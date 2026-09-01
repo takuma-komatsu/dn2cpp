@@ -605,6 +605,7 @@ internal sealed partial class MethodCompiler
             Emit($"{arr} = dn2cpp_newarr_ref({n});");
             for (int i = 0; i < n; i++)
                 Emit($"{arr}->data[{i}] = {elems[i]};");
+            Emit($"dn2cpp_gc_write_barrier((void*)({arr}));");
             return arr;
         }
         throw new NotSupportedException(
