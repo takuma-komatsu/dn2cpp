@@ -6,13 +6,13 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- [PR #82](https://github.com/takuma-komatsu/dn2cpp/pull/82) で、Windows エクスポートテンプレートの Release / Debug ペア配布（`godot-<リリース名>-windows-x86_64-templates.zip`）および各プリセットのリリース／デバッグテンプレート指定に対応しました
-- [PR #90](https://github.com/takuma-komatsu/dn2cpp/pull/90) で、クロスプラットフォーム ISA コントラクト（x86 SIMD / AVX / AVX-512 / ARM Neon 等）の体系化とトランスパイル対応を統合しました
-- [PR #93](https://github.com/takuma-komatsu/dn2cpp/pull/93) で、安全なメソッド本体のトランスパイル処理を並列化し、トランスパイル性能を改善しました
-- [PR #92](https://github.com/takuma-komatsu/dn2cpp/pull/92) で、読み取り専用環境におけるエディタツールチェーンのステージング処理およびメモリ上限対応を行いました
-- [PR #91](https://github.com/takuma-komatsu/dn2cpp/pull/91) で、Godot 関連の検証ゲートの完全な独立性と隔離の強化を行いました
+- Godot フォークでエクスポートプリセットに Incremental GC 設定（`dotnet/dn2cpp/incremental_gc`）を追加し、CMake 構成値の明示的な引き渡しに対応しました（[godot-dn2cpp PR #9](https://github.com/takuma-komatsu/godot-dn2cpp/pull/9)）
+- Godot フォークの Linux CI 環境において godot-cpp のアーカイブ引数上限を回避するレスポンスファイル適用を行いました（[godot-dn2cpp PR #10](https://github.com/takuma-komatsu/godot-dn2cpp/pull/10)）
+- [PR #96](https://github.com/takuma-komatsu/dn2cpp/pull/96) で、起動時コマンドライン引数（`--dn2cpp-gc-incremental=0|1`）による Incremental GC ポリシーのオーバーライドに対応しました
+- [PR #95](https://github.com/takuma-komatsu/dn2cpp/pull/95) で、`Array.Resize` の ref 書き戻し、P/Invoke の byref 文字列書き戻し、デリゲート生成、参照配列初期化等における Incremental GC ライトバリアの網羅性を強化しました
+- [PR #94](https://github.com/takuma-komatsu/dn2cpp/pull/94) で、プラットフォーム ISA 検証（`PlatformIsaProbe`）の到達性シャーディングを導入し、テスト・検証処理を最適化しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/e5f3b41522e64d258fb18b4150682cffa8d2e34c...d24ab4174859108a0d9fd0f6abc23657b342bb0a> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/f8f12cd7c131e450e06c314cbea6eb57fca829a2...fff6864d22727bf62ce7e74473d3ba180030cbba> を参照してください。
 
 ## ダウンロード
 
