@@ -128,6 +128,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     private MethodInfo? _syncCtxCtor;
     private MethodInfo? _syncCtxExecute;
     private ClassInfo? _unmanagedCallbacks;
+    private ClassInfo? _nativeString;
+    private ClassInfo? _nativeStringName;
+    private ClassInfo? _nativePackedStringArray;
     private ClassInfo? _exceptionClass;
     private MethodInfo? _logException;
     private MethodInfo? _pushError;
@@ -187,6 +190,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // EmitEpilogue). Resolved here, with the other roots, so a missing/renamed
         // one fails at the same loud place they do rather than inside the emit.
         _unmanagedCallbacks = ResolveNestedStruct(c, NativeFuncsType, "UnmanagedCallbacks");
+        _nativeString = ResolveType(c, "Godot.NativeInterop.godot_string");
+        _nativeStringName = ResolveType(c, "Godot.NativeInterop.godot_string_name");
+        _nativePackedStringArray = ResolveType(c, "Godot.NativeInterop.godot_packed_string_array");
         // The ManagedCallbacks slot the emitted entry wraps (the per-frame
         // callback), resolved BY NAME from the model — the same structural
         // resolution UnmanagedCallbacks gets above — so a GodotSharp re-pin that
@@ -304,6 +310,16 @@ internal sealed class DotnetModuleBackend : IEmitBackend
                 "is the real GodotSharp.dll passed with -r?");
         return cls;
     }
+
+    private static ClassInfo ResolveType(Compilation c, string fullName)
+        => c.FindClassByFullName(fullName)
+            ?? throw new NotSupportedException(
+                $"--dotnet-module: type {fullName} not found — is the real GodotSharp.dll passed with -r?");
+
+    private static FieldInfo ResolveInstanceField(ClassInfo cls, string fieldName)
+        => cls.Fields.FirstOrDefault(f => !f.IsStatic && !f.IsLiteral && f.Name == fieldName)
+            ?? throw new NotSupportedException(
+                $"--dotnet-module: field {cls.FullName}.{fieldName} not found (GodotSharp shape changed?)");
 
     /// <summary>The 0-based ordinal of <paramref name="fieldName"/> among
     /// <paramref name="cls"/>'s instance fields — for a sequential-layout struct of
@@ -557,6 +573,21 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine();
         var unmanagedCallbacks = _unmanagedCallbacks
             ?? throw new InvalidOperationException("AdditionalRootMethods did not run before EmitEpilogue");
+        var nativeString = _nativeString!;
+        var nativeStringName = _nativeStringName!;
+        var nativePackedStringArray = _nativePackedStringArray!;
+        string stringPtrField = ResolveInstanceField(nativeString, "_ptr").CppName;
+        string packedBufferField = ResolveInstanceField(nativePackedStringArray, "_ptr").CppName;
+        string methodBindGetField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_method_bind_get_method").CppName;
+        string singletonField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_engine_get_singleton").CppName;
+        string stringNewField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_string_new_with_utf16_chars").CppName;
+        string stringNameNewField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_string_name_new_from_string").CppName;
+        string ptrcallField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_method_bind_ptrcall").CppName;
+        string stringSizeField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_string_size").CppName;
+        string packedSizeField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_packed_string_array_size").CppName;
+        string packedDestroyField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_packed_string_array_destroy").CppName;
+        string stringDestroyField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_string_destroy").CppName;
+        string stringNameDestroyField = ResolveInstanceField(unmanagedCallbacks, "godotsharp_string_name_destroy").CppName;
         // Both entries below are the drop-in's public surface: the engine dlopens the
         // library and dlsyms godotsharp_game_main_init out of it. The two toolchains
         // spell the export differently, and a bare __attribute__ fails to compile on
@@ -569,6 +600,75 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("#else");
         sb.AppendLine("#define DN2CPP_DM_EXPORT extern \"C\" __attribute__((visibility(\"default\")))");
         sb.AppendLine("#endif");
+        sb.AppendLine();
+        sb.AppendLine("#ifndef DN2CPP_GC_INCREMENTAL_DEFAULT");
+        sb.AppendLine("#define DN2CPP_GC_INCREMENTAL_DEFAULT 1");
+        sb.AppendLine("#endif");
+        sb.AppendLine();
+        sb.AppendLine("// Read Godot's user arguments before the managed runtime initializes. Every");
+        sb.AppendLine("// callback member and native value layout below comes from the loaded");
+        sb.AppendLine("// GodotSharp model; no engine table index or hand-written value size is baked in.");
+        sb.AppendLine("static void dn2cpp_dm_apply_gc_startup_argument(");
+        sb.AppendLine("    const void** __raw, int32_t __raw_size)");
+        sb.AppendLine("{");
+        sb.AppendLine($"    using __Callbacks = {unmanagedCallbacks.CppStructName};");
+        sb.AppendLine($"    using __String = {nativeString.CppStructName};");
+        sb.AppendLine($"    using __StringName = {nativeStringName.CppStructName};");
+        sb.AppendLine($"    using __PackedStrings = {nativePackedStringArray.CppStructName};");
+        sb.AppendLine($"    if (__raw == nullptr || __raw_size < (int32_t)(offsetof(__Callbacks, {packedSizeField}) + sizeof(void*)))");
+        sb.AppendLine("        return;");
+        sb.AppendLine("    const __Callbacks* __f = reinterpret_cast<const __Callbacks*>(__raw);");
+        sb.AppendLine($"    auto __string_new = reinterpret_cast<void (*)(__String*, const char16_t*)>(__f->{stringNewField});");
+        sb.AppendLine($"    auto __string_name_new = reinterpret_cast<void (*)(__StringName*, const __String*)>(__f->{stringNameNewField});");
+        sb.AppendLine($"    auto __method_bind_get = reinterpret_cast<void* (*)(const __StringName*, const __StringName*)>(__f->{methodBindGetField});");
+        sb.AppendLine($"    auto __singleton_get = reinterpret_cast<void* (*)(const __String*)>(__f->{singletonField});");
+        sb.AppendLine($"    auto __ptrcall = reinterpret_cast<void (*)(void*, void*, const void**, void*)>(__f->{ptrcallField});");
+        sb.AppendLine($"    auto __string_size = reinterpret_cast<int64_t (*)(const __String*)>(__f->{stringSizeField});");
+        sb.AppendLine($"    auto __packed_size = reinterpret_cast<int64_t (*)(const __PackedStrings*)>(__f->{packedSizeField});");
+        sb.AppendLine($"    auto __packed_destroy = reinterpret_cast<void (*)(__PackedStrings*)>(__f->{packedDestroyField});");
+        sb.AppendLine($"    auto __string_destroy = reinterpret_cast<void (*)(__String*)>(__f->{stringDestroyField});");
+        sb.AppendLine($"    auto __string_name_destroy = reinterpret_cast<void (*)(__StringName*)>(__f->{stringNameDestroyField});");
+        sb.AppendLine("    if (__string_new == nullptr || __string_name_new == nullptr || __method_bind_get == nullptr");
+        sb.AppendLine("        || __singleton_get == nullptr || __ptrcall == nullptr || __string_size == nullptr || __packed_size == nullptr");
+        sb.AppendLine("        || __packed_destroy == nullptr || __string_destroy == nullptr || __string_name_destroy == nullptr)");
+        sb.AppendLine("        return;");
+        sb.AppendLine("    __String __os_text{}, __method_text{};");
+        sb.AppendLine("    __StringName __os_name{}, __method_name{};");
+        sb.AppendLine("    __string_new(&__os_text, u\"OS\");");
+        sb.AppendLine("    __string_new(&__method_text, u\"get_cmdline_user_args\");");
+        sb.AppendLine("    __string_name_new(&__os_name, &__os_text);");
+        sb.AppendLine("    __string_name_new(&__method_name, &__method_text);");
+        sb.AppendLine("    void* __bind = __method_bind_get(&__os_name, &__method_name);");
+        sb.AppendLine("    void* __os = __singleton_get(&__os_text);");
+        sb.AppendLine("    if (__bind != nullptr && __os != nullptr) {");
+        sb.AppendLine("        __PackedStrings __args{};");
+        sb.AppendLine("        __ptrcall(__bind, __os, nullptr, &__args);");
+        sb.AppendLine("        int64_t __count = __packed_size(&__args);");
+        sb.AppendLine($"        const __String* __items = static_cast<const __String*>(__args.{packedBufferField});");
+        sb.AppendLine("        if (__items == nullptr) __count = 0;");
+        sb.AppendLine("        static constexpr char32_t __prefix[] = U\"--dn2cpp-gc-incremental=\";");
+        sb.AppendLine("        constexpr size_t __prefix_len = sizeof(__prefix) / sizeof(__prefix[0]) - 1;");
+        sb.AppendLine("        for (int64_t __i = 0; __i < __count; ++__i) {");
+        sb.AppendLine($"            const char32_t* __p = reinterpret_cast<const char32_t*>(__items[__i].{stringPtrField});");
+        sb.AppendLine("            if (__p == nullptr) continue;");
+        sb.AppendLine("            int64_t __size = __string_size(&__items[__i]);");
+        sb.AppendLine("            size_t __len = __size > 0 ? (size_t)(__size - 1) : 0;");
+        sb.AppendLine("            if (__len < __prefix_len) continue;");
+        sb.AppendLine("            size_t __j = 0;");
+        sb.AppendLine("            while (__j < __prefix_len && __p[__j] == __prefix[__j]) ++__j;");
+        sb.AppendLine("            if (__j != __prefix_len) continue;");
+        sb.AppendLine("            if (__len == __prefix_len + 1 && (__p[__j] == U'0' || __p[__j] == U'1'))");
+        sb.AppendLine("                dn2cpp_gc_set_incremental_startup_override(__p[__j] == U'1' ? 1 : 0);");
+        sb.AppendLine("            else");
+        sb.AppendLine("                std::fprintf(stderr, \"[dn2cpp] invalid --dn2cpp-gc-incremental value; expected 0 or 1\\n\");");
+        sb.AppendLine("        }");
+        sb.AppendLine("        __packed_destroy(&__args);");
+        sb.AppendLine("    }");
+        sb.AppendLine("    __string_name_destroy(&__method_name);");
+        sb.AppendLine("    __string_name_destroy(&__os_name);");
+        sb.AppendLine("    __string_destroy(&__method_text);");
+        sb.AppendLine("    __string_destroy(&__os_text);");
+        sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("// ---- interop-table size probe ----");
         sb.AppendLine("// The entry below hands interop_funcs_size_bytes to NativeFuncs.Initialize, which");
@@ -598,7 +698,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         sb.AppendLine("    // and self-roots mode: a windowed engine process loads hundreds of system");
         sb.AppendLine("    // frameworks, which overflows Boehm's per-image root-set table (\"Too many");
         sb.AppendLine("    // root sets\" abort), so only our image's __DATA is registered.");
-        sb.AppendLine("    dn2cpp_gc_set_incremental_default(1);");
+        sb.AppendLine("    dn2cpp_gc_set_incremental_default(DN2CPP_GC_INCREMENTAL_DEFAULT);");
+        sb.AppendLine("    dn2cpp_dm_apply_gc_startup_argument(interop_funcs, interop_funcs_size_bytes);");
         sb.AppendLine("    dn2cpp_gc_set_manual_finalizer_drain(1);");
         sb.AppendLine("    dn2cpp_gc_set_self_roots_default(1);");
         sb.AppendLine("    // A game may hand [UnmanagedCallersOnly] function pointers to a native");

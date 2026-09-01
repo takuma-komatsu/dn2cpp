@@ -67,6 +67,20 @@ A new export-preset enum option `dotnet/export_backend`:
 | `NativeAOT` | Inject `PublishAot=true`; the existing native-output probe in `_ExportBeginImpl` handles the result. The A/B baseline. |
 | `dn2cpp` | Transpile the published IL to a drop-in library. |
 
+On every Incremental-GC-capable target, selecting `dn2cpp` also reveals the
+boolean `dotnet/dn2cpp/incremental_gc` option, default `true`. Web does not
+publish the option because its collector has no page-protection VDB and forces
+incremental mode off. The backend option owns the visibility callback; changing
+away from dn2cpp hides the dependent setting without discarding its preset
+value.
+
+The .NET-module resolves the effective mode before GC initialization in this
+order: exported default, `DN2CPP_GC_INCREMENTAL`, then the last valid Godot user
+argument `--dn2cpp-gc-incremental=0|1`. In a normal command line that argument
+follows Godot's separator (`game -- --dn2cpp-gc-incremental=0|1`). An invalid
+value is warned about and ignored, leaving the current effective value in force.
+The Web platform force-off is applied last.
+
 Declared in `GodotTools/GodotTools/Export/ExportPlugin.cs::_GetExportOptions`.
 The pipeline is `GodotTools/GodotTools/Export/Dn2CppExporter.cs`, invoked from
 `_ExportBeginImpl` after `PublishProjectBlocking` produces `{Assembly}.dll`.
@@ -128,6 +142,13 @@ through `PublishProjectBlocking`.
    covers that, and bumping it makes the next editor's first export drop all
    four. Export logs are bounded likewise, newest
    `Dn2CppExporter.LogGenerations` kept.
+
+   Every configure also passes
+   `-DDN2CPP_GC_INCREMENTAL_DEFAULT=ON|OFF`, including the default form. The
+   build directory persists, so omission after an OFF export would retain the
+   stale CMake cache value. This definition reaches only the app-specific
+   .NET-module translation unit; it does not change the prebuilt runtime archive
+   or its cache key.
 
 4. **Stage**: copy the produced library as `{Assembly}.{soExt}` into a fresh
    staging dir and point the existing `RecursePublishContents` /
@@ -734,7 +755,8 @@ condition so an unstamped or differently stamped zip is relinked.
   registers an empty static-data range. The collector is single-threaded (no
   `GC_THREADS`), incremental mode is forced off (no page-protection VDB), and
   finalizers drain manually (no finalizer thread). `DN2CPP_NO_GC=1` and
-  `-DDN2CPP_USE_GC=OFF` remain the calloc escape hatch.
+  `-DDN2CPP_USE_GC=OFF` remain the calloc escape hatch. Neither the environment
+  override nor `--dn2cpp-gc-incremental` can enable incremental mode here.
 - **There are no threads.** `Task.Run`, `Thread` and `Timer` throw.
 - **`System.Net.Http` has no transport.** A browser has no TCP socket layer, so
   `DN2CPP_USE_CURL` — on by default everywhere else — is forced off on this arm

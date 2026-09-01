@@ -95,38 +95,63 @@ chmod +x "$RUN/godot$EXE_EXT"
 mkdir -p "$RUN/data_DotnetSample_${GODOT_DOTNET_PLATFORM}_$ARCH"
 cp -f "$DYLIB" "$RUN/data_DotnetSample_${GODOT_DOTNET_PLATFORM}_$ARCH/DotnetSample.$LIB_EXT"
 
-echo "== 6/6 Running the handshake scene in the real engine =="
-LOG="$RUN/handshake.log"
-rc=0
-run_with_watchdog 120 env DN2CPP_DM_TRACE=1 "$PWD/$RUN/godot$EXE_EXT" --headless \
-    --quit-after 5 >"$LOG" 2>&1 || rc=$?
-cat "$LOG"
-if [ "$rc" -ne 0 ]; then
-    echo "FAIL: engine exited with $rc (137 = watchdog kill — a hung run)" >&2
-    exit 1
-fi
-# Positive markers: every init stage reached, and the engine's main loop drove
-# the wrapped FrameCallback at least once.
-for marker in \
-    "dn2cpp-dm: interop received" \
-    "dn2cpp-dm: managed callbacks written" \
-    "dn2cpp-dm: init ok" \
-    "dn2cpp-dm: frame"; do
-    grep -q "$marker" "$LOG" \
-        || { echo "FAIL: missing marker: $marker" >&2; exit 1; }
-done
-# Negative markers: the mono module must not have fallen over (it only logs and
-# keeps running, so these never affect the exit code).
-for bad in \
-    "GodotPlugins initialization failed" \
-    "Failed to load hostfxr" \
-    "ERROR" \
-    "SCRIPT ERROR" \
-    "ObjectDB instances leaked"; do
-    if grep -q "$bad" "$LOG"; then
-        echo "FAIL: log contains \"$bad\"" >&2
+echo "== 6/6 Running the handshake scene and GC startup-policy matrix =="
+# run_gc_mode TAG EXPECTED ENV_VALUE [USER_ARG ...] — run the same default-ON
+# .NET-module image with only startup inputs changed. Godot exposes arguments
+# after `--` through OS.get_cmdline_user_args(), which is the contract the
+# module reads before initializing the collector.
+run_gc_mode() {
+    local tag="$1" expected="$2" env_value="$3"
+    shift 3
+    local log="$RUN/handshake-$tag.log" rc=0 marker bad
+    local env_args=(env -u DN2CPP_GC_INCREMENTAL DN2CPP_DM_TRACE=1 DN2CPP_GC_STATS=1)
+    local game_args=("$PWD/$RUN/godot$EXE_EXT" --headless --quit-after 5)
+    [ -n "$env_value" ] && env_args+=("DN2CPP_GC_INCREMENTAL=$env_value")
+    if [ "$#" -gt 0 ]; then
+        game_args+=(-- "$@")
+    fi
+    run_with_watchdog 120 "${env_args[@]}" "${game_args[@]}" >"$log" 2>&1 || rc=$?
+    cat "$log"
+    if [ "$rc" -ne 0 ]; then
+        echo "FAIL: $tag engine run exited with $rc (137 = watchdog kill — a hung run)" >&2
         exit 1
     fi
-done
+    grep -qF "[dn2cpp] GC mode: $expected" "$log" \
+        || { echo "FAIL: $tag run did not report GC mode $expected" >&2; exit 1; }
+    # Positive markers: every init stage reached, and the engine's main loop
+    # drove the wrapped FrameCallback at least once.
+    for marker in \
+        "dn2cpp-dm: interop received" \
+        "dn2cpp-dm: managed callbacks written" \
+        "dn2cpp-dm: init ok" \
+        "dn2cpp-dm: frame"; do
+        grep -q "$marker" "$log" \
+            || { echo "FAIL: $tag run is missing marker: $marker" >&2; exit 1; }
+    done
+    # The mono module only logs initialization failures and keeps running, so
+    # an exit code alone is not an oracle.
+    for bad in \
+        "GodotPlugins initialization failed" \
+        "Failed to load hostfxr" \
+        "ERROR" \
+        "SCRIPT ERROR" \
+        "ObjectDB instances leaked"; do
+        if grep -q "$bad" "$log"; then
+            echo "FAIL: $tag log contains \"$bad\"" >&2
+            exit 1
+        fi
+    done
+}
+
+run_gc_mode default incremental ""
+run_gc_mode environment-off stop-the-world 0
+run_gc_mode argument-over-environment-on incremental 0 --dn2cpp-gc-incremental=1
+run_gc_mode argument-over-environment-off stop-the-world 1 --dn2cpp-gc-incremental=0
+run_gc_mode last-valid-argument-wins stop-the-world "" \
+    --dn2cpp-gc-incremental=1 --dn2cpp-gc-incremental=0
+run_gc_mode invalid-argument-falls-back stop-the-world 0 --dn2cpp-gc-incremental=invalid
+grep -qF "[dn2cpp] invalid --dn2cpp-gc-incremental value" \
+    "$RUN/handshake-invalid-argument-falls-back.log" \
+    || { echo "FAIL: invalid startup argument was ignored without a warning" >&2; exit 1; }
 gate_cache_commit
 echo "OK"
