@@ -295,6 +295,12 @@ template; the fork changes editor tooling only.**
   the Visual Studio C++ workload *installed* — but no particular shell, as
   the editor locates MSVC itself. Web and Android need neither, each
   bringing its own compiler.
+- **GC mode.** Supported native export targets show
+  `dotnet/dn2cpp/incremental_gc` when the dn2cpp backend is selected. It defaults
+  to incremental GC. At startup, `DN2CPP_GC_INCREMENTAL=0|1` overrides the
+  exported default, and the Godot user argument
+  `-- --dn2cpp-gc-incremental=0|1` overrides both. Web has no page-protection
+  VDB, does not show the option, and always uses stop-the-world collection.
 - **Verified.** In the real engine, end to end: all virtuals, input,
   `[Export]`, `[Signal]`, `ToSignal`, `RefCounted` lifetime stress, and
   **async interop** (`Task` continuations marshal back to the main thread
@@ -574,7 +580,9 @@ site rather than hiding it.
   `ArrayPool<T>.Shared` is a real size-bucketed pool. Modes: classic
   stop-the-world (console default) and Boehm incremental (Godot default,
   bounded frame pauses), with `DN2CPP_GC_INCREMENTAL` /
-  `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS` overrides; `DN2CPP_NO_GC=1`
+  `DN2CPP_GC_TIME_LIMIT_MS` / `DN2CPP_GC_STATS` overrides. Godot exports also
+  accept `--dn2cpp-gc-incremental=0|1` as a user argument, with argument over
+  environment over exported-default precedence; `DN2CPP_NO_GC=1`
   opts out to a calloc fallback. `-DDN2CPP_GC_BACKEND=upstream` swaps in
   vendored upstream bdwgc (`third_party/bdwgc-upstream/`) instead of the
   fork — a dev-only cross-check, not shipped.

@@ -107,6 +107,7 @@ option(DN2CPP_GODOT       "Build the Godot GDExtension runtime library"         
 option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"    OFF)
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
 option(DN2CPP_DOTNET_MODULE "Build the Godot .NET-module host runtime library, and the app (DN2CPP_APP_DIR) as a mono-module shared library" OFF)
+option(DN2CPP_GC_INCREMENTAL_DEFAULT "Default the .NET-module app to incremental GC" ON)
 set(DN2CPP_APP_DIR        ""    CACHE PATH     "Transpiler output dir to build into a final binary")
 set(DN2CPP_APP_NAME       "app" CACHE STRING   "Name of the app target (and of the output file in every lane but DN2CPP_GDEXTENSION)")
 set(DN2CPP_APP_LINK_FLAGS ""    CACHE STRING   "Extra link flags for the app (e.g. -L<dir>)")
@@ -1166,6 +1167,8 @@ if(DN2CPP_APP_DIR)
             _dn2cpp_add_dotnetmodule_target(dn2cpp::dn2cpp_runtime)
         endif()
         add_library(${DN2CPP_APP_NAME} SHARED ${DN2CPP_APP_SRCS})
+        target_compile_definitions(${DN2CPP_APP_NAME} PRIVATE
+            DN2CPP_GC_INCREMENTAL_DEFAULT=$<BOOL:${DN2CPP_GC_INCREMENTAL_DEFAULT}>)
         target_link_libraries(${DN2CPP_APP_NAME} PRIVATE dn2cpp::dn2cpp_runtime dn2cpp::dn2cpp_dotnetmodule)
         if(EMSCRIPTEN)
             # The drop-in as an Emscripten SIDE MODULE: the engine's web export

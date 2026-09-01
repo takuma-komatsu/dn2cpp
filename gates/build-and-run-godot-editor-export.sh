@@ -32,11 +32,12 @@
 #      a desktop target compiles with a host clang++/cl.exe and can never be
 #      hermetic — so it is read out of the log instead, and it has to be read out
 #      of the log: a regression to the host's cmake builds the same game.
-#   3. The SECOND release export of a work dir works, and is incremental. 3/14 keeps the
-#      work dir deliberately — the persisting .godot/mono/dn2cpp/build tree is
-#      what stops a re-export recompiling the whole game — and every export a
-#      user performs after the first takes that path. 7/14 exports again and
-#      asserts the runtime was reused; 8/14 points that cache at another source
+#   3. Re-exporting a work dir works and is incremental. 3/14 keeps the work dir
+#      deliberately — the persisting .godot/mono/dn2cpp/build tree is what stops
+#      a re-export recompiling the whole runtime — and every export after the
+#      first takes that path. 7/14 flips the Incremental-GC preset OFF then ON in
+#      that same slot, asserting both the CMake cache and real runtime mode while
+#      the runtime archive is reused. 8/14 points the cache at another source
 #      tree (which is what a moved or re-pointed toolchain leaves behind) and
 #      asserts the export recovers, says so, and names both trees.
 #   4. On Windows, the debug field selects the independently built debug
@@ -328,6 +329,42 @@ if [ "$DN2CPP_OS" = linux ]; then
         || { echo "FAIL: could not set the Linux preset architecture to $ARCH" >&2; exit 1; }
 fi
 
+# The first export deliberately omits the setting: absence is the compatibility
+# case for existing presets and must select the documented default (ON).
+if awk -v preset="$PRESET" '
+    /^name=/ { selected = ($0 == "name=\"" preset "\"") }
+    selected && /^dotnet\/dn2cpp\/incremental_gc=/ { found = 1 }
+    END { exit found ? 0 : 1 }
+' "$PROJ/export_presets.cfg"; then
+    echo "FAIL: the fixture already spells dotnet/dn2cpp/incremental_gc; the first export" >&2
+    echo "      would no longer prove the default for an existing preset" >&2
+    exit 1
+fi
+
+# set_incremental_gc_preset VALUE — update only the active desktop preset. The
+# option is inserted next to export_backend on its first use, then rewritten in
+# place so OFF -> ON exercises one persistent CMake build slot.
+set_incremental_gc_preset() {
+    local value="$1" tmp
+    tmp="$(mktemp)"
+    awk -v preset="$PRESET" -v value="$value" '
+        /^name=/ { selected = ($0 == "name=\"" preset "\"") }
+        selected && /^dotnet\/dn2cpp\/incremental_gc=/ {
+            print "dotnet/dn2cpp/incremental_gc=" value
+            written = 1
+            next
+        }
+        { print }
+        selected && /^dotnet\/export_backend=/ && !written {
+            print "dotnet/dn2cpp/incremental_gc=" value
+            written = 1
+        }
+        END { exit written ? 0 : 1 }
+    ' "$PROJ/export_presets.cfg" > "$tmp" \
+        || { rm -f "$tmp"; echo "FAIL: could not set incremental GC on preset $PRESET" >&2; exit 1; }
+    mv "$tmp" "$PROJ/export_presets.cfg"
+}
+
 echo "== 4/14 Importing the project (fork editor, headless) =="
 # The first import may abort in editor doc-gen teardown (Godot headless bug,
 # harmless — the import data is already written), so tolerate a non-zero exit.
@@ -399,6 +436,7 @@ godot_fork_assert_bundled_buildtools "$OUT/export.log" "$EXPORTER_LOG" \
 # of a 40-line marker list is what drifts.
 assert_export_artifact_and_run() {
     local LOG="$1"
+    local expected_gc="${2:-incremental}"
     local DROPIN_NAME expected_staged staged rc n marker once bad
     DROPIN_NAME="$(basename "$DROPIN")"
     [ -f "$DROPIN" ] || { echo "FAIL: no drop-in library at $DROPIN" >&2; ls -R "$(dirname "$DATA_DIR")" >&2; exit 1; }
@@ -431,13 +469,16 @@ $WINDOWS_DEPENDENCY_NAME.dll"
     fi
 
     rc=0
-    run_with_watchdog 120 "$GAME_EXE" --headless --quit-after 900 \
+    run_with_watchdog 120 env -u DN2CPP_GC_INCREMENTAL DN2CPP_GC_STATS=1 \
+        "$GAME_EXE" --headless --quit-after 900 \
         >"$LOG" 2>&1 || rc=$?
     cat "$LOG"
     if [ "$rc" -ne 0 ]; then
         echo "FAIL: the exported game exited with $rc (137 = watchdog kill — a hung run)" >&2
         exit 1
     fi
+    grep -qF "[dn2cpp] GC mode: $expected_gc" "$LOG" \
+        || { echo "FAIL: exported game did not report GC mode $expected_gc" >&2; exit 1; }
     # The scripted node was constructed, tied to its native object (the scene's baked
     # Answer override arrived through the instance Set bridge), and driven by the
     # engine's main loop until it quit itself.
@@ -561,6 +602,17 @@ CMAKE_CACHE="$BUILD_DIR/CMakeCache.txt"
 [ -f "$CMAKE_CACHE" ] \
     || { echo "FAIL: no CMakeCache.txt in the build slot $BUILD_DIR" >&2; ls -la "$BUILD_DIR" >&2; exit 1; }
 
+assert_incremental_gc_cache() {
+    local expected="$1" actual
+    actual="$(sed -n 's/^DN2CPP_GC_INCREMENTAL_DEFAULT:BOOL=//p' "$CMAKE_CACHE")"
+    if [ "$actual" != "$expected" ]; then
+        echo "FAIL: persistent CMake cache has DN2CPP_GC_INCREMENTAL_DEFAULT=" \
+            "${actual:-<absent>}, expected $expected" >&2
+        exit 1
+    fi
+}
+assert_incremental_gc_cache ON
+
 # A host SDK newer than the export target otherwise becomes clang's implicit
 # deployment target. That makes the drop-in unloadable on systems the preset and
 # template still support, while a successful build says nothing about the drift.
@@ -617,14 +669,29 @@ if [ -z "$GC_LIB" ]; then
              exit 1; }
 fi
 
-echo "== 7/14 Incremental release re-export into the persisting build tree =="
-# A plain second --export-release, nothing broken: the runtime must be REUSED (the
-# GC library untouched) and the artifact must still work. An export that quietly
-# did nothing cannot satisfy that pair — assert_export_succeeded requires this
-# export's own log to carry all three dn2cpp stage markers, and
-# assert_export_artifact_and_run rebuilds nothing but runs what came out.
+echo "== 7/14 Re-exporting both GC defaults in the persisting build tree =="
+# Flip the preset OFF and back ON in the same slot. The exporter must explicitly
+# configure both values: relying on the CMake default would leave OFF cached on
+# the final export. The runtime archive remains reusable because this default is
+# compiled only into the app-specific .NET-module translation unit.
 GC_SIG_BEFORE=""
 [ -n "$GC_LIB" ] && GC_SIG_BEFORE="$(file_sig "$GC_LIB")"
+set_incremental_gc_preset false
+GC_OFF_LOG="$OUT/export-incremental-gc-off.log"
+rm -rf "$APP" "$DATA_DIR"
+if ! godot_export_step 1200 "$GC_OFF_LOG" "$APP" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-release "$PRESET" "$APP"; then
+    echo "FAIL: the incremental-GC-OFF re-export failed (see below)" >&2
+    cat "$GC_OFF_LOG" >&2
+    exit 1
+fi
+assert_export_succeeded "$GC_OFF_LOG" "the incremental-GC-OFF re-export"
+assert_incremental_gc_cache OFF
+godot_editor_export_layout "$APP"
+assert_export_artifact_and_run "$OUT/run-incremental-gc-off.log" stop-the-world
+
+set_incremental_gc_preset true
 REEXPORT_LOG="$OUT/export-incremental.log"
 rm -rf "$APP" "$DATA_DIR"
 if ! godot_export_step 1200 "$REEXPORT_LOG" "$APP" \
@@ -635,6 +702,7 @@ if ! godot_export_step 1200 "$REEXPORT_LOG" "$APP" \
     exit 1
 fi
 assert_export_succeeded "$REEXPORT_LOG" "the incremental re-export"
+assert_incremental_gc_cache ON
 if grep -qF "dn2cpp: stale build cache reset" "$REEXPORT_LOG"; then
     echo "FAIL: the re-export discarded a build cache that was still current — the" >&2
     echo "      staleness test now fires on an unchanged toolchain, so every export" >&2

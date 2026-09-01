@@ -130,6 +130,8 @@ Node.js の列が無いのは、`emcc` がリンクのたびに起動する **No
 
 プロジェクト → エクスポート → プリセットを選択 → **`dotnet/export_backend`** を **`dn2cpp`** に設定し、あとは通常どおりエクスポートするだけです。上の[動作要件](#動作要件)以外に必要なものはありません。トランスパイラ、ランタイムのソース、エクスポートしたゲームがリンクする vendored ライブラリは、すべてエディタに同梱されています。
 
+Incremental GC に対応するターゲットでは、dn2cpp を選ぶと **`dotnet/dn2cpp/incremental_gc`** が表示されます。既定は ON です。エクスポート後も、環境変数 **`DN2CPP_GC_INCREMENTAL=0|1`**、または Godot のユーザー引数 **`-- --dn2cpp-gc-incremental=0|1`** で起動ごとに上書きできます。優先順位は「起動引数 → 環境変数 → エクスポート設定」です。同じ起動引数を複数指定した場合は最後の有効値が使われ、不正な値は警告して無視されます。Web は Incremental GC に対応しないため設定が表示されず、これらの指定にかかわらず stop-the-world GC を使います。
+
 エディタ設定 → **`dotnet/export/dn2cpp_toolchain_path`** で別のツールチェーンレイアウトを指定できます。同梱のものではなく自分でビルドした dn2cpp を使用したい場合は、ここで指定します。同様に **`dotnet/export/dn2cpp_cmake_path`** と **`dotnet/export/dn2cpp_ninja_path`** で、同梱の cmake / ninja を自前のものに差し替えられます。
 
 ## エクスポートテンプレート

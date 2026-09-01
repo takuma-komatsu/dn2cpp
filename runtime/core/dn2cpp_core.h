@@ -2406,10 +2406,14 @@ inline void dn2cpp_main_abort()
 }
 // Set the default GC collection mode applied by dn2cpp_runtime_init when the
 // DN2CPP_GC_INCREMENTAL env override is unset. Console leaves the default (0 =
-// stop-the-world); the Godot GDExtension calls this with 1 before managed init so
-// real-time builds get bounded incremental pauses out of the box. Inert under
-// DN2CPP_NO_GC. Call before dn2cpp_runtime_init runs.
+// stop-the-world); Godot hosts select their export default before managed init.
+// Inert under DN2CPP_NO_GC. Call before dn2cpp_runtime_init runs.
 void dn2cpp_gc_set_incremental_default(int on);
+// Override the environment-resolved incremental mode for this process. Embedding
+// hosts use this for their own startup argument syntax; call before
+// dn2cpp_runtime_init. Passing 0 or 1 selects the mode, while any other value
+// clears the override. The platform's force-off policy still applies last.
+void dn2cpp_gc_set_incremental_startup_override(int on);
 // Default the collector to Apple self-roots mode (default off): disable Boehm's
 // dynamic-library scanning and register only the runtime image's __DATA as
 // static roots. The Godot hosts call this with 1 before managed init — a

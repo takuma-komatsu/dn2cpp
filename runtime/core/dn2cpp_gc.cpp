@@ -203,14 +203,21 @@ bool dn2cpp_env_bool(const char* name, bool def)
 // GC collection mode default. Console keeps the classic stop-the-world collector
 // (lowest overhead for batch/throughput work); the Godot GDExtension flips this to
 // Boehm's incremental mode for bounded frame pauses by calling the setter below
-// before managed init runs. Either default is overridable at runtime via
-// DN2CPP_GC_INCREMENTAL (see dn2cpp_runtime_init). Defined unconditionally so the
-// setter links even under DN2CPP_NO_GC (where it is simply inert).
+// before managed init runs. DN2CPP_GC_INCREMENTAL overrides that default, and an
+// embedding host's startup option overrides the environment (see
+// dn2cpp_runtime_init). Defined unconditionally so the setters link even under
+// DN2CPP_NO_GC (where they are simply inert).
 static int g_gc_incremental_default = 0;
+static int g_gc_incremental_startup_override = -1;
 
 void dn2cpp_gc_set_incremental_default(int on)
 {
     g_gc_incremental_default = on ? 1 : 0;
+}
+
+void dn2cpp_gc_set_incremental_startup_override(int on)
+{
+    g_gc_incremental_startup_override = on == 0 || on == 1 ? on : -1;
 }
 
 // Apple static-roots mode default. Off, a binary keeps Boehm's stock
@@ -508,12 +515,15 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
     GC_REGISTER_DISPLACEMENT(3);
 
     // GC collection mode. The default comes from g_gc_incremental_default (console
-    // = stop-the-world, Godot = incremental); the env vars below override it at
-    // startup, so the same binary can switch modes without a rebuild:
+    // = stop-the-world, Godot = incremental); the environment overrides it, then
+    // an embedding host's startup option wins over both. The same binary can thus
+    // switch modes without a rebuild:
     //   DN2CPP_GC_INCREMENTAL=0/1  force incremental off / on (overrides the default)
     //   DN2CPP_GC_TIME_LIMIT_MS    per-increment pause target in ms (default 5)
     //   DN2CPP_GC_STATS            report the active mode now + a pause summary at exit
     bool incremental = dn2cpp_env_bool("DN2CPP_GC_INCREMENTAL", g_gc_incremental_default != 0);
+    if (g_gc_incremental_startup_override >= 0)
+        incremental = g_gc_incremental_startup_override != 0;
 #ifdef __EMSCRIPTEN__
     // wasm has no mprotect/signal VDB, so bdwgc would fall back to DEFAULT_VDB
     // (every page reported always-dirty) — the incremental machinery then costs
