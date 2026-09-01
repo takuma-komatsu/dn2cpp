@@ -199,6 +199,7 @@ FORK_OWNED=(
     ':(exclude)modules/mono/editor/GodotTools'
     ':(exclude)modules/mono/build_scripts'
     ':(exclude)*.md'
+    ':(exclude).github'
 )
 
 # godot_fork_base_commit — the pinned upstream base, read from the checked-in
