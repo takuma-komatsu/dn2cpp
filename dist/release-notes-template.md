@@ -12,7 +12,7 @@
 - [PR #95](https://github.com/takuma-komatsu/dn2cpp/pull/95) で、`Array.Resize` の ref 書き戻し、P/Invoke の byref 文字列書き戻し、デリゲート生成、参照配列初期化等における Incremental GC ライトバリアの網羅性を強化しました
 - [PR #94](https://github.com/takuma-komatsu/dn2cpp/pull/94) で、プラットフォーム ISA 検証（`PlatformIsaProbe`）の到達性シャーディングを導入し、テスト・検証処理を最適化しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/f8f12cd7c131e450e06c314cbea6eb57fca829a2...fff6864d22727bf62ce7e74473d3ba180030cbba> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/f8f12cd7c131e450e06c314cbea6eb57fca829a2...a6e30df616a7482d6df98a235dd658637ed1a293> を参照してください。
 
 ## ダウンロード
 
