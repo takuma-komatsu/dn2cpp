@@ -79,7 +79,8 @@ internal sealed partial class MethodCompiler
     /// tabulated in docs/PINVOKE-MARSHALLING.md. Everything outside it (object
     /// marshalling, non-blittable structs, array returns, the COM-era [MarshalAs]
     /// kinds) is a precise NotSupportedException, never a silent default.</summary>
-    private void EmitPInvokeCall(MethodInfo callee, PInvokeInfo pinv)
+    private void EmitPInvokeCall(MethodInfo callee, PInvokeInfo pinv,
+        bool ftnWrapper = false)
     {
         string Where(string what) =>
             $"{_method.DeclaringClass.FullName}.{_method.Name}: P/Invoke {callee.DeclaringClass.FullName}.{callee.Name} {what}";
@@ -138,8 +139,10 @@ internal sealed partial class MethodCompiler
                         ? $"parameter {i} struct {pts[i]} cannot cross the P/Invoke boundary: {fr}"
                         : $"parameter {i} of type {pts[i]} is not marshallable — non-blittable array/struct or object marshalling is not supported yet"));
 
-        // Record for the emitter's one-per-symbol extern "C" declaration.
-        _c.PInvokeCalls.Add(callee);
+        bool direct = _c.IsDirectPInvoke(callee);
+        // Only static-link imports need an extern declaration and link manifest.
+        if (direct)
+            _c.PInvokeCalls.Add(callee);
 
         // P/Invoke methods are always static (no `this`). Pop args right-to-left and
         // marshal each: a string -> a GC-allocated NUL-terminated UTF-8 buffer cast to
@@ -431,7 +434,38 @@ internal sealed partial class MethodCompiler
                 args[i] = Cast(e, CppTypes.NativeAbiType(pts[i])!);
         }
 
-        string call = $"{pinv.CppAlias(callee.Signature)}({string.Join(", ", args)})";
+        string call;
+        if (direct)
+        {
+            call = $"{pinv.CppAlias(callee.Signature)}({string.Join(", ", args)})";
+        }
+        else
+        {
+            string fp = NewTemp("void*");
+            string cache = _c.NoteLazyPInvokeCall(callee, ftnWrapper);
+            string nativeRet = CppTypes.PInvokeNativeType(
+                ret, isReturn: true, charUnicode, retMa)!;
+            string nativeParams = string.Join(", ", pts.Select((p, i) =>
+                CppTypes.PInvokeNativeType(p, charUnicode: charUnicode, marshalAs: Ma(i))!));
+            if (nativeParams.Length == 0)
+                nativeParams = "void";
+            Emit($"{fp} = {cache}.load(std::memory_order_acquire);");
+            Emit($"if ({fp} == nullptr) {{");
+            int searchPath = pinv.DefaultDllImportSearchPath.GetValueOrDefault();
+            string resolved = NewTemp("void*");
+            string expected = NewTemp("void*");
+            Emit($"    {resolved} = dn2cpp_pinvoke_resolve(\"{CppString(pinv.ModuleName)}\", "
+                + $"\"{CppString(pinv.EntryPoint)}\", \"{CppString(callee.Module.AssemblyName)}\", "
+                + $"{(pinv.DefaultDllImportSearchPath.HasValue ? 1 : 0)}, {searchPath});");
+            Emit($"    {expected} = nullptr;");
+            Emit($"    if ({cache}.compare_exchange_strong({expected}, {resolved}, "
+                + "std::memory_order_acq_rel, std::memory_order_acquire))");
+            Emit($"        {fp} = {resolved};");
+            Emit("    else");
+            Emit($"        {fp} = {expected};");
+            Emit("}");
+            call = $"((({nativeRet} (*)({nativeParams})){fp})({string.Join(", ", args)}))";
+        }
 
         // SetLastError=true: capture the platform error (errno on POSIX, GetLastError() on
         // Windows — dn2cpp_pinvoke_capture_last_error picks the right one internally, see
@@ -518,6 +552,12 @@ internal sealed partial class MethodCompiler
                 : $"dn2cpp_pinvoke_char_from_ansi((uint8_t)({call}))";
         EmitCallResult(callee, call);
     }
+
+    private static string CppString(string value) => value
+        .Replace("\\", "\\\\", StringComparison.Ordinal)
+        .Replace("\"", "\\\"", StringComparison.Ordinal)
+        .Replace("\r", "\\r", StringComparison.Ordinal)
+        .Replace("\n", "\\n", StringComparison.Ordinal);
 
     /// <summary>True when the <paramref name="paramIndex"/>-th parameter of a P/Invoke
     /// is `out` (<c>[Out]</c> set, <c>[In]</c> not) rather than `ref` (<c>[In,Out]</c> /

@@ -329,7 +329,7 @@ EOF
 # Registered as an autoload so no scene edit is needed; the sample's own
 # MainScene stays the entry scene. The [dotnet] append re-opens the sample's
 # existing section (Godot's ConfigFile merges repeated headers) to add the fork
-# exporter's knob: extra_transpile_args is how --pinvoke-module cri_atom
+# exporter's knob: extra_transpile_args is how --direct-pinvoke cri_atom
 # reaches the editor-driven transpile. No link knobs, on purpose — the side
 # module must NOT link the (non-PIC) CRI archives; the template's main module
 # carries them (see the header).
@@ -341,7 +341,7 @@ AutoVerify="*res://script/AutoVerify.cs"
 
 [dotnet]
 
-dn2cpp/extra_transpile_args=PackedStringArray("--pinvoke-module", "cri_atom")
+dn2cpp/extra_transpile_args=PackedStringArray("--direct-pinvoke", "cri_atom")
 EOF
 
 # The export preset: the Web dlink preset against dotnet/export_backend = 2
@@ -392,7 +392,7 @@ dotnet/embed_build_outputs=false
 dotnet/export_backend=2
 EOF
 
-echo "== 3/6 Transpiling with --pinvoke-module cri_atom (browser-flavor managed DLL) =="
+echo "== 3/6 Transpiling with --direct-pinvoke cri_atom (browser-flavor managed DLL) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 dotnet build "$PROJ/$PROJECT_NAME.csproj" -c ExportRelease --nologo -v q
 APPDIR="$PROJ/.godot/mono/temp/bin/ExportRelease"
@@ -419,7 +419,7 @@ invoke_cli "$APPDIR/$PROJECT_NAME.dll" --dotnet-module \
     -r "$APPDIR/CriWare.CriAtomLE.dll" \
     -r "$APPDIR/SampleExtensions.dll" \
     --auto-ref \
-    --pinvoke-module cri_atom \
+    --direct-pinvoke cri_atom \
     -o "$GEN"
 
 # The opt-in's manifest half: the module reaches pinvoke-libs.txt. On this
@@ -489,7 +489,7 @@ if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     cat "$OUT/export.log" >&2
     exit 1
 fi
-for marker in "dn2cpp: extra transpile args (project setting): --pinvoke-module cri_atom" \
+for marker in "dn2cpp: extra transpile args (project setting): --direct-pinvoke cri_atom" \
               "dn2cpp: transpiling" "dn2cpp: compiling the drop-in library" "dn2cpp: staged"; do
     grep -qF "$marker" "$OUT/export.log" \
         || { echo "FAIL: marker \"$marker\" missing from the export log" >&2

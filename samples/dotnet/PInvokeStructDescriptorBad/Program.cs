@@ -33,7 +33,7 @@ public static class Program
         [MarshalAs(UnmanagedType.Struct)] public Inner I;
     }
 
-    // libc needs no --pinvoke-module opt-in, so the transpile reaches marshalling
+    // Every user import is admitted, so the transpile reaches marshalling
     // validation instead of stopping at module admission. Neither entry point exists:
     // the transpile fails before anything links, and real .NET reports the struct
     // before it reports the missing symbol.

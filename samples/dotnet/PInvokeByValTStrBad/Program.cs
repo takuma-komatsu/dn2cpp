@@ -20,7 +20,7 @@ public struct FixedName
 
 public static class Program
 {
-    // libc needs no --pinvoke-module opt-in, so the transpile reaches marshalling
+    // Every user import is admitted, so the transpile reaches marshalling
     // validation instead of stopping at module admission. The entry point is never
     // resolved: the transpile fails before anything links.
     [DllImport("libc")]

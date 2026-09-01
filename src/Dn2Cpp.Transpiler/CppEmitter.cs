@@ -654,6 +654,7 @@ internal sealed partial class CppEmitter
             // rebuild them from scratch so the emitted tables hold exactly the
             // retained shared bodies' slots in deterministic compile order.
             _c.ResetRgctxForEmission();
+            _c.ResetLazyPInvokeCallsForEmission();
             _c.ResetSharedPlanningState();
             Timing.Mark("finalize-shared");
         }
@@ -839,6 +840,7 @@ internal sealed partial class CppEmitter
         // field-by-field marshal-in/out helpers (-> data).
         EmitPInvokeMarshalStructs(o);
         EmitPInvokeDeclarations(o.Header);
+        EmitLazyPInvokeCaches(o.Header);
         EmitStaticFields(o);
 
         // Method prototypes go in the header (external linkage): a body in any TU may call
@@ -6086,6 +6088,20 @@ internal sealed partial class CppEmitter
         sb.AppendLine("// ---- P/Invoke native entry points ----");
         foreach (var kv in decls.OrderBy(kv => kv.Key, StringComparer.Ordinal))
             sb.AppendLine(kv.Value);
+        sb.AppendLine();
+    }
+
+    /// <summary>Program-wide fixup cells for lazy imported MethodDefs and their optional
+    /// address-taken forwarders. Inline variables keep the header usable from split body
+    /// TUs while stable names and a sorted walk make the emitted bytes independent of
+    /// call-site discovery order.</summary>
+    private void EmitLazyPInvokeCaches(StringBuilder sb)
+    {
+        if (_c.LazyPInvokeCaches.Count == 0)
+            return;
+        sb.AppendLine("// ---- lazy P/Invoke method caches ----");
+        foreach (string cache in _c.LazyPInvokeCaches.OrderBy(n => n, StringComparer.Ordinal))
+            sb.AppendLine($"inline std::atomic<void*> {cache}{{nullptr}};");
         sb.AppendLine();
     }
 

@@ -48,7 +48,7 @@ namespace PInvokeNative
             PInvokeVariantByRefSubset.Program.__GateEntry();
             PInvokeSingleFieldStructSubset.Program.__GateEntry();
             PInvokeStackallocUtf8Subset.Program.__GateEntry();
-            // The one section binding no custom library, so it needs no link flag.
+            // The one section binding the platform C library rather than dn2cpptest.
             PInvokeLibcSubset.Program.__GateEntry();
         }
     }

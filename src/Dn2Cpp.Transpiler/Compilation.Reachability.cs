@@ -4419,7 +4419,7 @@ internal sealed partial class Compilation
                 ImplAttributes = md.ImplAttributes,
                 Rva = md.RelativeVirtualAddress,
                 Context = ctx,
-                PInvoke = ReadPInvoke(reader, md),
+                PInvoke = ReadPInvoke(module, md),
             };
             spec.Methods.Add(mi);
             spec.MethodByTemplate[mdh] = mi;

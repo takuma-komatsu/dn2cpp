@@ -786,8 +786,10 @@ condition so an unstamped or differently stamped zip is relinked.
 
 ### The size levers this lane turns on — and the one it deliberately does not
 
-`Dn2CppExporter.BuildDropIn` adds exactly two flags for Web:
-`--trim-reflection` and `--trim-godot-classes`. Both target
+`Dn2CppExporter.BuildDropIn` adds three flags for Web: `--direct-pinvoke '*'`,
+`--trim-reflection` and `--trim-godot-classes`. The direct-import flag is required
+because an Emscripten side module has no general-purpose OS loader; all imports
+must remain visible to wasm-ld. The two trim flags target
 `__wasm_apply_data_relocs`, the single function wasm-ld emits with one store per
 pointer in static data, against V8's compiled-in 7,654,321-byte per-function
 ceiling. That is not an optimization: over the ceiling the module does not

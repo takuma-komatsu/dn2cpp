@@ -392,7 +392,7 @@ internal sealed partial class MethodCompiler
             return;
         if (TryEmitRandomBytesEntryAssemblyPrimitive(callee))
             return;
-        if (TryEmitNativeLibraryGetSymbol(callee))
+        if (TryEmitNativeLibrary(callee))
             return;
         if (TryEmitOrdinalIgnoreCaseIntrinsic(callee))
             return;
@@ -490,6 +490,116 @@ internal sealed partial class MethodCompiler
             + "dn2cpp_fail(\"EntryPointNotFoundException\");");
         Push(StackKind.I8, "intptr_t", $"(intptr_t){symTmp}");
         return true;
+    }
+
+    private bool TryEmitNativeLibrary(MethodInfo callee)
+    {
+        if (callee.DeclaringClass.FullName != "System.Runtime.InteropServices.NativeLibrary")
+            return false;
+        if (callee.Name == "GetSymbol")
+            return TryEmitNativeLibraryGetSymbol(callee);
+
+        var ps = callee.Signature.ParameterTypes;
+        var values = new StackEntry[ps.Length];
+        for (int i = ps.Length - 1; i >= 0; i--)
+            values[i] = Pop();
+
+        if (callee.Name == "SetDllImportResolver" && ps.Length == 2
+            && ps[1] is { Kind: TypeKind.Class, Class: { } resolverClass })
+        {
+            var invoke = resolverClass.Methods.FirstOrDefault(m => m.Name == "Invoke")
+                ?? throw new NotSupportedException("DllImportResolver.Invoke metadata is unavailable");
+            if (invoke.Signature.ParameterTypes.Length != 3)
+                throw new NotSupportedException("DllImportResolver.Invoke has an unsupported signature");
+            TypeDesc search = invoke.Signature.ParameterTypes[2];
+            if (NullableLayout(search) is not (_, { } hasValueField, { } valueField))
+                throw new NotSupportedException(
+                    "DllImportResolver.Invoke search path is not a Nullable<T>");
+            _c.DelegateInvokerUses.Add(resolverClass);
+            string searchType = CppTypes.Of(search);
+            string callback = "+[](Dn2CppObject* __resolver, Dn2CppString* __name, "
+                + "const char* __assembly, int32_t __has_search_path, "
+                + "int32_t __search_path) -> intptr_t { "
+                + searchType + " __search{}; __search." + hasValueField
+                + " = (uint8_t)__has_search_path; __search." + valueField
+                + " = __search_path; return dginvoke_" + resolverClass.CppName
+                + "((" + resolverClass.CppStructName
+                + "*)__resolver, __name, __assembly, __search); }";
+            Emit($"dn2cpp_pinvoke_set_resolver({Cast(values[0], "const char*")}, "
+                + $"{Cast(values[1], "Dn2CppObject*")}, {callback});");
+            return true;
+        }
+
+        if (callee.Name is "Load" or "TryLoad"
+            && ps.Length >= 1 && ps[0].IsString)
+        {
+            bool trying = callee.Name == "TryLoad";
+            bool byName = ps.Length == (trying ? 4 : 3);
+            bool byPath = ps.Length == (trying ? 2 : 1);
+            if (!byName && !byPath)
+                throw new NotSupportedException($"NativeLibrary.{callee.Name} has an unsupported signature");
+            string searchPathHasValue = "0";
+            string searchPathValue = "0";
+            if (byName)
+            {
+                Emit($"if ({Cast(values[1], "const char*")} == nullptr) dn2cpp_throw_argument_null();");
+                if (NullableLayout(ps[2]) is not (_, { } hasValueField, { } valueField))
+                    throw new NotSupportedException(
+                        $"NativeLibrary.{callee.Name} search path is not a Nullable<T>");
+                string searchPath = StructLValue(values[2]);
+                searchPathHasValue = $"(int32_t){searchPath}.{hasValueField}";
+                searchPathValue = $"(int32_t){searchPath}.{valueField}";
+            }
+            string handle = NewTemp("void*");
+            string load = byName
+                ? "dn2cpp_native_library_load_by_name"
+                : "dn2cpp_native_library_load";
+            Emit($"{handle} = {load}("
+                + $"{Cast(values[0], "Dn2CppString*")}, {(trying ? 0 : 1)}"
+                + (byName ? $", {searchPathHasValue}, {searchPathValue}" : "") + ");");
+            if (trying)
+            {
+                int outIndex = ps.Length - 1;
+                if (ps[outIndex].Kind != TypeKind.ByRef)
+                    throw new NotSupportedException("NativeLibrary.TryLoad without an out handle");
+                Emit($"*{Cast(values[outIndex], "intptr_t*")} = (intptr_t){handle};");
+                Push(StackKind.I4, "int32_t", $"({handle} != nullptr ? 1 : 0)");
+            }
+            else
+            {
+                Push(StackKind.I8, "intptr_t", $"(intptr_t){handle}");
+            }
+            return true;
+        }
+
+        if (callee.Name == "Free" && ps.Length == 1)
+        {
+            Emit($"dn2cpp_native_library_free((void*){Cast(values[0], "intptr_t")});");
+            return true;
+        }
+
+        if (callee.Name is "GetExport" or "TryGetExport"
+            && ps.Length >= 2 && ps[1].IsString)
+        {
+            bool trying = callee.Name == "TryGetExport";
+            string symbol = NewTemp("void*");
+            Emit($"{symbol} = dn2cpp_native_library_get_symbol("
+                + $"(void*){Cast(values[0], "intptr_t")}, {Cast(values[1], "Dn2CppString*")});");
+            if (trying)
+            {
+                int outIndex = ps.Length - 1;
+                Emit($"*{Cast(values[outIndex], "intptr_t*")} = (intptr_t){symbol};");
+                Push(StackKind.I4, "int32_t", $"({symbol} != nullptr ? 1 : 0)");
+            }
+            else
+            {
+                Emit($"if ({symbol} == nullptr) dn2cpp_throw_entry_point_not_found("
+                    + $"{Cast(values[1], "Dn2CppString*")});");
+                Push(StackKind.I8, "intptr_t", $"(intptr_t){symbol}");
+            }
+            return true;
+        }
+        return false;
     }
 
     /// <summary>The GC surface, SpanHelpers.Memmove, and the Marshal last-error /

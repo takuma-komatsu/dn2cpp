@@ -11,7 +11,7 @@ public static unsafe class Program
     /// <c>MarshalDirectiveException</c> at the call ("pointers must not have a MarshalAs
     /// attribute set"), and the transpile refuses before the descriptor can be ignored.
     /// Transpiled by the negative arm of gates/build-and-run-pinvoke-native.sh, never
-    /// run. libc needs no --pinvoke-module opt-in, so validation reaches the
+    /// run. Every user import is admitted, so validation reaches the
     /// descriptor.</summary>
     [DllImport("libc")]
     private static extern void dn2cpp_never_linked_fnptr_descriptor(

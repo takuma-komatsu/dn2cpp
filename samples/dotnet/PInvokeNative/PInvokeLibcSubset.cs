@@ -4,8 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace PInvokeLibcSubset;
 
-// Blittable primitives, pointers and an ASCII string into the always-linked libc, so no
-// link flag is emitted — unlike every other section in this bucket.
+// Blittable primitives, pointers and an ASCII string into the platform C library.
 internal static unsafe class Program
 {
     // Implicit entry point: the method name is the symbol.
@@ -36,15 +35,22 @@ internal static unsafe class Program
     [DllImport("libc", EntryPoint = "memset")]
     private static extern void* MemSet(void* dst, int value, nuint count);
 
-    // "libc" names the always-linked platform C library, which on Windows is the UCRT —
-    // a name no default probe of "libc" reaches. The transpiled binary resolves these
-    // symbols at LINK time, so it needs no resolver and drops the registration; this
-    // exists so real .NET, the oracle this section is diffed against, resolves the same
-    // ucrtbase entry points the C++ link does.
-    private static IntPtr ResolveLibc(string libraryName, Assembly assembly, DllImportSearchPath? searchPath) =>
-        libraryName == "libc" && OperatingSystem.IsWindows()
-            ? NativeLibrary.Load("ucrtbase.dll", assembly, searchPath)
-            : IntPtr.Zero;
+    // "libc" is a logical name shared by the section. Resolve it to the concrete
+    // platform library so the resolver-first path does not depend on a loader's
+    // non-portable alias set.
+    private static IntPtr ResolveLibc(string libraryName, Assembly assembly,
+        DllImportSearchPath? searchPath)
+    {
+        if (libraryName != "libc")
+            return IntPtr.Zero;
+        if (OperatingSystem.IsWindows())
+            return NativeLibrary.Load("ucrtbase.dll", assembly, searchPath);
+        if (OperatingSystem.IsLinux())
+            return NativeLibrary.Load("libc.so.6", assembly, searchPath);
+        if (OperatingSystem.IsMacOS())
+            return NativeLibrary.Load("libSystem.B.dylib", assembly, searchPath);
+        return IntPtr.Zero;
+    }
 
     internal static void __GateEntry()
     {

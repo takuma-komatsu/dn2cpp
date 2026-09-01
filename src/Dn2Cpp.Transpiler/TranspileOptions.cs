@@ -112,12 +112,11 @@ public sealed record TranspileOptions
     /// PlatformNotSupportedException only in the shipped game).</summary>
     public IReadOnlyList<string>? ManifestResourceRoots { get; init; }
 
-    /// <summary>[DllImport] module names (<c>--pinvoke-module</c>, repeatable) whose
-    /// P/Invokes lower to direct native calls from any loaded assembly — the opt-in
-    /// for an external binding library pulled in with <c>-r</c>, whose imports
-    /// otherwise stay on the intrinsic/throw boundary
-    /// (<see cref="Compilation.IsOptedInPInvokeModule"/>).</summary>
-    public IReadOnlyList<string>? PInvokeModules { get; init; }
+    /// <summary>Ordinal <c>module</c> or <c>module!entrypoint</c> selectors from the
+    /// repeatable <c>--direct-pinvoke</c> option. A single <c>*</c> selects every
+    /// import. Imports not selected here use the runtime loader lazily; framework
+    /// PAL imports implemented by the dn2cpp runtime remain direct independently.</summary>
+    public IReadOnlyList<string>? DirectPInvokes { get; init; }
 
     /// <summary>Method-body chunk size cap per emitted C++ translation unit
     /// (overflow spills into generated_N.cpp); a non-positive value keeps

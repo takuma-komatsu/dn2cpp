@@ -1089,6 +1089,11 @@ internal sealed partial class MethodCompiler
                 // intrinsic table.
                 if (_c.TryResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context) is { } real)
                 {
+                    // Runtime primitives referenced across assemblies need the same
+                    // route as an intra-CoreLib MethodDef. NativeLibrary is the
+                    // important case: a user resolver calls Load through a MemberRef.
+                    if (TryEmitMethodDefIntercept(CoreIntrinsics.MdRuntimePrimitive, real))
+                        return;
                     // The framework EventSource tracing guards, reached as a
                     // MemberReference too: ConcurrentDictionary lives in
                     // System.Collections.Concurrent.dll (pulled in via --auto-ref),
@@ -2065,23 +2070,22 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // A P/Invoke (`[DllImport]`) method has no IL body; lower a call to it to a
-        // direct native call into its extern "C" entry point. Bounded to the
-        // app module — a real CoreLib pulled in with -r keeps its own P/Invokes on the
-        // intrinsic/throw boundary (their native symbols are runtime-internal, modeled
-        // by hand-written intrinsics, not linked) — EXCEPT the .NET PAL
+        // A P/Invoke (`[DllImport]`) method has no IL body; lower a call through the
+        // shared marshaller to lazy resolution or a selected direct native bind. Framework
+        // imports stay on the intrinsic/throw boundary unless explicitly selected or backed
+        // by a runtime-provided module. The latter includes the .NET PAL
         // (`libSystem.Native`, the SystemNative_* POSIX wrappers, which the dn2cpp
         // runtime implements itself in runtime/core/platform/posix/) and plain `libc`
         // imports (always-linked platform symbols, e.g. macOS `clonefile`). Those two
         // modules make the real BCL file-I/O bodies (FileStream / SafeFileHandle /
         // RandomAccess behind System.IO.File) transpilable as ordinary native calls.
-        // A module the run opted in with `--pinvoke-module` lowers the same way from
-        // any loaded assembly — the route for an external binding library pulled in
-        // with -r. Which modules lower is Compilation.LowersToDirectNativeCall, the
+        // User imports from any loaded assembly lower through the same marshaller;
+        // binding is lazy unless --direct-pinvoke selects the metadata pair. Which
+        // methods lower is Compilation.LowersToPInvoke, the
         // one predicate this route shares with the address-taken (ldftn) path
         // (an address-taken import synthesizes its body from this same lowering),
         // so the two cannot drift.
-        if (callee.PInvoke is { } pinv && _c.LowersToDirectNativeCall(callee))
+        if (callee.PInvoke is { } pinv && _c.LowersToPInvoke(callee))
         {
             EmitPInvokeCall(callee, pinv);
             return;

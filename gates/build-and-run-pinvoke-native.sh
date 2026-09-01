@@ -6,9 +6,9 @@
 # in/out, bool marshalling, byref strings, char & wide-char/string marshalling,
 # string & StringBuilder, [StructLayout] structs, GetLastWin32Error, custom-lib
 # linking, runtime-primitive interop, and cross-assembly P/Invoke: the
-# PInvokeRefLib reference assembly declares its own [DllImport("dn2cpptest")]s,
-# admitted by `--pinvoke-module dn2cpptest` — with a negative arm asserting the
-# flagless transpile still refuses them (the opt-in stays an opt-in), and a
+# PInvokeRefLib reference assembly declares its own [DllImport("dn2cpptest")]s.
+# Both app and referenced-assembly imports use resolver/OS-loader lazy binding;
+# neither contributes a static link manifest. A
 # second negative arm (step 6) asserting a struct whose field carries
 # a [MarshalAs] descriptor the struct marshaller does not implement (ByValTStr)
 # REFUSES at transpile, naming the field — the shape used to cross as a pointer
@@ -23,11 +23,10 @@
 # verdict rather than citing a measurement.
 #
 # Also the system-libc section (PInvokeLibcSubset, folded in from its own gate):
-# [DllImport] into always-linked libc/libSystem with blittable primitives,
-# pointers and an ASCII string. Each pinvokeimpl method lowers to a direct native
-# call into an extern "C" entry point declared once by the emitter (aliased via an
-# asm label so it never collides with the libc prototype the runtime header already
-# includes).
+# [DllImport] into libc/libSystem with blittable primitives, pointers and an ASCII
+# string. These user declarations take the same resolver-first lazy path as every
+# other app import; their resolver maps the logical `libc` name to the host's
+# concrete C-library filename. CoreLib PAL declarations remain direct runtime calls.
 # Covers int/long integer returns (abs/llabs), a double return (atof/strtod — NOT
 # sqrt/pow/floor/ceil, which glibc keeps in libm, not libc.so.6; the double ARGUMENT
 # crossing is PInvokeCustomLibSubset's), implicit vs explicit EntryPoint, a
@@ -35,16 +34,12 @@
 # (strtod's end), and a void* (pointer) return aliasing its destination (memset) plus
 # a pointer == pointer compare. That section used to assert a hard-coded expected
 # string; folded here it is exact-diffed against real .NET instead. Its own
-# DllImportResolver redirects `libc` onto ucrtbase.dll on Windows, where the
-# platform C library carries those symbols under a name no default probe reaches —
-# the ORACLE needs it; the transpiled binary link-resolves them and drops it.
+# DllImportResolver redirects `libc` onto ucrtbase.dll, libc.so.6 or
+# libSystem.B.dylib. A bare `libc` is not a portable loader name.
 #
-# It adds NOTHING to this gate's link setup, which is why it can live here: `libc`
-# is in Compilation.IsRuntimeProvidedPInvokeModule, so the transpile admits it with
-# no --pinvoke-module opt-in, and the emitter writes no link token for a
-# runtime-provided module — the retired gate's own pinvoke-libs.txt was empty, and
-# this gate's still reads `dn2cpptest` alone. The -L/-rpath machinery below is the
-# custom library's and stays untouched.
+# It adds nothing to this gate's link setup, which is why it can live here: the OS
+# loader supplies libc and the lazy import writes no link token. The -L / loader-path
+# machinery below is only for the custom test library.
 #
 # Former gates: pinvoke-{array,bool,byrefstring,char,customlib,lasterror,string,
 # stringbuilder,struct,widechararray,widestring}, runtime-prim, pinvoke-libc-subset.
@@ -103,31 +98,24 @@ build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
 app="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 reflib="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/PInvokeRefLib.dll"
 
-echo "== 4/11 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
-invoke_cli "$app" -r "$corelib" -r "$reflib" --pinvoke-module dn2cpptest -o "$OUT"
+echo "== 4/11 Transpiling app + real CoreLib + PInvokeRefLib (lazy P/Invoke) =="
+invoke_cli "$app" -r "$corelib" -r "$reflib" -o "$OUT"
 
-echo "== 5/11 Asserting the flagless transpile refuses the cross-assembly import =="
-# Deliberately NOT cached, and BEFORE the cache gate (the trim-reflection
-# typo-arm doctrine): the refusal leaves no output surface to key on, and the
-# regression this arm pins — a referenced module's [DllImport] lowering without
-# the opt-in (say, its module name hardcoded into IsRuntimeProvidedPInvokeModule)
-# — leaves the POSITIVE transpile's bytes identical, so a warm cache would
-# replay green right over it. Re-running the ~seconds transpile every time is
-# the insurance that keeps the opt-in an opt-in.
-NEG_OUT="artifacts/pinvokenative-noflag"
-rm -rf "$NEG_OUT"
-set +e
-neg_err=$(invoke_cli "$app" -r "$corelib" -r "$reflib" -o "$NEG_OUT" 2>&1)
-neg_code=$?
-set -e
-printf '%s\n' "$neg_err" | tail -2
-if [ "$neg_code" -ne 2 ]; then
-    echo "FAIL: flagless cross-assembly [DllImport] transpile exited $neg_code (want 2: the no-IL-body refusal)" >&2
-    exit 1
-fi
-grep -q "error: .*PInvokeRefLib.*dn2cpptest_.*no IL body and no intrinsic mapping" <<<"$neg_err" \
-    || { echo "FAIL: the refusal did not name the cross-assembly import" >&2; exit 1; }
-echo "flagless refusal OK: exit 2, named the cross-assembly import"
+echo "== 5/11 Asserting lazy imports stay out of the static link manifests =="
+[ ! -e "$OUT/pinvoke-libs.txt" ] \
+    || { echo "FAIL: lazy imports emitted pinvoke-libs.txt" >&2; exit 1; }
+[ ! -e "$OUT/pinvoke-symbols.txt" ] \
+    || { echo "FAIL: lazy imports emitted pinvoke-symbols.txt" >&2; exit 1; }
+
+# Entry-point selectors are ordinal metadata matches. Only the selected symbol
+# enters the static manifests; other imports of the same module stay lazy.
+DIRECT_SELECTOR_OUT="artifacts/pinvokenative-direct-selector"
+invoke_cli "$app" -r "$corelib" -r "$reflib" \
+    --direct-pinvoke 'dn2cpptest!dn2cpptest_add' -o "$DIRECT_SELECTOR_OUT"
+[ "$(tr -d '\r' < "$DIRECT_SELECTOR_OUT/pinvoke-libs.txt")" = 'dn2cpptest' ] \
+    || { echo "FAIL: entry-point selector emitted the wrong library manifest" >&2; exit 1; }
+[ "$(tr -d '\r' < "$DIRECT_SELECTOR_OUT/pinvoke-symbols.txt")" = $'dn2cpptest\tdn2cpptest_add' ] \
+    || { echo "FAIL: entry-point selector emitted symbols beyond its exact match" >&2; exit 1; }
 
 echo "== 6/11 Asserting the ByValTStr struct-field crossing refuses at transpile =="
 # SUBJECT: the P/Invoke STRUCT-FIELD [MarshalAs] descriptor gate
@@ -253,6 +241,64 @@ grep -q "error: .*DescribedEnum.*'T' carries \[MarshalAs(UnmanagedType.Struct)\]
     || { echo "FAIL: the refusal did not name the field and its Struct descriptor" >&2; printf '%s\n' "$sd_err" | tail -3 >&2; exit 1; }
 echo "Struct-on-enum crossing refusal OK: exit 2, named the field and descriptor"
 
+echo "== asserting an unmodelled framework QCall stays behind the refusal boundary =="
+build_proj samples/dotnet/PInvokeFrameworkQCallBad/PInvokeFrameworkQCallBad.csproj
+qcall_app="samples/dotnet/PInvokeFrameworkQCallBad/bin/$CONFIG/$TFM/System.PInvokeFrameworkQCallBad.dll"
+QCALL_OUT="artifacts/pinvokenative-framework-qcall-neg"
+rm -rf "$QCALL_OUT"
+qcall_rc=0
+qcall_err=$(invoke_cli "$qcall_app" -r "$corelib" -o "$QCALL_OUT" 2>&1) || qcall_rc=$?
+if [ "$qcall_rc" -ne 2 ]; then
+    echo "FAIL: an unmodelled framework QCall transpiled with exit $qcall_rc (want 2)" >&2
+    printf '%s\n' "$qcall_err" | tail -3 >&2
+    exit 1
+fi
+grep -q "error: .*PInvokeFrameworkQCallBad.*Probe.*no IL body and no intrinsic mapping" <<<"$qcall_err" \
+    || { echo "FAIL: the framework-QCall refusal did not name the unmodelled method" >&2; printf '%s\n' "$qcall_err" | tail -3 >&2; exit 1; }
+echo "framework QCall refusal OK: exit 2, before any runtime library lookup"
+
+echo "== dynamic resolver and NativeLibrary APIs (exact diff vs real .NET) =="
+build_proj samples/dotnet/PInvokeDynamic/PInvokeDynamic.csproj
+dynamic_app="samples/dotnet/PInvokeDynamic/bin/$CONFIG/$TFM/PInvokeDynamic.dll"
+dynamic_ref="samples/dotnet/PInvokeDynamic/bin/$CONFIG/$TFM/PInvokeRefLib.dll"
+dynamic_out="artifacts/pinvokedynamic"
+invoke_cli "$dynamic_app" -r "$corelib" -r "$dynamic_ref" -o "$dynamic_out"
+[ ! -e "$dynamic_out/pinvoke-libs.txt" ] \
+    || { echo "FAIL: dynamic imports emitted pinvoke-libs.txt" >&2; exit 1; }
+[ ! -e "$dynamic_out/pinvoke-symbols.txt" ] \
+    || { echo "FAIL: dynamic imports emitted pinvoke-symbols.txt" >&2; exit 1; }
+if [ "$DN2CPP_OS" = macos ]; then
+    # The selector matches the raw metadata name; only the emitted binding sees
+    # the Darwin ABI bridge rewrite.
+    darwin_selector_out="artifacts/pinvokedynamic-darwin-selector"
+    rm -rf "$darwin_selector_out"
+    invoke_cli "$dynamic_app" -r "$corelib" -r "$dynamic_ref" \
+        --direct-pinvoke 'libc!setattrlist' -o "$darwin_selector_out"
+    grep -Fq 'DN2CPP_PINVOKE_ASM("dn2cpp_setattrlist")' \
+        "$darwin_selector_out/generated.h" \
+        || { echo "FAIL: raw Darwin selector did not emit the rewritten ABI symbol" >&2; exit 1; }
+    if grep -Fq 'DN2CPP_PINVOKE_ASM("setattrlist")' \
+        "$darwin_selector_out/generated.h"; then
+        echo "FAIL: Darwin selector bound the raw metadata symbol" >&2
+        exit 1
+    fi
+fi
+compile_console "$dynamic_out" PInvokeDynamic
+assembly_lib_name=$(lib_name dn2cpptest_assembly)
+cp -f "$libtest" "$dynamic_out/$assembly_lib_name"
+dynamic_managed_dir=$(dirname "$dynamic_app")
+cp -f "$libtest" "$dynamic_managed_dir/$assembly_lib_name"
+if [ "$DN2CPP_OS" = windows ]; then
+    libdir_posix=$(cygpath -u "$LIBDIR")
+    libtest_native=$(native_path "$libtest")
+    dynamic_native=$(env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" "./$dynamic_out/PInvokeDynamic")
+    dynamic_dotnet=$(env "PATH=$libdir_posix:$PATH" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest_native" dotnet "$dynamic_app")
+else
+    dynamic_native=$(env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" "./$dynamic_out/PInvokeDynamic")
+    dynamic_dotnet=$(env "$LIB_PATH_ENV=$LIBDIR" DN2CPP_PINVOKE_TEST_LIBRARY="$libtest" dotnet "$dynamic_app")
+fi
+assert_output "$dynamic_native" "$dynamic_dotnet"
+
 # The native test library's source dir is a key input beyond the transpile
 # surface: the run dlopens what step 1 built from it.
 if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
@@ -263,19 +309,11 @@ if gate_cache_check "$OUT" "pinvoke-native|$corelib" \
 fi
 
 echo "== 11/11 Linking against libdn2cpptest and running (exact diff vs real .NET) =="
-extra_link_flags="$(libpath_flag "$LIBDIR")"
-consumer_rpath="$(consumer_rpath_flags "$LIBDIR")"
-[ -n "$consumer_rpath" ] && extra_link_flags="$extra_link_flags $consumer_rpath"
-DN2CPP_EXTRA_LINK_FLAGS="$extra_link_flags" compile_console "$OUT" "$PROJECT"
-# On macOS the native binary needs no runtime env change: install_name_flags
-# baked the absolute -install_name into libdn2cpptest at link time (step 1),
-# and that path is copied into the consumer's LC_LOAD_DYLIB, so the loader
-# finds it unassisted. On Linux there is no such propagation — the .so only
-# carries a DT_SONAME, so the consumer binary needs its own DT_RUNPATH,
-# which consumer_rpath_flags adds above via DN2CPP_EXTRA_LINK_FLAGS. Either
-# way, only the `dotnet` oracle needs DYLD_LIBRARY_PATH/LD_LIBRARY_PATH (a
-# dedicated var — replacing it outright is harmless). Windows has no rpath
-# equivalent, so BOTH the native binary and the oracle need $LIBDIR on PATH
+compile_console "$OUT" "$PROJECT"
+# Both POSIX binaries resolve the lazy import through the platform loader, so
+# the test library directory is supplied through DYLD_LIBRARY_PATH / LD_LIBRARY_PATH.
+# Windows has no rpath equivalent, so both the native binary and the oracle need
+# $LIBDIR on PATH
 # (the DLL search path) at run time — prepended, not replacing, since `env`'s
 # own PATH-based lookup of its argv[0] (dotnet/the native exe) also uses the
 # new PATH.
@@ -285,7 +323,7 @@ if [ "$DN2CPP_OS" = windows ]; then
     native_out=$(env "PATH=$libdir_posix:$PATH" "./$OUT/$PROJECT")
     dotnet_out=$(env "PATH=$libdir_posix:$PATH" dotnet "$app")
 else
-    native_out=$("./$OUT/$PROJECT")
+    native_out=$(env "$LIB_PATH_ENV=$LIBDIR" "./$OUT/$PROJECT")
     dotnet_out=$(env "$LIB_PATH_ENV=$LIBDIR" dotnet "$app")
 fi
 assert_output "$native_out" "$dotnet_out"

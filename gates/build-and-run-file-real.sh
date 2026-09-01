@@ -38,12 +38,10 @@
 #                       ProcessName/StartTime/MainModule; those lower to the
 #                       always-linked libSystem, so step 6 asserts no libproc row
 #                       is reported bounded.
-#   BoundedImportSubset both ends of the per-row bounded-import verdict, at RUN
-#                       time: a LOUD row (NativeLibrary.Load) must throw a catchable
-#                       exception naming the module, a SILENT one
-#                       (Debugger.IsAttached) must keep answering its default. Both
-#                       lines are written to diff identically against real .NET even
-#                       though the two hosts fail differently — see the file. Plus
+#   BoundedImportSubset the implemented dynamic loader and a bounded import at RUN
+#                       time: NativeLibrary.Load must throw DllNotFoundException for
+#                       a missing path, while the SILENT Debugger.IsAttached row keeps
+#                       answering its truthful default. Plus
 #                       the bound's OTHER mouth: an import reached as a METHOD
 #                       GROUP rather than called, which is why this gate's
 #                       transpile carries a --cut (see step 3) and why step 6
@@ -358,7 +356,7 @@ invoke_cli "$app" -r "$corelib" \
 tail -10 "$bounded_measure.log"
 bounded_tsv="$bounded_measure/s0-bounded-imports.tsv"
 
-# ---- The host-independent half: the two QCall rows BoundedImportSubset reaches ----
+# ---- The host-independent bounded imports BoundedImportSubset reaches ----
 # These are in CoreLib, which every host has, so this arm carries the verdict assert
 # and the Darwin arm below only adds libproc — keeping the verdict column off a
 # Darwin-only path. The "report is silent at zero" negative control lives in
@@ -374,15 +372,10 @@ bad_cols=${bad_cols%%$'\n'*}
     echo "FAIL: $bounded_tsv has a row without exactly 4 columns (module/entry/method/verdict):" >&2
     printf '%s\n' "$bad_cols" >&2
     exit 1; }
-# The LOUD row. NativeLibrary.Load's QCall: real .NET throws DllNotFoundException from
-# the native side, dn2cpp cannot load anything at run time at all, and its zero handle
-# is checked by nobody (measured — neither Load(string) nor the LoadFromPath
-# marshalling wrapper contains a throw opcode). Asserting the verdict WORD, not just
-# the row: a regression to `silent` keeps the row and loses the whole point.
-[ -n "$(awk -F'\t' '$2 == "NativeLibrary_LoadFromPath" && $4 == "throws"' "$bounded_tsv")" ] || {
-    echo "FAIL: $bounded_tsv carries no throwing NativeLibrary_LoadFromPath row — either" >&2
-    echo "      BoundedImportSubset stopped reaching NativeLibrary.Load, or its verdict" >&2
-    echo "      went back to silent (which step 4's diff would also have caught)" >&2
+# NativeLibrary.Load is no longer a bounded QCall. It is implemented by the
+# platform loader and must not appear in this report.
+[ -z "$(awk -F'\t' '$2 ~ /^NativeLibrary_Load/' "$bounded_tsv")" ] || {
+    echo "FAIL: NativeLibrary.Load regressed to a bounded QCall" >&2
     cat "$bounded_tsv" >&2
     exit 1; }
 # The SILENT row, asserted just as hard: `false` is the correct answer for a managed
@@ -394,16 +387,13 @@ bad_cols=${bad_cols%%$'\n'*}
     exit 1; }
 # The ordinary path says the same thing in one line, and the split is what a reader
 # acts on: "N bounded" alone does not say whether their program will throw.
-grep -qE '^dn2cpp: [0-9]+ native imports bounded \(.*QCall.*\) — [1-9][0-9]* throw PlatformNotSupportedException naming the module, [0-9]+ answer 0/null silently.*pass --verbose to name them$' \
+grep -qE '^dn2cpp: [0-9]+ native imports bounded \(.*\) — 0 throw PlatformNotSupportedException naming the module, [1-9][0-9]* answer 0/null silently.*pass --verbose to name them$' \
     "$transpile_log" || {
     echo "FAIL: the ordinary transpile's bounded-import line does not carry the throwing/silent split" >&2
     grep -n 'native imports bounded' "$transpile_log" >&2 || echo "      (no such line at all)" >&2
     exit 1; }
-grep -qE -- '-- native imports bounded: [0-9]+ \([1-9][0-9]* throwing, [0-9]+ silent\) --' "$bounded_measure.log" || {
+grep -qE -- '-- native imports bounded: [0-9]+ \(0 throwing, [1-9][0-9]* silent\) --' "$bounded_measure.log" || {
     echo "FAIL: the --measure summary does not carry the bounded-import count and split beside the gap histograms" >&2
-    exit 1; }
-grep -q 'NativeLibrary_LoadFromPath.*\[throws\]' "$bounded_measure.log" || {
-    echo "FAIL: --verbose did not name the bounded imports (with verdicts) in the --measure summary" >&2
     exit 1; }
 
 # ---- libproc must be ABSENT from the report, on every host ----
@@ -437,20 +427,19 @@ if grep -q 'libproc' "$transpile_log"; then
     grep -n 'libproc' "$transpile_log" >&2
     exit 1
 fi
-# Three rows exactly: the two QCalls — the substituted set is precisely the calls into
-# a CoreCLR a transpiled image does not have — plus the one this gate MANUFACTURES
+# Two rows exactly: the Debugger QCall plus the one this gate MANUFACTURES
 # with step 3's --cut, whose whole purpose is to be reached as a method group and by
 # nothing else (asserted row by row below). An extra row is not necessarily wrong, but
 # it is always a decision somebody made, and this is where it gets noticed. The count
 # is host-independent: the cut module and both QCalls are named by CoreLib.
 bounded_row_count=$(grep -c . "$bounded_tsv" || true)
-[ "${bounded_row_count:-0}" -eq 3 ] || {
-    echo "FAIL: $bounded_tsv has ${bounded_row_count:-0} rows, want 3 (the two QCalls" >&2
-    echo "      BoundedImportSubset reaches, plus step 3's --cut method-group import)" >&2
+[ "${bounded_row_count:-0}" -eq 2 ] || {
+    echo "FAIL: $bounded_tsv has ${bounded_row_count:-0} rows, want 2 (the Debugger QCall" >&2
+    echo "      plus step 3's --cut method-group import)" >&2
     cat "$bounded_tsv" >&2
     exit 1; }
-echo "OK: 3 imports reported with verdicts — QCall NativeLibrary_LoadFromPath throws,"
-echo "    QCall Debugger silent, the --cut dn2cpp-absent-module silent (reached only"
+echo "OK: 2 imports reported with verdicts — QCall Debugger silent and the --cut"
+echo "    dn2cpp-absent-module silent (reached only"
 echo "    as a method group); no libproc row on any host"
 
 # ---- The bound's OTHER mouth: an import reached as a METHOD GROUP ----

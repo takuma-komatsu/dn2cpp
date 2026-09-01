@@ -50,7 +50,7 @@ invoke_cli \
     "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSample.dll" \
     -r "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSharp.dll" \
     -r "$corelib" \
-    -o "$OUT" --gdextension
+    -o "$OUT" --gdextension --direct-pinvoke '*'
 
 # Cache: beyond the generated output + inputs, the exported Xcode project also
 # depends on the Xcode toolchain, the iOS SDK, and the Godot iOS export

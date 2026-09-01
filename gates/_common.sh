@@ -2584,7 +2584,12 @@ _corelib_gate_core() {
             || { echo "error: requested reference $name not found beside the CoreLib: $bcl/$name.dll" >&2; return 1; }
         refs+=(-r "$bcl/$name.dll")
     done
-    invoke_cli "$_CG_APP" "${refs[@]}" -o "$out"
+    local target_args=()
+    if [ -n "${IOS_SIM:-}" ] || [ -n "${IOS_DEV:-}" ]; then
+        target_args=(--direct-pinvoke '*')
+    fi
+    invoke_cli "$_CG_APP" "${refs[@]}" \
+        ${target_args[@]+"${target_args[@]}"} -o "$out"
 }
 
 # _corelib_gate_check OUT CONTEXT [EXTRA_KEY_INPUT...] — gate_cache_check over the

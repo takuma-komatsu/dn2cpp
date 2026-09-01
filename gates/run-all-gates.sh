@@ -384,6 +384,8 @@ ORDERED_PROJECTS=(
     "samples/dotnet/TrimReflect/TrimReflect.csproj"
     "samples/dotnet/PInvokeRefLib/PInvokeRefLib.csproj"
     "samples/dotnet/PInvokeNative/PInvokeNative.csproj"
+    "samples/dotnet/PInvokeDynamic/PInvokeDynamic.csproj"
+    "samples/dotnet/PInvokeFrameworkQCallBad/PInvokeFrameworkQCallBad.csproj"
     "samples/dotnet/CustomAsyncTaskLib/CustomAsyncTaskLib.csproj"
     "samples/dotnet/CustomAsyncTaskType/CustomAsyncTaskType.csproj"
     "samples/dotnet/CustomAsyncTaskTypeExceed/CustomAsyncTaskTypeExceed.csproj"

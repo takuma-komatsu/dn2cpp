@@ -3,8 +3,7 @@ using System;
 using PInvokeRefLib;
 
 // Every import this section reaches is declared in the referenced PInvokeRefLib assembly,
-// not the app module, so it needs `--pinvoke-module dn2cpptest` to admit that module into
-// the direct-native-call lowering. The gate's negative arm asserts the refusal without it.
+// not the app module. Referenced-assembly imports use the same lowering as app imports.
 namespace PInvokeCrossAsmSubset;
 
 internal static class Program

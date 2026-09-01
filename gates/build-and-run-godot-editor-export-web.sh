@@ -313,6 +313,23 @@ grep -qF "using the prebuilt runtime" "$EXPORTER_LOG" || {
     echo "FAIL: the Web slot did not import the bundle's prebuilt runtime ($EXPORTER_LOG)" >&2
     grep -i "prebuilt" "$EXPORTER_LOG" >&2 || echo "  (the configure said nothing about a prebuilt at all)" >&2
     exit 1; }
+# Command records start with `$` and join argv with spaces. These two option
+# tokens contain no whitespace, so require them as adjacent fields on the same
+# --dotnet-module record; an unrelated transcript mention cannot satisfy this.
+awk '
+    $1 == "$" {
+        transpile = direct_all = 0
+        for (i = 2; i <= NF; i++) {
+            if ($i == "--dotnet-module") transpile = 1
+            if (i < NF && $i == "--direct-pinvoke" && $(i + 1) == "*") direct_all = 1
+        }
+        if (transpile && direct_all) found = 1
+    }
+    END { exit found ? 0 : 1 }
+' "$EXPORTER_LOG" || {
+    echo "FAIL: the Web transpiler invocation lacks the literal '--direct-pinvoke *' argv pair" >&2
+    grep -F -- '--dotnet-module' "$EXPORTER_LOG" >&2 || true
+    exit 1; }
 # And it compiled through the SDK inside that bundle, not one this host happens to
 # carry. Nothing downstream can tell the two apart -- a host SDK of the same
 # version produces the same artifacts -- so a bundle that quietly stopped shipping

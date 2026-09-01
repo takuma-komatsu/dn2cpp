@@ -209,10 +209,10 @@ if [ "$DN2CPP_OS:$(uname -m)" = macos:arm64 ]; then
 fi
 
 echo "== 3/6 Publishing through Dn2Cpp.Build =="
-PINVOKE_ARGS="--auto-ref --pinvoke-module dn2cpp_native_asset"
+PINVOKE_ARGS="--auto-ref --direct-pinvoke dn2cpp_native_asset"
 PUBLISH_ARGS=()
 if [ -n "$SHARED_LIB" ]; then
-    PINVOKE_ARGS="$PINVOKE_ARGS --pinvoke-module dn2cpp_shared_asset"
+    PINVOKE_ARGS="$PINVOKE_ARGS --direct-pinvoke dn2cpp_shared_asset"
     PUBLISH_ARGS+=("-p:DefineConstants=NATIVE_ASSET_SHARED")
 fi
 PUBLISH="$FIXTURE/App/bin/$CONFIG/$TFM/$RID/publish"

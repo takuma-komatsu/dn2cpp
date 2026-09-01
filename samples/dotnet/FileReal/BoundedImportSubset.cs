@@ -2,15 +2,12 @@
 using System;
 using System.Runtime.InteropServices;
 
-// The RUN-time half of the bounded-import contract: the gate's step 6 asserts what the
-// transpile SAYS about the imports it bounded, this section asserts what the substituted
-// call sites DO. There is no frozen snapshot here, so the exact diff against real .NET is
-// the assertion and every line printed must be one both hosts can agree on.
+// The run-time half of two native-import contracts: NativeLibrary.Load exercises the
+// implemented dynamic loader, while Debugger.IsAttached exercises a bounded import's
+// substituted call site. There is no frozen snapshot here, so the exact diff against real
+// .NET is the assertion and every line printed must be one both hosts can agree on.
 //
-//   LOUD  — NativeLibrary.Load over a module no host has. Real .NET throws
-//           DllNotFoundException, dn2cpp's bounded thunk PlatformNotSupportedException
-//           naming the module and entry point; the printed agreement is "it failed
-//           loudly", so a row flipped to Silent prints False against real .NET's True.
+//   LOAD   — NativeLibrary.Load over a path no host has throws DllNotFoundException.
 //   SILENT — Debugger.IsAttached, bounded to its `false` default. That default is the truth
 //           on both hosts; flip the row to Loud and the native side throws instead.
 //
@@ -71,13 +68,11 @@ static class Program
 {
     internal static void __GateEntry()
     {
-        Console.WriteLine("-- a LOUD bounded import: NativeLibrary.Load --");
+        Console.WriteLine("-- a missing dynamic library: NativeLibrary.Load --");
         bool loud;
         try
         {
-            // A name no loader can resolve on any host. Not a path — LoadByName and
-            // LoadFromPath are two rows and a bare name takes the one the public
-            // single-argument overload binds.
+            // An exact path spelling no loader can resolve on any host.
             NativeLibrary.Load("dn2cpp-no-such-native-library");
             loud = false;
         }
@@ -86,13 +81,6 @@ static class Program
             // Real .NET.
             loud = true;
         }
-        catch (PlatformNotSupportedException e)
-        {
-            // dn2cpp. The module is "QCall" and the entry point names the CoreCLR
-            // function — both have to be in the sentence for it to be actionable.
-            loud = e.Message.Contains("QCall") && e.Message.Contains("NativeLibrary_LoadFromPath");
-        }
-
         Console.WriteLine("Load fails loudly: " + loud);
 
         Console.WriteLine("-- a SILENT bounded import: Debugger.IsAttached --");
