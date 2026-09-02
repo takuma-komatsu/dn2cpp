@@ -5,10 +5,11 @@
 // vtables, interface tables and metadata — and V8 refuses any function body
 // over 7,654,321 bytes at WebAssembly.instantiate, before a byte of it runs
 // (wasm-ld has no split of its own: llvm/llvm-project#58780). The body is a
-// flat store sequence with an empty operand stack between stores, so any
-// store boundary is a safe cut: this script rewrites the function into
-// sub-limit chunk functions called in order from the original index, keeping
-// every export, import, table and name intact.
+// straight-line store sequence. A cut is safe where the operand stack is empty;
+// locals that are live there are returned to a dispatcher and passed into the
+// next chunk. This script rewrites the function into sub-limit chunk functions
+// called in order from the original index, keeping every export, import, table
+// and name intact.
 //
 // Usage: node dn2cpp_split_apply_data_relocs.mjs <module.wasm>
 // No-op (exit 0, no output) when the function is absent or already under the
@@ -45,6 +46,16 @@ function lebU32(v) {
     const out = [];
     do { let b = v & 0x7f; v = Math.floor(v / 128); if (v) b |= 0x80; out.push(b); } while (v);
     return Buffer.from(out);
+}
+
+function valType(r) {
+    const start = r.off, kind = r.u8();
+    if (kind === 0x63 || kind === 0x64) r.skipS64(); // ref null/ref heaptype
+    return buf.subarray(start, r.off);
+}
+
+function localOp(op, index) {
+    return Buffer.concat([Buffer.from([op]), lebU32(index)]);
 }
 
 // --- section scan ---
@@ -102,6 +113,7 @@ const funcTypes = [];
     const r = new Reader(buf, funcSec.payloadStart);
     for (let n = r.u32(); n > 0; n--) funcTypes.push(r.u32());
 }
+const typeIdx = funcTypes[definedIdx];
 
 // --- code section: per-entry {start,end} covering size prefix + body ---
 const entries = [];
@@ -122,10 +134,49 @@ const entry = entries[definedIdx];
 const bodySize = entry.bodyEnd - entry.bodyStart;
 if (bodySize <= V8_MAX_FUNCTION_BODY) process.exit(0);
 
+// The replacement dispatcher preserves the exported () -> () signature. The
+// private chunk signatures carry original locals as parameters and only the
+// values live at their ending boundary as results.
+const typeSec = section(1);
+if (!typeSec) { console.error(`${path}: missing type section`); process.exit(2); }
+let typeCount, typeEntriesStart, targetParamCount = -1, targetResultCount = -1;
+{
+    const r = new Reader(buf, typeSec.payloadStart);
+    typeCount = r.u32();
+    typeEntriesStart = r.off;
+    for (let i = 0; i < typeCount; i++) {
+        const form = r.u8();
+        if (form !== 0x60) {
+            console.error(`${path}: ${TARGET_NAME}: unsupported type form 0x${form.toString(16)}`);
+            process.exit(2);
+        }
+        const paramCount = r.u32();
+        for (let j = 0; j < paramCount; j++) valType(r);
+        const resultCount = r.u32();
+        for (let j = 0; j < resultCount; j++) valType(r);
+        if (i === typeIdx) {
+            targetParamCount = paramCount;
+            targetResultCount = resultCount;
+        }
+    }
+    if (r.off !== typeSec.payloadEnd || targetParamCount < 0) {
+        console.error(`${path}: malformed type section`);
+        process.exit(2);
+    }
+}
+if (targetParamCount !== 0 || targetResultCount !== 0) {
+    console.error(`${path}: ${TARGET_NAME}: expected a () -> () function`);
+    process.exit(2);
+}
+
 // --- decode the body: locals declaration, then a flat instruction sequence ---
 const r = new Reader(buf, entry.bodyStart);
 const localsStart = r.off;
-for (let n = r.u32(); n > 0; n--) { r.u32(); r.u8(); }
+const localTypes = [];
+for (let n = r.u32(); n > 0; n--) {
+    const count = r.u32(), type = valType(r);
+    for (let i = 0; i < count; i++) localTypes.push(type);
+}
 const localsDecl = buf.subarray(localsStart, r.off);
 const instrStart = r.off;
 
@@ -143,8 +194,9 @@ const OPS = {
     0x41: [0, 1, r => r.u32()], 0x42: [0, 1, r => r.skipS64()],
     0x6a: [2, 1, null], 0x6b: [2, 1, null], 0x7c: [2, 1, null], 0x7d: [2, 1, null],
 };
-const cuts = []; // instruction-stream offsets where the operand stack is empty
+const instrs = []; // straight-line instructions, for stack depth + local liveness
 let depth = 0;
+let finalCut = -1;
 while (true) {
     const at = r.off, op = r.u8();
     if (op === 0x0b) {
@@ -152,7 +204,7 @@ while (true) {
             console.error(`${path}: ${TARGET_NAME}: malformed body end`);
             process.exit(2);
         }
-        cuts.push(at);
+        finalCut = at;
         break;
     }
     const spec = OPS[op];
@@ -163,42 +215,139 @@ while (true) {
     depth -= spec[0];
     if (depth < 0) { console.error(`${path}: ${TARGET_NAME}: stack underflow at +0x${at.toString(16)}`); process.exit(2); }
     depth += spec[1];
-    if (spec[2]) spec[2](r);
-    if (depth === 0) cuts.push(r.off);
+    let localRead = -1, localWrite = -1;
+    if (op === 0x20)
+        localRead = r.u32();
+    else if (op === 0x21 || op === 0x22)
+        localWrite = r.u32();
+    else if (spec[2])
+        spec[2](r);
+    if ((localRead >= localTypes.length && localRead >= 0)
+        || (localWrite >= localTypes.length && localWrite >= 0)) {
+        console.error(`${path}: ${TARGET_NAME}: local index out of range at +0x${at.toString(16)}`);
+        process.exit(2);
+    }
+    instrs.push({ end: r.off, depth, localRead, localWrite });
 }
 
-// --- slice into chunks of ~CHUNK_TARGET, cut only at empty-stack boundaries ---
+// Backwards liveness identifies the state each empty-stack boundary must hand to
+// the next chunk. local.get makes its local live; local.set/local.tee kills the
+// prior value. Control flow remains outside OPS and therefore fails above rather
+// than making this straight-line analysis optimistic.
+const liveAtCut = new Map([[finalCut, []]]);
+const live = new Set();
+for (let i = instrs.length - 1; i >= 0; i--) {
+    const ins = instrs[i];
+    if (ins.depth === 0)
+        liveAtCut.set(ins.end, [...live].sort((a, b) => a - b));
+    if (ins.localWrite >= 0)
+        live.delete(ins.localWrite);
+    if (ins.localRead >= 0)
+        live.add(ins.localRead);
+}
+const cuts = [...liveAtCut.keys()].sort((a, b) => a - b);
+
+function chunkBodySize(start, cut) {
+    let size = 1 + (cut - start) + 1; // zero local groups + instructions + end
+    for (const index of liveAtCut.get(cut)) size += 1 + lebU32(index).length;
+    return size;
+}
+
+// --- slice into chunks of ~CHUNK_TARGET, without crossing V8's hard limit ---
 const chunks = [];
 let sliceStart = instrStart;
-for (const cut of cuts) {
-    if (cut - sliceStart >= CHUNK_TARGET || cut === cuts[cuts.length - 1]) {
-        if (cut > sliceStart) chunks.push(buf.subarray(sliceStart, cut));
+let lastWithinLimit = -1;
+for (let i = 0; i < cuts.length; i++) {
+    const cut = cuts[i];
+    const bodySizeAtCut = chunkBodySize(sliceStart, cut);
+    if (bodySizeAtCut > V8_MAX_FUNCTION_BODY) {
+        if (lastWithinLimit <= sliceStart) {
+            console.error(`${path}: ${TARGET_NAME}: no empty-stack cut within V8's ${V8_MAX_FUNCTION_BODY}-byte function-body limit`);
+            process.exit(2);
+        }
+        chunks.push({
+            slice: buf.subarray(sliceStart, lastWithinLimit),
+            liveOut: liveAtCut.get(lastWithinLimit),
+        });
+        sliceStart = lastWithinLimit;
+        lastWithinLimit = -1;
+        i--; // reconsider this cut relative to the new chunk start
+        continue;
+    }
+    lastWithinLimit = cut;
+    if (bodySizeAtCut >= CHUNK_TARGET || cut === finalCut) {
+        if (cut > sliceStart)
+            chunks.push({ slice: buf.subarray(sliceStart, cut), liveOut: liveAtCut.get(cut) });
         sliceStart = cut;
+        lastWithinLimit = -1;
     }
 }
-if (chunks.length < 2) process.exit(0);
+if (sliceStart !== finalCut) {
+    console.error(`${path}: ${TARGET_NAME}: failed to cover the relocation body with safe chunks`);
+    process.exit(2);
+}
 
 const totalFuncs = numImportedFuncs + funcTypes.length;
-const typeIdx = funcTypes[definedIdx];
+const addedTypes = [];
+const chunkTypes = new Map();
+function chunkType(liveOut) {
+    if (localTypes.length === 0) return typeIdx;
+    const key = liveOut.join(',');
+    if (chunkTypes.has(key)) return chunkTypes.get(key);
+    const params = Buffer.concat(localTypes);
+    const results = Buffer.concat(liveOut.map(index => localTypes[index]));
+    const body = Buffer.concat([
+        Buffer.from([0x60]), lebU32(localTypes.length), params,
+        lebU32(liveOut.length), results,
+    ]);
+    const index = typeCount + addedTypes.length;
+    addedTypes.push(body);
+    chunkTypes.set(key, index);
+    return index;
+}
+for (const chunk of chunks) chunk.typeIdx = chunkType(chunk.liveOut);
 
-const chunkBodies = chunks.map(slice => {
-    const body = Buffer.concat([localsDecl, slice, Buffer.from([0x0b])]);
+const chunkBodies = chunks.map(chunk => {
+    const returns = chunk.liveOut.map(index => localOp(0x20, index));
+    const body = Buffer.concat([
+        Buffer.from([0x00]), chunk.slice, ...returns, Buffer.from([0x0b]),
+    ]);
+    if (body.length > V8_MAX_FUNCTION_BODY) {
+        console.error(`${path}: ${TARGET_NAME}: generated chunk exceeds V8's ${V8_MAX_FUNCTION_BODY}-byte function-body limit`);
+        process.exit(2);
+    }
     return Buffer.concat([lebU32(body.length), body]);
 });
 const dispatcher = (() => {
-    const parts = [Buffer.from([0x00])]; // no locals
-    for (let i = 0; i < chunks.length; i++)
+    const parts = [localsDecl];
+    const passLocals = Buffer.concat(localTypes.map((_, index) => localOp(0x20, index)));
+    for (let i = 0; i < chunks.length; i++) {
+        parts.push(passLocals);
         parts.push(Buffer.from([0x10]), lebU32(totalFuncs + i));
+        for (let j = chunks[i].liveOut.length - 1; j >= 0; j--)
+            parts.push(localOp(0x21, chunks[i].liveOut[j]));
+    }
     parts.push(Buffer.from([0x0b]));
     const body = Buffer.concat(parts);
+    if (body.length > V8_MAX_FUNCTION_BODY) {
+        console.error(`${path}: ${TARGET_NAME}: generated dispatcher exceeds V8's ${V8_MAX_FUNCTION_BODY}-byte function-body limit`);
+        process.exit(2);
+    }
     return Buffer.concat([lebU32(body.length), body]);
 })();
 
 // --- reassemble: rewrite the function and code sections, copy the rest ---
+function rebuildTypeSection() {
+    return Buffer.concat([
+        lebU32(typeCount + addedTypes.length),
+        buf.subarray(typeEntriesStart, typeSec.payloadEnd),
+        ...addedTypes,
+    ]);
+}
 function rebuildFunctionSection() {
     const parts = [lebU32(funcTypes.length + chunks.length)];
     for (const t of funcTypes) parts.push(lebU32(t));
-    for (let i = 0; i < chunks.length; i++) parts.push(lebU32(typeIdx));
+    for (const chunk of chunks) parts.push(lebU32(chunk.typeIdx));
     return Buffer.concat(parts);
 }
 function rebuildCodeSection() {
@@ -210,7 +359,8 @@ function rebuildCodeSection() {
 }
 const out = [buf.subarray(0, 8)];
 for (const sec of sections) {
-    const payload = sec === funcSec ? rebuildFunctionSection()
+    const payload = sec === typeSec ? rebuildTypeSection()
+        : sec === funcSec ? rebuildFunctionSection()
         : sec === codeSec ? rebuildCodeSection()
         : buf.subarray(sec.payloadStart, sec.payloadEnd);
     out.push(Buffer.from([sec.id]), lebU32(payload.length), payload);

@@ -4,11 +4,13 @@
 //
 // Usage: node _wasm_split_selftest.js <splitter.mjs> <workdir>
 //
-// Synthesizes a module whose exported __wasm_apply_data_relocs is one flat
-// (__memory_base + off) <- value store sequence past the cap, then asserts:
-// V8 refuses it; the splitter rewrites it; V8 compiles the result; running it
-// against a nonzero __memory_base leaves exactly the right bytes in memory;
-// a second splitter run is a byte-identical no-op.
+// Synthesizes two oversized modules whose exported
+// __wasm_apply_data_relocs is a flat (base + off) <- value store sequence. One
+// loads __memory_base for each store; the other captures it in an i32 local that
+// remains live across chunk boundaries. For each shape, asserts: V8 refuses the
+// input; the splitter rewrites it; V8 compiles the result; running it against a
+// nonzero __memory_base leaves the right bytes in memory; a second splitter run
+// is a byte-identical no-op.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -25,38 +27,65 @@ function str(s) { const b = [...Buffer.from(s, 'utf8')]; return [...leb(b.length
 
 const N = 640_000; // ~10 MB of body — past kV8MaxWasmFunctionSize
 const value = i => (Math.imul(i, 2654435761) >>> 8) & 0x7fffffff;
-
-const body = [0x00]; // no locals
-for (let i = 0; i < N; i++)
-    body.push(0x23, 0x00,                 // global.get $__memory_base
-        ...[0x41, ...sleb(4 * i)], 0x6a,  // i32.const 4i; i32.add
-        ...[0x41, ...sleb(value(i))],     // i32.const value
-        0x36, 0x02, 0x00);                // i32.store align=4 offset=0
-body.push(0x0b);
-
 const FN = '__wasm_apply_data_relocs';
-const module_ = Buffer.from([
-    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
-    ...section(1, vec([[0x60, 0x00, 0x00]])),                       // type: () -> ()
-    ...section(2, vec([[...str('env'), ...str('__memory_base'), 0x03, 0x7f, 0x00]])),
-    ...section(3, vec([[0x00]])),                                   // func 0: type 0
-    ...section(5, vec([[0x00, ...leb(Math.ceil(4 * N / 65536) + 1)]])),
-    ...section(7, vec([[...str(FN), 0x00, 0x00], [...str('memory'), 0x02, 0x00]])),
-    ...section(10, vec([[...leb(body.length), ...body]])),
-]);
-const file = path.join(workdir, 'split-selftest.wasm');
-fs.writeFileSync(file, module_);
 
-(async () => {
+const scenarios = [
+    {
+        name: 'no-locals',
+        prefix: [0x00],
+        loadBase: [0x23, 0x00], // global.get $__memory_base
+    },
+    {
+        name: 'live-i32-local',
+        prefix: [
+            0x01, 0x01, 0x7f, // one local declaration: i32 local 0
+            0x23, 0x00,       // global.get $__memory_base
+            0x21, 0x00,       // local.set 0 — live across every chunk boundary
+        ],
+        loadBase: [0x20, 0x00], // local.get 0
+    },
+];
+
+function makeBody({ prefix, loadBase }) {
+    const body = [...prefix];
+    for (let i = 0; i < N; i++)
+        body.push(...loadBase,
+            ...[0x41, ...sleb(4 * i)], 0x6a, // i32.const 4i; i32.add
+            ...[0x41, ...sleb(value(i))],    // i32.const value
+            0x36, 0x02, 0x00);               // i32.store align=4 offset=0
+    body.push(0x0b);
+    return body;
+}
+
+function makeModule(body) {
+    return Buffer.from([
+        0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+        ...section(1, vec([[0x60, 0x00, 0x00]])), // type: () -> ()
+        ...section(2, vec([[...str('env'), ...str('__memory_base'), 0x03, 0x7f, 0x00]])),
+        ...section(3, vec([[0x00]])), // func 0: type 0
+        ...section(5, vec([[0x00, ...leb(Math.ceil(4 * N / 65536) + 1)]])),
+        ...section(7, vec([[...str(FN), 0x00, 0x00], [...str('memory'), 0x02, 0x00]])),
+        ...section(10, vec([[...leb(body.length), ...body]])),
+    ]);
+}
+
+async function runScenario(scenario) {
+    const body = makeBody(scenario);
+    const file = path.join(workdir, `split-selftest-${scenario.name}.wasm`);
+    fs.writeFileSync(file, makeModule(body));
+
     let refused = false;
     try { await WebAssembly.compile(fs.readFileSync(file)); }
     catch (e) { refused = /maximum function size/.test(e.message); if (!refused) throw e; }
-    if (!refused) { console.error('FAIL: V8 compiled the oversized function — the premise is gone; re-measure kV8MaxWasmFunctionSize'); process.exit(1); }
-    console.log(`pre-split: V8 refuses the ${body.length}-byte function, as the splitter presumes`);
+    if (!refused)
+        throw new Error(`[${scenario.name}] V8 compiled the oversized function — the premise is gone; re-measure kV8MaxWasmFunctionSize`);
+    console.log(`[${scenario.name}] pre-split: V8 refuses the ${body.length}-byte function, as the splitter presumes`);
 
     const run = spawnSync(process.execPath, [splitter, file], { encoding: 'utf8' });
-    if (run.status !== 0) { console.error(`FAIL: splitter exited ${run.status}\n${run.stderr}`); process.exit(1); }
-    if (!/split __wasm_apply_data_relocs/.test(run.stdout)) { console.error(`FAIL: splitter did not report a split:\n${run.stdout}`); process.exit(1); }
+    if (run.status !== 0)
+        throw new Error(`[${scenario.name}] splitter exited ${run.status}\n${run.stderr}`);
+    if (!/split __wasm_apply_data_relocs/.test(run.stdout))
+        throw new Error(`[${scenario.name}] splitter did not report a split:\n${run.stdout}`);
     process.stdout.write(run.stdout);
 
     const split = fs.readFileSync(file);
@@ -67,13 +96,18 @@ fs.writeFileSync(file, module_);
     const mem = new DataView(inst.exports.memory.buffer);
     for (let i = 0; i < N; i += 977) {
         const got = mem.getInt32(base + 4 * i, true);
-        if (got !== value(i)) { console.error(`FAIL: store ${i}: expected ${value(i)}, memory holds ${got}`); process.exit(1); }
+        if (got !== value(i))
+            throw new Error(`[${scenario.name}] store ${i}: expected ${value(i)}, memory holds ${got}`);
     }
-    console.log(`post-split: compiled, ran, and all sampled stores landed (base=${base})`);
+    console.log(`[${scenario.name}] post-split: compiled, ran, and all sampled stores landed (base=${base})`);
 
     const again = spawnSync(process.execPath, [splitter, file], { encoding: 'utf8' });
-    if (again.status !== 0 || !fs.readFileSync(file).equals(split)) {
-        console.error('FAIL: a second splitter run was not a byte-identical no-op'); process.exit(1);
-    }
-    console.log('re-run: no-op, byte-identical');
+    if (again.status !== 0 || !fs.readFileSync(file).equals(split))
+        throw new Error(`[${scenario.name}] a second splitter run was not a byte-identical no-op`);
+    console.log(`[${scenario.name}] re-run: no-op, byte-identical`);
+}
+
+(async () => {
+    for (const scenario of scenarios)
+        await runScenario(scenario);
 })().catch(e => { console.error(`FAIL: ${e.stack}`); process.exit(1); });
