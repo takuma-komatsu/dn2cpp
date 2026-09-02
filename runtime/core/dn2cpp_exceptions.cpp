@@ -574,6 +574,24 @@ void dn2cpp_throw_missing_method(const char* message)
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
 }
 
+[[noreturn]] void dn2cpp_throw_dll_not_found(const char* moduleName)
+{
+    std::string message = "Unable to load shared library '";
+    message += moduleName;
+    message += "'.";
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_dll_not_found_exception_type,
+        dn2cpp_string_from_utf8(message.c_str(), static_cast<int32_t>(message.size())), nullptr));
+}
+
+[[noreturn]] void dn2cpp_throw_entry_point_not_found(const char* entryPoint)
+{
+    std::string message = "Unable to find an entry point named '";
+    message += entryPoint;
+    message += "'.";
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_entry_point_not_found_exception_type,
+        dn2cpp_string_from_utf8(message.c_str(), static_cast<int32_t>(message.size())), nullptr));
+}
+
 // ResourceManager asked for a set no loaded assembly embeds. The TYPE is the point:
 // .NET's documentation tells callers to catch MissingManifestResourceException, so any
 // other family makes the documented `catch` silently not fire. The message stays

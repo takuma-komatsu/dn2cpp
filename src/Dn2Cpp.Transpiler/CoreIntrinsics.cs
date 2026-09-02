@@ -698,13 +698,6 @@ internal static partial class CoreIntrinsics
         // buffered loop instead, exactly as on Unix.
         [("System.IO.Strategies.AsyncWindowsFileStreamStrategy", "CopyToAsync")]
             = BoundedVerdict.Silent,
-        // NativeLibrary.SetDllImportResolver — a resolver registration lives in a
-        // ConditionalWeakTable<Assembly, DllImportResolver> (DependentHandle
-        // InternalCalls, not modeled), and a transpiled image resolves its
-        // P/Invokes at link time — a registered resolver can never be consulted,
-        // so dropping the registration is behavior-neutral on every lane.
-        [("System.Runtime.InteropServices.NativeLibrary", "SetDllImportResolver")]
-            = BoundedVerdict.Silent,
         // win-x64 CoreLib's COM-interop-aware weak reference path (absent from Unix CoreLib
         // entirely). dn2cpp never creates a COM RCW or registers a ComWrappers object — COM
         // interop is a permanent non-goal (docs/STATUS.md) — so PossiblyComObject is always
@@ -740,17 +733,15 @@ internal static partial class CoreIntrinsics
             = BoundedVerdict.Silent,
         [("System.Runtime.InteropServices.ComWrappers", "<GetIUnknownImplInternal>g____PInvoke|1_0")]
             = BoundedVerdict.Silent,
-        // NativeLibrary.Load's two dlopen P/Invoke thunks. Reached only as the body of a
-        // DllImportResolver delegate; SetDllImportResolver is itself bounded above, so the
-        // registration is dropped and a transpiled image resolves its P/Invokes at LINK
-        // time — the resolver can never be consulted at run time.
-        //
-        // LOUD, because neither `Load` nor `LoadFromPath` contains a throw opcode:
+        // NativeLibrary.Load's fallback dlopen P/Invoke thunks. Supported public
+        // NativeLibrary overloads are intercepted before reaching these bodies; keep an
+        // unexpected CoreLib path loud because neither `Load` nor `LoadFromPath` contains
+        // a throw opcode:
         // `throwOnError` is honoured on the NATIVE side of the QCall, so a bounded zero
         // would make the public, documented-to-throw NativeLibrary.Load hand back
         // IntPtr.Zero without a word and the first symptom would be whatever the caller does
-        // with a null module handle. A transpiled image cannot load a library at run time at
-        // all, so the honest substitute is the loud one.
+        // with a null module handle. These QCall thunks are not the implemented loader seam,
+        // so an unexpected path that reaches one must stay loud.
         [("System.Runtime.InteropServices.NativeLibrary", "<LoadFromPath>g____PInvoke|1_0")]
             = BoundedVerdict.Loud,
         [("System.Runtime.InteropServices.NativeLibrary", "<LoadByName>g____PInvoke|2_0")]
@@ -1084,7 +1075,9 @@ internal static partial class CoreIntrinsics
         // NativeLibrary.GetSymbol -> dn2cpp_native_library_get_symbol. Its real body is the
         // raw compiler-generated `<GetSymbol>g____PInvoke` QCall stub — module "QCall", no
         // managed implementation to link against.
-        "System.Runtime.InteropServices.NativeLibrary" => name == "GetSymbol",
+        "System.Runtime.InteropServices.NativeLibrary" => name is "GetSymbol"
+            or "Load" or "TryLoad" or "Free" or "GetExport"
+            or "TryGetExport" or "SetDllImportResolver",
         // Interop.GetRandomBytes -> a deterministic fixed-seed fill. It is the IL forwarder to
         // the bodyless InternalCall Interop+Sys::GetNonCryptographicallySecureRandomBytes;
         // cutting the forwarder is what makes that InternalCall unreachable.
@@ -1207,6 +1200,8 @@ internal static partial class CoreIntrinsics
         ["System.OutOfMemoryException"] = "&dn2cpp_out_of_memory_exception_type",
         ["System.InvalidCastException"] = "&dn2cpp_invalid_cast_exception_type",
         ["System.TypeLoadException"] = "&dn2cpp_type_load_exception_type",
+        ["System.DllNotFoundException"] = "&dn2cpp_dll_not_found_exception_type",
+        ["System.EntryPointNotFoundException"] = "&dn2cpp_entry_point_not_found_exception_type",
         ["System.NotSupportedException"] = "&dn2cpp_not_supported_exception_type",
         ["System.PlatformNotSupportedException"] = "&dn2cpp_platform_not_supported_exception_type",
         ["System.FormatException"] = "&dn2cpp_format_exception_type",

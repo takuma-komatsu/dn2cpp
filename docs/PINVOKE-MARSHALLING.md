@@ -6,6 +6,19 @@ shapes below. Each row is a feature of the low-level interop surface, and the
 native side of every one of them is exercised by
 `samples/native/dn2cpptest/dn2cpptest.c`.
 
+User imports bind lazily on their first call. The declaring assembly's registered
+`DllImportResolver` runs first; a zero handle falls through to the platform loader,
+then the requested export is looked up. Concurrent unresolved callers may each run the
+resolver; the ABI-typed call site atomically publishes and caches a result for later
+calls. Direct IL calls to one imported MethodDef share a cache; its address-taken
+forwarder has the separate cache CoreCLR gives the delegate/function-pointer stub.
+`--direct-pinvoke <module[!entrypoint]>` keeps a
+selected import on the static-link path, and `--direct-pinvoke '*'` selects all
+imports for static-only targets. Framework imports retain their intrinsic/refusal
+boundary unless the runtime provides their module or a direct selector admits them.
+Matching is ordinal and exact. Only direct imports are written to `pinvoke-libs.txt`
+and `pinvoke-symbols.txt`.
+
 **The last column attributes each row to a bucket and a section, never to a gate
 script**: a gate name is what a fold retires, while the section name is what a fold
 carries over. Every section named below is a `.cs` file of the one
@@ -27,8 +40,8 @@ section and says the wrong thing about it.
 
 | Feature | Managed shape | Native shape | Notes | Asserted by (`PInvokeNative` section) |
 |---|---|---|---|---|
-| Marshalling envelope | blittable scalars (integer/float, IntPtr/UIntPtr, pointers, blittable-underlying enums) | precise native-ABI-width cast | The core envelope over system libc. | `PInvokeLibcSubset` (the libc arm, which binds no custom library), `PInvokeCustomLibSubset` |
-| Non-system library linking | `[DllImport("mylib")]` | the library's `extern "C"` symbol | Only adds the linking path; marshalling is the same envelope. | `PInvokeCustomLibSubset` |
+| Marshalling envelope | blittable scalars (integer/float, IntPtr/UIntPtr, pointers, blittable-underlying enums) | precise native-ABI-width cast | The core envelope over the platform C library. | `PInvokeLibcSubset` (whose resolver maps logical `libc` to the host's concrete C-library name), `PInvokeCustomLibSubset` |
+| Non-system library loading | `[DllImport("mylib")]` | the library's `extern "C"` symbol | Resolver-first lazy loading changes only binding; marshalling is the same envelope. | `PInvokeCustomLibSubset` |
 | Default/Ansi strings | `string` under default/Ansi/Auto CharSet | NUL-terminated buffer — host code page on Windows, UTF-8 on Unix | Managed→native in; a `string` return is decoded and its buffer freed (matching .NET's default marshaller). | `PInvokeStringSubset` |
 | Unicode strings | `string` under `CharSet.Unicode` | NUL-terminated UTF-16 (`LPWStr`) | Same in/return contract as the Ansi row. | `PInvokeWideStringSubset` |
 | Blittable arrays | `int[]`, `byte[]`, … | pointer to element 0 (pinned, no copy) | `[In]` reads and `[In,Out]` write-backs both hit the managed buffer; null array → null pointer. | `PInvokeArraySubset` |
@@ -69,12 +82,28 @@ asserts the transpile does too).
 
 Three further sections of the same bucket assert a P/Invoke **mechanism** rather
 than a marshalling shape, so they have no row: `PInvokeCrossAsmSubset` (imports
-declared by a *referenced* assembly, admitted only by `--pinvoke-module <name>`;
-the native gate's step 5 asserts the flagless transpile still refuses them),
+declared by a *referenced* assembly),
 `NativeImplSubset` (`[Dn2Cpp.Runtime.NativeImplementation]` substituting transpiled
 C# for an import at transpile time, so the library is never referenced or linked),
 and `PInvokeStackallocUtf8Subset` (a `stackalloc` UTF-8 buffer passed as a raw
 `byte*` — no marshaller runs at all; it rides the envelope row's pointer case).
+
+The separate `samples/dotnet/PInvokeDynamic` bucket keeps dynamic-only behavior
+off the WASM/static build of `PInvokeNative`. Its native exact diff covers resolver
+redirection, multicast invocation, method/assembly search-path values, declaring
+assembly identity, resolver counts across a synchronized concurrent first wave and
+later calls through distinct managed call sites, zero fallback, duplicate
+registration, resolver exception propagation, catchable missing-library/export
+failures, exact-path and assembly/name `NativeLibrary` loads, null handle/name
+validation, empty paths, and zero-handle `Free`.
+
+The `NativeLibrary` Assembly overloads validate the Assembly argument and use the
+same filename candidates and search-path policy as lazy `[DllImport]`. The default
+policy and `AssemblyDirectory` probe the transpiled executable's `AppContext` base
+directory first. On Windows, the remaining `DllImportSearchPath` values map to their
+corresponding `LOAD_LIBRARY_SEARCH_*` flags; other hosts ignore those Windows-only
+bits as CoreCLR does. Unknown flag bits raise `PlatformNotSupportedException` rather
+than silently selecting ordinary loader probing.
 
 A further section is in this bucket for the TARGET the bucket is built for rather
 than for P/Invoke at all: `SequentialSizeSubset` measures the size of a

@@ -494,7 +494,8 @@ internal sealed partial class Compilation
             options.NoManifestResources ?? Array.Empty<string>(), StringComparer.Ordinal);
         _manifestResourceRoots = new HashSet<string>(
             options.ManifestResourceRoots ?? Array.Empty<string>(), StringComparer.Ordinal);
-        _pinvokeModules = new HashSet<string>(options.PInvokeModules ?? Array.Empty<string>(), StringComparer.Ordinal);
+        _directPInvokes = new HashSet<string>(
+            options.DirectPInvokes ?? Array.Empty<string>(), StringComparer.Ordinal);
         // Snapshot before Build(): the reachability drain consults IsBoundedMethod.
         _backendBoundedMethods = options.Backend is null
             ? new() : new(options.Backend.AdditionalBoundedMethods);
@@ -1297,11 +1298,29 @@ internal sealed partial class Compilation
 
     public void NoteCctorEnsure(MethodInfo cctor) => CctorEnsureTargets.Add(cctor);
 
-    /// <summary>P/Invoke methods whose call site actually lowered to a native call.
+    /// <summary>Direct P/Invoke methods whose call site actually lowered to a native call.
     /// A P/Invoke method has no IL body, so it never enters the normal
     /// <see cref="Reachable"/> set (Reach cuts Rva==0); the emitter walks this set
     /// instead to declare each distinct entry-point symbol <c>extern "C"</c>.</summary>
     public HashSet<MethodInfo> PInvokeCalls { get; } = new();
+
+    /// <summary>Program-wide lazy P/Invoke resolution cells. Direct IL calls share a
+    /// MethodDef cell; the address-taken forwarder has a second cell, matching CoreCLR's
+    /// distinct delegate/function-pointer stub while still sharing across all users of
+    /// each route.</summary>
+    public HashSet<string> LazyPInvokeCaches { get; } = new(StringComparer.Ordinal);
+
+    public string NoteLazyPInvokeCall(MethodInfo method, bool ftnWrapper)
+    {
+        string name = LazyPInvokeCacheName(method, ftnWrapper);
+        LazyPInvokeCaches.Add(name);
+        return name;
+    }
+
+    internal void ResetLazyPInvokeCallsForEmission() => LazyPInvokeCaches.Clear();
+
+    private static string LazyPInvokeCacheName(MethodInfo method, bool ftnWrapper) =>
+        "dn2cpp_pinvoke_cache_" + method.CppName + (ftnWrapper ? "_ftn" : "");
 
     /// <summary>Managed implementations of native P/Invoke entry points, keyed by the
     /// <c>[DllImport]</c> (module, entry point) they replace: static methods carrying
@@ -1910,7 +1929,7 @@ internal sealed partial class Compilation
                     Attributes = md.Attributes,
                     ImplAttributes = md.ImplAttributes,
                     Rva = md.RelativeVirtualAddress,
-                    PInvoke = ReadPInvoke(reader, md),
+                    PInvoke = ReadPInvoke(module, md),
                     IsUnmanagedCallersOnly = isUco,
                     UnmanagedEntryPoint = ucoEntryPoint,
                 };
@@ -5553,15 +5572,17 @@ internal sealed partial class Compilation
     /// import's explicit name, falling back to the method's own name when unspecified.
     /// Per-parameter / return <c>[MarshalAs(UnmanagedType.*)]</c> overrides are decoded
     /// from the marshalling descriptors.</summary>
-    private static PInvokeInfo? ReadPInvoke(MetadataReader reader, MethodDefinition md)
+    private static PInvokeInfo? ReadPInvoke(Module module, MethodDefinition md)
     {
+        var reader = module.Reader;
         if ((md.Attributes & MethodAttributes.PinvokeImpl) == 0)
             return null;
         var import = md.GetImport();
         if (import.Module.IsNil)
             return null; // malformed / vararg pinvoke with no module ref — leave as extern
         string moduleName = reader.GetString(reader.GetModuleReference(import.Module).Name);
-        string entryPoint = import.Name.IsNil ? reader.GetString(md.Name) : reader.GetString(import.Name);
+        string rawEntryPoint = import.Name.IsNil ? reader.GetString(md.Name) : reader.GetString(import.Name);
+        string entryPoint = rawEntryPoint;
 
         // Darwin [f]setattrlist take a `struct attrlist*` whose leading u_short
         // pair the emitted managed AttrList layout cannot reproduce (sub-int32
@@ -5595,7 +5616,35 @@ internal sealed partial class Compilation
                 paramMarshal[p.SequenceNumber - 1] = u;
         }
 
-        return new PInvokeInfo(moduleName, entryPoint, import.Attributes, retMarshal, paramMarshal);
+        int? searchPath = ReadDefaultDllImportSearchPath(reader, md.GetCustomAttributes());
+        if (searchPath is null && reader.IsAssembly)
+            searchPath = ReadDefaultDllImportSearchPath(
+                reader, reader.GetAssemblyDefinition().GetCustomAttributes());
+
+        return new PInvokeInfo(moduleName, rawEntryPoint, entryPoint, import.Attributes,
+            searchPath, retMarshal, paramMarshal);
+    }
+
+    /// <summary>The first <c>[DefaultDllImportSearchPaths]</c> value in a metadata
+    /// attribute set, or null when the attribute is absent. The value blob is the ECMA-335
+    /// custom-attribute prolog followed by the enum's Int32 value; decoding it directly
+    /// keeps P/Invoke discovery from resolving an otherwise-unused attribute type.</summary>
+    private static int? ReadDefaultDllImportSearchPath(
+        MetadataReader reader, CustomAttributeHandleCollection attributes)
+    {
+        foreach (var cah in attributes)
+        {
+            var ca = reader.GetCustomAttribute(cah);
+            if (AttributeTypeName(reader, ca)
+                != "System.Runtime.InteropServices.DefaultDllImportSearchPathsAttribute")
+                continue;
+            var blob = reader.GetBlobReader(ca.Value);
+            if (blob.Length < 6 || blob.ReadUInt16() != 0x0001)
+                throw new NotSupportedException(
+                    "DefaultDllImportSearchPathsAttribute has an invalid value blob");
+            return blob.ReadInt32();
+        }
+        return null;
     }
 
     /// <summary>Distinct linker library tokens (sorted) for the app-module P/Invoke
@@ -5681,40 +5730,50 @@ internal sealed partial class Compilation
         };
     }
 
-    /// <summary><c>--pinvoke-module</c>: the [DllImport] module names opted in to the
-    /// direct-native-call lowering from any loaded assembly (see
-    /// <see cref="IsOptedInPInvokeModule"/>).</summary>
-    private readonly HashSet<string> _pinvokeModules;
+    /// <summary>The exact selectors supplied by <c>--direct-pinvoke</c>. They are
+    /// intentionally not normalized: a selector names metadata, not a filename
+    /// candidate produced by the platform loader.</summary>
+    private readonly HashSet<string> _directPInvokes;
 
-    /// <summary>True for a <c>[DllImport]</c> module the run opted in with
-    /// <c>--pinvoke-module</c>, so a P/Invoke declared in a referenced assembly (an
-    /// external binding library pulled in with <c>-r</c>, e.g. CriWare's
-    /// <c>cri_atom</c>) lowers to a direct native call exactly like an app-module
-    /// P/Invoke, and its library token reaches the pinvoke-libs.txt link manifest.
-    /// The name is matched by ordinal equality against the exact [DllImport] module
-    /// string — no case folding, no lib-prefix/extension normalization — keeping the
-    /// contract as simple as the declaration it names. A CLI flag rather than an
-    /// environment variable on purpose: it changes the C++ a successful transpile
-    /// emits (the <c>--trim-reflection</c> doctrine). The per-run counterpart of
-    /// <see cref="IsRuntimeProvidedPInvokeModule"/>'s fixed platform set.</summary>
-    public bool IsOptedInPInvokeModule(string module) => _pinvokeModules.Contains(module);
+    public bool IsDirectPInvoke(MethodInfo method)
+    {
+        if (method.PInvoke is not { } pinv)
+            return false;
+        if (_directPInvokes.Contains("*")
+            || _directPInvokes.Contains(pinv.ModuleName)
+            || _directPInvokes.Contains(pinv.ModuleName + "!" + pinv.RawEntryPoint))
+            return true;
+
+        // These imports bind to symbols supplied by the runtime or the target OS
+        // itself. Keep only framework/shim declarations direct; an application or
+        // third-party assembly importing the same module still gets resolver-first
+        // lazy binding, which is observable (notably a user "libc" resolver on Windows).
+        string assembly = method.DeclaringClass.Module.AssemblyName;
+        bool framework = IsFrameworkAssemblyName(assembly)
+            || assembly is "DnZlib" or "DnBrotli" or "DnHttp";
+        return framework && IsRuntimeProvidedPInvokeModule(pinv.ModuleName);
+    }
 
     /// <summary>True for a bodyless <c>[DllImport]</c> method whose call sites lower to a
-    /// direct native call: an app-module import, a runtime-provided module
-    /// (<see cref="IsRuntimeProvidedPInvokeModule"/>), or a per-run opt-in
-    /// (<see cref="IsOptedInPInvokeModule"/>). The ONE predicate every asker shares —
+    /// P/Invoke lowering, either lazy or explicitly direct. The ONE predicate every asker shares —
     /// the call route (<c>MethodCompiler.TranslateCall</c>) and the address-taken path
     /// (the ldftn arm noting <see cref="NotePInvokeFtnTarget"/>) — so the set of imports
     /// that lower cannot drift between a call site and a delegate method group over the
     /// same import.</summary>
-    public bool LowersToDirectNativeCall(MethodInfo m) =>
-        m.Rva == 0 && m.PInvoke is { } pinv
-        && (m.DeclaringClass.Module == AppModule
-            || IsRuntimeProvidedPInvokeModule(pinv.ModuleName)
-            || IsOptedInPInvokeModule(pinv.ModuleName));
+    public bool LowersToPInvoke(MethodInfo m)
+    {
+        if (m.Rva != 0 || m.PInvoke is null)
+            return false;
+
+        // User/library imports are the dynamic-loading surface. Framework imports
+        // remain behind their existing intrinsic/refusal boundary unless the
+        // runtime provides that PAL module or the caller explicitly selects them.
+        return !IsFrameworkAssemblyName(m.DeclaringClass.Module.AssemblyName)
+            || IsDirectPInvoke(m);
+    }
 
     /// <summary>ldftn/delegate targets that are bodyless P/Invokes whose call sites
-    /// lower to direct native calls (<see cref="LowersToDirectNativeCall"/>), e.g.
+    /// use the same lazy/direct lowering (<see cref="LowersToPInvoke"/>), e.g.
     /// CriWare's <c>new CbFunc(NativeMethods.criErr_SetCallback)</c> — a delegate over
     /// the [DllImport] method itself. A call site lowers inline, but taking the address
     /// needs a function; CppEmitter synthesizes each body as a forwarder built from the
@@ -5808,9 +5867,9 @@ internal sealed partial class Compilation
     /// runtime-internal QCalls — stays on the intrinsic/throw boundary, same posture
     /// as POSIX. This fixed set names only modules the runtime/platform itself
     /// provides; the per-run opt-in path coexists with it —
-    /// <see cref="IsOptedInPInvokeModule"/> (<c>--pinvoke-module</c>) admits a named
-    /// module from any loaded assembly, which is how an external binding library's
-    /// imports lower without its module name ever being hardcoded here.</para></summary>
+    /// User declarations do not use this fixed set to decide admission: all reachable
+    /// imports are accepted and bind lazily unless <c>--direct-pinvoke</c> selects them.
+    /// </para></summary>
     public static bool IsRuntimeProvidedPInvokeModule(string module) =>
         module is "libSystem.Native" or "libc" or "libSystem.IO.Compression.Native"
             // macOS process self-inspection. Interop.libproc's `proc_pidinfo` /

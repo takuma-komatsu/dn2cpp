@@ -66,7 +66,7 @@ build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 refs=(-r "$corelib" -r "$YAHA_MANAGED" -r "$YAHA_PIPELINES" "${package_refs[@]}")
 rm -rf "$OUT"
 ( export DN2CPP_MAX_INSTANTIATIONS=30000
-  invoke_cli "$app" "${refs[@]}" --auto-ref --pinvoke-module "$YAHA_MODULE" \
+  invoke_cli "$app" "${refs[@]}" --auto-ref --direct-pinvoke "$YAHA_MODULE" \
       --max-heap-mb 1024 -o "$OUT" )
 native_link_manifest=$(native_path "$PWD/$YAHA_NATIVE")
 printf '%s\n' "$native_link_manifest" > "$OUT/native-assets.txt"
@@ -79,7 +79,7 @@ echo "== 4/7 ASSERT: combined closure is gap-free and uses the generated proxy =
 rm -rf "$MEASURE"
 measure_output=$( \
     export DN2CPP_MAX_INSTANTIATIONS=30000
-    invoke_cli "$app" "${refs[@]}" --auto-ref --pinvoke-module "$YAHA_MODULE" \
+    invoke_cli "$app" "${refs[@]}" --auto-ref --direct-pinvoke "$YAHA_MODULE" \
         --max-heap-mb 1024 --measure -o "$MEASURE" 2>&1 )
 printf '%s\n' "$measure_output"
 [ -f "$MEASURE/s0-gaps.tsv" ] || { echo "FAIL: combined --measure produced no gap report" >&2; exit 1; }

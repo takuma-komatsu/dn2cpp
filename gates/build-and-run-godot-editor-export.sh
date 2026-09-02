@@ -247,7 +247,7 @@ if [ "$DN2CPP_OS" = windows ]; then
     awk -v dependency="$WINDOWS_DEPENDENCY_NAME" '
         { print }
         $0 == "project/assembly_name=\"EditorExportSample\"" {
-            print "dn2cpp/extra_transpile_args=PackedStringArray(\"--pinvoke-module\", \"" dependency "\")"
+            print "dn2cpp/extra_transpile_args=PackedStringArray(\"--direct-pinvoke\", \"" dependency "\")"
             print "dn2cpp/extra_link_libs=PackedStringArray(\"res://native/" dependency ".lib\")"
             print "dn2cpp/extra_shared_objects=PackedStringArray(\"res://native/" dependency ".dll\")"
         }

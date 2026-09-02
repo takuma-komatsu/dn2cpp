@@ -2,7 +2,7 @@
 # WASM-axis sibling of the consolidated P/Invoke gate: the SAME multi-section
 # PInvokeNative program (every desktop section, cross-assembly PInvokeRefLib
 # included), transpiled once against the tree-shaken real CoreLib with
-# `--pinvoke-module dn2cpptest`, then built by em++ into a wasm32 module that
+# `--direct-pinvoke '*'`, then built by em++ into a wasm32 module that
 # statically links libdn2cpptest.a — dn2cpptest.c compiled by emcc into a
 # static archive, resolved through the same pinvoke-libs.txt ->
 # target_link_libraries token plus a gate-supplied -L via DN2CPP_APP_LINK_FLAGS
@@ -74,8 +74,8 @@ build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
 app="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 reflib="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/PInvokeRefLib.dll"
 
-echo "== 3/5 Transpiling app + real CoreLib + PInvokeRefLib (--pinvoke-module dn2cpptest) =="
-invoke_cli "$app" -r "$corelib" -r "$reflib" --pinvoke-module dn2cpptest -o "$OUT"
+echo "== 3/5 Transpiling app + real CoreLib + PInvokeRefLib (--direct-pinvoke '*') =="
+invoke_cli "$app" -r "$corelib" -r "$reflib" --direct-pinvoke '*' -o "$OUT"
 
 # The native test library's source dir is a key input beyond the transpile
 # surface: both the linked archive and the oracle's host library are built

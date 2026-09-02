@@ -22,16 +22,22 @@ normal case. The two exceptions are about which *managed* code the target's Core
 contains, not about the target itself, and both live in
 `src/Dn2Cpp.Transpiler/Compilation.cs`:
 
-- `Compilation.IsRuntimeProvidedPInvokeModule` — the allow-list of native modules
-  whose `[DllImport]`s the runtime answers. A Windows-family target satisfies most
-  of the .NET PAL by admitting the OS import libraries here rather than by writing
-  C++ (§2.2).
+- `Compilation.IsRuntimeProvidedPInvokeModule` — the framework PAL modules whose
+  imports stay direct because the runtime or target OS provides their symbols.
+  User imports are resolver-first and lazy independently of this set. A
+  Windows-family target satisfies most of the .NET PAL by admitting the OS import
+  libraries here rather than by writing C++ (§2.2).
 - the intrinsic route for a P/Invoke module the new target's CoreLib flavour names
   and no existing one does (H6.2).
 
 Everything else is the **C++ runtime under `runtime/`**. It has three per-target
 surfaces, plus a fourth thing people forget: the files that branch on the target
 *outside* the platform directory.
+
+Dynamic loading is the default on Windows, Linux, macOS and Android. A static-only
+target must arrange for `--direct-pinvoke '*'` at its exporter boundary; individual
+static SDKs may instead select their module or exact `module!entrypoint`. Packaging
+remains explicit: resolver-computed filenames are not inferred as shared objects.
 
 ---
 

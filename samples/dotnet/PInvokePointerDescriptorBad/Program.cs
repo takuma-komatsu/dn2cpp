@@ -15,7 +15,7 @@ public unsafe struct DescribedPointer
 
 public static class Program
 {
-    // libc needs no --pinvoke-module opt-in, so validation reaches the field descriptor.
+    // Every user import is admitted, so validation reaches the field descriptor.
     [DllImport("libc")]
     private static extern void dn2cpp_never_linked_pointer_descriptor(DescribedPointer value);
 

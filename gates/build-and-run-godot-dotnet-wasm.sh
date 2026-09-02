@@ -98,7 +98,8 @@ echo "== 2/7 Transpiling (--dotnet-module --trim-reflection, real GodotSharp + n
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 CORELIB=$(resolve_net10_corelib)
 rm -rf "$OUT"
-invoke_cli "$APP" --dotnet-module -r "$CORELIB" -r "$GODOT_DOTNET_GODOTSHARP" --auto-ref --trim-reflection -o "$OUT"
+invoke_cli "$APP" --dotnet-module -r "$CORELIB" -r "$GODOT_DOTNET_GODOTSHARP" \
+    --auto-ref --trim-reflection --direct-pinvoke '*' -o "$OUT"
 
 # That premise, as a tripwire — and it sits above the cache check so it is asserted
 # on a warm hit too. Manifest-resource blobs are carried only when an emitted body

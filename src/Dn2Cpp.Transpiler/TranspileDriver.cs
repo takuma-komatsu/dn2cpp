@@ -374,7 +374,7 @@ public static class TranspileDriver
     /// <para>The line states the substitution AND the verdict, because the bounded leaves
     /// no longer all do the same thing. A <c>Loud</c> row throws a catchable
     /// <c>PlatformNotSupportedException</c> naming the module — used where the caller does
-    /// not check the zero, e.g. the <c>NativeLibrary.Load</c> QCalls. A <c>Silent</c> row's
+    /// not check the substituted zero. A <c>Silent</c> row's
     /// default is simply the truth about a transpiled binary (no managed debugger, no COM,
     /// one assembly load context). Which rows are bodyless imports at all depends on the
     /// host's CoreLib flavour; a <c>--measure</c> run's <c>s0-bounded-imports.tsv</c>

@@ -597,7 +597,14 @@ internal sealed partial class Compilation
                 }
                 // Non-generic parent: reach the real method when it resolves to a
                 // loaded (non-intrinsic) BCL type; otherwise treat as intrinsic.
-                return TryResolveMemberRefMethod(module, (MemberReferenceHandle)handle, ctx);
+                MethodInfo? resolved = TryResolveMemberRefMethod(
+                    module, (MemberReferenceHandle)handle, ctx);
+                if (resolved is not null
+                    && resolved.DeclaringClass.FullName
+                        == "System.Runtime.InteropServices.NativeLibrary"
+                    && CoreIntrinsics.MdRuntimePrimitive.Matches(resolved))
+                    return null;
+                return resolved;
             }
             default:
                 return null;
@@ -726,7 +733,7 @@ internal sealed partial class Compilation
             ImplAttributes = md.ImplAttributes,
             Rva = md.RelativeVirtualAddress,
             Context = ctx,
-            PInvoke = ReadPInvoke(defModule.Reader, md),
+            PInvoke = ReadPInvoke(defModule, md),
             NameSuffix = "__" + string.Join("_", methodArgs.Select(MangleArg)),
         };
         byKey.Add(mkey, mi);

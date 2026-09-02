@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cmath>
 #include <atomic> // std::atomic — the static-constructor guard cell (dn2cpp_cctor_run_once)
+#include <mutex>  // P/Invoke resolver registry and runtime synchronization
 #include <exception>
 #include <type_traits>
 #include <limits>
@@ -2281,6 +2282,8 @@ extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
+extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
 // the `<BaseName>.resources` set it was asked for is embedded in no loaded assembly.
 // Based on Exception rather than SystemException, like every other runtime-raised type
@@ -3935,6 +3938,31 @@ int32_t dn2cpp_marshal_get_last_error(void);
 // way. Reached from Path.GetTempPath's win-x64 GetTempPath2W feature probe (via
 // NativeLibrary.TryGetExport/GetExport).
 void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName);
+
+// NativeAOT-style native-library binding. Resolver registrations are keyed by the
+// declaring assembly's simple-name handle and retain the managed delegate as a GC
+// root. A lazy [DllImport] asks resolver-first, then the platform loader, then looks
+// up the export. Direct calls share a MethodDef cell; an address-taken forwarder has
+// its own cell, matching CoreCLR's distinct delegate/function-pointer stub.
+using Dn2CppPInvokeResolverInvoke = intptr_t (*)(
+    Dn2CppObject* resolver, Dn2CppString* libraryName, const char* assemblyName,
+    int32_t searchPathHasValue, int32_t searchPathValue);
+void dn2cpp_pinvoke_set_resolver(const char* assemblyName, Dn2CppObject* resolver,
+    Dn2CppPInvokeResolverInvoke invoke);
+void* dn2cpp_pinvoke_resolve(const char* moduleName, const char* entryPoint,
+    const char* assemblyName, int32_t searchPathHasValue, int32_t searchPathValue);
+// The string-only NativeLibrary overload is a path load and probes exactly the
+// supplied spelling. The Assembly overload is a name load and applies the same
+// platform filename candidates and search-path policy as DllImport.
+void* dn2cpp_native_library_load(Dn2CppString* path, int32_t throwOnError);
+void* dn2cpp_native_library_load_by_name(Dn2CppString* name, int32_t throwOnError,
+    int32_t searchPathHasValue, int32_t searchPathValue);
+void* dn2cpp_native_library_load_name(const char* name, int32_t throwOnError,
+    int32_t searchPathHasValue, int32_t searchPathValue);
+void dn2cpp_native_library_free(void* handle);
+[[noreturn]] void dn2cpp_throw_dll_not_found(const char* moduleName);
+[[noreturn]] void dn2cpp_throw_entry_point_not_found(const char* entryPoint);
+[[noreturn]] void dn2cpp_throw_entry_point_not_found(Dn2CppString* entryPoint);
 
 // The non-cryptographic random source behind Interop.GetRandomBytes
 // (-> Sys::GetNonCryptographicallySecureRandomBytes on Unix), an InternalCall with

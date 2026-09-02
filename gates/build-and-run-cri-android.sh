@@ -15,7 +15,7 @@
 # by explicit path: the package selects flavors strictly by RuntimeIdentifier
 # machinery, and a plain (host-RID) build resolves the desktop one. The
 # transpile itself is the cross-assembly P/Invoke opt-in end to end:
-# --pinvoke-module cri_atom lowers a referenced assembly's imports to direct
+# --direct-pinvoke cri_atom lowers a referenced assembly's imports to direct
 # native calls and lands the module in pinvoke-libs.txt, where the CMake app
 # link picks it up as -lcri_atom.
 #
@@ -208,7 +208,7 @@ EOF
 # MainScene stays the entry scene and keeps exercising its UI path. The
 # [dotnet] append re-opens the sample's existing section (Godot's ConfigFile
 # merges repeated headers) to add the fork exporter's knobs: extra_transpile_args
-# is how --pinvoke-module cri_atom reaches the editor-driven transpile, and
+# is how --direct-pinvoke cri_atom reaches the editor-driven transpile, and
 # extra_link_flags is how the CRI link inputs reach the drop-in link — the -L
 # pointing pinvoke-libs.txt's -lcri_atom at the package's android-arm64 native
 # directory, plus -lcri_ware_android_le for the engine library the facade only
@@ -228,7 +228,7 @@ AutoVerify="*res://script/AutoVerify.cs"
 
 [dotnet]
 
-dn2cpp/extra_transpile_args=PackedStringArray("--pinvoke-module", "cri_atom")
+dn2cpp/extra_transpile_args=PackedStringArray("--direct-pinvoke", "cri_atom")
 dn2cpp/extra_link_flags=PackedStringArray("-L$(godot_fork_native_path "$CRI_NATIVE_DIR")", "-lcri_ware_android_le")
 
 [editor_plugins]
@@ -317,7 +317,7 @@ dotnet/include_debug_symbols=false
 dotnet/export_backend=2
 EOF
 
-echo "== 3/6 Transpiling with --pinvoke-module cri_atom (android-flavor managed DLL) =="
+echo "== 3/6 Transpiling with --direct-pinvoke cri_atom (android-flavor managed DLL) =="
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 dotnet build "$PROJ/$PROJECT_NAME.csproj" -c ExportRelease --nologo -v q
 APPDIR="$PROJ/.godot/mono/temp/bin/ExportRelease"
@@ -347,7 +347,7 @@ invoke_cli "$APPDIR/$PROJECT_NAME.dll" --dotnet-module \
     -r "$APPDIR/CriWare.CriAtomLE.dll" \
     -r "$APPDIR/SampleExtensions.dll" \
     --auto-ref \
-    --pinvoke-module cri_atom \
+    --direct-pinvoke cri_atom \
     -o "$GEN"
 
 # The whole point of the opt-in: the module reaches the link manifest, where
@@ -496,7 +496,7 @@ if grep -q "ERROR: Export .NET Project" "$OUT/export.log"; then
     cat "$OUT/export.log" >&2
     exit 1
 fi
-for marker in "dn2cpp: extra transpile args (project setting): --pinvoke-module cri_atom" \
+for marker in "dn2cpp: extra transpile args (project setting): --direct-pinvoke cri_atom" \
               "dn2cpp: transpiling" "dn2cpp: compiling the drop-in library" "dn2cpp: staged"; do
     grep -qF "$marker" "$OUT/export.log" \
         || { echo "FAIL: marker \"$marker\" missing from the export log" >&2

@@ -1142,6 +1142,8 @@ int32_t dn2cpp_marshal_get_last_error(void) { return g_dn2cpp_last_pinvoke_error
 // managed (UTF-16) symbolName round-trips exactly.
 void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName)
 {
+    if (handle == nullptr || symbolName == nullptr)
+        dn2cpp_throw_argument_null();
     int32_t n = dn2cpp_string_to_utf8(symbolName, nullptr, 0);
     std::string narrow(static_cast<size_t>(n), '\0');
     dn2cpp_string_to_utf8(symbolName, narrow.data(), n);
@@ -1150,4 +1152,274 @@ void* dn2cpp_native_library_get_symbol(void* handle, Dn2CppString* symbolName)
 #else
     return ::dlsym(handle, narrow.c_str());
 #endif
+}
+
+namespace
+{
+struct Dn2CppPInvokeResolverEntry
+{
+    const char* assemblyName;
+    Dn2CppObject* resolver;
+    Dn2CppPInvokeResolverInvoke invoke;
+    Dn2CppPInvokeResolverEntry* next;
+};
+
+DN2CPP_GC_STATIC_ROOT Dn2CppPInvokeResolverEntry* g_pinvoke_resolvers = nullptr;
+std::mutex g_pinvoke_resolver_mutex;
+
+static std::string dn2cpp_native_utf8(Dn2CppString* value)
+{
+    if (value == nullptr)
+        return {};
+    int32_t n = dn2cpp_string_to_utf8(value, nullptr, 0);
+    std::string result(static_cast<size_t>(n), '\0');
+    if (n > 0)
+        dn2cpp_string_to_utf8(value, result.data(), n);
+    return result;
+}
+
+static bool dn2cpp_native_is_path(const std::string& name)
+{
+#ifdef _WIN32
+    return name.find('/') != std::string::npos || name.find('\\') != std::string::npos
+        || (name.size() >= 2 && name[1] == ':');
+#else
+    return name.find('/') != std::string::npos;
+#endif
+}
+
+static void* dn2cpp_native_load_exact(const std::string& name, uint32_t flags = 0)
+{
+    if (name.empty())
+        return nullptr;
+#ifdef _WIN32
+    int chars = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name.c_str(),
+        static_cast<int>(name.size()), nullptr, 0);
+    if (chars <= 0)
+        return nullptr;
+    std::wstring wide(static_cast<size_t>(chars), L'\0');
+    ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, name.c_str(),
+        static_cast<int>(name.size()), wide.data(), chars);
+    return static_cast<void*>(::LoadLibraryExW(wide.c_str(), nullptr,
+        static_cast<DWORD>(flags)));
+#else
+    (void)flags;
+    return ::dlopen(name.c_str(), RTLD_LAZY | RTLD_LOCAL);
+#endif
+}
+
+static void* dn2cpp_native_load_self()
+{
+#ifdef _WIN32
+    return static_cast<void*>(::GetModuleHandleW(nullptr));
+#else
+    return ::dlopen(nullptr, RTLD_LAZY | RTLD_LOCAL);
+#endif
+}
+
+static std::vector<std::string> dn2cpp_native_candidates(const std::string& name)
+{
+    if (dn2cpp_native_is_path(name))
+        return { name };
+
+    std::vector<std::string> candidates;
+    candidates.push_back(name);
+#ifdef _WIN32
+    if (name.size() < 4 || name.substr(name.size() - 4) != ".dll")
+        candidates.push_back(name + ".dll");
+#elif defined(__APPLE__)
+    bool dylib = name.size() >= 6 && name.substr(name.size() - 6) == ".dylib";
+    if (!dylib)
+    {
+        candidates.push_back("lib" + name + ".dylib");
+        candidates.push_back(name + ".dylib");
+    }
+    if (name.rfind("lib", 0) != 0)
+        candidates.push_back("lib" + name);
+#else
+    bool so = name.find(".so") != std::string::npos;
+    if (!so)
+    {
+        candidates.push_back("lib" + name + ".so");
+        candidates.push_back(name + ".so");
+    }
+    if (name.rfind("lib", 0) != 0)
+        candidates.push_back("lib" + name);
+#endif
+    return candidates;
+}
+
+static bool dn2cpp_native_is_absolute_path(const std::string& name)
+{
+#ifdef _WIN32
+    return (!name.empty() && (name[0] == '/' || name[0] == '\\'))
+        || (name.size() >= 2 && name[1] == ':');
+#else
+    return !name.empty() && name[0] == '/';
+#endif
+}
+
+static std::string dn2cpp_native_app_base_directory()
+{
+    return dn2cpp_native_utf8(dn2cpp_app_base_directory());
+}
+
+static void* dn2cpp_native_load_candidates(const std::string& name,
+    int32_t searchPathHasValue, int32_t searchPathValue)
+{
+    if (name == "__Internal")
+        return dn2cpp_native_load_self();
+
+    constexpr int32_t assemblyDirectory = 0x00000002;
+    constexpr int32_t windowsSearchFlags = 0x00000100 | 0x00000200
+        | 0x00000400 | 0x00000800 | 0x00001000;
+    constexpr int32_t knownFlags = assemblyDirectory | windowsSearchFlags;
+    if (searchPathHasValue != 0 && (searchPathValue & ~knownFlags) != 0)
+        dn2cpp_throw_platform_not_supported(
+            "DllImportSearchPath contains unsupported flags");
+
+    uint32_t loaderFlags = 0;
+#ifdef _WIN32
+    // DllImportSearchPath intentionally assigns the Win32 LOAD_LIBRARY_SEARCH_*
+    // bit values, so no lossy translation is needed here.
+    loaderFlags = static_cast<uint32_t>(searchPathValue & windowsSearchFlags);
+#endif
+    if (dn2cpp_native_is_absolute_path(name))
+        return dn2cpp_native_load_exact(name, loaderFlags);
+
+    std::vector<std::string> candidates = dn2cpp_native_candidates(name);
+    bool assemblyFirst = searchPathHasValue == 0
+        || (searchPathValue & assemblyDirectory) != 0;
+    bool assemblyOnly = searchPathHasValue != 0
+        && searchPathValue == assemblyDirectory;
+    if (assemblyFirst)
+    {
+        std::string base = dn2cpp_native_app_base_directory();
+        if (!base.empty())
+            for (const std::string& candidate : candidates)
+            {
+                uint32_t exactFlags = loaderFlags;
+#ifdef _WIN32
+                if (exactFlags == 0)
+                    exactFlags = LOAD_WITH_ALTERED_SEARCH_PATH;
+#endif
+                if (void* handle = dn2cpp_native_load_exact(base + candidate, exactFlags);
+                    handle != nullptr)
+                    return handle;
+            }
+    }
+    if (assemblyOnly)
+        return nullptr;
+    for (const std::string& candidate : candidates)
+        if (void* handle = dn2cpp_native_load_exact(candidate, loaderFlags);
+            handle != nullptr)
+            return handle;
+    return nullptr;
+}
+} // namespace
+
+[[noreturn]] void dn2cpp_throw_entry_point_not_found(Dn2CppString* entryPoint)
+{
+    if (entryPoint == nullptr)
+        dn2cpp_throw_argument_null();
+    std::string narrow = dn2cpp_native_utf8(entryPoint);
+    dn2cpp_throw_entry_point_not_found(narrow.c_str());
+}
+
+void dn2cpp_pinvoke_set_resolver(const char* assemblyName, Dn2CppObject* resolver,
+    Dn2CppPInvokeResolverInvoke invoke)
+{
+    if (assemblyName == nullptr || resolver == nullptr || invoke == nullptr)
+        dn2cpp_throw_argument_null();
+    std::lock_guard<std::mutex> lock(g_pinvoke_resolver_mutex);
+    for (Dn2CppPInvokeResolverEntry* p = g_pinvoke_resolvers; p != nullptr; p = p->next)
+        if (std::strcmp(p->assemblyName, assemblyName) == 0)
+            dn2cpp_throw_invalid_operation();
+    auto* entry = static_cast<Dn2CppPInvokeResolverEntry*>(dn2cpp_alloc(
+        sizeof(Dn2CppPInvokeResolverEntry)));
+    entry->assemblyName = assemblyName;
+    dn2cpp_gc_store_ref(&entry->resolver, resolver);
+    entry->invoke = invoke;
+    dn2cpp_gc_store_ref(&entry->next, g_pinvoke_resolvers);
+    g_pinvoke_resolvers = entry;
+}
+
+void* dn2cpp_native_library_load_name(const char* name, int32_t throwOnError,
+    int32_t searchPathHasValue, int32_t searchPathValue)
+{
+    void* handle = dn2cpp_native_load_candidates(
+        name == nullptr ? std::string() : std::string(name),
+        searchPathHasValue, searchPathValue);
+    if (handle == nullptr && throwOnError != 0)
+        dn2cpp_throw_dll_not_found(name == nullptr ? "" : name);
+    return handle;
+}
+
+void* dn2cpp_native_library_load(Dn2CppString* path, int32_t throwOnError)
+{
+    if (path == nullptr)
+        dn2cpp_throw_argument_null();
+    std::string name = dn2cpp_native_utf8(path);
+    void* handle = dn2cpp_native_load_exact(name);
+    if (handle == nullptr && throwOnError != 0)
+        dn2cpp_throw_dll_not_found(name.c_str());
+    return handle;
+}
+
+void* dn2cpp_native_library_load_by_name(Dn2CppString* name, int32_t throwOnError,
+    int32_t searchPathHasValue, int32_t searchPathValue)
+{
+    if (name == nullptr)
+        dn2cpp_throw_argument_null();
+    std::string narrow = dn2cpp_native_utf8(name);
+    return dn2cpp_native_library_load_name(narrow.c_str(), throwOnError,
+        searchPathHasValue, searchPathValue);
+}
+
+void dn2cpp_native_library_free(void* handle)
+{
+    if (handle == nullptr)
+        return;
+#ifdef _WIN32
+    ::FreeLibrary(static_cast<HMODULE>(handle));
+#else
+    ::dlclose(handle);
+#endif
+}
+
+void* dn2cpp_pinvoke_resolve(const char* moduleName, const char* entryPoint,
+    const char* assemblyName, int32_t searchPathHasValue, int32_t searchPathValue)
+{
+    Dn2CppObject* resolver = nullptr;
+    Dn2CppPInvokeResolverInvoke invoke = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_pinvoke_resolver_mutex);
+        for (Dn2CppPInvokeResolverEntry* p = g_pinvoke_resolvers; p != nullptr; p = p->next)
+            if (std::strcmp(p->assemblyName, assemblyName) == 0)
+            {
+                resolver = p->resolver;
+                invoke = p->invoke;
+                break;
+            }
+    }
+    void* handle = nullptr;
+    if (resolver != nullptr)
+    {
+        Dn2CppString* managedName = dn2cpp_string_from_utf8(moduleName,
+            static_cast<int32_t>(std::strlen(moduleName)));
+        handle = reinterpret_cast<void*>(invoke(resolver, managedName, assemblyName,
+            searchPathHasValue, searchPathValue));
+    }
+    if (handle == nullptr)
+        handle = dn2cpp_native_library_load_name(moduleName, 1,
+            searchPathHasValue, searchPathValue);
+#ifdef _WIN32
+    void* symbol = reinterpret_cast<void*>(::GetProcAddress(
+        static_cast<HMODULE>(handle), entryPoint));
+#else
+    void* symbol = ::dlsym(handle, entryPoint);
+#endif
+    if (symbol == nullptr)
+        dn2cpp_throw_entry_point_not_found(entryPoint);
+    return symbol;
 }

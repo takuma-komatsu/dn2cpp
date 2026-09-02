@@ -1119,7 +1119,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             _method.DeclaringClass.CppStructName + "*",
             () =>
             {
-                EmitPInvokeCall(_method, pinv);
+                EmitPInvokeCall(_method, pinv, ftnWrapper: true);
                 return true;
             },
             "synthesized P/Invoke forwarder");
@@ -3276,7 +3276,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // NATIVE-symbol dimension, which AssertCalledBodiesEmitted cannot see (it
                 // diffs managed symbols, and a P/Invoke has no emitted body).
                 if (!ftnBounded && m.Emittable is { Rva: 0, PInvoke: not null } fimpl
-                    && _c.LowersToDirectNativeCall(fimpl))
+                    && _c.LowersToPInvoke(fimpl))
                     _c.NotePInvokeFtnTarget(fimpl);
                 string expr;
                 if (ftnBounded)

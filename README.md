@@ -611,7 +611,9 @@ site rather than hiding it.
   lock-free for statically-emitted types.
 - **P/Invoke** — `DllImport` end to end: `string[]` write-back, delegates
   as native function pointers, non-blittable structs, blittable
-  `[MarshalAs(ByValArray)]`. The supported marshalling surface is
+  `[MarshalAs(ByValArray)]`. User imports bind lazily through
+  `DllImportResolver` and the platform loader; `--direct-pinvoke` is the
+  static-link opt-in. The supported marshalling surface is
   enumerated one feature per row in `docs/PINVOKE-MARSHALLING.md`.
 - **Stack traces** — captured at throw and rendered against the reflection
   method tables; the opt-in `--shadow-stack` adds emitter-baked frame names

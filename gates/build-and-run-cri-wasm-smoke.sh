@@ -2,7 +2,7 @@
 # CRI ADX LE console-wasm link smoke: prove symbol resolution and the P/Invoke
 # path against the REAL CRI archives before any engine is involved. The
 # browser-flavor CriWare.CriAtomLE.dll is transpiled with
-# `--pinvoke-module cri_atom`, linked as a wasm MAIN module against
+# `--direct-pinvoke '*'`, linked as a wasm MAIN module against
 # runtimes/browser-wasm/{cri_atom.a, libcri_ware_le.a} plus the package's three
 # Emscripten JS libraries (a main module links jslibs directly — the .targets
 # recipe: --js-library ×3 + -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$dynCall), and
@@ -119,8 +119,8 @@ echo "== 2/6 Building app assembly (references the browser-flavor CRI DLL) =="
 build_proj "samples/dotnet/$PROJECT/$PROJECT.csproj"
 app="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$PROJECT.dll"
 
-echo "== 3/6 Transpiling app + real CoreLib + CriWare.CriAtomLE (--pinvoke-module cri_atom) =="
-invoke_cli "$app" -r "$corelib" -r "$BROWSER_DLL" --pinvoke-module cri_atom -o "$OUT"
+echo "== 3/6 Transpiling app + real CoreLib + CriWare.CriAtomLE (--direct-pinvoke '*') =="
+invoke_cli "$app" -r "$corelib" -r "$BROWSER_DLL" --direct-pinvoke '*' -o "$OUT"
 grep -qx 'cri_atom' <<<"$(strip_cr_win_file "$OUT/pinvoke-libs.txt")" \
     || { echo "FAIL: cri_atom missing from $OUT/pinvoke-libs.txt" >&2; exit 1; }
 

@@ -636,6 +636,14 @@ extern const Dn2CppType dn2cpp_type_load_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_type_load_exception_type =
     dn2cpp_ti_with_typeobject({ "System.TypeLoadException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_type_load_exception_type_obj);
 const Dn2CppType dn2cpp_type_load_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_load_exception_type };
+extern const Dn2CppType dn2cpp_dll_not_found_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.DllNotFoundException", &dn2cpp_type_load_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_dll_not_found_exception_type_obj);
+const Dn2CppType dn2cpp_dll_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_dll_not_found_exception_type };
+extern const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.EntryPointNotFoundException", &dn2cpp_type_load_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_entry_point_not_found_exception_type_obj);
+const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_entry_point_not_found_exception_type };
 extern const Dn2CppType dn2cpp_not_supported_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_not_supported_exception_type =
     dn2cpp_ti_with_typeobject({ "System.NotSupportedException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_not_supported_exception_type_obj);

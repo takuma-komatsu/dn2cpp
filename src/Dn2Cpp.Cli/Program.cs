@@ -32,7 +32,7 @@ bool trimReflection = false;
 var reflectionRoots = new List<string>();
 var noManifestResources = new List<string>();
 var manifestResourceRoots = new List<string>();
-var pinvokeModules = new List<string>();
+var directPInvokes = new List<string>();
 var projectRoots = new List<string>();
 var linkFeatures = new List<string>();
 bool trimGodotClasses = false;
@@ -312,16 +312,12 @@ for (int i = 0; i < args.Length; i++)
         // dropped assembly is a hard error, for the --reflection-root reason.
         manifestResourceRoots.Add(args[++i]);
     }
-    else if (args[i] == "--pinvoke-module" && i + 1 < args.Length)
+    else if (args[i] == "--direct-pinvoke" && i + 1 < args.Length)
     {
-        // Lower one named [DllImport] module's P/Invokes to direct native calls from
-        // any loaded assembly (repeatable) — the opt-in for an external binding
-        // library pulled in with -r, whose imports otherwise stay on the
-        // intrinsic/throw boundary. The name is matched by ordinal equality against
-        // the exact [DllImport] module string (no normalization), and the module
-        // reaches the pinvoke-libs.txt link manifest like an app-module import.
-        // A FLAG, not an env var: it changes the C++ a successful transpile emits.
-        pinvokeModules.Add(args[++i]);
+        // Keep one module or module!entrypoint on the static-link path. The default
+        // for user imports is lazy binding through the registered resolver and then
+        // the platform loader. '*' selects every import for static-only targets.
+        directPInvokes.Add(args[++i]);
     }
     else if (args[i] == "--trim-godot-classes")
     {
@@ -492,7 +488,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--pinvoke-module <name>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
@@ -571,7 +567,7 @@ return TranspileDriver.Run(new TranspileOptions
     ReflectionRoots = reflectionRoots,
     NoManifestResources = noManifestResources,
     ManifestResourceRoots = manifestResourceRoots,
-    PInvokeModules = pinvokeModules,
+    DirectPInvokes = directPInvokes,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,
     ShadowStack = shadowStack,

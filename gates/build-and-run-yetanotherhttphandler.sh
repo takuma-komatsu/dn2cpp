@@ -32,7 +32,7 @@ corelib=$(resolve_net10_corelib)
 build_proj src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj
 refs=(-r "$corelib" -r "$YAHA_MANAGED" -r "$YAHA_PIPELINES")
 rm -rf "$OUT"
-invoke_cli "$app" "${refs[@]}" --auto-ref --pinvoke-module "$YAHA_MODULE" -o "$OUT"
+invoke_cli "$app" "${refs[@]}" --auto-ref --direct-pinvoke "$YAHA_MODULE" -o "$OUT"
 [ "$(strip_cr_win_file "$OUT/pinvoke-libs.txt")" = "$YAHA_MODULE" ] \
     || { echo "FAIL: pinvoke-libs.txt does not contain the exact module token" >&2; exit 1; }
 [ "$(wc -l < "$OUT/pinvoke-libs.txt" | tr -d ' ')" -eq 1 ] \
@@ -47,7 +47,7 @@ printf '%s\n' "$native_link_manifest" > "$OUT/native-assets.txt"
 
 echo "== 4/8 ASSERT: HTTP driver has ZERO gaps and ZERO dangling methods =="
 rm -rf "$MEASURE"
-measure_output=$(invoke_cli "$app" "${refs[@]}" --auto-ref --pinvoke-module "$YAHA_MODULE" --measure -o "$MEASURE" 2>&1)
+measure_output=$(invoke_cli "$app" "${refs[@]}" --auto-ref --direct-pinvoke "$YAHA_MODULE" --measure -o "$MEASURE" 2>&1)
 printf '%s\n' "$measure_output"
 [ -f "$MEASURE/s0-gaps.tsv" ] || { echo "FAIL: --measure produced no gap report" >&2; exit 1; }
 [ "$(wc -l < "$MEASURE/s0-gaps.tsv" | tr -d ' ')" -eq 0 ] \

@@ -800,15 +800,18 @@ internal sealed class MethodInfo
 }
 
 /// <summary>The decoded `[DllImport]` metadata of a P/Invoke method:
-/// the native module/library name (e.g. <c>"libc"</c>), the entry-point symbol
-/// (the explicit <c>EntryPoint</c> or, when unspecified, the method name), the
+/// the native module/library name (e.g. <c>"libc"</c>), the raw metadata entry-point
+/// name, the entry-point symbol after any platform rewrite, the
 /// raw import flags (calling convention, charset, SetLastError), and any explicit
 /// per-parameter / return <c>[MarshalAs(UnmanagedType.*)]</c> override (
 /// <see cref="ReturnMarshalAs"/> for the return, <see cref="ParamMarshalAs"/>
 /// keyed by 0-based parameter index — both absent when no <c>[MarshalAs]</c> is
-/// present, in which case the marshalling follows the parameter type + CharSet).</summary>
+/// present, in which case the marshalling follows the parameter type + CharSet).
+/// <see cref="DefaultDllImportSearchPath"/> is the method-level
+/// <c>[DefaultDllImportSearchPaths]</c> value, falling back to the assembly-level value.</summary>
 internal sealed record PInvokeInfo(
-    string ModuleName, string EntryPoint, MethodImportAttributes ImportAttributes,
+    string ModuleName, string RawEntryPoint, string EntryPoint,
+    MethodImportAttributes ImportAttributes, int? DefaultDllImportSearchPath,
     UnmanagedType? ReturnMarshalAs,
     IReadOnlyDictionary<int, UnmanagedType> ParamMarshalAs)
 {
