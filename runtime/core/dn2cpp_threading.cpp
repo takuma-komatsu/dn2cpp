@@ -765,8 +765,14 @@ struct Dn2CppSafeWaitHandle : Dn2CppObject
     uint32_t dangerousRefs;
 };
 
-static std::mutex g_wait_handle_mutex;
-static std::unordered_map<Dn2CppObject*, Dn2CppObject*> g_wait_safe_handles;
+struct Dn2CppWaitHandleRegistry
+{
+    std::mutex mutex;
+    std::unordered_map<Dn2CppObject*, Dn2CppObject*> safeHandles;
+};
+
+static Dn2CppWaitHandleRegistry& g_wait_handle_registry =
+    dn2cpp_never_destroyed<Dn2CppWaitHandleRegistry>();
 
 Dn2CppObject* dn2cpp_semaphore_new(int32_t initial, int32_t maxCount)
 {
@@ -899,12 +905,12 @@ Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
 {
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
-    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
-    auto it = g_wait_safe_handles.find(waitHandle);
-    if (it == g_wait_safe_handles.end())
+    std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
+    auto it = g_wait_handle_registry.safeHandles.find(waitHandle);
+    if (it == g_wait_handle_registry.safeHandles.end())
     {
         auto* safe = dn2cpp_managed_event_safe(waitHandle);
-        it = g_wait_safe_handles.emplace(waitHandle, safe).first;
+        it = g_wait_handle_registry.safeHandles.emplace(waitHandle, safe).first;
     }
     return it->second;
 }
@@ -913,11 +919,11 @@ void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHand
 {
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
-    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
     // SafeWaitHandle's nullable setter uses null to clear the OS handle. The next
     // getter returns a real invalid wrapper rather than null; retaining a null map
     // value would make every event operation dereference it.
-    g_wait_safe_handles[waitHandle] = safeHandle != nullptr
+    g_wait_handle_registry.safeHandles[waitHandle] = safeHandle != nullptr
         ? safeHandle : dn2cpp_safewaithandle_new(0, 0);
 }
 
@@ -1018,9 +1024,9 @@ void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
         || waitHandle->type == &dn2cpp_manualresetevent_type
         || waitHandle->type == &dn2cpp_autoresetevent_type;
     {
-        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
-        auto it = g_wait_safe_handles.find(waitHandle);
-        if (it != g_wait_safe_handles.end())
+        std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
+        auto it = g_wait_handle_registry.safeHandles.find(waitHandle);
+        if (it != g_wait_handle_registry.safeHandles.end())
         {
             safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
             // A managed WaitHandle subclass can borrow another runtime event's
@@ -1039,7 +1045,7 @@ void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
         else if (runtimeEvent)
         {
             safe = dn2cpp_managed_event_safe(waitHandle);
-            g_wait_safe_handles.emplace(waitHandle, safe);
+            g_wait_handle_registry.safeHandles.emplace(waitHandle, safe);
         }
     }
     if (safe != nullptr)
@@ -1067,9 +1073,9 @@ static Dn2CppEvent* dn2cpp_event_from_operand(Dn2CppObject* o,
         return nullptr;
     }
     {
-        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
-        auto it = g_wait_safe_handles.find(o);
-        if (it != g_wait_safe_handles.end())
+        std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
+        auto it = g_wait_handle_registry.safeHandles.find(o);
+        if (it != g_wait_handle_registry.safeHandles.end())
         {
             auto* safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
             std::lock_guard<std::mutex> slk(safe->m);

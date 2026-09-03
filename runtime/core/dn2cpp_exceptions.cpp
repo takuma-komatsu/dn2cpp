@@ -800,12 +800,16 @@ struct Dn2CppExcFrameEntry
     bool collapsed; // several distinct rows share this fnPtr (shared generics / ICF)
 };
 
+struct Dn2CppExcFrameIndex
+{
+    std::vector<Dn2CppExcFrameEntry> entries;
+    std::once_flag once;
+};
+
 static std::vector<Dn2CppExcFrameEntry>& dn2cpp_exc_fn_index()
 {
-    static std::vector<Dn2CppExcFrameEntry>& index =
-        dn2cpp_never_destroyed<std::vector<Dn2CppExcFrameEntry>>();
-    static std::once_flag once;
-    std::call_once(once, []
+    static Dn2CppExcFrameIndex& state = dn2cpp_never_destroyed<Dn2CppExcFrameIndex>();
+    std::call_once(state.once, []
     {
         std::vector<Dn2CppExcFrameEntry> rows;
         auto add = [&rows](const Dn2CppMethodInfo* table, int32_t count)
@@ -845,19 +849,19 @@ static std::vector<Dn2CppExcFrameEntry>& dn2cpp_exc_fn_index()
             });
         for (size_t i = 0; i < rows.size(); i++)
         {
-            if (!index.empty() && index.back().fn == rows[i].fn)
+            if (!state.entries.empty() && state.entries.back().fn == rows[i].fn)
             {
                 // A second row naming the same body: keep the representative,
                 // note the collapse when it is a genuinely different identity.
-                if (std::strcmp(nameOf(index.back().mi, true), nameOf(rows[i].mi, true)) != 0
-                    || std::strcmp(nameOf(index.back().mi, false), nameOf(rows[i].mi, false)) != 0)
-                    index.back().collapsed = true;
+                if (std::strcmp(nameOf(state.entries.back().mi, true), nameOf(rows[i].mi, true)) != 0
+                    || std::strcmp(nameOf(state.entries.back().mi, false), nameOf(rows[i].mi, false)) != 0)
+                    state.entries.back().collapsed = true;
                 continue;
             }
-            index.push_back(rows[i]);
+            state.entries.push_back(rows[i]);
         }
     });
-    return index;
+    return state.entries;
 }
 
 // The captured entry either IS a table row's fnPtr — the row's body is the

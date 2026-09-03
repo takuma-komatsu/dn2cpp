@@ -286,8 +286,8 @@ void dn2cpp_pal_membarrier_processwide(void)
     // i.e. every other thread observes a full barrier, which is exactly the
     // FlushProcessWriteBuffers contract. The page is process-lifetime (never
     // unmapped); a static mutex serializes concurrent barrier requests.
-    static std::mutex mtx;
-    std::lock_guard<std::mutex> lk(mtx);
+    static std::mutex* mtx = new std::mutex();
+    std::lock_guard<std::mutex> lk(*mtx);
     static const size_t pageSize = static_cast<size_t>(::sysconf(_SC_PAGESIZE));
     static void* page = []() -> void* {
         void* p = ::mmap(nullptr, pageSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -358,11 +358,16 @@ namespace
         uintptr_t textHi = 0;          // here can belong to a listed function
     };
 
+    struct Dn2CppMachOFnStartsState
+    {
+        Dn2CppMachOFnStarts table;
+        std::once_flag once;
+    };
+
     const Dn2CppMachOFnStarts& dn2cpp_macho_fn_starts()
     {
-        static Dn2CppMachOFnStarts table;
-        static std::once_flag once;
-        std::call_once(once, []
+        static Dn2CppMachOFnStartsState* state = new Dn2CppMachOFnStartsState();
+        std::call_once(state->once, []
         {
             // The image that holds the runtime is the image that holds the
             // generated bodies — they are always linked together — and dladdr's
@@ -433,14 +438,14 @@ namespace
                 if (val == 0)
                     break;
                 addr += static_cast<uintptr_t>(val);
-                table.starts.push_back(addr + slide);
+                state->table.starts.push_back(addr + slide);
                 val = 0;
                 shift = 0;
             }
-            table.textLo = textSecLo + slide;
-            table.textHi = textSecHi + slide;
+            state->table.textLo = textSecLo + slide;
+            state->table.textHi = textSecHi + slide;
         });
-        return table;
+        return state->table;
     }
 
     // Entry address of the function containing `pc`, or 0 for a PC outside

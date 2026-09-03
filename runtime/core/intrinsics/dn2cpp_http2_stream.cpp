@@ -353,9 +353,12 @@ const char* CaFileOverride()
 {
     // Function-local static: C++11 guarantees the initializer runs exactly once,
     // even if several workers reach here at the same instant.
-    static const std::string value = []() {
+    static const std::string& value = []() -> const std::string& {
         const char* v = std::getenv("DN2CPP_HTTP_CAINFO");
-        return v != nullptr ? std::string(v) : std::string();
+        auto& result = dn2cpp_never_destroyed<std::string>();
+        if (v != nullptr)
+            result = v;
+        return result;
     }();
     return value.empty() ? nullptr : value.c_str();
 }
@@ -382,12 +385,18 @@ const char* CaFileOverride()
 //     so a host process carrying its own curl cannot bind to ours.
 // What changes is WHEN a failing init is discovered: at the first request instead
 // of at startup. The return code is therefore kept and reported.
+struct CurlGlobalState
+{
+    CURLcode result = CURLE_FAILED_INIT;
+    std::once_flag once;
+};
+
 CURLcode EnsureGlobalInit()
 {
-    static CURLcode rc = CURLE_FAILED_INIT;
-    static std::once_flag once;
-    std::call_once(once, [] { rc = curl_global_init(CURL_GLOBAL_DEFAULT); });
-    return rc;
+    static CurlGlobalState& state = dn2cpp_never_destroyed<CurlGlobalState>();
+    std::call_once(state.once,
+        [] { state.result = curl_global_init(CURL_GLOBAL_DEFAULT); });
+    return state.result;
 }
 
 void TransportLoop();
