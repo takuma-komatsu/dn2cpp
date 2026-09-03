@@ -1,6 +1,6 @@
 ---
 name: windows-release
-description: Run and verify the dn2cpp Windows-side Godot editor release workflow, including macOS handoff retrieval, pinned toolchain setup, self-host rebuild, Windows editor and release/debug template packaging, smoke tests, draft cleanup, five-lane publication, and post-publish checks. Use when finishing a Godot editor release on Windows, rebuilding Windows release artifacts, or diagnosing handoff, MSVC, emcc, prebuilt-axis, checksum, or publish failures.
+description: Run and verify the dn2cpp Windows-side Godot editor release workflow, including macOS handoff retrieval, pinned toolchain setup, self-host rebuild, Windows editor packaging with matching installed official .NET templates, smoke tests, draft cleanup, four-lane publication, and post-publish checks. Use when finishing a Godot editor release on Windows, rebuilding Windows release artifacts, or diagnosing handoff, MSVC, emcc, prebuilt-axis, checksum, or publish failures.
 ---
 
 # Windows Release Workflow
@@ -18,6 +18,8 @@ fixes the Windows continuation's ordering and stop conditions.
   commit named by the handoff. Do not launch the merge gate automatically.
 - Require a host Python 3, Visual Studio's C++ workload, an Android NDK, the
   pinned .NET SDK, and an authenticated `gh`.
+- Install the official Godot .NET release and debug export templates matching
+  the fork editor's exact Godot version and base commit.
 - Set `CMAKE_CXX_COMPILER=cl` before sourcing or running repository scripts so
   `_common.sh` imports the MSVC environment. Do not rely on a Developer Prompt
   being the parent of Git Bash.
@@ -164,13 +166,11 @@ These values must be identical. Only the Mac host can re-bake the Web
 template; if they differ, stop and rerun the Mac Web setup and packaging in
 order.
 
-## Phase C-3: package the Windows templates and smoke-test the editor
+## Phase C-3: package and smoke-test the Windows editor
 
-Package both Windows template configurations, then package the editor from the
-pinned commit with the default smoke tests enabled:
+Package the editor from the pinned commit with the default smoke tests enabled:
 
 ```bash
-./dist/package-windows-template.sh --version "$V"
 ./dist/package-editor-windows.sh \
     --version "$V" \
     --dn2cpp-commit "$DN2CPP_PIN" \
@@ -181,18 +181,18 @@ Require the log to show:
 
 - bundled cmake and ninja, not host fallbacks;
 - prebuilt `host`, `android-arm64-v8a`, and `web-wasm32` axes;
+- exact official release/debug template identity and normal template selection;
 - both Web templates selected by their respective presets, with emcc matching
   `web.metadata`;
 - both desktop and browser editor-export smoke gates green;
 - deterministic archive round-trip with all files SHA-256 identical.
 
-The template packager must produce `windows.metadata` and
-`godot-$V-windows-x86_64-templates.zip`. Require that archive to contain
-exactly `godot_windows_release_x86_64.exe` and
-`godot_windows_debug_x86_64.exe`. The editor packager must produce
-`editor-windows.metadata` and `Godot-$V-windows-x86_64.zip`. Together they add
-the fourth and fifth rows to `SHA256SUMS.txt`. Check both metadata files and
-checksum rows; never edit them manually.
+The editor packager must produce `editor-windows.metadata` and
+`Godot-$V-windows-x86_64.zip`, adding the fourth row to `SHA256SUMS.txt`. Its
+smoke test leaves both custom-template fields empty, verifies the exact engine
+identity of the matching installed official release/debug pair, and compares
+the exported executables with those template binaries. Check the metadata and
+checksum row; never edit them manually.
 
 ## Phase C-4/C-5: remove transport and rehearse publication
 
@@ -202,7 +202,7 @@ Remove the internal handoff before any publish attempt:
 ./dist/release-handoff.sh drop --repo "$REPO" --version "$V"
 ```
 
-Run the complete five-lane dry run. Naming only the Windows lanes would drop
+Run the complete four-lane dry run. Naming only the Windows lane would drop
 the other lanes from the rendered notes and checksum claims.
 
 ```bash
@@ -210,7 +210,6 @@ the other lanes from the rendered notes and checksum claims.
     --repo "$REPO" \
     --version "$V" \
     --prev-version "$PREV" \
-    --lane windows \
     --lane editor-windows \
     --uploaded-lane editor-macos \
     --uploaded-lane web \
@@ -239,7 +238,6 @@ Repeat the exact dry-run lane set without `--dry-run`:
     --repo "$REPO" \
     --version "$V" \
     --prev-version "$PREV" \
-    --lane windows \
     --lane editor-windows \
     --uploaded-lane editor-macos \
     --uploaded-lane web \
@@ -255,8 +253,8 @@ gh release view "$V" --repo "$REPO" --json isDraft,targetCommitish,assets \
 gh release view "$V" --repo "$REPO" --json body --jq .body
 ```
 
-Require `isDraft: false`, the fork commit as `targetCommitish`, exactly six
-assets (two editors, three template archives, and `SHA256SUMS.txt`), no internal handoff,
+Require `isDraft: false`, the fork commit as `targetCommitish`, exactly five
+assets (two editors, two template archives, and `SHA256SUMS.txt`), no internal handoff,
 and no `@@` or `<!--` markers. Check both guide URLs in the body at the fixed
 dn2cpp commit, including that the verification fragment names an existing
 heading, then download and verify the release once if the host is also the
@@ -272,5 +270,5 @@ consumer.
 - Never run `setup-godot-fork-web.sh` on Windows or hand-copy metadata from
   the Mac host.
 - If publication fails after the package succeeds, leave the release as a
-  draft and rerun the complete five-lane command; never rerun with a subset.
+  draft and rerun the complete four-lane command; never rerun with a subset.
 - Do not delete or recreate a tag or release to work around a validation error.

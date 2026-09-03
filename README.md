@@ -285,9 +285,9 @@ template; the fork changes editor tooling only.**
   design, fork strategy and re-pin procedure are in
   `docs/EDITOR-EXPORT-DESIGN.md`. Its Releases carry a macOS editor `.app`
   and a Windows `x86_64` editor, plus the export templates upstream cannot
-  supply: Web, macOS `arm64`, and Windows `x86_64`. The Web and Windows template
-  archives each contain distinct release and debug templates. The Windows pair
-  carries the fork's native dependency search. The backend never cross-compiles,
+  supply: Web and macOS `arm64`. The Web archive contains distinct release and
+  debug templates. Windows exports use Godot's official .NET templates for the
+  matching engine version. The backend never cross-compiles,
   and upstream's macOS archive is universal-only. The
   `.app` is ad-hoc signed and not notarized, so clear its quarantine
   attribute (`xattr -dr com.apple.quarantine`) before the first launch; the

@@ -22,7 +22,7 @@
 
 インストール、動作要件、エクスポート手順、トラブルシューティング、既知の制限、ライセンスは[エディタ利用ガイド](https://github.com/takuma-komatsu/dn2cpp/blob/@@DOCS_REF@@/docs/EDITOR-GUIDE.ja.md)を参照してください。リンク先は本リリースを切った時点のコミットに固定されています。
 
-<!--lane:editor-windows-->Windows ゲームのエクスポートには、Assets の `godot-<リリース名>-windows-x86_64-templates.zip` を展開し、`godot_windows_release_x86_64.exe` と `godot_windows_debug_x86_64.exe` をプリセットの「カスタムテンプレート → リリース / デバッグ」にそれぞれ指定してください。
+<!--lane:editor-windows-->Windows ゲームのエクスポートには、対応する Godot バージョンの公式 .NET エクスポートテンプレートを使用してください。
 
 <!--lane:web-->Web ゲームのエクスポートには、Assets の `godot-<リリース名>-web-templates.zip` を展開し、内側の `godot_web_release.zip` と `godot_web_debug.zip` を Web プリセットの「カスタムテンプレート → リリース / デバッグ」にそれぞれ指定してください。
 

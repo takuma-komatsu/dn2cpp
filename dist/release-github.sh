@@ -37,7 +37,7 @@
 #                           the git/gh commands instead of running them
 #     -h | --help
 #
-# The lanes are editor-macos, editor-windows, windows, web and macos; given none, the set
+# The lanes are editor-macos, editor-windows, web and macos; given none, the set
 # is editor-macos, web and macos — a macOS host's whole cut.
 #
 # The release is a DRAFT unless --publish: assets are uploaded one at a time and
@@ -93,7 +93,7 @@ die() { echo "error: $*" >&2; exit 1; }
 # value no longer belongs in the public body. The row is what holds lane name =
 # metadata file name = notes placeholder suffix together; adding a lane is
 # adding a row here and, only when it has public prose, a block in the template.
-LANES_KNOWN="editor-macos editor-windows windows web macos"
+LANES_KNOWN="editor-macos editor-windows web macos"
 
 # editor_row SUFFIX — both editors carry the same keys. Their only remaining
 # public binding is the shared dn2cpp commit; the named suffixes still make the
@@ -108,9 +108,6 @@ lane_row() {
     case "$1" in
         editor-macos)   editor_row _MACOS ;;
         editor-windows) editor_row _WINDOWS ;;
-        windows) printf 'template|%s|%s\n' \
-                   "release_version asset asset_sha256 architecture base_pin engine_provenance release_template release_template_sha256 release_template_version_string debug_template debug_template_sha256 debug_template_version_string" \
-                   "" ;;
         web)   printf 'template|%s|%s\n' \
                    "release_version asset asset_sha256 flavor engine_provenance emcc emsdk_version release_template release_template_sha256 debug_template debug_template_sha256" \
                    "EMCC:emcc EMSDK_VERSION:emsdk_version" ;;
@@ -161,18 +158,6 @@ for lane in $ACTIVE_LANES; do
     seen="$seen $lane"
 done
 ACTIVE_LANES="$seen"
-
-# The forked Windows template carries engine code the editor-exported drop-in
-# relies on. Shipping either Windows download without the other recreates the
-# stock-template failure this lane exists to prevent.
-case " $ACTIVE_LANES " in
-    *" editor-windows "*)
-        case " $ACTIVE_LANES " in
-            *" windows "*) ;;
-            *) die "lanes 'editor-windows' and 'windows' must be released together" ;;
-        esac ;;
-    *" windows "*) die "lanes 'editor-windows' and 'windows' must be released together" ;;
-esac
 
 NOTES="$OUT/RELEASE-NOTES.md"
 TEMPLATE=dist/release-notes-template.md
@@ -278,72 +263,8 @@ for lane in $ACTIVE_LANES; do
 done
 echo "-- release_version: $VERSION (every lane's metadata agrees)"
 
-# The Windows archive is one lane and one asset, but it contains two products.
-# Their identities stay separate in metadata so an uploaded-only lane can still
-# reject a release binary filed as both configurations. When the archive is
-# local, inspect the bytes too: the outer digest cannot prove which executables
-# were put inside it.
-case " $ACTIVE_LANES " in
-    *" windows "*)
-        win_release_name="$(lane_val windows release_template)"
-        win_debug_name="$(lane_val windows debug_template)"
-        [ "$win_release_name" != "$win_debug_name" ] || die \
-            "windows.metadata names '$win_release_name' as both the release and debug template"
-        [ "$win_release_name" = godot_windows_release_x86_64.exe ] || die \
-            "windows.metadata names release template '$win_release_name'; expected godot_windows_release_x86_64.exe"
-        [ "$win_debug_name" = godot_windows_debug_x86_64.exe ] || die \
-            "windows.metadata names debug template '$win_debug_name'; expected godot_windows_debug_x86_64.exe"
-
-        win_release_sha="$(lane_val windows release_template_sha256)"
-        win_debug_sha="$(lane_val windows debug_template_sha256)"
-        [ "$win_release_sha" != "$win_debug_sha" ] || die \
-            "windows.metadata gives the release and debug templates the same sha256: $win_release_sha"
-
-        win_zip="$(lane_zip windows)"
-        if [ -n "$win_zip" ]; then
-            py="$(resolve_python)" || die "Python 3 is required to inspect the Windows template archive"
-            # zipfile is part of Python on Git Bash; neither unzip nor 7z is a
-            # prerequisite of the Windows release host. Stream the entries so
-            # validation does not retain two template executables in memory.
-            # shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
-            if ! zip_check="$($py - "$win_zip" \
-                    "$win_release_name" "$win_release_sha" \
-                    "$win_debug_name" "$win_debug_sha" 2>&1 <<'PY'
-import hashlib
-import sys
-import zipfile
-
-archive, release_name, release_sha, debug_name, debug_sha = sys.argv[1:]
-expected_names = [release_name, debug_name]
-try:
-    with zipfile.ZipFile(archive) as z:
-        actual_names = z.namelist()
-        if len(actual_names) != 2 or sorted(actual_names) != sorted(expected_names):
-            raise ValueError(
-                "entries are %r, expected exactly %r" % (actual_names, expected_names)
-            )
-        for name, wanted in ((release_name, release_sha), (debug_name, debug_sha)):
-            digest = hashlib.sha256()
-            with z.open(name) as entry:
-                for chunk in iter(lambda: entry.read(1024 * 1024), b""):
-                    digest.update(chunk)
-            actual = digest.hexdigest()
-            if actual != wanted:
-                raise ValueError("%s hashes to %s, metadata says %s" % (name, actual, wanted))
-except (OSError, ValueError, zipfile.BadZipFile) as error:
-    print("Windows template archive %s is invalid: %s" % (archive, error), file=sys.stderr)
-    sys.exit(1)
-PY
-            )"; then
-                die "$zip_check"
-            fi
-            echo "-- windows archive: release/debug entries and hashes match metadata"
-        fi
-        ;;
-esac
-
-# The Web archive follows the same one-lane/one-asset/two-products contract as
-# Windows. Metadata remains sufficient to reject a renamed single template on
+# The Web archive is one lane and one asset containing two products. Metadata
+# remains sufficient to reject a renamed single template on
 # an uploaded-only host; a local archive additionally proves its exact entries.
 case " $ACTIVE_LANES " in
     *" web "*)

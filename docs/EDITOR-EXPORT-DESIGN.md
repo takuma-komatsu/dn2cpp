@@ -18,12 +18,11 @@ library** path: `GDMono::initialize()` falls through to
 
 `--dotnet-module` emits exactly that shape and adds no new engine ABI. The fork's
 main work is the export side (GodotTools, C#) plus assembling the editor
-distribution. Two load-path adjustments remain in engine code. Web (§10)
-enables the existing path for wasm32. On Windows,
-`try_load_native_aot_library` passes `OS::GDExtensionData` with
-`also_set_library_path = true` for its one `open_dynamic_library` call, so a PE
-drop-in resolves dependencies staged beside it in the data directory. The flag
-does not change any other dynamic-library open or any non-Windows target.
+distribution. One load-path adjustment remains in engine code: Web (§10)
+enables the existing path for wasm32. Windows uses the upstream load path
+unchanged. Project-declared dependency DLLs are exported beside the executable,
+where the OS loader resolves them while opening the drop-in from its data
+directory.
 
 ### ABI no-touch list (fork invariant)
 
@@ -39,9 +38,9 @@ The drop-in lane's ABI is pinned by a fingerprint over three engine surfaces
   type from the managed signature, so a widened parameter or return type is a
   re-audit and not a re-freeze.
 
-**The fork must never modify these three.** The Windows and Web load-path edits
-live outside them in `modules/mono/mono_gd/gd_mono.cpp` and do not widen the
-interop contract. Leaving all three surfaces byte-identical keeps the
+**The fork must never modify these three.** The Web load-path edit lives outside
+them in `modules/mono/mono_gd/gd_mono.cpp` and does not widen the interop
+contract. Leaving all three surfaces byte-identical keeps the
 fingerprint and keeps the fork drop-in compatible; the fork gates re-check the
 same fingerprint.
 
@@ -154,12 +153,12 @@ through `PublishProjectBlocking`.
    staging dir and point the existing `RecursePublishContents` /
    `AddSharedObject` at it, so it lands in
    `data_{csprojname}_{platform}_{arch}/`. Project-declared
-   `dotnet/dn2cpp/extra_shared_objects` land beside it; no managed runtime may
-   enter this directory because `try_load_native_aot_library` runs only after
-   `load_hostfxr` and `load_coreclr` both fail. On Windows the NativeAOT load
-   call adds this directory to the dependency search only while opening the
-   drop-in, which is what makes those native siblings usable without copying
-   them beside the executable.
+   `dotnet/dn2cpp/extra_shared_objects` use the platform's loader-visible
+   location. On Windows they land beside the executable while the drop-in alone
+   stays in the data directory; elsewhere they follow that platform's shared
+   object packaging rule. No managed runtime may enter the data directory
+   because `try_load_native_aot_library` runs only after `load_hostfxr` and
+   `load_coreclr` both fail.
 
 **Error surfacing.** stdout/stderr tee to
 `{ProjectBaseOutputPath}/dn2cpp/logs/export-<ts>.log`; the tail and log path go
@@ -171,13 +170,13 @@ dn2cpp progress markers and the staged artifact, and the Web gate's
 transpile-failure section proves the exit code moves: an artifact alone cannot
 say a transpile failed, because the exported page comes from the template.
 
-**Platform matrix.** macOS host-arch and **Windows** are the two host-compiled
-desktop targets. Windows differs only in the output name, and that is the
-platform's rule: MSVC/lld write `<name>.dll` with **no `lib` prefix**, and the
+**Platform matrix.** macOS, **Windows**, and Linux are the host-compiled desktop
+targets. Windows differs in the output name, and that is the platform's rule:
+MSVC/lld write `<name>.dll` with **no `lib` prefix**, and the
 `WINDOWS_ENABLED` branch of `try_load_native_aot_library` opens exactly
-`<Assembly>.dll`. That branch also requests the DLL's containing directory for
-PE dependency lookup; the shared `OS_Windows::open_dynamic_library` default is
-unchanged. **iOS** cross-builds each RID (`ios-arm64`,
+`<Assembly>.dll`. Extra dependency DLLs are exported beside the executable so
+the upstream Windows loader finds them without an engine load-path change.
+**iOS** cross-builds each RID (`ios-arm64`,
 `iossimulator-arm64/-x64`) via `-DCMAKE_SYSTEM_NAME=iOS`; the existing
 `_aot.xcframework` tail of `_ExportBeginImpl` lipos and embeds the results
 unchanged, reading one `{Assembly}.dylib` per entry of the export's output-path
@@ -436,9 +435,11 @@ checkout.
                      (DN2CPP_GODOT_FORK_CLONE)
 ~/.cache/
   dn2cpp-godot-dotnet/  drop-in lane cache (untouched)
-  dn2cpp-godot-fork/    fork artifact root: export templates, nuget feed,
+  dn2cpp-godot-fork/    fork artifact root: host export template where needed,
+                     nuget feed,
                      bin-cache, pin/fork_head, and the recorded paths into
-                     the fork clone (editor.txt / template.txt / clone.txt)
+                     the fork clone (editor.txt / template.txt where applicable /
+                     clone.txt)
 ```
 
 - **No submodules.** The godot tree is huge and slow to build; the gates model
@@ -449,17 +450,19 @@ checkout.
   (`dn2cpp/main` must descend from it) and not the fork's moving HEAD; fork to
   dn2cpp via the bundled `manifest.json`.
 - **Engine rebuilds are content-keyed.** GodotTools is a *managed* assembly the
-  editor loads from `GodotSharp/Tools/` at run time, while the Windows and Web
-  load-path adjustments are engine sources. `gates/setup-godot-fork.sh` hashes
+  editor loads from `GodotSharp/Tools/` at run time, while the Web load-path
+  adjustment is in the engine sources. `gates/setup-godot-fork.sh` hashes
   the engine-owned tree against the base commit: an identical tree reuses the
   pristine binaries, and a changed tree takes a matching cached binary or runs
-  scons. The hash is stamped beside the editor and template so a pre-populated
-  `bin/` cannot hide an engine edit. Copies, not symlinks: macOS resolves
-  `OS::get_executable_path()` through `proc_pidpath()`, so an editor launched
-  through a symlink looks for `GodotSharp/` beside the link *target*.
+  scons. The hash is stamped beside the editor and each fork-built host template
+  so a pre-populated `bin/` cannot hide an engine edit. Copies, not symlinks:
+  macOS resolves `OS::get_executable_path()` through `proc_pidpath()`, so an
+  editor launched through a symlink looks for `GodotSharp/` beside the link
+  *target*.
 - **The artifact root records paths and materializes no links** — setup writes
-  `editor.txt` / `template.txt` / `clone.txt` and the gates read the fork's two
-  engine binaries and the `bin/GodotSharp` beside them in place
+  `editor.txt` / `clone.txt` and, where a fork host template is used,
+  `template.txt`. The gates read those engine binaries and the `bin/GodotSharp`
+  beside them in place
   (`gates/_godot_fork.sh` owns those names). On stock MSYS/Git-Bash `ln -s`
   **copies** unless the shell has both a winsymlinks mode and the privilege to
   link, and the resulting copy fails either loudly or, worse, quietly.
@@ -472,20 +475,21 @@ Gates, all in the dn2cpp repo:
 
 - `gates/setup-godot-fork.sh` — sibling of `gates/setup-godot-dotnet.sh`: verify
   fork base-ancestry and the ABI fingerprint, then reuse or rebuild each engine
-  artifact from its content provenance; provide editor, glue, assemblies and
-  template; install the toolchain bundle
+  artifact from its content provenance; provide editor, glue and assemblies,
+  plus the macOS/Linux host template; install the toolchain bundle
   into `bin/GodotSharp/Dn2Cpp/`; assemble `~/.cache/dn2cpp-godot-fork`. It
-  carries **one arm per host OS whose engine it can build** (macOS, Windows),
+  carries **one arm per host OS whose engine it can build** (macOS, Windows, Linux),
   refuses an unported host up front rather than deep into a scons run, and
-  stages the desktop export template in the shape that host's exporter reads, so
-  the E2E gate never depends on the user's installed templates. Host-shaped
-  seams live in one file, `gates/_godot_fork.sh`.
+  stages the macOS/Linux desktop template in the shape that host's exporter
+  reads. Windows instead verifies and uses the matching official .NET templates
+  from Godot's standard user directory. Host-shaped seams live in one file,
+  `gates/_godot_fork.sh`.
 - `gates/build-and-run-godot-editor-export.sh` — the desktop E2E gate: package
   the toolchain from the working tree, install into the fork cache, headless
   export of `samples/godot-dotnet/EditorExportSample/` with
   `dotnet/export_backend = dn2cpp`, run the exported game under a watchdog,
   assert a handshake marker and exit 0. Skips green when the fork cache is
-  absent; runs in the serial Godot phase. It covers **both** host-compiled
+  absent; runs in the serial Godot phase. It covers the host-compiled
   desktop targets, selecting off `$DN2CPP_OS` the preset, the template artifact
   and the exported layout.
 - `gates/build-and-run-godot-editor-export-ios.sh`, `-android.sh`, `-web.sh` —
@@ -533,10 +537,10 @@ from outside the `.app` and cmake, ninja and Emscripten's clang from inside it.
    |---------|-----|
    | the clone's editor + desktop release template (`gates/setup-godot-dotnet.sh` steps 1, 4) | the binary's OWN `--version` commit. No stamp: a build cannot forge what it stamps into itself |
    | that clone's glue and assemblies + feed (steps 2, 3) | `clone_tree_hash` (pin plus working-tree dirt), stamped in the gitignored `…/Generated/GeneratedIncludes.props.clone-hash` and `bin/GodotSharp/.clone-hash` |
-   | the fork's editor + release template (`gates/setup-godot-fork.sh` steps 1, 5) | `godot_fork_engine_hash`, stamped `<binary>.engine-hash` |
+   | the fork's editor, plus the macOS/Linux release template (`gates/setup-godot-fork.sh` steps 1, 5) | `godot_fork_engine_hash`, stamped `<binary>.engine-hash` |
    | the fork's mono glue (step 2) | the same engine hash — the glue is the editor's output |
    | the fork's assemblies + feed + toolchain (step 4) | `godot_fork_tools_hash` over the managed trees `build_assemblies.py` compiles |
-   | the fork's desktop export template (step 5) | `<template>.provenance`, `godot_fork_engine_provenance` |
+   | the fork's macOS/Linux desktop export template (step 5) | `<template>.provenance`, `godot_fork_engine_provenance` |
    | the fork's iOS simulator library (`gates/setup-godot-fork-ios.sh` step 3) | `<library>.provenance`, `godot_fork_engine_provenance` plus the complete SCons argument vector |
 
    The fork-built template archives rebuild themselves too
@@ -864,7 +868,6 @@ a `*.metadata` file beside it:
 |-------|--------|
 | the macOS editor `.app`, zipped | `dist/package-editor-macos.sh` |
 | the Windows editor (x86_64), zipped | `dist/package-editor-windows.sh` |
-| the Windows x86_64 release/debug export templates, zipped | `dist/package-windows-template.sh` |
 | the Web release/debug export templates, bundled | `dist/package-web-template.sh` |
 | the macOS arm64 export template, zipped | `dist/package-macos-template.sh` |
 
@@ -919,14 +922,9 @@ metadata without requiring a public-body witness.
   holds no link at all.** Nothing here forces the macOS indirection, and MSYS
   `ln -s` silently *copies* without a `winsymlinks` mode and the privilege to
   create one — a copy is a snapshot of the tree the staging step rewrites.
-- **The Windows export templates are a separate release asset.** The editor and
-  the export templates are different engine builds, and selecting no custom
-  template makes Godot use the upstream version-keyed template even when the
-  export was initiated by the forked editor. The packaging script requires the
-  fork setup's engine-provenance stamps and verifies both copied executables'
-  versions before the release/debug pair can become one lane asset. Keeping the
-  two configurations distinct ensures `--export-debug` does not silently run a
-  release engine binary.
+- **Windows uses the official Godot .NET export templates.** The dn2cpp drop-in
+  implements the same game-entry ABI as NativeAOT, so the matching upstream
+  template can load it without carrying fork engine code in the game binary.
 - **The Windows archiver is Python's `zipfile`.** Neither `zip` nor `7z` can be
   assumed on a Windows host, and PowerShell 5.1's `Compress-Archive` writes `\`
   as the entry separator, which other extractors read as one file name. Sorting
@@ -963,11 +961,10 @@ metadata without requiring a public-body witness.
   side module of it, so `dist/package-editor-macos.sh` refuses a bundle whose
   `emcc_version` is not the one the templates are stamped with — re-bake with
   `FORCE=1 gates/setup-godot-fork-web.sh` and re-cut when they disagree.
-- **Web and Windows need fork-built templates.** Web enables the mono module and
-  dynamic loader for wasm32. Windows passes the data-directory search request
-  at the NativeAOT load call. Other desktop and mobile exports can use stock
-  Godot .NET templates of the same version, though the setup cache still stamps
-  every selected template against the fork's engine provenance.
+- **Web needs fork-built templates.** Web enables the mono module and dynamic
+  loader for wasm32. Desktop and mobile exports can use stock Godot .NET
+  templates of the same version, though the setup cache still stamps every
+  selected development template against the fork's engine provenance.
 - **A release is identified by the tag, the fork commit, the engine provenance
   and the dn2cpp commit — not by the toolchain's `content_hash`**, which moves
   between runs because the prebuilt rebuild is not bit-reproducible.

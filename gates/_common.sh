@@ -479,6 +479,47 @@ godot_user_data_dir() {
     esac
 }
 
+# godot_official_windows_template VERSION_DIR [release|debug] — resolve the
+# matching .NET template from Godot's standard per-user installation. Windows
+# exports use these upstream binaries; the fork supplies the editor and tools.
+godot_official_windows_template() {
+    local version_dir="$1" target="${2:-release}" name
+    [ "$DN2CPP_OS" = windows ] || {
+        echo "error: official Windows templates are only available on Windows" >&2
+        return 1
+    }
+    case "$target" in
+        release) name=windows_release_x86_64.exe ;;
+        debug)   name=windows_debug_x86_64.exe ;;
+        *)
+            echo "error: unknown official Windows template target: $target" >&2
+            return 1
+            ;;
+    esac
+    printf '%s/export_templates/%s/%s\n' \
+        "$(godot_user_data_dir)" "$version_dir" "$name"
+}
+
+# The path alone is not a version witness: Godot accepts any existing custom
+# template. Ask the executable itself and require the upstream official flavor.
+godot_official_windows_template_check() {
+    local template="$1" version_dir="$2" base_commit="$3" what="$4"
+    local output reported expected
+    [ -f "$template" ] || {
+        echo "error: no $what at $template" >&2
+        echo "       Install the official Godot $version_dir .NET export templates." >&2
+        return 1
+    }
+    output="$(run_with_watchdog 60 "$template" --headless --version)" || return 1
+    reported="$(first_line "$output")"
+    expected="$version_dir.official.${base_commit:0:9}"
+    [ "$reported" = "$expected" ] || {
+        echo "error: $what reports '$reported', expected $expected" >&2
+        return 1
+    }
+    echo "$what: $reported"
+}
+
 # godot_editor_config_dir — where the editor keeps editor_settings-*.tres. The
 # same directory as the data one on macOS/Windows, but NOT on Linux: there the
 # editor splits XDG config from XDG data, and reading the settings out of the
