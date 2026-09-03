@@ -278,11 +278,11 @@ namespace Http2Unary
             return first.Length > 0 && first == second;
         }
 
-        // (f) MID-FLIGHT CANCELLATION. A token fired 300 ms into a request the server will
-        // not answer for two minutes: the CALLER must be released with the canceled shape
-        // real .NET produces, and the SERVER must see the transfer torn down
-        // (RequestAborted) rather than draining behind an abandoned caller. /slowreset
-        // first because one server serves both the native and the oracle run.
+        // (f) MID-FLIGHT CANCELLATION. Once the server has accepted a request that it will
+        // not answer for two minutes, a token fires after 300 ms: the CALLER must be
+        // released with the canceled shape real .NET produces, and the SERVER must see the
+        // transfer torn down (RequestAborted) rather than draining behind an abandoned
+        // caller. /slowreset first because one server serves both the native and oracle run.
         private static void CancelOverH2c(HttpClient client, string h2cBase)
         {
             GetText(client, h2cBase + "/slowreset");
@@ -290,16 +290,43 @@ namespace Http2Unary
             string outcome;
             using (var cts = new CancellationTokenSource())
             {
-                cts.CancelAfter(300);
                 using var request = new HttpRequestMessage(HttpMethod.Get, h2cBase + "/slow")
                 {
                     Version = HttpVersion.Version20,
                     VersionPolicy = HttpVersionPolicy.RequestVersionExact,
                 };
+                var pending = client.SendAsync(request, cts.Token);
+
+                // Arm the timer only after Kestrel has entered /slow. Starting it before
+                // this handshake makes host scheduling part of the assertion and can
+                // cancel a valid request before the server has had a chance to observe it.
+                string startStat = "";
+                for (int i = 0; i < 100; i++)
+                {
+                    startStat = GetText(client, h2cBase + "/slowstat");
+                    if (startStat.Contains("started=1"))
+                        break;
+                    Thread.Sleep(100);
+                }
+                if (!startStat.Contains("started=1"))
+                {
+                    // Settle the pending operation before failing so neither transport
+                    // leaves an unobserved request running after the diagnostic escapes.
+                    cts.Cancel();
+                    try
+                    {
+                        using HttpResponseMessage response = pending.GetAwaiter().GetResult();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+                    throw new InvalidOperationException("the server did not start the cancellation probe");
+                }
+
+                cts.CancelAfter(300);
                 try
                 {
-                    using HttpResponseMessage response =
-                        client.SendAsync(request, cts.Token).GetAwaiter().GetResult();
+                    using HttpResponseMessage response = pending.GetAwaiter().GetResult();
                     outcome = "UNEXPECTED success status=" + (int)response.StatusCode;
                 }
                 catch (OperationCanceledException)
