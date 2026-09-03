@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <chrono>
+#include <cstring>
 #include <thread>
 
 #ifdef _WIN32
@@ -44,6 +46,25 @@ struct Pair
 };
 
 void* g_lib = nullptr;
+
+// POSIX hosts register this destructor before dlopen registers the library's
+// destructors, so the delay widens their live-worker teardown race. Windows has
+// no equivalent cross-module ordering guarantee; there this only checks that
+// process exit is clean while the worker is live.
+struct ExitRaceWindow
+{
+    bool armed = false;
+
+    ~ExitRaceWindow()
+    {
+#ifndef _WIN32
+        if (armed)
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+#endif
+    }
+};
+
+ExitRaceWindow g_exit_race_window;
 
 void* sym(const char* name)
 {
@@ -85,9 +106,11 @@ int main(int argc, char** argv)
     _setmode(_fileno(stdout), _O_BINARY);
     _setmode(_fileno(stderr), _O_BINARY);
 #endif
-    if (argc < 2)
+    const bool exitWithWaitAny =
+        argc == 3 && std::strcmp(argv[2], "--exit-with-waitany") == 0;
+    if (argc < 2 || (argc > 2 && !exitWithWaitAny))
     {
-        std::fprintf(stderr, "usage: driver <shared-library>\n");
+        std::fprintf(stderr, "usage: driver <shared-library> [--exit-with-waitany]\n");
         return 2;
     }
     g_lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -105,6 +128,16 @@ int main(int argc, char** argv)
     // Enable foreign-thread GC registration before any off-main-thread call.
     auto set_reg = (void (*)(int))sym("dn2cpp_set_native_callback_gc_registration");
     set_reg(1);
+
+    if (exitWithWaitAny)
+    {
+        auto start_waitany_worker =
+            (int32_t (*)())sym("uco_start_waitany_worker");
+        check("waitany_worker", start_waitany_worker(), 1);
+        g_exit_race_window.armed = true;
+        std::puts("exit_worker_live OK");
+        return 0;
+    }
 
     auto uco_add = (int32_t (*)(int32_t, int32_t))sym("uco_add");
     auto uco_pair_swap = (Pair (*)(Pair))sym("uco_pair_swap");

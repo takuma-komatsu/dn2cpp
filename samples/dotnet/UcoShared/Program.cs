@@ -4,6 +4,7 @@
 // below from the main thread and from a foreign thread.
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace UcoShared;
 
@@ -28,7 +29,11 @@ internal static unsafe class Exports
 {
     private delegate int Unary(int value);
 
+    private const int WaitAnyRegistryReadinessPasses = 256;
     private static readonly Unary s_identity = Identity;
+    private static readonly ManualResetEvent s_waitAnySignaled = new(true);
+    private static readonly ManualResetEvent s_waitAnyBlocked = new(false);
+    private static int s_waitAnyRegistryPasses;
 
     private static int Identity(int value) => value;
 
@@ -76,5 +81,31 @@ internal static unsafe class Exports
     private static int TaskRunSum(int a, int b)
     {
         return System.Threading.Tasks.Task.Run(() => a + b).Result;
+    }
+
+    // The host deliberately returns without stopping this program-owned worker.
+    // Hosted processes may run static teardown while such background work is
+    // still inside the runtime.
+    [UnmanagedCallersOnly(EntryPoint = "uco_start_waitany_worker")]
+    private static int StartWaitAnyWorker()
+    {
+        var worker = new Thread(() =>
+        {
+            WaitHandle[] handles = { s_waitAnySignaled, s_waitAnyBlocked };
+            for (;;)
+            {
+                WaitHandle.WaitAny(handles);
+                Interlocked.Increment(ref s_waitAnyRegistryPasses);
+            }
+        })
+        {
+            IsBackground = true,
+        };
+        worker.Start();
+        // Readiness means completed registry traffic, and the same loop remains
+        // hot after the host observes it and returns.
+        while (Volatile.Read(ref s_waitAnyRegistryPasses) < WaitAnyRegistryReadinessPasses)
+            Thread.Yield();
+        return 1;
     }
 }

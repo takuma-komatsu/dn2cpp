@@ -12,7 +12,12 @@
 #     non-exported callback's address handed out through an exported one,
 #   - starts the Task.Run worker pool, quiesces it (dn2cpp_runtime_quiesce
 #     must join every worker), and dlcloses the library — the one lane that
-#     exercises a real unload after background threads ran.
+#     exercises a real unload after background threads ran,
+#   - separately returns from a hosted process while a managed WaitAny worker
+#     remains live, exercising process static teardown without a runtime quiesce.
+#     The destroyed-mutex abort this guards against needs a non-trivial ~mutex
+#     (Apple libc++); where ~mutex is a no-op the run only proves the exit stays
+#     clean and bounded with the worker live.
 source "$(dirname "$0")/_common.sh"
 
 OUT=artifacts/ucoshared
@@ -73,4 +78,14 @@ driver_out=$("$OUT/driver" "$DYLIB"); driver_code=$?
 set -e
 assert_output "$driver_out" "$EXPECTED"
 assert_exit_code "$driver_code" 0
+
+EXIT_EXPECTED='init=0
+waitany_worker=1
+exit_worker_live OK'
+set +e
+# Bounded: a teardown that deadlocks instead of aborting must fail, not hang.
+exit_out=$(run_bounded "$OUT/driver" "$DYLIB" --exit-with-waitany); exit_code=$?
+set -e
+assert_output "$exit_out" "$EXIT_EXPECTED"
+assert_exit_code "$exit_code" 0
 gate_cache_commit
