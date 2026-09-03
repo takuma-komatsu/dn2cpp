@@ -21,7 +21,9 @@
 #     --app-name NAME            package name (default: Godot-dn2cpp); names the
 #                                directory inside the zip, never the asset file
 #     --smoke | --no-smoke       run the two editor-export gates against the
-#                                assembled package (default: --smoke)
+#                                assembled package; desktop export uses the
+#                                installed matching official .NET templates
+#                                (default: --smoke)
 #     --allow-partial-prebuilt   accept a toolchain missing cross-compile axes
 #     --web-asset PATH           the Release/Debug Web bundle used by smoke
 #                                (default: <out>/godot-<version>-web-templates.zip)
@@ -342,16 +344,24 @@ if [ "$SMOKE" -eq 1 ]; then
     rm -rf "$SMOKE_ROOT"
     mkdir -p "$SMOKE_ROOT"
     cp -R "$FORK_ROOT/nuget" "$SMOKE_ROOT/nuget"
-    DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
-    DESKTOP_TEMPLATE_NAME="$(basename "$DESKTOP_TEMPLATE")"
-    DESKTOP_TEMPLATE_DEBUG="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
-    DESKTOP_TEMPLATE_DEBUG_NAME="$(basename "$DESKTOP_TEMPLATE_DEBUG")"
-    # The desktop gate reads both recorded SCons binaries during preflight, then
-    # both assembled artifacts before its cache check. Keep those two layers in
-    # the smoke root exactly as setup-godot-fork.sh records and names them.
-    for f in pin.txt fork_head.txt clone.txt template.txt template-debug.txt \
-             "$DESKTOP_TEMPLATE_NAME" "$DESKTOP_TEMPLATE_NAME.provenance" \
-             "$DESKTOP_TEMPLATE_DEBUG_NAME" "$DESKTOP_TEMPLATE_DEBUG_NAME.provenance"; do
+    # The desktop release smoke exercises the same official .NET templates users
+    # install. The fork-built editor remains the subject; its fork templates are
+    # neither copied into this root nor accepted as a substitute.
+    godot_template_version_dir "$PKG/$APP_NAME$EXE_EXT" >/dev/null \
+        || die "the packaged editor has no parseable template version"
+    [ "$GODOT_VERSION_FLAVOR" = .mono ] \
+        || die "the packaged editor is not a .NET build: $GODOT_FULL_VERSION"
+    DESKTOP_TEMPLATE="$(godot_official_windows_template "$GODOT_TEMPLATE_VERSION_DIR")"
+    DESKTOP_TEMPLATE_DEBUG="$(godot_official_windows_template "$GODOT_TEMPLATE_VERSION_DIR" debug)"
+    godot_official_windows_template_check "$DESKTOP_TEMPLATE" \
+        "$GODOT_TEMPLATE_VERSION_DIR" "$BASE_COMMIT" \
+        "official release Windows template" || exit 1
+    godot_official_windows_template_check "$DESKTOP_TEMPLATE_DEBUG" \
+        "$GODOT_TEMPLATE_VERSION_DIR" "$BASE_COMMIT" \
+        "official debug Windows template" || exit 1
+    cmp -s "$DESKTOP_TEMPLATE" "$DESKTOP_TEMPLATE_DEBUG" \
+        && die "the official Windows release and debug templates are byte-identical"
+    for f in pin.txt fork_head.txt clone.txt; do
         [ -f "$FORK_ROOT/$f" ] || die "the fork root has no $f — run gates/setup-godot-fork.sh (and -web)"
         cp "$FORK_ROOT/$f" "$SMOKE_ROOT/$f"
     done

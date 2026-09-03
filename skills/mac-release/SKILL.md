@@ -230,16 +230,16 @@ Give Windows this fixed continuation:
 ./dist/release-handoff.sh get --repo "$REPO" --version "$V"
 # Check out the dn2cpp_commit from artifacts/release/editor-macos.metadata.
 # Run Windows Phase C from docs/RELEASE.md.
-./dist/package-windows-template.sh --version "$V"
 ./dist/package-editor-windows.sh --version "$V" --dn2cpp-commit \
     "$(sed -n 's/^dn2cpp_commit=//p' artifacts/release/editor-macos.metadata)"
 ./dist/release-handoff.sh drop --repo "$REPO" --version "$V"
-./dist/release-github.sh --repo "$REPO" --version "$V" --prev-version "$PREV" --lane windows --lane editor-windows --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos --publish
+./dist/release-github.sh --repo "$REPO" --version "$V" --prev-version "$PREV" --lane editor-windows --uploaded-lane editor-macos --uploaded-lane web --uploaded-lane macos --publish
 ~~~
 
 Windows must run drop before publishing and must not run
 setup-godot-fork-web.sh; Mac supplies the Web Release/Debug bundle and
-web_emcc.txt.
+web_emcc.txt. The Windows editor smoke uses the installed official .NET
+release/debug templates matching the fork editor.
 
 ## Stop conditions and recovery
 

@@ -510,6 +510,28 @@ public_lanes=$(printf '%s\n' editor-windows macos web | sort -u)
 set_eq "$TPL lane markers used by the simplified notes" "the template" "$tpl_lanes" \
        "the public contract" "$public_lanes"
 
+# The post-publish checklist restates the final asset set as editors, templates,
+# and the checksum manifest. Derive all three counts from the lane table so a
+# removed lane cannot leave a plausible-looking total behind in either runbook.
+lane_count=$(grep -c . <<<"$known_lanes")
+editor_count=$(grep -c '^editor-' <<<"$known_lanes" || true)
+template_count=$((lane_count - editor_count))
+asset_count=$((lane_count + 1))
+release_en=$(grep -E '^- [a-z]+ assets \([0-9]+ editors \+ [0-9]+ templates \+ `SHA256SUMS.txt`\)' docs/RELEASE.md)
+release_en_total=$(w2n "$(sed -nE 's/^- ([a-z]+) assets.*/\1/p' <<<"$release_en")")
+release_en_editors=$(sed -nE 's/.*\(([0-9]+) editors.*/\1/p' <<<"$release_en")
+release_en_templates=$(sed -nE 's/.*editors \+ ([0-9]+) templates.*/\1/p' <<<"$release_en")
+eq "docs/RELEASE.md final release asset count" "$asset_count" "$release_en_total"
+eq "docs/RELEASE.md final editor count" "$editor_count" "$release_en_editors"
+eq "docs/RELEASE.md final template count" "$template_count" "$release_en_templates"
+release_ja=$(grep -E '^- アセットは [0-9]+ 点（エディタ [0-9]+ \+ テンプレート [0-9]+ \+ `SHA256SUMS.txt`）' docs/RELEASE.ja.md)
+release_ja_total=$(sed -nE 's/^- アセットは ([0-9]+) 点.*/\1/p' <<<"$release_ja")
+release_ja_editors=$(sed -nE 's/.*（エディタ ([0-9]+) \+.*/\1/p' <<<"$release_ja")
+release_ja_templates=$(sed -nE 's/.*エディタ [0-9]+ \+ テンプレート ([0-9]+) \+.*/\1/p' <<<"$release_ja")
+eq "docs/RELEASE.ja.md final release asset count" "$asset_count" "$release_ja_total"
+eq "docs/RELEASE.ja.md final editor count" "$editor_count" "$release_ja_editors"
+eq "docs/RELEASE.ja.md final template count" "$template_count" "$release_ja_templates"
+
 tpl_h2_all=$(sed -n 's/^## //p' "$TPL" | sort)
 tpl_h2=$(printf '%s\n' "$tpl_h2_all" | sort -u)
 public_h2=$(printf '%s\n' \

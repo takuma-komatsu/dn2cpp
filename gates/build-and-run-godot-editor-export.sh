@@ -17,12 +17,12 @@
 # the .exe on Windows).
 #
 # The claims it pins down:
-#   1. The exported game runs on a template built from the fork's pinned engine
-#      provenance. Its GDMono only reaches try_load_native_aot_library because no
-#      hostfxr and no coreclr sit next to the game. On Windows the drop-in links a
-#      fixture DLL staged only beside it, proving that the NativeAOT load call
-#      admits PE dependencies from the data directory without changing every
-#      dynamic-library open in the engine.
+#   1. The exported game runs on the selected desktop template. Windows uses the
+#      matching official .NET pair; macOS/Linux use the fork artifact. GDMono
+#      only reaches try_load_native_aot_library because no hostfxr and no coreclr
+#      sit next to the game. On Windows the drop-in links a fixture DLL staged
+#      beside the executable, proving the official template's unchanged PE loader
+#      can resolve project-declared native dependencies.
 #   2. The bundle is the whole toolchain. The toolchain is re-packaged from the
 #      *working tree* and installed into the fork editor before the export, so a
 #      dn2cpp runtime or transpiler regression fails here. Including the build
@@ -40,7 +40,7 @@
 #      the runtime archive is reused. 8/14 points the cache at another source
 #      tree (which is what a moved or re-pointed toolchain leaves behind) and
 #      asserts the export recovers, says so, and names both trees.
-#   4. On Windows, the debug field selects the independently built debug
+#   4. On Windows, the empty debug field selects the installed official debug
 #      template. A later `--export-debug` uses it and cannot silently ship the
 #      release executable under a debug label.
 #   5. No specially-launched shell is needed. 10/14 exports from an environment
@@ -120,10 +120,16 @@ EXPORT_TARGET="$PWD/$OUT/$PROJECT_NAME.$EXPORT_EXT"
 # Resolved only after the case has admitted the host: godot_fork_desktop_template
 # returns 1 for an OS it has no arm for, and under `set -e` that would turn the
 # designed gate_skip above into a FAIL.
-DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
 DESKTOP_TEMPLATE_DEBUG=
 if [ "$DN2CPP_OS" = windows ]; then
-    DESKTOP_TEMPLATE_DEBUG="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
+    godot_template_version_dir "$FORK_EDITOR" >/dev/null \
+        || { echo "FAIL: the fork editor has no parseable template version" >&2; exit 1; }
+    [ "$GODOT_VERSION_FLAVOR" = .mono ] \
+        || { echo "FAIL: the fork editor is not a .NET build: $GODOT_FULL_VERSION" >&2; exit 1; }
+    DESKTOP_TEMPLATE="$(godot_official_windows_template "$GODOT_TEMPLATE_VERSION_DIR")"
+    DESKTOP_TEMPLATE_DEBUG="$(godot_official_windows_template "$GODOT_TEMPLATE_VERSION_DIR" debug)"
+else
+    DESKTOP_TEMPLATE="$(godot_fork_desktop_template "$FORK_ROOT")"
 fi
 
 # godot_editor_export_layout ARTIFACT — resolve the post-export paths for a given
@@ -152,28 +158,35 @@ godot_editor_export_layout() {
 }
 
 if [ ! -f "$DESKTOP_TEMPLATE" ]; then
+    if [ "$DN2CPP_OS" = windows ]; then
+        gate_skip "no official release Windows template at $DESKTOP_TEMPLATE — install the matching Godot .NET export templates"
+    fi
     gate_skip "no desktop template at $DESKTOP_TEMPLATE — run gates/setup-godot-fork.sh"
 fi
 if [ "$DN2CPP_OS" = windows ] && [ ! -f "$DESKTOP_TEMPLATE_DEBUG" ]; then
-    gate_skip "no debug desktop template at $DESKTOP_TEMPLATE_DEBUG — run gates/setup-godot-fork.sh"
+    gate_skip "no official debug Windows template at $DESKTOP_TEMPLATE_DEBUG — install the matching Godot .NET export templates"
 fi
 
 echo "== 1/14 Fork pin + interop-ABI tripwire =="
 godot_fork_pin_abi_check
 
-# The desktop template is the second engine in this gate, and nothing above sees
-# its identity: the preset points custom_template at it and Godot validates that
-# path with FileAccess::exists alone, so a zip (or a Windows .exe) assembled
-# before a re-pin exports, runs, and matches every expectation here while
-# shipping the older engine. Live, before gate_cache_check, for the reason the
-# preflight is: `tmpl=` in the key fingerprints the stale artifact itself, so a
-# warm key replays a green *because* nothing changed.
-godot_fork_template_check "$DESKTOP_TEMPLATE" "desktop export template" \
-    "gates/setup-godot-fork.sh"
+# The template is the second engine in this gate. Windows asks the installed
+# executables for their exact official identity; other hosts verify the fork
+# artifact's provenance before the cache check. The `tmpl=` key then records the
+# bytes that were actually selected.
+if [ "$DN2CPP_OS" = windows ]; then
+    godot_official_windows_template_check "$DESKTOP_TEMPLATE" \
+        "$GODOT_TEMPLATE_VERSION_DIR" "$BASE_COMMIT" \
+        "official release Windows template" || exit 1
+    godot_official_windows_template_check "$DESKTOP_TEMPLATE_DEBUG" \
+        "$GODOT_TEMPLATE_VERSION_DIR" "$BASE_COMMIT" \
+        "official debug Windows template" || exit 1
+else
+    godot_fork_template_check "$DESKTOP_TEMPLATE" "desktop export template" \
+        "gates/setup-godot-fork.sh"
+fi
 DEBUG_TEMPLATE_SIG=none
 if [ "$DN2CPP_OS" = windows ]; then
-    godot_fork_template_check "$DESKTOP_TEMPLATE_DEBUG" "debug desktop export template" \
-        "gates/setup-godot-fork.sh"
     DEBUG_TEMPLATE_SIG="$(file_sig "$DESKTOP_TEMPLATE_DEBUG")"
     if cmp -s "$DESKTOP_TEMPLATE" "$DESKTOP_TEMPLATE_DEBUG"; then
         echo "FAIL: the Windows release and debug desktop templates are byte-identical" >&2
@@ -214,20 +227,19 @@ echo "== 2/14 Installing the working tree's toolchain into the fork editor =="
 stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
 
 echo "== 3/14 Staging the sample project =="
-# Copied rather than exported in place: the preset needs an absolute template
-# path patched in, and the project accumulates .godot/, bin/ and obj/. The work
-# dir is NOT wiped — the persistent .godot/mono/dn2cpp/build tree is what keeps
-# a re-export from recompiling the whole runtime.
+# Copied rather than exported in place because the project accumulates .godot/,
+# bin/ and obj/. Non-Windows hosts also patch in an absolute fork-template path;
+# Windows deliberately preserves empty custom-template fields. The work dir is
+# NOT wiped — its persistent build tree keeps re-export from recompiling the
+# whole runtime.
 PROJ="$OUT/project"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
 
-# Windows's loader fix is observable only when the drop-in has a PE import whose
-# DLL exists beside the drop-in and nowhere in the executable's normal search
-# path. Build that dependency before import, then declare its import library,
-# staging path and P/Invoke module through the same project settings a real game
-# uses. The source is Windows-conditional, so the other desktop targets retain
-# their one-library fixture.
+# The stock Windows template does not change the DLL search path while opening
+# the drop-in from its data directory. Build a dependency and declare it through
+# the public project settings; the exporter must put the dependency beside the
+# executable while leaving the drop-in alone in the engine-defined data dir.
 if [ "$DN2CPP_OS" = windows ]; then
     WINDOWS_DEPENDENCY_BUILD="$OUT/windows-dependency"
     mkdir -p "$WINDOWS_DEPENDENCY_BUILD"
@@ -270,41 +282,28 @@ cat > "$PROJ/nuget.config" <<EOF
 </configuration>
 EOF
 
-# Patch the desktop template path into the preset. The sample carries one preset
-# per platform, each with an empty custom_template/release; a global substitution
-# would fill in every one of them (harmless for the presets this gate never
-# invokes, but it would rewrite the Windows preset on a macOS run and vice versa).
-# Since both desktop presets share the same empty line, a plain global replace of
-# that exact line writes the same absolute path everywhere — fine for every
-# preset but one: 11/14 DOES export the foreign desktop preset, and on a macOS
-# host the Windows exporter refuses the macOS binary this leaves there before
-# any plugin runs, so 11/14 re-points that single preset itself. Keeping this a
-# single substitution (not per-preset surgery) mirrors the original.
-#
-# The path written is native (godot_fork_native_path): the editor resolves it with
-# FileAccess, and an MSYS /c/... custom_template/release reaches Godot as a missing
-# file — reported as "Custom release template not found", not as a path-format bug.
+# Windows deliberately leaves both custom-template fields empty. That makes the
+# exporter select the matching official .NET pair from its version-keyed user
+# directory, which is the public workflow this gate exists to protect. Other
+# desktop hosts still exercise the fork-built artifact through an explicit path.
 DESKTOP_TEMPLATE_NATIVE="$(godot_fork_native_path "$DESKTOP_TEMPLATE")"
-presets_tmp="$(mktemp)"
-sed "s|custom_template/release=\"\"|custom_template/release=\"$DESKTOP_TEMPLATE_NATIVE\"|" \
-    "$PROJ/export_presets.cfg" > "$presets_tmp"
-mv "$presets_tmp" "$PROJ/export_presets.cfg"
-grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
-    || { echo "FAIL: could not patch custom_template/release into the preset" >&2; exit 1; }
 if [ "$DN2CPP_OS" = windows ]; then
-    DESKTOP_TEMPLATE_DEBUG_NATIVE="$(godot_fork_native_path "$DESKTOP_TEMPLATE_DEBUG")"
-    presets_tmp="$(mktemp)"
-    sed "s|custom_template/debug=\"\"|custom_template/debug=\"$DESKTOP_TEMPLATE_DEBUG_NATIVE\"|" \
-        "$PROJ/export_presets.cfg" > "$presets_tmp"
-    mv "$presets_tmp" "$PROJ/export_presets.cfg"
-    awk -v tmpl="$DESKTOP_TEMPLATE_DEBUG_NATIVE" '
+    awk '
         /^name=/ { windows = ($0 == "name=\"dn2cpp-app-windows\"") }
-        windows && $0 == "custom_template/debug=\"" tmpl "\"" { debug = 1 }
+        windows && $0 == "custom_template/release=\"\"" { release = 1 }
+        windows && $0 == "custom_template/debug=\"\"" { debug = 1 }
         windows && $0 == "binary_format/embed_pck=false" { sidecar = 1 }
         windows && $0 == "application/modify_resources=false" { unmodified = 1 }
-        END { exit debug && sidecar && unmodified ? 0 : 1 }
+        END { exit release && debug && sidecar && unmodified ? 0 : 1 }
     ' "$PROJ/export_presets.cfg" \
-        || { echo "FAIL: the Windows preset does not preserve the debug template bytes" >&2; exit 1; }
+        || { echo "FAIL: the Windows preset does not use the official template pair unchanged" >&2; exit 1; }
+else
+    presets_tmp="$(mktemp)"
+    sed "s|custom_template/release=\"\"|custom_template/release=\"$DESKTOP_TEMPLATE_NATIVE\"|" \
+        "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
+    grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
+        || { echo "FAIL: could not patch custom_template/release into the preset" >&2; exit 1; }
 fi
 
 # Linux presets carry a checked-in x86_64 default, but this gate exports for the
@@ -403,6 +402,12 @@ for marker in "dn2cpp: transpiling" "dn2cpp: compiling the drop-in library" "dn2
     grep -qF "$marker" "$OUT/export.log" \
         || { echo "FAIL: export log lacks the dn2cpp marker: $marker" >&2; cat "$OUT/export.log" >&2; exit 1; }
 done
+if [ "$DN2CPP_OS" = windows ] && ! cmp -s "$APP" "$DESKTOP_TEMPLATE"; then
+    echo "FAIL: the release export executable is not the installed official release template" >&2
+    echo "      export:   $(file_sig "$APP")" >&2
+    echo "      template: $(file_sig "$DESKTOP_TEMPLATE")" >&2
+    exit 1
+fi
 
 # The bundle's prebuilt runtime was ADOPTED, not merely shipped. Its whole
 # effect is on time, so a refusal is invisible: the export still succeeds, still
@@ -451,10 +456,6 @@ assert_export_artifact_and_run() {
     # hostfxr nor coreclr next to the game. A stray runtime here would silently route
     # the exported game back to .NET and make the rest of this gate prove nothing.
     expected_staged="$DROPIN_NAME"
-    if [ "$DN2CPP_OS" = windows ]; then
-        expected_staged="$expected_staged
-$WINDOWS_DEPENDENCY_NAME.dll"
-    fi
     staged="$(LC_ALL=C ls -1 "$DATA_DIR" | LC_ALL=C sort)"
     expected_staged="$(printf '%s\n' "$expected_staged" | LC_ALL=C sort)"
     if [ "$staged" != "$expected_staged" ]; then
@@ -463,11 +464,10 @@ $WINDOWS_DEPENDENCY_NAME.dll"
         printf '%s\n' "$staged" >&2
         exit 1
     fi
-    if [ "$DN2CPP_OS" = windows ] && [ -e "$(dirname "$GAME_EXE")/$WINDOWS_DEPENDENCY_NAME.dll" ]; then
-        echo "FAIL: $WINDOWS_DEPENDENCY_NAME.dll was copied beside the executable" >&2
+    if [ "$DN2CPP_OS" = windows ] && [ ! -f "$(dirname "$GAME_EXE")/$WINDOWS_DEPENDENCY_NAME.dll" ]; then
+        echo "FAIL: $WINDOWS_DEPENDENCY_NAME.dll was not copied beside the executable" >&2
         exit 1
     fi
-
     rc=0
     run_with_watchdog 120 env -u DN2CPP_GC_INCREMENTAL DN2CPP_GC_STATS=1 \
         "$GAME_EXE" --headless --quit-after 900 \
@@ -496,7 +496,7 @@ $WINDOWS_DEPENDENCY_NAME.dll"
     done
     if [ "$DN2CPP_OS" = windows ]; then
         grep -qF "DN2CPP_EXPORT_DEPENDENCY value=True" "$LOG" \
-            || { echo "FAIL: the drop-in did not call its data-directory dependency" >&2; exit 1; }
+            || { echo "FAIL: the drop-in did not call its executable-directory dependency" >&2; exit 1; }
     fi
     for once in "DN2CPP_EXPORT_READY" "DN2CPP_EXPORT_GDPRINT" "DN2CPP_EXPORT_PROCESS" "DN2CPP_EXPORT_GC" \
         "DN2CPP_EXPORT_INTEROP" "DN2CPP_EXPORT_SIGNAL" "DN2CPP_EXPORT_CLOCK" "DN2CPP_EXPORT_CSPRNG" \
@@ -801,15 +801,16 @@ if [ -e "$RESET_WITNESS" ]; then
     exit 1
 fi
 
-# The Windows exporter consumes separate executables for its release and debug
-# fields. Prove the debug artifact crosses that final boundary: the preset names
-# it, --export-debug succeeds, and the exported executable is byte-for-byte the
-# debug input rather than the release input. The preset keeps both PCK embedding
+# The Windows exporter consumes separate executables for release and debug.
+# Prove the debug artifact crosses that final boundary: both custom fields stay
+# empty, --export-debug succeeds through normal version-keyed selection, and the
+# exported executable is byte-for-byte the debug input rather than the release
+# input. The preset keeps both PCK embedding
 # and PE resource modification off, so this is a direct comparison rather than
 # an inference from a successful debug export.
 echo "== 9/14 Exporting with the Windows debug template =="
 if [ "$DN2CPP_OS" != windows ]; then
-    gate_expected_partial "section 9 (the distinct debug desktop template export) has no reachable state on $DN2CPP_OS: setup-godot-fork.sh produces separate debug and release desktop artifacts only on Windows. The uncovered surface is asserted by this same gate, gates/build-and-run-godot-editor-export.sh, section 9 on Windows, which drives --export-debug and compares the exported executable directly with both template inputs."
+    gate_expected_partial "section 9 (the distinct debug desktop template export) has no reachable state on $DN2CPP_OS: Godot's Windows .NET template install supplies separate debug and release executables only on Windows. The uncovered surface is asserted by this same gate, gates/build-and-run-godot-editor-export.sh, section 9 on Windows, which drives --export-debug and compares the exported executable directly with both template inputs."
 else
     DEBUG_DIR="$PWD/$OUT/debug-template"
     DEBUG_APP="$DEBUG_DIR/$PROJECT_NAME.exe"
@@ -963,8 +964,10 @@ esac
 # arch test); this engine check is a different, host-specific layer, neutralized
 # by handing the preset the minimal file _get_exe_arch parses: u32 e_lfanew at
 # 0x3C, "PE\0\0" where it points, u16 machine 0x8664 (x86_64). It never reads
-# "MZ". A Windows host needs none of this — its foreign preset is macOS, whose
-# exporter has no pre-notifier template check.
+# "MZ". A Windows host's foreign macOS preset also needs a concrete path because
+# an absent installed macos.zip is rejected before the plugin. The macOS exporter
+# does not inspect that path's architecture on Windows, so the already-verified
+# official Windows release executable is sufficient to reach the host-OS guard.
 if [ "$DN2CPP_OS" = macos ]; then
     FOREIGN_STUB="$PWD/$OUT/refuse-host-os-template.exe"
     {
@@ -990,6 +993,19 @@ if [ "$DN2CPP_OS" = macos ]; then
         || { echo "FAIL: could not point the foreign preset at the PE stub template" >&2; exit 1; }
     grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
         || { echo "FAIL: the stub patch clobbered the host preset's template" >&2; exit 1; }
+elif [ "$DN2CPP_OS" = windows ]; then
+    presets_tmp="$(mktemp)"
+    awk -v tmpl="$DESKTOP_TEMPLATE_NATIVE" '
+        /^name="/ { preset = $0 }
+        preset == "name=\"dn2cpp-app\"" && /^custom_template\/release=/ {
+            print "custom_template/release=\"" tmpl "\""
+            next
+        }
+        { print }
+    ' "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
+    grep -qF "$DESKTOP_TEMPLATE_NATIVE" "$PROJ/export_presets.cfg" \
+        || { echo "FAIL: could not give the foreign macOS preset a template path" >&2; exit 1; }
 fi
 FOREIGN_OS_DIR="$PWD/$OUT/refuse-host-os"
 FOREIGN_OS_LOG="$OUT/export-host-os.log"
@@ -1131,6 +1147,21 @@ else
     for stub in emcmake em++; do
         printf '@echo off\r\nexit /b 1\r\n' > "$NOPOSIX_DIR/stub-emsdk/$stub.bat"
     done
+
+    # This section stops in the export plugin before a Web template is opened,
+    # but Godot's preset validation still requires a path. Reuse the verified
+    # official executable as an existence witness; the Windows preset itself
+    # remains empty and continues to exercise normal template selection.
+    presets_tmp="$(mktemp)"
+    awk -v tmpl="$DESKTOP_TEMPLATE_NATIVE" '
+        /^name="/ { preset = $0 }
+        preset == "name=\"dn2cpp-web\"" && /^custom_template\/release=/ {
+            print "custom_template/release=\"" tmpl "\""
+            next
+        }
+        { print }
+    ' "$PROJ/export_presets.cfg" > "$presets_tmp"
+    mv "$presets_tmp" "$PROJ/export_presets.cfg"
 
     # Hidden rather than deleted, and restored through a trap: the staged
     # toolchain is the fork editor's own, shared with every other editor-export

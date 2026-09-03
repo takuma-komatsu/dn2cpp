@@ -4,8 +4,8 @@
 # (build-and-run-godot-editor-export{,-ios,-android,-web}.sh, sourced after
 # _common.sh) and the setup aids that extend the cache
 # (setup-godot-fork-{ios,web}.sh, which source only this file). One place owns
-# the artifact-root default, the recorded paths into the fork (its two engine
-# binaries, its GodotSharp tree, the worktree itself), the pin + interop-ABI
+# the artifact-root default, the recorded paths into the fork (its editor,
+# optional host template, GodotSharp tree, and worktree), the pin + interop-ABI
 # tripwire, and the shared cache-context terms.
 #
 # Sourcing is side-effect-free beyond variable assignment, so the setup aids can
@@ -50,9 +50,9 @@ else
     case "$(uname -s)" in CYGWIN*|MINGW*|MSYS*) FORK_EXE=.exe ;; *) FORK_EXE= ;; esac
 fi
 
-# The fork's two engine binaries and the GodotSharp tree beside them, named ONCE
-# here as RECORDED PATHS into the fork — gates/setup-godot-fork.sh writes
-# editor.txt / template.txt / clone.txt, and every reader takes the path there.
+# The fork's editor, the host template where applicable, and the GodotSharp tree
+# beside them, named once as recorded paths into the fork. Windows has no
+# recorded desktop template because its gates use the official installed pair.
 #
 # Recorded rather than linked because the lane must not depend on a real symlink:
 # MSYS/Git-Bash's `ln -s` silently COPIES unless the shell has both a winsymlinks
@@ -75,7 +75,6 @@ _fork_recorded() {   # _fork_recorded FILE FALLBACK
 }
 FORK_EDITOR="$(_fork_recorded editor.txt "$FORK_ROOT/editor_bin$FORK_EXE")"
 FORK_TEMPLATE="$(_fork_recorded template.txt "$FORK_ROOT/template_bin$FORK_EXE")"
-FORK_TEMPLATE_DEBUG="$(_fork_recorded template-debug.txt "$FORK_ROOT/template_debug_bin$FORK_EXE")"
 # The engine's own rule — "GodotSharp/ sits beside the executable"
 # (godotsharp_dirs.cpp resolves it next to the running image) — so one expression
 # covers both layouts: the fork's own bin/GodotSharp for a recorded editor, the
@@ -143,11 +142,10 @@ godot_fork_native_path() {
 }
 
 # godot_fork_desktop_template ROOT [release|debug] — echo the DESKTOP export template artifact
-# gates/setup-godot-fork.sh assembles into ROOT for this host. The platforms hand
-# the exporter different things and the difference is the engine's, not a
-# preference: the macOS exporter reads a zip laid out like misc/dist/
-# macos_template.app and picks the binary out of it, while the Windows and Linux
-# ones take the release template executable itself. Defined here so the setup
+# gates/setup-godot-fork.sh assembles into ROOT for this host. macOS reads a zip
+# laid out like misc/dist/macos_template.app, while Linux takes the release
+# template executable itself. Windows uses installed official .NET templates and
+# never reaches this helper. Defined here so the setup
 # script that WRITES the artifact and the gate that READS it cannot drift — the
 # one name they must agree on has one home.
 #
@@ -166,14 +164,8 @@ godot_fork_desktop_template() {
             printf '%s/macos_template.zip\n' "$1"
             ;;
         windows)
-            case "$target" in
-                release) printf '%s/windows_template_release.exe\n' "$1" ;;
-                debug)   printf '%s/windows_template_debug.exe\n' "$1" ;;
-                *)
-                    echo "error: unknown Windows template target: $target" >&2
-                    return 1
-                    ;;
-            esac
+            echo "error: Windows exports use installed official .NET templates" >&2
+            return 1
             ;;
         linux)
             [ "$target" = release ] || {
@@ -245,8 +237,8 @@ godot_fork_engine_hash() {
 
 # godot_fork_engine_provenance — the one line stamped beside every EXPORT
 # TEMPLATE the fork setup aids bake (the two Web zips, the iOS zip, and the
-# desktop macos_template.zip / Windows release and debug executables that
-# setup-godot-fork.sh step 5 assembles), as `<template>.provenance`. Export templates are what the engine
+# desktop macos_template.zip / Linux executable that setup-godot-fork.sh step
+# 5 assembles), as `<template>.provenance`. Export templates are what the engine
 # binaries' stamps are not: handed to a consumer that cannot check them. Godot
 # validates a preset's `custom_template` with FileAccess::exists alone and
 # bypasses the version-keyed template directory, so a template one patch release
@@ -797,10 +789,12 @@ godot_fork_cache_complete() {
 # removed before its product is rebuilt and written after, so a half-written
 # product carries no stamp rather than an old one.
 #
-# The desktop export artifact IS checked here even though its consumer checks it
-# again. The two checks answer different questions: this predicate lets
-# pre-merge repair an interrupted assembly before the suites; the consumer's
-# live check keeps a stale artifact from passing on a warm gate cache.
+# A fork-built desktop export artifact is checked here even though its consumer
+# checks it again. The two checks answer different questions: this predicate
+# lets pre-merge repair an interrupted assembly before the suites; the
+# consumer's live check keeps a stale artifact from passing on a warm gate
+# cache. Windows uses installed official templates, so only its editor is part
+# of this fork-cache predicate.
 #
 # Sets FORK and BASE_COMMIT through godot_fork_resolve, so a caller that holds
 # them already gets the same values back.
@@ -844,42 +838,29 @@ godot_fork_cache_fresh() {
     }
 
     _fork_stamp_is "$FORK_EDITOR.engine-hash" "$FORK_CACHE_ENGINE_NOW" "editor binary" || return 1
-    _fork_stamp_is "$FORK_TEMPLATE.engine-hash" "$FORK_CACHE_ENGINE_NOW" "release template" || return 1
-    if [ "${DN2CPP_OS:-}" = windows ]; then
-        _fork_stamp_is "$FORK_TEMPLATE_DEBUG.engine-hash" "$FORK_CACHE_ENGINE_NOW" "debug template" || return 1
+    if [ "${DN2CPP_OS:-}" != windows ]; then
+        _fork_stamp_is "$FORK_TEMPLATE.engine-hash" "$FORK_CACHE_ENGINE_NOW" "release template" || return 1
     fi
     _fork_stamp_is "$FORK/$FORK_GLUE_MARKER.engine-hash" "$FORK_CACHE_ENGINE_NOW" "mono glue" || return 1
     _fork_stamp_is "$(godot_fork_tools_stamp)" "$FORK_CACHE_TOOLS_NOW" "managed assemblies + feed" || return 1
 
     local desktop want_provenance stamped_provenance
-    desktop="$(godot_fork_desktop_template "$FORK_ROOT")" || {
-        FORK_CACHE_WHY="the desktop export template path cannot be resolved for ${DN2CPP_OS:-unknown}"
-        return 1
-    }
-    want_provenance="engine=$FORK_CACHE_ENGINE_NOW base=$BASE_COMMIT"
-    if [ ! -f "$desktop" ]; then
-        FORK_CACHE_WHY="the desktop export template is missing at $desktop"
-        return 1
-    fi
-    stamped_provenance="$(head -1 "$desktop.provenance" 2>/dev/null || true)"
-    if [ "$stamped_provenance" != "$want_provenance" ]; then
-        FORK_CACHE_WHY="the desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
-        return 1
-    fi
-    if [ "${DN2CPP_OS:-}" = windows ]; then
-        local desktop_debug
-        desktop_debug="$(godot_fork_desktop_template "$FORK_ROOT" debug)"
-        if [ ! -f "$desktop_debug" ]; then
-            FORK_CACHE_WHY="the debug desktop export template is missing at $desktop_debug"
+    if [ "${DN2CPP_OS:-}" != windows ]; then
+        desktop="$(godot_fork_desktop_template "$FORK_ROOT")" || {
+            FORK_CACHE_WHY="the desktop export template path cannot be resolved for ${DN2CPP_OS:-unknown}"
+            return 1
+        }
+        want_provenance="engine=$FORK_CACHE_ENGINE_NOW base=$BASE_COMMIT"
+        if [ ! -f "$desktop" ]; then
+            FORK_CACHE_WHY="the desktop export template is missing at $desktop"
             return 1
         fi
-        stamped_provenance="$(head -1 "$desktop_debug.provenance" 2>/dev/null || true)"
+        stamped_provenance="$(head -1 "$desktop.provenance" 2>/dev/null || true)"
         if [ "$stamped_provenance" != "$want_provenance" ]; then
-            FORK_CACHE_WHY="the debug desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
+            FORK_CACHE_WHY="the desktop export template was built from ${stamped_provenance:-<no stamp>}, the fork's sources are $want_provenance"
             return 1
         fi
     fi
-
     # The products the tools stamp vouches for, asserted separately: the stamp is
     # written last, but a root reassembled by hand can hold the stamp without the
     # tree it describes.
@@ -979,8 +960,8 @@ _fork_abs() {
 # cache exists.
 #
 # INVARIANT: the recorded ROOT and the resolved WORKTREE must describe ONE clone.
-# The root supplies the binary that actually runs (editor.txt / template.txt and
-# the GodotSharp tree staged beside it); the worktree is what
+# The root supplies the binary that actually runs (editor.txt / template.txt
+# where applicable and the GodotSharp tree staged beside it); the worktree is what
 # godot_fork_pin_abi_check fingerprints. Let the two name different clones and
 # the tripwire's whole guarantee — "the prebuilt binary describes this tree" —
 # detaches with nothing said: clone B is certified while clone A's editor runs.
