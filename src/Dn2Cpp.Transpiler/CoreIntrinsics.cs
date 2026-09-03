@@ -2175,6 +2175,25 @@ internal static partial class CoreIntrinsics
         : s_intrinsicGenericCpp.TryGetValue(strippedFullName, out var w) ? w
         : null;
 
+    /// <summary>Whether the runtime struct behind an intrinsic value type (an
+    /// IntrinsicCppName without a trailing <c>*</c>) embeds a pointer into collectible
+    /// GC memory. The replaced BCL type's IL fields describe the wrong layout —
+    /// DependentHandle is one <c>nint</c> in IL and one collectible-cell pointer here —
+    /// so <see cref="TypeDesc.ContainsGcReferences"/> widens by this predicate: an
+    /// array element or field the collector never scans would otherwise be the cell's
+    /// only edge. Pointers into uncollectable or native memory are not edges (a
+    /// GCHandle cell is uncollectable and self-rooting; the memory-mapped structs hold
+    /// mmap addresses).</summary>
+    public static bool IntrinsicValueTypeHoldsGcReference(string cppName) => cppName switch
+    {
+        "Dn2CppDependentHandle" => true,                     // Dn2CppDependentCell*
+        "Dn2CppTaskAwaiter" or "Dn2CppAsyncBuilder" => true, // Dn2CppTask*
+        "Dn2CppCancelToken" => true,                         // Dn2CppCancelSource*
+        "Dn2CppLockScope" => true,                           // the Lock object
+        "Dn2CppSbChunkEnum" => true,                         // the snapshot string
+        _ => false,
+    };
+
     /// <summary>An entry of <see cref="s_specialTypeCpp"/> whose value the loaded-Class
     /// path already owns via <see cref="IntrinsicGenericCppType"/> (every TypeDef is
     /// stamped with it as IntrinsicCppName, which <c>CppTypes.Of</c>'s Class arm probes

@@ -20,6 +20,7 @@ namespace WeakReferences
             InternBarrierSubset.Program.__GateEntry();
             PendingCallArgumentSubset.Program.__GateEntry();
             IncrementalWriteBarrierSubset.Program.__ResizeGateEntry();
+            ConditionalWeakTableSubset.Program.__GateEntry();
         }
     }
 }
