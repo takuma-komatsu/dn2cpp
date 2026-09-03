@@ -380,6 +380,147 @@ _platform_isa_native_plan_self_check() {
 #      oracle opts in only when the configured compiler has the helper surface;
 #      otherwise both sides stay false and the nested throwing stubs are called.
 # Rows that are not Lowered fold to false on our side whatever the CPU.
+# _platform_isa_run_native_shard LABEL SHARD ENV ATTEMPT_PREFIX OUT ERR CMD...
+# runs one generated native shard and sets _PI_SHARD_CODE. Each attempt keeps
+# its own account; only the accepted attempt reaches the aggregate OUT and ERR.
+_platform_isa_run_native_shard() {
+    local label="$1" shard="$2" ours_env="$3" attempt_prefix="$4"
+    local accepted_stdout="$5" accepted_stderr="$6"
+    shift 6
+    local attempt attempt_stdout attempt_stderr
+
+    for attempt in 1 2 3; do
+        attempt_stdout="$attempt_prefix.attempt$attempt.out"
+        attempt_stderr="$attempt_prefix.attempt$attempt.log"
+        # shellcheck disable=SC2086
+        if (if [ -n "$ours_env" ]; then export $ours_env; fi
+            run_bounded "$@") >"$attempt_stdout" 2>"$attempt_stderr"; then
+            _PI_SHARD_CODE=0
+        else
+            _PI_SHARD_CODE=$?
+        fi
+
+        # Windows can sporadically fail to create the process without reaching
+        # the binary. Keep every attempt account, but accept only one stdout.
+        if [ "$DN2CPP_OS" != windows ] || [ "$_PI_SHARD_CODE" -ne 127 ] \
+            || [ "$attempt" -eq 3 ]; then
+            break
+        fi
+        echo "note: platform-ISA run $label shard $shard launch attempt $attempt exited 127 on Windows; retrying in ${attempt}s (stdout: $attempt_stdout, stderr: $attempt_stderr)" >&2
+        sleep "$attempt"
+    done
+
+    cat "$attempt_stdout" >>"$accepted_stdout"
+    cat "$attempt_stderr" >>"$accepted_stderr"
+}
+
+_platform_isa_native_retry_self_check() (
+    local test_dir case_dir actual expected next_attempt attempt retry_notes
+    test_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp-platform-isa-retry.XXXXXX") \
+        || { echo "FAIL: could not create the platform-ISA retry self-check directory" >&2; return 1; }
+    trap 'rm -rf "$test_dir"' EXIT
+
+    # The real runner is always called in a subshell. Keep the attempt number in
+    # a file so this stub exercises that boundary instead of bypassing it.
+    run_bounded() {
+        local attempt code
+        attempt=$(cat "$_PI_TEST_COUNTER")
+        attempt=$((attempt + 1))
+        printf '%s\n' "$attempt" >"$_PI_TEST_COUNTER"
+        printf 'stdout-attempt-%s\n' "$attempt"
+        printf 'stderr-attempt-%s\n' "$attempt" >&2
+        code="${_PI_TEST_CODES[$((attempt - 1))]}"
+        return "$code"
+    }
+    sleep() {
+        printf '%s\n' "$1" >>"$_PI_TEST_SLEEPS"
+    }
+
+    # _pi_retry_case NAME OS ACCEPTED_CODE N_ATTEMPTS CODE...
+    _pi_retry_case() {
+        local name="$1" DN2CPP_OS="$2" accepted_code="$3" n_attempts="$4"
+        shift 4
+        local _PI_TEST_CODES=("$@")
+        local _PI_TEST_COUNTER _PI_TEST_SLEEPS prefix accepted_stdout accepted_stderr
+        case_dir="$test_dir/$name"
+        mkdir -p "$case_dir"
+        _PI_TEST_COUNTER="$case_dir/count"
+        _PI_TEST_SLEEPS="$case_dir/sleeps"
+        prefix="$case_dir/native"
+        accepted_stdout="$case_dir/accepted.out"
+        accepted_stderr="$case_dir/accepted.log"
+        printf '0\n' >"$_PI_TEST_COUNTER"
+        : >"$_PI_TEST_SLEEPS"
+        printf 'prior-stdout\n' >"$accepted_stdout"
+        printf 'prior-stderr\n' >"$accepted_stderr"
+
+        _platform_isa_run_native_shard T test "" "$prefix" \
+            "$accepted_stdout" "$accepted_stderr" stub-command \
+            2>"$case_dir/retry.log"
+
+        if [ "$_PI_SHARD_CODE" -ne "$accepted_code" ]; then
+            echo "FAIL: platform-ISA retry self-check $name accepted exit $_PI_SHARD_CODE, expected $accepted_code" >&2
+            return 1
+        fi
+        actual=$(cat "$_PI_TEST_COUNTER")
+        if [ "$actual" -ne "$n_attempts" ]; then
+            echo "FAIL: platform-ISA retry self-check $name ran $actual attempts, expected $n_attempts" >&2
+            return 1
+        fi
+
+        expected=$'prior-stdout\n'"stdout-attempt-$n_attempts"
+        actual=$(cat "$accepted_stdout")
+        if [ "$actual" != "$expected" ]; then
+            echo "FAIL: platform-ISA retry self-check $name accepted the wrong stdout attempt" >&2
+            return 1
+        fi
+        expected=$'prior-stderr\n'"stderr-attempt-$n_attempts"
+        actual=$(cat "$accepted_stderr")
+        if [ "$actual" != "$expected" ]; then
+            echo "FAIL: platform-ISA retry self-check $name accepted the wrong stderr attempt" >&2
+            return 1
+        fi
+
+        for ((attempt = 1; attempt <= n_attempts; attempt++)); do
+            actual=$(cat "$prefix.attempt$attempt.out" 2>/dev/null || true)
+            [ "$actual" = "stdout-attempt-$attempt" ] \
+                || { echo "FAIL: platform-ISA retry self-check $name did not retain attempt $attempt stdout" >&2; return 1; }
+            actual=$(cat "$prefix.attempt$attempt.log" 2>/dev/null || true)
+            [ "$actual" = "stderr-attempt-$attempt" ] \
+                || { echo "FAIL: platform-ISA retry self-check $name did not retain attempt $attempt stderr" >&2; return 1; }
+        done
+        if [ "$n_attempts" -lt 3 ]; then
+            next_attempt=$((n_attempts + 1))
+            if [ -e "$prefix.attempt$next_attempt.out" ] \
+                || [ -e "$prefix.attempt$next_attempt.log" ]; then
+                echo "FAIL: platform-ISA retry self-check $name created an extra attempt" >&2
+                return 1
+            fi
+        fi
+
+        retry_notes=$(grep -c 'retrying in' "$case_dir/retry.log" || true)
+        if [ "$retry_notes" -ne $((n_attempts - 1)) ]; then
+            echo "FAIL: platform-ISA retry self-check $name wrote $retry_notes retry notes, expected $((n_attempts - 1))" >&2
+            return 1
+        fi
+        case "$n_attempts" in
+            1) expected="" ;;
+            2) expected="1" ;;
+            3) expected=$'1\n2' ;;
+        esac
+        actual=$(cat "$_PI_TEST_SLEEPS")
+        if [ "$actual" != "$expected" ]; then
+            echo "FAIL: platform-ISA retry self-check $name used unexpected retry delays" >&2
+            return 1
+        fi
+    }
+
+    _pi_retry_case windows-recovers windows 0 2 127 0 || return 1
+    _pi_retry_case windows-other-exit windows 23 1 23 || return 1
+    _pi_retry_case nonwindows-127 linux 127 1 127 || return 1
+    _pi_retry_case windows-exhausts windows 127 3 127 127 127 || return 1
+)
+
 _platform_isa_run_arch() {
     local arch="$1" host_arch="$2" avx10v2_compiler="$3"
     local isa base
@@ -516,13 +657,13 @@ _platform_isa_run_arch() {
                 F|M) run_args+=(--contract-only) ;;
             esac
             executed_shards=$((executed_shards + 1))
-            # Scope each ISA environment in a subshell: `env` cannot invoke the
-            # run_bounded shell function. Direct files avoid MSYS native-pipe loss.
+            # The native helper scopes the ISA environment in a subshell because
+            # `env` cannot invoke run_bounded. Direct files avoid MSYS pipe loss.
+            _platform_isa_run_native_shard "$label" "$shard" "$ours_env" \
+                "$log_dir/$label.$shard" "$ours_out" "$_PI_LOG" \
+                "./$out/$PLATFORM_ISA_PROJECT" "${run_args[@]}"
+            chunk_code=$_PI_SHARD_CODE
             set +e
-            # shellcheck disable=SC2086
-            (if [ -n "$ours_env" ]; then export $ours_env; fi
-             run_bounded "./$out/$PLATFORM_ISA_PROJECT" "${run_args[@]}") \
-                >>"$ours_out" 2>>"$_PI_LOG"; chunk_code=$?
             # shellcheck disable=SC2086
             (if [ -n "$oracle_env" ]; then export $oracle_env; fi
              run_bounded dotnet "$app" "${run_args[@]}") \
@@ -575,12 +716,10 @@ _platform_isa_run_arch() {
         for ((i = 0; i < ${#shard_names[@]}; i++)); do
             shard="${shard_names[$i]}"
             out="${shard_outs[$i]}"
-            set +e
-            # shellcheck disable=SC2086
-            (if [ -n "$ours_env" ]; then export $ours_env; fi
-             run_bounded "./$out/$PLATFORM_ISA_PROJECT" all --invalid-immediates) \
-                >>"$ours_out" 2>>"$_PI_LOG"; shard_code=$?
-            set -e
+            _platform_isa_run_native_shard "$label" "$shard" "$ours_env" \
+                "$log_dir/$label.$shard" "$ours_out" "$_PI_LOG" \
+                "./$out/$PLATFORM_ISA_PROJECT" all --invalid-immediates
+            shard_code=$_PI_SHARD_CODE
             [ "$ours_code" -ne 0 ] || ours_code=$shard_code
             [ "$shard_code" -eq 0 ] || break
         done
@@ -737,6 +876,7 @@ platform_isa_native_gate() {
         || { echo "error: platform_isa_native_gate takes no arguments" >&2; return 1; }
     _platform_isa_witness_normalization_self_check || return 1
     _platform_isa_native_plan_self_check || return 1
+    _platform_isa_native_retry_self_check || return 1
     _platform_isa_clear_runtime_env || return 1
 
     local project="$PLATFORM_ISA_PROJECT" host_arch avx10v2_compiler=0
