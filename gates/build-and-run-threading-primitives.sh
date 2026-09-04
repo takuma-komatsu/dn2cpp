@@ -2,7 +2,8 @@
 # Real synchronization primitives — Interlocked (i4/i8/ref atomics + return-value
 # contract), Volatile.Read/Write (int/long/double/bool), legacy
 # Thread.VolatileRead/Write (integer/reference/float/double), Interlocked.MemoryBarrier, and
-# [ThreadStatic] (main-thread behavior). All single-threaded, so the output is identical
+# [ThreadStatic] (main-thread behavior), and managed WaitHandle subclass key lifetime
+# across collection and address reuse. All single-threaded, so the output is identical
 # to real .NET and is diffed exact (corelib_diff_gate). The genuine cross-thread test
 # (N threads racing a shared counter, Join, exact total) is the Thread gate.
 # Also covers the two lowerings of the `lock` STATEMENT, single-threaded and so

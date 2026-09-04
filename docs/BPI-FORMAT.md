@@ -823,7 +823,7 @@ D <SigKey>
   are enabled (the default), `0` for a `--no-shared-generics` build. Sharing
   changes which concrete function a bound symbol resolves to without moving any
   symbolic line. `layout=` is the field-layout policy —
-  `AbiContract.LayoutPolicyVersion` (currently 5) — bumped by any change that
+  `AbiContract.LayoutPolicyVersion` (currently 6) — bumped by any change that
   moves real field offsets/sizes while changing no symbolic `F`/`L`/`V` line
   (field-width narrowing, growth of the runtime `Dn2CppExceptionObject` prefix,
   a repack of a runtime-owned struct). It applies to both sharing modes, so

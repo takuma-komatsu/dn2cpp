@@ -6177,6 +6177,19 @@ internal sealed partial class CppEmitter
             ClassInfo.ShareStructLayout && c.SharedOwner is not null;
         // The class whose emitted struct definition carries c's layout.
         static ClassInfo StructCarrier(ClassInfo c) => IsStructAlias(c) ? c.SharedOwner! : c;
+        static bool InheritsFromWaitHandle(ClassInfo c)
+        {
+            for (var b = c; b is not null; b = b.BaseClass)
+            {
+                if (b.FullName == "System.Threading.WaitHandle")
+                    return true;
+                if (b.BaseClass is null
+                    && b.ExternalBaseName is "System.Threading.WaitHandle"
+                        or "System.Threading.EventWaitHandle")
+                    return true;
+            }
+            return false;
+        }
         // Interfaces are emitted as empty structs (below) and can be pointer-field
         // types (e.g. Dictionary._comparer : IEqualityComparer<TKey>), so they need
         // forward declarations too, ahead of any struct that references them.
@@ -6258,15 +6271,15 @@ internal sealed partial class CppEmitter
             }
             // A non-opaque class chains through its non-opaque base. When the base
             // is opaque (typically System.Exception or System.Object) the layout
-            // roots at Dn2CppObject — except for user-defined Exception derivatives,
-            // which root at Dn2CppExceptionObject so the runtime's message/inner
-            // slots sit before any derived instance field, matching what
-            // dn2cpp_exception_message / _inner reinterpret_cast onto.
+            // roots at Dn2CppObject — except for runtime-owned prefixes whose hidden
+            // fields must precede every user-defined instance field.
             string baseName;
             if (!IsOpaque(cls) && cls.BaseClass is { } bc && !IsOpaque(bc))
                 baseName = bc.CppStructName;
             else if (!IsOpaque(cls) && Compilation.InheritsFromException(cls))
                 baseName = "Dn2CppExceptionObject";
+            else if (!IsOpaque(cls) && InheritsFromWaitHandle(cls))
+                baseName = "Dn2CppWaitHandle";
             else
                 baseName = "Dn2CppObject";
             _renderedStructRefs.Add((cls, "<base>", baseName));

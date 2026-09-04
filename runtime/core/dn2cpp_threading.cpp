@@ -38,7 +38,6 @@
 #include <atomic>             // g_inflight_async_tasks, real Interlocked
 #include <deque>             // Task.Run worker-pool work queue
 #include <new>               // placement new (in-place ctor of a GC-allocated Timer)
-#include <unordered_map>     // Dn2CppType intern table (one Type per type-info handle)
 
 // Allocation-size query for NativeMemory.AlignedRealloc routes through the PAL
 // (malloc_size on macOS, malloc_usable_size on glibc/musl/BSD).
@@ -712,11 +711,11 @@ static const Dn2CppFieldInfo dn2cpp_ownflds_waithandle[] = {
 };
 extern const Dn2CppType dn2cpp_waithandle_type_obj;
 const Dn2CppTypeInfo dn2cpp_waithandle_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE, dn2cpp_ownflds_waithandle, 1 }, &dn2cpp_waithandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, sizeof(Dn2CppWaitHandle), nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE, dn2cpp_ownflds_waithandle, 1 }, &dn2cpp_waithandle_type_obj);
 const Dn2CppType dn2cpp_waithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_waithandle_type };
 extern const Dn2CppType dn2cpp_event_type_obj;
 const Dn2CppTypeInfo dn2cpp_event_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.EventWaitHandle", &dn2cpp_waithandle_type, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_event_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.EventWaitHandle", &dn2cpp_waithandle_type, sizeof(Dn2CppWaitHandle), nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_event_type_obj);
 const Dn2CppType dn2cpp_event_type_obj = { { &dn2cpp_type_type }, &dn2cpp_event_type };
 extern const Dn2CppType dn2cpp_manualresetevent_type_obj;
 const Dn2CppTypeInfo dn2cpp_manualresetevent_type =
@@ -746,7 +745,7 @@ struct Dn2CppSemaphore : Dn2CppObject
     int maxCount;
 };
 
-struct Dn2CppEvent : Dn2CppObject
+struct Dn2CppEvent : Dn2CppWaitHandle
 {
     std::mutex m;
     std::condition_variable cv;
@@ -765,14 +764,7 @@ struct Dn2CppSafeWaitHandle : Dn2CppObject
     uint32_t dangerousRefs;
 };
 
-struct Dn2CppWaitHandleRegistry
-{
-    std::mutex mutex;
-    std::unordered_map<Dn2CppObject*, Dn2CppObject*> safeHandles;
-};
-
-static Dn2CppWaitHandleRegistry& g_wait_handle_registry =
-    dn2cpp_never_destroyed<Dn2CppWaitHandleRegistry>();
+static std::mutex& g_wait_handle_mutex = dn2cpp_never_destroyed<std::mutex>();
 
 Dn2CppObject* dn2cpp_semaphore_new(int32_t initial, int32_t maxCount)
 {
@@ -868,6 +860,7 @@ Dn2CppObject* dn2cpp_event_new(int32_t initial, int32_t manualReset, const Dn2Cp
 {
     auto* e = new Dn2CppEvent();
     e->type = ti != nullptr ? ti : &dn2cpp_event_type;
+    e->safeHandle = nullptr;
     e->signaled = initial != 0;
     e->manualReset = manualReset != 0;
     e->closed = false;
@@ -901,30 +894,45 @@ static Dn2CppSafeWaitHandle* dn2cpp_managed_event_safe(Dn2CppObject* waitHandle)
     return safe;
 }
 
+static bool dn2cpp_is_runtime_event(Dn2CppObject* waitHandle)
+{
+    return waitHandle->type == &dn2cpp_event_type
+        || waitHandle->type == &dn2cpp_manualresetevent_type
+        || waitHandle->type == &dn2cpp_autoresetevent_type;
+}
+
+static void dn2cpp_waithandle_store_safe(Dn2CppWaitHandle* waitHandle,
+    Dn2CppObject* safeHandle)
+{
+    waitHandle->safeHandle = safeHandle;
+    // Emitted subclasses are GC objects; runtime events are native objects. The
+    // conditional barrier is correct for both storage locations.
+    dn2cpp_gc_write_barrier_if_heap(&waitHandle->safeHandle);
+}
+
 Dn2CppObject* dn2cpp_waithandle_get_safe(Dn2CppObject* waitHandle)
 {
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
-    std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
-    auto it = g_wait_handle_registry.safeHandles.find(waitHandle);
-    if (it == g_wait_handle_registry.safeHandles.end())
-    {
-        auto* safe = dn2cpp_managed_event_safe(waitHandle);
-        it = g_wait_handle_registry.safeHandles.emplace(waitHandle, safe).first;
-    }
-    return it->second;
+    auto* wh = static_cast<Dn2CppWaitHandle*>(waitHandle);
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    if (wh->safeHandle == nullptr)
+        dn2cpp_waithandle_store_safe(wh, dn2cpp_is_runtime_event(waitHandle)
+            ? dn2cpp_managed_event_safe(waitHandle)
+            : dn2cpp_safewaithandle_new(0, 0));
+    return wh->safeHandle;
 }
 
 void dn2cpp_waithandle_set_safe(Dn2CppObject* waitHandle, Dn2CppObject* safeHandle)
 {
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
-    std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
-    // SafeWaitHandle's nullable setter uses null to clear the OS handle. The next
-    // getter returns a real invalid wrapper rather than null; retaining a null map
-    // value would make every event operation dereference it.
-    g_wait_handle_registry.safeHandles[waitHandle] = safeHandle != nullptr
-        ? safeHandle : dn2cpp_safewaithandle_new(0, 0);
+    auto* wh = static_cast<Dn2CppWaitHandle*>(waitHandle);
+    std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+    // SafeWaitHandle's nullable setter clears the OS handle. The next getter returns
+    // a stable invalid wrapper rather than null.
+    dn2cpp_waithandle_store_safe(wh, safeHandle != nullptr
+        ? safeHandle : dn2cpp_safewaithandle_new(0, 0));
 }
 
 intptr_t dn2cpp_safewaithandle_get(Dn2CppObject* safeHandle)
@@ -1020,15 +1028,13 @@ void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
     if (waitHandle == nullptr)
         dn2cpp_throw_null_reference();
     Dn2CppSafeWaitHandle* safe = nullptr;
-    bool runtimeEvent = waitHandle->type == &dn2cpp_event_type
-        || waitHandle->type == &dn2cpp_manualresetevent_type
-        || waitHandle->type == &dn2cpp_autoresetevent_type;
+    bool runtimeEvent = dn2cpp_is_runtime_event(waitHandle);
     {
-        std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
-        auto it = g_wait_handle_registry.safeHandles.find(waitHandle);
-        if (it != g_wait_handle_registry.safeHandles.end())
+        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+        auto* wh = static_cast<Dn2CppWaitHandle*>(waitHandle);
+        safe = static_cast<Dn2CppSafeWaitHandle*>(wh->safeHandle);
+        if (safe != nullptr)
         {
-            safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
             // A managed WaitHandle subclass can borrow another runtime event's
             // SafeWaitHandle. Disposing the borrower detaches that alias; it must not
             // close the donor event that still owns the condition variable.
@@ -1037,7 +1043,7 @@ void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
                 std::lock_guard<std::mutex> slk(safe->m);
                 if (safe->managedEvent)
                 {
-                    it->second = dn2cpp_safewaithandle_new(0, 0);
+                    dn2cpp_waithandle_store_safe(wh, dn2cpp_safewaithandle_new(0, 0));
                     safe = nullptr;
                 }
             }
@@ -1045,7 +1051,7 @@ void dn2cpp_waithandle_close(Dn2CppObject* waitHandle)
         else if (runtimeEvent)
         {
             safe = dn2cpp_managed_event_safe(waitHandle);
-            g_wait_handle_registry.safeHandles.emplace(waitHandle, safe);
+            dn2cpp_waithandle_store_safe(wh, safe);
         }
     }
     if (safe != nullptr)
@@ -1073,11 +1079,12 @@ static Dn2CppEvent* dn2cpp_event_from_operand(Dn2CppObject* o,
         return nullptr;
     }
     {
-        std::lock_guard<std::mutex> lk(g_wait_handle_registry.mutex);
-        auto it = g_wait_handle_registry.safeHandles.find(o);
-        if (it != g_wait_handle_registry.safeHandles.end())
+        std::lock_guard<std::mutex> lk(g_wait_handle_mutex);
+        auto* wh = static_cast<Dn2CppWaitHandle*>(o);
+        auto* slot = wh->safeHandle;
+        if (slot != nullptr)
         {
-            auto* safe = static_cast<Dn2CppSafeWaitHandle*>(it->second);
+            auto* safe = static_cast<Dn2CppSafeWaitHandle*>(slot);
             std::lock_guard<std::mutex> slk(safe->m);
             if (safe->closed)
                 dn2cpp_throw_object_disposed();
@@ -1091,10 +1098,9 @@ static Dn2CppEvent* dn2cpp_event_from_operand(Dn2CppObject* o,
             return nullptr;
         }
     }
-    if (o->type == &dn2cpp_waithandle_type)
-    {
+    if (!dn2cpp_is_runtime_event(o)
+        && dn2cpp_typeinfo_assignable(o->type, &dn2cpp_waithandle_type))
         dn2cpp_throw_invalid_operation();
-    }
     return static_cast<Dn2CppEvent*>(o);
 }
 
