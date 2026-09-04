@@ -6,13 +6,18 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークでエクスポートプリセットに Incremental GC 設定（`dotnet/dn2cpp/incremental_gc`）を追加し、CMake 構成値の明示的な引き渡しに対応しました（[godot-dn2cpp PR #9](https://github.com/takuma-komatsu/godot-dn2cpp/pull/9)）
-- Godot フォークの Linux CI 環境において godot-cpp のアーカイブ引数上限を回避するレスポンスファイル適用を行いました（[godot-dn2cpp PR #10](https://github.com/takuma-komatsu/godot-dn2cpp/pull/10)）
-- [PR #96](https://github.com/takuma-komatsu/dn2cpp/pull/96) で、起動時コマンドライン引数（`--dn2cpp-gc-incremental=0|1`）による Incremental GC ポリシーのオーバーライドに対応しました
-- [PR #95](https://github.com/takuma-komatsu/dn2cpp/pull/95) で、`Array.Resize` の ref 書き戻し、P/Invoke の byref 文字列書き戻し、デリゲート生成、参照配列初期化等における Incremental GC ライトバリアの網羅性を強化しました
-- [PR #94](https://github.com/takuma-komatsu/dn2cpp/pull/94) で、プラットフォーム ISA 検証（`PlatformIsaProbe`）の到達性シャーディングを導入し、テスト・検証処理を最適化しました
+- Godot フォークで静的エクスポートターゲット（iOS / Web）における直接 P/Invoke 選択に対応しました（[godot-dn2cpp PR #11](https://github.com/takuma-komatsu/godot-dn2cpp/pull/11)）
+- Godot フォークで Windows エクスポート時にプロジェクト定義の依存 DLL を実行ファイルと同階層へ配置するようにしました（[godot-dn2cpp PR #12](https://github.com/takuma-komatsu/godot-dn2cpp/pull/12)）
+- [PR #109](https://github.com/takuma-komatsu/dn2cpp/pull/109) で、マネージドオブジェクトによる WaitHandle の所有権管理とライフタイム保護を強化しました
+- [PR #107](https://github.com/takuma-komatsu/dn2cpp/pull/107) で、ホスト終了時およびファイナライザ実行時におけるランタイム状態とオブジェクトグラフの保護を強化しました
+- [PR #106](https://github.com/takuma-komatsu/dn2cpp/pull/106) で、GC 参照を保持する組み込み構造体配列の GC スキャンに対応しました
+- [PR #105](https://github.com/takuma-komatsu/dn2cpp/pull/105) で、Windows エクスポートにおいて Godot 公式 .NET テンプレートの直接利用へ移行しました
+- [PR #102](https://github.com/takuma-komatsu/dn2cpp/pull/102) で、Windows プラットフォーム ISA シャード起動の再試行処理を追加しました
+- [PR #101](https://github.com/takuma-komatsu/dn2cpp/pull/101) で、HTTP/2 キャンセル処理とハンドシェイクの同期を改善しました
+- [PR #99](https://github.com/takuma-komatsu/dn2cpp/pull/99) で、Wasm データ再配置関数の分割境界を跨ぐローカル変数の生存期間を保護しました
+- [PR #97](https://github.com/takuma-komatsu/dn2cpp/pull/97) で、NativeAOT スタイルの遅延 P/Invoke 解決を導入し、`NativeLibrary` API に対応しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/f8f12cd7c131e450e06c314cbea6eb57fca829a2...6a988e1f572886a113ec461f38e078f4a3e2b260> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/2d14c9182f7c163b272f3298606780fdac5f75eb...@@DOCS_REF@@> を参照してください。
 
 ## ダウンロード
 

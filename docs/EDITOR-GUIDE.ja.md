@@ -93,7 +93,7 @@ Node.js の列が無いのは、`emcc` がリンクのたびに起動する **No
 
 | エクスポート先 | .NET 10 SDK | Visual Studio の C++ ワークロード | Android NDK・JDK | エクスポートテンプレート |
 |---|:-:|:-:|:-:|---|
-| Windows | ● | ●※ | — | リリース Assets の Windows x86_64 テンプレート |
+| Windows | ● | ●※ | — | Godot 公式 |
 | Web | ● | — | — | 本リリース同梱 |
 | Android | ● | — | ● | Godot 公式 |
 
