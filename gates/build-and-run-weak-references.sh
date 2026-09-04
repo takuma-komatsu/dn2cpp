@@ -21,6 +21,11 @@
 # string.Intern / IsInterned over a run-time-built string, whose only root is the
 # intern cell. PendingCallArgument keeps a Dictionary/string graph on the IL
 # evaluation stack while the next nested-call argument forces collection.
+# ConditionalWeakTable holds each pair through a DependentHandle embedded in its
+# Entry[]; the runtime's dependent cell is ordinary collectible memory whose only
+# edge is that array, so the Entry[] must come from the scanned allocator even
+# though the handle is one pointer-sized word in IL. The generated allocation is
+# asserted directly, and the section looks its keys up again after a collection.
 # The Array.Resize run is a stress signal, not a deterministic proof of the GC's
 # held window. The exact generated store-before-barrier check below and the
 # deterministic runtime helper probe in build-and-run-gc-write-barrier.sh provide
@@ -84,7 +89,17 @@ if [ "$pending_barriers" -ne 1 ]; then
     exit 1
 fi
 
-ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness"
+# Both the initial Entry[] (the Container constructor) and the resized one.
+cwt_scanned=$(grep -hF 'dn2cpp_newarr_n_t(' "$out"/generated*.cpp \
+    | grep -cF 'sizeof(t_ConditionalWeakTable_Entry' || true)
+cwt_atomic=$(grep -hF 'dn2cpp_newarr_n_atomic_t(' "$out"/generated*.cpp \
+    | grep -cF 'sizeof(t_ConditionalWeakTable_Entry' || true)
+if [ "$cwt_scanned" -lt 2 ] || [ "$cwt_atomic" -ne 0 ]; then
+    echo "FAIL: ConditionalWeakTable Entry[] allocations were $cwt_scanned scanned / $cwt_atomic unscanned, expected >=2 / 0" >&2
+    exit 1
+fi
+
+ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness+cwt-entry-scanned+cwt-section"
 ctx="$ctx$(_gate_ctx_extras)"
 if _corelib_gate_check "$out" "$ctx"; then
     gate_cache_hit_msg
@@ -150,5 +165,11 @@ if [ "$(grep -cF 'Array.Resize field stress:' <<<"$incremental")" -ne 1 ]; then
     echo "FAIL: Array.Resize field-stress section did not run exactly once" >&2
     exit 1
 fi
+for run in "$stw" "$incremental"; do
+    if [ "$(grep -cF 'conditional weak table after collection:' <<<"$run")" -ne 1 ]; then
+        echo "FAIL: ConditionalWeakTable section did not run exactly once" >&2
+        exit 1
+    fi
+done
 
 gate_cache_commit

@@ -243,8 +243,12 @@ internal sealed class TypeDesc
         TypeKind.External => CppTypes.IsGcRefCppType(CppTypes.ExternalCppName(ExternalName)),
         TypeKind.ExternalGeneric => true, // a base-image generic reference type
         TypeKind.Class when Class!.IsEnum => false,
+        // An intrinsic value type's IL fields describe the BCL layout, not the runtime
+        // struct that replaced it, so the runtime side is asked as well — never instead,
+        // so the answer only ever widens.
         TypeKind.Class when Class!.IsValueType =>
-            Class!.Fields.Any(f => !f.IsStatic && !f.IsLiteral && f.Type.ContainsGcReferences()),
+            (Class!.IntrinsicCppName is { } icn && CoreIntrinsics.IntrinsicValueTypeHoldsGcReference(icn))
+            || Class!.Fields.Any(f => !f.IsStatic && !f.IsLiteral && f.Type.ContainsGcReferences()),
         TypeKind.Class => true, // reference type
         _ => true,              // unmodeled (e.g. open generic var): assume references
     };
