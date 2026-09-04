@@ -1165,7 +1165,7 @@ struct Dn2CppPInvokeResolverEntry
 };
 
 DN2CPP_GC_STATIC_ROOT Dn2CppPInvokeResolverEntry* g_pinvoke_resolvers = nullptr;
-std::mutex g_pinvoke_resolver_mutex;
+std::mutex& g_pinvoke_resolver_mutex = dn2cpp_never_destroyed<std::mutex>();
 
 static std::string dn2cpp_native_utf8(Dn2CppString* value)
 {

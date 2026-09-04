@@ -1886,25 +1886,29 @@ Dn2CppArrayN* dn2cpp_newarr_n_atomic_t(int32_t length, int32_t elemSize, const D
 // for the process lifetime — the same shape as the string intern pool below.
 namespace
 {
-std::mutex g_empty_array_mtx;
-
-std::unordered_map<const Dn2CppTypeInfo*, Dn2CppArray**>& dn2cpp_empty_array_pool()
+struct Dn2CppEmptyArrayPool
 {
-    static auto* pool = new std::unordered_map<const Dn2CppTypeInfo*, Dn2CppArray**>();
-    return *pool;
+    std::mutex mutex;
+    std::unordered_map<const Dn2CppTypeInfo*, Dn2CppArray**> entries;
+};
+
+Dn2CppEmptyArrayPool& dn2cpp_empty_array_pool()
+{
+    static Dn2CppEmptyArrayPool& pool = dn2cpp_never_destroyed<Dn2CppEmptyArrayPool>();
+    return pool;
 }
 
 template <typename Alloc>
 Dn2CppArray* dn2cpp_array_empty_cached(const Dn2CppTypeInfo* ti, Alloc alloc)
 {
-    std::lock_guard<std::mutex> lk(g_empty_array_mtx);
     auto& pool = dn2cpp_empty_array_pool();
-    auto it = pool.find(ti);
-    if (it != pool.end())
+    std::lock_guard<std::mutex> lk(pool.mutex);
+    auto it = pool.entries.find(ti);
+    if (it != pool.entries.end())
         return *it->second;
     auto** cell = static_cast<Dn2CppArray**>(dn2cpp_alloc_pinned(sizeof(Dn2CppArray*)));
     dn2cpp_gc_store_ref(cell, alloc());
-    pool.emplace(ti, cell);
+    pool.entries.emplace(ti, cell);
     return *cell;
 }
 } // namespace
@@ -2318,12 +2322,16 @@ struct Dn2CppStringInternCell
     Dn2CppString* str;
 };
 
-std::mutex g_string_intern_mtx;
-
-std::unordered_map<std::u16string_view, Dn2CppStringInternCell*>& dn2cpp_string_intern_pool()
+struct Dn2CppStringInternPool
 {
-    static auto* pool = new std::unordered_map<std::u16string_view, Dn2CppStringInternCell*>();
-    return *pool;
+    std::mutex mutex;
+    std::unordered_map<std::u16string_view, Dn2CppStringInternCell*> entries;
+};
+
+Dn2CppStringInternPool& dn2cpp_string_intern_pool()
+{
+    static Dn2CppStringInternPool& pool = dn2cpp_never_destroyed<Dn2CppStringInternPool>();
+    return pool;
 }
 
 std::u16string_view dn2cpp_string_intern_key(Dn2CppString* s)
@@ -2336,14 +2344,14 @@ Dn2CppString* dn2cpp_string_intern(Dn2CppString* s)
 {
     if (s == nullptr)
         dn2cpp_throw_argument_null();
-    std::lock_guard<std::mutex> lk(g_string_intern_mtx);
     auto& pool = dn2cpp_string_intern_pool();
-    auto it = pool.find(dn2cpp_string_intern_key(s));
-    if (it != pool.end())
+    std::lock_guard<std::mutex> lk(pool.mutex);
+    auto it = pool.entries.find(dn2cpp_string_intern_key(s));
+    if (it != pool.entries.end())
         return it->second->str;
     auto* cell = static_cast<Dn2CppStringInternCell*>(dn2cpp_alloc_pinned(sizeof(Dn2CppStringInternCell)));
     dn2cpp_gc_store_ref(&cell->str, s);
-    pool.emplace(dn2cpp_string_intern_key(s), cell);
+    pool.entries.emplace(dn2cpp_string_intern_key(s), cell);
     return s;
 }
 
@@ -2351,8 +2359,8 @@ Dn2CppString* dn2cpp_string_is_interned(Dn2CppString* s)
 {
     if (s == nullptr)
         dn2cpp_throw_argument_null();
-    std::lock_guard<std::mutex> lk(g_string_intern_mtx);
     auto& pool = dn2cpp_string_intern_pool();
-    auto it = pool.find(dn2cpp_string_intern_key(s));
-    return it != pool.end() ? it->second->str : nullptr;
+    std::lock_guard<std::mutex> lk(pool.mutex);
+    auto it = pool.entries.find(dn2cpp_string_intern_key(s));
+    return it != pool.entries.end() ? it->second->str : nullptr;
 }

@@ -183,7 +183,7 @@ struct Dn2CppCultureCacheNode
     Dn2CppCultureCacheNode* next;
 };
 static DN2CPP_GC_STATIC_ROOT Dn2CppCultureCacheNode* g_cultureCache = nullptr;
-static std::mutex g_cultureCacheMutex;
+static std::mutex& g_cultureCacheMutex = dn2cpp_never_destroyed<std::mutex>();
 
 // Build (or find) the culture for `row`, or — when `row` is null — the
 // invariant-symbol stand-in carrying `name`. Caller must NOT hold the lock.
@@ -297,7 +297,7 @@ int32_t dn2cpp_culture_is_neutral(const Dn2CppNumberFormatInfo* c)
 // the first read together.
 static DN2CPP_GC_STATIC_ROOT const Dn2CppNumberFormatInfo* g_currentCulture = nullptr;
 static DN2CPP_GC_STATIC_ROOT const Dn2CppNumberFormatInfo* g_hostCulture = nullptr;
-static std::once_flag g_hostCultureOnce;
+static std::once_flag& g_hostCultureOnce = dn2cpp_never_destroyed<std::once_flag>();
 
 static const Dn2CppNumberFormatInfo* dn2cpp_culture_host_default()
 {
@@ -478,7 +478,7 @@ Dn2CppObject* dn2cpp_nfi_wrap(const Dn2CppNumberFormatInfo* n, int32_t kind)
         Dn2CppNfiBoxNode* next;
     };
     static DN2CPP_GC_STATIC_ROOT Dn2CppNfiBoxNode* g_nfiBoxes = nullptr;
-    static std::mutex g_nfiBoxMutex;
+    static std::mutex& g_nfiBoxMutex = dn2cpp_never_destroyed<std::mutex>();
     std::lock_guard<std::mutex> lock(g_nfiBoxMutex);
     for (Dn2CppNfiBoxNode* p = g_nfiBoxes; p != nullptr; p = p->next)
         if (p->box.nfi == n && p->box.type == ti)

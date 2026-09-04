@@ -98,7 +98,7 @@ struct Dn2CppSynthInst
     Dn2CppSynthInst* next;
 };
 static Dn2CppSynthInst* g_synth_insts = nullptr;
-static std::mutex g_synth_mtx;
+static std::mutex& g_synth_mtx = dn2cpp_never_destroyed<std::mutex>();
 
 // The rgctx anchor tables of the synthesized instantiations, one node per
 // placeholder chain level, keyed (clone type-info, level definition). A clone's
@@ -1883,7 +1883,7 @@ struct Dn2CppMetaRow
 };
 
 static Dn2CppMetaRow* g_meta_rows = nullptr;
-static std::mutex g_meta_rows_mtx;
+static std::mutex& g_meta_rows_mtx = dn2cpp_never_destroyed<std::mutex>();
 
 // The descriptor a synthesized row answers from, or null when `mi` is an ordinary
 // emitted row. Identity is the row ADDRESS: every synthesized row lives inside a
@@ -3333,7 +3333,7 @@ struct Dn2CppAsmBoxNode
     Dn2CppAsmBoxNode* next;
 };
 static DN2CPP_GC_STATIC_ROOT Dn2CppAsmBoxNode* g_asmBoxes = nullptr;
-static std::mutex g_asmBoxMutex;
+static std::mutex& g_asmBoxMutex = dn2cpp_never_destroyed<std::mutex>();
 
 static Dn2CppAsmBox* dn2cpp_asm_box_of(const void* p)
 {

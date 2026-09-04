@@ -2333,13 +2333,13 @@ extern Dn2CppTypeInfo dn2cpp_safehandle_zero_or_minus_one_type;
 // Called once from the generated init prologue before any managed code runs.
 void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count);
 
-/// Heap-allocates a T that is never destroyed, for a namespace-scope object the
-/// detached finalizer thread or a Task.Run pool worker can touch. Those threads keep
-/// running while the process tears its statics down, and locking a std::mutex whose
-/// destructor already ran returns EINVAL, which libc++ throws as an uncaught
-/// std::system_error. NOT a complete answer for a shared library: unloading one unmaps
-/// the code those threads execute, which no data lifetime can save — only stopping
-/// them can (dn2cpp_runtime_quiesce).
+/// Heap-allocates a T that is never destroyed, for static-duration state any managed
+/// thread can touch. Program-owned workers, the finalizer thread, and Task.Run pool
+/// workers may keep running while a hosted process tears its statics down; locking a
+/// std::mutex whose destructor already ran returns EINVAL, which libc++ throws as an
+/// uncaught std::system_error. NOT a complete answer for a shared library: unloading
+/// one unmaps the code those threads execute, which no data lifetime can save — only
+/// stopping them can (dn2cpp_runtime_quiesce).
 template <class T>
 T& dn2cpp_never_destroyed()
 {
@@ -2367,9 +2367,10 @@ extern "C" DN2CPP_RT_EXPORT int32_t dn2cpp_runtime_quiesce(int32_t timeout_ms);
 // The exit path of a generated executable's `main`, and the lowering of
 // Environment.Exit(code). Flushes stdio and terminates without running static
 // destructors or the atexit chain: the detached finalizer thread and pool
-// workers keep running through teardown, and destroying the mutexes they lock
-// makes them abort. Build with DN2CPP_EXIT_VIA_STDEXIT to fall back to
-// std::exit for sanitizer runs (which report from an atexit handler).
+// workers keep running through teardown, and any static they still touch outside
+// the runtime's never-destroyed state would already be gone. Build with
+// DN2CPP_EXIT_VIA_STDEXIT to fall back to std::exit for sanitizer runs (which
+// report from an atexit handler).
 [[noreturn]] void dn2cpp_environment_exit(int32_t code);
 
 /// How the generated `main` leaves. An executable terminates the process there and

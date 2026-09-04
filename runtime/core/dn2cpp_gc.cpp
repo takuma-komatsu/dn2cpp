@@ -131,7 +131,7 @@ void dn2cpp_gc_stats_dump()
 // The summary must print exactly once whether the process leaves through the
 // exit funnel (which skips atexit) or through a host that returns and runs the
 // atexit chain — both call this.
-std::once_flag g_gc_stats_once;
+std::once_flag& g_gc_stats_once = dn2cpp_never_destroyed<std::once_flag>();
 void dn2cpp_gc_stats_dump_once()
 {
     std::call_once(g_gc_stats_once, dn2cpp_gc_stats_dump);
@@ -176,7 +176,7 @@ void dn2cpp_gc_suppress_stats_dump()
     std::fprintf(stderr, "================================\n");
 }
 
-std::once_flag g_gc_suppress_stats_once;
+std::once_flag& g_gc_suppress_stats_once = dn2cpp_never_destroyed<std::once_flag>();
 void dn2cpp_gc_suppress_stats_dump_once()
 {
     std::call_once(g_gc_suppress_stats_once, dn2cpp_gc_suppress_stats_dump);
@@ -608,12 +608,13 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
 // The background threads this runtime spawns — the finalizer thread and the
 // Task.Run pool workers — are detached and have no stop mechanism, by design
 // ("process-lifetime pool"). Returning from `main` would run `exit()`, which
-// destroys the namespace-scope mutexes those threads lock; a thread that locks
-// one after its destructor ran gets EINVAL from pthread_mutex_lock, which
-// libc++ turns into an uncaught std::system_error and the process aborts. So
-// terminate without unwinding any of it: nothing is destroyed, so nothing can
-// be locked after destruction. Real .NET exits the same way — background
-// threads are not joined and static state is not torn down.
+// destroys every static object those threads may still touch. The runtime's own
+// locks are never destroyed (dn2cpp_never_destroyed), but standard-library and
+// third-party statics are not under that control, and a mutex locked after its
+// destructor ran gets EINVAL from pthread_mutex_lock, which libc++ turns into
+// an uncaught std::system_error and the process aborts. So terminate without
+// unwinding any of it. Real .NET exits the same way — background threads are
+// not joined and static state is not torn down.
 //
 // Only the C stdio buffers must be committed by hand, since _Exit does not.
 [[noreturn]] void dn2cpp_environment_exit(int32_t code)
@@ -1961,7 +1962,7 @@ void dn2cpp_ensure_finalizer_thread()
     // g_finalizer_ring is fully allocated — with a happens-before edge — before
     // any other thread's dn2cpp_register_finalizer call returns and reaches a
     // GC_MALLOC that could invoke the callback that writes into it.
-    static std::once_flag once;
+    static std::once_flag& once = dn2cpp_never_destroyed<std::once_flag>();
     std::call_once(once, [] {
         g_finalizer_ring = static_cast<std::atomic<Dn2CppObject*>*>(
             GC_MALLOC_UNCOLLECTABLE(sizeof(std::atomic<Dn2CppObject*>) * kFinalizerRingCapacity));

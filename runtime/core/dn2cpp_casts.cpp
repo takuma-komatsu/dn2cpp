@@ -527,7 +527,7 @@ struct Dn2CppBbiTable
     const void** slots;
     Dn2CppBbiTable* next;
 };
-std::mutex g_bbi_mutex;
+std::mutex& g_bbi_mutex = dn2cpp_never_destroyed<std::mutex>();
 Dn2CppBbiTable* g_bbi_tables;
 
 // `selfKind` (1 = IComparable<T>, 2 = IEquatable<T>, 0 = neither) and `self` come from
