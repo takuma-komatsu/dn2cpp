@@ -472,6 +472,11 @@ void dn2cpp_runtime_init(Dn2CppCpuFeaturesInit initCpuFeatures)
         GC_set_no_dls(1);
 #endif
     GC_INIT();
+    // Managed finalizers are unordered, but their object graphs must remain
+    // readable until the body runs. Without this post-pass, no-order registration
+    // keeps only the finalizable object itself: a finalizer that reads an array
+    // field can observe storage the same collection already reclaimed.
+    GC_set_java_finalization(1);
 #ifdef __APPLE__
     if (selfRoots)
         dn2cpp_gc_register_host_image_roots();
@@ -2040,10 +2045,9 @@ void dn2cpp_register_finalizer(Dn2CppObject* obj)
     dn2cpp_ensure_finalizer_thread();
     GC_finalization_proc oldProc;
     void* oldData;
-    // _no_order: dn2cpp does not model finalization ordering constraints
-    // between objects that reference each other — neither does .NET, which
-    // documents finalization order across a reachable graph as unspecified —
-    // so the unordered registrar is the correct match.
+    // _no_order matches .NET's unspecified ordering across finalizable objects.
+    // Runtime initialization enables the separate reachability post-pass that
+    // keeps each queued object's fields readable without imposing an order.
     GC_register_finalizer_no_order(obj, dn2cpp_finalizer_callback, nullptr, &oldProc, &oldData);
 #else
     // DN2CPP_NO_GC: the calloc fallback never collects, so an object is never
