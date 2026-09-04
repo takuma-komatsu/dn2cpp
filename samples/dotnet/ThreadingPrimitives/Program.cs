@@ -23,6 +23,7 @@ namespace ThreadingPrimitives
             LockTypeSubset.Program.__GateEntry();
             EventTypeIdentity.Program.__GateEntry();
             LegacyThreadVolatile.Program.__GateEntry();
+            WaitHandleRegistryLifetime.Program.__GateEntry();
         }
     }
 }

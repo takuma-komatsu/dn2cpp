@@ -662,6 +662,16 @@ struct Dn2CppObject
     const Dn2CppTypeInfo* type;
 };
 
+// A managed WaitHandle owns its SafeWaitHandle association in the object itself.
+// Every emitted subclass inherits this prefix, so collecting the owner also removes
+// the only lookup path to the association; no native pointer-keyed registry can alias
+// a later object that reuses the same address. Growing this prefix is an ABI change —
+// bump AbiContract.LayoutPolicyVersion when its layout changes.
+struct Dn2CppWaitHandle : Dn2CppObject
+{
+    Dn2CppObject* safeHandle;
+};
+
 // A boxed value type's payload sits immediately after the object header. Used by
 // the tostring/gethashcode/equals/formatspec slot wrappers a value type wires on
 // its own type-info.

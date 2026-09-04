@@ -752,7 +752,13 @@ doc_vendored=$(awk '/^## /{s = ($0 == "## License")} s' README.md \
 set_eq "README.md's vendored license list vs third_party/" \
        "licensed by README.md" "$doc_vendored" "present under third_party/" "$tree_vendored"
 
-echo "== 12/14 dangling path references in every doc =="
+echo "== 12/14 BPI policy version and dangling path references in every doc =="
+bpi_layout_doc=$(sed -n 's/.*LayoutPolicyVersion` (currently \([0-9][0-9]*\)).*/\1/p' \
+    docs/BPI-FORMAT.md)
+bpi_layout_tree=$(sed -n 's/^[[:space:]]*public const int LayoutPolicyVersion = \([0-9][0-9]*\);/\1/p' \
+    src/Dn2Cpp.Transpiler/HotUpdate/AbiContract.cs)
+eq "docs/BPI-FORMAT.md current layout-policy version" "$bpi_layout_doc" "$bpi_layout_tree"
+
 for f in docs/*.md README.md CLAUDE.md AGENTS.md CONTRIBUTING.md; do
     check_paths "$f"
 done
