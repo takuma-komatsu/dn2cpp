@@ -850,12 +850,49 @@ internal sealed partial class MethodCompiler : IEvalStack
             TranslateWithPendingReferenceBarriers(insn);
         }
 
+        return FinishBody();
+    }
+
+    private string FinishBody()
+    {
+        // Signature rendering can resolve lazy model state and reject unsupported types.
+        // Keep it, prologue taint and rgctx validation in both compile passes.
+        string signature = Signature(_method);
+        string? synchronizedTypeInfo = null;
+        if (_method.IsSynchronized && _method.IsStatic)
+        {
+            // A canonical owner has no type-info: each real instantiation must lock
+            // its own interned Type object, even when the IL never mentions T.
+            TaintIfCanonical(_method.DeclaringClass, "synchronized");
+            synchronizedTypeInfo = _method.DeclaringClass.CppTypeInfoName;
+        }
+        string? rgctxAnchor = null;
+        if (_usedRgctx && !_method.RgctxParam && SharedDirectCallees is null)
+        {
+            if (!_method.RgctxUses)
+                throw new InvalidOperationException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: body uses rgctx but the "
+                    + "planning pass did not record it");
+            rgctxAnchor = _c.RgctxAnchorSym(_method.DeclaringClass)
+                ?? throw new InvalidOperationException(
+                    $"{_method.DeclaringClass.FullName}.{_method.Name}: rgctx use with no anchor "
+                    + "and no hidden parameter");
+        }
+
+        // Planning keeps lowering's effects, but has no consumer for a finished function.
+        if (_c.Phase == EmitPhase.Planning)
+            return "";
+        return RenderBody(signature, synchronizedTypeInfo, rgctxAnchor);
+    }
+
+    private string RenderBody(string signature, string? synchronizedTypeInfo, string? rgctxAnchor)
+    {
         var sb = new StringBuilder();
         sb.AppendLine($"// {_method.DeclaringClass.FullName}::{_method.Name}");
         // External linkage (no `static`): the body may live in a different translation unit
         // than its callers once the output is split across files; the header carries the
         // forward declaration. Unused external functions don't warn, so no [[maybe_unused]].
-        sb.AppendLine($"{Signature(_method)}");
+        sb.AppendLine(signature);
         sb.AppendLine("{");
         // An [UnmanagedCallersOnly] method can be invoked from a thread the
         // collector has never seen (a native host's own thread pool); the prologue
@@ -868,7 +905,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         // it — the frame brackets the whole body on every return path and on unwind.
         // The name is a raw C string literal, NOT a LiteralPool str_N entry: the pool
         // is numbered during the planning pass, and pooling the name would perturb
-        // that numbering. Emitted identically in both passes (no pass branch).
+        // that numbering.
         if (_c.ShadowStackEnabled)
             sb.AppendLine($"    Dn2CppShadowFrame __shadowFrame(\"{ShadowFrameName()}\");");
         // [MethodImpl(MethodImplOptions.Synchronized)]: the whole body runs under
@@ -883,11 +920,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         {
             if (_method.IsStatic)
             {
-                // A canonical shared body has no ti_ of its own; taint so each
-                // real instantiation compiles its own body locking its own type.
-                TaintIfCanonical(_method.DeclaringClass, "synchronized");
                 sb.AppendLine("    Dn2CppMonitorGuard __syncGuard((Dn2CppObject*)"
-                    + $"dn2cpp_get_type_from_handle(&{_method.DeclaringClass.CppTypeInfoName}));");
+                    + $"dn2cpp_get_type_from_handle(&{synchronizedTypeInfo}));");
             }
             else
             {
@@ -899,18 +933,10 @@ internal sealed partial class MethodCompiler : IEvalStack
         // type at this class's declaring level. Emitted only when a slot was
         // actually used (the lazy prologue), and only in the emission pass
         // (planning text is discarded, and its flags are not final yet).
-        if (_usedRgctx && !_method.RgctxParam && SharedDirectCallees is null)
+        if (rgctxAnchor is not null)
         {
-            if (!_method.RgctxUses)
-                throw new InvalidOperationException(
-                    $"{_method.DeclaringClass.FullName}.{_method.Name}: body uses rgctx but the "
-                    + "planning pass did not record it");
-            string anchor = _c.RgctxAnchorSym(_method.DeclaringClass)
-                ?? throw new InvalidOperationException(
-                    $"{_method.DeclaringClass.FullName}.{_method.Name}: rgctx use with no anchor "
-                    + "and no hidden parameter");
             sb.AppendLine("    const void* const* __rgctx = "
-                + $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{anchor});");
+                + $"dn2cpp_rgctx(((const Dn2CppObject*)a0)->type, &{rgctxAnchor});");
         }
         // [HotPath(NoAlias)] span parameters: the element pointer hoisted once,
         // qualified. Only the entries an indexer route actually addressed are

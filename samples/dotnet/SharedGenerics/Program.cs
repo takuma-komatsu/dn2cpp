@@ -38,6 +38,7 @@ namespace SharedGenerics
             MangleKindShadowSubset.Program.__GateEntry();
             GenericMethodSubset.Program.__GateEntry();
             GvmCanonicalSubset.Program.__GateEntry();
+            GenericStaticsSubset.Program.SynchronizedPrologues();
         }
     }
 }
