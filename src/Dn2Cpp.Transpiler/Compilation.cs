@@ -1603,7 +1603,7 @@ internal sealed partial class Compilation
                     : null;
                 // An intrinsic type whose C++ mapping is a by-value struct (no trailing
                 // '*') is modeled as a value type even when its metadata is a reference
-                // type — e.g. the file-backed MemoryMappedFile / view handles lowered to
+                // type — e.g. the file-backed view handles lowered to
                 // small value structs. Pass 2's base-type scan only ever sets IsValueType
                 // true (for a ValueType base), so this is never clobbered. (The
                 // specialization path applies the same rule at CompleteShape.)
@@ -2915,6 +2915,7 @@ internal sealed partial class Compilation
     internal enum IntrinsicInterfaceThunkKind
     {
         TimerDispose,
+        MappedFileDispose,
         NoopDispose,
         TimerChange,
         TimerDisposeAsync,
@@ -2933,6 +2934,8 @@ internal sealed partial class Compilation
     /// (<c>CppEmitter.EmitIntrinsicInterfaceMaps</c>).</summary>
     internal static readonly IntrinsicInterfaceRow[] IntrinsicInterfaceRows =
     [
+        new("System.IO.MemoryMappedFiles.MemoryMappedFile", "dn2cpp_mappedfile_type", "itfthunk_mappedfile_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.MappedFileDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.TimerDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_change",
@@ -3031,7 +3034,8 @@ internal sealed partial class Compilation
             }
             bool shapeMatches = row.ThunkKind switch
             {
-                IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
+                IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.MappedFileDispose
+                    or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>
                     decl.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }

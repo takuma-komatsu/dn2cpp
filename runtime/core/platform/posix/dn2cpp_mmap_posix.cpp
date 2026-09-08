@@ -5,11 +5,8 @@
 // (page-aligned) range; the Read*/Write* accessors and the raw AcquirePointer scan
 // operate on the mapped bytes; Flush msyncs; Dispose munmaps / closes the fd.
 //
-// The three BCL reference types lower to the small by-value intrinsic structs in
-// dn2cpp.h (a non-moving handle, like GCHandle). Named maps / cross-process /
-// CreateNew / non-null mapName / CreateViewStream / the Windows path are carve-outs
-// (loud NotSupportedException). Semantics probed against real .NET — see
-// gates/build-and-run-mmap-file.sh.
+// MemoryMappedFile is a GC-managed descriptor owner. Views remain independent
+// by-value mapping handles. Named maps and CreateViewStream are unsupported.
 
 #include "dn2cpp_core.h"
 
@@ -31,7 +28,7 @@ static std::string dn2cpp_mmap_path_utf8(Dn2CppString* p)
     return s;
 }
 
-Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
+Dn2CppMappedFile* dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
                                               int32_t fileMode, int32_t access, int64_t capacity)
 {
     // Carve-outs: a named map needs POSIX shm; only Read/ReadWrite access and the
@@ -44,6 +41,7 @@ Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* 
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
 
     std::string p = dn2cpp_mmap_path_utf8(path);
+    auto* f = dn2cpp_mmap_file_new();
     int oflag = (access == 1) ? O_RDONLY : O_RDWR;
     if (fileMode == 4) oflag |= O_CREAT; // OpenOrCreate
     int fd = ::open(p.c_str(), oflag, 0666);
@@ -70,27 +68,36 @@ Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* 
         len = capacity;
     }
 
-    Dn2CppMappedFile f;
-    f.fd = fd;
-    f.access = access;
-    f.length = len;
+    f->fd = fd;
+    f->access = access;
+    f->length = len;
     return f;
 }
 
-void dn2cpp_mmap_file_dispose(Dn2CppMappedFile f)
+void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f)
 {
-    if (f.fd >= 0) ::close(f.fd);
+    dn2cpp_null_check(f);
+    if (f->sync == nullptr) dn2cpp_throw_null_reference();
+    Dn2CppMonitorGuard guard(f->sync);
+    int32_t fd = f->fd;
+    f->fd = -1;
+    if (fd >= 0) ::close(fd);
+    dn2cpp_gc_suppress_finalize(f);
 }
 
-Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile f, int64_t offset, int64_t size, int32_t access)
+Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access)
 {
+    dn2cpp_null_check(f);
+    if (f->sync == nullptr) dn2cpp_throw_null_reference();
+    Dn2CppMonitorGuard guard(f->sync);
+    if (f->fd < 0) dn2cpp_throw_object_disposed();
     if (access != 0 && access != 1)
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
     if (offset < 0 || size < 0)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
 
-    int64_t viewSize = (size == 0) ? (f.length - offset) : size; // 0 => rest of file
-    if (viewSize < 0 || offset + viewSize > f.length)
+    int64_t viewSize = (size == 0) ? (f->length - offset) : size; // 0 => rest of file
+    if (viewSize < 0 || offset + viewSize > f->length)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
 
     // mmap requires a page-aligned file offset; map from the aligned offset and
@@ -103,7 +110,7 @@ Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile f, int64_t offset, int
     if (mapLen == 0) mapLen = 1; // mmap rejects a zero length
 
     int prot = (access == 1) ? PROT_READ : (PROT_READ | PROT_WRITE);
-    void* m = ::mmap(nullptr, mapLen, prot, MAP_SHARED, f.fd, static_cast<off_t>(alignedOffset));
+    void* m = ::mmap(nullptr, mapLen, prot, MAP_SHARED, f->fd, static_cast<off_t>(alignedOffset));
     if (m == MAP_FAILED)
         dn2cpp_throw_of(&dn2cpp_io_exception_type);
 

@@ -1590,7 +1590,6 @@ internal sealed partial class MethodCompiler
                 // are still non-null managed objects and retain this identity.
                 string? byValueReferenceName = o.CppType switch
                 {
-                    "Dn2CppMappedFile" => "System.IO.MemoryMappedFiles.MemoryMappedFile",
                     "Dn2CppMappedView" => "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor",
                     "Dn2CppMappedSafeHandle" => "Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle",
                     _ => null,

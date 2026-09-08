@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 using System.Globalization;
+using System.Threading;
 
 // System.IO.MemoryMappedFiles file-backed map subset lowered to the dn2cpp_mmap_*
 // helpers (POSIX mmap/munmap). CreateFromFile maps an existing file; a view accessor
@@ -15,6 +17,11 @@ using System.Globalization;
 // exact vs real .NET. arm64 macOS is little-endian; no cross-endian assertions.
 internal static class Program
 {
+    private sealed class MapSlot
+    {
+        public MemoryMappedFile Value;
+    }
+
     private struct Rec
     {
         public int Id;
@@ -130,5 +137,152 @@ internal static class Program
         Console.WriteLine($"diskA2={MemoryMarshal.Read<int>(ap.Slice(56))}");
         Console.WriteLine($"mmap tostring={mmf2.ToString()}|{acc2.ToString()}|{mmf2}|{acc2}");
         Console.WriteLine($"mmap handle tostring={h.ToString()}|{h}");
+
+        TestReferenceExchange(roPath);
+        TestUninitializedMap();
+    }
+
+    private static void TestReferenceExchange(string path)
+    {
+        MemoryMappedFile first = MemoryMappedFile.CreateFromFile(
+            path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        MemoryMappedFile second = MemoryMappedFile.CreateFromFile(
+            path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        MemoryMappedFile alias = first;
+        object boxed = first;
+        MemoryMappedFile[] maps = { first, second };
+        MapSlot slot = new MapSlot { Value = first };
+
+        MemoryMappedFile previous = Interlocked.Exchange(ref slot.Value, second);
+        Console.WriteLine($"mmap exchange identity={ReferenceEquals(previous, first)} replacement={ReferenceEquals(slot.Value, second)} alias={ReferenceEquals(previous, alias)}");
+        Console.WriteLine($"mmap object identity={ReferenceEquals(boxed, first)} array={ReferenceEquals(maps[0], first)} distinct={!ReferenceEquals(first, second)}");
+        Console.WriteLine($"mmap runtime type={first.GetType() == typeof(MemoryMappedFile)} objectType={boxed.GetType() == typeof(MemoryMappedFile)}");
+        MemoryMappedFile castMap = (MemoryMappedFile)boxed;
+        IDisposable castDisposable = (IDisposable)boxed;
+        Console.WriteLine($"mmap object cast={ReferenceEquals(castMap, first)} isMap={boxed is MemoryMappedFile} disposable={ReferenceEquals(castDisposable, first)} isDisposable={boxed is IDisposable}");
+
+        previous = Interlocked.CompareExchange(ref slot.Value, first, first);
+        Console.WriteLine($"mmap compare mismatch old={ReferenceEquals(previous, second)} unchanged={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, first, second);
+        Console.WriteLine($"mmap compare match old={ReferenceEquals(previous, second)} replacement={ReferenceEquals(slot.Value, first)}");
+
+        previous = Interlocked.Exchange(ref slot.Value, null);
+        Console.WriteLine($"mmap exchange null old={ReferenceEquals(previous, first)} cleared={slot.Value is null}");
+        previous = Interlocked.Exchange(ref slot.Value, null);
+        Console.WriteLine($"mmap exchange empty old={previous is null} cleared={slot.Value is null}");
+        previous = Interlocked.CompareExchange(ref slot.Value, second, null);
+        Console.WriteLine($"mmap compare null old={previous is null} replacement={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, null, first);
+        Console.WriteLine($"mmap compare clear mismatch old={ReferenceEquals(previous, second)} unchanged={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, null, second);
+        Console.WriteLine($"mmap compare clear match old={ReferenceEquals(previous, second)} cleared={slot.Value is null}");
+        Interlocked.Exchange(ref slot.Value, second);
+        previous = Interlocked.Exchange(ref maps[0], null);
+        Console.WriteLine($"mmap exchange array old={ReferenceEquals(previous, first)} cleared={maps[0] is null} alias={ReferenceEquals(alias, first)}");
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        MemoryMappedViewAccessor liveView = alias.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        Console.WriteLine($"mmap alias read={liveView.ReadInt32(0)}");
+        GC.KeepAlive(alias);
+        IDisposable disposable = first;
+        disposable.Dispose();
+        alias.Dispose();
+        bool disposed = false;
+        try
+        {
+            MemoryMappedViewAccessor unexpected = first.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            unexpected.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            disposed = true;
+        }
+        Console.WriteLine($"mmap disposed alias={disposed} liveView={liveView.ReadInt32(0)}");
+        liveView.Dispose();
+
+        MemoryMappedViewAccessor secondView = slot.Value.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        Console.WriteLine($"mmap replacement read={secondView.ReadInt32(0)}");
+        secondView.Dispose();
+        int ready = 0;
+        int start = 0;
+        int claims = 0;
+        int identities = 0;
+        MemoryMappedFile winner = null;
+        Thread[] threads = new Thread[8];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new Thread(() =>
+            {
+                Interlocked.Increment(ref ready);
+                while (Volatile.Read(ref start) == 0)
+                {
+                    Thread.Yield();
+                }
+                MemoryMappedFile claimed = Interlocked.Exchange(ref slot.Value, null);
+                if (claimed is not null)
+                {
+                    Interlocked.Increment(ref claims);
+                    if (ReferenceEquals(claimed, second))
+                    {
+                        Interlocked.Increment(ref identities);
+                    }
+                    winner = claimed;
+                }
+            });
+            threads[i].Start();
+        }
+        while (Volatile.Read(ref ready) != threads.Length)
+        {
+            Thread.Yield();
+        }
+        Volatile.Write(ref start, 1);
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i].Join();
+        }
+        Console.WriteLine($"mmap concurrent claims={claims} identities={identities} cleared={slot.Value is null} winner={ReferenceEquals(winner, second)}");
+        winner.Dispose();
+        maps[1].Dispose();
+        Console.WriteLine("mmap reference exchange complete");
+        return;
+    }
+
+    private static void TestUninitializedMap()
+    {
+        MemoryMappedFile map = (MemoryMappedFile)RuntimeHelpers.GetUninitializedObject(typeof(MemoryMappedFile));
+        MemoryMappedFile alias = map;
+        IDisposable disposable = map;
+        Console.WriteLine($"mmap uninitialized type={map.GetType() == typeof(MemoryMappedFile)} alias={ReferenceEquals(alias, disposable)}");
+        try
+        {
+            disposable.Dispose();
+            Console.WriteLine("mmap uninitialized dispose=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized dispose={ex.GetType().Name}");
+        }
+        try
+        {
+            alias.Dispose();
+            Console.WriteLine("mmap uninitialized alias dispose=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized alias dispose={ex.GetType().Name}");
+        }
+        try
+        {
+            MemoryMappedViewAccessor view = map.CreateViewAccessor();
+            view.Dispose();
+            Console.WriteLine("mmap uninitialized view=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized view={ex.GetType().Name}");
+        }
+        Console.WriteLine("mmap uninitialized complete");
+        return;
     }
 }

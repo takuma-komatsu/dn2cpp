@@ -62,7 +62,7 @@ static int64_t dn2cpp_mmap_allocation_granularity()
     return granularity;
 }
 
-Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
+Dn2CppMappedFile* dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
                                               int32_t fileMode, int32_t access, int64_t capacity)
 {
     // Carve-outs: a named map needs a real Win32 named section; only Read/ReadWrite
@@ -75,6 +75,7 @@ Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* 
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
 
     std::string p = dn2cpp_mmap_path_utf8(path);
+    auto* f = dn2cpp_mmap_file_new();
     int oflag = _O_BINARY | ((access == 1) ? _O_RDONLY : _O_RDWR);
     if (fileMode == 4) oflag |= _O_CREAT; // OpenOrCreate
     int fd = -1;
@@ -101,27 +102,36 @@ Dn2CppMappedFile dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* 
         len = capacity;
     }
 
-    Dn2CppMappedFile f;
-    f.fd = fd;
-    f.access = access;
-    f.length = len;
+    f->fd = fd;
+    f->access = access;
+    f->length = len;
     return f;
 }
 
-void dn2cpp_mmap_file_dispose(Dn2CppMappedFile f)
+void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f)
 {
-    if (f.fd >= 0) ::_close(f.fd);
+    dn2cpp_null_check(f);
+    if (f->sync == nullptr) dn2cpp_throw_null_reference();
+    Dn2CppMonitorGuard guard(f->sync);
+    int32_t fd = f->fd;
+    f->fd = -1;
+    if (fd >= 0) ::_close(fd);
+    dn2cpp_gc_suppress_finalize(f);
 }
 
-Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile f, int64_t offset, int64_t size, int32_t access)
+Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access)
 {
+    dn2cpp_null_check(f);
+    if (f->sync == nullptr) dn2cpp_throw_null_reference();
+    Dn2CppMonitorGuard guard(f->sync);
+    if (f->fd < 0) dn2cpp_throw_object_disposed();
     if (access != 0 && access != 1)
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
     if (offset < 0 || size < 0)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
 
-    int64_t viewSize = (size == 0) ? (f.length - offset) : size; // 0 => rest of file
-    if (viewSize < 0 || offset + viewSize > f.length)
+    int64_t viewSize = (size == 0) ? (f->length - offset) : size; // 0 => rest of file
+    if (viewSize < 0 || offset + viewSize > f->length)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
 
     // MapViewOfFile requires an allocation-granularity-aligned file offset; map
@@ -134,13 +144,13 @@ Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile f, int64_t offset, int
     if (mapLen64 == 0) mapLen64 = 1; // avoid the "0 means map-to-EOF" special case below
     size_t mapLen = static_cast<size_t>(mapLen64);
 
-    HANDLE hFile = reinterpret_cast<HANDLE>(::_get_osfhandle(f.fd));
+    HANDLE hFile = reinterpret_cast<HANDLE>(::_get_osfhandle(f->fd));
     if (hFile == INVALID_HANDLE_VALUE)
         dn2cpp_throw_of(&dn2cpp_io_exception_type);
 
     DWORD protect = (access == 1) ? PAGE_READONLY : PAGE_READWRITE;
     // maxSize 0,0 => the mapping object's size tracks the file's current size,
-    // which offset+viewSize <= f.length above already guarantees covers this view.
+    // which offset+viewSize <= f->length above already guarantees covers this view.
     HANDLE hMap = ::CreateFileMappingA(hFile, nullptr, protect, 0, 0, nullptr);
     if (hMap == nullptr)
         dn2cpp_throw_of(&dn2cpp_io_exception_type);

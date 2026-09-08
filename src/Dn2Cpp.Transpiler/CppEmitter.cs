@@ -3240,6 +3240,8 @@ internal sealed partial class CppEmitter
                 {
                     Compilation.IntrinsicInterfaceThunkKind.TimerDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_timer_dispose(o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.MappedFileDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_mmap_file_dispose((Dn2CppMappedFile*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.NoopDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ (void)o; }}",
                     Compilation.IntrinsicInterfaceThunkKind.TimerChange =>

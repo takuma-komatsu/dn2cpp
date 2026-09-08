@@ -2194,11 +2194,9 @@ internal sealed partial class MethodCompiler
             + "UnsafeGetTargetAndDependent/UnsafeSetTargetToNull/UnsafeSetDependent/Dispose)");
     }
 
-    // The file-backed MemoryMappedFile handles as struct rvalues (deref a managed
-    // pointer from ldloca/ldflda; pass a struct value through). Instance members
-    // load the receiver by value when called on a local (ldloc) and by address when
-    // its address is taken first, so both shapes are accepted.
-    private string MmfVal(StackEntry e) => e.Kind == StackKind.Ptr ? $"(*(Dn2CppMappedFile*)({e.Expr}))" : e.Expr;
+    // Intrinsic calls bypass managed call emission, so guard the reference receiver here.
+    private string MmfVal(StackEntry e) => $"((Dn2CppMappedFile*)dn2cpp_null_check({Cast(e, "Dn2CppMappedFile*")}))";
+    // View handles can arrive by value or through a managed pointer.
     private string MmvVal(StackEntry e) => e.Kind == StackKind.Ptr ? $"(*(Dn2CppMappedView*)({e.Expr}))" : e.Expr;
     private string MmhVal(StackEntry e) => e.Kind == StackKind.Ptr ? $"(*(Dn2CppMappedSafeHandle*)({e.Expr}))" : e.Expr;
 
@@ -2224,9 +2222,9 @@ internal sealed partial class MethodCompiler
         _ => null,
     };
 
-    /// <summary>System.IO.MemoryMappedFiles file-backed map subset (POSIX mmap). The three
-    /// BCL reference types are modeled as small by-value intrinsic structs (a non-moving
-    /// handle, like GCHandle); the view's Read*/Write* primitive accessors are inline typed
+    /// <summary>System.IO.MemoryMappedFiles file-backed map subset (POSIX mmap).
+    /// MemoryMappedFile is a managed reference; views and safe-view handles are intrinsic
+    /// value structs. The view's Read*/Write* primitive accessors are inline typed
     /// loads/stores over the mapped bytes. The generic Read/Write/ReadArray/WriteArray&lt;T&gt;
     /// forms are handled in TranslateGenericIntrinsic. Unmodeled members (named maps,
     /// CreateViewStream, ReadDecimal, the CreateNew/Truncate file modes, …) raise
@@ -2245,7 +2243,8 @@ internal sealed partial class MethodCompiler
                     {
                         var mode = Pop();
                         var path = Pop();
-                        Push(StackKind.Struct, "Dn2CppMappedFile",
+                        _c.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedFile");
+                        Push(StackKind.Ref, "Dn2CppMappedFile*",
                             $"dn2cpp_mmap_create_from_file({Cast(path, "Dn2CppString*")}, nullptr, {mode.Expr}, 0, 0)");
                         return true;
                     }
@@ -2258,7 +2257,8 @@ internal sealed partial class MethodCompiler
                         var mapName = Pop();
                         var mode = Pop();
                         var path = Pop();
-                        Push(StackKind.Struct, "Dn2CppMappedFile",
+                        _c.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedFile");
+                        Push(StackKind.Ref, "Dn2CppMappedFile*",
                             $"dn2cpp_mmap_create_from_file({Cast(path, "Dn2CppString*")}, "
                             + $"{Cast(mapName, "Dn2CppString*")}, {mode.Expr}, {access.Expr}, {Cast(capacity, "int64_t")})");
                         return true;
@@ -2267,10 +2267,10 @@ internal sealed partial class MethodCompiler
                     case "CreateViewAccessor" when ps.Length == 0:
                     {
                         var file = Pop();
-                        string ft = NewTemp("Dn2CppMappedFile");
+                        string ft = NewTemp("Dn2CppMappedFile*");
                         Emit($"{ft} = {MmfVal(file)};");
                         Push(StackKind.Struct, "Dn2CppMappedView",
-                            $"dn2cpp_mmap_create_view({ft}, 0, 0, {ft}.access)");
+                            $"dn2cpp_mmap_create_view({ft}, 0, 0, {ft}->access)");
                         return true;
                     }
                     case "CreateViewAccessor" when ps.Length == 2: // (offset, size)
@@ -2278,10 +2278,10 @@ internal sealed partial class MethodCompiler
                         var size = Pop();
                         var offset = Pop();
                         var file = Pop();
-                        string ft = NewTemp("Dn2CppMappedFile");
+                        string ft = NewTemp("Dn2CppMappedFile*");
                         Emit($"{ft} = {MmfVal(file)};");
                         Push(StackKind.Struct, "Dn2CppMappedView",
-                            $"dn2cpp_mmap_create_view({ft}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, {ft}.access)");
+                            $"dn2cpp_mmap_create_view({ft}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, {ft}->access)");
                         return true;
                     }
                     case "CreateViewAccessor" when ps.Length == 3: // (offset, size, access)
@@ -2408,6 +2408,6 @@ internal sealed partial class MethodCompiler
             $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} "
             + "is not modeled (file-backed MemoryMappedFile subset: CreateFromFile/CreateViewAccessor/"
             + "Read*/Write*/Capacity/Flush/Dispose + AcquirePointer/ReleasePointer/ByteLength/DangerousGetHandle; "
-            + "named maps / CreateViewStream / CreateNew / Windows are carve-outs)");
+            + "named maps / CreateViewStream / CreateNew are carve-outs)");
     }
 }
