@@ -2,6 +2,7 @@
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
 source "$(dirname "$0")/_common.sh"
+PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
 PROJECT=PreserveControl
 ROOT="samples/dotnet/$PROJECT"
@@ -313,7 +314,8 @@ done
 
 build_proj samples/dotnet/HelloWorld/HelloWorld.csproj
 output_code=0
-python3 gates/fixtures/preserve-control/check-ildiet-output.py "$ILD_DLL" \
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PYTHON gates/fixtures/preserve-control/check-ildiet-output.py "$ILD_DLL" \
     "samples/dotnet/HelloWorld/bin/$CONFIG/$TFM/HelloWorld.dll" "$_CG_CORELIB" \
     "artifacts/ildiet-output-tests-$CONFIG" || output_code=$?
 if [ "$output_code" -eq 77 ]; then
@@ -343,7 +345,8 @@ echo "== ILDiet payload changes invalidate behavior gate caches =="
 
 echo "== Rewritten metadata, signed identity, resources and dead assemblies =="
 build_gate_proj gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj
-python3 gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"
 
