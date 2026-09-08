@@ -2631,8 +2631,11 @@ internal sealed partial class Compilation
             return false;
         if (to.IsObject)
             return true;
-        if (from is not { Kind: TypeKind.Class, Class: { } fc }
-            || to is not { Kind: TypeKind.Class, Class: { } tc })
+        // String signatures use a primitive descriptor; its interfaces live on the
+        // CoreLib class just like those of other reference types.
+        var fc = from.IsString ? FindClassByFullName("System.String") : from.Class;
+        var tc = to.IsString ? FindClassByFullName("System.String") : to.Class;
+        if (fc is null || tc is null)
             return false;
         if (DerivesFromOrIs(fc, tc) || ImplementsInterface(fc, tc))
             return true;
