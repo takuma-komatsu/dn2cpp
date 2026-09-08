@@ -195,6 +195,9 @@ jobs:
       # openssl as a hard failure, not a gate_skip (see its command -v check),
       # so this is the first thing to look at if suite-smoke goes red here.
       - name: Run the non-Godot suite
+        env:
+          # Keep the heavyweight native ISA probe outside hosted Windows smoke.
+          DN2CPP_SKIP_PLATFORM_ISA_NATIVE: "1"
         run: SKIP_GODOT=1 ./gates/run-all-gates.sh
 
       # Before the log upload so a lingering build-server handle on a log file
