@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Consolidated array-dispatch gate. Merges the former array covariance / interface
+# Array and generic interface dispatch, including inherited diamond closures and
+# multiple slots reached through nested covariance and contravariance.
+# Merges the former array covariance / interface
 # dispatch / multidimensional subset gates into one multi-section program,
 # transpiled once against the tree-shaken real CoreLib and diffed exactly against
 # real .NET. Covers array covariance + covariant virtual dispatch, SZArray
@@ -46,10 +48,41 @@ source "$(dirname "$0")/_common.sh"
 # not theorized: that is exactly how this refactor first ran.) The guard also covers
 # the warm-hit path, where the hook never runs and there is nothing to remove.
 shimless=""
-_cleanup_shimless() { [ -n "$shimless" ] && rm -rf "$shimless"; return 0; }
+variance_only=""
+_cleanup_shimless() {
+    [ -n "$shimless" ] && rm -rf "$shimless"
+    [ -n "$variance_only" ] && rm -rf "$variance_only"
+    return 0
+}
 trap _cleanup_shimless EXIT
 
 gate_extra_asserts() {
+    local closure_tail string_variance_tail output
+    closure_tail='-- interface closure dispatch --
+diamond exact: cat/cat
+diamond variant: cat/cat
+diamond parents: cat/cat
+diamond nested first: cat/cat
+diamond nested second: cat/cat
+diamond nested reverse: False
+diamond value invariant: False
+diamond nested consumer: first:cat/second:cat
+diamond array: 1/cat/cat
+diamond array enumeration: cat/cat
+derived comparer: True/False/5
+base comparer: True/False/5
+derived comparer again: True/False/5'
+    string_variance_tail='-- string argument variance --
+cat
+string direct: 0
+string pair: 0/0
+string contravariant: compare:0'
+    output="$(strip_cr_win "$native")"
+    case "$output" in
+        *"$closure_tail"$'\n'"$string_variance_tail") ;;
+        *) echo "FAIL: interface closure dispatch and string variance sections did not run completely in order" >&2; exit 1 ;;
+    esac
+
     echo "-- negative: transpiling without the support shim must be rejected --"
     local corelib app linq noshim_rc=0 noshim_err
     corelib=$(locate_corelib)
@@ -89,6 +122,22 @@ gate_extra_asserts() {
         exit 1
     fi
     echo "OK (missing support shim rejected)"
+
+    # The full bucket invokes reflection, which roots every app method. Exclude
+    # those entry calls so only variant dispatch can reach the StringPair slots.
+    echo "-- string variance without reflection rooting --"
+    variance_only=$(mktemp -d artifacts/string-variance.XXXXXX)
+    dotnet build samples/dotnet/ArrayDispatch/ArrayDispatch.csproj -c "$CONFIG" \
+        --nologo -v q -p:DefineConstants=STRING_VARIANCE_ONLY -o "$variance_only/app"
+    invoke_cli "$variance_only/app/ArrayDispatch.dll" -r "$corelib" -r "$linq" \
+        -o "$variance_only/gen"
+    compile_console "$variance_only/gen" ArrayDispatch
+    local variance_native variance_expected
+    variance_native=$(run_bounded "$variance_only/gen/ArrayDispatch")
+    variance_expected=$(run_bounded dotnet "$variance_only/app/ArrayDispatch.dll")
+    assert_output "$variance_native" "$variance_expected"
+    grep -qx 'string pair: 0/0' <<<"$variance_native"
+    grep -qx 'string contravariant: compare:0' <<<"$variance_native"
 }
 
 # What the section asserts is the TRANSPILER's conduct with a member of its own bundle
@@ -97,7 +146,7 @@ gate_extra_asserts() {
 # reword the refusal, or lose it, and OUT stays byte-identical and the cached green is
 # replayed. The CLI hash closes it, the same stand-in a behavior gate uses; it also
 # covers the copied tree, which IS the CLI output directory.
-export DN2CPP_GATE_EXTRA_CONTEXT="noshim-refusal|cli:$(_gate_cli_hash)"
+export DN2CPP_GATE_EXTRA_CONTEXT="noshim-refusal|string-variance:STRING_VARIANCE_ONLY|cli:$(_gate_cli_hash)"
 
 # System.Linq rides in for one section: IGrouping<out TKey, out TElement> is the only
 # two-parameter variant interface the BCL exposes, and a two-parameter variant definition

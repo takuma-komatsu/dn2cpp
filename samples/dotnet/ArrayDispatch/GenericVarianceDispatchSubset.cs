@@ -115,8 +115,59 @@ namespace GenericVarianceDispatchSubset
         }
     }
 
+    internal interface IPair<out T>
+    {
+        T First();
+        T Second();
+    }
+
+    internal sealed class StringPair : IPair<string>
+    {
+        public string First()
+        {
+            return "cat";
+        }
+
+        public string Second()
+        {
+            return "dog";
+        }
+    }
+
+    internal sealed class ComparableDescriber : IContravariant<IComparable<string>>
+    {
+        public string Describe(IComparable<string> value)
+        {
+            return "compare:" + value.CompareTo("cat");
+        }
+    }
+
     internal static class Program
     {
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static object GetStringObject()
+        {
+            return "cat";
+        }
+
+        internal static void RunStringVariance()
+        {
+            Console.WriteLine("-- string argument variance --");
+            // Install String's interface map independently of the variant call.
+            foreach (char ch in (IEnumerable<char>)GetStringObject())
+                Console.Write(ch);
+            Console.WriteLine();
+            IComparable<string> registered = (IComparable<string>)GetStringObject();
+            Console.WriteLine("string direct: " + registered.CompareTo("cat"));
+
+            // Neither implementation is called through IPair<string> or StringPair.
+            IPair<IComparable<string>> pair = new StringPair();
+            Console.WriteLine("string pair: " + pair.First().CompareTo("cat")
+                + "/" + pair.Second().CompareTo("dog"));
+            IContravariant<string> describer = new ComparableDescriber();
+            Console.WriteLine("string contravariant: " + describer.Describe("cat"));
+        }
+
         internal static void Run()
         {
             Console.WriteLine("-- generic variance dispatch --");

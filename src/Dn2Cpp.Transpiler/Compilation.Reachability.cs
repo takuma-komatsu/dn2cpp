@@ -238,12 +238,12 @@ internal sealed partial class Compilation
             && IEqualityComparerInterfaceFor(eqElem) is { } eqItf)
         {
             if (!c.Interfaces.Contains(eqItf))
+            {
                 c.Interfaces.Add(eqItf);
-            // ImplementsInterface caches c's interface closure, and the used×allocated
-            // cross above already computed and froze it WITHOUT this interface. Drop the
-            // stale cache so ReachVirtualImpl's ImplementsInterface check — and every
-            // later dispatch reacher — sees the interface just added.
-            c.InterfaceClosureCache = null;
+                // A cached closure may inherit c through another type's base chain.
+                // Invalidate both membership and DFS order for every dependent root.
+                _interfaceClosureVersion++;
+            }
             // Record that this element type's IEqualityComparer<T> type-info is now emitted
             // (RenderItfTables lays it down as c's interface). The concrete form AND its
             // canonical alias, so the emit-time dispatch gate resolves for both a concrete
@@ -2476,15 +2476,8 @@ internal sealed partial class Compilation
         // Collect first, reach after: a Reach can complete classes and grow the model,
         // and the closure walk below is over the interface graph, not over Classes.
         List<MethodInfo>? impls = null;
-        var stack = new Stack<ClassInfo>();
-        PushDirectInterfaces(stack, c);
-        var visited = new HashSet<ClassInfo>();
-        while (stack.Count > 0)
+        foreach (var have in GetInterfaceClosure(c).Ordered)
         {
-            var have = stack.Pop();
-            if (!visited.Add(have))
-                continue;
-            PushDirectInterfaces(stack, have);
             if (have == want || !VariantMatches(have, want, mask))
                 continue;
             have.EnsureMembers();   // the interface's declarations ARE its rows
@@ -2569,15 +2562,8 @@ internal sealed partial class Compilation
             return;
         // Collect first, reach after — same discipline as ReachVariantItfImpl.
         List<MethodInfo>? impls = null;
-        var stack = new Stack<ClassInfo>();
-        PushDirectInterfaces(stack, c);
-        var visited = new HashSet<ClassInfo>();
-        while (stack.Count > 0)
+        foreach (var have in GetInterfaceClosure(c).Ordered)
         {
-            var have = stack.Pop();
-            if (!visited.Add(have))
-                continue;
-            PushDirectInterfaces(stack, have);
             if (have == want
                 || have.Module != want.Module || have.Handle != want.Handle
                 || have.Context.TypeArgs.Length != wa.Length)
@@ -2645,8 +2631,11 @@ internal sealed partial class Compilation
             return false;
         if (to.IsObject)
             return true;
-        if (from is not { Kind: TypeKind.Class, Class: { } fc }
-            || to is not { Kind: TypeKind.Class, Class: { } tc })
+        // String signatures use a primitive descriptor; its interfaces live on the
+        // CoreLib class just like those of other reference types.
+        var fc = from.IsString ? FindClassByFullName("System.String") : from.Class;
+        var tc = to.IsString ? FindClassByFullName("System.String") : to.Class;
+        if (fc is null || tc is null)
             return false;
         if (DerivesFromOrIs(fc, tc) || ImplementsInterface(fc, tc))
             return true;
@@ -2660,15 +2649,8 @@ internal sealed partial class Compilation
             return false;
         if (VariantMatches(fc, tc, vmask))
             return true;
-        var stack = new Stack<ClassInfo>();
-        PushDirectInterfaces(stack, fc);
-        var visited = new HashSet<ClassInfo>();
-        while (stack.Count > 0)
+        foreach (var itf in GetInterfaceClosure(fc).Ordered)
         {
-            var itf = stack.Pop();
-            if (!visited.Add(itf))
-                continue;
-            PushDirectInterfaces(stack, itf);
             if (VariantMatches(itf, tc, vmask))
                 return true;
         }
@@ -2750,37 +2732,34 @@ internal sealed partial class Compilation
         return false;
     }
 
-    private static bool ImplementsInterface(ClassInfo c, ClassInfo itf)
+    private bool ImplementsInterface(ClassInfo c, ClassInfo itf) =>
+        GetInterfaceClosure(c).Members.Contains(itf);
+
+    // Comparer interfaces can be added after shape completion. A compilation-wide
+    // version also invalidates closures that read the changed type as an ancestor.
+    private int _interfaceClosureVersion;
+
+    private InterfaceClosure GetInterfaceClosure(ClassInfo c)
     {
-        // Iterative closure walk with a visited set: the interface graph is a DAG
-        // (IList<T> -> ICollection<T> -> IEnumerable<T> <- IReadOnlyCollection<T>, …),
-        // so a naive recursion re-walks shared parents once per inbound path —
-        // exponential for diamond-rich BCL hierarchies. Each interface node is
-        // expanded at most once here, making the check linear in the closure size.
-        //
-        // The closure is cached per entry class: this is asked per
-        // (allocated type × used interface) pair by the GVM/dispatch reachers, and
-        // an uncached ask re-walks the DAG and allocates a Stack+HashSet. The walk is
-        // pure shape reads (Interfaces/BaseClass — never a member pull), so the
-        // full closure costs what one miss cost; membership probes are O(1) after.
-        // Cached ONLY when every node the walk read was ShapeReady: a
-        // specialization minted mid-scan has empty Interfaces (and no BaseClass)
-        // until its CompleteShape turn, and freezing that immature answer would
-        // change a later ask that the uncached walk answered from the live lists.
-        if (c.InterfaceClosureCache is { } cached)
-            return cached.Contains(itf);
+        // Shape reads only: an unfinished node makes this a temporary snapshot.
+        // First-visit DFS order preserves candidate and reach order independently
+        // of HashSet enumeration, including diamonds and inherited interfaces.
+        if (c.InterfaceClosureCache is { } cached && cached.Version == _interfaceClosureVersion)
+            return cached;
         var stack = new Stack<ClassInfo>();
         bool ready = PushDirectInterfaces(stack, c);
-        var closure = new HashSet<ClassInfo>();
+        var closure = new InterfaceClosure(_interfaceClosureVersion);
         while (stack.Count > 0)
         {
             var i = stack.Pop();
-            if (closure.Add(i))
-                ready &= PushDirectInterfaces(stack, i);
+            if (!closure.Members.Add(i))
+                continue;
+            closure.Ordered.Add(i);
+            ready &= PushDirectInterfaces(stack, i);
         }
         if (ready)
             c.InterfaceClosureCache = closure;
-        return closure.Contains(itf);
+        return closure;
     }
 
     /// <summary>Pushes every interface directly implemented by <paramref name="x"/>

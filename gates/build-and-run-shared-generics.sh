@@ -38,6 +38,8 @@
 # created, and a generic that calls itself at an ever-deeper type argument creates
 # them without end. That bound, and the transpiler's other resource limits, are
 # asserted by gates/build-and-run-transpiler-limits.sh.
+# Static synchronized prologues must taint even when the IL never mentions T;
+# instance synchronized bodies remain shared and lock the real receiver.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -271,6 +273,17 @@ for sym in ti_GvmCanonicalSubset_Chain_GvmCanonicalSubset_Row_String \
 done
 echo "gvm dispatcher over a canonical group: shape present, all cases declared: OK"
 
+for inst in String Object; do
+    grep -Eq "^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_SynchronizedOwner_${inst}_StaticProbe_[0-9]+\\(" "$out"/generated*.cpp \
+        || { echo "FAIL: static synchronized body lost its real type: $inst" >&2; exit 1; }
+done
+grep -Eq '^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_SynchronizedOwner__CnRef_InstanceProbe_[0-9]+\(' "$out"/generated*.cpp \
+    || { echo "FAIL: instance synchronized body no longer shares" >&2; exit 1; }
+if grep -Eq 'm_GenericStaticsSubset_SynchronizedOwner__CnRef_StaticProbe_[0-9]+\(' "$out/generated.h" "$out"/generated*.cpp; then
+    echo "FAIL: static synchronized prologue escaped the planning taint" >&2
+    exit 1
+fi
+
 echo "== 5/7 Transpiling with --no-shared-generics (size regression check) =="
 invoke_cli "$app" "${refs[@]}" --no-shared-generics -o "$out-off"
 on_bytes=$(cat "$out"/generated*.cpp | wc -c | tr -d ' ')
@@ -300,4 +313,10 @@ expected=$(dotnet "$app"); expected_code=$?
 set -e
 assert_output "$native" "$expected"
 assert_exit_code "$native_code" "$expected_code"
+for line in \
+    'sync static string own=False' 'sync static object own=False' 'sync static other=True' \
+    'sync instance string own=False' 'sync instance object own=False' 'sync instance other=True'; do
+    grep -Fxq "$line" <<<"$native" \
+        || { echo "FAIL: synchronized prologue witness missing: $line" >&2; exit 1; }
+done
 gate_cache_commit

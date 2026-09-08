@@ -14,6 +14,7 @@ namespace ArrayDispatch
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+#if !STRING_VARIANCE_ONLY
             ArrayCovarianceSubset.Program.Run();
             ArrayCovariantDispatchSubset.Program.Run();
             ArrayInterfaceDispatchSubset.Program.Run();
@@ -28,6 +29,9 @@ namespace ArrayDispatch
             MultiDimArraySubset.Program.Run();
             ObjectReachedValueDispatchSubset.Program.Run();
             MdInterfaceDispatchSubset.Program.Run();
+            InterfaceClosureDispatchSubset.Program.Run();
+#endif
+            GenericVarianceDispatchSubset.Program.RunStringVariance();
         }
     }
 }

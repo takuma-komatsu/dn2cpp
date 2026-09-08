@@ -58,9 +58,11 @@ mkdir -p "$OUT"
 
 # project | extra BCL references (the same reference set each project's own gate uses)
 SAMPLES=(
+    "SharedGenerics|System.Collections"
     "ReflectTypes|System.Linq.Expressions System.Linq System.Collections System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration System.ComponentModel.Primitives"
     "StringCore|System.Linq"
     "ArrayCore|"
+    "ArrayDispatch|System.Linq"
 )
 
 echo "== 2/5 Building app assemblies =="
@@ -82,6 +84,8 @@ if gate_cache_check "$OUT" "emit-order-stability|jobs:1,2|measure-jobs:1,2|cli:$
         "samples/dotnet/ReflectTypes/bin/$CONFIG/$TFM/ReflectTypes.dll" \
         "samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll" \
         "samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll" \
+        "samples/dotnet/ArrayDispatch/bin/$CONFIG/$TFM/ArrayDispatch.dll" \
+        "samples/dotnet/SharedGenerics/bin/$CONFIG/$TFM/SharedGenerics.dll" \
         "samples/dotnet/PInvokeByValTStrBad/bin/$CONFIG/$TFM/PInvokeByValTStrBad.dll"; then
     gate_cache_hit_msg
     exit 0
