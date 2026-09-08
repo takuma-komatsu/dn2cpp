@@ -118,7 +118,21 @@ is stop-the-world.
 
 ### Preserving code from stripping
 
-dn2cpp recognizes Unity-compatible explicit preservation. Apply
+dn2cpp runs the bundled ILDiet CLI before building its transpiler model. ILDiet
+removes unreachable types and methods from application and library DLLs, writes
+the resulting load set to `<output-dir>/ildiet/`, and leaves the inputs untouched.
+Framework assemblies and dn2cpp support shims remain intact. The source build
+and NuGet tool carry a framework-dependent ILDiet companion; native toolchain
+and editor bundles carry a host-specific self-contained companion. Use
+`--ildiet-output <dir>` to choose another intermediate directory, or
+`--no-ildiet` to transpile the original DLLs. An ILDiet failure stops the build.
+Hot-update base builds retain the entire managed load set so future patches can
+still bind their members. A closed-generic `--cut` selector that requires type
+specialization also keeps the DLLs intact and reports that validation is deferred
+to the transpiler.
+
+Code used only through dynamic reflection needs an explicit preservation rule.
+The same Unity-compatible rules apply to ILDiet and C++ emission. Apply
 `[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,
 property, field, event, or delegate, or define your own attribute whose type or
 base type has the exact simple name `PreserveAttribute`. The latter avoids a
@@ -152,7 +166,8 @@ Adjust the relative checkout path or bundle path to the project location. The
 assembly contains no platform-specific managed code, so a project may compile
 against either matching target-framework build.
 
-Unity-format `link.xml` files are also supported. Pass a project directory with
+Unity-format `link.xml` files are also supported. Pass individual descriptors
+with the repeatable `--link-xml <file>` option, or pass a project directory with
 the repeatable `--project-root <dir>` option; dn2cpp recursively finds files
 named exactly `link.xml` anywhere below each root, excluding `bin`, `obj`,
 `.godot`, and `.git` directories. `Dn2Cpp.Build` supplies the
@@ -423,6 +438,7 @@ through two hooks: `IEmitBackend` (tail-output) and `ICallIntrinsics`
 | **Godot .NET drop-in** | `src/Dn2Cpp.DotnetModule/` — `DotnetModuleBackend` (emits `godotsharp_game_main_init`) | `runtime/dotnetmodule/` |
 | **GDExtension layer** | `src/Dn2Cpp.Godot/` — `GodotBackend`, `GodotCallIntrinsics`, `BindingGenerator` | `runtime/godot/` — table-driven bridge |
 | **Hot update layer** | `PatchConverter` in `src/Dn2Cpp.Transpiler/` + `--hotupdate-base` output extras; `Dn2Cpp.Runtime.HotUpdate` public API | `runtime/core/dn2cpp_interp.cpp` — BPI loader/binder + register/stack interpreter, N2M trampolines |
+| **Managed pre-stripper** | `src/ILDiet/` — standalone CLI; rewrites the resolved managed load set before model construction | — |
 | **CLI (composition root)** | `src/Dn2Cpp.Cli/` (output assembly `dn2cpp`) — arg parsing, backend selection; `src/Dn2Cpp.Cli.Console/` — Godot-free self-host trimmed CLI | — |
 | **Reference-assembly shim** | `src/GodotSharpShim/` (builtin value types + `GD`/`Mathf`, generated from `extension_api.json`) | — |
 | **Managed-swap backends** | `internal/DnZlib/` (pure-C# zlib), `internal/DnBrotli/` (pure-C# brotli), `internal/DnHttp/` (managed HTTP transport). All three are **conditional default references** — they ship beside the CLI and are injected only when the BCL assembly each one serves is in the load set; `-r` overrides, `--no-default-ref <Name>` declines | — |
@@ -943,6 +959,9 @@ reaching out in Japanese is appreciated (English is fine too).
 ## License
 
 dn2cpp is licensed under the [MIT License](LICENSE).
+
+ILDiet uses Mono.Cecil under its [MIT license](src/ILDiet/Mono.Cecil.LICENSE.txt).
+The companion payload includes that license.
 
 Vendored third-party components keep their own licenses:
 

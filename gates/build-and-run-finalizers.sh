@@ -63,4 +63,4 @@ gate_extra_asserts() {
     done
 }
 
-corelib_diff_gate Finalizers
+corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml

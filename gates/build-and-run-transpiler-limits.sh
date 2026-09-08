@@ -88,6 +88,7 @@ source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
 sig_out="artifacts/transpiler-limits-sig"
+sig_diet_out="artifacts/transpiler-limits-sig-ildiet"
 cut_out="artifacts/transpiler-limits-cut"
 mint_out="artifacts/transpiler-limits-mint"
 
@@ -139,8 +140,8 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # transpiles this gate expects to complete), and there is no surface in the key
 # to catch that.
 tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
-rm -rf "$out" "$sig_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+rm -rf "$out" "$sig_out" "$sig_diet_out" "$cut_out" "$mint_out"; mkdir -p "$out"
+if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|sig:no-ildiet+ildiet|cli:$(_gate_cli_hash)|$corelib|$tenv" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
         gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
         gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
@@ -192,6 +193,7 @@ fi
 echo "OK (rejected at the bound, names its lever, and the lever moves it)"
 
 echo "== 3/8 A self-deepening METHOD signature must simply not recurse =="
+# Original metadata keeps the unused method visible to the lazy decoder.
 # This is the self-referential-signature runaway's shape —
 # GDTask<T>.SuppressCancellationThrow() ->
 # GDTask<(bool, T)> — which an eager member decode could only REFUSE at the depth bound.
@@ -213,7 +215,7 @@ echo "== 3/8 A self-deepening METHOD signature must simply not recurse =="
 for mode in "--measure" ""; do
     label=${mode:-emit}
     sig_rc=0
-    sig_err=$(invoke_cli "$sig_app" -r "$corelib" $mode -o "$sig_out" 2>&1 >/dev/null) || sig_rc=$?
+    sig_err=$(invoke_cli "$sig_app" -r "$corelib" --no-ildiet $mode -o "$sig_out" 2>&1 >/dev/null) || sig_rc=$?
     if [ "$sig_rc" -ne 0 ]; then
         echo "FAIL: the self-deepening METHOD shape ($label) exited $sig_rc — nothing calls Deeper(), so nothing" >&2
         echo "      should decode its signature and the transpile should complete:" >&2
@@ -245,6 +247,18 @@ set -e
 assert_output "$sig_native" "$sig_expected"
 assert_exit_code "$sig_native_rc" "$sig_expected_rc"
 echo "OK (and the undecoded shell still lays out, links and runs — output matches real .NET)"
+
+# Managed stripping removes Deeper before its signature can create even a shell.
+invoke_cli "$sig_app" -r "$corelib" -o "$sig_diet_out"
+diet_boxes=$(grep -o 't_GenericSignatureRecursionBad_Box_[A-Za-z0-9_]*' "$sig_diet_out/generated.h" | sort -u | wc -l | tr -d ' ')
+[ "$diet_boxes" -eq 1 ] || { echo "FAIL: ILDiet retained an unused Box signature ($diet_boxes specializations)" >&2; exit 1; }
+compile_console "$sig_diet_out" GenericSignatureRecursionBad
+set +e
+diet_native=$("./$sig_diet_out/GenericSignatureRecursionBad"); diet_native_rc=$?
+set -e
+assert_output "$diet_native" "$sig_expected"
+assert_exit_code "$diet_native_rc" "$sig_expected_rc"
+echo "OK (ILDiet removed the unused signature before model construction; native output matches .NET)"
 
 echo "== 3b/8 A self-deepening FIELD must still hit the bound, and name the member =="
 # A field is not a method — not because of any eager decode: its type is on demand
@@ -571,6 +585,39 @@ cut_native=$("./$cut_out/GenericSignatureRecursionBad"); cut_code=$?
 set -e
 assert_output "$(strip_cr_win "$cut_native")" "$(printf '1\ncut')"
 assert_exit_code "$cut_code" 0
+for bypass in "--no-ildiet" ""; do
+    invoke_cli "$sig_app" -r "$corelib" $bypass --cut 'CutNested::Unused' -o "$cut_out" >/dev/null
+    for generic in 'GenericSignatureRecursionBad.CutBase_Int32::Value' \
+            'GenericSignatureRecursionBad.ICutInterface_Int32::Identity'; do
+        generic_log=$(invoke_cli "$sig_app" -r "$corelib" $bypass --cut "$generic" \
+            --cut 'CutNested::Unused' --cut 'GenericSignatureRecursionBad.Tracker::Tracked' -o "$cut_out")
+        if [ -z "$bypass" ]; then
+            grep -q 'copying all assemblies for post-model validation of generic --cut selectors' <<<"$generic_log" \
+                || { echo "FAIL: generic --cut did not explain its intact-copy validation" >&2; exit 1; }
+            cmp "$sig_app" "$cut_out/ildiet/GenericSignatureRecursionBad.dll"
+        fi
+        if grep -q 'm_GenericSignatureRecursionBad_Tracker_Tracked' "$cut_out"/generated*; then
+            echo "FAIL: a generic --cut disabled a simultaneous ordinary cut" >&2
+            exit 1
+        fi
+    done
+    for bad in 'GenericSignatureRecursionBad.Box::Deeper' 'GenericSignatureRecursionBad.Box`1::Deeper' \
+            'GenericSignatureRecursionBad.Box_Int32::Deeper' 'CutNested::GenericUnused' \
+            'GenericSignatureRecursionBad.CutBase_Nonexistent::Value' \
+            'GenericSignatureRecursionBad.Tracker+CutNested::Unused'; do
+        bad_rc=0
+        rm -rf "${cut_out}-invalid"
+        bad_err=$(invoke_cli "$sig_app" -r "$corelib" $bypass --cut "$bad" \
+            --cut 'CutNested::Unused' -o "${cut_out}-invalid" 2>&1 >/dev/null) || bad_rc=$?
+        if [ "$bad_rc" -eq 0 ] || ! grep -q -- "--cut" <<<"$bad_err"; then
+            echo "FAIL: --cut selector $bad ($bypass) did not fail loudly (exit $bad_rc):" >&2
+            echo "$bad_err" >&2
+            exit 1
+        fi
+        [ ! -f "${cut_out}-invalid/generated.cpp" ] \
+            || { echo "FAIL: invalid --cut emitted C++ before failing" >&2; exit 1; }
+    done
+done
 for bad in "GenericSignatureRecursionBad.Tracker::Nope" "No.Such.Type::Tracked" "MissingSeparator"; do
     bad_rc=0
     bad_err=$(invoke_cli "$sig_app" -r "$corelib" --cut "$bad" -o "$cut_out" 2>&1 >/dev/null) || bad_rc=$?

@@ -66,7 +66,7 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Why the DnHttp transport shim is not there, worded per cause so the reader is
     /// sent at something they can act on. DnHttp is a <b>conditional default reference</b>
-    /// (<c>Compilation.InjectDefaultRefs</c>) loaded from beside the CLI whenever
+    /// (<c>AssemblyLoadSet.InjectDefaultRefs</c>) loaded from beside the CLI whenever
     /// <c>System.Net.Http</c> is in the load set — which, since this body exists only because
     /// an intercepted <c>SocketsHttpHandler</c> method was reached, is always. So the
     /// remedies differ per verdict (<c>Compilation.DefaultRefStatusOf</c>): a flag to drop

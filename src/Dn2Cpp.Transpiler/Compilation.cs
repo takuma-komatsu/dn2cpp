@@ -446,6 +446,7 @@ internal sealed partial class Compilation
     // loaded modules right after load (ValidateCutMethods). Matches on the
     // non-generic FullName, like the other bounded sets.
     private readonly HashSet<(string Type, string Method)> _cliCutMethods;
+    private readonly bool _cutMethodsValidated;
     /// <summary>Hot-update base build: extra closed generic instantiations to
     /// force-emit (the <c>hotupdate-refs.txt</c> roots — a patch may bind a
     /// base-image generic type the base program itself never uses, so the base
@@ -489,6 +490,8 @@ internal sealed partial class Compilation
         _trimReflection = options.TrimReflection;
         _reflectionRoots = new HashSet<string>(options.ReflectionRoots ?? Array.Empty<string>(), StringComparer.Ordinal);
         _projectRoots = options.ProjectRoots;
+        _linkXmlFiles = options.LinkXmlFiles;
+        _cutMethodsValidated = options.CutMethodsValidated;
         _linkFeatures = new HashSet<string>(options.LinkFeatures, StringComparer.Ordinal);
         _noManifestResources = new HashSet<string>(
             options.NoManifestResources ?? Array.Empty<string>(), StringComparer.Ordinal);
@@ -526,45 +529,12 @@ internal sealed partial class Compilation
             $"classes {Classes.Count} reach {Reachable.Count} inst {_instanceCount}"
             + $" minst {_methodInstanceCount} sig {ModelCensus.SignaturesDecoded}"
             + $" fld {ModelCensus.FieldTypesDecoded} gdepth {MaxGenericArgDepth}";
-        foreach (var path in assemblyPaths)
+        var loadSet = options.ResolvedLoadSet ?? AssemblyLoadSet.Resolve(assemblyPaths, options);
+        foreach (var status in loadSet.DefaultRefStatus)
+            _defaultRefStatus.Add(status.Key, status.Value);
+        foreach (string path in options.ResolvedLoadSet is not null
+                     ? assemblyPaths : loadSet.Paths)
             LoadModule(path);
-        // Transitive reference auto-resolution (opt-in): before Build(), pull in any
-        // not-yet-loaded shared-framework definition assemblies the loaded modules
-        // reference, so external generic instantiations resolve instead of aborting
-        // signature decoding. A no-op when off (default) — the load set is then exactly
-        // the passed paths and output is byte-identical.
-        if (options.AutoRef)
-            LoadReferenceClosure(assemblyPaths);
-        // Conditional default references: the shim assemblies shipped beside the CLI,
-        // each injected only when the BCL assembly it serves is already in the load set
-        // (see InjectDefaultRefs for the table, the simple-name dedupe, and why an
-        // unreached extra module still changes the emitted bytes). Off — and therefore
-        // exactly today's output — when DefaultRefDir is null.
-        //
-        // THIS WINDOW IS THE ONLY ONE, in both directions:
-        //  * not before the closure — System.Net.Http and System.IO.Compression are
-        //    usually loaded BY the closure, not by an explicit -r. A tool-installed
-        //    `dn2cpp app.dll --auto-ref` is exactly that shape, and it is the case the
-        //    feature exists for; firing before the closure would leave every trigger
-        //    absent and inject nothing.
-        //  * not after Build() — Pass 1 mints a shell per type from Modules and Pass 2
-        //    walks every module to register its [NativeImplementation] rows. A module
-        //    appended afterwards is invisible to both, so its adapters would never
-        //    register and its types would never exist.
-        if (options.DefaultRefDir is { } defaultRefDir)
-        {
-            bool injected = InjectDefaultRefs(
-                defaultRefDir, options.NoDefaultRefs ?? Array.Empty<string>());
-            // A shim carries AssemblyRefs of its own (System.Memory, …). Left
-            // unclosed, Pass 2's signature decode can abort on an external generic, so
-            // re-run the closure over the grown module set. Cheap and idempotent: the
-            // closure rebuilds `loaded` from Modules and seeds its queue with all of
-            // Modules each time, so a second run re-walks the assembly-reference rows
-            // already in memory and loads only what is genuinely new — no PE is read
-            // twice.
-            if (injected && options.AutoRef)
-                LoadReferenceClosure(assemblyPaths);
-        }
         // Runs after EVERY load path above (explicit -r, the auto-ref closure, the
         // injected default refs): a --no-manifest-resources naming an injected shim
         // or a closure-loaded BCL assembly is legitimate, so the name set to
@@ -592,6 +562,8 @@ internal sealed partial class Compilation
     /// cut set.</summary>
     private void ValidateCutMethods()
     {
+        if (_cutMethodsValidated)
+            return;
         foreach (var (type, method) in _cliCutMethods)
         {
             var cls = FindClassByFullName(type);
@@ -827,66 +799,6 @@ internal sealed partial class Compilation
         // type, and would otherwise almost never land on a sample.
         MemoryGuard.CheckNow("load-modules");
         return module;
-    }
-
-    /// <summary>Transitive reference closure (opt-in via <c>--auto-ref</c>): before
-    /// Build(), walk every loaded module's AssemblyReferences and eagerly load any
-    /// not-yet-loaded definition assembly found in the shared-framework directory (the
-    /// directory holding System.Private.CoreLib.dll among the passed paths), to a
-    /// fixpoint. This extends the TypeIndex so external generic instantiations the
-    /// reachable code touches (<c>ReadOnlySequence&lt;T&gt;</c> in System.Memory,
-    /// <c>OrderedDictionary&lt;,&gt;</c> in System.Collections, …) resolve to real
-    /// templates instead of aborting signature decoding.
-    /// <para>Must run before Build() — Pass 2 eagerly decodes every signature, so an
-    /// on-demand load mid-decode would miss earlier-decoded references; the closure fixes
-    /// the full module set up front.</para>
-    /// <para>Scoped to the framework directory so user/application DLLs are never pulled
-    /// in (a referenced name with no matching framework file stays external exactly as
-    /// before). Closure modules append after the explicit ones, so the app module
-    /// (index 0) still wins TypeIndex ties. A no-op when no framework directory is found
-    /// (e.g. a self-contained app with no CoreLib reference).</para></summary>
-    private void LoadReferenceClosure(IReadOnlyList<string> assemblyPaths)
-    {
-        // The shared-framework directory = the directory of the passed CoreLib. Only
-        // assemblies sitting next to it are candidates (framework-scoped, not the whole
-        // filesystem), so a user DLL with a colliding simple name is never loaded.
-        string? fwDir = null;
-        foreach (var p in assemblyPaths)
-        {
-            string? dir = Path.GetDirectoryName(Path.GetFullPath(p));
-            if (dir is not null && File.Exists(Path.Combine(dir, "System.Private.CoreLib.dll")))
-            {
-                fwDir = dir;
-                break;
-            }
-        }
-        if (fwDir is null)
-            return;
-
-        var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in Modules)
-            loaded.Add(m.AssemblyName);
-
-        // Fixpoint: a freshly loaded framework assembly may reference more, so process a
-        // worklist (seeded with everything already loaded) until it drains. The queue
-        // owns its own storage, so appending to Modules inside LoadModule is safe.
-        var queue = new Queue<Module>(Modules);
-        while (queue.Count > 0)
-        {
-            var module = queue.Dequeue();
-            foreach (var arh in module.Reader.AssemblyReferences)
-            {
-                string name = module.Reader.GetString(module.Reader.GetAssemblyReference(arh).Name);
-                if (!loaded.Add(name))
-                    continue; // already loaded, or a non-framework ref we already skipped
-                string candidate = Path.Combine(fwDir, name + ".dll");
-                if (!File.Exists(candidate))
-                    continue; // not a shared-framework assembly -> stays external, as before
-                var newModule = LoadModule(candidate);
-                loaded.Add(newModule.AssemblyName); // the defined name may differ from the ref name
-                queue.Enqueue(newModule);
-            }
-        }
     }
 
     public Module ModuleOf(MetadataReader reader) => _byReader[reader];
@@ -5020,7 +4932,7 @@ internal sealed partial class Compilation
     /// <para><b>This list is for assemblies whose transpile FAILS when they are treated
     /// as user libraries — a name does not belong here merely because dn2cpp ships
     /// it.</b> The conditional default references (<c>DnZlib</c>, <c>DnBrotli</c>,
-    /// <c>DnHttp</c> — see <see cref="InjectDefaultRefs"/>) are shipped and are
+    /// <c>DnHttp</c> — see <see cref="AssemblyLoadSet"/>) are shipped and are
     /// deliberately absent: none of them has a type of the kind that broke
     /// Dn2Cpp.Runtime (<c>DnHttp.DnHttpBackend</c> is an <c>internal static class</c>
     /// with no ctor at all, the two codec shims are ordinary IL on ordinary types, and
@@ -5915,7 +5827,7 @@ internal sealed partial class Compilation
     /// loading it. A shim is not a general-purpose library: it exists to replace or
     /// forward to a specific piece of BCL surface, so with that surface absent it has
     /// no work to do and adding it would only change the emitted C++
-    /// (see <see cref="InjectDefaultRefs"/> on why the load set, not reachability, is
+    /// (see <see cref="AssemblyLoadSet"/> on why the load set, not reachability, is
     /// what the output is a function of).
     /// <list type="bullet">
     /// <item><c>DnZlib</c> / <c>System.IO.Compression</c> — carries
@@ -5942,7 +5854,7 @@ internal sealed partial class Compilation
     /// removable and is not. DnHttp is the asymmetric one: an <c>HttpClient</c> program
     /// whose handler was cut with no shim to forward to fails the transpile outright
     /// (MethodCompiler.CompileHttpShimBody, naming the remedy).</summary>
-    private static readonly (string Shim, string Trigger)[] s_defaultRefs =
+    internal static readonly (string Shim, string Trigger)[] DefaultReferences =
     {
         ("DnZlib",   "System.IO.Compression"),
         ("DnBrotli", "System.IO.Compression.Brotli"),
@@ -5965,7 +5877,7 @@ internal sealed partial class Compilation
         Suppressed,
         /// <summary>Already in the load set — an explicit <c>-r</c> (or the reference
         /// closure) got there first, and it wins: injecting a second copy is what the
-        /// simple-name dedupe in <see cref="InjectDefaultRefs"/> exists to
+        /// simple-name dedupe in <see cref="AssemblyLoadSet"/> exists to
         /// prevent.</summary>
         AlreadyLoaded,
         /// <summary>Wanted, but no such file beside the CLI — a CLI installed without
@@ -5988,7 +5900,7 @@ internal sealed partial class Compilation
             ? outcome : DefaultRefOutcome.TriggerAbsent;
 
     /// <summary>Every shim's conditional default-reference verdict, in
-    /// <see cref="s_defaultRefs"/> declaration order, for the
+    /// <see cref="DefaultReferences"/> declaration order, for the
     /// <c>--hotupdate-base</c> sidecar to record.
     ///
     /// <para>The base build goes
@@ -6004,7 +5916,7 @@ internal sealed partial class Compilation
     {
         get
         {
-            foreach (var (shim, _) in s_defaultRefs)
+            foreach (var (shim, _) in DefaultReferences)
                 yield return (shim, DefaultRefStatusOf(shim));
         }
     }
@@ -6017,7 +5929,7 @@ internal sealed partial class Compilation
     /// comparison the injection itself uses.</summary>
     internal static bool IsDefaultRefName(string name)
     {
-        foreach (var (shim, _) in s_defaultRefs)
+        foreach (var (shim, _) in DefaultReferences)
         {
             if (string.Equals(shim, name, StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -6032,90 +5944,11 @@ internal sealed partial class Compilation
     {
         get
         {
-            var names = new string[s_defaultRefs.Length];
-            for (int i = 0; i < s_defaultRefs.Length; i++)
-                names[i] = s_defaultRefs[i].Shim;
+            var names = new string[DefaultReferences.Length];
+            for (int i = 0; i < DefaultReferences.Length; i++)
+                names[i] = DefaultReferences[i].Shim;
             return string.Join(", ", names);
         }
-    }
-
-    /// <summary>Loads each shim from <paramref name="dir"/> (the directory the CLI
-    /// ships in) whose trigger assembly is present, in the table's declaration order so
-    /// the resulting module order is deterministic. Returns whether anything was
-    /// loaded. Off entirely when <see cref="TranspileOptions.DefaultRefDir"/> is null.
-    ///
-    /// <para><b>The dedupe key is the assembly SIMPLE NAME, OrdinalIgnoreCase — never a
-    /// path.</b> The place where a collision is fatal
-    /// (<see cref="RegisterNativeImpl"/>'s "duplicate native implementation") keys on
-    /// assembly identity, not on which file the identity came from: load DnZlib twice
-    /// and the transpile dies in Pass 2, before reachability has an opinion about
-    /// whether anything even uses it. And a second copy is the *normal* case, not an
-    /// exotic one — the gates pass <c>-r internal/DnZlib/bin/.../DnZlib.dll</c>, a
-    /// different file from the one beside the CLI, so a path comparison would
-    /// double-load every time. OrdinalIgnoreCase is what
-    /// <see cref="LoadReferenceClosure"/>'s dedupe already uses and what ECMA-335 says
-    /// about comparing assembly simple names; this introduces no new convention.</para>
-    ///
-    /// <para><b>Append-only.</b> Injection only appends modules; no existing
-    /// <see cref="Module.Index"/> moves. That is what makes a run in which nothing is
-    /// injected byte-identical to a build without this feature at all —
-    /// <c>ClassInfo.CompareByOrder</c> (Model.cs) takes <c>Module.Index</c> as its
-    /// first key, so a renumbering would reorder the entire emission.</para>
-    ///
-    /// <para><b>And the output is a function of the LOAD SET, not of reachability</b>
-    /// — <c>CppEmitter.EmitAssemblyRegistry</c> walks every module in
-    /// <see cref="Modules"/> without consulting reachability, so one unreached extra
-    /// module still changes generated.cpp byte for byte (the same fact
-    /// <c>gates/selfhost-emit.sh</c>'s header states for its fixpoint). Hence a shim is
-    /// injected only on its trigger, and an explicit <c>-r</c> keeps its original,
-    /// lower Module.Index while this pass records
-    /// <see cref="DefaultRefOutcome.AlreadyLoaded"/> — so every gate that references a
-    /// shim by hand keeps today's module order and today's output.</para></summary>
-    private bool InjectDefaultRefs(string dir, IReadOnlyList<string> suppressed)
-    {
-        var loaded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in Modules)
-            loaded.Add(m.AssemblyName);
-        var off = new HashSet<string>(suppressed, StringComparer.OrdinalIgnoreCase);
-        bool any = false;
-        foreach (var (shim, trigger) in s_defaultRefs)
-        {
-            DefaultRefOutcome outcome;
-            if (!loaded.Contains(trigger))
-                outcome = DefaultRefOutcome.TriggerAbsent;
-            else if (off.Contains(shim))
-                outcome = DefaultRefOutcome.Suppressed;
-            else if (loaded.Contains(shim))
-                outcome = DefaultRefOutcome.AlreadyLoaded;
-            else
-            {
-                string path = Path.Combine(dir, shim + ".dll");
-                if (!File.Exists(path))
-                {
-                    outcome = DefaultRefOutcome.NotFound;
-                }
-                else
-                {
-                    var module = LoadModule(path);
-                    // The whole "an explicit -r wins" decision above compared the FILE
-                    // name against the loaded simple names, which is sound only while
-                    // the two agree. A shim whose assembly name differs from its file
-                    // name would slip past that test and be loaded a second time, and
-                    // the failure would land in RegisterNativeImpl with no hint of where
-                    // the duplicate came from — so say it here, at the shipping mistake.
-                    if (!string.Equals(module.AssemblyName, shim, StringComparison.OrdinalIgnoreCase))
-                        throw new NotSupportedException(
-                            $"default reference {path}: assembly name is '{module.AssemblyName}', "
-                            + $"expected '{shim}' — the shim's file name and assembly name must "
-                            + "agree, or the already-loaded check cannot see an explicit -r of it");
-                    loaded.Add(module.AssemblyName);
-                    outcome = DefaultRefOutcome.Injected;
-                    any = true;
-                }
-            }
-            _defaultRefStatus[shim] = outcome;
-        }
-        return any;
     }
 
     /// <summary>Methods of intrinsic-mapped types whose real CoreLib bodies ARE
@@ -6129,7 +5962,7 @@ internal sealed partial class Compilation
     // ── System.Net.Http transport intercept (DnHttp shim) ─────────────────────────
     // The DnHttp shim assembly (DnHttp.DnHttpBackend) is where an intercepted
     // SocketsHttpHandler.Send/SendAsync forwards. It is a CONDITIONAL DEFAULT REFERENCE
-    // (see s_defaultRefs / InjectDefaultRefs), not an optional -r: it ships beside the CLI
+    // (see DefaultReferences / InjectDefaultRefs), not an optional -r: it ships beside the CLI
     // and is injected whenever System.Net.Http is in the load set, which is whenever this
     // lookup can matter. An explicit -r DnHttp.dll still wins (the simple-name dedupe
     // records AlreadyLoaded), and --no-default-ref DnHttp declines it. Resolved lazily and

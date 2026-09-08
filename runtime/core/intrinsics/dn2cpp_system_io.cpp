@@ -687,3 +687,35 @@ void dn2cpp_directory_create(Dn2CppString* path)
     if (!dn2cpp_is_dir_sep(p.back()))
         dn2cpp_directory_create_one(p);
 }
+
+int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments)
+{
+    if (executable == nullptr || arguments == nullptr) dn2cpp_throw_argument_null();
+    std::vector<std::string> values;
+    values.reserve(static_cast<size_t>(arguments->length) + 1);
+    values.push_back(dn2cpp_path_to_utf8(executable));
+    if (values[0].empty()) dn2cpp_throw_argument_msg("Executable must be a nonempty path.");
+    for (int32_t i = 0; i < arguments->length; i++)
+        values.push_back(dn2cpp_path_to_utf8(static_cast<Dn2CppString*>(arguments->data[i])));
+    std::vector<const char*> argv;
+    argv.reserve(values.size() + 1);
+    for (const auto& value : values)
+    {
+        if (value.find('\0') != std::string::npos)
+            dn2cpp_throw_argument_msg("Tool executable and arguments cannot contain NUL.");
+        argv.push_back(value.c_str());
+    }
+    argv.push_back(nullptr);
+    dn2cpp_pal_console_flush();
+    int32_t exitCode;
+    int32_t error = dn2cpp_pal_run_process(argv[0], argv.data(), &exitCode);
+    if (error == -1)
+        dn2cpp_throw_platform_not_supported("Companion tool processes are unavailable on this target.");
+    if (error != 0)
+    {
+        std::string message = "Could not run companion tool '" + values[0]
+            + "' (native error " + std::to_string(error) + ").";
+        dn2cpp_throw_invalid_operation_msg(message.c_str());
+    }
+    return exitCode;
+}

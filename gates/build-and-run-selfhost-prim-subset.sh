@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The implementable console-self-host
+# Companion process argument/stream/exit preservation and the console-self-host
 # runtime primitives whose behaviour can be exercised exactly.
 #
 #  #3 Interop.GetRandomBytes -> the non-cryptographic random source behind
@@ -75,3 +75,33 @@ source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate SelfHostPrimSubset System.Linq System.Diagnostics.TraceSource \
     System.Collections.Specialized
+
+# The real runner source is linked into this small fixture so this block proves
+# its MethodDef interception independently of a full self-host native build.
+probe_project=gates/fixtures/tool-process/ToolProcessProbe.csproj
+build_gate_proj "$probe_project"
+probe_bin="$PWD/gates/fixtures/tool-process/bin/$CONFIG/$TFM"
+probe_out="artifacts/selfhost-tool-process-$CONFIG"
+mkdir -p "$probe_out/child path 日本語"
+cp -R "$probe_bin/." "$probe_out/child path 日本語/"
+probe_child="$PWD/$probe_out/child path 日本語/ToolProcessProbe$EXE_EXT"
+invoke_cli "$probe_bin/ToolProcessProbe.dll" --auto-ref -o "$probe_out/emitted"
+compile_console "$probe_out/emitted" ToolProcessProbe
+run_bounded "$PWD/$probe_out/emitted/ToolProcessProbe$EXE_EXT" "$probe_child" \
+    > "$probe_out/native.out" 2> "$probe_out/native.err"
+run_bounded dotnet "$probe_bin/ToolProcessProbe.dll" "$probe_child" \
+    > "$probe_out/managed.out" 2> "$probe_out/managed.err"
+diff -u "$probe_out/managed.out" "$probe_out/native.out"
+diff -u "$probe_out/managed.err" "$probe_out/native.err"
+grep -Fx 'child exit 23' "$probe_out/native.out"
+grep -Fx 'launch failure caught' "$probe_out/native.out"
+grep -Fx 'NUL argument rejected' "$probe_out/native.out"
+grep -Fx 'tool process complete' "$probe_out/native.out"
+grep -Fx 'child stderr' "$probe_out/native.err"
+
+# Bare names must resolve through PATH in both host and native launchers.
+PATH="$PWD/$probe_out/child path 日本語:$PATH" \
+    run_bounded "$PWD/$probe_out/emitted/ToolProcessProbe$EXE_EXT" "ToolProcessProbe$EXE_EXT" \
+    > "$probe_out/path-native.out" 2> "$probe_out/path-native.err"
+diff -u "$probe_out/managed.out" "$probe_out/path-native.out"
+diff -u "$probe_out/managed.err" "$probe_out/path-native.err"

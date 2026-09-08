@@ -1,0 +1,24 @@
+<Project>
+  <!-- A subprocess payload, never a CLR dependency or a transpiler input. -->
+  <PropertyGroup>
+    <ILDietCompanionDirectory>$(MSBuildThisFileDirectory)ILDiet/bin/$(Configuration)/net10.0</ILDietCompanionDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)ILDiet/ILDiet.csproj"
+                      ReferenceOutputAssembly="false" Private="false" Pack="false"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishSingleFile;PublishAot"
+                      AdditionalProperties="SelfContained=false;UseAppHost=false" />
+  </ItemGroup>
+  <Target Name="CollectILDietCompanion"
+          BeforeTargets="GetCopyToOutputDirectoryItems;GetCopyToPublishDirectoryItems"
+          DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <_ILDietCompanionFile Include="$(ILDietCompanionDirectory)/*.dll;$(ILDietCompanionDirectory)/*.json;$(ILDietCompanionDirectory)/*LICENSE*" />
+      <ContentWithTargetPath Include="@(_ILDietCompanionFile)">
+        <TargetPath>ildiet/%(_ILDietCompanionFile.Filename)%(_ILDietCompanionFile.Extension)</TargetPath>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ContentWithTargetPath>
+    </ItemGroup>
+  </Target>
+</Project>

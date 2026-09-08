@@ -305,7 +305,9 @@ BCL=(System.Linq.Expressions System.Linq System.Collections \
     System.Reflection.Emit System.Reflection.Emit.Lightweight System.Reflection.Emit.ILGeneration \
     System.ComponentModel.Primitives System.Collections.Concurrent)
 
-corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}"
+# These comparisons inspect the original metadata through C++ reflection policies.
+# Managed preservation is covered by build-and-run-preserve-control.sh.
+corelib_freeze_gate ReflectTypes "$EXPFILE" "${BCL[@]}" --no-ildiet
 
 # --trim-reflection arm. The flag ships ON for the Godot Web export, and its whole promise
 # is that it touches only the reflection metadata of types the program cannot reflect over —
@@ -331,8 +333,8 @@ for name in "${BCL[@]}"; do
     refs+=(-r "$bcl/$name.dll")
 done
 out=artifacts/reflecttypes-trim
-invoke_cli "$app" "${refs[@]}" --trim-reflection -o "$out"
-if gate_cache_check "$out" "reflect-types-trim|$corelib" \
+invoke_cli "$app" "${refs[@]}" --no-ildiet --trim-reflection -o "$out"
+if gate_cache_check "$out" "reflect-types-trim|no-ildiet|$corelib" \
         "$app" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" "$EXPFILE"; then
     gate_cache_hit_msg
 else

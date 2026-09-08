@@ -66,7 +66,7 @@ dnbrotli_diff_gate() {
     # Variant 1 only: --no-default-ref DnZlib is what keeps its step-5 positive
     # control (native `deflate` still linked) meaningful. Referencing
     # System.IO.Compression makes the transpiler inject the DnZlib shim by
-    # default (Compilation.InjectDefaultRefs), which would substitute exactly the
+    # default (AssemblyLoadSet.InjectDefaultRefs), which would substitute exactly the
     # native zlib that assertion says survived — and the round-trip diff passes
     # on either backend, so dropping this flag would empty the assertion while
     # the gate stayed green. Variant 2 wants DnZlib and passes it explicitly as

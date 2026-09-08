@@ -36,6 +36,23 @@ public struct Box<T>
     public Box<Pair<bool, T>> Deeper() => default;
 }
 
+internal class CutBase<T>
+{
+    internal static int Value() => 1;
+}
+
+internal sealed class CutDerived : CutBase<int> { }
+
+internal interface ICutInterface<T>
+{
+    T Identity(T value);
+}
+
+internal sealed class CutImplementation : ICutInterface<int>
+{
+    public int Identity(int value) => value;
+}
+
 /// <summary>The <c>--cut</c> lever's test surface: <c>Tracked</c> is genuinely CALLED
 /// and drags a private subtree (<c>Helper</c>) only it reaches. The transpiler-limits
 /// gate transpiles this program a second time with
@@ -51,6 +68,12 @@ internal static class Tracker
     }
 
     private static void Helper() => Console.WriteLine("tracker-helper");
+
+    internal static class CutNested
+    {
+        internal static int Unused() => 1;
+        internal static T GenericUnused<T>(T value) => value;
+    }
 }
 
 internal static class Program

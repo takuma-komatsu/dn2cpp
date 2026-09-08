@@ -26,7 +26,7 @@
 # THE --no-default-ref FLAGS ARE WHAT KEEP THIS GATE NATIVE, and they look
 # removable because the round-trip diff passes without them. Referencing
 # System.IO.Compression makes the transpiler inject the DnZlib shim by default
-# (Compilation.InjectDefaultRefs), substituting the CompressionNative_*
+# (AssemblyLoadSet.InjectDefaultRefs), substituting the CompressionNative_*
 # P/Invokes — deflate and the CRC-32 — with pure C#. Drop the flags and the
 # real-filesystem Zip face stops exercising the native codec, silently: nothing
 # in this gate's output changes. DnBrotli is declined too although Zip never

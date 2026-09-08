@@ -61,3 +61,8 @@ internal static class Program
             + (collisionType.GetMethod("NonDerivedMethod", Flags) is null));
     }
 }
+
+public static class UnusedAppType
+{
+    public static void UnusedAppMethod() => Console.WriteLine("unused-app");
+}

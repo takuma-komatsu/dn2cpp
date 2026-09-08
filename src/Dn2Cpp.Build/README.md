@@ -23,6 +23,7 @@ elsewhere (C++17), `cmake` ≥ 3.20 and `ninja`.
 |----------|---------|---------|
 | `Dn2CppEnabled` | `true` | Set `false` to publish managed-only |
 | `Dn2CppTool` | `dn2cpp` | Path to the dn2cpp executable; use a wrapper executable for a local tool manifest |
+| `Dn2CppUseILDiet` | `true` | Strip managed DLLs before transpilation; `false` passes `--no-ildiet` |
 | `Dn2CppExtraArgs` | `--auto-ref` | Extra transpiler args (e.g. `-r` references) |
 | `Dn2CppCMake` / `Dn2CppGenerator` | `cmake` / `Ninja` | Native build front end |
 | `Dn2CppCMakeArgs` | (empty) | Extra cmake configure args |
@@ -30,7 +31,10 @@ elsewhere (C++17), `cmake` ≥ 3.20 and `ninja`.
 
 The publish target always passes `$(MSBuildProjectDirectory)` as a
 `--project-root`, so Unity-format `link.xml` files below the project directory
-participate in stripping without extra configuration.
+participate in stripping without extra configuration. Pass extra descriptors
+with `--link-xml` in `Dn2CppExtraArgs`. Dynamic reflection targets need a
+descriptor or `PreserveAttribute`; the stripped DLLs are intermediate build
+artifacts and do not replace managed publish inputs.
 
 `Dn2Cpp.Build` accepts a host-default publish with no RID, plus
 `linux-x64`, `linux-arm64`, `osx-x64`, `osx-arm64`, `win-x64`, and

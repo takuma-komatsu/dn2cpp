@@ -58,4 +58,6 @@
 # reflect-serializer, activator-subset, event-subset.
 source "$(dirname "$0")/_common.sh"
 
-corelib_diff_gate ReflectInvoke
+# This gate measures C++ member inference from the original assembly metadata.
+# Managed preservation is covered by build-and-run-preserve-control.sh.
+corelib_diff_gate ReflectInvoke --no-ildiet

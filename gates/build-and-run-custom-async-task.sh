@@ -83,7 +83,7 @@
 #
 #   8. IT IS CORRECT. The auto-declined native binary must exact-diff real .NET too.
 #
-# Two more flag-free programs pin the contract boundary itself. One calls a same-name
+# Two more programs pin the contract boundary itself. One calls a same-name
 # GetAwaiter(int) overload; the other declares a task in the app assembly whose awaiter is
 # the library task's awaiter, then calls an out-of-contract member on that shared role type.
 # The first must decline by signature, and the second must decline every owning task assembly
@@ -207,11 +207,12 @@ fi
 echo "OK (declined: the notice names CustomTask::Yield; bounded: <=12,000 instantiations)"
 
 rc=0
+# Preserve the unused candidate so this tests the adoption signature contract.
 err_shape=$( export DN2CPP_MAX_INSTANTIATIONS=12000
-       invoke_cli "$app_shape" "${refs[@]}" --max-heap-mb 256 \
+       invoke_cli "$app_shape" "${refs[@]}" --no-ildiet --max-heap-mb 256 \
            -o "$out-shape" 2>&1 >/dev/null ) || rc=$?
 if [ "$rc" -ne 0 ]; then
-    echo "FAIL: the same-name-overload program no longer transpiles with no flags (exit $rc)." >&2
+    echo "FAIL: the same-name-overload program no longer transpiles with original metadata (exit $rc)." >&2
     echo "$err_shape" >&2
     exit 1
 fi
@@ -251,7 +252,7 @@ shape_surface=$( (cd "$out-shape" && ls -1 | LC_ALL=C sort | grep -E '^generated
 shared_surface=$( (cd "$out-shared" && ls -1 | LC_ALL=C sort | grep -E '^generated' \
     | tr '\n' '\0' | xargs -0 shasum -a 256) | shasum -a 256 | awk '{print $1}')
 if gate_cache_check "$out" \
-        "custom-async-task|$corelib|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
+        "custom-async-task|$corelib|shape-mode:no-ildiet|real:$real_surface|exceed:$exceed_surface|shape:$shape_surface|shared:$shared_surface" \
         "$app" "$app_exceed" "$app_shape" "$app_shared" "$lib" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
         "${app_exceed%.dll}.runtimeconfig.json" "${app_exceed%.dll}.deps.json" \

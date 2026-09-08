@@ -30,7 +30,8 @@
 //     MemoryBarrier lacking only the asymmetric cross-thread strength; stated
 //     because the caller has no arm for "this did nothing", so weak and absent
 //     are indistinguishable from the call site.
-//   MAY-DEGRADE — executable_path (-1), backtrace (0), default_locale_name (0),
+//   MAY-DEGRADE — executable_path (-1), run_process (-1), backtrace (0),
+//     default_locale_name (0),
 //     each returning its documented sentinel.
 //
 // dn2cpp_pal_console_write defaults to stdio, so a program built here behaves
@@ -367,4 +368,9 @@ int32_t dn2cpp_pal_backtrace(void** buf, int32_t max)
     (void)buf;
     (void)max;
     return 0;
+}
+
+int32_t dn2cpp_pal_run_process(const char*, const char* const*, int32_t*)
+{
+    return -1;
 }

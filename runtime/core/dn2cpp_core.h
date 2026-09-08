@@ -7525,3 +7525,6 @@ void dn2cpp_textwriter_write_i8(Dn2CppTextWriter* w, int64_t v);
 void dn2cpp_textwriter_write_r8(Dn2CppTextWriter* w, double v);
 void dn2cpp_textwriter_write_r4(Dn2CppTextWriter* w, float v);
 void dn2cpp_textwriter_write_bool(Dn2CppTextWriter* w, int32_t v);
+
+// Host companion process launcher; argv excludes the executable.
+int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments);

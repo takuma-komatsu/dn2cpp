@@ -18,6 +18,9 @@ string outDir = ".";
 bool measure = false;
 bool verbose = false;
 bool autoRef = false;
+bool useILDiet = true;
+string? ildietOutput = null;
+var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool shadowStack = false;
 int maxDegreeOfParallelism = 0;
@@ -81,6 +84,18 @@ for (int i = 0; i < args.Length; i++)
         // transitive dependency. Opt-in while drift is being measured.
         autoRef = true;
     }
+    else if (args[i] == "--no-ildiet")
+    {
+        useILDiet = false;
+    }
+    else if (args[i] == "--ildiet-output" && i + 1 < args.Length)
+    {
+        ildietOutput = args[++i];
+    }
+    else if (args[i] == "--link-xml" && i + 1 < args.Length)
+    {
+        linkXmlFiles.Add(args[++i]);
+    }
     else if (args[i] == "--project-root" && i + 1 < args.Length)
     {
         projectRoots.Add(args[++i]);
@@ -127,7 +142,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
     return 1;
 }
 
@@ -143,6 +158,9 @@ return TranspileDriver.RunConsole(new TranspileOptions
     AutoRef = autoRef,
     SharedGenerics = sharedGenerics,
     ShadowStack = shadowStack,
+    UseILDiet = useILDiet,
+    ILDietOutput = ildietOutput,
+    LinkXmlFiles = linkXmlFiles,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,
 });

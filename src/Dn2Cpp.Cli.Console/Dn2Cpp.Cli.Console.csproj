@@ -42,4 +42,6 @@
                       CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <Import Project="../ILDiet.Companion.targets" />
+
 </Project>

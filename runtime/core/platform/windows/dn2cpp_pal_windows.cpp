@@ -24,6 +24,8 @@
 
 #include <windows.h>
 
+#include <string>
+#include <vector>
 #include <cstdio>   // fwrite / fflush (console sink)
 #include <cstdlib>  // getenv
 #include <cstring>  // strlen / memcpy
@@ -265,4 +267,76 @@ void dn2cpp_pal_console_write(int stream, const char* bytes, size_t byteCount)
 void dn2cpp_pal_console_flush(void)
 {
     std::fflush(nullptr);
+}
+
+static bool dn2cpp_tool_widen(const char* text, std::wstring& wide)
+{
+    int size = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
+    if (size == 0) return false;
+    std::vector<wchar_t> buffer(static_cast<size_t>(size));
+    if (!::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, buffer.data(), size))
+        return false;
+    wide.assign(buffer.data(), static_cast<size_t>(size - 1));
+    return true;
+}
+
+// CRT command-line decoding doubles backslashes only before a quote or the
+// closing delimiter. Quoting every argument also preserves empty arguments.
+static void dn2cpp_tool_quote(std::wstring& command, const std::wstring& argument)
+{
+    command.push_back(L'"');
+    size_t slashes = 0;
+    for (wchar_t c : argument)
+    {
+        if (c == L'\\') { slashes++; continue; }
+        command.append(c == L'"' ? slashes * 2 + 1 : slashes, L'\\');
+        command.push_back(c);
+        slashes = 0;
+    }
+    command.append(slashes * 2, L'\\');
+    command.push_back(L'"');
+}
+
+int32_t dn2cpp_pal_run_process(const char* executable, const char* const* argv, int32_t* exitCode)
+{
+    std::wstring image;
+    if (!dn2cpp_tool_widen(executable, image)) return static_cast<int32_t>(::GetLastError());
+    if (image.find_first_of(L"/\\") == std::wstring::npos)
+    {
+        DWORD size = ::SearchPathW(nullptr, image.c_str(), L".exe", 0, nullptr, nullptr);
+        if (size == 0) return static_cast<int32_t>(::GetLastError());
+        std::vector<wchar_t> resolved(static_cast<size_t>(size));
+        DWORD written = ::SearchPathW(nullptr, image.c_str(), L".exe", size, resolved.data(), nullptr);
+        if (written == 0) return static_cast<int32_t>(::GetLastError());
+        if (written >= size) return ERROR_INSUFFICIENT_BUFFER;
+        image.assign(resolved.data(), written);
+    }
+    std::wstring command;
+    for (size_t i = 0; argv[i] != nullptr; i++)
+    {
+        std::wstring argument;
+        if (!dn2cpp_tool_widen(argv[i], argument)) return static_cast<int32_t>(::GetLastError());
+        if (i != 0) command.push_back(L' ');
+        dn2cpp_tool_quote(command, argument);
+    }
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = ::GetStdHandle(STD_INPUT_HANDLE);
+    startup.hStdOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
+    startup.hStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+    PROCESS_INFORMATION child{};
+    if (!::CreateProcessW(image.c_str(), command.data(), nullptr, nullptr, TRUE, 0,
+                         nullptr, nullptr, &startup, &child))
+        return static_cast<int32_t>(::GetLastError());
+    ::CloseHandle(child.hThread);
+    int32_t error = 0;
+    DWORD status;
+    if (::WaitForSingleObject(child.hProcess, INFINITE) == WAIT_FAILED
+        || !::GetExitCodeProcess(child.hProcess, &status))
+        error = static_cast<int32_t>(::GetLastError());
+    else
+        *exitCode = static_cast<int32_t>(status);
+    ::CloseHandle(child.hProcess);
+    return error;
 }

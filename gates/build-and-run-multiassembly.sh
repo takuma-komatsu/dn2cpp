@@ -14,7 +14,12 @@
 # referenced-only base chain. Its by-value field requires both size and alignment.
 source "$(dirname "$0")/_common.sh"
 
-xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm
+descriptor=samples/dotnet/MultiAssembly/link.xml
+DN2CPP_GATE_EXTRA_INPUTS="$descriptor" \
+    xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm --link-xml "$descriptor"
+
+# This lane exercises C++ reflection inference without explicit retention roots.
+xasm_gate MultiAssembly MiniCorlib.dll artifacts/multiasm-inference --no-ildiet
 
 echo "== canonical owner's full layout declares its field types =="
 hdr=artifacts/multiasm/generated.h
@@ -53,7 +58,7 @@ rm -rf "$shimcopy_dir"
 mkdir -p "$shimcopy_dir"
 cp "$cli_dir/Dn2Cpp.Runtime.dll" "$shimcopy_dir/Dn2Cpp.Runtime.dll"
 dedupe_out=$(invoke_cli "$app" -r "$lib" -r "$shimcopy_dir/Dn2Cpp.Runtime.dll" \
-    -o "$shimcopy_dir/out")
+    --link-xml "$descriptor" -o "$shimcopy_dir/out")
 echo "$dedupe_out"
 if ! grep -q "^dn2cpp: 3 assemblies," <<<"$dedupe_out"; then
     echo "FAIL: -r $shimcopy_dir/Dn2Cpp.Runtime.dll must dedupe against the" >&2

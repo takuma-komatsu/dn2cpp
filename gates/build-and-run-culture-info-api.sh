@@ -65,4 +65,5 @@
 #     carry — keeps the LOUD TRAP.
 source "$(dirname "$0")/_common.sh"
 
-corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt"
+corelib_freeze_gate CultureInfoApi "$(dirname "$0")/expected/culture-info-api.txt" \
+    --link-xml samples/dotnet/CultureInfoApi/link.xml

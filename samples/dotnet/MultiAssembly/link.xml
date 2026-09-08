@@ -1,0 +1,19 @@
+<linker>
+  <assembly fullname="MiniCorlib">
+    <type fullname="MiniBcl.WikiPage" preserve="nothing">
+      <method name=".ctor" />
+      <property name="Title" />
+      <property name="Sections" />
+    </type>
+    <type fullname="MiniBcl.WikiEntry" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MiniBcl.WikiChangelog" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MiniBcl.WikiRef" preserve="nothing">
+      <method name=".ctor" />
+      <property name="Target" />
+    </type>
+  </assembly>
+</linker>

@@ -335,7 +335,7 @@ echo "== 6/7 Asserting the bounded-native-import report and its VERDICTS =="
 # Non-vacuity first — an empty or truncated transcript would pass a `grep -q`
 # for an ABSENCE and prove nothing, which is the exact shape of the failure the
 # arm below is written against.
-grep -q '^dn2cpp: 5 assemblies,' "$transpile_log" || {
+grep -q '^dn2cpp: [1-9][0-9]* assemblies,' "$transpile_log" || {
     echo "FAIL: step 3's transcript does not carry the transpile headline — the checks below would be vacuous" >&2
     exit 1; }
 bounded_measure="$out-bounded-measure"

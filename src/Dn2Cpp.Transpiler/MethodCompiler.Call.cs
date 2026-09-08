@@ -6,6 +6,13 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    private void EmitToolProcess()
+    {
+        var arguments = Pop();
+        var executable = Pop();
+        Push(StackKind.I4, "int32_t", $"dn2cpp_tool_process_run({Cast(executable, "Dn2CppString*")}, {Cast(arguments, "Dn2CppArrayRef*")})");
+    }
+
     // ---- calls ----
 
     /// <summary>Match-and-route for one MethodDefinition-arm descriptor row
@@ -48,6 +55,9 @@ internal sealed partial class MethodCompiler
             case InterceptEmitArm.DeserializationGuardNoOp:
                 for (int i = callee.Signature.ParameterTypes.Length - 1; i >= 0; i--)
                     Pop();
+                return true;
+            case InterceptEmitArm.ToolProcess:
+                EmitToolProcess();
                 return true;
             case InterceptEmitArm.EnvIntrinsic:
                 EmitIntrinsic("System.Environment", callee.Name, callee.Signature);
@@ -227,6 +237,9 @@ internal sealed partial class MethodCompiler
                     throw new InvalidOperationException(
                         $"IoIntrinsic arm declined {declType}.{name}");
                 EmitIoIntrinsic(io);
+                return true;
+            case InterceptEmitArm.ToolProcess:
+                EmitToolProcess();
                 return true;
             case InterceptEmitArm.EnvIntrinsic:
                 EmitIntrinsic("System.Environment", name, sig());
@@ -496,6 +509,8 @@ internal sealed partial class MethodCompiler
                 // compiles, so the gate short-circuits the non-Environment callees out
                 // first. It duplicates the predicate's TYPE test, never its member set —
                 // a type name cannot drift.
+                if (TryEmitMethodDefIntercept(CoreIntrinsics.MdToolProcess, callee))
+                    return;
                 if (TryEmitMethodDefIntercept(CoreIntrinsics.MdEnvMember, callee))
                     return;
                 // Byte/SByte/Int16/UInt16 ToString/Parse/TryParse/TryFormat reached
@@ -965,6 +980,8 @@ internal sealed partial class MethodCompiler
                 // a name-routed cut beside this shape-guarded table would drop in the
                 // gap; it returns false here and transpiles from its real body, whose
                 // Process arm tail-calls the one-argument form this DOES lower.
+                if (TryEmitMemberRefIntercept(CoreIntrinsics.MrToolProcess, mr, mrParent, mrName, Sig))
+                    return;
                 if (TryEmitMemberRefIntercept(CoreIntrinsics.MrEnvMember, mr, mrParent, mrName, Sig))
                     return;
                 // AppContext.BaseDirectory -> the running executable's directory. Only this

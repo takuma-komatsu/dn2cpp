@@ -373,6 +373,8 @@ ORDERED_PROJECTS=(
     "samples/dotnet/PreserveControlLib/PreserveControlLib.csproj"
     "samples/dotnet/PreserveAssemblyLib/PreserveAssemblyLib.csproj"
     "samples/dotnet/PreserveControl/PreserveControl.csproj"
+    "samples/dotnet/ILDietControlLib/ILDietControlLib.csproj"
+    "samples/dotnet/ILDietControl/ILDietControl.csproj"
     "samples/dotnet/MiniCorlib/MiniCorlib.csproj"
     "samples/dotnet/XGenericMethodLib/XGenericMethodLib.csproj"
     "src/GodotSharpShim/GodotSharp.csproj"

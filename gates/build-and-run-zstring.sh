@@ -8,9 +8,8 @@ project=ZStringSample
 out="artifacts/zstring"
 measure="artifacts/zstring-measure"
 ZSTRING_SHA_EXPECTED=gates/expected/zstring-dll.sha256
-# One plain substring per line. A marker's numeral is the member's MethodDef row in
-# the hash-pinned ZString.dll and its NameSuffix is the caller's instantiation, so
-# both move only with the pin — re-derive the file when the pin changes.
+# Basic regular expressions pin method shapes and caller specializations; MethodDef
+# rows may change when ILDiet rewrites the hash-pinned input assembly.
 MARKERS_EXPECTED=gates/expected/zstring-markers.txt
 
 echo "== 1/7 Locating the real net10 CoreLib =="

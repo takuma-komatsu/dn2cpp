@@ -53,6 +53,7 @@
 # emit and the native re-emit) get it through the same -r set below, so the
 # fixpoint compares like against like.
 source "$(dirname "$0")/_common.sh"
+source "$PWD/gates/_ildiet.sh"
 
 OUT="${1:-artifacts/selfhost-fullcli}"
 
@@ -89,7 +90,7 @@ done
 echo "== 3/5 Emitting the full CLI from the managed transpiler (--auto-ref) =="
 rm -rf "$OUT"
 mkdir -p "$OUT"
-dotnet exec "$CLI" "$CLI" "${refs[@]}" --auto-ref -o "$OUT"
+dotnet exec "$CLI" "$CLI" "${refs[@]}" --auto-ref --ildiet-output "$OUT/stripped" -o "$OUT"
 [ -f "$OUT/generated.cpp" ] || { echo "error: no generated.cpp produced" >&2; exit 1; }
 tus=("$OUT"/generated*.cpp)
 echo "emitted ${#tus[@]} translation unit(s), $(cat "${tus[@]}" | wc -l | tr -d ' ') C++ lines"
@@ -107,6 +108,7 @@ cp -f "$BIN/Dn2Cpp.Runtime.dll" "$OUT/Dn2Cpp.Runtime.dll"
 cp -f "$BIN/DnZlib.dll"   "$OUT/DnZlib.dll"
 cp -f "$BIN/DnBrotli.dll" "$OUT/DnBrotli.dll"
 cp -f "$BIN/DnHttp.dll"   "$OUT/DnHttp.dll"
+ildiet_stage_native "$OUT/ildiet"
 # Stamp the binary with the source tree it was built from, beside it. This is what
 # lets dist/package-toolchain.sh reuse a prebuilt binary WITHOUT reusing a stale
 # one: `[ -x ]` alone says a file is there, never that it describes today's `src/`
@@ -124,7 +126,7 @@ echo "built native binary: $OUT/dn2cpp (src $(cat "$OUT/dn2cpp.src-hash"))"
 echo "== 5/5 Fixpoint: native binary re-transpiles dn2cpp.dll, diff vs managed =="
 native_out="$OUT/native-retranspile"
 rm -rf "$native_out"; mkdir -p "$native_out"
-"./$OUT/dn2cpp" "$CLI" "${refs[@]}" --auto-ref -o "$native_out"
+"./$OUT/dn2cpp" "$CLI" "${refs[@]}" --auto-ref --ildiet-output "$native_out/stripped" -o "$native_out"
 [ -f "$native_out/generated.cpp" ] || { echo "error: native re-transpile produced no output" >&2; exit 1; }
 fail=0
 for f in generated.h "${tus[@]##*/}"; do

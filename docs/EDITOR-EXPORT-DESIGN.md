@@ -216,7 +216,7 @@ empty because the editor loads GodotTools from a stream.
 - `bin/DnZlib.dll`, `bin/DnBrotli.dll`, `bin/DnHttp.dll` — the **conditional
   default references**, beside the CLI for the same reason, injected only when
   the BCL assembly each serves is in the load set
-  (`Compilation.InjectDefaultRefs`). A game exporter passes nothing:
+  (`AssemblyLoadSet.InjectDefaultRefs`). A game exporter passes nothing:
   `GodotSharp → System.Diagnostics.StackTrace → System.Reflection.Metadata →
   System.IO.Compression` puts every Godot-lane transpile in DnZlib's trigger
   set, and an unreached shim costs one assembly-registry row. All three ship

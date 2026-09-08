@@ -226,3 +226,9 @@ void dn2cpp_pal_console_flush(void);
 // PAL-CONTRACT: MAY-DEGRADE returns 0 (Exception.StackTrace stays null)
 int32_t dn2cpp_pal_backtrace(void** buf, int32_t max);
 
+
+// Synchronously launch without a shell, inheriting cwd, environment and standard
+// streams. argv includes argv[0] and a terminating nullptr. Strings are UTF-8.
+// Returns zero with exitCode set, a positive native OS error, or -1 if unavailable.
+// PAL-CONTRACT: MAY-DEGRADE returns -1 (ToolProcess.Run throws PlatformNotSupportedException)
+int32_t dn2cpp_pal_run_process(const char* executable, const char* const* argv, int32_t* exitCode);

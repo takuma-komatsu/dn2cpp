@@ -175,6 +175,8 @@ internal sealed partial class Compilation
                 // every non-Environment callee out before it. The predicate re-tests the
                 // type name itself; a duplicated type name cannot drift, a duplicated
                 // MEMBER SET is what can.
+                if (CoreIntrinsics.MdToolProcess.Matches(mi))
+                    return null;
                 if (CoreIntrinsics.MdEnvMember.Matches(mi))
                     return null;
                 // SerializationInfo.ThrowIfDeserializationInProgress is a no-op (no
@@ -520,6 +522,8 @@ internal sealed partial class Compilation
                 // with the fallback already gone — and disagrees with the MethodDefinition
                 // arm below, which gates by shape: the intra-CoreLib call transpiles, the
                 // identical cross-assembly one does not.
+                if (CoreIntrinsics.MrToolProcess.Matches(mrParent, mrName, Sig))
+                    return null;
                 if (CoreIntrinsics.MrEnvMember.Matches(mrParent, mrName, Sig))
                     return null;
                 // AppContext.BaseDirectory -> the running executable's directory; its real

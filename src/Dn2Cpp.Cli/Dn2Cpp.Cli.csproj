@@ -117,4 +117,6 @@
                       Pack="false" />
   </ItemGroup>
 
+  <Import Project="../ILDiet.Companion.targets" />
+
 </Project>
