@@ -131,7 +131,7 @@ internal sealed partial class Compilation
             // over wrong-sharing.
             counterpart.EnsureSignature();
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException ex) when (!IsMustEscape(ex))
         {
             return;
         }

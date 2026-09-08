@@ -82,6 +82,8 @@
 #
 # A sibling measurement aid, gates/measure-transpile-mem.sh, reports peak RSS and
 # the per-phase heap curve. This gate asserts; that one measures.
+# Canonical linking and synthesized-wrapper lowering must preserve fatal bounds
+# while ordinary unsupported wrapper shapes still fall back.
 source "$(dirname "$0")/_common.sh"
 
 out="artifacts/transpiler-limits"
@@ -100,6 +102,9 @@ build_proj samples/dotnet/StringCore/StringCore.csproj
 build_proj samples/dotnet/ArrayCore/ArrayCore.csproj
 build_proj samples/dotnet/SharedTrialMint/SharedTrialMint.csproj
 build_proj samples/dotnet/TypeofMissingAsmBad/TypeofMissingAsmBad.csproj
+# These compiler probes live outside the suite's samples-only prebuild.
+build_gate_proj gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj
+build_gate_proj gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj
 rec_app="samples/dotnet/GenericRecursionBad/bin/$CONFIG/$TFM/GenericRecursionBad.dll"
 sig_app="samples/dotnet/GenericSignatureRecursionBad/bin/$CONFIG/$TFM/GenericSignatureRecursionBad.dll"
 fld_app="samples/dotnet/GenericFieldRecursionBad/bin/$CONFIG/$TFM/GenericFieldRecursionBad.dll"
@@ -108,6 +113,8 @@ big_app="samples/dotnet/StringCore/bin/$CONFIG/$TFM/StringCore.dll"
 arr_app="samples/dotnet/ArrayCore/bin/$CONFIG/$TFM/ArrayCore.dll"
 mint_app="samples/dotnet/SharedTrialMint/bin/$CONFIG/$TFM/SharedTrialMint.dll"
 tma_app="samples/dotnet/TypeofMissingAsmBad/bin/$CONFIG/$TFM/TypeofMissingAsmBad.dll"
+link_app="gates/fixtures/transpiler-limits/CanonicalLink/bin/$CONFIG/$TFM/CanonicalLinkBound.dll"
+wrapper_app="gates/fixtures/transpiler-limits/WrapperExceptions/bin/$CONFIG/$TFM/WrapperExceptions.dll"
 # The assembly section 8 withholds and then supplies. It sits beside the CoreLib in
 # the shared framework; a requested reference that is absent is a hard failure, not
 # a quietly dropped one — withholding it is the whole point of the section,
@@ -133,8 +140,15 @@ numerics_dll="$(dirname "$corelib")/System.Runtime.Numerics.dll"
 # to catch that.
 tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP_MAX_HEAP_MB:-}/${DN2CPP_SHARED_ASSERT:-}/${DN2CPP_STRICT_COMPLETION:-}/${DN2CPP_SPEC_DRAIN:-}"
 rm -rf "$out" "$sig_out" "$cut_out" "$mint_out"; mkdir -p "$out"
-if gate_cache_check "$out" "transpiler-limits|cli:$(_gate_cli_hash)|$corelib|$tenv" \
+if gate_cache_check "$out" "transpiler-limits|canonical-cap:1,2|canonical-refs:none|wrapper-exceptions|cli:$(_gate_cli_hash)|$corelib|$tenv" \
         "$rec_app" "$sig_app" "$fld_app" "$afld_app" "$big_app" "$arr_app" "$mint_app" "$tma_app" \
+        gates/fixtures/transpiler-limits/CanonicalLink/Program.cs \
+        gates/fixtures/transpiler-limits/CanonicalLink/CanonicalLinkBound.csproj \
+        gates/fixtures/transpiler-limits/WrapperExceptions/Program.cs \
+        gates/fixtures/transpiler-limits/WrapperExceptions/WrapperExceptions.csproj \
+        "$link_app" "$wrapper_app" \
+        "${link_app%.dll}.runtimeconfig.json" "${link_app%.dll}.deps.json" \
+        "${wrapper_app%.dll}.runtimeconfig.json" "${wrapper_app%.dll}.deps.json" \
         "${sig_app%.dll}.runtimeconfig.json" "${sig_app%.dll}.deps.json"; then
     gate_cache_hit_msg
     exit 0
@@ -423,6 +437,52 @@ set -e
 assert_output "$mint_native" "$mint_expected"
 assert_exit_code "$mint_native_rc" "$mint_expected_rc"
 echo "OK (and the shared body's array-to-collection boundary runs — output matches real .NET)"
+
+echo "== 3e/8 Canonical linking must preserve the instantiation bound =="
+# No BCL reference: the only instantiations are Id<string> and its canonical
+# Id<CnRef>. The second mint occurs inside canonical linking's fallback arm.
+for mode in "" "--measure"; do
+    label=${mode:-emit}
+    link_dir="$out/canonical-${label#--}"
+    link_so="$out/canonical-${label#--}.stdout"
+    link_se="$out/canonical-${label#--}.stderr"
+    link_rc=0
+    (export DN2CPP_MAX_INSTANTIATIONS=1
+     invoke_cli "$link_app" $mode -o "$link_dir") >"$link_so" 2>"$link_se" || link_rc=$?
+    if [ "$link_rc" -ne 2 ] \
+            || ! grep -q 'instantiation count passed the 1 limit while instantiating CanonicalLinkBound.Program::Id<CnRef>' "$link_se" \
+            || ! grep -q 'DN2CPP_MAX_INSTANTIATIONS' "$link_se" \
+            || grep -q 'instantiation count passed' "$link_so"; then
+        echo "FAIL: canonical linking ($label) must fail with exit 2 and the count-bound diagnostic; got $link_rc" >&2
+        cat "$link_so" "$link_se" >&2
+        exit 1
+    fi
+
+    (export DN2CPP_MAX_INSTANTIATIONS=2
+     invoke_cli "$link_app" $mode -o "$link_dir") >"$link_so" 2>"$link_se"
+    if [ -z "$mode" ]; then
+        if ! grep -Eq '^inline .* m_CanonicalLinkBound_Program_Id_[0-9]+___CnRef\([^;]*\)$' "$link_dir/generated.h"; then
+            echo "FAIL: raising the bound did not produce the canonical Id<CnRef> body" >&2
+            exit 1
+        fi
+    elif ! grep -q '0 gaps total' "$link_so" \
+            || [ ! -f "$link_dir/s0-gaps.tsv" ] || [ -s "$link_dir/s0-gaps.tsv" ]; then
+        echo "FAIL: raising the canonical-link bound did not produce a clean measure report" >&2
+        cat "$link_so" "$link_se" >&2
+        exit 1
+    fi
+    echo "OK ($label: canonical-link bound escaped; raising it permits canonical sharing)"
+done
+
+echo "== 3f/8 Wrapper lowering must distinguish unsupported shapes from fatal bounds =="
+wrapper_transpiler="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll"
+wrapper_rc=0
+wrapper_result=$(dotnet "$wrapper_app" "$wrapper_transpiler") || wrapper_rc=$?
+assert_output "$(strip_cr_win "$wrapper_result")" 'wrapper NotSupportedException: OK
+wrapper InstantiationBoundException: OK
+wrapper StrictCompletionException: OK'
+assert_exit_code "$wrapper_rc" 0
+echo "OK (ordinary wrapper failure falls back; fatal exceptions escape unchanged)"
 
 echo "== 4/8 The heap ceiling fires — in emit AND in --measure =="
 # A program big enough that the model alone passes a small budget: the real
