@@ -59,3 +59,23 @@ contains the ordered output assembly paths, effective preservation file, and
 whether cut selectors were validated before stripping.
 ILDiet runs as a companion process; its Cecil dependency is never transpiled
 into the native dn2cpp executable.
+
+## Native companion feasibility
+
+The opt-in probe keeps build and emission logs in a fresh directory under
+`artifacts/` and uses the original ILDiet and Mono.Cecil assemblies:
+
+```sh
+bash gates/ildiet-native.sh emit
+bash gates/ildiet-native.sh build
+```
+
+The build stage uses the shared CMake/Ninja wrapper and compares native help
+output with the managed CLI. It does not establish stripping parity or change
+the distributed companion. `DN2CPP_SKIP_BUILD=1` reuses an already built CLI
+and ILDiet; `CONFIG=Debug` selects their Debug outputs.
+
+The stream-backed `PEReader` path needs the `MemoryMappedFile.CreateFromFile`
+overload taking a `FileStream`. dn2cpp's mapped-file factories currently accept
+paths; emission rejects the stream overload. Native build and stripping parity
+remain unproven until that input shape is supported.
