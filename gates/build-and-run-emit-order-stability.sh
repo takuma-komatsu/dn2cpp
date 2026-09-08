@@ -225,15 +225,26 @@ if ! diff -r "$measure_j1" "$measure_j2" >/dev/null 2>&1; then
     exit 1
 fi
 
-# The summary names its output directory; normalize only that path before the
-# byte comparison. Stderr is compared too, preserving diagnostic order.
-sed "s|$measure_j1|MEASURE_OUT|g" "$OUT/measure-jobs1.stdout" \
+# ILDiet reports an absolute native path; the CLI also reports the requested
+# relative path. Replace both literally, preserving every other diagnostic byte.
+measure_path_pattern() {
+    printf '%s' "$1" | sed 's/[][\\.^$*|]/\\&/g'
+}
+normalize_measure_output() {
+    local relative="$1" absolute="$PWD/$1"
+    if [ "$DN2CPP_OS" = windows ]; then
+        absolute=$(cygpath -aw "$absolute")
+    fi
+    sed -e "s|$(measure_path_pattern "$absolute")|MEASURE_OUT|g" \
+        -e "s|$(measure_path_pattern "$relative")|MEASURE_OUT|g" "$2"
+}
+normalize_measure_output "$measure_j1" "$OUT/measure-jobs1.stdout" \
     >"$OUT/measure-jobs1.stdout.normalized"
-sed "s|$measure_j2|MEASURE_OUT|g" "$OUT/measure-jobs2.stdout" \
+normalize_measure_output "$measure_j2" "$OUT/measure-jobs2.stdout" \
     >"$OUT/measure-jobs2.stdout.normalized"
-sed "s|$measure_j1|MEASURE_OUT|g" "$OUT/measure-jobs1.stderr" \
+normalize_measure_output "$measure_j1" "$OUT/measure-jobs1.stderr" \
     >"$OUT/measure-jobs1.stderr.normalized"
-sed -e '/^dn2cpp-time:/d' -e "s|$measure_j2|MEASURE_OUT|g" "$OUT/measure-jobs2.stderr" \
+normalize_measure_output "$measure_j2" "$OUT/measure-jobs2.stderr" | sed '/^dn2cpp-time:/d' \
     >"$OUT/measure-jobs2.stderr.normalized"
 cmp -s "$OUT/measure-jobs1.stdout.normalized" "$OUT/measure-jobs2.stdout.normalized" \
     || { echo "FAIL: --measure summary order depends on the worker count" >&2; exit 1; }
