@@ -46,7 +46,12 @@ source "$(dirname "$0")/_common.sh"
 # not theorized: that is exactly how this refactor first ran.) The guard also covers
 # the warm-hit path, where the hook never runs and there is nothing to remove.
 shimless=""
-_cleanup_shimless() { [ -n "$shimless" ] && rm -rf "$shimless"; return 0; }
+variance_only=""
+_cleanup_shimless() {
+    [ -n "$shimless" ] && rm -rf "$shimless"
+    [ -n "$variance_only" ] && rm -rf "$variance_only"
+    return 0
+}
 trap _cleanup_shimless EXIT
 
 gate_extra_asserts() {
@@ -89,6 +94,22 @@ gate_extra_asserts() {
         exit 1
     fi
     echo "OK (missing support shim rejected)"
+
+    # The full bucket invokes reflection, which roots every app method. Exclude
+    # those entry calls so only variant dispatch can reach the StringPair slots.
+    echo "-- string variance without reflection rooting --"
+    variance_only=$(mktemp -d artifacts/string-variance.XXXXXX)
+    dotnet build samples/dotnet/ArrayDispatch/ArrayDispatch.csproj -c "$CONFIG" \
+        --nologo -v q -p:DefineConstants=STRING_VARIANCE_ONLY -o "$variance_only/app"
+    invoke_cli "$variance_only/app/ArrayDispatch.dll" -r "$corelib" -r "$linq" \
+        -o "$variance_only/gen"
+    compile_console "$variance_only/gen" ArrayDispatch
+    local variance_native variance_expected
+    variance_native=$(run_bounded "$variance_only/gen/ArrayDispatch")
+    variance_expected=$(run_bounded dotnet "$variance_only/app/ArrayDispatch.dll")
+    assert_output "$variance_native" "$variance_expected"
+    grep -qx 'string pair: 0/0' <<<"$variance_native"
+    grep -qx 'string contravariant: compare:0' <<<"$variance_native"
 }
 
 # What the section asserts is the TRANSPILER's conduct with a member of its own bundle
@@ -97,7 +118,7 @@ gate_extra_asserts() {
 # reword the refusal, or lose it, and OUT stays byte-identical and the cached green is
 # replayed. The CLI hash closes it, the same stand-in a behavior gate uses; it also
 # covers the copied tree, which IS the CLI output directory.
-export DN2CPP_GATE_EXTRA_CONTEXT="noshim-refusal|cli:$(_gate_cli_hash)"
+export DN2CPP_GATE_EXTRA_CONTEXT="noshim-refusal|string-variance:STRING_VARIANCE_ONLY|cli:$(_gate_cli_hash)"
 
 # System.Linq rides in for one section: IGrouping<out TKey, out TElement> is the only
 # two-parameter variant interface the BCL exposes, and a two-parameter variant definition
