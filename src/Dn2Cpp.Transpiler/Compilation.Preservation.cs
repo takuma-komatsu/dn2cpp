@@ -854,7 +854,8 @@ internal sealed partial class Compilation
 
     private bool ActivateConditionalPreservationPolicies()
     {
-        if (!_preservationSeedingActive) return false;
+        if (!_preservationSeedingActive || _preservePolicies.Count == 0)
+            return false;
         bool activated = false;
         foreach (var cls in Classes.ToList())
             if (!_activatedConditionalPolicies.Contains(cls)
