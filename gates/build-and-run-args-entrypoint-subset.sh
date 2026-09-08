@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# A `static int Main(string[] args)` entry
-# point. The transpiler now emits `int main(int argc, char** argv)` for a
-# string[] entry, builds the managed args array from argv[1..] (the program
-# name argv[0] is excluded, matching .NET's args), tags it with the precise
-# ti_arr_string handle (so args.GetType()/`is string[]` are correct), and passes
-# it to the managed entry point. A parameterless entry keeps `int main()`; any
-# other parameter shape is still rejected (NotSupportedException).
+# Console entry-point arguments preserve their text and string[] identity.
+# Windows executables receive UTF-16 through wmain; other hosts receive UTF-8
+# through main. The program name is excluded from the managed array.
 #
 # Verified by running BOTH the native build and real .NET with identical argv and
 # diffing exactly — a multi-arg run (including a space-containing arg) and a
-# no-arg run. CoreLib only (no Linq shim).
+# no-arg run, plus Unicode, empty and quoted arguments. CoreLib only.
 #
 # The bucket also owns what the emitted `main()` does BEFORE it hands control to the
 # managed entry point, which is where a [ModuleInitializer] (C# 9) has to run — see
@@ -114,4 +110,14 @@ expected=$(dotnet "$app"); expected_code=$?
 set -e
 assert_output "$native" "$expected"
 assert_exit_code "$native_code" "$expected_code"
+
+echo "-- Unicode and quoted arguments --"
+argv=("日本語" "😀" "" "two words" 'a"b' 'end\')
+set +e
+native=$("./$out/$project" "${argv[@]}" 2>"$out/unicode.err"); native_code=$?
+expected=$(dotnet "$app" "${argv[@]}"); expected_code=$?
+set -e
+assert_output "$native" "$expected"
+assert_exit_code "$native_code" "$expected_code"
+
 gate_cache_commit

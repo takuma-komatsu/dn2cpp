@@ -5243,6 +5243,10 @@ Dn2CppArrayN* dn2cpp_array_subarray_n(Dn2CppArrayN* src, int32_t offset, int32_t
 // fresh ref array tagged with `ti` (the precise ti_arr_string handle so
 // args.GetType() is String[]). argv[0]-only / argc 0 yields an empty array.
 Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, char** argv, const Dn2CppTypeInfo* ti);
+#ifdef _WIN32
+// Windows console entry points receive UTF-16 directly from the CRT.
+Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, wchar_t** argv, const Dn2CppTypeInfo* ti);
+#endif
 
 // System.IO.Path (pure lexical, Unix '/' separator). Semantics probed
 // against real .NET and matched exactly. GetDirectoryName returns null (not "")

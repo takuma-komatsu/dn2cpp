@@ -82,6 +82,16 @@ probe_project=gates/fixtures/tool-process/ToolProcessProbe.csproj
 build_gate_proj "$probe_project"
 probe_bin="$PWD/gates/fixtures/tool-process/bin/$CONFIG/$TFM"
 probe_out="artifacts/selfhost-tool-process-$CONFIG"
+tool_process_diagnostics() {
+    [ "${_GATE_EXIT_RC:-0}" -ne 0 ] || return 0
+    local log
+    for log in "$probe_out"/*.out "$probe_out"/*.err; do
+        [ -f "$log" ] || continue
+        printf '\n---- %s ----\n' "$log" >&2
+        cat "$log" >&2
+    done
+}
+gate_add_exit_hook tool_process_diagnostics
 mkdir -p "$probe_out/child path 日本語"
 cp -R "$probe_bin/." "$probe_out/child path 日本語/"
 probe_child="$PWD/$probe_out/child path 日本語/ToolProcessProbe$EXE_EXT"
