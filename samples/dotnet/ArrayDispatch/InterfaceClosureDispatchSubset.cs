@@ -5,12 +5,6 @@ using GenericVarianceDispatchSubset;
 
 namespace InterfaceClosureDispatchSubset;
 
-internal interface IPair<out T>
-{
-    T First();
-    T Second();
-}
-
 internal interface ILeft<out T> : IPair<T> { }
 internal interface IRight<out T> : IPair<T> { }
 internal interface IDiamond<out T> : ILeft<T>, IRight<T> { }
