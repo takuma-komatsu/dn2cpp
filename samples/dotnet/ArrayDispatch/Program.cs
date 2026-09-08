@@ -28,6 +28,7 @@ namespace ArrayDispatch
             MultiDimArraySubset.Program.Run();
             ObjectReachedValueDispatchSubset.Program.Run();
             MdInterfaceDispatchSubset.Program.Run();
+            InterfaceClosureDispatchSubset.Program.Run();
         }
     }
 }

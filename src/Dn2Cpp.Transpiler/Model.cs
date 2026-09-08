@@ -849,6 +849,18 @@ internal sealed record PInvokeInfo(
     }
 }
 
+internal sealed class InterfaceClosure
+{
+    public readonly HashSet<ClassInfo> Members = new();
+    public readonly List<ClassInfo> Ordered = new();
+    public readonly int Version;
+
+    public InterfaceClosure(int version)
+    {
+        Version = version;
+    }
+}
+
 internal sealed class ClassInfo
 {
     public required string Namespace;
@@ -1007,16 +1019,11 @@ internal sealed class ClassInfo
     public GenericContext Context = GenericContext.Empty; // for closed specializations
     public List<ClassInfo> Interfaces = new(); // directly implemented interfaces
 
-    /// <summary>Cached transitive interface closure — every interface this class (or a
-    /// class/interface on any base chain the walk crosses) implements, directly or
-    /// through interface inheritance. Interfaces are shape: populated at load
-    /// (non-generic) or <c>CompleteShape</c> (specializations) and immutable after, so
-    /// the closure is final once every node the walk visited was
-    /// <see cref="ShapeReady"/> — Compilation.ImplementsInterface only stores it then,
-    /// and a walk that crossed a not-yet-completed specialization stays uncached so a
-    /// later ask re-reads the live lists exactly as the uncached walk always did.
-    /// Membership-only (never enumerated), so set order cannot reach the output.</summary>
-    internal HashSet<ClassInfo>? InterfaceClosureCache;
+    /// <summary>Membership and first-visit DFS order, cached only when every interface
+    /// and base-chain node read was <see cref="ShapeReady"/>. Later interface additions
+    /// invalidate the compilation's closure version, including dependent roots.
+    /// Published closures are never mutated; an active enumeration keeps its snapshot.</summary>
+    internal InterfaceClosure? InterfaceClosureCache;
     // Interfaces implemented by CLR FullName but not modeled as a loaded
     // ClassInfo — the assembly declaring them was not referenced at transpile
     // (e.g. a hot-update patch that implements a base-image interface without

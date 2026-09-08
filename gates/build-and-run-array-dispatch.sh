@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Consolidated array-dispatch gate. Merges the former array covariance / interface
+# Array and generic interface dispatch, including inherited diamond closures and
+# multiple slots reached through nested covariance and contravariance.
+# Merges the former array covariance / interface
 # dispatch / multidimensional subset gates into one multi-section program,
 # transpiled once against the tree-shaken real CoreLib and diffed exactly against
 # real .NET. Covers array covariance + covariant virtual dispatch, SZArray
@@ -50,6 +52,26 @@ _cleanup_shimless() { [ -n "$shimless" ] && rm -rf "$shimless"; return 0; }
 trap _cleanup_shimless EXIT
 
 gate_extra_asserts() {
+    local closure_tail
+    closure_tail='-- interface closure dispatch --
+diamond exact: cat/cat
+diamond variant: cat/cat
+diamond parents: cat/cat
+diamond nested first: cat/cat
+diamond nested second: cat/cat
+diamond nested reverse: False
+diamond value invariant: False
+diamond nested consumer: first:cat/second:cat
+diamond array: 1/cat/cat
+diamond array enumeration: cat/cat
+derived comparer: True/False/5
+base comparer: True/False/5
+derived comparer again: True/False/5'
+    case "$(strip_cr_win "$native")" in
+        *"$closure_tail") ;;
+        *) echo "FAIL: interface closure dispatch section did not run completely" >&2; exit 1 ;;
+    esac
+
     echo "-- negative: transpiling without the support shim must be rejected --"
     local corelib app linq noshim_rc=0 noshim_err
     corelib=$(locate_corelib)
