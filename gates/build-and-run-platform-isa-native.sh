@@ -12,6 +12,9 @@
 # plan changes without a hand-maintained family list here. False-only runs skip
 # exhaustive exercises; supported and partial-mask runs execute their helpers.
 source "$(dirname "$0")/_common.sh"
+if [ "$DN2CPP_OS" = windows ] && [ "${DN2CPP_SKIP_PLATFORM_ISA_NATIVE:-0}" = 1 ]; then
+    gate_skip "platform-isa-native is excluded from hosted Windows smoke; run ./gates/build-and-run-platform-isa-native.sh manually on a provisioned Windows host with DN2CPP_SKIP_PLATFORM_ISA_NATIVE unset"
+fi
 source "$(dirname "$0")/_platform_isa.sh"
 
 platform_isa_native_gate
