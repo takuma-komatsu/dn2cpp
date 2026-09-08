@@ -478,7 +478,7 @@ echo "== 3f/8 Wrapper lowering must distinguish unsupported shapes from fatal bo
 wrapper_transpiler="$(dirname "${DN2CPP_CLI_DLL:-src/Dn2Cpp.Cli/bin/$CONFIG/$TFM/dn2cpp.dll}")/Dn2Cpp.Transpiler.dll"
 wrapper_rc=0
 wrapper_result=$(dotnet "$wrapper_app" "$wrapper_transpiler") || wrapper_rc=$?
-assert_output "$wrapper_result" 'wrapper NotSupportedException: OK
+assert_output "$(strip_cr_win "$wrapper_result")" 'wrapper NotSupportedException: OK
 wrapper InstantiationBoundException: OK
 wrapper StrictCompletionException: OK'
 assert_exit_code "$wrapper_rc" 0
