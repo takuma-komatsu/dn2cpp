@@ -1053,7 +1053,7 @@ internal sealed partial class MethodCompiler : IEvalStack
             if (!lower())
                 return null;
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException ex) when (!Compilation.IsMustEscape(ex))
         {
             return null; // a shape the lowering does not model stays bodyless
         }
