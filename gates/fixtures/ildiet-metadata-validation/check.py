@@ -16,6 +16,8 @@ def run(*arguments):
 
 
 run(probe, "--create-dead", dead)
+resolver_fixtures = directory / "resolver-fixtures"
+run(probe, "--create-resolver-fixtures", resolver_fixtures)
 inputs = [app, library, corelib, signed, dead]
 before = {path: hashlib.sha256(path.read_bytes()).digest() for path in inputs}
 for name in ("first", "second"):
@@ -32,4 +34,19 @@ assert sorted(path.name for path in first.iterdir()) == sorted(path.name for pat
 for path in first.iterdir():
     assert path.read_bytes() == (directory / "second" / path.name).read_bytes(), f"nondeterministic output: {path.name}"
 assert (first / corelib.name).read_bytes() == corelib.read_bytes(), "protected CoreLib was rewritten"
-print("metadata-validation=resources,identity,empty-reference,token-integrity,determinism")
+
+
+def resolver_case(name, references, selected):
+    output = directory / name
+    resolver_app = resolver_fixtures / "ResolverApp.dll"
+    command = [companion, resolver_app]
+    for reference in references:
+        command.extend(("-r", resolver_fixtures / reference))
+    command.extend(("-o", output))
+    run(*command)
+    run(probe, "--check-resolver", output, selected)
+
+
+resolver_case("resolver-first", ("ResolverFirst.dll", "ResolverSecond.dll"), "ResolverFirst")
+resolver_case("resolver-second", ("ResolverSecond.dll", "ResolverFirst.dll"), "ResolverSecond")
+print("metadata-validation=resources,identity,empty-reference,token-integrity,determinism,resolver-order,nested-resolver,missing-type")

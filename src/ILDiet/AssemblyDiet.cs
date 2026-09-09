@@ -105,6 +105,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             _byModule.Add(definition.MainModule, item);
             _resolver.Add(definition);
         }
+        _resolver.Complete();
     }
 
     private static bool IsProtected(string name) =>
@@ -637,12 +638,38 @@ internal sealed class DietAssembly
 internal sealed class ClosedResolver : IAssemblyResolver
 {
     private readonly Dictionary<string, AssemblyDefinition> _assemblies = new(StringComparer.OrdinalIgnoreCase);
-    internal void Add(AssemblyDefinition assembly) => _assemblies.Add(assembly.Name.Name, assembly);
+    private readonly List<AssemblyDefinition> _assemblyOrder = new();
+    private readonly Dictionary<string, TypeDefinition> _types = new(StringComparer.Ordinal);
+    private bool _complete;
+
+    internal void Add(AssemblyDefinition assembly)
+    {
+        if (_complete) throw new InvalidOperationException("assembly resolver is already complete");
+        _assemblies.Add(assembly.Name.Name, assembly);
+        _assemblyOrder.Add(assembly);
+    }
+
+    internal void Complete()
+    {
+        if (_complete) throw new InvalidOperationException("assembly resolver is already complete");
+        foreach (var assembly in _assemblyOrder)
+            AddTypes(assembly.MainModule.Types);
+        _complete = true;
+    }
+
+    private void AddTypes(IEnumerable<TypeDefinition> types)
+    {
+        foreach (var type in types)
+        {
+            _types.TryAdd(type.FullName, type);
+            AddTypes(type.NestedTypes);
+        }
+    }
+
     internal TypeDefinition? FindDefinition(string fullName)
     {
-        foreach (var assembly in _assemblies.Values)
-            if (assembly.MainModule.GetType(fullName) is { } type) return type;
-        return null;
+        if (!_complete) throw new InvalidOperationException("assembly resolver is not complete");
+        return _types.TryGetValue(fullName, out var type) ? type : null;
     }
     public AssemblyDefinition Resolve(AssemblyNameReference name) => _assemblies.TryGetValue(name.Name, out var assembly)
         ? assembly : throw new AssemblyResolutionException(name);

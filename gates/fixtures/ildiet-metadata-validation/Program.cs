@@ -22,6 +22,36 @@ if (args.Length == 2 && args[0] == "--create-dead")
     Console.WriteLine("fixture-created=ILDietDeadReference");
     return;
 }
+if (args.Length == 2 && args[0] == "--create-resolver-fixtures")
+{
+    Directory.CreateDirectory(args[1]);
+    CreateResolverLibrary(Path.Combine(args[1], "ResolverFirst.dll"), "ResolverFirst", true);
+    CreateResolverLibrary(Path.Combine(args[1], "ResolverSecond.dll"), "ResolverSecond", false);
+    CreateResolverApp(Path.Combine(args[1], "ResolverApp.dll"));
+    Console.WriteLine("fixture-created=resolver-order");
+    return;
+}
+if (args.Length == 3 && args[0] == "--check-resolver")
+{
+    string selected = args[2];
+    string other = selected == "ResolverFirst" ? "ResolverSecond" : "ResolverFirst";
+    using var selectedAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], selected + ".dll"));
+    using var otherAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], other + ".dll"));
+    using var firstAssembly = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], "ResolverFirst.dll"));
+    using var resolverApp = AssemblyDefinition.ReadAssembly(Path.Combine(args[1], "ResolverApp.dll"));
+    Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Methods.Any(m => m.Name == "Selected") == true,
+        "first collision definition was not selected: " + selected);
+    Require(otherAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Methods.Any(m => m.Name == "Selected") != true,
+        "later collision definition was selected: " + other);
+    var owner = firstAssembly.MainModule.GetType("System.ILDietFixture.Owner");
+    Require(owner?.NestedTypes.SingleOrDefault(t => t.Name == "Inner")?.Methods.Any(m => m.Name == "NestedSelected") == true,
+        "nested definition was not resolved");
+    var main = resolverApp.EntryPoint;
+    Require(main is not null && main.Body.Variables.Any(v => v.VariableType.FullName == "System.ILDietFixture.Missing"),
+        "unresolved type metadata changed");
+    Console.WriteLine("resolver-valid=" + selected);
+    return;
+}
 if (args.Length < 2) throw new ArgumentException("expected original.dll rewritten.dll [empty|resources|signed]");
 using var resolver = new DefaultAssemblyResolver();
 resolver.AddSearchDirectory(Path.GetDirectoryName(Path.GetFullPath(args[1]))!);
@@ -142,4 +172,60 @@ void Attributes(ICustomAttributeProvider provider)
 static void Require(bool condition, string message)
 {
     if (!condition) throw new InvalidOperationException(message);
+}
+
+static void CreateResolverLibrary(string path, string assemblyName, bool nested)
+{
+    using var fixture = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition(assemblyName, new Version(1, 0)),
+        assemblyName, ModuleKind.Dll);
+    var collision = new TypeDefinition("System.ILDietFixture", "Collision",
+        TypeAttributes.Public | TypeAttributes.Class, fixture.MainModule.TypeSystem.Object);
+    fixture.MainModule.Types.Add(collision);
+    AddVoidMethod(collision, "Selected");
+    if (nested)
+    {
+        var owner = new TypeDefinition("System.ILDietFixture", "Owner",
+            TypeAttributes.Public | TypeAttributes.Class, fixture.MainModule.TypeSystem.Object);
+        var inner = new TypeDefinition("", "Inner", TypeAttributes.NestedPublic | TypeAttributes.Class,
+            fixture.MainModule.TypeSystem.Object);
+        owner.NestedTypes.Add(inner);
+        fixture.MainModule.Types.Add(owner);
+        AddVoidMethod(inner, "NestedSelected");
+    }
+    fixture.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+}
+
+static void CreateResolverApp(string path)
+{
+    using var fixture = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition("ResolverApp", new Version(1, 0)),
+        "ResolverApp", ModuleKind.Console);
+    var program = new TypeDefinition("ILDietFixture", "ResolverProgram",
+        TypeAttributes.Public | TypeAttributes.Class, fixture.MainModule.TypeSystem.Object);
+    fixture.MainModule.Types.Add(program);
+    var main = AddVoidMethod(program, "Main");
+    main.Attributes |= MethodAttributes.Static;
+    fixture.EntryPoint = main;
+
+    var facade = new AssemblyNameReference("System.ILDietMissingFacade", new Version(1, 0));
+    fixture.MainModule.AssemblyReferences.Add(facade);
+    var collision = new TypeReference("System.ILDietFixture", "Collision", fixture.MainModule, facade);
+    var owner = new TypeReference("System.ILDietFixture", "Owner", fixture.MainModule, facade);
+    var inner = new TypeReference("", "Inner", fixture.MainModule, facade) { DeclaringType = owner };
+    var missing = new TypeReference("System.ILDietFixture", "Missing", fixture.MainModule, facade);
+    main.Body.Variables.Add(new VariableDefinition(missing));
+    main.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
+        new MethodReference("Selected", fixture.MainModule.TypeSystem.Void, collision) { HasThis = false }));
+    main.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
+        new MethodReference("NestedSelected", fixture.MainModule.TypeSystem.Void, inner) { HasThis = false }));
+    main.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    fixture.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
+}
+
+static MethodDefinition AddVoidMethod(TypeDefinition type, string name)
+{
+    var method = new MethodDefinition(name, MethodAttributes.Public | MethodAttributes.Static,
+        type.Module.TypeSystem.Void);
+    type.Methods.Add(method);
+    method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    return method;
 }
