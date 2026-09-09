@@ -2197,8 +2197,8 @@ internal sealed partial class MethodCompiler
     // Intrinsic calls bypass managed call emission, so guard the reference receiver here.
     private string MmfVal(StackEntry e) => $"((Dn2CppMappedFile*)dn2cpp_null_check({Cast(e, "Dn2CppMappedFile*")}))";
     // View handles can arrive by value or through a managed pointer.
-    private string MmvVal(StackEntry e) => e.Kind == StackKind.Ptr ? $"(*(Dn2CppMappedView*)({e.Expr}))" : e.Expr;
-    private string MmhVal(StackEntry e) => e.Kind == StackKind.Ptr ? $"(*(Dn2CppMappedSafeHandle*)({e.Expr}))" : e.Expr;
+    private string MmvRef(StackEntry e) => $"((Dn2CppMappedViewObject*)dn2cpp_null_check({Cast(e, "Dn2CppMappedViewObject*")}))";
+    private string MmvVal(StackEntry e) => $"dn2cpp_mmap_view_data({MmvRef(e)})";
 
     /// <summary>The packed C++ storage type a MemoryMappedViewAccessor named primitive
     /// reader (ReadInt32/ReadByte/…) loads from, keyed on the type suffix, or null when the
@@ -2223,8 +2223,8 @@ internal sealed partial class MethodCompiler
     };
 
     /// <summary>System.IO.MemoryMappedFiles file-backed map subset (POSIX mmap).
-    /// MemoryMappedFile is a managed reference; views and safe-view handles are intrinsic
-    /// value structs. The view's Read*/Write* primitive accessors are inline typed
+    /// Files and views have managed reference identity; SafeBuffer uses real BCL IL.
+    /// The view's Read*/Write* primitive accessors are inline typed
     /// loads/stores over the mapped bytes. The generic Read/Write/ReadArray/WriteArray&lt;T&gt;
     /// forms are handled in TranslateGenericIntrinsic. Unmodeled members (named maps,
     /// CreateViewStream, ReadDecimal, the CreateNew/Truncate file modes, …) raise
@@ -2237,6 +2237,10 @@ internal sealed partial class MethodCompiler
             case "System.IO.MemoryMappedFiles.MemoryMappedFile":
                 switch (name)
                 {
+                    case "CreateFromFile" when ps.Length == 6
+                        && ps[0] is { Kind: TypeKind.Class, Class.FullName:
+                            "System.IO.FileStream" or "Microsoft.Win32.SafeHandles.SafeFileHandle" }:
+                        return TryEmitMemoryMappedHandleFactory(ps[0]);
                     // CreateFromFile(path, mode): the default access is ReadWrite (0),
                     // capacity 0 (= file size), no named map.
                     case "CreateFromFile" when ps.Length == 2:
@@ -2263,14 +2267,15 @@ internal sealed partial class MethodCompiler
                             + $"{Cast(mapName, "Dn2CppString*")}, {mode.Expr}, {access.Expr}, {Cast(capacity, "int64_t")})");
                         return true;
                     }
-                    // CreateViewAccessor(): whole file, the file's own access mode.
+                    // Overloads without an access argument request ReadWrite.
                     case "CreateViewAccessor" when ps.Length == 0:
                     {
                         var file = Pop();
                         string ft = NewTemp("Dn2CppMappedFile*");
                         Emit($"{ft} = {MmfVal(file)};");
-                        Push(StackKind.Struct, "Dn2CppMappedView",
-                            $"dn2cpp_mmap_create_view({ft}, 0, 0, {ft}->access)");
+                        Comp.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor");
+                        EmitMappedViewFactory(
+                            $"dn2cpp_mmap_view_object_new(dn2cpp_mmap_create_view({ft}, 0, 0, 0))");
                         return true;
                     }
                     case "CreateViewAccessor" when ps.Length == 2: // (offset, size)
@@ -2280,8 +2285,9 @@ internal sealed partial class MethodCompiler
                         var file = Pop();
                         string ft = NewTemp("Dn2CppMappedFile*");
                         Emit($"{ft} = {MmfVal(file)};");
-                        Push(StackKind.Struct, "Dn2CppMappedView",
-                            $"dn2cpp_mmap_create_view({ft}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, {ft}->access)");
+                        Comp.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor");
+                        EmitMappedViewFactory(
+                            $"dn2cpp_mmap_view_object_new(dn2cpp_mmap_create_view({ft}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, 0))");
                         return true;
                     }
                     case "CreateViewAccessor" when ps.Length == 3: // (offset, size, access)
@@ -2290,8 +2296,9 @@ internal sealed partial class MethodCompiler
                         var size = Pop();
                         var offset = Pop();
                         var file = Pop();
-                        Push(StackKind.Struct, "Dn2CppMappedView",
-                            $"dn2cpp_mmap_create_view({MmfVal(file)}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, {access.Expr})");
+                        Comp.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor");
+                        EmitMappedViewFactory(
+                            $"dn2cpp_mmap_view_object_new(dn2cpp_mmap_create_view({MmfVal(file)}, {Cast(offset, "int64_t")}, {Cast(size, "int64_t")}, {access.Expr}))");
                         return true;
                     }
                     case "Dispose" when ps.Length == 0:
@@ -2305,7 +2312,7 @@ internal sealed partial class MethodCompiler
 
             // The view's typed accessors (Read*/Write*/Capacity/Dispose) are declared on
             // the UnmanagedMemoryAccessor base; Flush/SafeMemoryMappedViewHandle on the
-            // MemoryMappedViewAccessor itself. Both carry a Dn2CppMappedView receiver.
+            // MemoryMappedViewAccessor itself. Both carry the same view object.
             case "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor":
             case "System.IO.UnmanagedMemoryAccessor":
                 switch (name)
@@ -2313,7 +2320,15 @@ internal sealed partial class MethodCompiler
                     case "get_Capacity" when ps.Length == 0:
                     {
                         var view = Pop();
-                        Push(StackKind.I8, "int64_t", $"({MmvVal(view)}).capacity");
+                        Push(StackKind.I8, "int64_t", $"({MmvRef(view)}->view).capacity");
+                        return true;
+                    }
+                    case "get_PointerOffset" when ps.Length == 0:
+                    {
+                        var view = Pop();
+                        string vt = NewTemp("Dn2CppMappedView");
+                        Emit($"{vt} = {MmvRef(view)}->view;");
+                        Push(StackKind.I8, "int64_t", $"(int64_t)({vt}.addr - {vt}.mapBase)");
                         return true;
                     }
                     case "Flush" when ps.Length == 0:
@@ -2325,16 +2340,13 @@ internal sealed partial class MethodCompiler
                     case "Dispose" when ps.Length == 0:
                     {
                         var view = Pop();
-                        Emit($"dn2cpp_mmap_view_dispose({MmvVal(view)});");
+                        Emit($"dn2cpp_mmap_view_object_dispose({MmvRef(view)});");
                         return true;
                     }
                     case "get_SafeMemoryMappedViewHandle" when ps.Length == 0:
                     {
                         var view = Pop();
-                        string vt = NewTemp("Dn2CppMappedView");
-                        Emit($"{vt} = {MmvVal(view)};");
-                        Push(StackKind.Struct, "Dn2CppMappedSafeHandle",
-                            $"Dn2CppMappedSafeHandle{{ {vt}.addr, {vt}.capacity }}");
+                        PushEntry(EmitMappedViewSafeHandle(view));
                         return true;
                     }
                 }
@@ -2374,40 +2386,130 @@ internal sealed partial class MethodCompiler
                 }
                 break;
 
-            case "Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle":
-                switch (name)
-                {
-                    case "AcquirePointer" when ps.Length == 1: // AcquirePointer(ref byte* pointer)
-                    {
-                        var ptrArg = Pop();
-                        var handle = Pop();
-                        Emit($"*(uint8_t**)({ptrArg.Expr}) = ({MmhVal(handle)}).addr;");
-                        return true;
-                    }
-                    case "ReleasePointer" when ps.Length == 0:
-                    {
-                        Pop(); // receiver — the mapping stays valid until the view is disposed
-                        return true;
-                    }
-                    case "get_ByteLength" when ps.Length == 0:
-                    {
-                        var handle = Pop();
-                        Push(StackKind.I8, "uint64_t", $"(uint64_t)({MmhVal(handle)}).byteLength");
-                        return true;
-                    }
-                    case "DangerousGetHandle" when ps.Length == 0:
-                    {
-                        var handle = Pop();
-                        Push(StackKind.I8, "intptr_t", $"(intptr_t)({MmhVal(handle)}).addr");
-                        return true;
-                    }
-                }
-                break;
         }
         throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: {declType}::{name} "
             + "is not modeled (file-backed MemoryMappedFile subset: CreateFromFile/CreateViewAccessor/"
             + "Read*/Write*/Capacity/Flush/Dispose + AcquirePointer/ReleasePointer/ByteLength/DangerousGetHandle; "
             + "named maps / CreateViewStream / CreateNew are carve-outs)");
+    }
+
+    private void EmitMappedViewFactory(string expression)
+    {
+        string result = NewTemp("Dn2CppMappedViewObject*");
+        Emit($"{result} = {expression};");
+        var view = new StackEntry(result, StackKind.Ref, "Dn2CppMappedViewObject*");
+        EmitMappedViewSafeHandle(view);
+        PushEntry(view);
+    }
+
+    private StackEntry EmitMappedViewSafeHandle(StackEntry view)
+    {
+        var ctor = Comp.ReachManagedMethod("Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle", ".ctor",
+            static ps => ps.Length == 0, allocates: true)
+            ?? throw new InvalidOperationException("SafeMemoryMappedViewHandle constructor is unavailable");
+        var initialize = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeBuffer", "Initialize",
+            static ps => ps is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 }])
+            ?? throw new InvalidOperationException("SafeBuffer::Initialize is unavailable");
+        var setHandle = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "SetHandle",
+            static ps => ps.Length == 1)
+            ?? throw new InvalidOperationException("SafeHandle::SetHandle is unavailable");
+        var dispose = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "Dispose",
+            static ps => ps.Length == 0)
+            ?? throw new InvalidOperationException("SafeHandle::Dispose is unavailable");
+        var isClosed = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "get_IsClosed",
+            static ps => ps.Length == 0)
+            ?? throw new InvalidOperationException("SafeHandle::IsClosed is unavailable");
+        var cls = ctor.DeclaringClass;
+        string owner = NewTemp("Dn2CppMappedViewObject*");
+        string handle = NewTemp(cls.CppStructName + "*");
+        Emit($"{owner} = {MmvRef(view)};");
+        Emit("{");
+        Emit($"Dn2CppMonitorGuard guard({owner}->sync);");
+        Emit($"{handle} = ({cls.CppStructName}*){owner}->safeHandle;");
+        Emit($"if ({handle} == nullptr) {{");
+        Emit($"{handle} = ({cls.CppStructName}*)dn2cpp_alloc(sizeof({cls.CppStructName}));");
+        Emit($"{handle}->type = &{cls.CppTypeInfoName};");
+        if (Compilation.EffectiveFinalize(cls) is { } fin && Comp.Reachable.Contains(fin))
+            Emit($"dn2cpp_register_finalizer((Dn2CppObject*){handle});");
+        Emit($"{DirectCall(ctor, new List<string> { handle })};");
+        Emit($"{DirectCall(initialize, new List<string> { "(" + initialize.DeclaringClass.CppStructName + "*)" + handle,
+            "(uint64_t)(" + owner + "->view.capacity + (" + owner + "->view.addr - " + owner + "->view.mapBase))" })};");
+        // Transfer the mapping only after the finalizable SafeBuffer is initialized.
+        Emit($"{DirectCall(setHandle, new List<string> { "(" + setHandle.DeclaringClass.CppStructName + "*)" + handle,
+            "(intptr_t)" + owner + "->view.mapBase" })};");
+        Emit($"dn2cpp_gc_store_ref(&{owner}->safeHandle, (Dn2CppObject*){handle});");
+        Emit($"{owner}->disposeHandle = +[](Dn2CppObject* source) {{ {DirectCall(dispose,
+            new List<string> { "(" + dispose.DeclaringClass.CppStructName + "*)source" })}; }};");
+        Emit($"{owner}->isHandleClosed = +[](Dn2CppObject* source) {{ return {DirectCall(isClosed,
+            new List<string> { "(" + isClosed.DeclaringClass.CppStructName + "*)source" })} != 0; }};");
+        Emit("}");
+        Emit("}");
+        return new StackEntry(handle, StackKind.Ref, cls.CppStructName + "*", StaticType: TypeDesc.MakeClass(cls));
+    }
+
+    private bool TryEmitMemoryMappedHandleFactory(TypeDesc sourceType)
+    {
+        bool streamSource = sourceType.Class!.FullName == "System.IO.FileStream";
+        var addRef = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "DangerousAddRef",
+            static ps => ps.Length == 1);
+        var release = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "DangerousRelease",
+            static ps => ps.Length == 0);
+        var getHandle = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "DangerousGetHandle",
+            static ps => ps.Length == 0);
+        var dispose = Comp.ReachManagedMethod("System.Runtime.InteropServices.SafeHandle", "Dispose",
+            static ps => ps.Length == 0);
+        if (addRef is null || release is null || getHandle is null || dispose is null)
+            return false;
+        var leaveOpen = Pop();
+        var inheritability = Pop();
+        var access = Pop();
+        var capacity = Pop();
+        var mapName = Pop();
+        var source = Pop();
+        Emit($"dn2cpp_mmap_validate_create({Cast(source, "Dn2CppObject*")}, {Cast(mapName, "Dn2CppString*")}, {Cast(capacity, "int64_t")}, {access.Expr});");
+        StackEntry handle = source;
+        if (streamSource)
+        {
+            // Flush and expose the real handle through virtual BCL methods; a path
+            // reopen loses buffered writes and fails for renamed or handle-only files.
+            foreach (string member in new[] { "get_Length", "Flush", "get_SafeFileHandle" })
+            {
+                var method = Comp.ReachManagedMethod("System.IO.FileStream", member,
+                    static ps => ps.Length == 0, virtualDispatch: true)
+                    ?? throw new InvalidOperationException($"FileStream::{member} is unavailable");
+                Push(source.Kind, source.CppType, source.Expr);
+                EmitManagedCall(method, isCallvirt: true);
+                if (member == "get_Length")
+                {
+                    var length = Pop();
+                    Emit($"if ({length.Expr} == 0 && {capacity.Expr} == 0) dn2cpp_throw_of(&dn2cpp_argument_exception_type);");
+                    Emit($"if ({inheritability.Expr} < 0 || {inheritability.Expr} > 1) dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);");
+                }
+                else if (member == "get_SafeFileHandle")
+                    handle = Pop();
+            }
+        }
+        else
+            Emit($"if ({inheritability.Expr} < 0 || {inheritability.Expr} > 1) dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);");
+
+        string safe = NewTemp(getHandle.DeclaringClass.CppStructName + "*");
+        Emit($"{safe} = {Cast(handle, getHandle.DeclaringClass.CppStructName + "*")};");
+        string added = NewTemp("uint8_t");
+        Emit($"{added} = 0;");
+        Emit(DirectCall(addRef, new List<string> { safe, "&" + added }) + ";");
+        string result = NewTemp("Dn2CppMappedFile*");
+        Emit("try {");
+        Emit($"{result} = dn2cpp_mmap_create_from_handle((intptr_t){DirectCall(getHandle, new List<string> { safe })}, {access.Expr}, {Cast(capacity, "int64_t")}, {inheritability.Expr});");
+        Emit("} catch (...) {");
+        Emit($"if ({added}) {DirectCall(release, new List<string> { safe })};");
+        Emit("throw;");
+        Emit("}");
+        Emit($"if ({added}) {DirectCall(release, new List<string> { safe })};");
+        Emit($"dn2cpp_gc_store_ref(&{result}->sourceHandle, (Dn2CppObject*){safe});");
+        Emit($"if (!{leaveOpen.Expr}) {result}->disposeSource = +[](Dn2CppObject* source) {{ {DirectCall(dispose, new List<string> { "(" + dispose.DeclaringClass.CppStructName + "*)source" })}; }};");
+        Comp.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedFile");
+        Push(StackKind.Ref, "Dn2CppMappedFile*", result);
+        return true;
     }
 }

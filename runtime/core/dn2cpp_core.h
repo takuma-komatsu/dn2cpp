@@ -5434,6 +5434,8 @@ struct Dn2CppMappedFile : Dn2CppObject
     int32_t fd;       // -1 once disposed
     int32_t access;
     int64_t length;
+    Dn2CppObject* sourceHandle;
+    void (*disposeSource)(Dn2CppObject*);
 };
 extern Dn2CppTypeInfo dn2cpp_mappedfile_type;
 Dn2CppMappedFile* dn2cpp_mmap_file_new();
@@ -5445,11 +5447,20 @@ struct Dn2CppMappedView
     int64_t  capacity;// user-visible view size
     int32_t  access;
 };
-struct Dn2CppMappedSafeHandle
+struct Dn2CppMappedViewObject : Dn2CppObject
 {
-    uint8_t* addr;       // the mapped region base (== view.addr)
-    int64_t  byteLength; // SafeBuffer.ByteLength (== view.capacity)
+    Dn2CppObject* sync;
+    Dn2CppMappedView view;
+    Dn2CppObject* safeHandle;
+    void (*disposeHandle)(Dn2CppObject*);
+    bool (*isHandleClosed)(Dn2CppObject*);
+    bool disposed;
 };
+extern Dn2CppTypeInfo dn2cpp_mappedview_type;
+extern Dn2CppTypeInfo dn2cpp_unmanaged_memory_accessor_type;
+Dn2CppMappedViewObject* dn2cpp_mmap_view_object_new(Dn2CppMappedView view);
+void dn2cpp_mmap_view_object_dispose(Dn2CppMappedViewObject* view);
+Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view);
 
 // FileMode (System.IO): Open=3 / OpenOrCreate=4 supported. MemoryMappedFileAccess:
 // ReadWrite=0 / Read=1 supported. mapName must be null. Any other value throws
@@ -5457,6 +5468,13 @@ struct Dn2CppMappedSafeHandle
 // failure throws IOException.
 Dn2CppMappedFile* dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
                                               int32_t fileMode, int32_t access, int64_t capacity);
+void dn2cpp_mmap_validate_create(Dn2CppObject* source, Dn2CppString* mapName,
+                                int64_t capacity, int32_t access);
+void dn2cpp_mmap_validate_capacity(int64_t length, int64_t capacity, int32_t access);
+// The caller holds a SafeHandle lease while the OS handle is duplicated.
+Dn2CppMappedFile* dn2cpp_mmap_create_from_handle(intptr_t handle, int32_t access,
+                                                int64_t capacity, int32_t inheritability);
+void dn2cpp_mmap_dispose_source(Dn2CppMappedFile* f);
 void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f);
 // CreateViewAccessor: mmap [offset, offset+size) (size 0 = rest of file from offset).
 Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access);

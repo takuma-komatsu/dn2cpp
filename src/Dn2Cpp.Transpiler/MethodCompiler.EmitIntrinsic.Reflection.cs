@@ -395,6 +395,7 @@ internal sealed partial class MethodCompiler
                 // The mapped-file wrapper supports zero-initialized allocation even
                 // when no factory call exists to register its interface dispatch.
                 _c.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedFile");
+                _c.NoteIntrinsicInterfaces("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor");
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_get_uninitialized_object({Cast(t, "Dn2CppType*")})");
                 return true;

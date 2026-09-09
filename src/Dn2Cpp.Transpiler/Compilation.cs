@@ -2916,6 +2916,7 @@ internal sealed partial class Compilation
     {
         TimerDispose,
         MappedFileDispose,
+        MappedViewDispose,
         NoopDispose,
         TimerChange,
         TimerDisposeAsync,
@@ -2936,6 +2937,8 @@ internal sealed partial class Compilation
     [
         new("System.IO.MemoryMappedFiles.MemoryMappedFile", "dn2cpp_mappedfile_type", "itfthunk_mappedfile_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.MappedFileDispose),
+        new("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor", "dn2cpp_mappedview_type", "itfthunk_mappedview_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.MappedViewDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.TimerDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_change",
@@ -3035,6 +3038,7 @@ internal sealed partial class Compilation
             bool shapeMatches = row.ThunkKind switch
             {
                 IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.MappedFileDispose
+                    or IntrinsicInterfaceThunkKind.MappedViewDispose
                     or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>
@@ -3107,15 +3111,15 @@ internal sealed partial class Compilation
     /// wiring). Null when the type is not loaded (no CoreLib reference) or has no
     /// matching method with a body.</summary>
     internal MethodInfo? ReachManagedMethod(string typeFullName, string name,
-        System.Func<TypeDesc[], bool> match, bool allocates = false)
+        System.Func<TypeDesc[], bool> match, bool allocates = false, bool virtualDispatch = false)
     {
         if (FindClassByFullName(typeFullName) is not { } cls)
             return null;
-        return ReachManagedMethod(cls, name, match, allocates);
+        return ReachManagedMethod(cls, name, match, allocates, virtualDispatch);
     }
 
     /// <summary>The <see cref="ClassInfo"/>-keyed form of
-    /// <see cref="ReachManagedMethod(string,string,System.Func{TypeDesc[],bool},bool)"/>,
+    /// <see cref="ReachManagedMethod(string,string,System.Func{TypeDesc[],bool},bool,bool)"/>,
     /// for a callee an intrinsic already holds a resolved class for.
     ///
     /// <para>It exists because the by-NAME form cannot reach a closed generic. A
@@ -3129,7 +3133,7 @@ internal sealed partial class Compilation
     /// (<c>SignatureProvider</c> calls <see cref="Instantiate"/> for a generic
     /// instantiation), and hands the ClassInfo here.</para></summary>
     internal MethodInfo? ReachManagedMethod(ClassInfo cls, string name,
-        System.Func<TypeDesc[], bool> match, bool allocates = false)
+        System.Func<TypeDesc[], bool> match, bool allocates = false, bool virtualDispatch = false)
     {
         var m = cls.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Rva != 0
             && m.Name == name && match(m.Signature.ParameterTypes.ToArray()));
@@ -3141,6 +3145,8 @@ internal sealed partial class Compilation
             ReachAllocatedType(cls);
         }
         Reach(m);
+        if (virtualDispatch && m.IsVirtual)
+            ReachUsedVirtual(m);
         // Mandatory, not cosmetic: a method reached here without a drain would be COMPILED
         // by the emit fixpoint's next batch with its body never SCANNED, so its callees
         // would miss the reachable set and AssertCalledBodiesEmitted would fail the

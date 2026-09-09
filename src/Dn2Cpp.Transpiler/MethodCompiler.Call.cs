@@ -368,7 +368,7 @@ internal sealed partial class MethodCompiler
             && TryEmitValueConstrained(handle, cn))
             return;
         // A generic/interpolation constrained call can close over an intrinsic CLR
-        // reference type that is represented by-value in C++ (memory-map handles).
+        // reference type with a headerless C++ representation.
         // There is no object pointer to dereference or box; inherited ToString depends
         // only on the exact CLR type. Keep a declared override on normal intrinsic
         // dispatch so an unmodeled custom formatter remains loud.
@@ -950,24 +950,6 @@ internal sealed partial class MethodCompiler
                     EmitIntrinsic(mrParent, mrName, Sig());
                     return;
                 }
-                // The view's SafeMemoryMappedViewHandle exposes AcquirePointer /
-                // ReleasePointer / ByteLength (declared on SafeBuffer) and DangerousGetHandle
-                // (on SafeHandle). The declaring type is the base class, so dispatch by the
-                // receiver's intrinsic C++ type and only for our handle — unrelated
-                // SafeBuffer/SafeHandle calls are untouched.
-                if (mrParent is "System.Runtime.InteropServices.SafeBuffer"
-                        or "System.Runtime.InteropServices.SafeHandle"
-                    && mrName is "AcquirePointer" or "ReleasePointer" or "get_ByteLength" or "DangerousGetHandle")
-                {
-                    var hsig = Sig();
-                    int recvIdx = _stack.Count - 1 - hsig.ParameterTypes.Length;
-                    if (recvIdx >= 0 && _stack[recvIdx].CppType == "Dn2CppMappedSafeHandle")
-                    {
-                        EmitIntrinsic("Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle",
-                            mrName, hsig);
-                        return;
-                    }
-                }
                 // The System.Environment OVERLOADS a dn2cpp_env_* / _process_path /
                 // _environment_* helper models lower inline: their real bodies are the
                 // Kernel32/registry P/Invoke branch, the _Exit InternalCall plus CLR
@@ -1176,12 +1158,6 @@ internal sealed partial class MethodCompiler
                 "Dispose" => parameterCount is not (0 or 1),
                 _ => true,
             })
-            return false;
-
-        int receiverIndex = _stack.Count - 1 - parameterCount;
-        if (receiverIndex >= 0 && _stack[receiverIndex].CppType == "Dn2CppMappedSafeHandle")
-            // SafeMemoryMappedViewHandle is a by-value intrinsic with its own inherited
-            // SafeBuffer/SafeHandle route below; it has no Dn2CppObject header to guard.
             return false;
 
         var args = PopArgs(callee, hasThis: true);

@@ -116,7 +116,42 @@ void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f)
     int32_t fd = f->fd;
     f->fd = -1;
     if (fd >= 0) ::_close(fd);
+    dn2cpp_mmap_dispose_source(f);
     dn2cpp_gc_suppress_finalize(f);
+}
+
+Dn2CppMappedFile* dn2cpp_mmap_create_from_handle(intptr_t handle, int32_t access,
+                                                int64_t capacity, int32_t inheritability)
+{
+    HANDLE source = reinterpret_cast<HANDLE>(handle);
+    LARGE_INTEGER size;
+    if (!::GetFileSizeEx(source, &size)) dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    int64_t length = size.QuadPart;
+    dn2cpp_mmap_validate_capacity(length, capacity, access);
+    auto* f = dn2cpp_mmap_file_new();
+    HANDLE copy;
+    if (!::DuplicateHandle(::GetCurrentProcess(), source, ::GetCurrentProcess(),
+        &copy, 0, inheritability != 0, DUPLICATE_SAME_ACCESS))
+        dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    int fd = ::_open_osfhandle(reinterpret_cast<intptr_t>(copy),
+        _O_BINARY | (access == 1 ? _O_RDONLY : _O_RDWR));
+    if (fd < 0)
+    {
+        ::CloseHandle(copy);
+        dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    }
+    f->fd = fd;
+    FILE_END_OF_FILE_INFO end;
+    end.EndOfFile.QuadPart = capacity;
+    // Duplicated handles share the stream's file position; resize without seeking.
+    if (capacity > length && !::SetFileInformationByHandle(copy, FileEndOfFileInfo, &end, sizeof(end)))
+    {
+        dn2cpp_mmap_file_dispose(f);
+        dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    }
+    f->access = access;
+    f->length = capacity > length ? capacity : length;
+    return f;
 }
 
 Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access)
@@ -129,6 +164,8 @@ Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, in
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
     if (offset < 0 || size < 0)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
+    if (f->access == 1 && access == 0)
+        dn2cpp_throw_of(&dn2cpp_unauthorized_access_exception_type);
 
     int64_t viewSize = (size == 0) ? (f->length - offset) : size; // 0 => rest of file
     if (viewSize < 0 || offset + viewSize > f->length)

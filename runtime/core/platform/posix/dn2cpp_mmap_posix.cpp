@@ -5,17 +5,29 @@
 // (page-aligned) range; the Read*/Write* accessors and the raw AcquirePointer scan
 // operate on the mapped bytes; Flush msyncs; Dispose munmaps / closes the fd.
 //
-// MemoryMappedFile is a GC-managed descriptor owner. Views remain independent
-// by-value mapping handles. Named maps and CreateViewStream are unsupported.
+// MemoryMappedFile owns its descriptor independently of the mapped views.
+// Named maps and CreateViewStream are unsupported.
 
 #include "dn2cpp_core.h"
 
 #include <string>     // managed path strings as NUL-terminated UTF-8 std::string
 #include <cstring>    // std::memcpy
+#include <cerrno>
 #include <fcntl.h>    // open / O_RDONLY / O_RDWR / O_CREAT
 #include <unistd.h>   // close / ftruncate / sysconf
 #include <sys/mman.h> // mmap / munmap / msync / PROT_* / MAP_*
 #include <sys/stat.h> // fstat
+
+// SafeMemoryMappedViewHandle.ReleaseHandle retains the real SafeBuffer lease count.
+extern "C" int32_t SystemNative_MUnmap(void* address, uint64_t length)
+{
+    if (length > SIZE_MAX)
+    {
+        errno = EOVERFLOW;
+        return -1;
+    }
+    return ::munmap(address, static_cast<size_t>(length));
+}
 
 // A managed path string as a NUL-terminated UTF-8 std::string (file-local; mirrors
 // the helper in dn2cpp_system_io.cpp).
@@ -82,7 +94,31 @@ void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f)
     int32_t fd = f->fd;
     f->fd = -1;
     if (fd >= 0) ::close(fd);
+    dn2cpp_mmap_dispose_source(f);
     dn2cpp_gc_suppress_finalize(f);
+}
+
+Dn2CppMappedFile* dn2cpp_mmap_create_from_handle(intptr_t handle, int32_t access,
+                                                int64_t capacity, int32_t inheritability)
+{
+    struct stat st;
+    if (::fstat(static_cast<int>(handle), &st) != 0)
+        dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    int64_t length = static_cast<int64_t>(st.st_size);
+    dn2cpp_mmap_validate_capacity(length, capacity, access);
+    auto* f = dn2cpp_mmap_file_new();
+    int fd = ::dup(static_cast<int>(handle));
+    if (fd < 0) dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    f->fd = fd;
+    if (::fcntl(fd, F_SETFD, inheritability == 0 ? FD_CLOEXEC : 0) != 0
+        || (capacity > length && ::ftruncate(fd, static_cast<off_t>(capacity)) != 0))
+    {
+        dn2cpp_mmap_file_dispose(f);
+        dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    }
+    f->access = access;
+    f->length = capacity > length ? capacity : length;
+    return f;
 }
 
 Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access)
@@ -95,6 +131,8 @@ Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, in
         dn2cpp_throw_of(&dn2cpp_not_supported_exception_type);
     if (offset < 0 || size < 0)
         dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
+    if (f->access == 1 && access == 0)
+        dn2cpp_throw_of(&dn2cpp_unauthorized_access_exception_type);
 
     int64_t viewSize = (size == 0) ? (f->length - offset) : size; // 0 => rest of file
     if (viewSize < 0 || offset + viewSize > f->length)

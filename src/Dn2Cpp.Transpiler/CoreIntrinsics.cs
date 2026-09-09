@@ -411,14 +411,11 @@ internal static partial class CoreIntrinsics
         // UnmanagedMemoryAccessor + OS-mapping P/Invoke cascade; members lower at the call
         // site (TryEmitMemoryMappedFileIntrinsic, plus the generic accessor forms in
         // TranslateGenericIntrinsic). The view inherits its typed accessors from
-        // UnmanagedMemoryAccessor, so that base is intrinsic too. SafeBuffer/SafeHandle are
-        // NOT intrinsic-typed wholesale — AcquirePointer/ReleasePointer/ByteLength/
-        // DangerousGetHandle dispatch on the receiver's intrinsic C++ type instead (see
-        // ResolveCallTarget's name-scoped cut).
+        // UnmanagedMemoryAccessor, so that base is intrinsic too. SafeMemoryMappedViewHandle
+        // and its SafeBuffer/SafeHandle bases retain their real managed layout and refcounts.
         "System.IO.MemoryMappedFiles.MemoryMappedFile",
         "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor",
         "System.IO.UnmanagedMemoryAccessor",
-        "Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle",
         // Portable SIMD vector STATIC helper classes (arity 0: Vector64/128/256/512,
         // System.Numerics.Vector). Their generic Create/Add/Equals/… land as
         // MethodSpecs (routed to TranslateGenericIntrinsic); the non-generic forms
@@ -1360,6 +1357,8 @@ internal static partial class CoreIntrinsics
         ["System.Globalization.TextInfo"] = "&dn2cpp_textinfo_type",
         ["System.Resources.ResourceManager"] = "&dn2cpp_resourcemanager_type",
         ["System.IO.MemoryMappedFiles.MemoryMappedFile"] = "&dn2cpp_mappedfile_type",
+        ["System.IO.MemoryMappedFiles.MemoryMappedViewAccessor"] = "&dn2cpp_mappedview_type",
+        ["System.IO.UnmanagedMemoryAccessor"] = "&dn2cpp_unmanaged_memory_accessor_type",
         ["System.Text.StringBuilder"] = "&dn2cpp_stringbuilder_type",
         // The threading objects the runtime allocates and drives: an instance carries the
         // handle, so an emitted ti_ beside it is a second identity for one type. Keys are
@@ -2127,11 +2126,10 @@ internal static partial class CoreIntrinsics
         // by the runtime Dn2CppDependentHandle { cell } — one pointer to a
         // weak-target/strong-dependent cell (no trailing '*' -> passed by value).
         ["System.Runtime.DependentHandle"] = "Dn2CppDependentHandle",
-        // The file is a managed reference with shared ownership of its descriptor.
-        // Views and safe-view handles retain their intrinsic value representation.
+        // Files and views keep reference identity across object/interface conversions.
         ["System.IO.MemoryMappedFiles.MemoryMappedFile"] = "Dn2CppMappedFile*",
-        ["System.IO.MemoryMappedFiles.MemoryMappedViewAccessor"] = "Dn2CppMappedView",
-        ["Microsoft.Win32.SafeHandles.SafeMemoryMappedViewHandle"] = "Dn2CppMappedSafeHandle",
+        ["System.IO.MemoryMappedFiles.MemoryMappedViewAccessor"] = "Dn2CppMappedViewObject*",
+        ["System.IO.UnmanagedMemoryAccessor"] = "Dn2CppMappedViewObject*",
         // .NET 9+ System.Threading.Lock — a minimal allocated reference object on the
         // single-threaded model (its real body is the lock-free slow-path machinery
         // routing to EventSource -> Calli).
@@ -2224,6 +2222,8 @@ internal static partial class CoreIntrinsics
     private static readonly Dictionary<string, string> s_specialTypeCpp = new()
     {
         ["System.IO.MemoryMappedFiles.MemoryMappedFile"] = SpecialTypeMirror("System.IO.MemoryMappedFiles.MemoryMappedFile"),
+        ["System.IO.MemoryMappedFiles.MemoryMappedViewAccessor"] = SpecialTypeMirror("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor"),
+        ["System.IO.UnmanagedMemoryAccessor"] = SpecialTypeMirror("System.IO.UnmanagedMemoryAccessor"),
         // The runtime string, both as CoreLib's own String TypeDef reached as a
         // Class-kind TypeDesc (the `this` of a transpiled String interface impl)
         // and as an unresolved TypeRef — never the opaque t_System_String shell.
