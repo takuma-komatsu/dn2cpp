@@ -332,10 +332,11 @@ set +e
 native=$("./$out/$project"); native_code=$?
 expected=$(dotnet "$app"); expected_code=$?
 set -e
-native=$(strip_cr_win "$native")
 assert_output "$native" "$expected"
 assert_exit_code "$native_code" "$expected_code"
 legacy=$(dotnet "$app" legacy)
+native=$(strip_cr_win "$native")
+legacy=$(strip_cr_win "$legacy")
 prefix=$(awk '/^mixed statics first=/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$legacy"
 for line in 'mixed statics first=1132' 'mixed statics second=1363' \
