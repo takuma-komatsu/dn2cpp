@@ -455,16 +455,13 @@ echo "OK — no array type-info left without interface rows."
 echo "== runtime type-info handles: every one is rowed or declared not-rowable =="
 ti_missing=$($py - <<'PY'
 import re, glob, sys
-# Every Dn2CppTypeInfo the runtime DEFINES, by C++ symbol. The definition shape is
-# `[static] [const] Dn2CppTypeInfo <sym> =` followed by a brace, optionally behind
-# any nesting of the dn2cpp_ti_with_* wrappers (TimeSpan/DateTime/Decimal use two);
-# nothing else in the tree matches it.
+# Match definitions independently of their initializer: aggregate braces,
+# dn2cpp_ti_with_* wrappers and lambdas all define runtime-owned handles.
 runtime = set()
 for f in glob.glob('runtime/**/*.cpp', recursive=True):
     src = open(f, encoding='utf-8', errors='replace').read()
     for m in re.finditer(
-            r'\b(?:static\s+)?(?:const\s+)?Dn2CppTypeInfo\s+(dn2cpp_[A-Za-z0-9_]+)\s*=\s*'
-            r'(?:dn2cpp_ti_with_[a-z_]+\(\s*)*\{', src):
+            r'\b(?:static\s+)?(?:const\s+)?Dn2CppTypeInfo\s+(dn2cpp_[A-Za-z0-9_]+)\s*=', src):
         runtime.add(m.group(1))
 cs = open('src/Dn2Cpp.Transpiler/CoreIntrinsics.cs', encoding='utf-8').read()
 rowed = set(re.findall(r'"&(dn2cpp_[A-Za-z0-9_]+)"', cs))
