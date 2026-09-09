@@ -60,22 +60,34 @@ whether cut selectors were validated before stripping.
 ILDiet runs as a companion process; its Cecil dependency is never transpiled
 into the native dn2cpp executable.
 
-## Native companion feasibility
+## Native companion probe
 
-The opt-in probe keeps build and emission logs in a fresh directory under
-`artifacts/` and uses the original ILDiet and Mono.Cecil assemblies:
+The opt-in probe uses the original ILDiet and Mono.Cecil assemblies and keeps
+build, emission and execution logs in a fresh directory under `artifacts/`:
 
 ```sh
 bash gates/ildiet-native.sh emit
 bash gates/ildiet-native.sh build
+bash gates/ildiet-native.sh verify
 ```
 
-The build stage uses the shared CMake/Ninja wrapper and compares native help
-output with the managed CLI. It does not establish stripping parity or change
-the distributed companion. `DN2CPP_SKIP_BUILD=1` reuses an already built CLI
-and ILDiet; `CONFIG=Debug` selects their Debug outputs.
+ILDiet never supplies a signing key or re-signs rewritten assemblies. The probe
+cuts Cecil's `CryptoService.GetPublicKey` and `CryptoService.StrongName` branches;
+general Cecil signing is outside its scope. Deterministic MVID hashing remains
+enabled.
 
-The stream-backed `PEReader` path needs the `MemoryMappedFile.CreateFromFile`
-overload taking a `FileStream`. dn2cpp's mapped-file factories currently accept
-paths; emission rejects the stream overload. Native build and stripping parity
-remain unproven until that input shape is supported.
+The build stage uses the shared CMake/Ninja wrapper and compares native help
+output with the managed CLI. The verify stage also strips `ILDietControl`
+through direct arguments and the XML request protocol. It compares managed and
+native DLL bytes, effective preservation and ordered result paths, normalizing
+the output directories. Repeated runs check deterministic output and removal of
+stale PDBs. Metadata inspection checks that unused code is removed and explicit
+preservation retains the selected method; the stripped assemblies run under .NET
+with the original fixture's output. A signed reference checks that rewriting
+preserves assembly identity and public-key bytes while clearing the strong-name
+signature flag.
+
+`DN2CPP_SKIP_BUILD=1` reuses an already built CLI and ILDiet; `CONFIG=Debug`
+selects their Debug outputs. The probe does not change the distributed companion.
+Native substitution requires a successful verify run; emission and help output
+alone do not establish stripping parity.
