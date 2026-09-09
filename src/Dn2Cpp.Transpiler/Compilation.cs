@@ -5647,7 +5647,7 @@ internal sealed partial class Compilation
             // CFStringCreateWithCString by absolute framework path): resolved by
             // the real framework, linked via `-framework CoreFoundation` in
             // runtime/CMakeLists.txt — no -l token.
-            "/system/library/frameworks/corefoundation.framework/corefoundation" => null,
+            "corefoundation" => null,
             _ => name,
         };
     }

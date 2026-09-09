@@ -117,6 +117,23 @@ invoke_cli "$app" -r "$corelib" -r "$reflib" \
 [ "$(tr -d '\r' < "$DIRECT_SELECTOR_OUT/pinvoke-symbols.txt")" = $'dn2cpptest\tdn2cpptest_add' ] \
     || { echo "FAIL: entry-point selector emitted symbols beyond its exact match" >&2; exit 1; }
 
+if [ "$DN2CPP_OS" = macos ]; then
+    echo "== direct framework imports use the runtime's framework link =="
+    build_gate_proj gates/fixtures/pinvoke-framework/FrameworkProbe.csproj
+    framework_app="gates/fixtures/pinvoke-framework/bin/$CONFIG/$TFM/FrameworkProbe.dll"
+    framework_out="artifacts/pinvokenative-framework-$CONFIG"
+    invoke_cli "$framework_app" -r "$corelib" \
+        --direct-pinvoke '/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation' \
+        -o "$framework_out"
+    [ ! -e "$framework_out/pinvoke-libs.txt" ] && [ ! -e "$framework_out/pinvoke-symbols.txt" ] \
+        || { echo "FAIL: the always-linked framework emitted a library token" >&2; exit 1; }
+    compile_console "$framework_out" FrameworkProbe
+    framework_native=$("$framework_out/FrameworkProbe")
+    framework_managed=$(dotnet exec "$framework_app")
+    assert_output "$framework_native" "$framework_managed"
+    assert_output "$framework_native" 'core-foundation=True'
+fi
+
 echo "== 6/11 Asserting the ByValTStr struct-field crossing refuses at transpile =="
 # SUBJECT: the P/Invoke STRUCT-FIELD [MarshalAs] descriptor gate
 # (CppTypes.StructFieldDescriptorSupported), not another marshalling shape. A
