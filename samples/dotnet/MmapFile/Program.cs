@@ -17,6 +17,7 @@ using System.Threading;
 // exact vs real .NET. arm64 macOS is little-endian; no cross-endian assertions.
 internal static class Program
 {
+#if !MMAP_UNINITIALIZED_ONLY
     private sealed class MapSlot
     {
         public MemoryMappedFile Value;
@@ -28,6 +29,7 @@ internal static class Program
         public double Val;
         public long Extra;
     } // 24 bytes (Id, pad, Val, Extra) — word-or-larger fields, so C++/.NET layouts agree
+#endif
 
     private static unsafe void Main(string[] args)
     {
@@ -35,6 +37,7 @@ internal static class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+#if !MMAP_UNINITIALIZED_ONLY
         string dir = args[0];
 
         // ── Read-only: author a file with known bytes via normal I/O, map it read-only,
@@ -139,9 +142,11 @@ internal static class Program
         Console.WriteLine($"mmap handle tostring={h.ToString()}|{h}");
 
         TestReferenceExchange(roPath);
+#endif
         TestUninitializedMap();
     }
 
+#if !MMAP_UNINITIALIZED_ONLY
     private static void TestReferenceExchange(string path)
     {
         MemoryMappedFile first = MemoryMappedFile.CreateFromFile(
@@ -247,12 +252,15 @@ internal static class Program
         Console.WriteLine("mmap reference exchange complete");
         return;
     }
+#endif
 
     private static void TestUninitializedMap()
     {
         MemoryMappedFile map = (MemoryMappedFile)RuntimeHelpers.GetUninitializedObject(typeof(MemoryMappedFile));
         MemoryMappedFile alias = map;
-        IDisposable disposable = map;
+        object boxed = map;
+        Console.WriteLine($"mmap uninitialized disposable={boxed is IDisposable}");
+        IDisposable disposable = (IDisposable)boxed;
         Console.WriteLine($"mmap uninitialized type={map.GetType() == typeof(MemoryMappedFile)} alias={ReferenceEquals(alias, disposable)}");
         try
         {

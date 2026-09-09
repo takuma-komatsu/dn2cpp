@@ -2998,9 +2998,9 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Notes that the intrinsic named by <paramref name="intrinsicName"/> is
-    /// minted somewhere — called from that type's newobj intercept, which is its only
-    /// mint point — wiring its interface-dispatch info once. The emitter renders the row
+    /// <summary>Notes that the intrinsic named by <paramref name="intrinsicName"/> can
+    /// be allocated by a constructor, factory, or reflection, wiring its
+    /// interface-dispatch info once. The emitter renders the row
     /// only when the program ALSO emits the interface's type-info (a <c>using</c>-lowered
     /// call site or an isinst/castclass notes it): a program that mints the intrinsic but
     /// never touches the interface installs nothing, and no dispatch can miss the absent
