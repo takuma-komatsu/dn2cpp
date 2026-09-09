@@ -2,8 +2,10 @@ using System;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using Microsoft.Win32.SafeHandles;
 using System.Globalization;
+using System.Threading;
 
 // System.IO.MemoryMappedFiles file-backed map subset lowered to the dn2cpp_mmap_*
 // helpers (POSIX mmap/munmap). CreateFromFile maps an existing file; a view accessor
@@ -15,12 +17,19 @@ using System.Globalization;
 // exact vs real .NET. arm64 macOS is little-endian; no cross-endian assertions.
 internal static class Program
 {
+#if !MMAP_UNINITIALIZED_ONLY
+    private sealed class MapSlot
+    {
+        public MemoryMappedFile Value;
+    }
+
     private struct Rec
     {
         public int Id;
         public double Val;
         public long Extra;
     } // 24 bytes (Id, pad, Val, Extra) — word-or-larger fields, so C++/.NET layouts agree
+#endif
 
     private static unsafe void Main(string[] args)
     {
@@ -28,6 +37,7 @@ internal static class Program
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+#if !MMAP_UNINITIALIZED_ONLY
         string dir = args[0];
 
         // ── Read-only: author a file with known bytes via normal I/O, map it read-only,
@@ -130,5 +140,356 @@ internal static class Program
         Console.WriteLine($"diskA2={MemoryMarshal.Read<int>(ap.Slice(56))}");
         Console.WriteLine($"mmap tostring={mmf2.ToString()}|{acc2.ToString()}|{mmf2}|{acc2}");
         Console.WriteLine($"mmap handle tostring={h.ToString()}|{h}");
+
+        TestReferenceExchange(roPath);
+#endif
+        TestUninitializedMap();
+#if !MMAP_UNINITIALIZED_ONLY
+        if (args.Length > 1 && args[1] == "legacy") return;
+        TestStreamMaps(dir);
+#endif
+    }
+
+#if !MMAP_UNINITIALIZED_ONLY
+    private sealed class ObservedStream : FileStream
+    {
+        public bool LengthRead;
+        public bool Flushed;
+        public bool HandleRead;
+        public bool Disposed;
+
+        public ObservedStream(string path) : base(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite)
+        {
+        }
+
+        public override long Length { get { LengthRead = true; return base.Length; } }
+        public override SafeFileHandle SafeFileHandle { get { HandleRead = true; return base.SafeFileHandle; } }
+        public override void Flush() { Flushed = true; base.Flush(); }
+        protected override void Dispose(bool disposing) { Disposed = true; base.Dispose(disposing); }
+    }
+
+    private static unsafe void TestStreamMaps(string dir)
+    {
+        string path = Path.Combine(dir, "stream.bin");
+        File.WriteAllBytes(path, new byte[64]);
+        var stream = new ObservedStream(path);
+        stream.Position = 5;
+        stream.WriteByte(173);
+        MemoryMappedFile map = MemoryMappedFile.CreateFromFile(stream, null, 128,
+            MemoryMappedFileAccess.ReadWrite, HandleInheritability.None, true);
+        Console.WriteLine($"mmap stream virtual length={stream.LengthRead} flush={stream.Flushed} handle={stream.HandleRead} position={stream.Position} length={stream.Length}");
+        MemoryMappedViewAccessor view = map.CreateViewAccessor(5, 16, MemoryMappedFileAccess.ReadWrite);
+        byte* pointer = null;
+        SafeMemoryMappedViewHandle viewHandle = view.SafeMemoryMappedViewHandle;
+        viewHandle.AcquirePointer(ref pointer);
+        Console.WriteLine($"mmap stream pointer offset={view.PointerOffset} byte={pointer[view.PointerOffset]} bytes={viewHandle.ByteLength}");
+        viewHandle.ReleasePointer();
+        view.Write(1, (byte)91);
+        view.Flush();
+        map.Dispose();
+        map.Dispose();
+        Console.WriteLine($"mmap stream leaveOpen={stream.CanRead} closed={stream.SafeFileHandle.IsClosed} view={view.ReadByte(1)}");
+        view.Dispose();
+        stream.Position = 5;
+        Console.WriteLine($"mmap stream persisted={stream.ReadByte()},{stream.ReadByte()}");
+        stream.Dispose();
+
+        var ownedStream = new ObservedStream(path);
+        SafeFileHandle ownedHandle = ownedStream.SafeFileHandle;
+        MemoryMappedFile ownedMap = MemoryMappedFile.CreateFromFile(ownedStream, null, 0,
+            MemoryMappedFileAccess.Read, HandleInheritability.None, false);
+        MemoryMappedViewAccessor ownedView = ownedMap.CreateViewAccessor(5, 2, MemoryMappedFileAccess.Read);
+        ownedMap.Dispose();
+        Console.WriteLine($"mmap stream owned closed={ownedHandle.IsClosed} canRead={ownedStream.CanRead} disposed={ownedStream.Disposed} view={ownedView.ReadByte(0)}");
+        ownedView.Dispose();
+        ownedStream.Dispose();
+
+        foreach (bool leaveOpen in new[] { true, false })
+        {
+            SafeFileHandle handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            MemoryMappedFile handleMap = MemoryMappedFile.CreateFromFile(handle, null, 0,
+                MemoryMappedFileAccess.Read, HandleInheritability.Inheritable, leaveOpen);
+            MemoryMappedViewAccessor handleView = handleMap.CreateViewAccessor(5, 2, MemoryMappedFileAccess.Read);
+            handleMap.Dispose();
+            Console.WriteLine($"mmap handle leaveOpen={leaveOpen} closed={handle.IsClosed} view={handleView.ReadByte(1)}");
+            handleView.Dispose();
+            handle.Dispose();
+        }
+
+        using (FileStream input = File.OpenRead(path))
+        {
+            ProbeStreamMap("negative", input, -1, MemoryMappedFileAccess.Read, HandleInheritability.None);
+            ProbeStreamMap("smaller", input, 1, MemoryMappedFileAccess.Read, HandleInheritability.None);
+            ProbeStreamMap("read-grow", input, 129, MemoryMappedFileAccess.Read, HandleInheritability.None);
+            ProbeStreamMap("access", input, 0, (MemoryMappedFileAccess)99, HandleInheritability.None);
+            ProbeStreamMap("write", input, 0, MemoryMappedFileAccess.Write, HandleInheritability.None);
+            ProbeStreamMap("inherit", input, 0, MemoryMappedFileAccess.Read, (HandleInheritability)99);
+            Console.WriteLine($"mmap stream failures leaveOpen={input.CanRead} closed={input.SafeFileHandle.IsClosed}");
+        }
+        ProbeStreamMap("null", null, 0, MemoryMappedFileAccess.Read, HandleInheritability.None);
+        using (FileStream empty = File.Create(Path.Combine(dir, "empty.bin")))
+            ProbeStreamMap("empty", empty, 0, MemoryMappedFileAccess.Read, HandleInheritability.None);
+        FileStream closed = File.OpenRead(path);
+        closed.Dispose();
+        ProbeStreamMap("closed", closed, 0, MemoryMappedFileAccess.Read, HandleInheritability.None);
+        TestViewReferences(path);
+        TestReadMapAccess(path);
+        TestCollectedMapSource(path);
+        Console.WriteLine("mmap stream factories complete");
+        return;
+    }
+
+    private static void TestCollectedMapSource(string path)
+    {
+        using FileStream stream = File.OpenRead(path);
+        WeakReference mapReference = null;
+        // Removing the creator's stack prevents stale words from retaining the map in Boehm.
+        var creator = new Thread(() =>
+        {
+            var map = MemoryMappedFile.CreateFromFile(stream, null, 0,
+                MemoryMappedFileAccess.Read, HandleInheritability.None, false);
+            mapReference = new WeakReference(map);
+        });
+        creator.Start();
+        creator.Join();
+        for (int rounds = 0; mapReference.IsAlive && rounds < 64; rounds++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+        if (mapReference.IsAlive)
+        {
+            throw new InvalidOperationException("The unrooted map was not collected.");
+        }
+        Console.WriteLine($"mmap collected source open={!stream.SafeFileHandle.IsClosed} readable={stream.ReadByte() >= 0}");
+        GC.KeepAlive(stream);
+        return;
+    }
+
+    private static unsafe void TestViewReferences(string path)
+    {
+        using MemoryMappedFile map = MemoryMappedFile.CreateFromFile(path, FileMode.Open);
+        MemoryMappedViewAccessor view = map.CreateViewAccessor(5, 16, MemoryMappedFileAccess.Read);
+        object boxed = view;
+        IDisposable disposable = view;
+        UnmanagedMemoryAccessor accessor = (UnmanagedMemoryAccessor)boxed;
+        Console.WriteLine($"mmap view identity={ReferenceEquals(view, disposable)} base={ReferenceEquals(view, accessor)} type={view.GetType() == typeof(MemoryMappedViewAccessor)} baseType={view.GetType().BaseType == typeof(UnmanagedMemoryAccessor)}");
+        SafeMemoryMappedViewHandle handle = view.SafeMemoryMappedViewHandle;
+        SafeBuffer buffer = handle;
+        byte* pointer = null;
+        buffer.AcquirePointer(ref pointer);
+        disposable.Dispose();
+        Console.WriteLine($"mmap view handle identity={ReferenceEquals(handle, view.SafeMemoryMappedViewHandle)} capacity={accessor.Capacity} offset={view.PointerOffset} leased={pointer[view.PointerOffset]}");
+        buffer.ReleasePointer();
+        Console.WriteLine($"mmap view released closed={handle.IsClosed}");
+        try
+        {
+            Console.WriteLine($"mmap view disposed read={accessor.ReadByte(0)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap view disposed read={ex.GetType().Name}");
+        }
+        view.Dispose();
+        MemoryMappedViewAccessor handleOwnedView = map.CreateViewAccessor(5, 16, MemoryMappedFileAccess.Read);
+        handleOwnedView.SafeMemoryMappedViewHandle.Dispose();
+        try
+        {
+            Console.WriteLine($"mmap view closed handle read={handleOwnedView.ReadByte(0)}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap view closed handle read={ex.GetType().Name}");
+        }
+        handleOwnedView.Dispose();
+        return;
+    }
+
+    private static void TestReadMapAccess(string path)
+    {
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite);
+        using MemoryMappedFile map = MemoryMappedFile.CreateFromFile(stream, null, 0,
+            MemoryMappedFileAccess.Read, HandleInheritability.None, true);
+        for (int overload = 0; overload < 3; overload++)
+        {
+            try
+            {
+                MemoryMappedViewAccessor view = overload == 0 ? map.CreateViewAccessor()
+                    : overload == 1 ? map.CreateViewAccessor(0, 16)
+                    : map.CreateViewAccessor(0, 16, MemoryMappedFileAccess.ReadWrite);
+                view.Dispose();
+                Console.WriteLine($"mmap read map overload={overload} write=allowed");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"mmap read map overload={overload} write={ex.GetType().Name}");
+            }
+        }
+        using MemoryMappedViewAccessor readable = map.CreateViewAccessor(5, 16, MemoryMappedFileAccess.Read);
+        Console.WriteLine($"mmap read map readable={readable.ReadByte(0)}");
+        return;
+    }
+
+    private static void ProbeStreamMap(string label, FileStream stream, long capacity,
+        MemoryMappedFileAccess access, HandleInheritability inheritability)
+    {
+        try
+        {
+            MemoryMappedFile map = MemoryMappedFile.CreateFromFile(stream, null, capacity, access, inheritability, false);
+            map.Dispose();
+            Console.WriteLine($"mmap stream {label}=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap stream {label}={ex.GetType().Name}");
+        }
+        return;
+    }
+
+    private static void TestReferenceExchange(string path)
+    {
+        MemoryMappedFile first = MemoryMappedFile.CreateFromFile(
+            path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        MemoryMappedFile second = MemoryMappedFile.CreateFromFile(
+            path, FileMode.Open, null, 0, MemoryMappedFileAccess.Read);
+        MemoryMappedFile alias = first;
+        object boxed = first;
+        MemoryMappedFile[] maps = { first, second };
+        MapSlot slot = new MapSlot { Value = first };
+
+        MemoryMappedFile previous = Interlocked.Exchange(ref slot.Value, second);
+        Console.WriteLine($"mmap exchange identity={ReferenceEquals(previous, first)} replacement={ReferenceEquals(slot.Value, second)} alias={ReferenceEquals(previous, alias)}");
+        Console.WriteLine($"mmap object identity={ReferenceEquals(boxed, first)} array={ReferenceEquals(maps[0], first)} distinct={!ReferenceEquals(first, second)}");
+        Console.WriteLine($"mmap runtime type={first.GetType() == typeof(MemoryMappedFile)} objectType={boxed.GetType() == typeof(MemoryMappedFile)}");
+        MemoryMappedFile castMap = (MemoryMappedFile)boxed;
+        IDisposable castDisposable = (IDisposable)boxed;
+        Console.WriteLine($"mmap object cast={ReferenceEquals(castMap, first)} isMap={boxed is MemoryMappedFile} disposable={ReferenceEquals(castDisposable, first)} isDisposable={boxed is IDisposable}");
+
+        previous = Interlocked.CompareExchange(ref slot.Value, first, first);
+        Console.WriteLine($"mmap compare mismatch old={ReferenceEquals(previous, second)} unchanged={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, first, second);
+        Console.WriteLine($"mmap compare match old={ReferenceEquals(previous, second)} replacement={ReferenceEquals(slot.Value, first)}");
+
+        previous = Interlocked.Exchange(ref slot.Value, null);
+        Console.WriteLine($"mmap exchange null old={ReferenceEquals(previous, first)} cleared={slot.Value is null}");
+        previous = Interlocked.Exchange(ref slot.Value, null);
+        Console.WriteLine($"mmap exchange empty old={previous is null} cleared={slot.Value is null}");
+        previous = Interlocked.CompareExchange(ref slot.Value, second, null);
+        Console.WriteLine($"mmap compare null old={previous is null} replacement={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, null, first);
+        Console.WriteLine($"mmap compare clear mismatch old={ReferenceEquals(previous, second)} unchanged={ReferenceEquals(slot.Value, second)}");
+        previous = Interlocked.CompareExchange(ref slot.Value, null, second);
+        Console.WriteLine($"mmap compare clear match old={ReferenceEquals(previous, second)} cleared={slot.Value is null}");
+        Interlocked.Exchange(ref slot.Value, second);
+        previous = Interlocked.Exchange(ref maps[0], null);
+        Console.WriteLine($"mmap exchange array old={ReferenceEquals(previous, first)} cleared={maps[0] is null} alias={ReferenceEquals(alias, first)}");
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        MemoryMappedViewAccessor liveView = alias.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        Console.WriteLine($"mmap alias read={liveView.ReadInt32(0)}");
+        GC.KeepAlive(alias);
+        IDisposable disposable = first;
+        disposable.Dispose();
+        alias.Dispose();
+        bool disposed = false;
+        try
+        {
+            MemoryMappedViewAccessor unexpected = first.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+            unexpected.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            disposed = true;
+        }
+        Console.WriteLine($"mmap disposed alias={disposed} liveView={liveView.ReadInt32(0)}");
+        liveView.Dispose();
+
+        MemoryMappedViewAccessor secondView = slot.Value.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        Console.WriteLine($"mmap replacement read={secondView.ReadInt32(0)}");
+        secondView.Dispose();
+        int ready = 0;
+        int start = 0;
+        int claims = 0;
+        int identities = 0;
+        MemoryMappedFile winner = null;
+        Thread[] threads = new Thread[8];
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i] = new Thread(() =>
+            {
+                Interlocked.Increment(ref ready);
+                while (Volatile.Read(ref start) == 0)
+                {
+                    Thread.Yield();
+                }
+                MemoryMappedFile claimed = Interlocked.Exchange(ref slot.Value, null);
+                if (claimed is not null)
+                {
+                    Interlocked.Increment(ref claims);
+                    if (ReferenceEquals(claimed, second))
+                    {
+                        Interlocked.Increment(ref identities);
+                    }
+                    winner = claimed;
+                }
+            });
+            threads[i].Start();
+        }
+        while (Volatile.Read(ref ready) != threads.Length)
+        {
+            Thread.Yield();
+        }
+        Volatile.Write(ref start, 1);
+        for (int i = 0; i < threads.Length; i++)
+        {
+            threads[i].Join();
+        }
+        Console.WriteLine($"mmap concurrent claims={claims} identities={identities} cleared={slot.Value is null} winner={ReferenceEquals(winner, second)}");
+        winner.Dispose();
+        maps[1].Dispose();
+        Console.WriteLine("mmap reference exchange complete");
+        return;
+    }
+#endif
+
+    private static void TestUninitializedMap()
+    {
+        MemoryMappedFile map = (MemoryMappedFile)RuntimeHelpers.GetUninitializedObject(typeof(MemoryMappedFile));
+        MemoryMappedFile alias = map;
+        object boxed = map;
+        Console.WriteLine($"mmap uninitialized disposable={boxed is IDisposable}");
+        IDisposable disposable = (IDisposable)boxed;
+        Console.WriteLine($"mmap uninitialized type={map.GetType() == typeof(MemoryMappedFile)} alias={ReferenceEquals(alias, disposable)}");
+        try
+        {
+            disposable.Dispose();
+            Console.WriteLine("mmap uninitialized dispose=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized dispose={ex.GetType().Name}");
+        }
+        try
+        {
+            alias.Dispose();
+            Console.WriteLine("mmap uninitialized alias dispose=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized alias dispose={ex.GetType().Name}");
+        }
+        try
+        {
+            MemoryMappedViewAccessor view = map.CreateViewAccessor();
+            view.Dispose();
+            Console.WriteLine("mmap uninitialized view=none");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"mmap uninitialized view={ex.GetType().Name}");
+        }
+        Console.WriteLine("mmap uninitialized complete");
+        return;
     }
 }

@@ -863,7 +863,7 @@ internal sealed partial class MethodCompiler
             }
             // ValueType/Object.ToString on an intrinsic with no declaration depends only
             // on exact CLR identity. This also covers intrinsic reference types represented
-            // by-value in C++ (memory-map handles), which cannot use object-header dispatch.
+            // by-value in C++, which cannot use object-header dispatch.
             // A declared intrinsic override stays unhandled here so an unmodeled custom
             // formatter remains a loud transpile failure.
             if (!_c.DeclaresIntrinsicToStringOverride(intrinsic))

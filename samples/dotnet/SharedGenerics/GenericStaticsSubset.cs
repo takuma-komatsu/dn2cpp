@@ -37,6 +37,31 @@ class SynchronizedOwner<T>
     public bool InstanceProbe(object monitor) => MonitorProbe.CanEnter(monitor);
 }
 
+static class StaticCell<T>
+{
+    public static int Value = 10;
+}
+
+static class MixedStaticOwner<T>
+{
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int Exercise(int delta)
+    {
+        int before = StaticCell<int>.Value;
+        StaticCell<int>.Value = before + delta;
+        Increment(ref StaticCell<int>.Value);
+        StaticCell<T>.Value += delta;
+        Increment(ref StaticCell<T>.Value);
+        return before * 100 + StaticCell<int>.Value * 10 + StaticCell<T>.Value;
+    }
+
+    private static void Increment(ref int value)
+    {
+        value++;
+        return;
+    }
+}
+
 static class MonitorProbe
 {
     public static bool CanEnter(object monitor)
@@ -56,6 +81,18 @@ static class MonitorProbe
 
 class Program
 {
+    internal static void ConcreteAndDependentStatics()
+    {
+        StaticCell<uint>.Value = 100;
+        Console.WriteLine("mixed statics first=" + MixedStaticOwner<string>.Exercise(1));
+        Console.WriteLine("mixed statics second=" + MixedStaticOwner<object>.Exercise(2));
+        Console.WriteLine("mixed statics repeated=" + MixedStaticOwner<string>.Exercise(3));
+        Console.WriteLine("mixed statics cells=" + StaticCell<int>.Value + "," + StaticCell<uint>.Value
+            + "," + StaticCell<string>.Value + "," + StaticCell<object>.Value);
+        Console.WriteLine("mixed statics complete");
+        return;
+    }
+
     internal static void SynchronizedPrologues()
     {
         Console.WriteLine("sync static string own=" + SynchronizedOwner<string>.StaticProbe(typeof(SynchronizedOwner<string>)));

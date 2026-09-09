@@ -1603,7 +1603,7 @@ internal sealed partial class Compilation
                     : null;
                 // An intrinsic type whose C++ mapping is a by-value struct (no trailing
                 // '*') is modeled as a value type even when its metadata is a reference
-                // type — e.g. the file-backed MemoryMappedFile / view handles lowered to
+                // type — e.g. the file-backed view handles lowered to
                 // small value structs. Pass 2's base-type scan only ever sets IsValueType
                 // true (for a ValueType base), so this is never clobbered. (The
                 // specialization path applies the same rule at CompleteShape.)
@@ -2915,6 +2915,8 @@ internal sealed partial class Compilation
     internal enum IntrinsicInterfaceThunkKind
     {
         TimerDispose,
+        MappedFileDispose,
+        MappedViewDispose,
         NoopDispose,
         TimerChange,
         TimerDisposeAsync,
@@ -2933,6 +2935,10 @@ internal sealed partial class Compilation
     /// (<c>CppEmitter.EmitIntrinsicInterfaceMaps</c>).</summary>
     internal static readonly IntrinsicInterfaceRow[] IntrinsicInterfaceRows =
     [
+        new("System.IO.MemoryMappedFiles.MemoryMappedFile", "dn2cpp_mappedfile_type", "itfthunk_mappedfile_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.MappedFileDispose),
+        new("System.IO.MemoryMappedFiles.MemoryMappedViewAccessor", "dn2cpp_mappedview_type", "itfthunk_mappedview_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.MappedViewDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_dispose",
             "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.TimerDispose),
         new("System.Threading.Timer", "dn2cpp_timer_type", "itfthunk_timer_change",
@@ -2995,9 +3001,9 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Notes that the intrinsic named by <paramref name="intrinsicName"/> is
-    /// minted somewhere — called from that type's newobj intercept, which is its only
-    /// mint point — wiring its interface-dispatch info once. The emitter renders the row
+    /// <summary>Notes that the intrinsic named by <paramref name="intrinsicName"/> can
+    /// be allocated by a constructor, factory, or reflection, wiring its
+    /// interface-dispatch info once. The emitter renders the row
     /// only when the program ALSO emits the interface's type-info (a <c>using</c>-lowered
     /// call site or an isinst/castclass notes it): a program that mints the intrinsic but
     /// never touches the interface installs nothing, and no dispatch can miss the absent
@@ -3031,7 +3037,9 @@ internal sealed partial class Compilation
             }
             bool shapeMatches = row.ThunkKind switch
             {
-                IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
+                IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.MappedFileDispose
+                    or IntrinsicInterfaceThunkKind.MappedViewDispose
+                    or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>
                     decl.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }
@@ -3103,15 +3111,15 @@ internal sealed partial class Compilation
     /// wiring). Null when the type is not loaded (no CoreLib reference) or has no
     /// matching method with a body.</summary>
     internal MethodInfo? ReachManagedMethod(string typeFullName, string name,
-        System.Func<TypeDesc[], bool> match, bool allocates = false)
+        System.Func<TypeDesc[], bool> match, bool allocates = false, bool virtualDispatch = false)
     {
         if (FindClassByFullName(typeFullName) is not { } cls)
             return null;
-        return ReachManagedMethod(cls, name, match, allocates);
+        return ReachManagedMethod(cls, name, match, allocates, virtualDispatch);
     }
 
     /// <summary>The <see cref="ClassInfo"/>-keyed form of
-    /// <see cref="ReachManagedMethod(string,string,System.Func{TypeDesc[],bool},bool)"/>,
+    /// <see cref="ReachManagedMethod(string,string,System.Func{TypeDesc[],bool},bool,bool)"/>,
     /// for a callee an intrinsic already holds a resolved class for.
     ///
     /// <para>It exists because the by-NAME form cannot reach a closed generic. A
@@ -3125,7 +3133,7 @@ internal sealed partial class Compilation
     /// (<c>SignatureProvider</c> calls <see cref="Instantiate"/> for a generic
     /// instantiation), and hands the ClassInfo here.</para></summary>
     internal MethodInfo? ReachManagedMethod(ClassInfo cls, string name,
-        System.Func<TypeDesc[], bool> match, bool allocates = false)
+        System.Func<TypeDesc[], bool> match, bool allocates = false, bool virtualDispatch = false)
     {
         var m = cls.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Rva != 0
             && m.Name == name && match(m.Signature.ParameterTypes.ToArray()));
@@ -3137,6 +3145,8 @@ internal sealed partial class Compilation
             ReachAllocatedType(cls);
         }
         Reach(m);
+        if (virtualDispatch && m.IsVirtual)
+            ReachUsedVirtual(m);
         // Mandatory, not cosmetic: a method reached here without a drain would be COMPILED
         // by the emit fixpoint's next batch with its body never SCANNED, so its callees
         // would miss the reachable set and AssertCalledBodiesEmitted would fail the
@@ -5637,7 +5647,7 @@ internal sealed partial class Compilation
             // CFStringCreateWithCString by absolute framework path): resolved by
             // the real framework, linked via `-framework CoreFoundation` in
             // runtime/CMakeLists.txt — no -l token.
-            "/system/library/frameworks/corefoundation.framework/corefoundation" => null,
+            "corefoundation" => null,
             _ => name,
         };
     }
