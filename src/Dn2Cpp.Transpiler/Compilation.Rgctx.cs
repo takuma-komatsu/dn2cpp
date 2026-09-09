@@ -1792,6 +1792,34 @@ internal sealed partial class Compilation
         return (cls, cls.Fields.First(f => f.Name == fname));
     }
 
+    /// <summary>Fixed static-field operands in the canonical body's own IL may name
+    /// concrete storage shared by all callers. Placeholder-dependent operands must
+    /// still obtain their storage through rgctx.</summary>
+    internal HashSet<string> ConcreteStaticFieldSymbols(MethodInfo method)
+    {
+        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        if (method.Rva == 0)
+            return symbols;
+        var body = method.Module.PE.GetMethodBody(method.Rva);
+        var instructions = ILDecoder.Decode(body.GetILBytes()!.ToImmutableArrayCompat());
+        var liveness = BranchLiveness.ComputeCached(method, instructions, body,
+            token => ConstFoldedCallTarget(method.Module, token),
+            token => ClassifyTypeIdentityCall(method.Module, token),
+            (left, right) => TypeEqualityVerdict(method.Module, left, right, method.Context));
+        foreach (var instruction in instructions)
+        {
+            if (liveness is not null && !liveness.LiveAt(instruction.Offset))
+                continue;
+            if (instruction.OpCode is not (ILOpCode.Ldsfld or ILOpCode.Ldsflda or ILOpCode.Stsfld))
+                continue;
+            var (_, field) = RgctxResolveField(method.Module, SRME.EntityHandle(instruction.Token),
+                method.Context, method.DeclaringClass);
+            if (!ContainsCanonPlaceholder(field.DeclaringClass))
+                symbols.Add(field.CppStaticName);
+        }
+        return symbols;
+    }
+
     /// <summary>Whether the type (recursively) mentions an unresolved generic
     /// parameter or an open template — such an argument vector is not a closed
     /// instantiation and is never canonicalized.</summary>

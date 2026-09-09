@@ -40,6 +40,8 @@
 # asserted by gates/build-and-run-transpiler-limits.sh.
 # Static synchronized prologues must taint even when the IL never mentions T;
 # instance synchronized bodies remain shared and lock the real receiver.
+# Fixed-type static operands remain direct while type-argument-dependent statics
+# in the same shared body use per-instantiation storage through rgctx.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -284,6 +286,25 @@ if grep -Eq 'm_GenericStaticsSubset_SynchronizedOwner__CnRef_StaticProbe_[0-9]+\
     exit 1
 fi
 
+mixed_body=$(awk '
+    /^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_MixedStaticOwner__CnRef_Exercise_[0-9]+\(/ { capture = 1 }
+    capture { print }
+    capture && /^}/ { exit }
+' "$out"/generated*.cpp)
+[ -n "$mixed_body" ] || { echo "FAIL: mixed static accesses lost their shared body" >&2; exit 1; }
+for pattern in \
+    '= sf_GenericStaticsSubset_StaticCell_Int32_Value;' \
+    'sf_GenericStaticsSubset_StaticCell_Int32_Value =' \
+    '= &sf_GenericStaticsSubset_StaticCell_Int32_Value;' \
+    '__rgctx\[[0-9]+\]'; do
+    grep -Eq "$pattern" <<< "$mixed_body" \
+        || { echo "FAIL: mixed static routing witness missing: $pattern" >&2; exit 1; }
+done
+if grep -Eq 'sf_GenericStaticsSubset_StaticCell_(String|Object|_CnRef)_Value' <<< "$mixed_body"; then
+    echo "FAIL: shared body hardcodes a type-dependent static field" >&2
+    exit 1
+fi
+
 echo "== 5/7 Transpiling with --no-shared-generics (size regression check) =="
 invoke_cli "$app" "${refs[@]}" --no-shared-generics -o "$out-off"
 on_bytes=$(cat "$out"/generated*.cpp | wc -c | tr -d ' ')
@@ -311,8 +332,17 @@ set +e
 native=$("./$out/$project"); native_code=$?
 expected=$(dotnet "$app"); expected_code=$?
 set -e
+native=$(strip_cr_win "$native")
 assert_output "$native" "$expected"
 assert_exit_code "$native_code" "$expected_code"
+legacy=$(dotnet "$app" legacy)
+prefix=$(awk '/^mixed statics first=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$legacy"
+for line in 'mixed statics first=1132' 'mixed statics second=1363' \
+    'mixed statics repeated=1706' 'mixed statics cells=19,100,16,13' 'mixed statics complete'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: mixed static storage witness missing: $line" >&2; exit 1; }
+done
 for line in \
     'sync static string own=False' 'sync static object own=False' 'sync static other=True' \
     'sync instance string own=False' 'sync instance object own=False' 'sync instance other=True'; do
