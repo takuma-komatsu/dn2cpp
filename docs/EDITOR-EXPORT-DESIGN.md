@@ -66,6 +66,15 @@ A new export-preset enum option `dotnet/export_backend`:
 | `NativeAOT` | Inject `PublishAot=true`; the existing native-output probe in `_ExportBeginImpl` handles the result. The A/B baseline. |
 | `dn2cpp` | Transpile the published IL to a drop-in library. |
 
+Every export target offers **IL Pre-stripping**, the boolean preset option
+`dotnet/dn2cpp/il_prestripping`, default `true` even when an existing preset
+omits the key. For dn2cpp exports, it uses ILDiet to remove unused types and
+methods from managed assemblies at the IL level before C++ conversion.
+Disabling it passes `--no-ildiet` to the CLI; enabling it uses the CLI default
+and preserves an explicit `--no-ildiet` in the project's
+`dotnet/dn2cpp/extra_transpile_args`. This setting is independent of the
+Web-specific reflection and Godot-class trimming options.
+
 On every Incremental-GC-capable target, selecting `dn2cpp` also reveals the
 boolean `dotnet/dn2cpp/incremental_gc` option, default `true`. Web does not
 publish the option because its collector has no page-protection VDB and forces

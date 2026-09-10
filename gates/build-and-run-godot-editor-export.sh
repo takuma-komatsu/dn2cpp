@@ -35,9 +35,13 @@
 #   3. Re-exporting a work dir works and is incremental. 3/14 keeps the work dir
 #      deliberately — the persisting .godot/mono/dn2cpp/build tree is what stops
 #      a re-export recompiling the whole runtime — and every export after the
-#      first takes that path. 7/14 flips the Incremental-GC preset OFF then ON in
+#      first takes that path. 7/14 flips Incremental GC and IL Pre-stripping OFF
+#      then ON in
 #      that same slot, asserting both the CMake cache and real runtime mode while
-#      the runtime archive is reused. 8/14 points the cache at another source
+#      the runtime archive is reused. ILDiet runs for an omitted setting, skips
+#      when OFF, and runs again when ON, with no stale generated output retained.
+#      8/14 also preserves an explicit --no-ildiet project argument with the
+#      checkbox ON. It points the cache at another source
 #      tree (which is what a moved or re-pointed toolchain leaves behind) and
 #      asserts the export recovers, says so, and names both trees.
 #   4. On Windows, the empty debug field selects the installed official debug
@@ -210,7 +214,7 @@ fi
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
+    "godot-editor-export|il-prestripping:unset,off,on,extra-no-ildiet|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
@@ -330,37 +334,33 @@ fi
 
 # The first export deliberately omits the setting: absence is the compatibility
 # case for existing presets and must select the documented default (ON).
-if awk -v preset="$PRESET" '
-    /^name=/ { selected = ($0 == "name=\"" preset "\"") }
-    selected && /^dotnet\/dn2cpp\/incremental_gc=/ { found = 1 }
-    END { exit found ? 0 : 1 }
-' "$PROJ/export_presets.cfg"; then
-    echo "FAIL: the fixture already spells dotnet/dn2cpp/incremental_gc; the first export" >&2
-    echo "      would no longer prove the default for an existing preset" >&2
-    exit 1
-fi
-
-# set_incremental_gc_preset VALUE — update only the active desktop preset. The
-# option is inserted next to export_backend on its first use, then rewritten in
-# place so OFF -> ON exercises one persistent CMake build slot.
-set_incremental_gc_preset() {
-    local value="$1" tmp
-    tmp="$(mktemp)"
-    awk -v preset="$PRESET" -v value="$value" '
+for option in incremental_gc il_prestripping; do
+    if awk -v preset="$PRESET" -v key="dotnet/dn2cpp/$option" '
         /^name=/ { selected = ($0 == "name=\"" preset "\"") }
-        selected && /^dotnet\/dn2cpp\/incremental_gc=/ {
-            print "dotnet/dn2cpp/incremental_gc=" value
-            written = 1
-            next
-        }
+        selected && index($0, key "=") == 1 { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$PROJ/export_presets.cfg"; then
+        echo "FAIL: the fixture already spells dotnet/dn2cpp/$option; the first export" >&2
+        echo "      would no longer prove the default for an existing preset" >&2
+        exit 1
+    fi
+done
+
+# Rewrite one option next to export_backend without duplicating an existing key.
+set_dn2cpp_bool_preset() {
+    local option="$1" value="$2" tmp
+    tmp="$(mktemp)"
+    awk -v preset="$PRESET" -v key="dotnet/dn2cpp/$option" -v value="$value" '
+        /^name=/ { selected = ($0 == "name=\"" preset "\"") }
+        selected && index($0, key "=") == 1 { next }
         { print }
         selected && /^dotnet\/export_backend=/ && !written {
-            print "dotnet/dn2cpp/incremental_gc=" value
+            print key "=" value
             written = 1
         }
         END { exit written ? 0 : 1 }
     ' "$PROJ/export_presets.cfg" > "$tmp" \
-        || { rm -f "$tmp"; echo "FAIL: could not set incremental GC on preset $PRESET" >&2; exit 1; }
+        || { rm -f "$tmp"; echo "FAIL: could not set $option on preset $PRESET" >&2; exit 1; }
     mv "$tmp" "$PROJ/export_presets.cfg"
 }
 
@@ -602,6 +602,46 @@ CMAKE_CACHE="$BUILD_DIR/CMakeCache.txt"
 [ -f "$CMAKE_CACHE" ] \
     || { echo "FAIL: no CMakeCache.txt in the build slot $BUILD_DIR" >&2; ls -la "$BUILD_DIR" >&2; exit 1; }
 
+GEN_DIR="$(sed -n 's/^DN2CPP_APP_DIR:PATH=//p' "$CMAKE_CACHE")"
+[ "$DN2CPP_OS" != windows ] || GEN_DIR="$(cygpath -u "$GEN_DIR")"
+[ -d "$GEN_DIR" ] \
+    || { echo "FAIL: CMake cache names no generated output directory: $GEN_DIR" >&2; exit 1; }
+GEN_WITNESS="$GEN_DIR/dn2cpp-gate-prestripping-witness"
+PREVIOUS_ILDIET_LOG=
+
+assert_il_prestripping() {
+    local expected="$1" snapshot="$2" exporter_log
+    exporter_log="$(first_line "$(ls -t "$PROJ"/.godot/mono/temp/bin/dn2cpp/logs/export-*.log 2>/dev/null)")"
+    if [ -z "$exporter_log" ] || [ "$exporter_log" = "$PREVIOUS_ILDIET_LOG" ]; then
+        echo "FAIL: re-export wrote no new exporter log" >&2
+        exit 1
+    fi
+    PREVIOUS_ILDIET_LOG="$exporter_log"
+    cp "$exporter_log" "$snapshot"
+    if [ -e "$GEN_WITNESS" ]; then
+        echo "FAIL: re-export reused stale generated output: $GEN_WITNESS" >&2
+        exit 1
+    fi
+    if [ "$expected" = ON ]; then
+        grep -qE '^ILDiet: removed [0-9]+ types and [0-9]+ methods -> ' "$snapshot" \
+            || { echo "FAIL: enabled IL Pre-stripping did not run ILDiet ($snapshot)" >&2; exit 1; }
+        [ -f "$GEN_DIR/ildiet/$PROJECT_NAME.dll" ] \
+            || { echo "FAIL: ILDiet did not produce the stripped game assembly" >&2; exit 1; }
+        if grep -qF -- '--no-ildiet' "$snapshot"; then
+            echo "FAIL: enabled IL Pre-stripping added --no-ildiet" >&2
+            exit 1
+        fi
+    else
+        grep -qF -- '--no-ildiet' "$snapshot" \
+            || { echo "FAIL: disabled IL Pre-stripping did not pass --no-ildiet" >&2; exit 1; }
+        if grep -qF 'ILDiet:' "$snapshot" || [ -e "$GEN_DIR/ildiet" ]; then
+            echo "FAIL: disabled IL Pre-stripping ran ILDiet or retained its previous output" >&2
+            exit 1
+        fi
+    fi
+}
+assert_il_prestripping ON "$OUT/exporter-il-prestripping-default.log"
+
 assert_incremental_gc_cache() {
     local expected="$1" actual
     actual="$(sed -n 's/^DN2CPP_GC_INCREMENTAL_DEFAULT:BOOL=//p' "$CMAKE_CACHE")"
@@ -669,14 +709,16 @@ if [ -z "$GC_LIB" ]; then
              exit 1; }
 fi
 
-echo "== 7/14 Re-exporting both GC defaults in the persisting build tree =="
+echo "== 7/14 Re-exporting GC and IL Pre-stripping OFF then ON =="
 # Flip the preset OFF and back ON in the same slot. The exporter must explicitly
 # configure both values: relying on the CMake default would leave OFF cached on
 # the final export. The runtime archive remains reusable because this default is
 # compiled only into the app-specific .NET-module translation unit.
 GC_SIG_BEFORE=""
 [ -n "$GC_LIB" ] && GC_SIG_BEFORE="$(file_sig "$GC_LIB")"
-set_incremental_gc_preset false
+set_dn2cpp_bool_preset incremental_gc false
+set_dn2cpp_bool_preset il_prestripping false
+: > "$GEN_WITNESS"
 GC_OFF_LOG="$OUT/export-incremental-gc-off.log"
 rm -rf "$APP" "$DATA_DIR"
 if ! godot_export_step 1200 "$GC_OFF_LOG" "$APP" \
@@ -688,10 +730,13 @@ if ! godot_export_step 1200 "$GC_OFF_LOG" "$APP" \
 fi
 assert_export_succeeded "$GC_OFF_LOG" "the incremental-GC-OFF re-export"
 assert_incremental_gc_cache OFF
+assert_il_prestripping OFF "$OUT/exporter-il-prestripping-off.log"
 godot_editor_export_layout "$APP"
 assert_export_artifact_and_run "$OUT/run-incremental-gc-off.log" stop-the-world
 
-set_incremental_gc_preset true
+set_dn2cpp_bool_preset incremental_gc true
+set_dn2cpp_bool_preset il_prestripping true
+: > "$GEN_WITNESS"
 REEXPORT_LOG="$OUT/export-incremental.log"
 rm -rf "$APP" "$DATA_DIR"
 if ! godot_export_step 1200 "$REEXPORT_LOG" "$APP" \
@@ -703,6 +748,7 @@ if ! godot_export_step 1200 "$REEXPORT_LOG" "$APP" \
 fi
 assert_export_succeeded "$REEXPORT_LOG" "the incremental re-export"
 assert_incremental_gc_cache ON
+assert_il_prestripping ON "$OUT/exporter-il-prestripping-on.log"
 if grep -qF "dn2cpp: stale build cache reset" "$REEXPORT_LOG"; then
     echo "FAIL: the re-export discarded a build cache that was still current — the" >&2
     echo "      staleness test now fires on an unchanged toolchain, so every export" >&2
@@ -762,6 +808,29 @@ grep -qF "CMAKE_HOME_DIRECTORY:INTERNAL=$STALE_HOME" "$CMAKE_CACHE" \
 # drop-in's own bytes are deterministic, so a rebuilt one compares equal.
 RESET_WITNESS="$BUILD_DIR/dn2cpp-gate-reset-witness"
 : > "$RESET_WITNESS"
+# ON must preserve an explicit CLI opt-out, including existing project arguments
+# such as the Windows dependency fixture's --direct-pinvoke pair.
+cp "$PROJ/project.godot" "$OUT/project-before-no-ildiet.godot"
+project_tmp="$(mktemp)"
+awk '
+    NR == FNR {
+        if (/^dn2cpp\/extra_transpile_args=PackedStringArray\(/) existing = 1
+        next
+    }
+    /^dn2cpp\/extra_transpile_args=PackedStringArray\(/ {
+        sub(/\)$/, ", \"--no-ildiet\")")
+        written = 1
+    }
+    { print }
+    /^project\/assembly_name=/ && !existing {
+        print "dn2cpp/extra_transpile_args=PackedStringArray(\"--no-ildiet\")"
+        written = 1
+    }
+    END { exit written ? 0 : 1 }
+' "$PROJ/project.godot" "$PROJ/project.godot" > "$project_tmp" \
+    || { rm -f "$project_tmp"; echo "FAIL: could not add the explicit ILDiet opt-out" >&2; exit 1; }
+mv "$project_tmp" "$PROJ/project.godot"
+: > "$GEN_WITNESS"
 STALE_LOG="$OUT/export-stale-cache.log"
 rm -rf "$APP" "$DATA_DIR"
 if ! godot_export_step 2400 "$STALE_LOG" "$APP" \
@@ -771,7 +840,9 @@ if ! godot_export_step 2400 "$STALE_LOG" "$APP" \
     cat "$STALE_LOG" >&2
     exit 1
 fi
+mv "$OUT/project-before-no-ildiet.godot" "$PROJ/project.godot"
 assert_export_succeeded "$STALE_LOG" "the export over a stale build cache"
+assert_il_prestripping OFF "$OUT/exporter-il-prestripping-explicit-off.log"
 # The recovery must be REPORTED, and report both paths: a silent recreate is
 # indistinguishable from a build directory that was never populated, and the whole
 # value of the line is telling a user which two trees disagreed.
