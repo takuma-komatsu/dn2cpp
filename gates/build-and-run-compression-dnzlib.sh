@@ -53,7 +53,7 @@ dnzlib_diff_gate() {
     echo "== 3/5 Transpiling app + real CoreLib + $* + DnZlib (--auto-ref, tree-shaken) =="
     # --no-default-ref DnBrotli is what keeps the REQUIRE_BROTLI positive control
     # in step 5 meaningful. Referencing System.IO.Compression.Brotli makes the
-    # transpiler inject the DnBrotli shim by default (Compilation.InjectDefaultRefs),
+    # transpiler inject the DnBrotli shim by default (AssemblyLoadSet.InjectDefaultRefs),
     # which would substitute the native brotli this gate asserts SURVIVED — and the
     # round-trip diff passes on either backend, so removing this flag would delete
     # the assertion's whole meaning while the gate stayed green.

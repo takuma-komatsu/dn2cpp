@@ -18,6 +18,22 @@ public sealed record TranspileOptions
     /// report).</summary>
     public string OutDir { get; init; } = ".";
 
+    /// <summary>Strip unreachable managed code before constructing the transpiler
+    /// model. <c>--no-ildiet</c> selects the original DLLs.</summary>
+    public bool UseILDiet { get; init; } = true;
+
+    /// <summary>Directory for stripped DLLs; null selects <c>OutDir/ildiet</c>.</summary>
+    public string? ILDietOutput { get; init; }
+
+    /// <summary>Explicit linker descriptor files, in addition to project discovery.</summary>
+    public IReadOnlyList<string> LinkXmlFiles { get; init; } = Array.Empty<string>();
+
+    /// <summary>A closed load set must never resolve references beside its rewritten DLLs.</summary>
+    internal AssemblyLoadSet? ResolvedLoadSet { get; init; }
+
+    /// <summary>ILDiet validated cut selectors against the original metadata.</summary>
+    internal bool CutMethodsValidated { get; init; }
+
     /// <summary>Self-hosting feasibility harness (<c>--measure</c>): collect and
     /// report every reachable transpilation gap instead of emitting C++.</summary>
     public bool Measure { get; init; }

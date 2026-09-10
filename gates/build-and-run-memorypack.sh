@@ -22,9 +22,8 @@ project=MemoryPackSample
 out="artifacts/memorypack"
 measure="artifacts/memorypack-measure"
 MEMORYPACK_SHA_EXPECTED=gates/expected/memorypack-dll.sha256
-# One plain substring per line. A marker's numeral is the member's MethodDef row in the
-# hash-pinned MemoryPack.Core.dll (moves only with the pin); its NameSuffix is the
-# caller's instantiation (moves with the driver's type names). Re-derive on either change.
+# Basic regular expressions pin method shapes and caller specializations; MethodDef
+# rows may change when ILDiet rewrites the hash-pinned input assembly.
 MARKERS_EXPECTED=gates/expected/memorypack-markers.txt
 
 echo "== 1/7 Locating the real net10 CoreLib =="

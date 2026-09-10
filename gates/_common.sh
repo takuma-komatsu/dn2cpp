@@ -2304,12 +2304,17 @@ _gate_paths_hash() {
 # BEHAVIOR gate asserts the transpiler's own conduct and often emits no surface:
 # fold `cli:$(_gate_cli_hash)` into its CONTEXT instead.
 #
-# Two arms matching invoke_cli's: DN2CPP_CLI_DLL set ⇒ hash every assembly beside
-# the entry dll; otherwise invoke_cli rebuilds from src/, so hash that closure.
+# Two arms matching invoke_cli's: DN2CPP_CLI_DLL set ⇒ hash the entry, adjacent
+# assemblies and complete ILDiet payload; otherwise hash the rebuilt src/ closure.
 _gate_cli_hash() {
     if [ -n "${DN2CPP_CLI_DLL:-}" ] && [ -f "$DN2CPP_CLI_DLL" ]; then
-        find "$(dirname "$DN2CPP_CLI_DLL")" -maxdepth 1 -name '*.dll' -type f \
-            | LC_ALL=C sort | tr '\n' '\0' | xargs -0 shasum -a 256 \
+        local bin
+        bin="$(dirname "$DN2CPP_CLI_DLL")"
+        {
+            printf '%s\n' "$DN2CPP_CLI_DLL"
+            find -L "$bin" -maxdepth 1 -name '*.dll' -type f
+            if [ -d "$bin/ildiet" ]; then find -L "$bin/ildiet" -type f; fi
+        } | LC_ALL=C sort -u | tr '\n' '\0' | xargs -0 shasum -a 256 \
             | shasum -a 256 | awk '{print $1}'
     else
         git ls-files -co --exclude-standard -- src \
@@ -2594,8 +2599,8 @@ _corelib_gate_out() {
     printf 'artifacts/%s\n' "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
 }
 
-# _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME...] — steps 1/4–3/4; extras are
-# BCL simple names beside CoreLib (absent = hard error). Sets _CG_CORELIB, _CG_APP,
+# _corelib_gate_core PROJECT OUT [EXTRA_BCL_NAME | -r DLL | --link-xml FILE | --no-ildiet]...
+# Extras name required references and preprocessing options. Sets _CG_CORELIB, _CG_APP,
 # _CG_OUT; the caller may preset _CG_CORELIB_IN to override the CoreLib flavour.
 # Assert on _CG_OUT: re-deriving _corelib_gate_out gives the DEFAULT dir, so on a
 # non-default axis the asserts read another build and pass.
@@ -2620,7 +2625,21 @@ _corelib_gate_core() {
     # Hard error, not a skip: the CONTEXT carries the REQUESTED names, so a
     # narrowed program's green would replay under the resolved run's key.
     local refs=(-r "$_CG_CORELIB") name
-    for name in "$@"; do
+    _CG_EXTRA_REFERENCE_INPUTS=()
+    while [ "$#" -gt 0 ]; do
+        name="$1"; shift
+        if [ "$name" = --no-ildiet ]; then
+            refs+=(--no-ildiet)
+            continue
+        fi
+        if [ "$name" = -r ] || [ "$name" = --link-xml ]; then
+            [ "$#" -gt 0 ] && [ -f "$1" ] \
+                || { echo "error: $name requires an existing input file" >&2; return 1; }
+            refs+=("$name" "$1")
+            _CG_EXTRA_REFERENCE_INPUTS+=("$1")
+            shift
+            continue
+        fi
         [ -f "$bcl/$name.dll" ] \
             || { echo "error: requested reference $name not found beside the CoreLib: $bcl/$name.dll" >&2; return 1; }
         refs+=(-r "$bcl/$name.dll")
@@ -2642,6 +2661,7 @@ _corelib_gate_check() {
     while IFS= read -r f; do extra_inputs+=("$f"); done < <(_gate_extra_inputs)
     gate_cache_check "$out" "$ctx" \
         "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
+        ${_CG_EXTRA_REFERENCE_INPUTS[@]+"${_CG_EXTRA_REFERENCE_INPUTS[@]}"} \
         "$@" ${extra_inputs[@]+"${extra_inputs[@]}"}
 }
 
@@ -2791,7 +2811,8 @@ wasm_corelib_diff_gate() {
 
     _corelib_gate_core "$project" "$out" "$@"
     if gate_cache_check "$out" "wasm_corelib_diff_gate|$project|$*|$_CG_CORELIB" \
-            "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json"; then
+            "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
+            ${_CG_EXTRA_REFERENCE_INPUTS[@]+"${_CG_EXTRA_REFERENCE_INPUTS[@]}"}; then
         gate_cache_hit_msg
         return 0
     fi
@@ -2824,7 +2845,8 @@ ios_sim_corelib_diff_gate() {
     _corelib_gate_core "$project" "$out" "$@"
     # IOS_SIM_UDID stays out of the key: the device does not change the binary.
     if gate_cache_check "$out" "ios_sim_corelib_diff_gate|$project|$*|$_CG_CORELIB" \
-            "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json"; then
+            "$_CG_APP" "${_CG_APP%.dll}.runtimeconfig.json" "${_CG_APP%.dll}.deps.json" \
+            ${_CG_EXTRA_REFERENCE_INPUTS[@]+"${_CG_EXTRA_REFERENCE_INPUTS[@]}"}; then
         gate_cache_hit_msg
         return 0
     fi
@@ -2970,10 +2992,11 @@ corelib_freeze_gate() {
     gate_cache_commit
 }
 
-# xasm_gate PROJECT LIBDLL OUT — cross-assembly gate: build PROJECT (which also
+# xasm_gate PROJECT LIBDLL OUT [CLI_ARGS...] — cross-assembly gate: build PROJECT (which also
 # emits LIBDLL), transpile app + lib together, compile and run.
 xasm_gate() {
     local project="$1" libdll="$2" out="$3"
+    shift 3
 
     echo "== 1/3 Building app + library assemblies =="
     build_proj "samples/dotnet/$project/$project.csproj"
@@ -2981,9 +3004,12 @@ xasm_gate() {
     local lib="samples/dotnet/$project/bin/$CONFIG/$TFM/$libdll"
 
     echo "== 2/3 Transpiling app + library together =="
-    invoke_cli "$app" -r "$lib" -o "$out"
-    if gate_cache_check "$out" "xasm_gate|$project|$libdll|$out" \
-            "$app" "$lib" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
+    invoke_cli "$app" -r "$lib" -o "$out" "$@"
+    local extra_inputs=() input
+    while IFS= read -r input; do extra_inputs+=("$input"); done < <(_gate_extra_inputs)
+    if gate_cache_check "$out" "xasm_gate|$project|$libdll|$out|$*$(_gate_ctx_extras)" \
+            "$app" "$lib" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
+            ${extra_inputs[@]+"${extra_inputs[@]}"}; then
         gate_cache_hit_msg
         return 0
     fi
@@ -3808,6 +3834,10 @@ stage_editor_toolchain() {
     # function of the LOAD SET, so the gate would assert against a DIFFERENT
     # program. Hard FAIL, not gate_skip: the bundle came from this tree above,
     # so a missing file means broken packaging, not an under-provisioned box.
+    [ -x "$dest/bin/ildiet/ILDiet$EXE_EXT" ] && [ -f "$dest/bin/ildiet/Mono.Cecil.dll" ] || {
+        echo "FAIL: the staged toolchain is missing its ILDiet companion: $dest/bin/ildiet" >&2
+        echo "      Re-package the toolchain with dist/package-toolchain.sh." >&2
+        exit 1; }
     local bundle_missing="" sib
     for sib in Dn2Cpp.Runtime DnZlib DnBrotli DnHttp; do
         [ -f "$dest/bin/$sib.dll" ] || bundle_missing="$bundle_missing $sib"

@@ -8,6 +8,10 @@ namespace Dn2Cpp;
 /// emitter free of any target knowledge.</summary>
 internal interface IEmitBackend
 {
+    /// <summary>Declares externally instantiated managed types before the
+    /// transpiler model exists; ILDiet retains their complete member surface.</summary>
+    void ConfigureILDiet(ILDietRootPolicy policy) { }
+
     /// <summary>Runtime header the generated translation unit includes.</summary>
     string RuntimeHeader { get; }
 

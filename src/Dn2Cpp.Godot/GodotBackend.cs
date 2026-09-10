@@ -9,6 +9,13 @@ namespace Dn2Cpp.Godot;
 /// console <c>main</c>.</summary>
 internal sealed class GodotBackend : IEmitBackend
 {
+    public void ConfigureILDiet(ILDietRootPolicy policy)
+    {
+        policy.ExcludedAssemblies.Add("GodotSharp");
+        policy.BaseTypes.Add("Godot.Object");
+        policy.PreservePublicAppTypes = true;
+    }
+
     public string RuntimeHeader => "dn2cpp_godot.h";
 
     /// <summary>The engine API dump that drives the call map and the epilogue's

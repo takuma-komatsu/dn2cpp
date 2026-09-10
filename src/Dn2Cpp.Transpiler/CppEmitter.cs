@@ -1091,8 +1091,9 @@ internal sealed partial class CppEmitter
     /// interface handles, by design) or placeholder-free type-info handles;
     /// naming a grouped instantiation's per-context storage (rgctx_/sf_) or,
     /// dormantly, its vtable means a placeholder leaked a real instantiation's
-    /// identity into shared text. The type-info (ti_) arm is deliberately NOT
-    /// enforced; the reasoning is at the loop below.</summary>
+    /// identity into shared text, unless a static-field IL operand fixes that exact
+    /// storage independently of the body's type arguments. The type-info (ti_) arm
+    /// is deliberately NOT enforced; the reasoning is at the loop below.</summary>
     /// <summary>Whether the shared-body backstop below runs. Consulted by the body sink,
     /// which tees the canonical bodies' text only when it does — the check is the only
     /// thing that still needs a body's text after emission has streamed it out, and it
@@ -1137,7 +1138,7 @@ internal sealed partial class CppEmitter
             // on every real receiver. The other three arms stay protective: rgctx_ (a
             // canonical body takes its context as the hidden __rgctx param and must never
             // bake in a concrete instantiation's), sf_ (a concrete static-storage symbol
-            // would pin one instantiation's storage into group-shared text), and vt_
+            // needs an independent concrete IL operand to justify that storage), and vt_
             // (dormant — emitted only in metadata — kept because it is harmless).
             forbiddenSyms.Add(cls.CppVtableName);
             forbiddenSyms.Add("rgctx_" + cls.CppName);
@@ -1159,6 +1160,7 @@ internal sealed partial class CppEmitter
         var sfPrefixLookup = forbiddenStaticPrefixes.GetAlternateLookup<ReadOnlySpan<char>>();
         foreach (var (m, body) in canonicalBodies)
         {
+            HashSet<string>? concreteStatics = null;
             foreach (System.Text.RegularExpressions.Match match in
                      System.Text.RegularExpressions.Regex.Matches(body, @"\b(?:ti|vt|rgctx)_[A-Za-z0-9_]+"))
                 if (forbiddenSyms.Contains(match.Value))
@@ -1178,9 +1180,16 @@ internal sealed partial class CppEmitter
                     end++;
                 for (int cut = at + 4; cut <= end; cut++)
                     if (body[cut - 1] == '_' && sfPrefixLookup.Contains(body.AsSpan(at, cut - at)))
+                    {
+                        // Resolve the IL operand in the canonical context independently
+                        // of emission; admitting the whole class would hide leaked siblings.
+                        concreteStatics ??= _c.ConcreteStaticFieldSymbols(m);
+                        if (concreteStatics.Contains(body[at..end]))
+                            break;
                         throw new InvalidOperationException(
                             $"shared-generics backstop: shared body {m.CppName} names "
                             + $"a static field of the instantiation-specific group '{body[at..cut]}*'");
+                    }
             }
         }
     }
@@ -3240,6 +3249,10 @@ internal sealed partial class CppEmitter
                 {
                     Compilation.IntrinsicInterfaceThunkKind.TimerDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_timer_dispose(o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.MappedFileDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_mmap_file_dispose((Dn2CppMappedFile*)o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.MappedViewDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_mmap_view_object_dispose((Dn2CppMappedViewObject*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.NoopDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ (void)o; }}",
                     Compilation.IntrinsicInterfaceThunkKind.TimerChange =>

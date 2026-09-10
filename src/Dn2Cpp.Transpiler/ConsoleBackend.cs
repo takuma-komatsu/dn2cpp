@@ -18,11 +18,8 @@ internal sealed class ConsoleBackend : IEmitBackend
             ?? throw new NotSupportedException("Input assembly has no managed entry point (must be an exe)");
         bool returnsInt = !ep.Signature.ReturnType.IsVoid;
 
-        // A `static Main(string[] args)` entry point gets `int main(int argc, char** argv)`:
-        // build the managed args array from argv[1..] (argv[0] is the program name, which
-        // .NET's args excludes) tagged with the precise ti_arr_string handle (noted in
-        // CppEmitter.Emit before EmitTypeInfos), and pass it to the managed entry. A
-        // parameterless entry keeps the plain `int main()`; any other shape is rejected.
+        // The managed args array excludes argv[0] and keeps the precise string[]
+        // identity noted by CppEmitter.Emit before EmitTypeInfos.
         var ps = ep.Signature.ParameterTypes;
         bool takesArgs = ps.Length == 1
             && ps[0] is { Kind: TypeKind.SZArray, Element: { } el } && el.IsString;
@@ -43,9 +40,17 @@ internal sealed class ConsoleBackend : IEmitBackend
         // the `return`s below are that path and are unreachable in an executable.
         // DN2CPP_RT_EXPORT: a DN2CPP_SHARED host dlsym's "main", and the library
         // compiles with -fvisibility=hidden, which would otherwise hide the symbol.
+        // Windows narrow argv uses the active code page, not UTF-8. Shared
+        // library hosts retain the exported main(argc, UTF-8 argv) ABI.
+        sb.AppendLine("#if defined(_WIN32) && !defined(DN2CPP_SHARED)");
+        sb.AppendLine(takesArgs
+            ? "DN2CPP_RT_EXPORT int wmain(int argc, wchar_t** argv)"
+            : "DN2CPP_RT_EXPORT int wmain()");
+        sb.AppendLine("#else");
         sb.AppendLine(takesArgs
             ? "DN2CPP_RT_EXPORT int main(int argc, char** argv)"
             : "DN2CPP_RT_EXPORT int main()");
+        sb.AppendLine("#endif");
         sb.AppendLine("{");
         emitter.EmitInitCalls(sb, cctors);
         sb.AppendLine("    try {");

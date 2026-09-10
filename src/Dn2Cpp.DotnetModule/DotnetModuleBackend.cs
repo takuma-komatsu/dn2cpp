@@ -25,6 +25,12 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// the table, each invoking its <c>delegate* unmanaged</c> field by <c>calli</c>.</summary>
     private const string NativeFuncsType = "Godot.NativeInterop.NativeFuncs";
 
+    public void ConfigureILDiet(ILDietRootPolicy policy)
+    {
+        policy.ExcludedAssemblies.Add("GodotSharp");
+        policy.BaseTypes.Add("Godot.GodotObject");
+    }
+
     public string RuntimeHeader => "dn2cpp_dotnetmodule.h";
 
     public ICallIntrinsics? CallIntrinsics { get; } = new DotnetModuleCallIntrinsics();

@@ -101,7 +101,12 @@
       <_Dn2CppBuildDirArgument>$([System.Text.RegularExpressions.Regex]::Replace('$(_Dn2CppBuildDir)', '[\\/]+$', ''))</_Dn2CppBuildDirArgument>
     </PropertyGroup>
 
-    <Exec Command="&quot;$(Dn2CppTool)&quot; &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDirArgument)&quot; --project-root &quot;$(MSBuildProjectDirectory)&quot; $(Dn2CppExtraArgs)" />
+    <Error Condition="'$(Dn2CppUseILDiet)' != 'true' and '$(Dn2CppUseILDiet)' != 'false'"
+           Text="Dn2CppUseILDiet must be true or false." />
+    <PropertyGroup>
+      <_Dn2CppILDietArgs Condition="'$(Dn2CppUseILDiet)' == 'false'">--no-ildiet</_Dn2CppILDietArgs>
+    </PropertyGroup>
+    <Exec Command="&quot;$(Dn2CppTool)&quot; &quot;$(PublishDir)$(TargetFileName)&quot; -o &quot;$(_Dn2CppGenDirArgument)&quot; --project-root &quot;$(MSBuildProjectDirectory)&quot; $(Dn2CppExtraArgs) $(_Dn2CppILDietArgs)" />
 
     <!-- Preserve the SDK's RID reduction for the native linker. The only
          supplemental lookup is the macOS universal convention below. -->

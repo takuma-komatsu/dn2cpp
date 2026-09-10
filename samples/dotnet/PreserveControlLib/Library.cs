@@ -6,6 +6,7 @@ namespace PreserveControlLib;
 public static class Live
 {
     public static string Value() => "preserve control";
+    public static void UnusedPublic() => Console.WriteLine("unused-public");
 }
 
 public class PreserveAttribute : Attribute
@@ -176,4 +177,9 @@ public abstract class LateInitBase : ILateInit
 public sealed class LateInitService : LateInitBase
 {
     protected override string OnInit() => "service";
+}
+
+public sealed class UnusedType
+{
+    public static void UnusedMethod() => Console.WriteLine("unused-type");
 }

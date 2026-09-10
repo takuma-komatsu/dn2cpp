@@ -46,7 +46,7 @@ BCL="$(dirname "$CORELIB")"
 # --no-default-ref DnZlib keeps this benchmark measuring what it says it
 # measures: managed brotli against the NATIVE zlib. System.IO.Compression is in
 # the load set, so without the flag the transpiler injects the DnZlib shim too
-# (Compilation.InjectDefaultRefs) and the zlib side of every row would silently
+# (AssemblyLoadSet.InjectDefaultRefs) and the zlib side of every row would silently
 # become a second managed codec. DnBrotli needs no flag — the explicit -r below
 # wins, and the injection skips an already-loaded simple name.
 invoke_cli "$APP" -r "$CORELIB" \

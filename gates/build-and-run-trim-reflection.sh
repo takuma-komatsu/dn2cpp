@@ -45,6 +45,8 @@
 # name (and so does not keep) the stripped type — an interface-slot dispatch for LibWidget's
 # Twice/Tag, a field (fields are never tree-shaken) for the rest — so arm 1 matches real
 # .NET exactly while those same types still strip. See samples/dotnet/TrimReflect/Program.cs.
+# Keep original member metadata while comparing the C++ reflection policies.
+# ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
 
 PROJECT=TrimReflect
@@ -66,8 +68,8 @@ echo "corelib: $CORELIB"
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
-invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-plain|$CORELIB" \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" -o "$OUT"
+if gate_cache_check "$OUT" "trim-reflection-plain|no-ildiet|$CORELIB" \
         "$APP" "$LIBDLL" "${APP%.dll}.runtimeconfig.json" "${APP%.dll}.deps.json"; then
     gate_cache_hit_msg
 else
@@ -84,8 +86,8 @@ fi
 # ── Arm 2: --trim-reflection — freeze ─────────────────────────────────────────
 echo "== Arm 2/4: --trim-reflection, diff vs frozen snapshot (stripped types throw) =="
 OUT=artifacts/trimreflect-trim
-invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" --trim-reflection -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-trim|$CORELIB" \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection -o "$OUT"
+if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|$CORELIB" \
         "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-trimmed.txt"; then
     gate_cache_hit_msg
 else
@@ -101,9 +103,9 @@ fi
 # ── Arm 3: --trim-reflection with two roots — freeze ──────────────────────────
 echo "== Arm 3/4: --reflection-root (exact + arity-stripped def name), diff vs frozen =="
 OUT=artifacts/trimreflect-rooted
-invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-root "$LIBNAME.LibWidget" --reflection-root "$LIBNAME.LibBox" -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-rooted|$CORELIB" \
+if gate_cache_check "$OUT" "trim-reflection-rooted|no-ildiet|$CORELIB" \
         "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-rooted.txt"; then
     gate_cache_hit_msg
 else
@@ -123,7 +125,7 @@ echo "== Arm 4/4: --reflection-root naming no loaded type must FAIL the transpil
 OUT=artifacts/trimreflect-typo
 rm -rf "$OUT"
 set +e
-typo_err=$(invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+typo_err=$(invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
     --reflection-root "$LIBNAME.NoSuchType" -o "$OUT" 2>&1)
 typo_code=$?
 set -e
@@ -142,4 +144,23 @@ grep -q "no loaded type is named $LIBNAME.NoSuchType" <<<"$typo_err" \
     || { echo "FAIL: the failed transpile still emitted C++: $(ls -1 "$OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "hard-error OK: exit $typo_code, named the missing root, emitted nothing"
 
+echo "== ILDiet accepts generic roots and rejects missing roots before emission =="
+for root in "$LIBNAME.LibBox" "$LIBNAME.LibBox_Int32"; do
+    OUT="artifacts/trimreflect-ildiet-$root"
+    invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+        --reflection-root "$root" -o "$OUT"
+    [ -f "$OUT/ildiet/$LIBNAME.dll" ] && [ -f "$OUT/generated.h" ] \
+        || { echo "FAIL: ILDiet root $root did not reach C++ emission" >&2; exit 1; }
+done
+OUT=artifacts/trimreflect-ildiet-typo
+rm -rf "$OUT"
+set +e
+diet_typo_err=$(invoke_cli "$APP" -r "$CORELIB" -r "$LIBDLL" \
+    --reflection-root "$LIBNAME.NoSuchType" -o "$OUT" 2>&1)
+diet_typo_code=$?
+set -e
+[ "$diet_typo_code" -ne 0 ] && grep -Fq "$LIBNAME.NoSuchType" <<<"$diet_typo_err" \
+    || { echo "FAIL: missing ILDiet root did not fail naming the selector" >&2; exit 1; }
+! compgen -G "$OUT/generated*" >/dev/null \
+    || { echo "FAIL: invalid ILDiet root reached C++ emission" >&2; exit 1; }
 echo "OK"

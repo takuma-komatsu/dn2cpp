@@ -1,0 +1,9 @@
+<linker>
+  <assembly fullname="CultureInfoApi">
+    <type fullname="CultureEscapeResidueSubset.Refl" preserve="nothing">
+      <method name="Take" />
+      <method name="Give" />
+      <method name="TakeProv" />
+    </type>
+  </assembly>
+</linker>

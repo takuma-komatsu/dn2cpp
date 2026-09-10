@@ -159,16 +159,23 @@ public static class TranspileDriver
                 if (!string.IsNullOrEmpty(corelib) && File.Exists(corelib))
                     paths.Add(corelib);
             }
-            // Arm the conditional default references: Compilation.InjectDefaultRefs decides
-            // which shims the load set calls for, and cannot decide out here because none
-            // is loaded until the reference closure has run. Deliberately not merged with
-            // the unconditional Dn2Cpp.Runtime injection above, which must keep firing at
-            // its current position — moving it past the closure renumbers that module and,
-            // through ClassInfo.CompareByOrder's Module.Index key, reorders every emission.
             options = options with { DefaultRefDir = AppContext.BaseDirectory };
-            // In --measure mode, collect all reachability-phase gaps during Build() rather
-            // than aborting on the first one (used by the self-hosting feasibility harness).
             Timing.Mark("setup");
+            var loadSet = AssemblyLoadSet.Resolve(paths, options);
+            paths = loadSet.Paths;
+            options = options with { ResolvedLoadSet = loadSet };
+            if (options.UseILDiet && options.IsaSurfaceDump is null)
+            {
+                paths = ILDietPreprocessor.Run(paths, options, backend,
+                    out string preservation, out bool cutsValidated);
+                options = options with
+                {
+                    LinkXmlFiles = new[] { preservation },
+                    ProjectRoots = Array.Empty<string>(),
+                    CutMethodsValidated = cutsValidated,
+                };
+                Timing.Mark("ildiet");
+            }
             var compilation = Compilation.Create(paths, options);
 
             if (options.IsaSurfaceDump is { } isaDump)

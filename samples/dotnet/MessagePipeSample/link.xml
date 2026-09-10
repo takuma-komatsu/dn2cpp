@@ -1,0 +1,17 @@
+<linker>
+  <assembly fullname="MessagePipeSample">
+    <type fullname="MessagePipeSample.Program+AotPreserveHolder" preserve="fields" />
+    <type fullname="MessagePipeFilterSubset.LoggingFilter`1" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeFilterSubset.AsyncLoggingFilter`1" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeFilterSubset.RequestAuditFilter`2" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+    <type fullname="MessagePipeFilterSubset.AsyncRequestAuditFilter`2" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

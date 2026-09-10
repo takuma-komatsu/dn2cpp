@@ -67,4 +67,4 @@ echo "simulator: $IOS_SIM_UDID"
 
 ios_sim_corelib_diff_gate StringCore System.Linq
 ios_sim_corelib_diff_gate NestedFinallySubset
-ios_sim_corelib_diff_gate Finalizers
+ios_sim_corelib_diff_gate Finalizers --link-xml samples/dotnet/Finalizers/link.xml

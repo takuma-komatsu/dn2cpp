@@ -1,5 +1,5 @@
 // Drives the REAL System.Reflection.Metadata byte* read core — PEReader,
-// MetadataReader, BlobReader, no shim — over the assembly named by args[0], and
+// MetadataReader, BlobReader, no shim — over the assemblies named by args, and
 // prints only stable sorted facts so native and real .NET diff exactly.
 using System;
 using System.Collections.Generic;
@@ -32,8 +32,6 @@ internal static class Program
         }
 
         // --- Path B: MemoryMappedFile -> AcquirePointer (raw byte*) -> PEReader(byte*, size) ---
-        // The file and view are by-value intrinsic structs carrying no IDisposable
-        // dispatch, so they are released with an explicit Dispose(), not a using.
         int len = bytes.Length;
         MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(path, FileMode.Open);
         MemoryMappedViewAccessor view = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
@@ -51,6 +49,32 @@ internal static class Program
         }
         view.Dispose();
         mmf.Dispose();
+
+        // A small metadata block uses SRM's stream read path.
+        using (FileStream stream = File.OpenRead(path))
+        {
+            using (var pe = new PEReader(stream))
+            {
+                Report("C(filestream)", pe.GetMetadataReader());
+            }
+            Console.WriteLine($"  streamClosed={!stream.CanRead}");
+        }
+
+        // SRM maps FileStream metadata requests above its memory-map threshold.
+        using (FileStream stream = File.OpenRead(args[1]))
+        {
+            using (var pe = new PEReader(stream))
+            {
+                if (pe.PEHeaders.MetadataSize <= 16384)
+                {
+                    throw new InvalidOperationException("The stream fixture must reach SRM's memory-map path.");
+                }
+                MetadataReader mr = pe.GetMetadataReader();
+                Console.WriteLine($"D(mapped-filestream) typeDefs={mr.TypeDefinitions.Count} methodDefs={mr.MethodDefinitions.Count} mdVersion={mr.MetadataVersion}");
+            }
+            Console.WriteLine($"  streamClosed={!stream.CanRead}");
+        }
+        Console.WriteLine("file stream readers complete");
 
         return 0;
     }

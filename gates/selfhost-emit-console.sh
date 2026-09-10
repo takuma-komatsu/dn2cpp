@@ -22,7 +22,7 @@
 # (resolve_net10_corelib) and closed transitively with --auto-ref. The net10 pin
 # avoids the 11.0-preview CoreLib version skew (ResolveMemberRefField "Sequence
 # contains no matching element"; see resolve_net10_corelib in _common.sh).
-# --auto-ref turns on Compilation.LoadReferenceClosure, which pulls
+# --auto-ref turns on AssemblyLoadSet.LoadReferenceClosure, which pulls
 # System.Security.Cryptography.dll out of the shared framework (the Transpiler
 # references it) so the SHA1-based public-key-token derivation in
 # CppEmitter.PublicKeyTokenOf reaches the real crypto IL instead of aborting at

@@ -11,6 +11,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <cstdlib>
 #include <cmath>
 #include <mutex>
@@ -2221,6 +2222,25 @@ Dn2CppArrayN* dn2cpp_newarr_n(int32_t length, int32_t elemSize)
 {
     return dn2cpp_newarr_n_t(length, elemSize, &dn2cpp_array_n_type);
 }
+
+#ifdef _WIN32
+Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, wchar_t** argv, const Dn2CppTypeInfo* ti)
+{
+    static_assert(sizeof(wchar_t) == sizeof(char16_t));
+    int32_t n = argc > 1 ? static_cast<int32_t>(argc - 1) : 0;
+    Dn2CppArrayRef* arr = dn2cpp_newarr_ref_t(n, ti);
+    for (int32_t i = 0; i < n; i++)
+    {
+        const wchar_t* s = argv[i + 1];
+        int32_t length = static_cast<int32_t>(std::wcslen(s));
+        char16_t* chars;
+        Dn2CppString* value = dn2cpp_string_alloc(&chars, length);
+        std::memcpy(chars, s, static_cast<size_t>(length) * sizeof(wchar_t));
+        dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(value));
+    }
+    return arr;
+}
+#endif
 
 Dn2CppArrayRef* dn2cpp_argv_to_string_array(int argc, char** argv, const Dn2CppTypeInfo* ti)
 {

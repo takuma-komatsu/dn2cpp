@@ -177,3 +177,8 @@ void dn2cpp_pal_console_flush(void)
 {
     std::fflush(nullptr);
 }
+
+int32_t dn2cpp_pal_run_process(const char*, const char* const*, int32_t*)
+{
+    return -1;
+}

@@ -16,6 +16,7 @@
     <Dn2CppNativeExecutableExtension Condition="'$(Dn2CppNativeExecutableExtension)' == ''"></Dn2CppNativeExecutableExtension>
     <!-- Extra transpiler arguments. The auto-ref default pulls the BCL closure
          from the live shared framework, so a plain app needs no references at all. -->
+    <Dn2CppUseILDiet Condition="'$(Dn2CppUseILDiet)' == ''">true</Dn2CppUseILDiet>
     <Dn2CppExtraArgs Condition="'$(Dn2CppExtraArgs)' == ''">--auto-ref</Dn2CppExtraArgs>
     <!-- Extra cmake configure arguments (e.g. -DDN2CPP_USE_GC=OFF). -->
     <Dn2CppCMakeArgs Condition="'$(Dn2CppCMakeArgs)' == ''"></Dn2CppCMakeArgs>

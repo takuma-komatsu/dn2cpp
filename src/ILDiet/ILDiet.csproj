@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>ILDiet</AssemblyName>
+    <RootNamespace>Dn2Cpp</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>ildiet</ToolCommandName>
+    <PackageId>ILDiet</PackageId>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Description>Managed assembly stripping for dn2cpp.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+    <None Update="Mono.Cecil.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Compile Include="../Dn2Cpp.Transpiler/PreservationReader.cs" Link="PreservationReader.cs" />
+  </ItemGroup>
+  <Target Name="CollectILDietRuntimeLicenses" BeforeTargets="ComputeFilesToPublish"
+          DependsOnTargets="ResolveRuntimePackAssets" Condition="'$(SelfContained)' == 'true'">
+    <ItemGroup>
+      <_ILDietCoreRuntimePack Include="@(ResolvedRuntimePack)" Condition="'%(ResolvedRuntimePack.FrameworkName)' == 'Microsoft.NETCore.App'" />
+      <_ILDietRuntimeLicense Include="@(_ILDietCoreRuntimePack->'%(PackageDirectory)/LICENSE.TXT');@(_ILDietCoreRuntimePack->'%(PackageDirectory)/THIRD-PARTY-NOTICES.TXT')" />
+      <ResolvedFileToPublish Include="@(_ILDietRuntimeLicense)">
+        <RelativePath>runtime-%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

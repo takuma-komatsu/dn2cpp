@@ -17,6 +17,9 @@ bool dotnetModule = false;
 bool measure = false;
 bool verbose = false;
 bool autoRef = false;
+bool useILDiet = true;
+string? ildietOutput = null;
+var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool hotupdateBase = false;
 bool emitPatch = false;
@@ -88,7 +91,7 @@ for (int i = 0; i < args.Length; i++)
     {
         // Suppress one conditional default reference — a shim assembly shipped beside
         // this CLI that would otherwise be injected because the BCL assembly it serves
-        // is in the load set (Compilation.InjectDefaultRefs). Repeatable, one shim per
+        // is in the load set (AssemblyLoadSet.InjectDefaultRefs). Repeatable, one shim per
         // occurrence; there is deliberately no blanket form, so a shim added to the
         // table later injects and forces a decision instead of being switched off by a
         // flag somebody wrote years earlier. A FLAG, never an environment variable: it
@@ -223,6 +226,18 @@ for (int i = 0; i < args.Length; i++)
         // resolve, instead of requiring every transitive dependency via explicit -r.
         // Opt-in while drift vs. the explicit-ref output is being measured.
         autoRef = true;
+    }
+    else if (args[i] == "--no-ildiet")
+    {
+        useILDiet = false;
+    }
+    else if (args[i] == "--ildiet-output" && i + 1 < args.Length)
+    {
+        ildietOutput = args[++i];
+    }
+    else if (args[i] == "--link-xml" && i + 1 < args.Length)
+    {
+        linkXmlFiles.Add(args[++i]);
     }
     else if (args[i] == "--project-root" && i + 1 < args.Length)
     {
@@ -488,7 +503,7 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
@@ -568,6 +583,9 @@ return TranspileDriver.Run(new TranspileOptions
     NoManifestResources = noManifestResources,
     ManifestResourceRoots = manifestResourceRoots,
     DirectPInvokes = directPInvokes,
+    UseILDiet = useILDiet,
+    ILDietOutput = ildietOutput,
+    LinkXmlFiles = linkXmlFiles,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,
     ShadowStack = shadowStack,

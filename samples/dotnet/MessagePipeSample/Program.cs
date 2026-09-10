@@ -22,7 +22,7 @@ public static class Program
     // MessagePipe registers its brokers and handlers as OPEN generic services that the
     // DI container closes by reflection, so no IL in this program names
     // MessageBroker<string> and reachability monomorphizes none of them. These fields
-    // are the IL that does; without them the resolves above have nothing to bind to.
+    // are the IL that does; link.xml keeps the holder through DLL stripping.
 #pragma warning disable CS0169, CS0649
     private static class AotPreserveHolder
     {

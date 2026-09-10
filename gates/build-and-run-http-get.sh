@@ -127,7 +127,7 @@
 #
 # THE DEFAULT REFERENCE (section 17). Every section above passes `-r $dnhttp` by hand.
 # Section 17 does not, and asserts the whole of section 9 anyway: the shim is injected
-# because System.Net.Http is in the load set (Compilation.InjectDefaultRefs, resolving
+# because System.Net.Http is in the load set (AssemblyLoadSet.InjectDefaultRefs, resolving
 # out of the CLI's own directory), and the resulting binary's live GET is byte-identical
 # to real .NET. That is the tool-installed shape — `new HttpClient()`, no -r, a working
 # native binary — and the only section where the injection is load-bearing rather than
@@ -1142,7 +1142,7 @@ echo "== 17/17 No -r DnHttp: the shim is injected by default, and the GET still 
 # Why it needs its own section rather than a flag on section 8: without the shim
 # the transpile fails at MethodCompiler.HttpShim's "the DnHttp transport shim is
 # not referenced", so this is the only place in the suite where the injection is
-# load-bearing. Compilation.InjectDefaultRefs adds it because System.Net.Http is
+# load-bearing. AssemblyLoadSet.InjectDefaultRefs adds it because System.Net.Http is
 # in the load set, resolving DnHttp.dll from the directory the CLI itself lives in
 # (AppContext.BaseDirectory — the same copy `dotnet tool install dn2cpp` lays
 # down). So a green here is the tool-installed shape: somebody writes

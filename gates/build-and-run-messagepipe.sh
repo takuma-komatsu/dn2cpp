@@ -9,13 +9,10 @@ project=MessagePipeSample
 out="artifacts/messagepipe"
 measure="artifacts/messagepipe-measure"
 MESSAGEPIPE_SHA_EXPECTED=gates/expected/messagepipe-dlls.sha256
-# One plain substring per line, so no comments in the file. The bare type names say
-# the library's machinery is in the tree; the `m_…_<row>__<suffix>` rows are the
-# per-section evidence — a Program.cs holder keeps the broker/handler TYPES alive on
-# its own, so only a method symbol carrying a caller's instantiation shape can prove
-# a driver section still runs. A numeral is that member's MethodDef row in the
-# hash-pinned DLL, so it moves only with the pin — re-derive the file when it changes.
+# Basic regular expressions pin method shapes and caller specializations; MethodDef
+# rows may change when ILDiet rewrites the hash-pinned input assembly.
 MARKERS_EXPECTED=gates/expected/messagepipe-markers.txt
+PRESERVATION="samples/dotnet/$project/link.xml"
 
 echo "== 1/7 Locating the real net10 CoreLib =="
 corelib=$(resolve_net10_corelib)
@@ -66,12 +63,12 @@ rm -rf "$out"
 # transpile's bytes (AGENTS.md). Measured 4,975 instantiations (inst 4,286 +
 # minst 689), cap ~3.0x; measured peak heap 187 MB, belt ~2.7x.
 ( export DN2CPP_MAX_INSTANTIATIONS=15000
-  invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 512 -o "$out" )
+  invoke_cli "$app" "${refs[@]}" --auto-ref --link-xml "$PRESERVATION" --max-heap-mb 512 -o "$out" )
 echo "OK (bounded: <=15,000 instantiations, <=512 MB heap)"
 
 if gate_cache_check "$out" \
-        "messagepipe|cli:$(_gate_cli_hash)|corelib=$corelib" \
-        "$app" "$MESSAGEPIPE_SHA_EXPECTED" "${mp_dlls[@]}" "$MARKERS_EXPECTED" \
+        "messagepipe|cli:$(_gate_cli_hash)|corelib=$corelib|--link-xml=$PRESERVATION" \
+        "$app" "$MESSAGEPIPE_SHA_EXPECTED" "${mp_dlls[@]}" "$MARKERS_EXPECTED" "$PRESERVATION" \
         "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
     gate_cache_hit_msg
     exit 0
@@ -80,7 +77,7 @@ fi
 echo "== 4/7 ASSERT: ZERO gaps, ZERO cuts =="
 rm -rf "$measure"
 ( export DN2CPP_MAX_INSTANTIATIONS=15000
-  invoke_cli "$app" "${refs[@]}" --auto-ref --max-heap-mb 512 \
+  invoke_cli "$app" "${refs[@]}" --auto-ref --link-xml "$PRESERVATION" --max-heap-mb 512 \
       --measure -o "$measure" >/dev/null 2>&1 ) || true
 [ -f "$measure/s0-gaps.tsv" ] \
     || { echo "FAIL: --measure produced no gap report ($measure/s0-gaps.tsv)" >&2; exit 1; }

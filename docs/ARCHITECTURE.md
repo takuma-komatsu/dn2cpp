@@ -10,6 +10,9 @@ see `README.md`, for working conventions `AGENTS.md`, for the open backlog
 
 ```
 input .NET assembly (+ reference assemblies via -r)
+  └─ AssemblyLoadSet     … ordered reference closure and default shim resolution
+  └─ ILDiet             … managed DLL stripping and preservation remapping
+  │                        (--no-ildiet bypasses this stage)
   └─ Compilation        … metadata loading, type/method model construction,
   │                        generic specialization, reachability tree-shake
   └─ MethodCompiler      … IL → C++ function body for each reachable method
@@ -21,6 +24,16 @@ input .NET assembly (+ reference assemblies via -r)
        external linkage, TUs compile in parallel)
         └─ clang++ + runtime/core (+ runtime/godot) → native binary / .dylib
 ```
+
+ILDiet runs in a companion process over the original metadata, before
+`Compilation` exists. It shares `PreservationReader` with the transpiler and
+returns rewritten DLL paths plus an effective linker descriptor. The driver
+validates the result, preserves module order and default-reference diagnostics,
+and loads only that resolved output set. Reference discovery cannot reintroduce
+original DLLs afterward. Cecil is confined to ILDiet and never becomes
+transpiler self-host input. Cut selectors that require generic specialization
+retain the original DLLs in the output set and defer validation to `Compilation`;
+a raw metadata match must not turn an invalid selector into a silent no-op.
 
 Core invariants:
 
@@ -59,6 +72,10 @@ only what it needs.
   shim whose calls the intrinsics replace inline.
 
 Optional, with the invariant each exists for:
+
+- `ConfigureILDiet` — declares externally instantiated types from metadata before
+  model construction. The Godot backends retain script descendants; GDExtension
+  also retains its public application export surface.
 
 - `WantsSyntheticBody` — hot-update base only: give a skipped-body method a real,
   invoker-compatible body rendered from the intrinsic's own call lowering.

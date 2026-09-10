@@ -6,6 +6,7 @@
 #
 # The bundle carries everything the exporter's transpile + native build need:
 #   bin/dn2cpp        self-hosted native CLI (gates/selfhost-emit.sh; no .NET dep)
+#   bin/ildiet/       self-contained host ILDiet and its DLL rewrite dependency
 #   bin/Dn2Cpp.Runtime.dll
 #                     the managed support shim holding the types the transpiler
 #                     synthesizes — notably SZArrayEnumerable<T>, which backs
@@ -43,8 +44,8 @@
 #                      builds the default; see the guard below)
 #   ref/              the pinned net10 shared-framework managed DLLs — the WHOLE
 #                     closure, because --auto-ref resolves the BCL from the dir
-#                     that holds System.Private.CoreLib.dll (Compilation.cs
-#                     LoadReferenceClosure). Shipping CoreLib alone would leave
+#                     that holds System.Private.CoreLib.dll (AssemblyLoadSet).
+#                     Shipping CoreLib alone would leave
 #                     System.Runtime/… unresolved for real game IL.
 #   ref-posix/        the same closure in its POSIX flavour, staged on a WINDOWS
 #                     host only, for the exports that are cross-compiled (Android,
@@ -105,9 +106,10 @@
 #     -h | --help
 #
 # Sourcing _common.sh cd's to the repo root and provides resolve_net10_corelib +
-# DN2CPP_OS. `dotnet` (SDK) is needed only to build the self-host binary and to
-# resolve the framework; a prepared --dn2cpp-bin keeps the SDK the sole dep.
+# DN2CPP_OS. The SDK builds the self-host binary, publishes the host ILDiet
+# companion and supplies the reference framework used while assembling the bundle.
 source "$(dirname "$0")/../gates/_common.sh"
+source "$PWD/gates/_ildiet.sh"
 
 PKG_VERSION=0.1.0
 OUT_PARENT=artifacts/toolchain
@@ -240,6 +242,7 @@ mkdir -p "$LAYOUT/bin" "$LAYOUT/runtime" "$LAYOUT/third_party" "$LAYOUT/ref"
 # validation would not find it, and CreateProcess cannot launch a PE image
 # without the suffix even though `test -x` under MSYS says it can.
 install -m 0755 "$DN2CPP_BIN" "$LAYOUT/bin/dn2cpp$EXE_EXT"
+ildiet_stage_native "$LAYOUT/bin/ildiet"
 install -m 0644 "$SHIM" "$LAYOUT/bin/Dn2Cpp.Runtime.dll"
 for be in $MANAGED_BACKENDS; do
     install -m 0644 "internal/$be/src/$be/bin/$CONFIG/$TFM/$be.dll" "$LAYOUT/bin/$be.dll"
@@ -259,21 +262,25 @@ done
 #
 # A ProjectReference is a sibling unless it is a LINK-time reference — those three are
 # compiled into dn2cpp.dll's dependency set and travel as ordinary managed deps of the
-# CLI, not as files the transpiler reads from AppContext.BaseDirectory. Everything else
-# in that ItemGroup is a ReferenceOutputAssembly="false" payload, which is exactly the
-# set that has to be in bin/. Each row's assembly name is its csproj basename.
+# CLI, not as files the transpiler reads from AppContext.BaseDirectory. Companion
+# references carry executable payloads in their own directories and never join the
+# managed load set. The remaining references are adjacent DLL inputs. Each row's
+# assembly name is its csproj basename.
 CLI_LINK_TIME_REFS="Dn2Cpp.Transpiler Dn2Cpp.Godot Dn2Cpp.DotnetModule"
+CLI_COMPANION_REFS="ILDiet"
 bin_missing=""
-for sib in $(grep -o 'ProjectReference Include="[^"]*"' src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj \
+for sib in $(grep -h -o 'ProjectReference Include="[^"]*"' src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj src/ILDiet.Companion.targets \
                  | sed -e 's|"$||' -e 's|.*/||' -e 's|\.csproj$||' | sort -u); do
     case " $CLI_LINK_TIME_REFS " in *" $sib "*) continue ;; esac
+    case " $CLI_COMPANION_REFS " in *" $sib "*)
+        [ -x "$LAYOUT/bin/ildiet/$sib$EXE_EXT" ] || bin_missing="$bin_missing ildiet/$sib"
+        continue ;; esac
     [ -f "$LAYOUT/bin/$sib.dll" ] || bin_missing="$bin_missing $sib"
 done
 [ -z "$bin_missing" ] || {
-    echo "error: Dn2Cpp.Cli.csproj carries assemblies as siblings that the bundle drops:$bin_missing" >&2
-    echo "       the transpiler resolves them from AppContext.BaseDirectory, which for the" >&2
-    echo "       bundled native CLI is bin/ — add them to MANAGED_BACKENDS (or to the" >&2
-    echo "       installs above) in dist/package-toolchain.sh" >&2
+    echo "error: CLI project references are missing from the bundle:$bin_missing" >&2
+    echo "       cover adjacent DLLs in the sibling installs and executable payloads" >&2
+    echo "       in companion staging in dist/package-toolchain.sh" >&2
     exit 1; }
 
 cp "runtime/CMakeLists.txt"  "$LAYOUT/runtime/"

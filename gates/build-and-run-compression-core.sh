@@ -14,7 +14,7 @@
 # TWO ARMS, because there are now two backends and the round-trip diff cannot
 # tell them apart. Referencing System.IO.Compression makes the transpiler
 # inject the DnZlib shim by default, and System.IO.Compression.Brotli makes it
-# inject DnBrotli (Compilation.InjectDefaultRefs) — so this one program runs
+# inject DnBrotli (AssemblyLoadSet.InjectDefaultRefs) — so this one program runs
 # fully managed unless the arm declines them. Both backends pass the same
 # round-trip diff, which is exactly the problem: without the split, flipping
 # the default silently converted the suite's only native-codec end-to-end test

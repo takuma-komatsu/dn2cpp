@@ -141,6 +141,8 @@ internal enum InterceptEmitArm
     /// <summary>The System.Environment surface — <c>EmitIntrinsic</c> under the
     /// literal type key.</summary>
     EnvIntrinsic,
+    /// <summary>The companion tool launcher, lowered to the native spawn/wait helper.</summary>
+    ToolProcess,
     /// <summary>Selectively inline-lowered primitive members from
     /// <see cref="CoreIntrinsics.IsInlineLoweredPrimitiveMember"/> and
     /// <see cref="CoreIntrinsics.LoweredPrimitiveEqualsObject"/> —
@@ -646,6 +648,20 @@ internal static partial class CoreIntrinsics
         typeGate: "System.Environment",
         extra: static mi => LoweredEnvMember(mi.DeclaringClass.FullName, mi.Name, () => mi.Signature));
 
+    // Both ResolveCallTarget and TranslateCall ask these rows; Process.Start's
+    // host-only IL must never enter the self-hosted transpiler's reachability graph.
+    public static readonly MethodDefIntercept MdToolProcess = new(
+        InterceptCutKind.Cut, InterceptEmitArm.ToolProcess,
+        typeGate: "Dn2Cpp.ToolProcess", nameGate: "Run",
+        extra: static mi => LoweredToolProcess(mi.Signature));
+
+    private static bool LoweredToolProcess(MethodSignature<TypeDesc> sig) =>
+        !sig.Header.IsInstance && sig.GenericParameterCount == 0
+        && sig.ReturnType.Primitive == PrimitiveTypeCode.Int32
+        && sig.ParameterTypes.Length == 2 && sig.ParameterTypes[0].IsString
+        && sig.ParameterTypes[1] is { Kind: TypeKind.SZArray, Element: { } element }
+        && element.IsString;
+
     /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
     /// primitive's two CompareTo overloads
     /// (<see cref="IsInlineLoweredPrimitiveMember"/>), lowered inline at every
@@ -741,6 +757,7 @@ internal static partial class CoreIntrinsics
         MdConstFoldedStringCall,
         MdDeserializationGuard,
         MdEnvMember,
+        MdToolProcess,
         MdInlinePrimitive,
         MdPrimitiveEqualsObject,
         MdComparerCompare,
@@ -810,6 +827,11 @@ internal static partial class CoreIntrinsics
         InterceptCutKind.Cut, InterceptEmitArm.EnvIntrinsic,
         typeGate: "System.Environment",
         extra: static (dt, n, sig) => LoweredEnvMember(dt, n, sig));
+
+    public static readonly MemberRefIntercept MrToolProcess = new(
+        InterceptCutKind.Cut, InterceptEmitArm.ToolProcess,
+        typeGate: "Dn2Cpp.ToolProcess", nameGate: "Run",
+        extra: static (dt, n, sig) => LoweredToolProcess(sig()));
 
     /// <summary>The sub-word integers' ToString/Parse/TryParse/TryFormat and every scalar
     /// primitive's two CompareTo overloads
@@ -1060,6 +1082,7 @@ internal static partial class CoreIntrinsics
         MrSpanCaseFold,
         MrIoMember,
         MrEnvMember,
+        MrToolProcess,
         MrInlinePrimitive,
         MrPrimitiveEqualsObject,
         MrComparerCompare,

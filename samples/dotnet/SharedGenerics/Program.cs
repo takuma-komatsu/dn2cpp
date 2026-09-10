@@ -10,7 +10,7 @@ namespace SharedGenerics
     // real .NET exactly.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -39,6 +39,9 @@ namespace SharedGenerics
             GenericMethodSubset.Program.__GateEntry();
             GvmCanonicalSubset.Program.__GateEntry();
             GenericStaticsSubset.Program.SynchronizedPrologues();
+            if (args.Length > 0 && args[0] == "legacy")
+                return;
+            GenericStaticsSubset.Program.ConcreteAndDependentStatics();
         }
     }
 }

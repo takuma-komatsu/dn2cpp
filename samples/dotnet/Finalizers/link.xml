@@ -1,0 +1,7 @@
+<linker>
+  <assembly fullname="Finalizers">
+    <type fullname="FinalizerActivatorSubset.ViaReflection" preserve="nothing">
+      <method name=".ctor" />
+    </type>
+  </assembly>
+</linker>

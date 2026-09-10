@@ -1213,6 +1213,10 @@ if(DN2CPP_APP_DIR)
     else()
         add_executable(${DN2CPP_APP_NAME} ${DN2CPP_APP_SRCS})
         target_link_libraries(${DN2CPP_APP_NAME} PRIVATE dn2cpp::dn2cpp_runtime)
+        if(MINGW)
+            # MinGW's CRT defaults to main even when wmain is defined.
+            target_link_options(${DN2CPP_APP_NAME} PRIVATE -municode)
+        endif()
         if(EMSCRIPTEN)
             # The JS-glue / linear-memory settings, on the one target shape they
             # describe (see the directory-scoped arm at the top of this file): a

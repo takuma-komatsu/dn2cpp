@@ -61,7 +61,7 @@ CONFIG=Debug ./gates/run-all-gates.sh
 
 ## Default references are files beside the CLI
 
-`Compilation.InjectDefaultRefs` conditionally loads these assemblies from
+`AssemblyLoadSet.InjectDefaultRefs` conditionally loads these assemblies from
 `AppContext.BaseDirectory`; explicit `-r` wins and `--no-default-ref` declines.
 
 | shim | trigger assembly | role |

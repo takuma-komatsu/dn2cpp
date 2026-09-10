@@ -175,6 +175,8 @@ internal sealed partial class Compilation
                 // every non-Environment callee out before it. The predicate re-tests the
                 // type name itself; a duplicated type name cannot drift, a duplicated
                 // MEMBER SET is what can.
+                if (CoreIntrinsics.MdToolProcess.Matches(mi))
+                    return null;
                 if (CoreIntrinsics.MdEnvMember.Matches(mi))
                     return null;
                 // SerializationInfo.ThrowIfDeserializationInProgress is a no-op (no
@@ -406,19 +408,6 @@ internal sealed partial class Compilation
                     && ResolveTypeRef(module, (TypeReferenceHandle)mr.Parent)?.Class is { } pc
                     && (pc.IntrinsicCppName is not null || pc.PlatformIsa is not null))
                     return null;
-                // SafeBuffer.AcquirePointer/ReleasePointer/get_ByteLength and
-                // SafeHandle.DangerousGetHandle are deliberately NOT cut, even though the
-                // memory-mapped view handle lowers them inline. The emit intercept
-                // (MethodCompiler.TranslateCall) fires only when the RECEIVER is statically
-                // the intrinsic Dn2CppMappedSafeHandle; every other receiver — a
-                // SafeFileHandle, an app's own SafeHandle subclass wrapping a native
-                // resource — emits a call to the real transpiled body. Reachability cannot
-                // see the receiver, so a cut keyed on the declaring type and member name
-                // would delete that body for the whole program
-                // while the call site still emits the call: not a transpile error, but
-                // `use of undeclared identifier` in the C++ build. So there is NO cut here
-                // (same shape as System.IO.TextWriter.Write/WriteLine below), and
-                // the real bodies (refcount + the raw handle field) transpile fine.
                 // Non-generic Enum reflection statics taking a runtime Type
                 // (GetNames/GetName/IsDefined/Parse/TryParse/GetUnderlyingType/GetValues) —
                 // the per-enum runtime table; the generic Enum.*<T> forms are cut in the
@@ -520,6 +509,8 @@ internal sealed partial class Compilation
                 // with the fallback already gone — and disagrees with the MethodDefinition
                 // arm below, which gates by shape: the intra-CoreLib call transpiles, the
                 // identical cross-assembly one does not.
+                if (CoreIntrinsics.MrToolProcess.Matches(mrParent, mrName, Sig))
+                    return null;
                 if (CoreIntrinsics.MrEnvMember.Matches(mrParent, mrName, Sig))
                     return null;
                 // AppContext.BaseDirectory -> the running executable's directory; its real

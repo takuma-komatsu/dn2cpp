@@ -19,7 +19,7 @@
 # THE --no-default-ref FLAGS ARE WHAT KEEP THIS GATE NATIVE, and they look
 # removable because the round-trip diff passes without them. Referencing
 # System.IO.Compression makes the transpiler inject the DnZlib shim by default
-# (Compilation.InjectDefaultRefs), which substitutes the CompressionNative_*
+# (AssemblyLoadSet.InjectDefaultRefs), which substitutes the CompressionNative_*
 # P/Invokes — including the CRC-32 this program's every entry goes through —
 # with pure C#. Drop the flags and this stops being the native-zlib ZipArchive
 # test with nothing going red; the managed-backend ZipCore is already covered

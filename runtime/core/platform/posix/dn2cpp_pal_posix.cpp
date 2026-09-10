@@ -7,6 +7,9 @@
 
 #include "platform/dn2cpp_pal.h"
 
+#include <cerrno>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <climits>    // PATH_MAX
 #include <cstdint>    // uint32_t / uintptr_t
 #include <cstdio>     // snprintf (default-locale name assembly); fwrite/fflush (console sink)
@@ -24,6 +27,10 @@
 // macOS exposes malloc_size; glibc/musl/BSD expose malloc_usable_size.
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
+#include <TargetConditionals.h>
+#if !TARGET_OS_IPHONE
+#include <crt_externs.h>
+#endif
 #include <mach-o/dyld.h>   // _NSGetExecutablePath
 #include <mach-o/loader.h> // LC_FUNCTION_STARTS parse (frame-entry derivation)
 #include <CoreFoundation/CoreFoundation.h> // CFLocale (default-locale fallback)
@@ -537,4 +544,31 @@ void dn2cpp_pal_console_flush(void)
     // That is what the call sites want: they run on the exit and abort paths,
     // where a half-written FileStream is lost output too.
     std::fflush(nullptr);
+}
+
+int32_t dn2cpp_pal_run_process(const char* executable, const char* const* argv, int32_t* exitCode)
+{
+#if (defined(__ANDROID__) && __ANDROID_API__ < 28) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+    (void)executable;
+    (void)argv;
+    (void)exitCode;
+    return -1;
+#else
+#if defined(__APPLE__)
+    char** environment = *_NSGetEnviron();
+#else
+    extern char** environ;
+    char** environment = environ;
+#endif
+    pid_t child;
+    int error = ::posix_spawnp(&child, executable, nullptr, nullptr,
+        const_cast<char* const*>(argv), environment);
+    if (error != 0) return error;
+    int status;
+    pid_t result;
+    do { result = ::waitpid(child, &status, 0); } while (result == -1 && errno == EINTR);
+    if (result == -1) return errno;
+    *exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
+    return 0;
+#endif
 }

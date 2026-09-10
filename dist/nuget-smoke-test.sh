@@ -111,6 +111,10 @@ for sib in Dn2Cpp.Runtime DnZlib DnBrotli DnHttp; do
     [ -f "$ROOT_DIR/$sib.dll" ] || {
         echo "error: $sib.dll is not beside the installed CLI" >&2; exit 1; }
 done
+for companion in ILDiet.dll ILDiet.deps.json ILDiet.runtimeconfig.json Mono.Cecil.dll Mono.Cecil.LICENSE.txt; do
+    [ -f "$ROOT_DIR/ildiet/$companion" ] || {
+        echo "error: installed tool is missing ildiet/$companion" >&2; exit 1; }
+done
 echo "-- layout OK: $ROOT_DIR"
 
 echo "== 4/8 transpile with no -r (--auto-ref defaults the CoreLib) =="
