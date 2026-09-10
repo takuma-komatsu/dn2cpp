@@ -36,7 +36,11 @@ runtime strings requires a descriptor or `PreserveAttribute`.
 
 The graph preserves live field layouts, virtual and interface implementations,
 generic signatures and constraints, attributes, delegates, and referenced IL
-operands. It does not specialize generics or perform dn2cpp intrinsic lowering.
+operands. Generic arguments retain instance constructors and property accessors,
+including private setters, because generic factories and serializers can select
+them without direct call tokens. Their base types, instance field and property
+types, and constructor parameter types retain the same data surface recursively.
+It does not specialize generics or perform dn2cpp intrinsic lowering.
 Framework assemblies, GodotSharp, and dn2cpp runtime/codec/HTTP shims are copied
 unchanged. They contain runtime dependencies that are introduced during later
 transpilation. dn2cpp also requests copies for hot-update base builds.

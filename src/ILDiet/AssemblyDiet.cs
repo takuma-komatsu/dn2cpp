@@ -36,6 +36,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly HashSet<TypeDefinition> _conditional = new();
     private readonly Queue<MethodDefinition> _pending = new();
     private readonly HashSet<TypeDefinition> _interfaceHierarchies = new();
+    private readonly HashSet<TypeDefinition> _reflectionDataTypes = new();
     private readonly HashSet<GenericParameter> _genericParameters = new();
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
     private bool _cutsValidated = true;
@@ -322,9 +323,10 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (reference is GenericInstanceType generic)
         {
             foreach (var argument in generic.GenericArguments) MarkType(argument);
-            // new T() and BCL generic factories do not carry a constructor token for T.
+            // Generic serializers and factories select data members without direct
+            // constructor or accessor tokens for T.
             foreach (var argument in generic.GenericArguments)
-                if (Resolve(argument) is { } concrete) KeepDefaultConstructor(concrete);
+                if (Resolve(argument) is { } concrete) KeepReflectionData(concrete);
         }
         if (reference is IModifierType modifier) MarkType(modifier.ModifierType);
         if (reference is TypeSpecification specification) MarkType(specification.ElementType);
@@ -372,11 +374,39 @@ internal sealed partial class AssemblyDiet : IDisposable
         }
     }
 
-    private void KeepDefaultConstructor(TypeDefinition type)
+    private void KeepReflectionData(TypeDefinition type)
     {
-        if (!IsStripped(type)) return;
+        // Data members and constructor signatures can refer back to their owner.
+        if (!IsStripped(type) || !_reflectionDataTypes.Add(type)) return;
+        MarkType(type);
+        KeepReflectionDataType(type.BaseType);
         foreach (var method in type.Methods)
-            if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0) MarkMethod(method);
+            if (method.IsConstructor && !method.IsStatic)
+            {
+                MarkMethod(method);
+                foreach (var parameter in method.Parameters) KeepReflectionDataType(parameter.ParameterType);
+            }
+        foreach (var field in type.Fields)
+            if (!field.IsStatic) KeepReflectionDataType(field.FieldType);
+        foreach (var property in type.Properties)
+            if (property.GetMethod is { IsStatic: false } || property.SetMethod is { IsStatic: false })
+            {
+                MarkProperty(property, true, true);
+                KeepReflectionDataType(property.PropertyType);
+            }
+    }
+
+    private void KeepReflectionDataType(TypeReference? reference)
+    {
+        if (reference is null) return;
+        MarkType(reference);
+        if (reference is FunctionPointerType) return;
+        if (reference is TypeSpecification specification)
+        {
+            KeepReflectionDataType(specification.ElementType);
+            return;
+        }
+        if (Resolve(reference) is { } type) KeepReflectionData(type);
     }
 
     private void KeepAll(TypeDefinition type)
@@ -400,7 +430,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             foreach (var argument in generic.GenericArguments)
             {
                 MarkType(argument);
-                if (Resolve(argument) is { } concrete) KeepDefaultConstructor(concrete);
+                if (Resolve(argument) is { } concrete) KeepReflectionData(concrete);
             }
         MethodDefinition? method;
         try { method = reference.Resolve(); }

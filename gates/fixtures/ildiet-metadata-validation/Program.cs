@@ -43,6 +43,30 @@ if (args.Length == 3 && args[0] == "--check-resolver")
         "first collision definition was not selected: " + selected);
     Require(otherAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Methods.Any(m => m.Name == "Selected") != true,
         "later collision definition was selected: " + other);
+    Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.LateBound")?.Methods.Any(m =>
+            m.IsConstructor && m.Parameters.Count == 1) == true,
+        "generic argument constructor was removed: " + selected);
+    var methodBound = selectedAssembly.MainModule.GetType("System.ILDietFixture.MethodBound");
+    Require(methodBound?.Methods.Any(m => m.IsConstructor && m.IsPrivate && m.Parameters.Count == 1) == true,
+        "generic method argument constructor was removed: " + selected);
+    Require(methodBound?.Methods.Any(m => m.Name == "ConstructorLeaf") == true,
+        "generic argument constructor body was not scanned: " + selected);
+    foreach (var (typeName, propertyName) in new[]
+        {
+            ("LateBound", "Value"), ("LateBound", "Child"), ("MethodBound", "Value"),
+            ("LateBoundBase", "InheritedValue"), ("FieldPayload", "Value"),
+            ("PropertyPayload", "Value"), ("ConstructorPayload", "Value"),
+        })
+    {
+        var dataType = selectedAssembly.MainModule.GetType("System.ILDietFixture." + typeName);
+        var property = dataType?.Properties.SingleOrDefault(p => p.Name == propertyName);
+        Require(property?.GetMethod is not null && property.SetMethod is { IsPrivate: true },
+            "generic data property accessor was removed: " + typeName + "." + propertyName);
+        Require(dataType?.Methods.Any(m => m.Name == propertyName + "SetterLeaf") == true,
+            "generic data setter body was not scanned: " + typeName + "." + propertyName);
+    }
+    Require(selectedAssembly.MainModule.GetType("System.ILDietFixture.Collision")?.Properties.Count == 0,
+        "unselected ordinary property survived");
     var owner = firstAssembly.MainModule.GetType("System.ILDietFixture.Owner");
     Require(owner?.NestedTypes.SingleOrDefault(t => t.Name == "Inner")?.Methods.Any(m => m.Name == "NestedSelected") == true,
         "nested definition was not resolved");
@@ -182,6 +206,46 @@ static void CreateResolverLibrary(string path, string assemblyName, bool nested)
         TypeAttributes.Public | TypeAttributes.Class, fixture.MainModule.TypeSystem.Object);
     fixture.MainModule.Types.Add(collision);
     AddVoidMethod(collision, "Selected");
+    AddDataProperty(collision, "UnusedProperty", fixture.MainModule.TypeSystem.Int32);
+    var baseData = AddDataType(fixture.MainModule, "LateBoundBase");
+    AddDataProperty(baseData, "InheritedValue", fixture.MainModule.TypeSystem.Int32);
+    var lateBound = new TypeDefinition("System.ILDietFixture", "LateBound",
+        TypeAttributes.Public | TypeAttributes.Class, baseData);
+    fixture.MainModule.Types.Add(lateBound);
+    AddDataProperty(lateBound, "Value", fixture.MainModule.TypeSystem.Int32);
+    var fieldPayload = AddDataType(fixture.MainModule, "FieldPayload");
+    AddDataProperty(fieldPayload, "Value", fixture.MainModule.TypeSystem.Int32);
+    lateBound.Fields.Add(new FieldDefinition("Payload", FieldAttributes.Public, fieldPayload));
+    var propertyPayload = AddDataType(fixture.MainModule, "PropertyPayload");
+    AddDataProperty(propertyPayload, "Value", fixture.MainModule.TypeSystem.Int32);
+    AddDataProperty(lateBound, "Child", propertyPayload, stored: false);
+    var generic = new GenericInstanceType(new TypeReference("System.Collections.Generic", "List`1",
+        fixture.MainModule, fixture.MainModule.TypeSystem.CoreLibrary));
+    generic.GenericArguments.Add(lateBound);
+    var constructor = new MethodDefinition(".ctor",
+        MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+        fixture.MainModule.TypeSystem.Void) { HasThis = true };
+    constructor.Parameters.Add(new ParameterDefinition(generic));
+    constructor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    lateBound.Methods.Add(constructor);
+    collision.Fields.Add(new FieldDefinition("Items", FieldAttributes.Public, generic));
+    var methodBound = new TypeDefinition("System.ILDietFixture", "MethodBound",
+        TypeAttributes.Public | TypeAttributes.Class, fixture.MainModule.TypeSystem.Object);
+    fixture.MainModule.Types.Add(methodBound);
+    AddDataProperty(methodBound, "Value", fixture.MainModule.TypeSystem.Int32);
+    var constructorPayload = AddDataType(fixture.MainModule, "ConstructorPayload");
+    AddDataProperty(constructorPayload, "Value", fixture.MainModule.TypeSystem.Int32);
+    var leaf = AddVoidMethod(methodBound, "ConstructorLeaf");
+    leaf.Attributes = MethodAttributes.Private | MethodAttributes.Static;
+    var methodConstructor = new MethodDefinition(".ctor",
+        MethodAttributes.Private | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+        fixture.MainModule.TypeSystem.Void) { HasThis = true };
+    methodConstructor.Parameters.Add(new ParameterDefinition(constructorPayload));
+    methodConstructor.Body.Instructions.Add(Instruction.Create(OpCodes.Call, leaf));
+    methodConstructor.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    methodBound.Methods.Add(methodConstructor);
+    var genericMethod = AddVoidMethod(collision, "GenericSelected");
+    genericMethod.GenericParameters.Add(new GenericParameter("T", genericMethod));
     if (nested)
     {
         var owner = new TypeDefinition("System.ILDietFixture", "Owner",
@@ -217,6 +281,12 @@ static void CreateResolverApp(string path)
         new MethodReference("Selected", fixture.MainModule.TypeSystem.Void, collision) { HasThis = false }));
     main.Body.Instructions.Add(Instruction.Create(OpCodes.Call,
         new MethodReference("NestedSelected", fixture.MainModule.TypeSystem.Void, inner) { HasThis = false }));
+    var genericMethod = new MethodReference("GenericSelected", fixture.MainModule.TypeSystem.Void, collision)
+        { HasThis = false };
+    genericMethod.GenericParameters.Add(new GenericParameter("T", genericMethod));
+    var genericCall = new GenericInstanceMethod(genericMethod);
+    genericCall.GenericArguments.Add(new TypeReference("System.ILDietFixture", "MethodBound", fixture.MainModule, facade));
+    main.Body.Instructions.Add(Instruction.Create(OpCodes.Call, genericCall));
     main.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
     fixture.Write(path, new WriterParameters { Timestamp = 0, DeterministicMvid = true });
 }
@@ -228,4 +298,44 @@ static MethodDefinition AddVoidMethod(TypeDefinition type, string name)
     type.Methods.Add(method);
     method.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
     return method;
+}
+
+static TypeDefinition AddDataType(ModuleDefinition module, string name)
+{
+    var type = new TypeDefinition("System.ILDietFixture", name,
+        TypeAttributes.Public | TypeAttributes.Class, module.TypeSystem.Object);
+    module.Types.Add(type);
+    return type;
+}
+
+static void AddDataProperty(TypeDefinition type, string name, TypeReference valueType, bool stored = true)
+{
+    var field = new FieldDefinition("_" + name, FieldAttributes.Private, valueType);
+    if (stored) type.Fields.Add(field);
+    var getter = new MethodDefinition("get_" + name,
+        MethodAttributes.Public | MethodAttributes.SpecialName, valueType) { HasThis = true };
+    if (stored)
+    {
+        getter.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        getter.Body.Instructions.Add(Instruction.Create(OpCodes.Ldfld, field));
+    }
+    else getter.Body.Instructions.Add(Instruction.Create(OpCodes.Ldnull));
+    getter.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    var setter = new MethodDefinition("set_" + name,
+        MethodAttributes.Private | MethodAttributes.SpecialName, type.Module.TypeSystem.Void) { HasThis = true };
+    setter.Parameters.Add(new ParameterDefinition(valueType));
+    if (stored)
+    {
+        setter.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_0));
+        setter.Body.Instructions.Add(Instruction.Create(OpCodes.Ldarg_1));
+        setter.Body.Instructions.Add(Instruction.Create(OpCodes.Stfld, field));
+    }
+    var leaf = AddVoidMethod(type, name + "SetterLeaf");
+    leaf.Attributes = MethodAttributes.Private | MethodAttributes.Static;
+    setter.Body.Instructions.Add(Instruction.Create(OpCodes.Call, leaf));
+    setter.Body.Instructions.Add(Instruction.Create(OpCodes.Ret));
+    type.Methods.Add(getter);
+    type.Methods.Add(setter);
+    type.Properties.Add(new PropertyDefinition(name, PropertyAttributes.None, valueType)
+        { GetMethod = getter, SetMethod = setter });
 }

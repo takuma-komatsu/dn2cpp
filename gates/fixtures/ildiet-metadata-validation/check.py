@@ -50,3 +50,5 @@ def resolver_case(name, references, selected):
 resolver_case("resolver-first", ("ResolverFirst.dll", "ResolverSecond.dll"), "ResolverFirst")
 resolver_case("resolver-second", ("ResolverSecond.dll", "ResolverFirst.dll"), "ResolverSecond")
 print("metadata-validation=resources,identity,empty-reference,token-integrity,determinism,resolver-order,nested-resolver,missing-type")
+print("metadata-validation=generic-constructors")
+print("metadata-validation=generic-data-properties")
