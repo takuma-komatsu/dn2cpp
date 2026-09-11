@@ -1,102 +1,22 @@
 #!/usr/bin/env bash
-# Godot .NET-module (mono module) scripted-node E2E gate, UNDER --trim-reflection
-# AND --trim-godot-classes.
-# Identical in every assertion to build-and-run-godot-dotnet-sample.sh — the same real
-# engine binary, the same scripted scene, the same marker battery — except that the
-# transpile passes both trims. It is the real-engine oracle for the flags: the
-# console gate (build-and-run-trim-reflection.sh) proves the strip semantics against a
-# synthetic library, and THIS one proves the trimmed metadata path survives the full
-# GodotSharp round trip that ships. That round trip reflects for real — ClassDB script
-# registration reads a private static NativeName field BY REFLECTION off the first engine-
-# wrapper base (the base-chain closure in the keep-set is what keeps that field alive on a
-# stripped Godot.Node), [Export] property scanning, [Signal] emission, delegate-backed
-# Callable connect, and an awaited ToSignal continuation all run here — so a keep-set that
-# stripped one type too many would surface as a null class name, a missing export, or a
-# dead signal in a real engine, not as a console PNSE. The trim strips ~1,858 types on this
-# sample and every marker below still fires. --trim-godot-classes stacks the
-# engine-wrapper allowlist trim on top (released-count tripwire + the
-# DN2CPP_DM_TRIMFALLBACK ancestor-wrapper probe; see godot_dotnet_transpile).
-#
-# ---- everything from here down mirrors the untrimmed sample gate ----
-#
-# A real engine binary built from the pinned godotengine/godot clone loads the
-# dn2cpp-produced mono-module library, and a scene whose nodes carry real C# scripts
-# (res://Player.cs + res://Probe.cs) runs end-to-end — script resource load
-# (managed script bridge maps the path to the type registered from its
-# ScriptPathAttribute), script-instance creation (uninitialized allocation +
-# in-place constructor invoke, tied to the native Object*), _Ready/_Process
-# dispatch through the source-generated InvokeGodotClassMethod, GD.Print
-# reaching the engine's stdout, [Export] properties (scene-baked override in
-# through the instance Set bridge, defaults surviving, cross-node reads back
-# out through the Variant Get path), [Signal]/engine-signal parity (C#
-# event round trip through the engine's connection dispatch, delegate-backed
-# Callable connect + managed hash/equality identity + trampoline invoke, and
-# an awaited ToSignal resuming an async continuation from the signal
-# callback), async-interop (the frame callback's scheduler pump resumes an
-# awaited Task.Run continuation and a real-time Task.Delay on the main
-# thread — the native mirror of GodotTaskScheduler.Activate), and RefCounted
-# lifetime (res://LifetimeProbe.cs +
-# res://MyResource.cs: the strong/weak GCHandle swap dance on engine
-# reference/unreference, finalizer-driven native disposal, the
-# instance-binding path for engine-created RefCounteds, explicit
-# Dispose()/Free(), and a 1000-instance create/store/drop stress loop),
-# plus the GDExtension-lane parity surface on res://ParityNode.cs (below).
-#
-# Parity record vs the GDExtension lane's sample gate
-# (gates/build-and-run-godot-sample.sh scene phase / MyNode.cs) — both lanes
-# now cover, in one engine run each:
-#   - virtuals: _EnterTree, _Ready, _Process (delta sane), _PhysicsProcess
-#     (delta > 0), _ExitTree (fires on the quit-driven scene teardown),
-#     _Notification with the exact raw constants (ENTER_TREE=10, READY=13,
-#     EXIT_TREE=11), _Input and _UnhandledInput.
-#   - input injection (headless): a synthesized InputEventKey (Key.A, pressed)
-#     pushed through get_viewport().push_input — here built and pushed from
-#     C# itself (the GDExtension lane uses a GDScript injector), which
-#     additionally proves C#-side engine-class construction (new
-#     InputEventKey()) and enum/bool property set/get round trips through the
-#     generated NativeCalls ptrcalls before the engine ever sees the object.
-#   - borrowed-event dispatch: both input virtuals receive the engine-owned
-#     event as a typed managed wrapper; IsPressed() + a Keycode read prove the
-#     handle and payload survive (RefCounted incoming-argument semantics).
-#   - reverse-direction engine calls (DM_ENGINE marker): bool return
-#     (IsInsideTree/HasNode/IsAncestorOf), String return (GetClass), String
-#     property round trip (EditorDescription), Vector2 property round trip
-#     (Position on a Node2D), NodePath return (GetPath), and an Object return
-#     (GetParent) whose wrapper drives a further call (.Name).
-#
-# Flow mirrors the handshake gate: build the mono-module dylib (shared
-# pipeline) -> pack the scripted main scene with the mono *editor*
-# (--export-pack, preset "sample-pack" whose custom_features carries the
-# "dotnet" feature the template's GDMono::should_initialize() gates on; the
-# default feature-untagged run/main_scene is the scripted scene) -> assemble a
-# loose run dir laid out like an exported game -> run headless with
-# DN2CPP_DM_TRACE=1 and assert the script markers (constructor exactly once,
-# _Ready with the node name proving the native tie, _Process exactly once)
-# plus the init-stage markers (a failed .NET init only logs an error — the
-# engine keeps running and exits 0, so absence of errors proves nothing).
-#
-# Requires the artifacts of gates/setup-godot-dotnet.sh via
-# DN2CPP_GODOT_DOTNET_ROOT (here: editor_bin + template_bin too); gate_skip's
-# when absent, which the runner counts and reports as a SKIP, NOT as a pass
-# (this gate's own history is why — see the skip protocol in _common.sh).
-# Registered in run-all-gates.sh's SERIAL Godot phase (it launches the engine);
-# every engine/editor launch runs under a watchdog — a broken Godot run hangs
-# rather than fails.
+# Real Godot script registration, callbacks, exported properties and signals under
+# reflection trimming. ILDiet removes unused managed engine/script definitions;
+# the same scene also runs with --no-ildiet to cover the legacy wrapper trim.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_dotnet.sh"
 
-# The transpile half of the pipeline, overriding the shared one from
-# _godot_dotnet.sh to add --trim-reflection AND --trim-godot-classes. Everything
-# else — the sample build, the GodotSharp + net10 CoreLib references — is
-# identical to the untrimmed gate, and the mono-module link is now literally the
-# shared godot_dotnet_link_lib rather than a second copy of its one line (that
-# half sits behind the cache check for every consumer). The engine run
-# below is thereby also the real-engine oracle for the wrapper trim: the scene's
-# TrimProbe node (a Sprite2D, a type the C# never names, so its registry lambda
-# is redirected) is fetched with the non-generic GetNode and driven through
-# GetClass/is/cast/property round trips on the ancestor-typed wrapper — the
-# DN2CPP_DM_TRIMFALLBACK marker in the shared battery asserts every answer
-# matches the untrimmed run's.
+LEGACY_TRIM="${DN2CPP_GODOT_TRIM_NO_ILDIET:-0}"
+run_legacy_trim() {
+    if [ "$LEGACY_TRIM" = 0 ]; then
+        # A standalone gate owns the lock itself; a suite passes its owner in.
+        local owner="${DN2CPP_MACHINE_LOCK_HELD:-}"
+        if [ -z "$owner" ] || [ "$(cat "$DN2CPP_SUITE_MACHINE_LOCK_DIR/pid" 2>/dev/null)" != "$owner" ]; then
+            owner="$$"
+        fi
+        DN2CPP_MACHINE_LOCK_HELD="$owner" DN2CPP_GODOT_TRIM_NO_ILDIET=1 bash "$0"
+    fi
+}
+
 godot_dotnet_transpile() {
     local out="$1"
     echo "-- Generating the sample's nuget.config (local feed + nuget.org)"
@@ -110,47 +30,43 @@ godot_dotnet_transpile() {
     local corelib; corelib=$(resolve_net10_corelib)
     rm -rf "$out"
     mkdir -p "$out"   # tee opens its file before the CLI creates the dir
-    invoke_cli "$app" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" \
-        --auto-ref --trim-reflection --trim-godot-classes -o "$out" | tee "$out/transpile.log"
-    # The godot-class-trim summary line proves the flag actually armed — a
-    # silently dropped flag would keep every wrapper in and leave this gate
-    # green for the wrong reason — and all three counts carry a tripwire:
-    #   released <= 200: this hello-world-sized sample names on the order of a
-    #     dozen wrappers, so more means a release trigger started cascading
-    #     (e.g. counting GodotSharp-internal mentions) and the trim no longer
-    #     trims.
-    #   registered >= 900: registered counts the registry lambdas whose bodies
-    #     the shape peek recognized (955 on the pinned GodotSharp). The peek
-    #     falls back to "reach normally" on an unrecognized shape — safe, but
-    #     silent — so a compiler/generator change to the lambda IL would zero
-    #     this count, quietly disarm the whole cut, and leave every other
-    #     assertion green.
-    #   redirected >= 700: registered minus released must actually be routed;
-    #     a redirect table that stopped filling is a cut without a route.
-    # The transpile log must also carry no 'godot-class-trim warning:' lines —
-    # the unreleased-internal-cast diagnostic must not fire on the shipped
-    # GodotSharp corpus (a hit here means a GodotSharp-internal cast now
-    # targets a wrapper the triggers do not release: fix the trigger set or
-    # add the wrapper to the gate's roots, but do not let it ride as a
-    # run-time InvalidCastException).
-    local released registered redirected
-    released=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: \([0-9][0-9]*\) released of .*/\1/p' "$out/transpile.log")
-    registered=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: [0-9][0-9]* released of \([0-9][0-9]*\) registered .*/\1/p' "$out/transpile.log")
-    redirected=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: .* registered engine wrappers, \([0-9][0-9]*\) lambdas redirected$/\1/p' "$out/transpile.log")
-    [ -n "$released" ] && [ -n "$registered" ] && [ -n "$redirected" ] \
-        || { echo "FAIL: no parseable 'dn2cpp: godot-class-trim:' line in the transpile output — --trim-godot-classes did not arm" >&2; return 1; }
-    [ "$released" -le 200 ] || { echo "FAIL: godot-class-trim released $released wrappers (> 200) — a release trigger is cascading" >&2; return 1; }
-    [ "$registered" -ge 900 ] || { echo "FAIL: godot-class-trim registered only $registered lambdas (< 900) — the registry-lambda shape peek stopped recognizing the generated IL, so the cut is disarmed" >&2; return 1; }
-    [ "$redirected" -ge 700 ] || { echo "FAIL: godot-class-trim redirected only $redirected lambdas (< 700) — the redirect table stopped filling (a cut without a route)" >&2; return 1; }
-    if grep -q "godot-class-trim warning:" "$out/transpile.log"; then
-        echo "FAIL: the unreleased-internal-cast diagnostic fired on the shipped GodotSharp corpus (above)" >&2
-        grep "godot-class-trim warning:" "$out/transpile.log" >&2
-        return 1
+    local diet_args=(--auto-ref)
+    if [ "$LEGACY_TRIM" = 1 ]; then diet_args+=(--no-ildiet); fi
+    invoke_cli "$app" "${diet_args[@]}" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" \
+        --trim-reflection --trim-godot-classes \
+        --project-root "$GODOT_DOTNET_SAMPLE_DIR" --godot-class-root Godot.Sprite3D \
+        --godot-class-root Godot.LightmapperRD -o "$out" | tee "$out/transpile.log"
+    if [ "$LEGACY_TRIM" = 1 ]; then
+        [ ! -d "$out/ildiet" ] || { echo "FAIL: --no-ildiet created rewritten DLLs" >&2; return 1; }
+        # Bound cascading reachability and prove that registry recognition and
+        # ancestor redirection remain active on the shipped GodotSharp IL.
+        local released registered redirected
+        released=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: \([0-9][0-9]*\) released of .*/\1/p' "$out/transpile.log")
+        registered=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: [0-9][0-9]* released of \([0-9][0-9]*\) registered .*/\1/p' "$out/transpile.log")
+        redirected=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: .* registered engine wrappers, \([0-9][0-9]*\) lambdas redirected$/\1/p' "$out/transpile.log")
+        [ -n "$released" ] && [ -n "$registered" ] && [ -n "$redirected" ] \
+            || { echo "FAIL: legacy wrapper trim did not report its registry counts" >&2; return 1; }
+        [ "$released" -le 200 ] \
+            || { echo "FAIL: legacy wrapper trim released $released wrappers (> 200)" >&2; return 1; }
+        [ "$registered" -ge 900 ] \
+            || { echo "FAIL: legacy wrapper trim recognized only $registered factories (< 900)" >&2; return 1; }
+        [ "$redirected" -ge 700 ] \
+            || { echo "FAIL: legacy wrapper trim redirected only $redirected factories (< 700)" >&2; return 1; }
+        if grep -q 'godot-class-trim warning:' "$out/transpile.log"; then
+            echo "FAIL: legacy wrapper trim reported an internal-cast warning" >&2
+            return 1
+        fi
+    else
+        godot_dotnet_check_ildiet "$app" "$out"
+        if grep -q '^dn2cpp: godot-class-trim:' "$out/transpile.log"; then
+            echo "FAIL: the post-model registry trim ran after ILDiet rewrote the registry" >&2
+            return 1
+        fi
     fi
-    echo "-- godot-class-trim armed: $released released / $registered registered / $redirected redirected, no internal-cast warnings"
 }
 
 OUT=gates/out-godot-dotnet-trim
+if [ "$LEGACY_TRIM" = 1 ]; then OUT="$OUT-no-ildiet"; fi
 ROOT="$GODOT_DOTNET_ROOT"
 PINNED_COMMIT=ed1daf0bf001b61586d9930840f2f1394092c079
 ABI_EXPECTED=gates/expected/godot-dotnet-abi.sha256
@@ -174,11 +90,11 @@ godot_dotnet_transpile "$OUT"
 # a hit. The link is deliberately below the check: a hit exits here and never
 # names $DYLIB, so building it first is pure waste.
 if gate_cache_check "$OUT" \
-    "godot-dotnet-trim|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
+    "godot-dotnet-trim|no-ildiet=$LEGACY_TRIM|trim-reflection|trim-godot-classes|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
     "$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll" \
     "$GODOT_DOTNET_GODOTSHARP" \
     "$GODOT_DOTNET_SAMPLE_DIR"; then
-    { gate_cache_hit_msg; exit 0; }
+    { gate_cache_hit_msg; run_legacy_trim; exit 0; }
 fi
 godot_dotnet_link_lib "$OUT"
 DYLIB="$OUT/$(lib_name DotnetSample)"
@@ -256,6 +172,8 @@ for marker in \
     "DN2CPP_DM_EXPORT speed=100 label=default-label factor=1.5 spawn=(3, 4)" \
     "DN2CPP_DM_GET speed=100 label=default-label" \
     "DN2CPP_DM_TRIMFALLBACK class=Sprite2D isNode2D=True name=TrimProbe posOk=True managed=Node2D" \
+    "DN2CPP_DM_AUTOLOAD" \
+    "DN2CPP_DM_SCENE_RESOURCE value=73" \
     "DN2CPP_DM_CONNECTED True" \
     "DN2CPP_DM_SIGNAL amount=7" \
     "DN2CPP_DM_TIMEOUT" \
@@ -338,6 +256,7 @@ grep -qF "DN2CPP_DM_FAULTPROBE posted=True method=True" "$LOG" \
 # in-place), a broken _Process latch, a double-dispatched signal handler or a
 # double-resumed awaiter shows up as a count != 1.
 for once in "DN2CPP_DM_CTOR" "DN2CPP_DM_READY" "DN2CPP_DM_PROCESS" \
+    "DN2CPP_DM_AUTOLOAD" "DN2CPP_DM_SCENE_RESOURCE" \
     "DN2CPP_DM_EXPORT" "DN2CPP_DM_GET" "DN2CPP_DM_TRIMFALLBACK" "DN2CPP_DM_CONNECTED" \
     "DN2CPP_DM_SIGNAL" "DN2CPP_DM_TIMEOUT" "DN2CPP_DM_TOSIGNAL" \
     "DN2CPP_DM_ASYNC" "DN2CPP_DM_SYNCCTX" \
@@ -373,5 +292,10 @@ for bad in \
         exit 1
     fi
 done
+if [ "$LEGACY_TRIM" = 0 ] && grep -q 'DN2CPP_DM_UNUSED_SCRIPT_CCTOR' "$LOG"; then
+    echo "FAIL: unused script initializer survived ILDiet" >&2
+    exit 1
+fi
 gate_cache_commit
+run_legacy_trim
 echo "OK"

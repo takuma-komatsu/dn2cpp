@@ -3,13 +3,12 @@ using Godot;
 // Reads the sibling Player's exported properties through the engine's Variant
 // path, proving that surface is reachable from OUTSIDE the owning instance.
 //
-// Also carries the --trim-godot-classes fallback probe. This C# must NEVER name
+// This C# must never name
 // Sprite2D: naming it would release its wrapper and the probe would stop probing
-// the fallback. Under the trim the wrapper materializes as the nearest released
+// the fallback. ILDiet materializes the nearest retained
 // ancestor (Node2D) while every operation still runs against the true native
 // object. `managed=` is the discriminator — the MANAGED wrapper's
-// GetType().Name, so the trimmed gate expects Node2D and the untrimmed one
-// Sprite2D; everything before it must match across both.
+// GetType().Name. Both ILDiet-enabled gates expect Node2D.
 public partial class Probe : Node
 {
     public override void _Ready()
@@ -26,5 +25,8 @@ public partial class Probe : Node
         probe2D.Position = new Vector2(7.5f, 8.5f);
         bool posOk = probe2D.Position == new Vector2(7.5f, 8.5f);
         GD.Print($"DN2CPP_DM_TRIMFALLBACK class={probeClass} isNode2D={isNode2D} name={trimProbe.Name} posOk={posOk} managed={trimProbe.GetType().Name}");
+
+        using var resource = ResourceLoader.Load("res://scene_resource.tres");
+        GD.Print($"DN2CPP_DM_SCENE_RESOURCE value={(int)resource.Get("Value")}");
     }
 }

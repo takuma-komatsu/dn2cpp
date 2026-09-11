@@ -131,6 +131,38 @@ still bind their members. A closed-generic `--cut` selector that requires type
 specialization also keeps the DLLs intact and reports that validation is deferred
 to the transpiler.
 
+With `--dotnet-module`, ILDiet also removes unused GodotSharp wrappers and unused
+user types derived from `GodotObject`, including their unused generated helpers.
+Handwritten nested .NET types retain the usual public-member and
+static-constructor roots, even when retaining one also keeps its enclosing script.
+It keeps engine initialization and callback entry points, and keeps the own
+constructors, methods, properties and events of surviving user script types.
+SDK script-registration attributes contain only surviving types. GDExtension
+continues to retain its public exports and script descendants.
+
+Pass `--project-root` to retain scripts referenced by the project's
+`project.godot`, scenes, resources and static GDScript `load`, `preload`,
+`extends` or global-class references. Discovery includes all scenes and resources,
+autoloads, resource UIDs and uncompressed binary resource dependency tables.
+Static C# path literals in GDScript constants also contribute roots, including
+raw and triple-quoted strings.
+Directories containing `.gdignore`, hidden directories, `bin`, `obj` and the
+current generated output directories are excluded. Without project information,
+all user Godot types remain. Compressed or unknown resource formats, unresolved
+resource references (including UID literals), unsupported escapes in non-raw
+GDScript strings and unavailable script sources retain the affected scripts and
+log the reason. Constructing a script path or class name dynamically requires an
+explicit preservation rule.
+
+The constructor registry retains engine class-name keys. An engine object whose
+concrete wrapper was removed receives the nearest retained ancestor wrapper;
+`GodotObject` and `RefCounted` always remain. Use the repeatable
+`--godot-class-root Godot.TypeName` to retain a concrete engine wrapper needed by
+dynamic type-name queries, or use the preservation rules below. The
+`--trim-godot-classes` emission-stage option applies only when ILDiet has not
+rewritten that registry, including `--no-ildiet` builds. Hot-update and ILDiet's
+copy-all paths leave DLL registries and registration attributes unchanged.
+
 Code used only through dynamic reflection needs an explicit preservation rule.
 The same Unity-compatible rules apply to ILDiet and C++ emission. Apply
 `[Dn2Cpp.Scripting.Preserve]` to an assembly, type, constructor, method,

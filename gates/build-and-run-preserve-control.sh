@@ -350,4 +350,12 @@ $PYTHON gates/fixtures/ildiet-metadata-validation/check.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$DIET_APP" "$DIET_LIB" "$_CG_CORELIB" "artifacts/ildiet-metadata-tests-$CONFIG"
 
+echo "== Conditional engine scripts and constructor registries are rewritten in DLLs =="
+# shellcheck disable=SC2086 -- resolve_python may answer `py -3`.
+$PYTHON gates/fixtures/ildiet-metadata-validation/check-engine-policy.py "$ILD_DLL" \
+    "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    "$_CG_CORELIB" "artifacts/ildiet-engine-policy-$CONFIG"
+dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    --check-script-discovery "artifacts/ildiet-script-discovery-$CONFIG"
+
 echo "OK"

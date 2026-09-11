@@ -52,8 +52,10 @@ internal sealed partial class AssemblyDiet : IDisposable
         Load();
         ReadPolicies();
         ValidateCuts();
+        ConfigureBackendPolicy();
         Seed();
         while (_pending.Count != 0) Scan(_pending.Dequeue());
+        CompleteBackendPolicy();
         int removedTypes = 0, removedMethods = 0;
         foreach (var assembly in _assemblies)
         {
@@ -94,7 +96,7 @@ internal sealed partial class AssemblyDiet : IDisposable
             });
             if (definition.Modules.Count != 1)
                 throw new NotSupportedException("multi-module assemblies are not supported: " + path);
-            bool copy = _request.CopyAll || IsProtected(name);
+            bool copy = _request.CopyAll || IsProtected(name) && !_request.RewriteAssemblies.Contains(name);
             if (!copy && (definition.MainModule.Attributes & ModuleAttributes.ILOnly) == 0)
                 throw new NotSupportedException("mixed-mode assemblies are not supported: " + path);
             var item = new DietAssembly
@@ -184,6 +186,16 @@ internal sealed partial class AssemblyDiet : IDisposable
                 if (root.Assembly.Length == 0) KeepReflectionAncestors(type, new HashSet<TypeDefinition>());
             }
         }
+        foreach (var root in _request.TypeRoots)
+            MarkType(FindPolicyType(root.Assembly, root.Type));
+        foreach (var root in _request.MethodRoots)
+        {
+            var type = FindPolicyType(root.Assembly, root.Type);
+            var methods = type.Methods.Where(m => m.Name == root.Method).ToList();
+            if (methods.Count == 0)
+                throw new NotSupportedException("method root was not found: " + root.Type + "::" + root.Method);
+            foreach (var method in methods) MarkMethod(method);
+        }
         var app = _assemblies[0].Assembly.MainModule;
         if (app.EntryPoint is not null) MarkMethod(app.EntryPoint);
         foreach (var assembly in _assemblies)
@@ -197,11 +209,12 @@ internal sealed partial class AssemblyDiet : IDisposable
                 if (type.Name == "<Module>") MarkType(type);
                 foreach (var method in type.Methods)
                 {
-                    if ((assembly.Index == 0 || type.Name == "<Module>") && method.IsConstructor && method.IsStatic
+                    if ((assembly.Index == 0 && !_suppressDefaultSeeds.Contains(type) || type.Name == "<Module>")
+                            && method.IsConstructor && method.IsStatic
                         || HasAttribute(method, "System.Runtime.InteropServices.UnmanagedCallersOnlyAttribute")
                         || HasAttribute(method, "Dn2Cpp.Runtime.NativeImplementationAttribute"))
                         MarkMethod(method);
-                    if (assembly.Index == 0 && app.EntryPoint is null && PublicType(type)
+                    if (assembly.Index == 0 && app.EntryPoint is null && PublicType(type) && !_suppressDefaultSeeds.Contains(type)
                         && (method.IsPublic || method.IsConstructor)) MarkMethod(method);
                 }
             }
@@ -357,6 +370,7 @@ internal sealed partial class AssemblyDiet : IDisposable
                 || method.IsConstructor && method.IsStatic) MarkMethod(method);
         if (type.HasInterfaces) KeepInterfaceHierarchy(type);
         if (_policyTypes.TryGetValue(type, out var policy) && _conditional.Add(type)) ApplyPolicy(type, policy, true);
+        if (_conditionalOwnMembers.Contains(type)) KeepOwnMembers(type);
     }
 
     private static bool IsDelegate(TypeDefinition type) => type.BaseType?.FullName is "System.Delegate" or "System.MulticastDelegate";
@@ -527,7 +541,10 @@ internal sealed partial class AssemblyDiet : IDisposable
             MarkMethod(attribute.Constructor);
             try
             {
-                foreach (var argument in attribute.ConstructorArguments) MarkArgument(argument);
+                bool registration = IsRegistrationAttribute(attribute, provider);
+                foreach (var argument in attribute.ConstructorArguments)
+                    if (registration && IsTypeArray(argument)) MarkType(argument.Type);
+                    else MarkArgument(argument);
                 var type = Resolve(attribute.AttributeType);
                 foreach (var argument in attribute.Fields)
                 {
@@ -583,7 +600,9 @@ internal sealed partial class AssemblyDiet : IDisposable
         {
             switch (instruction.Operand)
             {
-                case MethodReference target: MarkMethod(target); break;
+                case MethodReference target:
+                    if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
+                    break;
                 case FieldReference field: MarkField(field); break;
                 case TypeReference type: MarkType(type); break;
                 case CallSite signature:

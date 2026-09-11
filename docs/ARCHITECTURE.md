@@ -35,6 +35,39 @@ transpiler self-host input. Cut selectors that require generic specialization
 retain the original DLLs in the output set and defer validation to `Compilation`;
 a raw metadata match must not turn an invalid selector into a silent no-op.
 
+The backend receives the original assembly paths and project options through
+`ConfigureILDiet`. Its policy declares rewritable assemblies, type and method
+roots, conditional member roots for descendants, registration attributes and
+constructor registries. The XML protocol carries these declarations without
+engine names or resource parsing in the transpiler or ILDiet. A registry rewrite
+result disables the backend's later emission-stage registry trim only when the
+managed rewrite actually ran. Copy-all output preserves the original bytes.
+
+For the .NET-module backend, `GodotProjectScripts` matches `ScriptPathAttribute`
+metadata to project resources before stripping. It scans all project scenes and
+resources, resolves autoloads and UIDs, recognizes static GDScript C# references,
+and reads uncompressed binary dependency tables without decoding payloads.
+Static path literals also contribute roots through GDScript constants, including
+raw and triple-quoted strings. Unknown resource formats, unresolved dependencies
+(including UID literals), or unsupported escapes in non-raw GDScript strings
+retain the affected project's scripts with a diagnostic; missing project
+information retains all user Godot types. Ignored and generated directories
+cannot contribute roots.
+
+User Godot descendants do not inherit the default public-member or
+static-constructor roots. The backend nominates compiler-generated nested helpers
+and the SDK's `MethodName`, `PropertyName` and `SignalName` helpers by their
+metadata and helper-base ancestry. Handwritten nested .NET types retain the usual
+roots; keeping such a type also keeps its enclosing script. A surviving descendant
+retains its own
+engine-callable members. Script-registration type arrays are filtered after
+reachability. The GodotSharp constructor registry defers recognized factory
+edges until ordinary IL, signatures and inheritance establish the live wrappers,
+then redirects removed wrappers to compatible retained ancestor factories while
+preserving engine class-name keys. Unknown factory shapes remain conservative.
+The backend shares its native bootstrap root declarations between ILDiet and
+emission, including synchronization, exception reporting and interop layouts.
+
 Core invariants:
 
 - **Explicit vtables** (no C++ `virtual`): dispatch goes through the
@@ -73,9 +106,12 @@ only what it needs.
 
 Optional, with the invariant each exists for:
 
-- `ConfigureILDiet` — declares externally instantiated types from metadata before
-  model construction. The Godot backends retain script descendants; GDExtension
-  also retains its public application export surface.
+- `ConfigureILDiet` — declares managed stripping and external entry-point policy
+  before model construction. GDExtension retains script descendants and public
+  application exports; the .NET-module backend uses project resource roots and
+  conditional script members while allowing GodotSharp wrapper removal.
+- `ILDietCompleted` — reports whether constructor registries were rewritten, so
+  a backend cannot apply its emission-stage trim to an already rewritten table.
 
 - `WantsSyntheticBody` — hot-update base only: give a skipped-body method a real,
   invoker-compatible body rendered from the intrinsic's own call lowering.

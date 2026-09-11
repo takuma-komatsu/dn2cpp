@@ -11,6 +11,10 @@ run/main_scene="res://main.tscn"
 run/main_scene.handshake="res://handshake.tscn"
 config/features=PackedStringArray("4.7", "C#")
 
+[autoload]
+
+AutoloadProbe="*res://AutoloadProbe.cs"
+
 [dotnet]
 
 project/assembly_name="DotnetSample"

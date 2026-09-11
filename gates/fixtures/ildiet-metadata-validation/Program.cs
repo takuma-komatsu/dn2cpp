@@ -4,6 +4,12 @@ using Mono.Cecil.Cil;
 
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
+if (GodotValidation.Run(args)) return;
+if (args.Length == 2 && args[0] == "--check-script-discovery")
+{
+    ScriptDiscoveryValidation.Run(args[1]);
+    return;
+}
 if (args.Length == 2 && args[0] == "--create-dead")
 {
     using var fixture = AssemblyDefinition.CreateAssembly(new AssemblyNameDefinition("ILDietDeadReference", new Version(1, 0)),

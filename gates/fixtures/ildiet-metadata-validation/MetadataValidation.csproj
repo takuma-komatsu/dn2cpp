@@ -8,5 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Mono.Cecil" Version="0.11.6" />
+    <Compile Include="../../../src/Dn2Cpp.Transpiler/ILDietRootPolicy.cs" Link="ILDietRootPolicy.cs" />
+    <Compile Include="../../../src/Dn2Cpp.DotnetModule/GodotILDietMetadata.cs" Link="GodotILDietMetadata.cs" />
+    <Compile Include="../../../src/Dn2Cpp.DotnetModule/GodotProjectScripts.cs" Link="GodotProjectScripts.cs" />
   </ItemGroup>
 </Project>

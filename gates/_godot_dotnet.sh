@@ -156,7 +156,23 @@ godot_dotnet_transpile() {
     # can be an 11.0 preview whose CoreLib shape skews the transpile spuriously.
     local corelib; corelib=$(resolve_net10_corelib)
     rm -rf "$out"
-    invoke_cli "$app" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" --auto-ref -o "$out"
+    mkdir -p "$out"
+    invoke_cli "$app" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" \
+        --auto-ref --project-root "$GODOT_DOTNET_SAMPLE_DIR" \
+        --godot-class-root Godot.Sprite3D \
+        --godot-class-root Godot.LightmapperRD -o "$out" | tee "$out/transpile.log"
+    godot_dotnet_check_ildiet "$app" "$out"
+}
+
+godot_dotnet_check_ildiet() {
+    local app="$1" out="$2"
+    local probe="$PWD/$out/.metadata-probe"
+    dotnet build gates/fixtures/ildiet-metadata-validation/MetadataValidation.csproj \
+        -c "$CONFIG" --nologo -v q \
+        -p:IntermediateOutputPath="$probe/obj/$CONFIG/$TFM/" \
+        -p:MSBuildProjectExtensionsPath="$probe/obj/" -p:OutputPath="$probe/bin/"
+    dotnet exec "$probe/bin/MetadataValidation.dll" \
+        --check-godot-sample "$app" "$GODOT_DOTNET_GODOTSHARP" "$out/ildiet"
 }
 
 # godot_dotnet_link_lib OUT — the other half: link the mono-module shared library

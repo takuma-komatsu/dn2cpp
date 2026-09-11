@@ -229,7 +229,9 @@ internal sealed partial class AssemblyDiet
     {
         var text = new StringBuilder("<ildietResult input=\"").Append(Xml(assemblies[0]))
             .Append("\" preservation=\"").Append(Xml(preservation))
-            .Append("\" cutsValidated=\"").Append(_cutsValidated ? "true" : "false").Append("\">\n");
+            .Append("\" cutsValidated=\"").Append(_cutsValidated ? "true" : "false")
+            .Append("\" constructorRegistriesRewritten=\"").Append(_constructorRegistriesRewritten ? "true" : "false")
+            .Append("\">\n");
         for (int i = 1; i < assemblies.Count; i++)
             text.Append("  <reference path=\"").Append(Xml(assemblies[i])).Append("\" />\n");
         return text.Append("</ildietResult>\n").ToString();

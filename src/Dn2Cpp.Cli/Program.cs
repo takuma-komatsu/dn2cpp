@@ -336,30 +336,14 @@ for (int i = 0; i < args.Length; i++)
     }
     else if (args[i] == "--trim-godot-classes")
     {
-        // Allowlist-trim the GodotSharp engine-wrapper surface (--dotnet-module lane
-        // only). Godot.Constructors..cctor registers one "native class name ->
-        // allocate managed wrapper" lambda per engine class, and those ldftn edges
-        // root every engine wrapper the game never touches. Under this flag a lambda
-        // is reached only when the program NAMES its wrapper class outside GodotSharp
-        // itself (new X(), typeof/cast/is, a generic argument, a signature, a base
-        // chain, or a --godot-class-root); every other lambda is redirected to the
-        // nearest released ancestor's, so the registry keeps every key and an
-        // unreleased class's engine object is wrapped as that ancestor. Correct for
-        // every type test the program can express (testable types are named types);
-        // the observable residue is GetType().Name-style string reflection over
-        // never-named wrappers.
-        //
-        // Off by default, and a FLAG rather than an environment variable: it changes
-        // the C++ a successful transpile emits.
+        // The emission-stage fallback for a load set whose constructor registry
+        // ILDiet has not rewritten, including --no-ildiet builds.
         trimGodotClasses = true;
     }
     else if (args[i] == "--godot-class-root" && i + 1 < args.Length)
     {
-        // Keep one engine wrapper's registry lambda under --trim-godot-classes
-        // (repeatable), named by its GodotSharp full name ("Godot.Timer") — the
-        // escape hatch for a class only ever named from data (scenes/GDScript).
-        // A root matching no loaded engine wrapper is a hard error: a typo becoming
-        // a no-op root would surface as an ancestor-typed wrapper in a shipped game.
+        // Retain the concrete wrapper for dynamically named engine types.
+        // Both ILDiet and --trim-godot-classes validate the GodotSharp type name.
         godotClassRoots.Add(args[++i]);
     }
     else if (args[i] == "--max-heap-mb" && i + 1 < args.Length)
@@ -528,6 +512,11 @@ if (!string.IsNullOrEmpty(godotApiPath) && !gdExtension)
 if (trimGodotClasses && !dotnetModule)
 {
     Console.Error.WriteLine("error: --trim-godot-classes requires --dotnet-module (it trims the real GodotSharp engine-wrapper registry)");
+    return 1;
+}
+if (godotClassRoots.Count != 0 && (!dotnetModule || (!useILDiet && !trimGodotClasses)))
+{
+    Console.Error.WriteLine("error: --godot-class-root requires --dotnet-module with ILDiet or --trim-godot-classes");
     return 1;
 }
 // A hot-update base build must keep every wrapper patch code could bind against

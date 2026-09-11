@@ -12,6 +12,14 @@ internal sealed class ILDietRootPolicy
     internal readonly List<string> BaseTypes = new();
     internal bool PreservePublicAppTypes;
     internal readonly List<string> ExcludedAssemblies = new();
+    internal readonly List<string> RewriteAssemblies = new();
+    internal readonly List<(string Assembly, string Type)> TypeRoots = new();
+    internal readonly List<(string Assembly, string Type)> FullTypeRoots = new();
+    internal readonly List<(string Assembly, string Type, string Method)> MethodRoots = new();
+    internal readonly List<(string Assembly, string BaseType)> ConditionalMembers = new();
+    internal readonly List<(string Assembly, string Type)> SuppressedSeedTypes = new();
+    internal readonly List<(string Assembly, string Type)> RegistrationAttributes = new();
+    internal readonly List<(string Assembly, string Type, string Method)> ConstructorRegistries = new();
 
     private sealed class TypeRow
     {
