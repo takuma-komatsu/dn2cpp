@@ -78,9 +78,8 @@ assert_native_codecs() {
 
 # assert_managed_codecs OUT PROJECT — arm 2's proof that the injected shims,
 # not the vendored native libraries, are what ran. The transpiled DnZlib
-# adapter class is itself named CompressionNative and transpiled DnBrotli
-# methods are _m_*/__Z*m_DnBrotli_*-mangled, so anchoring on the extern-"C"
-# name-field shape is what keeps those out of the match.
+# adapter class is itself named CompressionNative, so anchoring on the
+# extern-"C" name-field shape keeps managed methods out of the match.
 assert_managed_codecs() {
     local out="$1" project="$2" syms
     echo "== Asserting the DEFAULT (no -r, no flag) is the managed backend (nm) =="

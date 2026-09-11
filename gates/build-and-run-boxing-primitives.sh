@@ -63,7 +63,7 @@ gate_extra_asserts() {
     for managed in Byte SByte Int16 UInt16 IntPtr UIntPtr; do
         if awk -v managed="$managed" '
                 BEGIN {
-                    sig = "m_System_" managed "_Equals_[0-9]+\\(t_System_" managed "\\* [^,]+, Dn2CppObject\\*"
+                    sig = managed "_Equals_m[0-9]+\\(t_System_" managed "\\* [^,]+, Dn2CppObject\\*"
                 }
                 $0 == "// System." managed "::Equals" { real_body = 1; next }
                 real_body {

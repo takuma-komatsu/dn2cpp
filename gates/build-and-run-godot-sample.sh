@@ -503,7 +503,7 @@ echo "== 7/7 --cut on a ClassDB registration slot must fail the TRANSPILE =="
 # gateway. Nothing fires in a normal build because AdditionalRootMethods roots
 # them — but a root is not a guard, and `--cut` on one used to give a GREEN
 # transpile whose generated.cpp then died at the C++ compile on
-# "use of undeclared identifier m_GodotSample_MyNode__Ready_274", with clang
+# "use of undeclared identifier MyNode__Ready_m...", with clang
 # suggesting a DIFFERENT class's symbol. Measured before the fix: all four.
 #
 # Each slot must now be refused at transpile time, exit 2, naming the method — the

@@ -15,8 +15,8 @@
 # a future section printing self-created compressed sizes would split this diff
 # — keep them round-trip based). nm then proves the swap happened: no native
 # brotli symbol may survive (the raw brotli API is re-exported unwrapped, so
-# every native entry point is a _Brotli*-prefixed name-field entry; transpiled
-# DnBrotli methods are _m_*/__Z*m_DnBrotli_*-mangled — no false positives).
+# every native entry point is a _Brotli*-prefixed name-field entry, while
+# managed methods carry their `_m<id>` suffix — no false positives).
 # The DnBrotli-only variant keeps native zlib deflate as the positive control
 # that the swap is surgical, not a wholesale unlinking of the native lib; the
 # combined variant asserts all of DnZlib's checks too (no CompressionNative_*,
@@ -121,8 +121,8 @@ dnbrotli_diff_gate() {
     syms="$(dump_symbols "$out/$project")"
     # Native brotli entry points are the only _Brotli*-prefixed name-field
     # entries: dotnet/runtime re-exports the brotli library's own public symbols
-    # unwrapped, and transpiled DnBrotli methods are _m_*/__Z*m_DnBrotli_*-mangled
-    # — anchor on the ` <letter> _Brotli` shape. The letter class accepts local
+    # unwrapped, while managed methods carry their `_m<id>` suffix — anchor on
+    # the ` <letter> _Brotli` shape. The letter class accepts local
     # t/u alongside T/U: the runtime compiles with hidden visibility, which turns
     # a linked-in definition's nm classification lowercase, and these checks are
     # about what got linked, not what got exported.

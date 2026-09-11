@@ -726,6 +726,8 @@ internal sealed partial class Compilation
             Context = ctx,
             PInvoke = ReadPInvoke(defModule, md),
             NameSuffix = "__" + string.Join("_", methodArgs.Select(MangleArg)),
+            ReadableNameSuffix = string.Concat(methodArgs.Select(
+                a => "_Tis" + ReadableMethodArg(a))),
         };
         byKey.Add(mkey, mi);
         _methodInstanceCount++;

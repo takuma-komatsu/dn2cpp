@@ -94,7 +94,7 @@ echo "0 gaps, 0 cuts"
 echo "== 5/7 The package's real machinery MUST be in the tree =="
 while IFS= read -r sym; do
     [ -n "$sym" ] || continue
-    grep -qh "$sym" "$out/generated.h" \
+    grep -qh "$sym" "$out/generated.h" "$out"/generated_*.cpp \
         || { echo "FAIL: generated tree lacks $sym" >&2; exit 1; }
 done < "$MARKERS_EXPECTED"
 echo "OK ($(grep -c . "$MARKERS_EXPECTED") machinery symbols present)"

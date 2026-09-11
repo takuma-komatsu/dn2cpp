@@ -2203,11 +2203,9 @@ internal sealed partial class CppEmitter
             foreach (var m in minted)
             {
                 compiled.Add(m);
-                // A CppName is not unique across ClassInfos: shared-source internal generics
-                // linked into several assemblies mangle alike, and a minted body carries row
-                // 0, so twins would collide on the symbol where real methods are told apart
-                // by their rows. One definition serves both — their layouts are identical,
-                // which is the premise of the emit set's own CppName dedupe.
+                // Shared-source internal generics linked into several assemblies can model
+                // the same synthesized body more than once. One definition serves twins
+                // whose complete method identity produces the same symbol.
                 if (!mintedSymbols.Add(m.CppName))
                     continue;
                 emitBody?.Invoke(m, new MethodCompiler(_c, m, literals, _backend)

@@ -12,14 +12,14 @@ MessagePipe_MessagePipeOptions
 MessagePipe_RequestAllHandler
 MessagePipe_RequestHandler
 MessagePipe_SubscriberExtensions
-m_MessagePipe_DisposableBagBuilder_Build_[0-9][0-9]*(
-m_MessagePipe_GlobalMessagePipe_CreateEvent_[0-9][0-9]*__Int32(
-m_MessagePipe_SubscriberExtensions_Subscribe_[0-9][0-9]*__MessagePipePubSubSubset_FilterMessage(
-m_MessagePipe_AsyncMessageBroker_Int32_Subscribe_[0-9][0-9]*(
-m_MessagePipe_GlobalMessagePipe_CreateAsyncEvent_[0-9][0-9]*__Int32(
-m_MessagePipe_SubscriberExtensions_Subscribe_[0-9][0-9]*__String_String(
-m_MessagePipe_SubscriberExtensions_SubscribeAsync_[0-9][0-9]*__String(
-m_Microsoft_Extensions_DependencyInjection_ServiceProviderServiceExtensions_GetRequiredService_[0-9][0-9]*__MessagePipe_IRequestAllHandler_String_String(
-m_MessagePipe_MessagePipeOptions_AddGlobalMessageHandlerFilter_[0-9][0-9]*(
-m_MessagePipe_MessagePipeOptions_AddGlobalRequestHandlerFilter_[0-9][0-9]*(
-m_MessagePipe_GlobalMessagePipe_GetPublisher_[0-9][0-9]*__String(
+DisposableBagBuilder_Build_m[0-9][0-9]*(
+GlobalMessagePipe_CreateEvent_TisInt32_m[0-9][0-9]*(
+SubscriberExtensions_Subscribe_TisFilterMessage_m[0-9][0-9]*(
+AsyncMessageBroker_1_Subscribe_m[0-9][0-9]*(t_MessagePipe_AsyncMessageBroker__CnInt32\* a0
+GlobalMessagePipe_CreateAsyncEvent_TisInt32_m[0-9][0-9]*(
+SubscriberExtensions_Subscribe_TisString_TisString_m[0-9][0-9]*(
+SubscriberExtensions_SubscribeAsync_TisString_m[0-9][0-9]*(
+ServiceProviderServiceExtensions_GetRequiredService_TisIRequestAllHandler_2_m[0-9][0-9]*(
+MessagePipeOptions_AddGlobalMessageHandlerFilter_m[0-9][0-9]*(
+MessagePipeOptions_AddGlobalRequestHandlerFilter_m[0-9][0-9]*(
+GlobalMessagePipe_GetPublisher_TisString_m[0-9][0-9]*(

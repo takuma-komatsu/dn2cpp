@@ -176,8 +176,8 @@ internal readonly record struct DelegateAdapter(MethodInfo Method, bool Closed, 
 {
     /// <summary>The adapter's C++ symbol — the single definition both mouths use (the
     /// <c>ldftn</c> site that names it and the emitter that defines it). A method's
-    /// <see cref="MethodInfo.CppName"/> always starts <c>m_</c>, so neither prefix can
-    /// collide with a plain adapter's name.</summary>
+    /// The adapter prefixes cannot collide with a plain method name because method
+    /// symbols end their readable stem with <c>_m</c> plus a numeric identity.</summary>
     public string CppName => NfiErased
         ? $"dgadapn_{(Closed ? "closed_" : "")}{Method.CppName}"
         : Closed ? $"dgadap_closed_{Method.CppName}" : $"dgadap_{Method.CppName}";
@@ -2425,6 +2425,45 @@ internal sealed partial class Compilation
                     + "spell a fragment no other kind can, or two type arguments share one "
                     + "specialization (CppNaming.MangleFragment)"),
             };
+
+    /// <summary>The metadata-facing type fragment shown in a generic method's
+    /// readable symbol stem. Identity stays in <see cref="MangleArg"/> and the
+    /// numeric suffix; this rendering deliberately omits namespaces and closed
+    /// declaring-type arguments.</summary>
+    private static string ReadableMethodArg(TypeDesc t)
+    {
+        if (t.IsCanonPlaceholder)
+            return t.CanonAnyIndex >= 0 ? "CnAny" + t.CanonAnyIndex
+                : t.IsObject ? "CnRef" : "Cn" + t.Primitive;
+        return t.Kind switch
+        {
+            TypeKind.Primitive => t.Primitive.ToString(),
+            TypeKind.Class => CppNaming.Il2CppClean(t.Class!.Handle.IsNil
+                ? t.Class.Name
+                : t.Class.Module.Reader.GetString(
+                    t.Class.Module.Reader.GetTypeDefinition(t.Class.Handle).Name)),
+            TypeKind.External => CppNaming.Il2CppClean(SimpleExternalTypeName(t.ExternalName!)),
+            TypeKind.ExternalGeneric => CppNaming.Il2CppClean(SimpleExternalTypeName(t.ExternalName!)),
+            TypeKind.SZArray => ReadableMethodArg(t.Element!) + "U5BU5D",
+            TypeKind.MDArray => ReadableMethodArg(t.Element!)
+                + CppNaming.Il2CppClean("[" + new string(',', t.Rank - 1) + "]"),
+            TypeKind.Pointer => ReadableMethodArg(t.Element!) + "U2A",
+            TypeKind.ByRef => ReadableMethodArg(t.Element!) + "U26",
+            TypeKind.GenericVar => "T" + t.GenVarIndex,
+            TypeKind.Template => CppNaming.Il2CppClean(MangleArg(t)),
+            _ => throw new InvalidOperationException(
+                $"no readable generic-method argument for type kind {t.Kind} ({t})"),
+        };
+    }
+
+    private static string SimpleExternalTypeName(string name)
+    {
+        int dot = name.LastIndexOf('.');
+        int nested = name.LastIndexOf('+');
+        int slash = name.LastIndexOf('/');
+        int separator = Math.Max(dot, Math.Max(nested, slash));
+        return separator >= 0 ? name.Substring(separator + 1) : name;
+    }
 
     /// <summary>Canonical mangle for an SZArray element type — the suffix of the
     /// <c>ti_arr_&lt;…&gt;</c> symbol CppEmitter emits for the array <c>element[]</c>

@@ -1458,7 +1458,7 @@ internal sealed partial class Compilation
     /// <summary>The C++ name of the type-switch dispatcher for a GVM instantiation.
     /// Derived from the instantiation's own (unique) method name so the call site,
     /// the registration, and the emitter all agree without threading state.</summary>
-    internal static string GvmDispatchName(MethodInfo gvm) => "dn2cpp_gvm_" + gvm.CppName.Substring(2);
+    internal static string GvmDispatchName(MethodInfo gvm) => "dn2cpp_gvm_" + gvm.CppName;
 
     /// <summary>Registers a used GVM instantiation and reaches each allocated type's
     /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).</summary>

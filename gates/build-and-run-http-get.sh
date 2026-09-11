@@ -314,38 +314,12 @@ echo "== 7/17 object symbols: no certificate-subtree BODY is emitted or named ==
 # shape — and delegates are kept whatever module they come from (AGENTS.md). What must be gone
 # is X509Store.Open, the keychain walk, the ASN.1 decoder and BigInteger's arithmetic.
 #
-# The pattern is anchored at `m_` — the start of a transpiled method's plain name (both helpers
-# strip whatever mangling glues onto that prefix: Itanium's `_Z<len>` on Unix, MSVC's `?...@@`
-# decoration on Windows) — for the same reason the ORIGINAL nm-only version of this check
-# anchored at `_Z<len>m_`: an unanchored 'X509' matches a mangled PARAMETER type, so every thunk
-# taking an X509Certificate would trip it; and since "System_" contains the substring "m_", even
-# a half-anchored `m_.*X509` matches ti_System_Collections_Generic_ICollection_...X509... . Both
-# were tried; both reported a cut that is in fact clean.
-cert_sym='m_(System_Security_Cryptography|System_Formats_Asn1|System_Numerics_BigInteger|System_Net_Security_CertificateHelper|AppleKeychainStore|Interop_AppleCrypto)'
-# A kept type's cctor FIRST-USE GUARD (CppEmitter.EmitCctorEnsures: `inline void
-# <Name>__ensure()` over an `std::atomic<int8_t> <Name>__done` flag, emitted
-# alongside its own reflection field accessors whenever something notes the cctor
-# via NoteCctorEnsure — a field read, an rgctx CctorEnsureFn slot, ...) is not
-# itself security code and must not match either check below: the wrapper is an
-# atomic-flag check that dispatches through a function-pointer argument that is
-# nullptr whenever, as here, the cctor body itself was never reached
-# (Compilation.ReachCctor never ran for it) — the "shape kept, body cut" case
-# AGENTS.md already carves out for t_/ti_. A REAL, reached cctor body is a
-# SEPARATE symbol under the SAME name minus the "__ensure"/"__done" suffix
-# (CppEmitter.cs: `body = compiled ? "&" + cc.CppName : "nullptr"`), which this
-# exclusion does not touch, so it stays caught.
-#
-# The `__done` flag is DATA, not a body, and it is the one guard piece nm can see:
-# a global-scope C++ VARIABLE is unmangled under the Itanium ABI, so it survives
-# the helpers' `_Z<len>` strip as a plain `_m_...__done` and would otherwise trip
-# a body check that only mangled FUNCTION symbols used to reach (dumpbin never
-# shows it at all — MSVC decorates data, and _dump_obj_symbols_win's
-# nested-paren test drops decorated non-functions in both modes, so excluding it
-# here is what keeps the two arms agreeing). `ensurev?`: an out-of-line-emitted
-# wrapper is a mangled function whose stripped nix spelling keeps the Itanium
-# void-parameter code (`...__ensurev`), while dumpbin's readable comment gives
-# the bare `...__ensure`.
-cctor_guard_re='__cctor_[0-9]+__(ensurev?|done)$'
+# Readable method symbols deliberately omit namespaces. Classify security code
+# with each generated body's full-name comment so unrelated simple type names
+# and parameter types cannot produce false positives.
+cert_body='^// (System\.Security\.Cryptography|System\.Formats\.Asn1|System\.Numerics\.BigInteger|System\.Net\.Security\.CertificateHelper|AppleKeychainStore|Interop\.AppleCrypto)'
+# A kept type's cctor first-use guard is permitted; it carries no method-body
+# comment. A reached cctor body does carry one and remains visible below.
 objs=$(find_generated_objects "$certout/.cmake")
 [ -n "$objs" ] || { echo "FAIL: no generated object files found under $certout/.cmake" >&2; exit 1; }
 defined="$certout/defined-syms.txt"
@@ -356,11 +330,11 @@ dump_object_symbols_undefined "$certout/.cmake" > "$undefined"
 # changed mangling, the wrong file), every absence check below would pass while proving nothing.
 # Note the final EXECUTABLE is useless for this — a release link strips it to undefined imports
 # only, which is why this reads the objects.
-bodies=$(grep -cE '^m_' "$defined" || true)
+bodies=$(grep -cE '^_?[A-Za-z_][A-Za-z0-9_]*_m[0-9]+' "$defined" || true)
 [ "${bodies:-0}" -gt 50 ] || {
     echo "FAIL: only ${bodies:-0} transpiled bodies visible in the objects — the checks below would be vacuous" >&2
     exit 1; }
-grep -qE '^m_System_Net_Http_HttpClientHandler_set_ClientCertificateOptions' "$defined" || {
+grep -qE '^_?HttpClientHandler_set_ClientCertificateOptions_m[0-9]+' "$defined" || {
     echo "FAIL: the intercepted setter is not defined in the objects — the route did not emit it" >&2
     exit 1; }
 echo "OK: $bodies transpiled bodies visible, including the intercepted setter"
@@ -372,23 +346,15 @@ echo "OK: $bodies transpiled bodies visible, including the intercepted setter"
 # X509/ASN.1/BigInteger subtree came back" case this section exists to catch
 # (measured to invert at ~200k lines). This file's own comments name the
 # hazard three times and the curl-less arm below already avoids it this way.
-cert_hits=$(grep -E "$cert_sym" "$defined" | grep -vE "$cctor_guard_re" || true)
+cert_hits=$(grep -hE "$cert_body" "$certout"/generated*.cpp | grep -vE '::\.cctor$' || true)
 if [ -n "$cert_hits" ]; then
-    echo "FAIL: a certificate-subtree body is compiled into the objects — the cut regressed" >&2
+    echo "FAIL: a certificate-subtree body is present in generated C++ — the cut regressed" >&2
     printf '%s\n' "$cert_hits" >&2
     exit 1
 fi
-# A cut edge left dangling would surface here as an undefined reference — this is
-# AssertCalledBodiesEmitted's invariant, re-asked of the linker's own symbol table.
-# (The guard exclusion applies here too: the defining TU's neighbours reference the
-# extern `__done` flag, so it shows up as an undefined DATA symbol as well.)
-cert_named=$(grep -E "$cert_sym" "$undefined" | grep -vE "$cctor_guard_re" || true)   # captured, not `| grep -q .` — see above
-if [ -n "$cert_named" ]; then
-    echo "FAIL: an emitted body NAMES a cut certificate body — cut ⟹ route is broken" >&2
-    printf '%s\n' "$cert_named" >&2
-    exit 1
-fi
-echo "OK: zero certificate-subtree bodies defined, zero named — the dead weight is gone"
+# The successful native link above is the dangling-reference backstop. Namespace
+# attribution comes from source comments because symbols no longer carry it.
+echo "OK: zero certificate-subtree bodies generated; native link has no dangling calls"
 gate_cache_commit
 fi   # cert arm
 
@@ -513,18 +479,15 @@ grep -qE '^_?dn2cpp_http2_call_open$' "$real_undefined" || {
     echo "FAIL: no app object references dn2cpp_http2_call_open — SocketsHttpHandler.Send did not route to the curl shim" >&2
     exit 1; }
 echo "OK: dn2cpp_http2_call_open is defined in the transport and referenced by the app"
-# (2) No CUT transport-internal body emitted or named — checked across BOTH the defined and
-# undefined dumps, since either would mean the real transport is back in the tree. Anchored at
-# `m_` — the start of a transpiled method's plain name — so a socket TYPE named by a kept
-# signature does not trip it (same discipline as section 7). SocketsHttpHandler.Send itself is
+# (2) No CUT transport-internal body is emitted. Full-name body comments classify
+# the namespace now that readable method symbols omit it. SocketsHttpHandler.Send itself is
 # DELIBERATELY present: it is the intercepted entry point, routed to the DnHttp shim — hence
-# Send[A-Za-z]*Core (SendCore / SendAsyncCore), not a bare Send. cctor_guard_re (section 7)
-# applies here too, same reason: a kept socket/DNS/TLS type's cctor first-use wrapper and its
-# `__done` DATA flag are not themselves transport code.
-sock_sym='m_(System_Net_Sockets|System_Net_Quic|System_Net_NameResolution|System_Net_Dns|System_Net_Security_SslStream|System_Net_Http_HttpConnectionPool|System_Net_Http_SocketsHttpHandler_(SetupHandlerChain|Send[A-Za-z]+Core|Startup))'
+# Send[A-Za-z]*Core (SendCore / SendAsyncCore), not a bare Send. A kept
+# socket/DNS/TLS type's cctor guard has no body comment and does not trip this check.
+sock_body='^// (System\.Net\.Sockets|System\.Net\.Quic|System\.Net\.NameResolution|System\.Net\.Dns|System\.Net\.Security\.SslStream|System\.Net\.Http\.HttpConnectionPool|System\.Net\.Http\.SocketsHttpHandler::(SetupHandlerChain|Send[A-Za-z]+Core|Startup))'
 # Captured, not `| grep -q .` — the SIGPIPE-under-pipefail inversion described in
 # section 7 applies verbatim, and this is the gate's headline claim.
-sock_hits=$(grep -E "$sock_sym" "$real_defined" "$real_undefined" | grep -vE "$cctor_guard_re" || true)
+sock_hits=$(grep -hE "$sock_body" "$realout"/generated*.cpp | grep -vE '::\.cctor$' || true)
 if [ -n "$sock_hits" ]; then
     echo "FAIL: a .NET socket/DNS/TLS transport body is emitted or named — the transport intercept regressed" >&2
     head >&2 <<<"$sock_hits"

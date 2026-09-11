@@ -475,7 +475,7 @@ for mode in "" "--measure"; do
     (export DN2CPP_MAX_INSTANTIATIONS=2
      invoke_cli "$link_app" $mode -o "$link_dir") >"$link_so" 2>"$link_se"
     if [ -z "$mode" ]; then
-        if ! grep -Eq '^inline .* m_CanonicalLinkBound_Program_Id_[0-9]+___CnRef\([^;]*\)$' "$link_dir/generated.h"; then
+        if ! grep -Eq '^inline .* Program_Id_TisCnRef_m[0-9]+\([^;]*\)$' "$link_dir/generated.h"; then
             echo "FAIL: raising the bound did not produce the canonical Id<CnRef> body" >&2
             exit 1
         fi
@@ -571,7 +571,7 @@ echo "== 6/8 --cut: a named method's subtree falls out; call sites yield the def
 # typo silently becoming a no-op cut is a footgun).
 invoke_cli "$sig_app" -r "$corelib" --cut "GenericSignatureRecursionBad.Tracker::Tracked" -o "$cut_out" >/dev/null
 for sym in Tracked Helper; do
-    if grep -q "m_GenericSignatureRecursionBad_Tracker_${sym}" "$cut_out"/generated*; then
+    if grep -q "^// GenericSignatureRecursionBad.Tracker::${sym}$" "$cut_out"/generated*; then
         echo "FAIL: --cut left Tracker.$sym in the generated C++" >&2
         exit 1
     fi
@@ -596,7 +596,7 @@ for bypass in "--no-ildiet" ""; do
                 || { echo "FAIL: generic --cut did not explain its intact-copy validation" >&2; exit 1; }
             cmp "$sig_app" "$cut_out/ildiet/GenericSignatureRecursionBad.dll"
         fi
-        if grep -q 'm_GenericSignatureRecursionBad_Tracker_Tracked' "$cut_out"/generated*; then
+        if grep -q '^// GenericSignatureRecursionBad.Tracker::Tracked$' "$cut_out"/generated*; then
             echo "FAIL: a generic --cut disabled a simultaneous ordinary cut" >&2
             exit 1
         fi
