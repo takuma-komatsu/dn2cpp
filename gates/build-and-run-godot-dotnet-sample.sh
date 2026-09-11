@@ -109,7 +109,7 @@ godot_dotnet_transpile "$OUT"
 # drifted clone still fails on a hit. The link is deliberately below the check:
 # a hit exits here and never names $DYLIB, so building it first is pure waste.
 if gate_cache_check "$OUT" \
-    "godot-dotnet-sample|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
+    "godot-dotnet-sample|ildiet|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
     "$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll" \
     "$GODOT_DOTNET_GODOTSHARP" \
     "$GODOT_DOTNET_SAMPLE_DIR" \
@@ -199,7 +199,9 @@ for marker in \
     "DN2CPP_DM_READY name=Player" \
     "DN2CPP_DM_EXPORT speed=100 label=default-label factor=1.5 spawn=(3, 4)" \
     "DN2CPP_DM_GET speed=100 label=default-label" \
-    "DN2CPP_DM_TRIMFALLBACK class=Sprite2D isNode2D=True name=TrimProbe posOk=True managed=Sprite2D" \
+    "DN2CPP_DM_TRIMFALLBACK class=Sprite2D isNode2D=True name=TrimProbe posOk=True managed=Node2D" \
+    "DN2CPP_DM_AUTOLOAD" \
+    "DN2CPP_DM_SCENE_RESOURCE value=73" \
     "DN2CPP_DM_CONNECTED True" \
     "DN2CPP_DM_SIGNAL amount=7" \
     "DN2CPP_DM_TIMEOUT" \
@@ -328,13 +330,9 @@ grep -q "^ERROR: dn2cpp: 1 type(s) left unusable by a failed startup static cons
     || { echo "FAIL: the startup pass emitted no end-of-init summary of the types it disabled" >&2; exit 1; }
 grep -qF "DN2CPP_DM_CCTORPROBE reraised=InvalidOperationException" "$LOG" \
     || { echo "FAIL: a failed startup cctor did not re-raise at the first use of its type" >&2; exit 1; }
-# The absent-class arm of the same pass reports on the TRACE channel, never the
-# error one, and that split is what this must not undo: every
-# headless template hits it (GodotSharp declares editor-only engine wrappers
-# unconditionally), so a loud line would be a standing false alarm in every
-# shipped game's Errors panel. Asserting the trace line is what keeps the case
-# covered rather than merely quiet — and it is a real engine build with real
-# absent classes, so an empty list here means the filter stopped matching.
+# The explicit LightmapperRD root keeps an absent-class witness
+# in the template build. Its startup failure belongs on the trace channel;
+# treating an unavailable editor wrapper as an engine error would poison exports.
 grep -q "^dn2cpp-dm: [1-9][0-9]* type(s) unusable - class absent from this engine build: " "$LOG" \
     || { echo "FAIL: the startup pass did not summarize the absent-class types on the trace channel" >&2; exit 1; }
 # Exactly-once markers: a double construction (the ctor-invoke risk: a
@@ -343,6 +341,7 @@ grep -q "^dn2cpp-dm: [1-9][0-9]* type(s) unusable - class absent from this engin
 # double-resumed awaiter shows up as a count != 1.
 for once in "DN2CPP_DM_CTOR" "DN2CPP_DM_READY" "DN2CPP_DM_PROCESS" \
     "DN2CPP_DM_GENERIC value=42" \
+    "DN2CPP_DM_AUTOLOAD" "DN2CPP_DM_SCENE_RESOURCE" \
     "DN2CPP_DM_EXPORT" "DN2CPP_DM_GET" "DN2CPP_DM_TRIMFALLBACK" "DN2CPP_DM_CONNECTED" \
     "DN2CPP_DM_SIGNAL" "DN2CPP_DM_TIMEOUT" "DN2CPP_DM_TOSIGNAL" \
     "DN2CPP_DM_ASYNC" "DN2CPP_DM_SYNCCTX" \
@@ -387,7 +386,8 @@ for bad in \
     "Failed to load hostfxr" \
     "ERROR" \
     "SCRIPT ERROR" \
-    "ObjectDB instances leaked"; do
+    "ObjectDB instances leaked" \
+    "DN2CPP_DM_UNUSED_SCRIPT_CCTOR"; do
     if grep -q "$bad" "$FILTERED"; then
         echo "FAIL: log contains \"$bad\"" >&2
         exit 1

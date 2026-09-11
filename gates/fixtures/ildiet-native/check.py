@@ -47,15 +47,17 @@ def run(command, log):
 def manifest(path, output):
     root = ET.parse(path).getroot()
     assert root.tag == "ildietResult" and set(root.attrib) == {
-        "input", "preservation", "cutsValidated"}, f"invalid protocol result: {path}"
+        "input", "preservation", "cutsValidated", "constructorRegistriesRewritten"}, f"invalid protocol result: {path}"
     assert root.attrib["cutsValidated"] == "true", f"cuts were not validated: {path}"
+    assert root.attrib["constructorRegistriesRewritten"] == "false", f"ordinary input reported a registry rewrite: {path}"
 
     def relative(value):
         return Path(value).resolve().relative_to(output).as_posix()
 
     result = {"input": relative(root.attrib["input"]),
               "preservation": relative(root.attrib["preservation"]),
-              "cutsValidated": root.attrib["cutsValidated"], "references": []}
+              "cutsValidated": root.attrib["cutsValidated"],
+              "constructorRegistriesRewritten": root.attrib["constructorRegistriesRewritten"], "references": []}
     for child in root:
         assert child.tag == "reference" and set(child.attrib) == {"path"} and not len(child)
         result["references"].append(relative(child.attrib["path"]))

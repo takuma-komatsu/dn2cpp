@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="DotnetSample">
+    <type fullname="ExplicitPreservedScript" preserve="all" />
+  </assembly>
+</linker>

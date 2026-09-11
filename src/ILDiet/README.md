@@ -41,9 +41,13 @@ including private setters, because generic factories and serializers can select
 them without direct call tokens. Their base types, instance field and property
 types, and constructor parameter types retain the same data surface recursively.
 It does not specialize generics or perform dn2cpp intrinsic lowering.
-Framework assemblies, GodotSharp, and dn2cpp runtime/codec/HTTP shims are copied
-unchanged. They contain runtime dependencies that are introduced during later
-transpilation. dn2cpp also requests copies for hot-update base builds.
+Framework assemblies and dn2cpp runtime/codec/HTTP shims are copied unchanged.
+They contain runtime dependencies that are introduced during later transpilation.
+GodotSharp is copied unless the .NET-module backend supplies its engine entry
+points and constructor-registry policy. That policy retains factories for live
+wrappers and redirects unused wrappers to compatible retained ancestor factories,
+preserving every engine-name registration key. Unrecognized factory bodies retain
+their original dependencies. dn2cpp also requests copies for hot-update base builds.
 When a `--cut` selector names a closed generic specialization, ILDiet reports
 that it is copying the complete load set and leaves validation to dn2cpp's
 original model. Whether that specialization exists depends on model discovery;
@@ -58,9 +62,24 @@ signatures; they are dn2cpp inputs rather than signed distribution assemblies.
 
 The integration protocol is `--request <request.xml> --result <result.xml>`.
 The request contains the resolved input/reference paths, descriptor paths,
-features, optional full-type roots, and an optional copy-all setting. The result
-contains the ordered output assembly paths, effective preservation file, and
-whether cut selectors were validated before stripping.
+features, optional full-type roots, and an optional copy-all setting. Backends can
+also declare assembly rewrites, type-only and named-method roots, conditional
+member retention for descendants of a loaded base type, individual types excluded
+from default seeds, registration attributes, and constructor registries.
+A conditional descendant retains its own methods,
+constructors, properties and events once reached. Default public-surface and
+application-initializer roots do not seed those descendants. Backends can nominate
+generated helpers with `<suppressDefaultSeeds assembly="..." type="..." />`;
+each row applies only to that type, so ordinary nested types retain the existing
+rules. Explicit preservation still applies. Assembly-level registration
+attributes retain their constructor and ordinary arguments, while their `Type[]`
+arguments are filtered to the surviving types.
+
+The result contains the ordered output assembly paths, effective preservation
+file, whether cut selectors were validated before stripping, and whether
+constructor-registry references were rewritten. The backend uses the last state
+to avoid applying a second wrapper-trimming pass. Copy-all paths leave assemblies,
+registration attributes and constructor registries byte-identical to their inputs.
 ILDiet runs as a companion process; its Cecil dependency is never transpiled
 into the native dn2cpp executable.
 

@@ -8,9 +8,12 @@ namespace Dn2Cpp;
 /// emitter free of any target knowledge.</summary>
 internal interface IEmitBackend
 {
-    /// <summary>Declares externally instantiated managed types before the
-    /// transpiler model exists; ILDiet retains their complete member surface.</summary>
-    void ConfigureILDiet(ILDietRootPolicy policy) { }
+    /// <summary>Declares backend roots and metadata rewriting rules before the
+    /// transpiler model exists.</summary>
+    void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options) { }
+
+    /// <summary>Reports completed constructor-table rewriting before model construction.</summary>
+    void ILDietCompleted(bool constructorRegistriesRewritten) { }
 
     /// <summary>Runtime header the generated translation unit includes.</summary>
     string RuntimeHeader { get; }

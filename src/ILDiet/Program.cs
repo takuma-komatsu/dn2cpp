@@ -75,6 +75,13 @@ internal sealed class DietRequest
     internal readonly List<string> ProjectRoots = new();
     internal readonly List<string> Features = new();
     internal readonly List<(string Assembly, string Type)> Roots = new();
+    internal readonly List<string> RewriteAssemblies = new();
+    internal readonly List<(string Assembly, string Type)> TypeRoots = new();
+    internal readonly List<(string Assembly, string Type, string Method)> MethodRoots = new();
+    internal readonly List<(string Assembly, string BaseType)> ConditionalMembers = new();
+    internal readonly List<(string Assembly, string Type)> SuppressedSeedTypes = new();
+    internal readonly List<(string Assembly, string Type)> RegistrationAttributes = new();
+    internal readonly List<(string Assembly, string Type, string Method)> ConstructorRegistries = new();
     internal readonly List<string> Cuts = new();
 
     internal static DietRequest Read(string path)
@@ -103,6 +110,30 @@ internal sealed class DietRequest
                 case "root":
                     Check(child, "root", "assembly", "type");
                     request.Roots.Add((child.Attr("assembly") ?? "", Required(child, "type")));
+                    break;
+                case "rewriteAssembly":
+                    Check(child, "rewriteAssembly", "name");
+                    request.RewriteAssemblies.Add(Required(child, "name"));
+                    break;
+                case "typeRoot":
+                case "suppressDefaultSeeds":
+                case "registrationAttribute":
+                    Check(child, child.Name, "assembly", "type");
+                    var selected = (Required(child, "assembly"), Required(child, "type"));
+                    if (child.Name == "typeRoot") request.TypeRoots.Add(selected);
+                    else if (child.Name == "suppressDefaultSeeds") request.SuppressedSeedTypes.Add(selected);
+                    else request.RegistrationAttributes.Add(selected);
+                    break;
+                case "methodRoot":
+                case "constructorRegistry":
+                    Check(child, child.Name, "assembly", "type", "method");
+                    var method = (Required(child, "assembly"), Required(child, "type"), Required(child, "method"));
+                    if (child.Name == "methodRoot") request.MethodRoots.Add(method);
+                    else request.ConstructorRegistries.Add(method);
+                    break;
+                case "conditionalMembers":
+                    Check(child, "conditionalMembers", "assembly", "baseType");
+                    request.ConditionalMembers.Add((Required(child, "assembly"), Required(child, "baseType")));
                     break;
                 case "cut": Check(child, "cut", "method"); request.Cuts.Add(Required(child, "method")); break;
                 default: throw new NotSupportedException("unknown request element: " + child.Name);

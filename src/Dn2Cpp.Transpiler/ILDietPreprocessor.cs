@@ -38,7 +38,24 @@ internal static class ILDietPreprocessor
         foreach (string method in options.CutMethods ?? Array.Empty<string>())
             Element(text, "cut", "method", method);
         var policy = new ILDietRootPolicy();
-        backend.ConfigureILDiet(policy);
+        backend.ConfigureILDiet(policy, paths, options);
+        foreach (string assembly in policy.RewriteAssemblies)
+            Element(text, "rewriteAssembly", "name", assembly);
+        foreach (var root in policy.TypeRoots)
+            PolicyElement(text, "typeRoot", root.Assembly, root.Type);
+        foreach (var root in policy.FullTypeRoots)
+            PolicyElement(text, "root", root.Assembly, root.Type);
+        foreach (var root in policy.MethodRoots)
+            PolicyElement(text, "methodRoot", root.Assembly, root.Type, "method", root.Method);
+        foreach (var members in policy.ConditionalMembers)
+            text.Append("  <conditionalMembers assembly=\"").Append(Escape(members.Assembly))
+                .Append("\" baseType=\"").Append(Escape(members.BaseType)).Append("\" />\n");
+        foreach (var type in policy.SuppressedSeedTypes)
+            PolicyElement(text, "suppressDefaultSeeds", type.Assembly, type.Type);
+        foreach (var attribute in policy.RegistrationAttributes)
+            PolicyElement(text, "registrationAttribute", attribute.Assembly, attribute.Type);
+        foreach (var registry in policy.ConstructorRegistries)
+            PolicyElement(text, "constructorRegistry", registry.Assembly, registry.Type, "method", registry.Method);
         foreach (var root in policy.Resolve(paths))
             text.Append("  <root assembly=\"").Append(Escape(root.Assembly))
                 .Append("\" type=\"").Append(Escape(root.Type)).Append("\" />\n");
@@ -86,6 +103,12 @@ internal static class ILDietPreprocessor
                 "false" => false,
                 _ => throw new NotSupportedException("ILDiet returned an invalid cut-validation state"),
             };
+            bool registriesRewritten = RequiredAttribute(result, "constructorRegistriesRewritten") switch
+            {
+                "true" => true,
+                "false" => false,
+                _ => throw new NotSupportedException("ILDiet returned an invalid constructor-registry state"),
+            };
             var stripped = new List<string> { RequiredAttribute(result, "input") };
             preservation = RequiredAttribute(result, "preservation");
             foreach (var child in result.Children)
@@ -103,6 +126,7 @@ internal static class ILDietPreprocessor
                 if (AssemblyIdentity(paths[i]) != AssemblyIdentity(stripped[i]))
                     throw new NotSupportedException("ILDiet changed assembly identity or load order: " + paths[i]);
             }
+            backend.ILDietCompleted(registriesRewritten);
             return stripped;
         }
         finally
@@ -112,6 +136,16 @@ internal static class ILDietPreprocessor
             if (ownsResult && File.Exists(resultPath))
                 File.Delete(resultPath);
         }
+    }
+
+    private static void PolicyElement(StringBuilder text, string element, string assembly, string type,
+        string? attribute = null, string? value = null)
+    {
+        text.Append("  <").Append(element).Append(" assembly=\"").Append(Escape(assembly))
+            .Append("\" type=\"").Append(Escape(type)).Append('"');
+        if (attribute is not null)
+            text.Append(' ').Append(attribute).Append("=\"").Append(Escape(value!)).Append('"');
+        text.Append(" />\n");
     }
 
     private static string AssemblyIdentity(string path)

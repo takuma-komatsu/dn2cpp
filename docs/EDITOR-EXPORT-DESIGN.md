@@ -808,6 +808,19 @@ pointer in static data, against V8's compiled-in 7,654,321-byte per-function
 ceiling. That is not an optimization: over the ceiling the module does not
 instantiate at all.
 
+ILDiet also trims unused GodotSharp wrappers and project script types by default
+for `--dotnet-module`. The exporter supplies `--project-root`, so script roots
+include all scenes and resources, autoloads, static GDScript references and UIDs.
+Uncompressed binary resources contribute their dependency tables, including
+image resources; compressed or unknown resources conservatively retain the
+project's scripts and report why. SDK registration attributes are filtered to
+the surviving scripts. Engine constructor keys remain present, with removed
+wrappers redirected to their nearest retained ancestors. Dynamic concrete type
+names require preservation or `--godot-class-root`. When ILDiet reports that it
+rewrote the constructor table, the later `--trim-godot-classes` pass is suppressed;
+the flag still applies to `--no-ildiet` output. Hot-update and copy-all DLL output
+retains its original registration metadata.
+
 The manifest-resource trim (`--no-manifest-resources <Assembly>` /
 `--manifest-resource-root <name>`) is **not** among them, for three measured
 reasons. It pulls on the wrong budget: a resource blob is emitted

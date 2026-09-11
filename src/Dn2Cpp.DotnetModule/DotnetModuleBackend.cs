@@ -10,10 +10,9 @@ namespace Dn2Cpp.DotnetModule;
 /// against the real GodotSharp.dll (passed with -r); no shims are involved.</summary>
 internal sealed class DotnetModuleBackend : IEmitBackend
 {
-    // --trim-godot-classes state (see GodotClassTrim below). Constructor-injected
-    // by the CLI; default off, so every other caller keeps byte-identical output.
     private readonly bool _trimGodotClasses;
     private readonly IReadOnlyList<string> _godotClassRoots;
+    private bool _ildietRewroteConstructors;
 
     public DotnetModuleBackend(bool trimGodotClasses = false, IReadOnlyList<string>? godotClassRoots = null)
     {
@@ -24,12 +23,53 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// <summary>Real GodotSharp's engine interop surface: one declaration per slot of
     /// the table, each invoking its <c>delegate* unmanaged</c> field by <c>calli</c>.</summary>
     private const string NativeFuncsType = "Godot.NativeInterop.NativeFuncs";
+    private const string SyncContextType = "Godot.GodotSynchronizationContext";
+    private const string NativeStringType = "Godot.NativeInterop.godot_string";
+    private const string NativeStringNameType = "Godot.NativeInterop.godot_string_name";
+    private const string NativePackedStringArrayType = "Godot.NativeInterop.godot_packed_string_array";
+    private static readonly (string Type, string Method, int Parameters) s_initialize = (NativeFuncsType, "Initialize", 2);
+    private static readonly (string Type, string Method, int Parameters) s_createCallbacks = ("Godot.Bridge.ManagedCallbacks", "Create", 1);
+    private static readonly (string Type, string Method, int Parameters) s_lookupScripts = ("Godot.Bridge.ScriptManagerBridge", "LookupScriptsInAssembly", 1);
+    private static readonly (string Type, string Method, int Parameters) s_syncCtor = (SyncContextType, ".ctor", 0);
+    private static readonly (string Type, string Method, int Parameters) s_syncExecute = (SyncContextType, "ExecutePendingContinuations", 0);
+    private static readonly (string Type, string Method, int Parameters) s_syncPost = (SyncContextType, "Post", 2);
+    private static readonly (string Type, string Method, int Parameters) s_syncSend = (SyncContextType, "Send", 2);
+    private static readonly (string Type, string Method, int Parameters) s_logException = ("Godot.NativeInterop.ExceptionUtils", "LogException", 1);
+    private static readonly (string Type, string Method, int Parameters) s_pushError = ("Godot.NativeInterop.ExceptionUtils", "PushError", 1);
+    private static readonly (string Parent, string Name) s_unmanagedCallbacks = (NativeFuncsType, "UnmanagedCallbacks");
+    private static readonly (string Parent, string Name) s_nativeConstructorException = ("Godot.GodotObject", "NativeConstructorNotFoundException");
 
-    public void ConfigureILDiet(ILDietRootPolicy policy)
+    public void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options)
     {
-        policy.ExcludedAssemblies.Add("GodotSharp");
-        policy.BaseTypes.Add("Godot.GodotObject");
+        if (options.HotupdateBase)
+            return;
+        var metadata = new GodotILDietMetadata(paths);
+        policy.RewriteAssemblies.Add("GodotSharp");
+        foreach (string assembly in metadata.Assemblies)
+            if (assembly != "GodotSharp")
+                policy.ConditionalMembers.Add((assembly, "Godot.GodotObject"));
+        policy.SuppressedSeedTypes.AddRange(metadata.GeneratedScriptHelpers());
+        policy.RegistrationAttributes.Add(("GodotSharp", "Godot.AssemblyHasScriptsAttribute"));
+        policy.ConstructorRegistries.Add(("GodotSharp", "Godot.Constructors", ".cctor"));
+        foreach (string type in new[] { "Godot.GodotObject", "Godot.RefCounted" }.Concat(_godotClassRoots))
+        {
+            if (!metadata.IsEngineWrapper(type))
+                throw new NotSupportedException("--dotnet-module: engine wrapper " + type
+                    + " not found in GodotSharp (check --godot-class-root and the GodotSharp reference)");
+            policy.TypeRoots.Add(("GodotSharp", type));
+        }
+        foreach (var root in new[] { s_initialize, s_createCallbacks, s_lookupScripts,
+            s_syncCtor, s_syncExecute, s_syncPost, s_syncSend, s_logException, s_pushError })
+            policy.MethodRoots.Add(("GodotSharp", root.Type, root.Method));
+        foreach (string type in new[] { NativeStringType, NativeStringNameType, NativePackedStringArrayType,
+            s_unmanagedCallbacks.Parent + "+" + s_unmanagedCallbacks.Name,
+            s_nativeConstructorException.Parent + "+" + s_nativeConstructorException.Name })
+            policy.TypeRoots.Add(("GodotSharp", type));
+        GodotProjectScripts.Configure(policy, metadata, options);
     }
+
+    public void ILDietCompleted(bool constructorRegistriesRewritten)
+        => _ildietRewroteConstructors = constructorRegistriesRewritten;
 
     public string RuntimeHeader => "dn2cpp_dotnetmodule.h";
 
@@ -178,9 +218,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     public IEnumerable<MethodInfo> AdditionalRootMethods(Compilation c)
     {
         _appAssemblyName = c.AppModule.AssemblyName;
-        _nativeFuncsInitialize = ResolveRoot(c, NativeFuncsType, "Initialize", 2);
-        _managedCallbacksCreate = ResolveRoot(c, "Godot.Bridge.ManagedCallbacks", "Create", 1);
-        _lookupScriptsInAssembly = ResolveRoot(c, "Godot.Bridge.ScriptManagerBridge", "LookupScriptsInAssembly", 1);
+        _nativeFuncsInitialize = ResolveRoot(c, s_initialize);
+        _managedCallbacksCreate = ResolveRoot(c, s_createCallbacks);
+        _lookupScriptsInAssembly = ResolveRoot(c, s_lookupScripts);
         // The main-thread SynchronizationContext singleton: the epilogue's
         // dn2cpp_dm_sync_ctx/pump call the ctor and ExecutePendingContinuations
         // directly. Post and Send are reached only by an ordinary virtual call
@@ -188,17 +228,17 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // never newobj'd in managed IL (ExternallyAllocatedClasses is its only
         // instantiation site) — root all four explicitly so they emit whether
         // or not the app's own call graph reaches them.
-        _syncCtxCtor = ResolveRoot(c, "Godot.GodotSynchronizationContext", ".ctor", 0);
-        _syncCtxExecute = ResolveRoot(c, "Godot.GodotSynchronizationContext", "ExecutePendingContinuations", 0);
-        var syncCtxPost = ResolveRoot(c, "Godot.GodotSynchronizationContext", "Post", 2);
-        var syncCtxSend = ResolveRoot(c, "Godot.GodotSynchronizationContext", "Send", 2);
+        _syncCtxCtor = ResolveRoot(c, s_syncCtor);
+        _syncCtxExecute = ResolveRoot(c, s_syncExecute);
+        var syncCtxPost = ResolveRoot(c, s_syncPost);
+        var syncCtxSend = ResolveRoot(c, s_syncSend);
         // The struct whose size the emitted entry's interop-size probe reports (see
         // EmitEpilogue). Resolved here, with the other roots, so a missing/renamed
         // one fails at the same loud place they do rather than inside the emit.
-        _unmanagedCallbacks = ResolveNestedStruct(c, NativeFuncsType, "UnmanagedCallbacks");
-        _nativeString = ResolveType(c, "Godot.NativeInterop.godot_string");
-        _nativeStringName = ResolveType(c, "Godot.NativeInterop.godot_string_name");
-        _nativePackedStringArray = ResolveType(c, "Godot.NativeInterop.godot_packed_string_array");
+        _unmanagedCallbacks = ResolveNestedStruct(c, s_unmanagedCallbacks.Parent, s_unmanagedCallbacks.Name);
+        _nativeString = ResolveType(c, NativeStringType);
+        _nativeStringName = ResolveType(c, NativeStringNameType);
+        _nativePackedStringArray = ResolveType(c, NativePackedStringArrayType);
         // The ManagedCallbacks slot the emitted entry wraps (the per-frame
         // callback), resolved BY NAME from the model — the same structural
         // resolution UnmanagedCallbacks gets above — so a GodotSharp re-pin that
@@ -211,8 +251,8 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // so dn2cpp's own boundaries route through the same pair: script-debugger
         // routing when one is attached, GD.PushError otherwise. PushError carries the
         // boundary NAME, which LogException has no parameter for.
-        _logException = ResolveRoot(c, "Godot.NativeInterop.ExceptionUtils", "LogException", 1);
-        _pushError = ResolveRoot(c, "Godot.NativeInterop.ExceptionUtils", "PushError", 1);
+        _logException = ResolveRoot(c, s_logException);
+        _pushError = ResolveRoot(c, s_pushError);
         _exceptionClass = c.FindClassByFullName("System.Exception")
             ?? throw new NotSupportedException(
                 "--dotnet-module: type System.Exception not found (no CoreLib in the load set?)");
@@ -222,7 +262,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         // where the remedy is one line, instead of turning the filter into a
         // silent no-op that reports a guaranteed false error every frame-1.
         _nativeCtorNotFound = Compilation.ReflectionTypeName(
-            ResolveNestedStruct(c, "Godot.GodotObject", "NativeConstructorNotFoundException"));
+            ResolveNestedStruct(c, s_nativeConstructorException.Parent, s_nativeConstructorException.Name));
         return new[]
         {
             _nativeFuncsInitialize, _managedCallbacksCreate, _lookupScriptsInAssembly,
@@ -237,7 +277,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// emit and the virtual Post/Send dispatch would land on nothing.</summary>
     public IEnumerable<ClassInfo> ExternallyAllocatedClasses(Compilation c)
     {
-        var ctx = c.FindClassByFullName("Godot.GodotSynchronizationContext");
+        var ctx = c.FindClassByFullName(SyncContextType);
         return ctx is null ? Array.Empty<ClassInfo>() : new[] { ctx };
     }
 
@@ -252,7 +292,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// ancestor-typed wrapper in a shipped game.</summary>
     public GodotClassTrimSpec? GodotClassTrim(Compilation c)
     {
-        if (!_trimGodotClasses)
+        if (!_trimGodotClasses || _ildietRewroteConstructors)
             return null;
         var registry = c.FindClassByFullName("Godot.Constructors")
             ?? throw new NotSupportedException(
@@ -346,6 +386,9 @@ internal sealed class DotnetModuleBackend : IEmitBackend
         throw new NotSupportedException(
             $"--dotnet-module: field {cls.FullName}.{fieldName} not found (GodotSharp shape changed?)");
     }
+
+    private static MethodInfo ResolveRoot(Compilation c, (string Type, string Method, int Parameters) root)
+        => ResolveRoot(c, root.Type, root.Method, root.Parameters);
 
     private static MethodInfo ResolveRoot(Compilation c, string typeFullName, string methodName, int paramCount)
     {

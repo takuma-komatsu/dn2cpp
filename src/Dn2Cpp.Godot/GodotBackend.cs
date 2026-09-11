@@ -9,7 +9,7 @@ namespace Dn2Cpp.Godot;
 /// console <c>main</c>.</summary>
 internal sealed class GodotBackend : IEmitBackend
 {
-    public void ConfigureILDiet(ILDietRootPolicy policy)
+    public void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options)
     {
         policy.ExcludedAssemblies.Add("GodotSharp");
         policy.BaseTypes.Add("Godot.Object");
