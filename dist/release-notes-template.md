@@ -6,18 +6,14 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークで静的エクスポートターゲット（iOS / Web）における直接 P/Invoke 選択に対応しました（[godot-dn2cpp PR #11](https://github.com/takuma-komatsu/godot-dn2cpp/pull/11)）
-- Godot フォークで Windows エクスポート時にプロジェクト定義の依存 DLL を実行ファイルと同階層へ配置するようにしました（[godot-dn2cpp PR #12](https://github.com/takuma-komatsu/godot-dn2cpp/pull/12)）
-- [PR #109](https://github.com/takuma-komatsu/dn2cpp/pull/109) で、マネージドオブジェクトによる WaitHandle の所有権管理とライフタイム保護を強化しました
-- [PR #107](https://github.com/takuma-komatsu/dn2cpp/pull/107) で、ホスト終了時およびファイナライザ実行時におけるランタイム状態とオブジェクトグラフの保護を強化しました
-- [PR #106](https://github.com/takuma-komatsu/dn2cpp/pull/106) で、GC 参照を保持する組み込み構造体配列の GC スキャンに対応しました
-- [PR #105](https://github.com/takuma-komatsu/dn2cpp/pull/105) で、Windows エクスポートにおいて Godot 公式 .NET テンプレートの直接利用へ移行しました
-- [PR #102](https://github.com/takuma-komatsu/dn2cpp/pull/102) で、Windows プラットフォーム ISA シャード起動の再試行処理を追加しました
-- [PR #101](https://github.com/takuma-komatsu/dn2cpp/pull/101) で、HTTP/2 キャンセル処理とハンドシェイクの同期を改善しました
-- [PR #99](https://github.com/takuma-komatsu/dn2cpp/pull/99) で、Wasm データ再配置関数の分割境界を跨ぐローカル変数の生存期間を保護しました
-- [PR #97](https://github.com/takuma-komatsu/dn2cpp/pull/97) で、NativeAOT スタイルの遅延 P/Invoke 解決を導入し、`NativeLibrary` API に対応しました
+- Godot フォークのエクスポートプリセットに IL Pre-stripping（ILDiet によるマネージドアセンブリの事前ストリッピング）オプションを追加し、デフォルトで有効化しました（[godot-dn2cpp PR #13](https://github.com/takuma-komatsu/godot-dn2cpp/pull/13)）
+- [PR #122](https://github.com/takuma-komatsu/dn2cpp/pull/122) で、ILDiet による .NET モジュール内の未使用 Godot 型の削減に対応しました
+- [PR #121](https://github.com/takuma-komatsu/dn2cpp/pull/121) で、ネイティブ ILDiet ストリッピングの統合とマネージド出力パリティ検証を行いました
+- [PR #120](https://github.com/takuma-komatsu/dn2cpp/pull/120) で、Windows スモークテスト時のネイティブ ISA ゲートスキップを修正しました
+- [PR #119](https://github.com/takuma-komatsu/dn2cpp/pull/119) で、トランスパイル前に不要な型・メソッドを IL レベルで削減するアセンブリ前処理 ILDiet を導入しました
+- [PR #118](https://github.com/takuma-komatsu/dn2cpp/pull/118)（[PR #113](https://github.com/takuma-komatsu/dn2cpp/pull/113), [PR #114](https://github.com/takuma-komatsu/dn2cpp/pull/114), [PR #115](https://github.com/takuma-komatsu/dn2cpp/pull/115), [PR #117](https://github.com/takuma-komatsu/dn2cpp/pull/117)）で、プランニング時の C++ 本文描画省略やインターフェース閉包キャッシュによる性能改善、および文字列変性呼び出しの到達性判定を修正しました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/2d14c9182f7c163b272f3298606780fdac5f75eb...@@DOCS_REF@@> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/308e30e00cdda083d7166a1b397d0fa417bc1898...@@DOCS_REF@@> を参照してください。
 
 ## ダウンロード
 
