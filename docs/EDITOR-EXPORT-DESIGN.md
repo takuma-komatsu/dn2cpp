@@ -201,6 +201,46 @@ dn2cpp step runs. **Linux** is the third host-compiled desktop arm: same
 host-equals-target rule as macOS and Windows, `lib{Assembly}.so` built and
 `{Assembly}.so` staged. **Web** is §10.
 
+### Selective DeClang export
+
+For a macOS export targeting the host architecture, select the existing DeClang
+C++ executable with the preset's `dotnet/dn2cpp/declang_path` file picker and set
+`dotnet/dn2cpp/declang_seed` to a non-empty, stable string. An empty executable
+path disables the feature. The editor does not discover, download, or bundle
+DeClang. This optional build requires CMake 3.21 or newer for isolated linker
+launchers; the normal export keeps its existing CMake minimum. The editor
+compiles, links, and runs a compatibility probe before publishing;
+a regular Clang executable fails this check.
+
+Mark methods or constructors with `[Dn2Cpp.Runtime.Obfuscate]`. Only reachable
+implementations are selected; shared generics select the shared body. Marking a
+method does not retain it or recursively mark its callees. Async and iterator
+methods, external or replaced bodies, and LTO are rejected. A selected body that
+DeClang cannot flatten also fails the export, including a body optimized to a
+function too small for its pass.
+
+The exporter passes `--obfuscate`, derives function seeds from the preset seed
+and implementation symbol, and compiles generated C++ through DeClang. It keeps
+`obfuscation-targets.json`, native configuration, and per-file application
+results under the project's `.godot/mono/dn2cpp` work directory. These files do
+not ship with the game. Compiler settings and logs use a dedicated `DECLANG_HOME`;
+the user's DeClang configuration and editor-wide environment are unchanged.
+Changing the seed rebuilds generated code; changing the compiler invalidates its
+separate native build cache. Prebuilt runtime and compiler-cache reuse are disabled
+for this build, while runtime objects built with the selected compiler persist.
+The compile launcher adds its application result to the object depfile, so Ninja
+recompiles a generated translation unit when that result is deleted. The editor
+export gate checks this recovery without rebuilding unchanged runtime objects.
+
+`DN2CPP_DECLANG_COMPILER=/absolute/path/to/clang++` enables real DeClang exports
+in `gates/build-and-run-godot-editor-export-declang.sh`, covering both IL pre-stripping
+settings and the existing game startup, interop, and GC assertions. Its ordinary
+desktop gate macOS run also checks empty seeds, missing executables, and ordinary Clang refusal.
+Both DeClang gates also discover a sole executable at
+`artifacts/declang-distribution/*/compiler/bin/clang++` when the override is empty.
+An explicit override takes precedence; invalid overrides and ambiguous staged
+distributions fail with a diagnostic.
+
 ## 4. Packaging the dn2cpp toolchain into the editor
 
 **Location**: `GodotSharp/Dn2Cpp/` beside the editor binary, inside the

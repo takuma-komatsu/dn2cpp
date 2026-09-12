@@ -22,6 +22,7 @@ bool useILDiet = true;
 string? ildietOutput = null;
 var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
+bool obfuscate = false;
 bool shadowStack = false;
 int maxDegreeOfParallelism = 0;
 var references = new List<string>();
@@ -110,6 +111,10 @@ for (int i = 0; i < args.Length; i++)
         }
         linkFeatures.Add(feature);
     }
+    else if (args[i] == "--obfuscate")
+    {
+        obfuscate = true;
+    }
     else if (args[i] == "--no-shared-generics")
     {
         // Escape hatch: compile every generic instantiation monomorphically
@@ -142,7 +147,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--shadow-stack] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--measure] [--verbose]");
     return 1;
 }
 
@@ -157,6 +162,7 @@ return TranspileDriver.RunConsole(new TranspileOptions
     Verbose = verbose,
     AutoRef = autoRef,
     SharedGenerics = sharedGenerics,
+    Obfuscate = obfuscate,
     ShadowStack = shadowStack,
     UseILDiet = useILDiet,
     ILDietOutput = ildietOutput,

@@ -86,6 +86,11 @@ public static class TranspileDriver
         string input = options.Input;
         string outDir = options.OutDir;
         bool measure = options.Measure;
+        if (options.Obfuscate && measure)
+        {
+            Console.Error.WriteLine("error: --obfuscate requires C++ emission and cannot be combined with --measure");
+            return 2;
+        }
         if (options.MaxDegreeOfParallelism < 0)
         {
             Console.Error.WriteLine("error: MaxDegreeOfParallelism must be zero or a positive integer");
@@ -264,6 +269,10 @@ public static class TranspileDriver
                 if (File.Exists(hotTuPath))
                     File.Delete(hotTuPath);
             }
+
+            string obfuscationPath = Path.Combine(outDir, "obfuscation-targets.json");
+            if (File.Exists(obfuscationPath))
+                File.Delete(obfuscationPath);
 
             var sources = new CppEmitter(compilation, backend, options.HotupdateBase).Emit(
                 (fileName, text) => File.WriteAllText(Path.Combine(outDir, fileName), text),

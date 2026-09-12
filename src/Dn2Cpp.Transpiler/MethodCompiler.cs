@@ -590,7 +590,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// flags instead of the hot TU's (see <see cref="MethodInfo.IsHotPath"/>).</summary>
     public static bool EmitsInline(MethodInfo m)
         => (m.IsAggressiveInlining && m.IsSmallIlBody || m.IsTinyIlBody)
-            && !m.IsNoInlining && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
+            && !m.IsNoInlining && !m.IsObfuscationTarget && !m.IsUnmanagedCallersOnly && !m.IsHotPath;
 
     public static string Signature(MethodInfo m)
     {
@@ -617,7 +617,7 @@ internal sealed partial class MethodCompiler : IEvalStack
         // [[gnu::noinline]]: real MSVC (cl.exe) ignores the C++ attribute and
         // would inline the body anyway, which breaks methods that are
         // non-inlinable for conservative-GC correctness, not just for size.
-        string qual = m.IsNoInlining ? "DN2CPP_NOINLINE " : EmitsInline(m) ? "inline " : "";
+        string qual = m.IsNoInlining || m.IsObfuscationTarget ? "DN2CPP_NOINLINE " : EmitsInline(m) ? "inline " : "";
         return $"{qual}{ret} {m.CppName}({string.Join(", ", ps)})";
     }
 
@@ -882,7 +882,10 @@ internal sealed partial class MethodCompiler : IEvalStack
         // Planning keeps lowering's effects, but has no consumer for a finished function.
         if (_c.Phase == EmitPhase.Planning)
             return "";
-        return RenderBody(signature, synchronizedTypeInfo, rgctxAnchor);
+        string body = RenderBody(signature, synchronizedTypeInfo, rgctxAnchor);
+        if (_method.IsObfuscationTarget)
+            _method.ObfuscationHasIlBody = true;
+        return body;
     }
 
     private string RenderBody(string signature, string? synchronizedTypeInfo, string? rgctxAnchor)

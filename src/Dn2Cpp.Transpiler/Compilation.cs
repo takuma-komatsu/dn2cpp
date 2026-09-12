@@ -236,6 +236,14 @@ internal sealed partial class Compilation
     /// <see cref="ClassInfo.SharedUsers"/>) — emission is unchanged until shared
     /// body emission lands.</summary>
     public bool SharedGenericsEnabled { get; }
+    public bool ObfuscationEnabled { get; }
+    internal HashSet<MethodInfo> ObfuscationMethods { get; } = new();
+
+    private void NoteObfuscationMethod(MethodInfo method)
+    {
+        if (ObfuscationEnabled && method.HasObfuscateAttribute)
+            ObfuscationMethods.Add(method);
+    }
     /// <summary>The CLI's requested body-compilation worker limit. Zero means the
     /// host processor count; retained separately so timing diagnostics can say
     /// whether the effective limit was automatic.</summary>
@@ -504,6 +512,7 @@ internal sealed partial class Compilation
             ? new() : new(options.Backend.AdditionalBoundedMethods);
         _genericRoots = options.HotupdateRefs;
         SharedGenericsEnabled = options.SharedGenerics;
+        ObfuscationEnabled = options.Obfuscate;
         BodyCompileJobsRequested = options.MaxDegreeOfParallelism;
         int processorCount = System.Math.Max(1, Environment.ProcessorCount);
         BodyCompileJobs = options.MaxDegreeOfParallelism == 0
