@@ -92,7 +92,7 @@ echo "OK ($(grep -c . "$MARKERS_EXPECTED") machinery symbols present)"
 
 # The generated module initializer must call Register; merely retaining its body
 # would not install the generated factory before MagicOnionClient.Create runs.
-if ! grep -qhE '^    m_MagicOnionClientSample_MagicOnionClientGeneratedInitializer_Register_[0-9]+\(\);$' \
+if ! grep -qhE '^    MagicOnionClientGeneratedInitializer_Register_m[0-9]+\(\);$' \
         "$out"/generated_*.cpp; then
     echo "FAIL: generated module initializer does not call MagicOnionClientGeneratedInitializer.Register" >&2
     exit 1

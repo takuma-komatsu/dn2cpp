@@ -1,10 +1,10 @@
-m_Cysharp_Text_Utf16ValueStringBuilder_Append_[0-9][0-9]*(t_Cysharp_Text_Utf16ValueStringBuilder\* a0, int32_t a1)
-m_Cysharp_Text_Utf16ValueStringBuilder_Append_[0-9][0-9]*(t_Cysharp_Text_Utf16ValueStringBuilder\* a0, int32_t a1, int32_t a2)
-m_Cysharp_Text_Utf16ValueStringBuilder_AppendFormat_[0-9][0-9]*__Int32(
-m_Cysharp_Text_Utf16ValueStringBuilder_AppendFormat_[0-9][0-9]*__Int32_String_Double_Boolean(
-m_Cysharp_Text_Utf16ValueStringBuilder_AppendJoin_[0-9][0-9]*__String(
-m_Cysharp_Text_Utf8ValueStringBuilder_Append_[0-9][0-9]*(t_Cysharp_Text_Utf8ValueStringBuilder\* a0, int32_t a1)
-m_Cysharp_Text_Utf8ValueStringBuilder_Append_[0-9][0-9]*(t_Cysharp_Text_Utf8ValueStringBuilder\* a0, int32_t a1, int32_t a2)
-m_Cysharp_Text_Utf8ValueStringBuilder_AppendFormat_[0-9][0-9]*__Double(
-m_Cysharp_Text_Utf8ValueStringBuilder_AppendJoin_[0-9][0-9]*__Int32(
-m_Cysharp_Text_ZString_CreateStringBuilder_[0-9][0-9]*(
+Utf16ValueStringBuilder_Append_m[0-9][0-9]*(t_Cysharp_Text_Utf16ValueStringBuilder\* a0, int32_t a1)
+Utf16ValueStringBuilder_Append_m[0-9][0-9]*(t_Cysharp_Text_Utf16ValueStringBuilder\* a0, int32_t a1, int32_t a2)
+Utf16ValueStringBuilder_AppendFormat_TisInt32_m[0-9][0-9]*(
+Utf16ValueStringBuilder_AppendFormat_TisInt32_TisString_TisDouble_TisBoolean_m[0-9][0-9]*(
+Utf16ValueStringBuilder_AppendJoin_TisString_m[0-9][0-9]*(
+Utf8ValueStringBuilder_Append_m[0-9][0-9]*(t_Cysharp_Text_Utf8ValueStringBuilder\* a0, int32_t a1)
+Utf8ValueStringBuilder_Append_m[0-9][0-9]*(t_Cysharp_Text_Utf8ValueStringBuilder\* a0, int32_t a1, int32_t a2)
+Utf8ValueStringBuilder_AppendFormat_TisDouble_m[0-9][0-9]*(
+Utf8ValueStringBuilder_AppendJoin_TisInt32_m[0-9][0-9]*(
+ZString_CreateStringBuilder_m[0-9][0-9]*(

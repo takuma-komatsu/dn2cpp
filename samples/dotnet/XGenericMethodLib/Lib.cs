@@ -10,4 +10,9 @@ namespace XGenericMethodLib
 
         public static int PairTag<T, U>(T a, U b) => 2;
     }
+
+    public static class CollisionProbe
+    {
+        public static int Run() => 11;
+    }
 }

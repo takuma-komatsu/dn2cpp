@@ -105,8 +105,8 @@ echo "== 4/7 Sharing evidence: Dictionary<int,string> == Dictionary<Hue,object> 
 # type-identity-tainted by design), and both vtables must bind the canonical
 # symbols.
 for inst in Dictionary_Int32_String Dictionary_DictSharedSubset_Hue_Object; do
-    bad=$(grep -hoE "^[A-Za-z_][A-Za-z0-9_* ]* m_System_Collections_Generic_${inst}_[A-Za-z0-9_]*\(" \
-        "$out"/generated*.cpp | grep -vE "__ctor|__cctor" || true)
+    bad=$(grep -h "^// System.Collections.Generic.${inst}::" \
+        "$out"/generated*.cpp | grep -vE '::\.(c)?ctor$' || true)
     if [ -n "$bad" ]; then
         echo "FAIL: $inst emits per-instantiation bodies (expected shared canonical):" >&2
         echo "$bad" >&2
@@ -117,7 +117,7 @@ for inst in Dictionary_Int32_String Dictionary_DictSharedSubset_Hue_Object; do
         exit 1
     fi
 done
-if ! grep -q "m_System_Collections_Generic_Dictionary__CnInt32__CnRef_TryInsert" "$out/generated.h"; then
+if ! grep -q '^// System.Collections.Generic.Dictionary_\$CnInt32_\$CnRef::TryInsert$' "$out"/generated*.cpp; then
     echo "FAIL: no shared canonical Dictionary<\$CnInt32,\$CnRef> body set emitted" >&2
     exit 1
 fi
@@ -131,26 +131,26 @@ echo "== 4b/7 Method-dimension sharing: canonical generic-method bodies =="
 # bodies keyed by canonicalized method arguments, and a context-needing
 # instantiation leaves its per-real symbol behind as a one-line forwarder
 # appending its per-method rgctx table.
-bad=$(grep -hoE "^[A-Za-z_][A-Za-z0-9_* ]* m_System_Collections_Generic_List_(String|Object|RefListSubset_Widget)_(Contains|IndexOf|Remove)_[0-9]+\(" \
+bad=$(grep -hE '^// System.Collections.Generic.List_(String|Object|RefListSubset_Widget)::(Contains|IndexOf|Remove)$' \
     "$out"/generated*.cpp || true)
 if [ -n "$bad" ]; then
     echo "FAIL: reference List instantiations emit per-instantiation Contains/IndexOf/Remove:" >&2
     echo "$bad" >&2
     exit 1
 fi
-if ! grep -q "m_System_Collections_Generic_List__CnRef_IndexOf_" "$out/generated.h"; then
+if ! grep -q '^// System.Collections.Generic.List_\$CnRef::IndexOf$' "$out"/generated*.cpp; then
     echo "FAIL: no canonical List<\$CnRef>.IndexOf body" >&2
     exit 1
 fi
-for sym in "m_MethodShareSubset_Ops_ArrName_[0-9]+___CnRef\(" \
-           "rgctx_m_MethodShareSubset_Ops_ArrName_[0-9]+__String"; do
-    if ! grep -qE "$sym" "$out/generated.h"; then
+for sym in "Ops_ArrName_TisCnRef_m[0-9]+\(" \
+           "rgctx_Ops_ArrName_TisString_m[0-9]+"; do
+    if ! grep -qE "$sym" "$out"/generated*; then
         echo "FAIL: method-dimension sharing artifact missing: $sym" >&2
         exit 1
     fi
 done
-if ! grep -q "rgctx_m_MethodShareSubset_Ops_ArrName" <<<"$(
-        grep -A 3 -hE "^[A-Za-z_][A-Za-z0-9_* ]* m_MethodShareSubset_Ops_ArrName_[0-9]+__String\(" \
+if ! grep -q "rgctx_Ops_ArrName_TisString_m" <<<"$(
+        grep -A 3 -hE "^[A-Za-z_][A-Za-z0-9_* ]* Ops_ArrName_TisString_m[0-9]+\(" \
             "$out"/generated*.cpp)"; then
     echo "FAIL: Ops.ArrName<string> is not a forwarder appending its per-method table" >&2
     exit 1
@@ -162,12 +162,12 @@ echo "== 4c/7 Task producer identities stay shared through rgctx =="
 # method body. Async Task/ValueTask identity is covered by the runtime diff; its
 # existing state-machine fallback also keeps each kickoff body concrete.
 for method in FromResult ValueTaskResult Source; do
-    if ! grep -qE "m_TaskRgctxSubset_Ops_${method}_[0-9]+___CnRef\(" "$out/generated.h"; then
+    if ! grep -qE "Ops_${method}_TisCnRef_m[0-9]+\(" "$out/generated.h"; then
         echo "FAIL: no canonical TaskRgctxSubset.Ops.$method<CnRef> body" >&2
         exit 1
     fi
-    for arg in TaskRgctxSubset_Alpha TaskRgctxSubset_Beta; do
-        sym="m_TaskRgctxSubset_Ops_${method}_[0-9]+__${arg}"
+    for arg in Alpha Beta; do
+        sym="Ops_${method}_Tis${arg}_m[0-9]+"
         if ! grep -qE "rgctx_${sym}" "$out/generated.h"; then
             echo "FAIL: TaskRgctxSubset.Ops.$method<$arg> has no rgctx table" >&2
             exit 1
@@ -197,14 +197,14 @@ echo "== 4d/7 typeof(T)==typeof(X) fold prunes cross-product instantiations =="
 # verbatim there and the carve-out was buying nothing. Retired rather than
 # declared, for the reason the pinvoke-wasm Windows-ACP declaration was retired:
 # a carve-out is evidence that somebody stopped, not that the hole is permanent.
-bad=$(grep -hoE "m_TypeofFoldSubset_Program_Tag_[0-9]+__Int32_[A-Za-z0-9_]+" "$out/generated.h" \
-    | grep -vE "__Int32_Int32$" || true)
+bad=$(grep -hoE "Program_Tag_TisInt32_Tis[A-Za-z0-9_]+_m[0-9]+" "$out/generated.h" \
+    | grep -vE "_TisInt32_TisInt32_m[0-9]+$" || true)
 if [ -n "$bad" ]; then
     echo "FAIL: off-diagonal Tag<int,*> instantiations survived the typeof fold:" >&2
     echo "$bad" >&2
     exit 1
 fi
-if ! grep -qE "m_TypeofFoldSubset_Program_Tag_[0-9]+__Int32_Int32\(" "$out/generated.h"; then
+if ! grep -qE "Program_Tag_TisInt32_TisInt32_m[0-9]+\(" "$out/generated.h"; then
     echo "FAIL: diagonal Tag<int,int> body missing (grep pattern rot?)" >&2
     exit 1
 fi
@@ -232,11 +232,11 @@ echo "== 4e/7 Generic-virtual dispatch over a canonical group owner =="
 #   (b) the owners have no type-info of their own -> no ti_ ..._Row__Cn* anywhere
 #   (c) the owners INHERIT a reachable GVM impl,
 #       which is what keeps them in the case set  -> ChainBase<Row>.Then bodies
-for sym in "m_GvmCanonicalSubset_Chain_GvmCanonicalSubset_Row__CnRef_Clone_[0-9]+\(" \
-           "m_GvmCanonicalSubset_Chain_GvmCanonicalSubset_Row__CnInt32_Clone_[0-9]+\(" \
-           "m_GvmCanonicalSubset_ChainBase_GvmCanonicalSubset_Row_Then_[0-9]+__String\(" \
-           "dn2cpp_gvm_GvmCanonicalSubset_IChain_GvmCanonicalSubset_Row_Then_[0-9]+__Int32\("; do
-    if ! grep -qE "$sym" "$out/generated.h"; then
+for sym in '^// GvmCanonicalSubset.Chain_GvmCanonicalSubset_Row_\$CnRef::Clone$' \
+           '^// GvmCanonicalSubset.Chain_GvmCanonicalSubset_Row_\$CnInt32::Clone$' \
+           'ChainBase_1_Then_TisString_m[0-9]+\(' \
+           'dn2cpp_gvm_IChain_1_Then_TisInt32_m[0-9]+\('; do
+    if ! grep -qE "$sym" "$out"/generated*; then
         echo "FAIL: the GVM/canonical-owner shape has dissolved — missing: $sym" >&2
         exit 1
     fi
@@ -276,18 +276,18 @@ done
 echo "gvm dispatcher over a canonical group: shape present, all cases declared: OK"
 
 for inst in String Object; do
-    grep -Eq "^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_SynchronizedOwner_${inst}_StaticProbe_[0-9]+\\(" "$out"/generated*.cpp \
+    grep -q "^// GenericStaticsSubset.SynchronizedOwner_${inst}::StaticProbe$" "$out"/generated*.cpp \
         || { echo "FAIL: static synchronized body lost its real type: $inst" >&2; exit 1; }
 done
-grep -Eq '^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_SynchronizedOwner__CnRef_InstanceProbe_[0-9]+\(' "$out"/generated*.cpp \
+grep -q '^// GenericStaticsSubset.SynchronizedOwner_\$CnRef::InstanceProbe$' "$out"/generated*.cpp \
     || { echo "FAIL: instance synchronized body no longer shares" >&2; exit 1; }
-if grep -Eq 'm_GenericStaticsSubset_SynchronizedOwner__CnRef_StaticProbe_[0-9]+\(' "$out/generated.h" "$out"/generated*.cpp; then
+if grep -q '^// GenericStaticsSubset.SynchronizedOwner_\$CnRef::StaticProbe$' "$out/generated.h" "$out"/generated*.cpp; then
     echo "FAIL: static synchronized prologue escaped the planning taint" >&2
     exit 1
 fi
 
 mixed_body=$(awk '
-    /^DN2CPP_NOINLINE int32_t m_GenericStaticsSubset_MixedStaticOwner__CnRef_Exercise_[0-9]+\(/ { capture = 1 }
+    /^\/\/ GenericStaticsSubset.MixedStaticOwner_\$CnRef::Exercise$/ { capture = 1 }
     capture { print }
     capture && /^}/ { exit }
 ' "$out"/generated*.cpp)
@@ -309,8 +309,8 @@ echo "== 5/7 Transpiling with --no-shared-generics (size regression check) =="
 invoke_cli "$app" "${refs[@]}" --no-shared-generics -o "$out-off"
 on_bytes=$(cat "$out"/generated*.cpp | wc -c | tr -d ' ')
 off_bytes=$(cat "$out-off"/generated*.cpp | wc -c | tr -d ' ')
-on_decls=$(grep -c ' m_' "$out/generated.h")
-off_decls=$(grep -c ' m_' "$out-off/generated.h")
+on_decls=$(grep -cE ' [A-Za-z_][A-Za-z0-9_]*_m[0-9]+' "$out/generated.h")
+off_decls=$(grep -cE ' [A-Za-z_][A-Za-z0-9_]*_m[0-9]+' "$out-off/generated.h")
 echo "generated*.cpp bytes: on=$on_bytes off=$off_bytes"
 echo "method decls (generated.h): on=$on_decls off=$off_decls"
 if [ "$on_bytes" -ge "$off_bytes" ]; then

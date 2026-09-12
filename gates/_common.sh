@@ -2088,7 +2088,7 @@ find_generated_objects() {
 #     once has, in this exact use, silently resolved a cross-object reference
 #     away. Strips the Itanium `_Z<len>` prefix without demangling: callers
 #     substring-match, and dropping the digits is what restores a word boundary
-#     before `m_`.
+#     before the managed method name.
 #   - Windows: dumpbin //SYMBOLS (an object always has a COFF symbol table).
 #     SECT<hex> = defined, UNDEF = undefined external; the plain name comes from
 #     the readable signature dumpbin prints in trailing parens. A row with no

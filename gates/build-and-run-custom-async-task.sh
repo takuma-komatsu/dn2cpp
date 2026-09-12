@@ -278,9 +278,9 @@ done
 # The app-declared task type's promise: its metadata rides the app module's reflection tables
 # like every app type's, but not one of its METHODS may be emitted — the builder that reaches
 # them is adopted, so nothing does.
-if grep -qh "m_CustomTaskLocalSubset_LocalPromise_" "$out"/generated*.cpp; then
+if grep -qh '^// CustomTaskLocalSubset.LocalPromise::' "$out"/generated*.cpp; then
     echo "FAIL: the app-declared custom task type's promise has emitted bodies:" >&2
-    grep -oh -m 3 "m_CustomTaskLocalSubset_LocalPromise_[A-Za-z0-9_]*" "$out"/generated*.cpp >&2
+    grep -h -m 3 '^// CustomTaskLocalSubset.LocalPromise::' "$out"/generated*.cpp >&2
     exit 1
 fi
 # The scheduler's ConcurrentDictionary is the single fattest thing the closure would drag in.
@@ -291,13 +291,13 @@ fi
 # CustomTask<T>.CompletedTask is an adopted static FIELD. The string/object
 # callers must keep one CnRef body whose field and AsTask identities come from
 # each real method context.
-if ! grep -qE "m_CustomTaskGenericSubset_Program_CompletedRef_[0-9]+___CnRef\(" \
+if ! grep -qE "Program_CompletedRef_TisCnRef_m[0-9]+\(" \
         "$out/generated.h"; then
     echo "FAIL: no canonical CompletedRef<CnRef> body for the adopted generic field" >&2
     exit 1
 fi
 for arg in String Object; do
-    sym="m_CustomTaskGenericSubset_Program_CompletedRef_[0-9]+__${arg}"
+    sym="Program_CompletedRef_Tis${arg}_m[0-9]+"
     if ! grep -qE "rgctx_${sym}" "$out/generated.h"; then
         echo "FAIL: CompletedRef<$arg> has no rgctx table" >&2
         exit 1
@@ -323,10 +323,10 @@ for sym in TaskPool Runner ITaskPoolNode AsyncCustomTaskMethodBuilder CustomTask
 done
 # The opt-out is per-ASSEMBLY: the app-declared task type was not named, so it must
 # still be adopted — its promise has no emitted bodies even in the un-adopted output.
-if grep -qh "m_CustomTaskLocalSubset_LocalPromise_" "$out-real"/generated*.cpp; then
+if grep -qh '^// CustomTaskLocalSubset.LocalPromise::' "$out-real"/generated*.cpp; then
     echo "FAIL: the app-declared custom task type lost its adoption — --no-adopt-async" >&2
     echo "      CustomAsyncTaskLib must scope to that one assembly:" >&2
-    grep -oh -m 3 "m_CustomTaskLocalSubset_LocalPromise_[A-Za-z0-9_]*" "$out-real"/generated*.cpp >&2
+    grep -h -m 3 '^// CustomTaskLocalSubset.LocalPromise::' "$out-real"/generated*.cpp >&2
     exit 1
 fi
 echo "OK (the library's real IL is in the tree; the app's own task type stays adopted)"
@@ -345,7 +345,7 @@ for sym in TaskPool Runner ITaskPoolNode AsyncCustomTaskMethodBuilder CustomTask
 done
 echo "OK (the library's real machinery is in the tree with no flag)"
 
-if ! grep -qh "m_SharedRoleSubset_SharedAwaiterTaskBuilder_" \
+if ! grep -qh '^// SharedRoleSubset.SharedAwaiterTaskBuilder::' \
         "$out-shared"/generated*.cpp "$out-shared/generated.h"; then
     echo "FAIL: the shared awaiter's app-side owner was re-adopted after its decline." >&2
     exit 1

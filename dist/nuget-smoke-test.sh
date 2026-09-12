@@ -206,7 +206,7 @@ MSGEN="$MSAPP/obj/$CONFIG/$TFM/dn2cpp"
 awk '
     /^\/\/ MsBuildSmoke.Program::PreservedOnly$/ {
         getline
-        if ($0 ~ /^inline void m_MsBuildSmoke_Program_PreservedOnly_[0-9]+\(\)$/)
+        if ($0 ~ /^inline void Program_PreservedOnly_m[0-9]+\(\)$/)
             found = 1
     }
     END { exit !found }

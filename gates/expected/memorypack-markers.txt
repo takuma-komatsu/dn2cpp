@@ -7,20 +7,20 @@ MemoryPack_Internal_FixedArrayBufferWriter
 MemoryPack_Formatters_UnmanagedArrayFormatter
 MemoryPack_Formatters_ListFormatter
 MemoryPack_Formatters_DictionaryFormatter
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackObjectSubset_Person(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackObjectSubset_Hooked(
-m_MemoryPack_MemoryPackSerializer_Deserialize_[0-9][0-9]*__MemoryPackObjectSubset_Ctored(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackObjectSubset_Nested(
-m_MemoryPack_Formatters_DictionaryFormatter_String_Int32_Serialize_[0-9][0-9]*__MemoryPack_Internal_FixedArrayBufferWriter(
-m_MemoryPack_Formatters_ListFormatter_String_Deserialize_[0-9][0-9]*(
-m_MemoryPack_MemoryPackSerializer_Deserialize_[0-9][0-9]*__MemoryPackCollectionsSubset_Scalars(
-m_MemoryPack_MemoryPackWriter__CnRef_WriteUtf8_[0-9][0-9]*(
-m_MemoryPack_MemoryPackWriter__CnRef_WriteUtf16_[0-9][0-9]*(
-m_MemoryPack_IMemoryPackFormatter_MemoryPackUnionSubset_IShape_Serialize_[0-9][0-9]*__MemoryPack_Internal_ReusableLinkedArrayBufferWriter(
-m_MemoryPack_Formatters_ListFormatter_MemoryPackUnionSubset_Animal_Deserialize_[0-9][0-9]*(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackLayoutSubset_Versioned(
-m_MemoryPack_MemoryPackSerializer_Deserialize_[0-9][0-9]*__MemoryPackLayoutSubset_Explicitly(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackLayoutSubset_Fixed(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackLayoutSubset_FixedDecimal(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackLayoutSubset_Holder(
-m_MemoryPack_MemoryPackSerializer_Serialize_[0-9][0-9]*__MemoryPackLayoutSubset_Versioned_System_Buffers_ArrayBufferWriter_Byte(
+MemoryPackSerializer_Serialize_TisPerson_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisHooked_m[0-9][0-9]*(
+MemoryPackSerializer_Deserialize_TisCtored_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisNested_m[0-9][0-9]*(
+DictionaryFormatter_2_Serialize_TisFixedArrayBufferWriter_m[0-9][0-9]*(
+// MemoryPack.Formatters.ListFormatter_String::Deserialize
+MemoryPackSerializer_Deserialize_TisScalars_m[0-9][0-9]*(
+MemoryPackWriter_1_WriteUtf8_m[0-9][0-9]*(t_MemoryPack_MemoryPackWriter__CnRef\* a0
+MemoryPackWriter_1_WriteUtf16_m[0-9][0-9]*(t_MemoryPack_MemoryPackWriter__CnRef\* a0
+dn2cpp_gvm_IMemoryPackFormatter_1_Serialize_TisReusableLinkedArrayBufferWriter_m[0-9][0-9]*(t_MemoryPack_IMemoryPackFormatter__CnRef\* a0, t_MemoryPack_MemoryPackWriter__CnRef\* a1, t_MemoryPackUnionSubset_IShape\*\* a2)
+// MemoryPack.Formatters.ListFormatter_MemoryPackUnionSubset_Animal::Deserialize
+MemoryPackSerializer_Serialize_TisVersioned_m[0-9][0-9]*(
+MemoryPackSerializer_Deserialize_TisExplicitly_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisFixed_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisFixedDecimal_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisHolder_m[0-9][0-9]*(
+MemoryPackSerializer_Serialize_TisVersioned_TisArrayBufferWriter_1_m[0-9][0-9]*(

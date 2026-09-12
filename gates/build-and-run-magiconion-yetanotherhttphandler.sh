@@ -87,7 +87,7 @@ printf '%s\n' "$measure_output"
     || { echo "FAIL: MagicOnion/YAHH combined closure produced managed gaps" >&2; exit 1; }
 grep -q '0 dangling' <<<"$measure_output" \
     || { echo "FAIL: MagicOnion/YAHH combined closure produced dangling methods" >&2; exit 1; }
-grep -qhE '^    m_MagicOnionYahaGate_MagicOnionClientGeneratedInitializer_Register_[0-9]+\(\);$' \
+grep -qhE '^    MagicOnionClientGeneratedInitializer_Register_m[0-9]+\(\);$' \
     "$OUT"/generated_*.cpp \
     || { echo "FAIL: generated MagicOnion module initializer does not register its proxy" >&2; exit 1; }
 if grep -qhE 'MagicOnion_Client_DynamicClient_DynamicMagicOnionClientFactoryProvider|MagicOnion_Client_DynamicClient_ServiceClientDefinition' \

@@ -398,7 +398,7 @@ grep -qx 'custom:name' "$OUT/symbol-sections.txt" || {
     exit 1
 }
 node gates/_wasm_symbols.js names "$SYMBOL_DROPIN" > "$OUT/symbol-names.txt"
-grep -q 'm_ExportProbe__Ready_4' "$OUT/symbol-names.txt" || {
+grep -qE 'ExportProbe__Ready_m[0-9]+' "$OUT/symbol-names.txt" || {
     echo "FAIL: the wasm name section does not name ExportProbe._Ready" >&2
     awk '/ExportProbe/ { print; if (++matches == 20) exit }' \
         "$OUT/symbol-names.txt" >&2

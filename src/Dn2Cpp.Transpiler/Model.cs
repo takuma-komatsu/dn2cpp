@@ -684,6 +684,10 @@ internal sealed class MethodInfo
     /// <summary>Disambiguator appended to the C++ name for generic-method
     /// instantiations (which share Handle/row with their template).</summary>
     public string NameSuffix = "";
+    /// <summary>One readable <c>_Tis…</c> segment per generic method argument.
+    /// Kept separate because underscores inside a type mangle are not argument
+    /// separators.</summary>
+    public string ReadableNameSuffix = "";
 
     public bool IsStatic => (Attributes & MethodAttributes.Static) != 0;
     public bool IsPublic => (Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public;
@@ -748,15 +752,34 @@ internal sealed class MethodInfo
     /// Signature() re-reads it for every prototype and body emission.</summary>
     public bool IsSmallIlBody => _smallIlBody ??= ComputeInlineIlBody(PromoteInlineIlBytes);
 
-    // NameSuffix is sanitized here (not at construction) because the raw suffix
-    // doubles as a distinct mangle key; for genuine instantiations sanitization
-    // is the identity, while a canonical placeholder's '$Cn' token becomes a
-    // valid identifier chunk in the emitted symbol.
-    // Cached: Name/Handle/NameSuffix are construction-only, and the declaring
+    // NameSuffix doubles as a distinct mangle key. Genuine generic-method
+    // instantiations expose it before the unique suffix; synthetic bodies keep
+    // it after the suffix because it describes the body rather than type args.
+    // Cached: Name/Handle/NameSuffix/ReadableNameSuffix are construction-only, and the declaring
     // class's CppNamePrefix is finalized before any MethodInfo exists.
     private string? _cppName;
-    public string CppName => _cppName ??= "m_" + DeclaringClass.CppName + "_" + CppNaming.Sanitize(Name)
-                             + "_" + MetadataTokens.GetRowNumber(Handle) + CppNaming.Sanitize(NameSuffix);
+    public string CppName
+    {
+        get
+        {
+            if (_cppName is not null)
+                return _cppName;
+
+            string typeName = DeclaringClass.Handle.IsNil
+                ? DeclaringClass.Name
+                : DeclaringClass.Module.Reader.GetString(
+                    DeclaringClass.Module.Reader.GetTypeDefinition(DeclaringClass.Handle).Name);
+            bool genericInstantiation = ReadableNameSuffix.Length > 0;
+            string identity = Module.Index + ":" + DeclaringClass.CppName + ":"
+                + MetadataTokens.GetRowNumber(Handle) + ":" + NameSuffix;
+            string syntheticSuffix = NameSuffix.Length > 0 && !genericInstantiation
+                ? CppNaming.Il2CppClean(NameSuffix)
+                : "";
+            _cppName = CppNaming.Il2CppClean(typeName) + "_" + CppNaming.Il2CppClean(Name)
+                + ReadableNameSuffix + "_m" + CppNaming.StableDecimalId(identity) + syntheticSuffix;
+            return _cppName;
+        }
+    }
 
     /// <summary>Total order over the methods of the whole compilation: declaring class
     /// first (see <see cref="ClassInfo.CompareByOrder"/> for why emission must not read
@@ -1391,6 +1414,59 @@ internal static class CppNaming
             sb.Append(char.IsAsciiLetterOrDigit(c) ? c : '_');
         }
         return sb.ToString();
+    }
+
+    /// <summary>Render a metadata name with the readable escaping used by IL2CPP
+    /// symbols. Separator punctuation collapses to an underscore; every other
+    /// unsafe UTF-16 code unit is written as <c>U</c> plus uppercase hexadecimal.</summary>
+    public static string Il2CppClean(string name)
+    {
+        var sb = new System.Text.StringBuilder(name.Length);
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            if (char.IsAsciiLetter(c) || c == '_' || (i > 0 && char.IsAsciiDigit(c)))
+                sb.Append(c);
+            else if (c is '.' or '/' or '`')
+                sb.Append('_');
+            else
+            {
+                sb.Append('U');
+                AppendUpperHex(sb, c);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static void AppendUpperHex(System.Text.StringBuilder sb, uint value)
+    {
+        const string hex = "0123456789ABCDEF";
+        int shift = value < 0x100 ? 4 : value < 0x1000 ? 8 : 12;
+        for (; shift >= 0; shift -= 4)
+            sb.Append(hex[(int)((value >> shift) & 0xFu)]);
+    }
+
+    /// <summary>A host-independent decimal suffix for a method's complete dn2cpp
+    /// identity. The readable stem deliberately omits namespaces, enclosing types,
+    /// and closed declaring-type arguments, so the suffix carries those dimensions.</summary>
+    public static string StableDecimalId(string identity)
+    {
+        ulong hash = 14695981039346656037UL;
+        foreach (char c in identity)
+        {
+            hash ^= c;
+            hash *= 1099511628211UL;
+        }
+        if (hash == 0)
+            return "0";
+        char[] digits = new char[20];
+        int i = digits.Length;
+        while (hash != 0)
+        {
+            digits[--i] = (char)('0' + hash % 10);
+            hash /= 10;
+        }
+        return new string(digits, i, digits.Length - i);
     }
 
     /// <summary>The marker a <see cref="MangleFragment"/> escape SUFFIXES onto a named type's
