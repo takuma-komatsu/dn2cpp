@@ -269,7 +269,7 @@ EOF
     printf '@tool\nextends EditorExportPlugin\n\n'
     printf 'const CRI_LIBS = [\n'
     for _so in "${CRI_NATIVE_SOS[@]}"; do
-        printf '\t"%s",\n' "$_so"
+        printf '\t"%s",\n' "$(godot_fork_native_path "$_so")"
     done
     printf ']\n\n'
     printf 'func _get_name() -> String:\n\treturn "CriNativeLibs"\n\n'
@@ -523,6 +523,14 @@ for so in "lib$PROJECT_NAME.so" libcri_atom.so libcri_jni_shared.so libcri_ware_
     grep -qF "lib/arm64-v8a/$so" "$LIST" \
         || { echo "FAIL: the APK does not carry lib/arm64-v8a/$so" >&2
              grep -i '\.so' "$LIST" >&2; exit 1; }
+done
+APK_NATIVE="$OUT/apk-native"
+mkdir -p "$APK_NATIVE"
+for source in "${CRI_NATIVE_SOS[@]}"; do
+    so="$(basename "$source")"
+    unzip -p "$APK" "lib/arm64-v8a/$so" > "$APK_NATIVE/$so"
+    cmp -s "$source" "$APK_NATIVE/$so" \
+        || { echo "FAIL: the APK's $so does not match the CRI package input" >&2; exit 1; }
 done
 # The pck directory GDMono checks for BEFORE the drop-in fallback.
 grep -qE "assets/\.godot/mono/publish/arm64/" "$LIST" \
