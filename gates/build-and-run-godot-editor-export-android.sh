@@ -48,7 +48,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_fork.sh"
 
-OUT=gates/out-godot-editor-export-android
+OUT=${DN2CPP_EDITOR_EXPORT_ANDROID_OUT:-gates/out-godot-editor-export-android}
 SAMPLE=samples/godot-dotnet/EditorExportSample
 PROJECT_NAME=EditorExportSample
 
@@ -281,7 +281,8 @@ fi
 echo "no .NET runtime in the APK"
 
 if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
-    python3 gates/fixtures/declang-android-export-checks.py "$PWD" "$PROJ" "$OUT" "$FORK_EDITOR"
+    PYTHON="$(resolve_python)" || gate_skip "Android DeClang validation requires Python"
+    $PYTHON gates/fixtures/declang-android-export-checks.py "$PWD" "$PROJ" "$OUT" "$FORK_EDITOR"
 fi
 
 echo "== 7/7 Refusing an ABI set the backend cannot serve =="

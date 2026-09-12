@@ -5,6 +5,7 @@ source "$(dirname "$0")/_common.sh"
 
 # Keep native parity under the standard wrapper; the hook exercises opt-in emission.
 export DN2CPP_GATE_EXTRA_CONTEXT="obfuscation|strict|ildiet-on-off|cli:$(_gate_cli_hash)"
+PYTHON="$(resolve_python)" || gate_skip "obfuscation validation requires Python"
 gate_extra_asserts() {
     local baseline="$1" mode out
     for mode in stripped original; do
@@ -13,10 +14,10 @@ gate_extra_asserts() {
         [ "$mode" = original ] && flags+=(--no-ildiet)
         DN2CPP_STRICT_COMPLETION=1 invoke_cli "$_CG_APP" -r "$_CG_CORELIB" \
             --obfuscate ${flags[@]+"${flags[@]}"} -o "$out"
-        python3 - "$out" <<'PY'
+        "$PYTHON" - "$out" <<'PY'
 import json, pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
-rows = json.loads((root / 'obfuscation-targets.json').read_text())['targets']
+rows = json.loads((root / 'obfuscation-targets.json').read_text(encoding='utf-8'))['targets']
 assert rows
 names = '\n'.join(row['managedMethod'] for row in rows)
 for name in ('::.ctor', '::Mix', '::Tiny', '::Pick', '::ArrayName'):
@@ -26,19 +27,19 @@ symbols = {row['implementationSymbol'] for row in rows}
 assert len([s for s in symbols if 'Mix' in s]) == 2
 pick_rows = [row for row in rows if '::Pick' in row['managedMethod']]
 assert len({row['implementationSymbol'] for row in pick_rows}) < len(pick_rows), pick_rows
-header = (root / 'generated.h').read_text()
+header = (root / 'generated.h').read_text(encoding='utf-8')
 for row in rows:
     symbol = row['implementationSymbol']
     assert row['symbolPattern'] == f'^_Z{len(symbol)}{symbol}.*$'
     assert pathlib.Path(row['cppFile']).name == row['cppFile']
-    source = (root / row['cppFile']).read_text()
+    source = (root / row['cppFile']).read_text(encoding='utf-8')
     assert re.search(r'DN2CPP_NOINLINE [^\n]*\b' + re.escape(symbol) + r'\([^\n]*\)\n\{', source), row
     assert not re.search(r'inline [^\n]*\b' + re.escape(symbol) + r'\(', header), row
 assert re.search(r'inline [^\n]*PlainTiny', header)
 array_rows = [row for row in rows if '::ArrayName' in row['managedMethod']]
 assert len(array_rows) == 2 and len({row['implementationSymbol'] for row in array_rows}) == 1, array_rows
 row = array_rows[0]
-source = (root / row['cppFile']).read_text()
+source = (root / row['cppFile']).read_text(encoding='utf-8')
 assert re.search(r'DN2CPP_NOINLINE [^\n]*' + re.escape(row['implementationSymbol']) + r'\([^\n]*__rgctx', source), row
 PY
         cp "$out/obfuscation-targets.json" "$out/targets-first.json"
@@ -51,7 +52,7 @@ PY
 
     local negative="$baseline-negative"
     mkdir -p "$negative"
-    python3 - "$negative" <<'PYGEN'
+    "$PYTHON" - "$negative" <<'PYGEN'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 cases = {
@@ -66,12 +67,12 @@ cases = {
 for name, (body, call) in cases.items():
     directory = root / name
     directory.mkdir(exist_ok=True)
-    (directory / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>')
+    (directory / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>disable</ImplicitUsings></PropertyGroup></Project>', encoding='utf-8')
     prefix = 'namespace System { static class Math { [Dn2Cpp.Runtime.Obfuscate] public static int Abs(int value) => value < 0 ? -value : value; } }' if name == 'intrinsic' else ''
     if name == 'bodyreplace':
         prefix = 'namespace Grpc.Net.Client { public class GrpcChannel { [Dn2Cpp.Runtime.Obfuscate] public int get_HttpHandlerType() => 1; } }'
     (directory / 'Program.cs').write_text(prefix + 'namespace Dn2Cpp.Runtime { [System.AttributeUsage(System.AttributeTargets.Method)] sealed class ObfuscateAttribute : System.Attribute {} }\n'
-        + 'class Program { ' + body + ' public static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }')
+        + 'class Program { ' + body + ' public static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }', encoding='utf-8')
 PYGEN
     local kind reason log
     for kind in empty pinvoke async iterator abstract intrinsic bodyreplace; do
@@ -97,22 +98,22 @@ PYGEN
         done
     done
 
-    python3 - "$negative" <<'PYCROSS'
+    "$PYTHON" - "$negative" <<'PYCROSS'
 import pathlib, sys
 root = pathlib.Path(sys.argv[1])
 lib = root / 'cross-lib'
 lib.mkdir(exist_ok=True)
-(lib / 'RefLibrary.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>')
+(lib / 'RefLibrary.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup></Project>', encoding='utf-8')
 (lib / 'Library.cs').write_text("""namespace Dn2Cpp.Runtime { [System.AttributeUsage(System.AttributeTargets.Method)] public sealed class ObfuscateAttribute : System.Attribute {} }
 namespace System { public static class Math { [Dn2Cpp.Runtime.Obfuscate] public static int Abs(int value) => value < 0 ? -value : value; } }
 public interface IValue { [Dn2Cpp.Runtime.Obfuscate] int Target(); }
 public sealed class Value : IValue { public int Target() => 1; }
-""")
+""", encoding='utf-8')
 for name, call in [('intrinsic', 'obfuscated::System.Math.Abs(-1)'), ('interface', '((obfuscated::IValue)new obfuscated::Value()).Target()')]:
     app = root / ('cross-' + name)
     app.mkdir(exist_ok=True)
-    (app / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../cross-lib/RefLibrary.csproj" Aliases="obfuscated" /></ItemGroup></Project>')
-    (app / 'Program.cs').write_text('extern alias obfuscated; class Program { static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }')
+    (app / 'Probe.csproj').write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework></PropertyGroup><ItemGroup><ProjectReference Include="../cross-lib/RefLibrary.csproj" Aliases="obfuscated" /></ItemGroup></Project>', encoding='utf-8')
+    (app / 'Program.cs').write_text('extern alias obfuscated; class Program { static void Main() { System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture; System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture; System.Console.WriteLine(' + call + '); } }', encoding='utf-8')
 PYCROSS
     for kind in intrinsic interface; do
         build_gate_proj "$negative/cross-$kind/Probe.csproj"

@@ -16,11 +16,11 @@ work.mkdir(parents=True, exist_ok=True)
 env = os.environ.copy()
 env["DECLANG_HOME"] = str(work / "disabled")
 (work / "disabled" / ".DeClang").mkdir(parents=True, exist_ok=True)
-(work / "disabled" / ".DeClang" / "config.json").write_text('{"enable_obfuscation":0}')
+(work / "disabled" / ".DeClang" / "config.json").write_text('{"enable_obfuscation":0}', encoding="utf-8")
 
 
 def run(*args):
-    result = subprocess.run([str(a) for a in args], env=env, text=True,
+    result = subprocess.run([str(a) for a in args], env=env, text=True, encoding="utf-8",
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if result.returncode:
         raise AssertionError(f"Command failed: {args}\n{result.stdout}")
@@ -34,7 +34,7 @@ if not os.environ.get("DN2CPP_SKIP_BUILD"):
         "-m:1", "-p:BuildInParallel=false", "--disable-build-servers")
 fixture = work / "fixture"
 fixture.mkdir(exist_ok=True)
-(fixture / "Proof.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Optimize>true</Optimize></PropertyGroup></Project>')
+(fixture / "Proof.csproj").write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><Optimize>true</Optimize></PropertyGroup></Project>', encoding="utf-8")
 (fixture / "Program.cs").write_text("""
 using System;
 using System.Globalization;
@@ -98,7 +98,7 @@ class Program {
         Console.WriteLine(Unselected(args.Length + 43));
     }
 }
-""")
+""", encoding="utf-8")
 run("dotnet", "build", fixture, "-c", configuration,
     "-m:1", "-p:BuildInParallel=false", "--disable-build-servers")
 assembly = fixture / f"bin/{configuration}/net10.0/Proof.dll"
@@ -106,7 +106,7 @@ expected = run("dotnet", assembly)
 emitted = work / "emitted"
 run("dotnet", cli,
     assembly, "--auto-ref", "--obfuscate", "--no-ildiet", "-o", emitted)
-manifest = json.loads((emitted / "obfuscation-targets.json").read_text())
+manifest = json.loads((emitted / "obfuscation-targets.json").read_text(encoding="utf-8"))
 # The trip counts keep native branches; Fill's array allocation requires rgctx.
 targets = manifest["targets"]
 assert any("::.ctor(Int32):" in t["managedMethod"] for t in targets)
@@ -115,7 +115,7 @@ shared = [t for t in targets if "::Fill<" in t["managedMethod"]]
 assert len(shared) == 2
 assert shared[0]["implementationSymbol"] == shared[1]["implementationSymbol"]
 shared_symbol = shared[0]["implementationSymbol"]
-shared_text = (emitted / shared[0]["cppFile"]).read_text()
+shared_text = (emitted / shared[0]["cppFile"]).read_text(encoding="utf-8")
 shared_definition = next(line for line in shared_text.splitlines()
                          if line.startswith("DN2CPP_NOINLINE ") and shared_symbol + "(" in line)
 assert "__rgctx" in shared_definition
@@ -123,15 +123,15 @@ for target in targets:
     target["seed"] = hashlib.sha256(("proof\n" + target["implementationSymbol"]).encode()).hexdigest()[:32]
 config = work / "targets.json"
 content = json.dumps({"version": 1, "targets": targets})
-if not config.exists() or config.read_text() != content:
-    config.write_text(content)
+if not config.exists() or config.read_text(encoding="utf-8") != content:
+    config.write_text(content, encoding="utf-8")
 if android:
     ndk = Path(os.environ["ANDROID_NDK_ROOT"]).resolve()
     toolchain = root / "runtime/cmake/android-declang.toolchain.cmake"
     platform_args = [f"-DCMAKE_TOOLCHAIN_FILE={toolchain}", f"-DDN2CPP_DECLANG_COMPILER={compiler}",
                      f"-DANDROID_NDK={ndk}", "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-24",
                      "-DANDROID_STL=c++_static"]
-    objdump = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-objdump"))
+    objdump = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-objdump" + (".exe" if os.name == "nt" else "")))
 else:
     sdk = run("xcrun", "--show-sdk-path").strip()
     platform_args = [f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_C_COMPILER={compiler}",
@@ -146,20 +146,20 @@ for mode in ("off", "on"):
     print(f"Building DeClang native {mode}", flush=True)
     run("cmake", "--build", build, "--parallel", "4")
     if android:
-        description = run("file", build / "Obfuscation")
-        assert "ELF" in description and "aarch64" in description, description
+        description = run(objdump, "-f", build / "Obfuscation")
+        assert "elf64-littleaarch64" in description, description
         # Reconfigure without compiler overrides to catch the NDK resetting its driver.
         run("cmake", "-S", root / "runtime", "-B", build)
         for language in ("C", "CXX"):
             identity = list((build / "CMakeFiles").glob(f"*/CMake{language}Compiler.cmake"))
             assert len(identity) == 1
-            identity_text = identity[0].read_text()
-            assert f'set(CMAKE_{language}_COMPILER "{compiler}")' in identity_text
+            identity_text = identity[0].read_text(encoding="utf-8")
+            assert f'set(CMAKE_{language}_COMPILER "{compiler.as_posix()}")' in identity_text
             actual_version = re.search(r"clang version ([0-9.]+)", run(compiler, "--version")).group(1)
             assert f'set(CMAKE_{language}_COMPILER_VERSION "{actual_version}")' in identity_text
         commands = run("ninja", "-C", build, "-t", "commands")
         pch = [line for line in commands.splitlines() if "cmake_pch" in line and " -c " in line]
-        assert pch and all(str(compiler) in line for line in pch), "PCH did not use DeClang"
+        assert pch and all(compiler.as_posix() in line.replace("\\", "/") for line in pch), "PCH did not use DeClang"
     else:
         assert run(build / "Obfuscation") == expected
 
@@ -167,7 +167,7 @@ for mode in ("off", "on"):
 def instructions(mode, target):
     if android:
         dump = run(objdump, "-d", "--no-show-raw-insn", work / mode / "Obfuscation")
-        (work / f"{mode}-disassembly.txt").write_text(dump)
+        (work / f"{mode}-disassembly.txt").write_text(dump, encoding="utf-8")
         prefix = "_Z" + str(len(target["implementationSymbol"])) + target["implementationSymbol"]
         lines = dump.splitlines()
         start = next(i for i, line in enumerate(lines) if re.match(r"[0-9a-f]+ <" + re.escape(prefix), line))
@@ -197,19 +197,19 @@ def instructions(mode, target):
 implementations = {t["implementationSymbol"]: t for t in targets}
 flattened = []
 for result in (work / "on" / "declang" / "results").glob("*.json"):
-    flattened.extend(json.loads(result.read_text())["flattenedSymbols"])
+    flattened.extend(json.loads(result.read_text(encoding="utf-8"))["flattenedSymbols"])
 assert len(flattened) == len(implementations)
 for target in implementations.values():
     assert sum(bool(re.fullmatch(target["symbolPattern"], symbol)) for symbol in flattened) == 1
     assert instructions("on", target) != instructions("off", target), target["managedMethod"]
 if android:
-    unselected = next(re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text())
-                      for path in emitted.glob("*.cpp") if re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text()))
+    unselected = next(re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text(encoding="utf-8"))
+                      for path in emitted.glob("*.cpp") if re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text(encoding="utf-8")))
     target = {"implementationSymbol": unselected.group(1)}
     assert instructions("on", target) == instructions("off", target), "unselected machine code changed"
     def machine_bytes(mode):
         dump = run(objdump, "-d", work / mode / "Obfuscation")
-        (work / f"{mode}-machine-code.txt").write_text(dump)
+        (work / f"{mode}-machine-code.txt").write_text(dump, encoding="utf-8")
         prefix = "_Z" + str(len(target["implementationSymbol"])) + target["implementationSymbol"]
         match = re.search(r"[0-9a-f]+ <" + re.escape(prefix) + r"[^>]*>:\n(.*?)(?:\n\n|\Z)", dump, re.S)
         assert match
@@ -233,7 +233,9 @@ if android:
             state = re.match(r"ldr\s+(w\d+), (\[sp, #0x[0-9a-f]+\])", dispatcher)
             assert state, "common branch destination does not reload the dispatcher state"
             register, slot = state.groups()
-            writes = re.findall(r"\bstr\s+w\d+, " + re.escape(slot), after)
+            # A paired store also updates the state when its first word uses
+            # the dispatcher's stack slot.
+            writes = re.findall(r"\b(?:str\s+w\d+, |stp\s+w\d+, (?:w\d+|wzr), )" + re.escape(slot), after)
             comparisons = re.findall(r"\bcmp\s+" + register + r", w\d+", after)
             assert len(writes) >= 2 and len(comparisons) >= 3, "dispatcher lacks state transitions or multi-way comparisons"
 

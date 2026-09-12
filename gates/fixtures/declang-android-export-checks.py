@@ -10,15 +10,25 @@ import zipfile
 root, project, output, editor = map(Path, sys.argv[1:])
 compiler = Path(os.environ["DN2CPP_DECLANG_COMPILER"]).resolve()
 ndk = Path(os.environ["ANDROID_NDK_ROOT"])
-nm = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-nm"))
+nm = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-nm" + (".exe" if os.name == "nt" else "")))
 presets = project / "export_presets.cfg"
-original = presets.read_text()
+original = presets.read_text(encoding="utf-8")
 attribute = project / "ObfuscateAttribute.cs"
 probe = project / "DeClangProbe.cs"
-attribute.write_text((root / "src/Dn2Cpp.Runtime/ObfuscateAttribute.cs").read_text())
+game = project / "ExportProbe.cs"
+original_game = game.read_text(encoding="utf-8")
+# Android discards stdout; route the device assertions through the engine logger.
+game.write_text(original_game.replace("Console.WriteLine(", "Godot.GD.Print("), encoding="utf-8")
+attribute.write_text((root / "src/Dn2Cpp.Runtime/ObfuscateAttribute.cs").read_text(encoding="utf-8"), encoding="utf-8")
 probe.write_text('''using System;
 public partial class ExportProbe {
-    static ExportProbe() { Console.WriteLine(DeClangSelected(Environment.TickCount & 63)); }
+    static ExportProbe() {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+        int n = Environment.TickCount & 63;
+        bool correct = DeClangSelected(n) == n * (n - 1) / 2 + (n % 2) * n;
+        Godot.GD.Print($"DN2CPP_DECLANG_SELECTED correct={correct}");
+    }
     [Dn2Cpp.Runtime.Obfuscate]
     private static int DeClangSelected(int n) {
         int result = 0;
@@ -29,7 +39,7 @@ public partial class ExportProbe {
         return result;
     }
 }
-''')
+''', encoding="utf-8")
 
 
 def configure(compiler_path, seed, prestrip=False):
@@ -41,7 +51,7 @@ def configure(compiler_path, seed, prestrip=False):
     for name, value in settings.items():
         tail = re.sub(r"^dotnet/dn2cpp/" + name + r"=.*\n", "", tail, flags=re.M)
     presets.write_text(block[0] + "[preset.2.options]\n" +
-                       "".join(f"dotnet/dn2cpp/{key}={value}\n" for key, value in settings.items()) + tail)
+                       "".join(f"dotnet/dn2cpp/{key}={value}\n" for key, value in settings.items()) + tail, encoding="utf-8")
 
 
 def export(label, diagnostic=None):
@@ -50,8 +60,8 @@ def export(label, diagnostic=None):
     apk.unlink(missing_ok=True)
     result = subprocess.run([str(editor.resolve()), "--headless", "--path", str(project.resolve()),
                              "--export-debug", "dn2cpp-android", str(apk)],
-                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=3600)
-    (output / f"declang-{label}.log").write_text(result.stdout)
+                            text=True, encoding="utf-8", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=3600)
+    (output / f"declang-{label}.log").write_text(result.stdout, encoding="utf-8")
     if diagnostic:
         assert result.returncode != 0 and diagnostic in result.stdout, result.stdout
         assert "dn2cpp: transpiling" not in result.stdout
@@ -82,7 +92,7 @@ def export(label, diagnostic=None):
     logs = sorted((project / ".godot/mono/temp/bin/dn2cpp/logs").glob("export-*.log"),
                   key=lambda p: p.stat().st_mtime_ns)
     assert logs
-    log = logs[-1].read_text()
+    log = logs[-1].read_text(encoding="utf-8")
     if label.startswith("prestrip-"):
         if label.endswith("True"):
             assert re.search(r"ILDiet: removed [0-9]+ types and [0-9]+ methods", log), log
@@ -98,7 +108,7 @@ try:
     export("empty-seed", "declang_seed")
     configure("/missing/declang", "android-export-gate")
     export("missing-compiler", "existing compiler executable")
-    configure(next(ndk.glob("toolchains/llvm/prebuilt/*/bin/clang++")), "android-export-gate")
+    configure(next(ndk.glob("toolchains/llvm/prebuilt/*/bin/clang++" + (".exe" if os.name == "nt" else ""))), "android-export-gate")
     export("ordinary-clang", "DeClang produced no application log")
     for prestrip in (False, True):
         configure(compiler, "android-export-gate", prestrip)
@@ -113,7 +123,8 @@ try:
     subprocess.run(["cmake", "--build", str(build)], check=True, timeout=3600)
     subprocess.run([*checks, "check-rebuild", str(build), str(previous)], check=True)
 finally:
-    presets.write_text(original)
+    game.write_text(original_game, encoding="utf-8")
+    presets.write_text(original, encoding="utf-8")
     attribute.unlink()
     probe.unlink()
 print("Android DeClang APK checks passed; no device execution performed")

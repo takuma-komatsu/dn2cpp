@@ -203,8 +203,8 @@ host-equals-target rule as macOS and Windows, `lib{Assembly}.so` built and
 
 ### Selective DeClang export
 
-On a macOS host, for a macOS export targeting the host architecture or an Android
-arm64-v8a export, select the existing DeClang C++ executable with the preset's
+For a native macOS export, or an Android arm64-v8a export from macOS or Windows,
+select the existing host's DeClang C++ executable with the preset's
 `dotnet/dn2cpp/declang_path` file picker and set
 `dotnet/dn2cpp/declang_seed` to a non-empty, stable string. An empty executable
 path disables the feature. The editor does not discover, download, or bundle
@@ -282,6 +282,46 @@ compatibility: the Android probe must pass against the selected
 NDK's headers and link inputs. This build preparation is a developer step; the
 exporter only inspects the executable provided in the preset.
 
+On Windows, select a Windows DeClang executable (`clang++.exe`) and install the
+Windows Android NDK. A macOS compiler binary cannot run on Windows. The Android
+toolchain uses DeClang for C/C++ and PCH, and the Windows NDK drivers for linking.
+Windows desktop targets are not supported by this DeClang integration.
+PowerShell is used to preserve result timestamps for Ninja's incremental builds.
+On Windows, compiler homes use isolated short paths under `%TEMP%/dn2cpp-declang`
+because DeClang's configuration reader cannot open long paths. Each invocation's
+configuration and log are also recorded in the build directory.
+Pass absolute paths; forward slashes also work in PowerShell:
+
+```powershell
+cmake "-DCOMPILER=C:/tools/declang/bin/clang++.exe" `
+  "-DANDROID_NDK=$env:ANDROID_NDK_ROOT" `
+  "-DWORK_DIR=$PWD/artifacts/declang-probe-android" `
+  -P runtime/cmake/declang_probe.cmake
+```
+
+The probe must pass before using that compiler for an export. It verifies an
+Android ELF and selective flattening; it does not execute the result on a device.
+
+The official [Windows binary](https://github.com/DeNA/DeClang/releases/tag/swift5.10-v1.0.0)
+is Clang 16 based. Use it with [NDK r26d](https://github.com/android/ndk/releases/tag/r26d);
+the newer libc++ headers in NDK r30 require compiler builtins it does not provide.
+Extract `Release-Win-swift5.10-v1.0.0.zip` under
+`artifacts/declang-distribution/` and the Windows NDK archive under
+`artifacts/declang-ndk/`. Select the compiler in the preset and set the NDK for
+the shell launching the editor or gate:
+
+```powershell
+$env:DN2CPP_DECLANG_COMPILER = "$PWD/artifacts/declang-distribution/Release-Win-swift5.10-v1.0.0/compiler/bin/clang++.exe"
+$env:ANDROID_NDK_ROOT = "$PWD/artifacts/declang-ndk/android-ndk-r26d"
+bash gates/build-and-run-declang-android.sh
+```
+
+The exporter reads `ANDROID_NDK_ROOT` before searching the installed SDK. The
+NDK setup scripts from the DeClang distribution are unnecessary: dn2cpp's
+toolchain selects the compiler without replacing the NDK's executables.
+Use a fresh CMake build directory when changing NDK installations; CMake caches
+the previous toolchain's compiler identification in that directory.
+
 For direct CMake builds, transpile with `--obfuscate` to produce the generated
 application directory and `obfuscation-targets.json`. Copy that manifest to
 `declang-config.json` and add a `seed` string of 32 hexadecimal characters to
@@ -305,6 +345,9 @@ cmake --build artifacts/android-declang
 
 The Android export regression checks APK contents and final native artifacts.
 Android device execution is outside this gate's coverage.
+The Android fixture routes its assertions through Godot's logger so an external
+device run can inspect `DN2CPP_DECLANG_SELECTED correct=True` and the
+`DN2CPP_EXPORT_*` markers in logcat. Android does not preserve console stdout.
 The local Clang 19.1.5 based DeClang build passes the Android compatibility probe
 with NDK 30.0.15729638 at API 24 for `c++_static` and `c++_shared`. The native
 Android gate passes with this compiler and NDK; the editor selects `c++_static`.
@@ -313,7 +356,7 @@ library matches the obfuscated build output, exports the public entry point,
 and carries no .NET runtime. Compiler and configuration refusal cases, seed
 changes, and recompilation after deleting application results also pass.
 The older Clang 16 based DeClang distribution fails this NDK's compatibility
-probe, so it remains suitable for the separate macOS regression only.
+probe; use the compatible NDK described above for its Windows Android builds.
 
 `DN2CPP_DECLANG_COMPILER=/absolute/path/to/clang++` enables real DeClang exports
 in `gates/build-and-run-godot-editor-export-declang.sh`, covering both IL
@@ -321,10 +364,16 @@ pre-stripping settings and the existing game startup, interop, and GC assertions
 Its ordinary
 desktop gate macOS run also checks empty seeds, missing executables, and ordinary
 Clang refusal.
-The DeClang gates also discover a sole executable at
-`artifacts/declang-distribution/*/compiler/bin/clang++` when the override is empty.
-An explicit override takes precedence; invalid overrides and ambiguous staged
-distributions fail with a diagnostic.
+On macOS, when the override is empty, the Android DeClang gates first discover a sole
+executable at `artifacts/declang-android-*/build/bin/clang++`, using the newer
+LLVM baseline built for the installed NDK. If none exists, they fall back to
+`artifacts/declang-distribution/*/compiler/bin/clang++`, which is also the desktop
+gates' discovery path. Windows retains the distribution discovery path.
+On Windows the discovered driver is `clang++.exe`. The Android native gate first
+checks host routing and result-file rebuilds with the NDK compiler; without a
+DeClang executable, the remaining obfuscation checks are reported as skipped.
+An explicit override takes precedence; invalid overrides and ambiguous builds
+in the selected discovery path fail with a diagnostic.
 
 For Android, the [native gate](../gates/build-and-run-declang-android.sh) compares
 OFF/ON final ELF machine code and validates compiler refusal and rebuild cases.

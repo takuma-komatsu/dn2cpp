@@ -6,7 +6,10 @@ import shutil
 import subprocess
 import sys
 
+from bash_executable import resolve_bash
+
 root = Path(sys.argv[1]).resolve()
+bash = resolve_bash()
 compiler = Path(sys.argv[2]).resolve()
 work = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else root / "artifacts" / "declang helper checks"
 shutil.rmtree(work, ignore_errors=True)
@@ -38,9 +41,9 @@ def resolve_driver(expected_code, override=None):
     if override is not None:
         child_env["DN2CPP_DECLANG_COMPILER"] = str(override)
     result = subprocess.run(
-        ["bash", "-c", 'set -euo pipefail; source "$1"; '
+        [bash, "-c", 'set -euo pipefail; source "$1"; '
          'gate_skip() { echo "$*" >&2; exit 77; }; ensure_declang_compiler; '
-         'bash -c \'printf "%s" "$DN2CPP_DECLANG_COMPILER"\'',
+         '"$BASH" -c \'printf "%s" "$DN2CPP_DECLANG_COMPILER"\'',
          "discovery", str(root / "gates" / "_declang.sh")],
         cwd=discovery, env=child_env, text=True, capture_output=True)
     assert result.returncode == expected_code, result.stderr
