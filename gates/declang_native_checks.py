@@ -1,4 +1,5 @@
 """Compare OFF/ON native bodies from the same dn2cpp emission and compiler."""
+from collections import Counter
 import hashlib
 import json
 import re
@@ -10,6 +11,7 @@ import sys
 root = Path(sys.argv[1]).resolve()
 compiler = Path(sys.argv[2]).resolve()
 work = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else root / "artifacts" / "declang-native-proof"
+android = os.environ.get("DN2CPP_DECLANG_ANDROID") == "1"
 work.mkdir(parents=True, exist_ok=True)
 env = os.environ.copy()
 env["DECLANG_HOME"] = str(work / "disabled")
@@ -71,6 +73,15 @@ class Program {
         }
         return items;
     }
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static int Unselected(int value) {
+        int result = 0;
+        for (int i = 0; i < value; ++i) {
+            if (i % 3 == 0) result = (result + i * 31) % 1009;
+            else result = (result - i * 7) % 1009;
+        }
+        return result;
+    }
     static void Main(string[] args) {
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
         CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
@@ -84,6 +95,7 @@ class Program {
         Console.WriteLine(strings.Length);
         Console.WriteLine(strings[0]);
         Console.WriteLine(strings[1]);
+        Console.WriteLine(Unselected(args.Length + 43));
     }
 }
 """)
@@ -113,21 +125,62 @@ config = work / "targets.json"
 content = json.dumps({"version": 1, "targets": targets})
 if not config.exists() or config.read_text() != content:
     config.write_text(content)
-sdk = run("xcrun", "--show-sdk-path").strip()
+if android:
+    ndk = Path(os.environ["ANDROID_NDK_ROOT"]).resolve()
+    toolchain = root / "runtime/cmake/android-declang.toolchain.cmake"
+    platform_args = [f"-DCMAKE_TOOLCHAIN_FILE={toolchain}", f"-DDN2CPP_DECLANG_COMPILER={compiler}",
+                     f"-DANDROID_NDK={ndk}", "-DANDROID_ABI=arm64-v8a", "-DANDROID_PLATFORM=android-24",
+                     "-DANDROID_STL=c++_static"]
+    objdump = next(ndk.glob("toolchains/llvm/prebuilt/*/bin/llvm-objdump"))
+else:
+    sdk = run("xcrun", "--show-sdk-path").strip()
+    platform_args = [f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_C_COMPILER={compiler}",
+                     "-DCMAKE_C_COMPILER_ARG1=--driver-mode=gcc", f"-DCMAKE_OSX_SYSROOT={sdk}"]
 for mode in ("off", "on"):
     build = work / mode
     run("cmake", "-S", root / "runtime", "-B", build, "-G", "Ninja",
-        f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_C_COMPILER={compiler}",
-        "-DCMAKE_C_COMPILER_ARG1=--driver-mode=gcc", f"-DCMAKE_OSX_SYSROOT={sdk}",
+        *platform_args,
         f"-DDN2CPP_APP_DIR={emitted}", "-DDN2CPP_APP_NAME=Obfuscation", "-DDN2CPP_STRIP=OFF",
         "-DDN2CPP_USE_CURL=OFF", "-DDN2CPP_USE_ZLIB=OFF", "-DDN2CPP_USE_BROTLI=OFF",
         "-DDN2CPP_USE_HIGHWAY=OFF", f"-DDN2CPP_DECLANG_CONFIG={config if mode == 'on' else ''}")
     print(f"Building DeClang native {mode}", flush=True)
     run("cmake", "--build", build, "--parallel", "4")
-    assert run(build / "Obfuscation") == expected
+    if android:
+        description = run("file", build / "Obfuscation")
+        assert "ELF" in description and "aarch64" in description, description
+        # Reconfigure without compiler overrides to catch the NDK resetting its driver.
+        run("cmake", "-S", root / "runtime", "-B", build)
+        for language in ("C", "CXX"):
+            identity = list((build / "CMakeFiles").glob(f"*/CMake{language}Compiler.cmake"))
+            assert len(identity) == 1
+            identity_text = identity[0].read_text()
+            assert f'set(CMAKE_{language}_COMPILER "{compiler}")' in identity_text
+            actual_version = re.search(r"clang version ([0-9.]+)", run(compiler, "--version")).group(1)
+            assert f'set(CMAKE_{language}_COMPILER_VERSION "{actual_version}")' in identity_text
+        commands = run("ninja", "-C", build, "-t", "commands")
+        pch = [line for line in commands.splitlines() if "cmake_pch" in line and " -c " in line]
+        assert pch and all(str(compiler) in line for line in pch), "PCH did not use DeClang"
+    else:
+        assert run(build / "Obfuscation") == expected
 
 
 def instructions(mode, target):
+    if android:
+        dump = run(objdump, "-d", "--no-show-raw-insn", work / mode / "Obfuscation")
+        (work / f"{mode}-disassembly.txt").write_text(dump)
+        prefix = "_Z" + str(len(target["implementationSymbol"])) + target["implementationSymbol"]
+        lines = dump.splitlines()
+        start = next(i for i, line in enumerate(lines) if re.match(r"[0-9a-f]+ <" + re.escape(prefix), line))
+        body = []
+        for line in lines[start + 1:]:
+            if not line.strip():
+                break
+            # Relative control-flow destinations change when preceding bodies grow.
+            instruction = re.sub(r"^\s*[0-9a-f]+:\s*", "", line)
+            instruction = re.sub(r"0x[0-9a-f]+ <([^>+]+)\+0x([0-9a-f]+)>", r"<\1+\2>", instruction)
+            body.append(instruction)
+        assert body
+        return "\n".join(body)
     dump = run("otool", "-tvV", work / mode / "Obfuscation")
     prefix = "__Z" + str(len(target["implementationSymbol"])) + target["implementationSymbol"]
     lines = dump.splitlines()
@@ -149,4 +202,41 @@ assert len(flattened) == len(implementations)
 for target in implementations.values():
     assert sum(bool(re.fullmatch(target["symbolPattern"], symbol)) for symbol in flattened) == 1
     assert instructions("on", target) != instructions("off", target), target["managedMethod"]
-print("DeClang native proof passed: same emitted C++, .NET parity, selected machine code differs")
+if android:
+    unselected = next(re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text())
+                      for path in emitted.glob("*.cpp") if re.search(r"DN2CPP_NOINLINE \S+ (\w*Unselected\w*)\(", path.read_text()))
+    target = {"implementationSymbol": unselected.group(1)}
+    assert instructions("on", target) == instructions("off", target), "unselected machine code changed"
+    def machine_bytes(mode):
+        dump = run(objdump, "-d", work / mode / "Obfuscation")
+        (work / f"{mode}-machine-code.txt").write_text(dump)
+        prefix = "_Z" + str(len(target["implementationSymbol"])) + target["implementationSymbol"]
+        match = re.search(r"[0-9a-f]+ <" + re.escape(prefix) + r"[^>]*>:\n(.*?)(?:\n\n|\Z)", dump, re.S)
+        assert match
+        words = re.findall(r"^\s*[0-9a-f]+:\s+([0-9a-f]{8})\s", match.group(1), re.M)
+        assert words
+        return words
+    assert machine_bytes("on") == machine_bytes("off"), "unselected instruction bytes changed"
+    for target in implementations.values():
+        before, after = instructions("off", target), instructions("on", target)
+        assert len(after.splitlines()) > len(before.splitlines()), "flattening did not expand selected control flow"
+        if "::Mix(" in target["managedMethod"]:
+            # Flattening routes distinct basic blocks back into a common state
+            # dispatcher; ordinary source loops have fewer converging branches.
+            def convergence(body):
+                destinations = re.findall(r"\bb(?:\.[a-z]+)?\s+(<[^>]+>)", body)
+                return max(Counter(destinations).values(), default=0)
+            assert convergence(after) >= 3 and convergence(after) > convergence(before), "no common flattened dispatcher in final ELF"
+            common = Counter(re.findall(r"\bb(?:\.[a-z]+)?\s+(<[^>]+>)", after)).most_common(1)[0][0]
+            offset = int(re.search(r"\+([0-9a-f]+)>$", common).group(1), 16)
+            dispatcher = after.splitlines()[offset // 4]
+            state = re.match(r"ldr\s+(w\d+), (\[sp, #0x[0-9a-f]+\])", dispatcher)
+            assert state, "common branch destination does not reload the dispatcher state"
+            register, slot = state.groups()
+            writes = re.findall(r"\bstr\s+w\d+, " + re.escape(slot), after)
+            comparisons = re.findall(r"\bcmp\s+" + register + r", w\d+", after)
+            assert len(writes) >= 2 and len(comparisons) >= 3, "dispatcher lacks state transitions or multi-way comparisons"
+
+    print("DeClang Android proof passed: same emitted C++, selected ELF control flow flattened, unselected body unchanged; device execution not performed")
+else:
+    print("DeClang native proof passed: same emitted C++, .NET parity, selected machine code differs")

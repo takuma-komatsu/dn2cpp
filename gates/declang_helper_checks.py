@@ -109,13 +109,14 @@ run("cmake", "-DCOMPILER=/missing/declang", f"-DWORK_DIR={work / 'missing'}",
 source = work / "source with spaces"
 source.mkdir()
 shutil.copy(probe / "probe" / "src" / "generated.cpp", source)
+shutil.copy(probe / "probe" / "src" / "smoke.c", source)
 (source / "generated_other.cpp").write_text('int other(int a) { return a + 1; }\n')
 (source / "generated.h").write_text('#include <string>\n')
 config = work / "targets.json"
 targets = json.loads((probe / "probe" / "targets.json").read_text())
 config.write_text(json.dumps(targets))
 (source / "CMakeLists.txt").write_text(f'''cmake_minimum_required(VERSION 3.21)
-project(DeClangHelpers CXX)
+project(DeClangHelpers C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(DN2CPP_APP_DIR "{source}")
 include("{helpers / 'dn2cpp_declang.cmake'}")
@@ -123,14 +124,15 @@ set(DN2CPP_APP_SRCS "{source}/generated.cpp" "{source}/generated_other.cpp")
 if(DN2CPP_DECLANG_CONFIG)
     dn2cpp_declang_sources()
 endif()
-add_executable(app ${{DN2CPP_APP_SRCS}})
+add_executable(app ${{DN2CPP_APP_SRCS}} "{source}/smoke.c")
 target_compile_options(app PRIVATE -O2)
-target_precompile_headers(app PRIVATE "{source}/generated.h")
+target_precompile_headers(app PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:{source}/generated.h>")
 ''')
 sdk = run("xcrun", "--show-sdk-path").strip()
 build = work / "build"
 configure = ["cmake", "-S", source, "-B", build, "-G", "Ninja",
-             f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_OSX_SYSROOT={sdk}",
+             f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_C_COMPILER={compiler}",
+             "-DCMAKE_C_COMPILER_ARG1=--driver-mode=gcc", f"-DCMAKE_OSX_SYSROOT={sdk}",
              f"-DDN2CPP_DECLANG_CONFIG={config}"]
 run(*configure)
 run("cmake", "--build", build, "--parallel", "4")
@@ -159,7 +161,8 @@ def selected_instructions(path):
 on_instructions = selected_instructions(obj)
 off = work / "off"
 run("cmake", "-S", source, "-B", off, "-G", "Ninja",
-    f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_OSX_SYSROOT={sdk}")
+    f"-DCMAKE_CXX_COMPILER={compiler}", f"-DCMAKE_C_COMPILER={compiler}",
+             "-DCMAKE_C_COMPILER_ARG1=--driver-mode=gcc", f"-DCMAKE_OSX_SYSROOT={sdk}")
 run("cmake", "--build", off)
 run(off / "app")
 assert on_instructions != selected_instructions(off / "CMakeFiles" / "app.dir" / "generated.cpp.o")

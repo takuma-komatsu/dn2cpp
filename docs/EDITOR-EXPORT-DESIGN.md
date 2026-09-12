@@ -203,14 +203,16 @@ host-equals-target rule as macOS and Windows, `lib{Assembly}.so` built and
 
 ### Selective DeClang export
 
-For a macOS export targeting the host architecture, select the existing DeClang
-C++ executable with the preset's `dotnet/dn2cpp/declang_path` file picker and set
+On a macOS host, for a macOS export targeting the host architecture or an Android
+arm64-v8a export, select the existing DeClang C++ executable with the preset's
+`dotnet/dn2cpp/declang_path` file picker and set
 `dotnet/dn2cpp/declang_seed` to a non-empty, stable string. An empty executable
 path disables the feature. The editor does not discover, download, or bundle
 DeClang. This optional build requires CMake 3.21 or newer for isolated linker
 launchers; the normal export keeps its existing CMake minimum. The editor
-compiles, links, and runs a compatibility probe before publishing;
-a regular Clang executable fails this check.
+compiles and links a compatibility probe before publishing; the macOS probe also
+runs on the host. The Android probe checks the AArch64 ELF and application
+results without executing it. A regular Clang executable fails this check.
 
 Mark methods or constructors with `[Dn2Cpp.Runtime.Obfuscate]`. Only reachable
 implementations are selected; shared generics select the shared body. Marking a
@@ -226,20 +228,116 @@ results under the project's `.godot/mono/dn2cpp` work directory. These files do
 not ship with the game. Compiler settings and logs use a dedicated `DECLANG_HOME`;
 the user's DeClang configuration and editor-wide environment are unchanged.
 Changing the seed rebuilds generated code; changing the compiler invalidates its
-separate native build cache. Prebuilt runtime and compiler-cache reuse are disabled
+separate native build cache. Android also fingerprints the compiler resource
+directory, integration scripts, NDK version and selected tools, ABI, API and STL;
+changes require renewed compatibility validation and a fresh native build.
+Prebuilt runtime and compiler-cache reuse are disabled
 for this build, while runtime objects built with the selected compiler persist.
 The compile launcher adds its application result to the object depfile, so Ninja
 recompiles a generated translation unit when that result is deleted. The editor
 export gate checks this recovery without rebuilding unchanged runtime objects.
 
+Android uses `runtime/cmake/android-declang.toolchain.cmake`. It loads the NDK
+settings, selects DeClang for compiler identification, C/C++ compilation and PCH,
+and delegates links to the NDK Clang drivers through CMake linker launchers.
+The NDK supplies the sysroot, CRT, compiler-rt, libc++ and LLD without modifying
+its installation. The editor uses its normal Android NDK resolution, API 24 and
+`c++_static`; the selected compiler must pass the compatibility probe against
+that NDK. LTO, prebuilt runtime reuse and compiler caches remain disabled.
+
+To prepare a compiler from the local Clang 19 based DeClang source, keep its
+build independent of both the NDK and the source checkout. In a fresh artifact
+directory, archive the source and create the AntiHackOSS links used by its
+`script/build.sh`:
+
+```sh
+mkdir -p artifacts/declang-android-19/source
+git -C ../DeClang archive HEAD | tar -x -C artifacts/declang-android-19/source
+(
+  cd artifacts/declang-android-19/source
+  ln -s ../../../AntiHackOSS/clang/DeClangExtraProcess.cpp clang/lib/Driver/DeClangExtraProcess.cpp
+  ln -s ../../../AntiHackOSS/src llvm/lib/Transforms/AntiHack
+  ln -s ../../../../AntiHackOSS/include llvm/include/llvm/Transforms/AntiHack
+  ln -s AntiHackOSS AntiHack
+)
+cmake -S artifacts/declang-android-19/source/llvm \
+  -B artifacts/declang-android-19/build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS=clang \
+  -DLLVM_FORCE_VC_REVISION="$(git -C ../DeClang rev-parse HEAD)" \
+  -DLLVM_FORCE_VC_REPOSITORY="$(git -C ../DeClang remote get-url origin)" \
+  -DLLVM_TARGETS_TO_BUILD=AArch64 -DLLVM_ENABLE_DUMP=ON \
+  -DLLVM_ENABLE_ZSTD=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF \
+  -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_INCLUDE_TESTS=OFF \
+  -DLLVM_INCLUDE_UTILS=OFF \
+  -DCMAKE_INSTALL_PREFIX="$PWD/artifacts/declang-android-19/compiler"
+cmake --build artifacts/declang-android-19/build \
+  --target clang clang-resource-headers --parallel
+```
+
+Select `artifacts/declang-android-19/build/bin/clang++` by absolute path. The
+resource headers are required alongside the compiler. Pinning the LLVM revision
+and repository prevents the archived source from reporting the enclosing dn2cpp
+checkout as compiler provenance. Compiler age alone does not establish
+compatibility: the Android probe must pass against the selected
+NDK's headers and link inputs. This build preparation is a developer step; the
+exporter only inspects the executable provided in the preset.
+
+For direct CMake builds, transpile with `--obfuscate` to produce the generated
+application directory and `obfuscation-targets.json`. Copy that manifest to
+`declang-config.json` and add a `seed` string of 32 hexadecimal characters to
+each target object, retaining its other fields. The editor derives each seed
+from the first 32 lowercase hexadecimal characters of
+`SHA256(UTF8(presetSeed + "\n" + implementationSymbol))`; direct builds can use
+the same derivation for reproducible per-function seeds. Pass the generated
+directory and the completed configuration to CMake:
+
+```sh
+cmake -S runtime -B artifacts/android-declang -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$PWD/runtime/cmake/android-declang.toolchain.cmake" \
+  -DDN2CPP_DECLANG_COMPILER=/absolute/path/to/clang++ \
+  -DANDROID_NDK="$ANDROID_NDK_ROOT" \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
+  -DANDROID_STL=c++_static \
+  -DDN2CPP_APP_DIR=/absolute/path/to/generated \
+  -DDN2CPP_DECLANG_CONFIG=/absolute/path/to/declang-config.json
+cmake --build artifacts/android-declang
+```
+
+The Android export regression checks APK contents and final native artifacts.
+Android device execution is outside this gate's coverage.
+The local Clang 19.1.5 based DeClang build passes the Android compatibility probe
+with NDK 30.0.15729638 at API 24 for `c++_static` and `c++_shared`. The native
+Android gate passes with this compiler and NDK; the editor selects `c++_static`.
+The APK checks pass with IL pre-stripping enabled and disabled: the packaged
+library matches the obfuscated build output, exports the public entry point,
+and carries no .NET runtime. Compiler and configuration refusal cases, seed
+changes, and recompilation after deleting application results also pass.
+The older Clang 16 based DeClang distribution fails this NDK's compatibility
+probe, so it remains suitable for the separate macOS regression only.
+
 `DN2CPP_DECLANG_COMPILER=/absolute/path/to/clang++` enables real DeClang exports
-in `gates/build-and-run-godot-editor-export-declang.sh`, covering both IL pre-stripping
-settings and the existing game startup, interop, and GC assertions. Its ordinary
-desktop gate macOS run also checks empty seeds, missing executables, and ordinary Clang refusal.
-Both DeClang gates also discover a sole executable at
+in `gates/build-and-run-godot-editor-export-declang.sh`, covering both IL
+pre-stripping settings and the existing game startup, interop, and GC assertions.
+Its ordinary
+desktop gate macOS run also checks empty seeds, missing executables, and ordinary
+Clang refusal.
+The DeClang gates also discover a sole executable at
 `artifacts/declang-distribution/*/compiler/bin/clang++` when the override is empty.
 An explicit override takes precedence; invalid overrides and ambiguous staged
 distributions fail with a diagnostic.
+
+For Android, the [native gate](../gates/build-and-run-declang-android.sh) compares
+OFF/ON final ELF machine code and validates compiler refusal and rebuild cases.
+The [editor export gate](../gates/build-and-run-godot-editor-export-declang-android.sh)
+checks IL pre-stripping enabled and disabled, APK inclusion, public entry points,
+and absence of the .NET runtime:
+
+```sh
+DN2CPP_DECLANG_COMPILER="$PWD/artifacts/declang-android-19/build/bin/clang++" \
+  ./gates/build-and-run-declang-android.sh
+DN2CPP_DECLANG_COMPILER="$PWD/artifacts/declang-android-19/build/bin/clang++" \
+  ./gates/build-and-run-godot-editor-export-declang-android.sh
+```
 
 ## 4. Packaging the dn2cpp toolchain into the editor
 
