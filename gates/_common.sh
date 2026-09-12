@@ -3657,6 +3657,8 @@ build-and-run-godot-dotnet-sample.sh
 build-and-run-godot-dotnet-trim.sh
 build-and-run-godot-dotnet-wasm.sh
 build-and-run-godot-editor-export.sh
+build-and-run-godot-editor-export-declang.sh
+build-and-run-godot-editor-export-declang-android.sh
 build-and-run-godot-editor-export-ios.sh
 build-and-run-godot-editor-export-android.sh
 build-and-run-godot-editor-export-web.sh

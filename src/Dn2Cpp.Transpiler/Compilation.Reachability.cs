@@ -12,6 +12,7 @@ internal sealed partial class Compilation
 
     private void Reach(MethodInfo m)
     {
+        NoteObfuscationMethod(m);
         // A minted body (a value type's structural equality/hash) has no IL: scanning it
         // would ask the PE for a MethodBody at a row that does not exist. Its call edges
         // are not discovered, they are CONSTRUCTED — ReachSynthesizedValueEquality walks
@@ -4629,6 +4630,7 @@ internal sealed partial class Compilation
                     case ILOpCode.Ldftn:
                     case ILOpCode.Ldvirtftn:
                     {
+                        NoteObfuscationCall(module, handle, m.Context);
                         if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && ResolveStaticCallClass(module, handle, m.Context) is
                                 { IsBeforeFieldInit: false, IntrinsicCppName: null } callCls)
@@ -5193,6 +5195,7 @@ internal sealed partial class Compilation
                     }
                     case ILOpCode.Newobj:
                     {
+                        NoteObfuscationCall(module, handle, m.Context);
                         var ctor = ResolveCallTarget(module, handle, m.Context);
                         if (ctor is not null)
                         {

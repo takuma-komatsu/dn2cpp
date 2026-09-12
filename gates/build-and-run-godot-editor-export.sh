@@ -73,7 +73,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_fork.sh"
 
-OUT=gates/out-godot-editor-export
+OUT=${DN2CPP_EDITOR_EXPORT_OUT:-gates/out-godot-editor-export}
 SAMPLE=samples/godot-dotnet/EditorExportSample
 WINDOWS_DEPENDENCY_FIXTURE=gates/fixtures/godot-editor-export-windows-dependency
 WINDOWS_DEPENDENCY_NAME=dn2cpp_editor_export_dependency
@@ -214,11 +214,12 @@ fi
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export|il-prestripping:unset,off,on,extra-no-ildiet|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
+    "godot-editor-export|il-prestripping:unset,off,on,extra-no-ildiet|declang=${DN2CPP_DECLANG_COMPILER:-disabled}|declang-sig=$(if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then file_sig "$DN2CPP_DECLANG_COMPILER"; else echo disabled; fi)|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
     "$WINDOWS_DEPENDENCY_FIXTURE" \
+    gates/fixtures/declang-export-checks.py \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
@@ -773,6 +774,149 @@ elif [ -n "$GC_LIB" ] || [ -d "$BUILD_DIR/CMakeFiles/dn2cpp_runtime.dir" ]; then
     exit 1
 fi
 
+# godot_export_refused RC LOG WHAT — the half every refusal assert shares: the
+# export failed (non-zero exit and the editor's own verdict), the C# export
+# plugin is what refused it, and it refused before the publish. The caller then
+# greps for the sentence identifying WHICH refusal fired, because all four of
+# them look identical here.
+godot_export_refused() {
+    local rc="$1" log="$2" what="$3"
+    [ "$rc" -ne 0 ] \
+        || { echo "FAIL: the export was refused but exited 0 ($what)" >&2; cat "$log" >&2; exit 1; }
+    grep -qE "Project export for preset .* failed\." "$log" \
+        || { echo "FAIL: the editor did not report the refused export as failed ($what)" >&2
+             cat "$log" >&2; exit 1; }
+    grep -q "ERROR: Export .NET Project" "$log" \
+        || { echo "FAIL: the export plugin accepted $what" >&2; cat "$log" >&2; exit 1; }
+    if grep -qF "dn2cpp: transpiling" "$log"; then
+        echo "FAIL: $what was refused only after the publish had run" >&2
+        cat "$log" >&2
+        exit 1
+    fi
+}
+
+
+# DeClang failures must precede publish; otherwise a compiler rejected by the
+# compatibility check can still consume minutes and leave a misleading artifact.
+if [ "$DN2CPP_OS" = macos ]; then
+    if [ -e "$GEN_DIR/obfuscation-targets.json" ]; then
+        echo "FAIL: a disabled DeClang export emitted an obfuscation manifest" >&2; exit 1
+    fi
+    if grep -q '^DN2CPP_DECLANG_CONFIG:FILEPATH=.' "$CMAKE_CACHE"; then
+        echo "FAIL: a disabled DeClang export configured obfuscation" >&2; exit 1
+    fi
+    grep -qF 'dn2cpp: publishing the game assembly' "$REEXPORT_LOG" \
+        || { echo "FAIL: positive publish marker missing" >&2; exit 1; }
+    cp "$PROJ/export_presets.cfg" "$OUT/presets-before-declang.cfg"
+    assert_declang_refused() {
+        local label="$1" expected="$2" rc=0 log="$OUT/export-declang-$1.log"
+        run_with_watchdog 120 "$FORK_EDITOR" --headless --path "$PWD/$PROJ" \
+            --export-release "$PRESET" "$APP" >"$log" 2>&1 || rc=$?
+        godot_export_refused "$rc" "$log" "DeClang $label"
+        grep -qF "$expected" "$log" \
+            || { cat "$log" >&2; echo "FAIL: wrong DeClang diagnostic for $label" >&2; exit 1; }
+        if grep -qF 'dn2cpp: publishing the game assembly' "$log"; then
+            echo "FAIL: DeClang $label was rejected after publish" >&2; exit 1
+        fi
+    }
+    set_dn2cpp_bool_preset declang_path '"/missing/dn2cpp-declang-compiler"'
+    set_dn2cpp_bool_preset declang_seed '""'
+    assert_declang_refused empty-seed "declang_seed"
+    set_dn2cpp_bool_preset declang_seed '"editor-export-gate"'
+    assert_declang_refused missing-file "existing compiler executable"
+    set_dn2cpp_bool_preset declang_path '"/usr/bin/clang++"'
+    assert_declang_refused ordinary-clang "DeClang produced no application log"
+    cp "$OUT/presets-before-declang.cfg" "$PROJ/export_presets.cfg"
+
+    if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
+        PYTHON="$(resolve_python)" || gate_skip "DeClang editor export validation requires Python"
+        # The attribute source is compiled into the copied game: recognition is
+        # by full type name and does not require a particular defining assembly.
+        cp src/Dn2Cpp.Runtime/ObfuscateAttribute.cs "$PROJ/ObfuscateAttribute.cs"
+        cat > "$PROJ/DeClangProbe.cs" <<'CS'
+using System;
+public partial class ExportProbe
+{
+    static ExportProbe()
+    {
+        Console.WriteLine($"DN2CPP_EXPORT_DECLANG value={DeClangSelected(5) == 15}");
+        bool caught = false;
+        try
+        {
+            DeClangThrow();
+        }
+        catch (InvalidOperationException exception)
+        {
+            caught = exception.Message == "declang exception probe";
+        }
+        Console.WriteLine($"DN2CPP_EXPORT_DECLANG exception={caught}");
+    }
+
+    private static void DeClangThrow()
+    {
+        throw new InvalidOperationException("declang exception probe");
+    }
+
+    [Dn2Cpp.Runtime.Obfuscate]
+    private static int DeClangSelected(int n)
+    {
+        int result = 0;
+        for (int i = 0; i < n; i++)
+        {
+            if ((i & 1) == 0) result += n + i;
+            else result -= n - i;
+        }
+        return result;
+    }
+}
+CS
+        declang_quoted="$("$PYTHON" -c 'import json,os; print(json.dumps(os.environ["DN2CPP_DECLANG_COMPILER"]))')"
+        set_dn2cpp_bool_preset declang_path "$declang_quoted"
+        set_dn2cpp_bool_preset declang_seed '"editor-export-gate"'
+        for prestrip in false true; do
+            set_dn2cpp_bool_preset il_prestripping "$prestrip"
+            declang_log="$OUT/export-declang-$prestrip.log"
+            godot_export_step 1200 "$declang_log" "$APP" "$FORK_EDITOR" --headless \
+                --path "$PWD/$PROJ" --export-release "$PRESET" "$APP" \
+                || { cat "$declang_log" >&2; echo "FAIL: DeClang export" >&2; exit 1; }
+            assert_export_succeeded "$declang_log" "DeClang export"
+            godot_editor_export_layout "$APP"
+            assert_export_artifact_and_run "$OUT/run-declang-$prestrip.log"
+            grep -qF 'DN2CPP_EXPORT_DECLANG value=True' "$OUT/run-declang-$prestrip.log" \
+                || { echo "FAIL: selected DeClang function did not run" >&2; exit 1; }
+            grep -qF 'DN2CPP_EXPORT_DECLANG exception=True' "$OUT/run-declang-$prestrip.log" \
+                || { echo "FAIL: DeClang export exception propagation failed" >&2; exit 1; }
+            [ -s "$PROJ/.godot/mono/dn2cpp/build/$BUILD_SLOT-declang/declang-config.json" ] \
+                || { echo "FAIL: DeClang config is missing" >&2; exit 1; }
+            declang_packaged_metadata="$(find "$DATA_DIR" -name '*declang*' -o -name 'obfuscation-targets.json')"
+            if [ -n "$declang_packaged_metadata" ]; then
+                echo "FAIL: DeClang build metadata was packaged with the game" >&2; exit 1
+            fi
+        done
+        declang_build="$PROJ/.godot/mono/dn2cpp/build/$BUILD_SLOT-declang"
+        declang_state="$OUT/declang-build-state.json"
+        "$PYTHON" gates/fixtures/declang-export-checks.py snapshot "$declang_build" "$declang_state"
+        set_dn2cpp_bool_preset declang_seed '"editor-export-gate-changed"'
+        declang_log="$OUT/export-declang-seed-change.log"
+        godot_export_step 1200 "$declang_log" "$APP" "$FORK_EDITOR" --headless \
+            --path "$PWD/$PROJ" --export-release "$PRESET" "$APP" \
+            || { cat "$declang_log" >&2; echo "FAIL: changed-seed DeClang export" >&2; exit 1; }
+        assert_export_succeeded "$declang_log" "changed-seed DeClang export"
+        "$PYTHON" gates/fixtures/declang-export-checks.py check-seed "$declang_build" "$declang_state"
+        godot_editor_export_layout "$APP"
+        assert_export_artifact_and_run "$OUT/run-declang-seed-change.log"
+        "$PYTHON" gates/fixtures/declang-export-checks.py delete-result "$declang_build" "$declang_state"
+        declang_cmake="$(sed -n 's/^CMAKE_COMMAND:INTERNAL=//p' "$declang_build/CMakeCache.txt")"
+        [ -n "$declang_cmake" ] || { echo "FAIL: DeClang CMake command missing" >&2; exit 1; }
+        DECLANG_HOME="$PWD/$declang_build/declang/disabled" \
+            "$declang_cmake" --build "$declang_build" > "$OUT/declang-result-rebuild.log" 2>&1 \
+            || { cat "$OUT/declang-result-rebuild.log" >&2; exit 1; }
+        "$PYTHON" gates/fixtures/declang-export-checks.py check-rebuild "$declang_build" "$declang_state"
+        rm "$PROJ/ObfuscateAttribute.cs" "$PROJ/DeClangProbe.cs"
+        cp "$OUT/presets-before-declang.cfg" "$PROJ/export_presets.cfg"
+    fi
+fi
+
 echo "== 8/14 Recovering from a build cache configured from another source tree =="
 # The persisting build tree is keyed on the export TARGET (platform, config, RID) —
 # not on where the runtime sources it was configured from live. So every way the
@@ -979,26 +1123,6 @@ fi
 # plus its data dir sit in $OUT: sharing a directory would let one of these
 # overwrite what 6/14 just asserted, or let a stale copy answer for a fresh one.
 #
-# godot_export_refused RC LOG WHAT — the half every refusal assert shares: the
-# export failed (non-zero exit and the editor's own verdict), the C# export
-# plugin is what refused it, and it refused before the publish. The caller then
-# greps for the sentence identifying WHICH refusal fired, because all four of
-# them look identical here.
-godot_export_refused() {
-    local rc="$1" log="$2" what="$3"
-    [ "$rc" -ne 0 ] \
-        || { echo "FAIL: the export was refused but exited 0 ($what)" >&2; cat "$log" >&2; exit 1; }
-    grep -qE "Project export for preset .* failed\." "$log" \
-        || { echo "FAIL: the editor did not report the refused export as failed ($what)" >&2
-             cat "$log" >&2; exit 1; }
-    grep -q "ERROR: Export .NET Project" "$log" \
-        || { echo "FAIL: the export plugin accepted $what" >&2; cat "$log" >&2; exit 1; }
-    if grep -qF "dn2cpp: transpiling" "$log"; then
-        echo "FAIL: $what was refused only after the publish had run" >&2
-        cat "$log" >&2
-        exit 1
-    fi
-}
 
 echo "== 11/14 Refusing an export whose target OS is not the host's =="
 # The sharpest of the four, and the one whose absence costs the most. The backend
