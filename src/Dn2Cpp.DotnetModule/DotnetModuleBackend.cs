@@ -12,7 +12,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
 {
     private readonly bool _trimGodotClasses;
     private readonly IReadOnlyList<string> _godotClassRoots;
-    private bool _ildietRewroteConstructors;
 
     public DotnetModuleBackend(bool trimGodotClasses = false, IReadOnlyList<string>? godotClassRoots = null)
     {
@@ -67,9 +66,6 @@ internal sealed class DotnetModuleBackend : IEmitBackend
             policy.TypeRoots.Add(("GodotSharp", type));
         GodotProjectScripts.Configure(policy, metadata, options);
     }
-
-    public void ILDietCompleted(bool constructorRegistriesRewritten)
-        => _ildietRewroteConstructors = constructorRegistriesRewritten;
 
     public string RuntimeHeader => "dn2cpp_dotnetmodule.h";
 
@@ -292,7 +288,7 @@ internal sealed class DotnetModuleBackend : IEmitBackend
     /// ancestor-typed wrapper in a shipped game.</summary>
     public GodotClassTrimSpec? GodotClassTrim(Compilation c)
     {
-        if (!_trimGodotClasses || _ildietRewroteConstructors)
+        if (!_trimGodotClasses)
             return null;
         var registry = c.FindClassByFullName("Godot.Constructors")
             ?? throw new NotSupportedException(

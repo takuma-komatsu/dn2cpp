@@ -20,6 +20,20 @@ internal static class GodotValidation
             CheckSample(args[1], args[2], args[3]);
             return true;
         }
+        if (args.Length == 3 && args[0] == "--check-godot-factory")
+        {
+            using var engine = AssemblyDefinition.ReadAssembly(args[1]);
+            var registry = engine.MainModule.GetType("Godot.Constructors");
+            Require(registry is not null, "constructor registry disappeared");
+            var cctor = registry!.Methods.Single(m => m.Name == ".cctor");
+            Require(cctor.Body.Instructions.Where(i => i.OpCode.Code == Code.Ldftn)
+                .Select(i => ((MethodReference)i.Operand).Resolve())
+                .Any(m => m.HasBody && m.Body.Instructions.Any(i => i.OpCode.Code == Code.Newobj
+                    && i.Operand is MethodReference ctor && ctor.DeclaringType.FullName == args[2])),
+                "registry no longer targets the factory witness: " + args[2]);
+            Console.WriteLine("godot-registry-factory=" + args[2]);
+            return true;
+        }
         return false;
     }
 

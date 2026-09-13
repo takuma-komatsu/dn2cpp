@@ -5255,6 +5255,11 @@ internal sealed partial class Compilation
         _trimRegistryModule = spec.RegistryCctor.DeclaringClass.Module;
         foreach (var cls in spec.Floor)
             TrimRelease(cls);
+        // Preservation is seeded before the backend installs the registry trim.
+        foreach (var cls in Classes.ToList())
+            if (TrimEligibleClass(cls) && (_explicitReflectionKeep.Contains(cls)
+                || ReflectionRootMatching(cls) is not null))
+                TrimRelease(cls);
     }
 
     /// <summary>Whether a class is within the trim's reach at all: declared in the
@@ -5326,6 +5331,8 @@ internal sealed partial class Compilation
     }
 
     /// <summary>Peeks a registry lambda's body for the engine wrapper it allocates.
+    /// Rewritten entries may already target an ancestor factory; classify its
+    /// allocation rather than the registration name to allow another redirect.
     /// The generated shape is exactly <c>ldarg.1; newobj Godot.X..ctor(nint); ret</c>
     /// (an instance method on the compiler's <c>&lt;&gt;c</c> closure singleton);
     /// nop and ldarg.0 are tolerated for Debug-shaped IL. Anything else — or a

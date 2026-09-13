@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Real Godot script registration, callbacks, exported properties and signals under
 # reflection trimming. ILDiet removes unused managed engine/script definitions;
-# the same scene also runs with --no-ildiet to cover the legacy wrapper trim.
+# the same scene also runs with --no-ildiet. Both paths apply the wrapper trim.
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_dotnet.sh"
 
@@ -36,33 +36,57 @@ godot_dotnet_transpile() {
         --trim-reflection --trim-godot-classes \
         --project-root "$GODOT_DOTNET_SAMPLE_DIR" --godot-class-root Godot.Sprite3D \
         --godot-class-root Godot.LightmapperRD -o "$out" | tee "$out/transpile.log"
+    local released registered redirected
+    released=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: \([0-9][0-9]*\) released of .*/\1/p' "$out/transpile.log")
+    registered=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: [0-9][0-9]* released of \([0-9][0-9]*\) registered .*/\1/p' "$out/transpile.log")
+    redirected=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: .* registered engine wrappers, \([0-9][0-9]*\) lambdas redirected$/\1/p' "$out/transpile.log")
+    [ -n "$released" ] && [ -n "$registered" ] && [ -n "$redirected" ] \
+        || { echo "FAIL: wrapper trim did not report its registry counts" >&2; return 1; }
+    [ "$redirected" -gt 0 ] \
+        || { echo "FAIL: wrapper trim did not redirect any factory" >&2; return 1; }
+    if grep -q 'godot-class-trim warning:' "$out/transpile.log"; then
+        echo "FAIL: wrapper trim reported an internal-cast warning" >&2
+        return 1
+    fi
     if [ "$LEGACY_TRIM" = 1 ]; then
         [ ! -d "$out/ildiet" ] || { echo "FAIL: --no-ildiet created rewritten DLLs" >&2; return 1; }
-        # Bound cascading reachability and prove that registry recognition and
-        # ancestor redirection remain active on the shipped GodotSharp IL.
-        local released registered redirected
-        released=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: \([0-9][0-9]*\) released of .*/\1/p' "$out/transpile.log")
-        registered=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: [0-9][0-9]* released of \([0-9][0-9]*\) registered .*/\1/p' "$out/transpile.log")
-        redirected=$(LC_ALL=C sed -n 's/^dn2cpp: godot-class-trim: .* registered engine wrappers, \([0-9][0-9]*\) lambdas redirected$/\1/p' "$out/transpile.log")
-        [ -n "$released" ] && [ -n "$registered" ] && [ -n "$redirected" ] \
-            || { echo "FAIL: legacy wrapper trim did not report its registry counts" >&2; return 1; }
+        # These bounds describe the original registry, not ILDiet's retained set.
         [ "$released" -le 200 ] \
-            || { echo "FAIL: legacy wrapper trim released $released wrappers (> 200)" >&2; return 1; }
+            || { echo "FAIL: wrapper trim released $released wrappers (> 200)" >&2; return 1; }
         [ "$registered" -ge 900 ] \
-            || { echo "FAIL: legacy wrapper trim recognized only $registered factories (< 900)" >&2; return 1; }
+            || { echo "FAIL: wrapper trim recognized only $registered factories (< 900)" >&2; return 1; }
         [ "$redirected" -ge 700 ] \
-            || { echo "FAIL: legacy wrapper trim redirected only $redirected factories (< 700)" >&2; return 1; }
-        if grep -q 'godot-class-trim warning:' "$out/transpile.log"; then
-            echo "FAIL: legacy wrapper trim reported an internal-cast warning" >&2
-            return 1
-        fi
+            || { echo "FAIL: wrapper trim redirected only $redirected factories (< 700)" >&2; return 1; }
     else
         godot_dotnet_check_ildiet "$app" "$out"
-        if grep -q '^dn2cpp: godot-class-trim:' "$out/transpile.log"; then
-            echo "FAIL: the post-model registry trim ran after ILDiet rewrote the registry" >&2
-            return 1
-        fi
+        # ILDiet keeps this concrete factory; the downstream trim must redirect
+        # it again while retaining the registry keys checked by the metadata probe.
+        dotnet exec "$out/.metadata-probe/bin/MetadataValidation.dll" \
+            --check-godot-factory "$out/ildiet/GodotSharp.dll" Godot.WeakRef
     fi
+    if grep -q '^// Godot.WeakRef::\.ctor$' "$out"/generated*.cpp; then
+        echo "FAIL: unused WeakRef factory kept its concrete constructor" >&2
+        return 1
+    fi
+    grep -q '^// Godot.RefCounted::\.ctor$' "$out"/generated*.cpp \
+        || { echo "FAIL: ancestor factory constructor disappeared" >&2; return 1; }
+    local keep_mode keep_out keep_args
+    for keep_mode in reflection descriptor; do
+        keep_out="$out-keep-$keep_mode"
+        rm -rf "$keep_out"
+        mkdir -p "$keep_out"
+        keep_args=(--reflection-root Godot.WeakRef)
+        if [ "$keep_mode" = descriptor ]; then
+            keep_args=(--link-xml "$PWD/gates/fixtures/godot-trim-link.xml")
+        fi
+        invoke_cli "$app" "${diet_args[@]}" --dotnet-module -r "$corelib" -r "$GODOT_DOTNET_GODOTSHARP" \
+            --trim-reflection --trim-godot-classes --project-root "$GODOT_DOTNET_SAMPLE_DIR" \
+            --godot-class-root Godot.Sprite3D --godot-class-root Godot.LightmapperRD \
+            "${keep_args[@]}" -o "$keep_out" >"$keep_out/transpile.log"
+        grep -q '^// Godot.WeakRef::\.ctor$' "$keep_out"/generated*.cpp \
+            || { echo "FAIL: $keep_mode root lost the concrete WeakRef factory" >&2; return 1; }
+        echo "godot-factory-keep=$keep_mode no-ildiet=$LEGACY_TRIM"
+    done
 }
 
 OUT=gates/out-godot-dotnet-trim
@@ -90,9 +114,10 @@ godot_dotnet_transpile "$OUT"
 # a hit. The link is deliberately below the check: a hit exits here and never
 # names $DYLIB, so building it first is pure waste.
 if gate_cache_check "$OUT" \
-    "godot-dotnet-trim|no-ildiet=$LEGACY_TRIM|trim-reflection|trim-godot-classes|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
+    "godot-dotnet-trim|no-ildiet=$LEGACY_TRIM|trim-reflection|trim-godot-classes|shared-generics=1|godot-class-root=Godot.Sprite3D,Godot.LightmapperRD|project-root=$GODOT_DOTNET_SAMPLE_DIR|pin=$(file_text "$ROOT/pin.txt")|editor=$(file_sig_deref "$GODOT_DOTNET_EDITOR")|template=$(file_sig_deref "$GODOT_DOTNET_TEMPLATE")" \
     "$GODOT_DOTNET_SAMPLE_DIR/.godot/mono/temp/bin/ExportRelease/DotnetSample.dll" \
     "$GODOT_DOTNET_GODOTSHARP" \
+    gates/fixtures/godot-trim-link.xml \
     "$GODOT_DOTNET_SAMPLE_DIR"; then
     { gate_cache_hit_msg; run_legacy_trim; exit 0; }
 fi

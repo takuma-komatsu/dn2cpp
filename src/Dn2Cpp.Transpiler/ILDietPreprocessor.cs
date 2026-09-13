@@ -103,7 +103,7 @@ internal static class ILDietPreprocessor
                 "false" => false,
                 _ => throw new NotSupportedException("ILDiet returned an invalid cut-validation state"),
             };
-            bool registriesRewritten = RequiredAttribute(result, "constructorRegistriesRewritten") switch
+            _ = RequiredAttribute(result, "constructorRegistriesRewritten") switch
             {
                 "true" => true,
                 "false" => false,
@@ -126,7 +126,6 @@ internal static class ILDietPreprocessor
                 if (AssemblyIdentity(paths[i]) != AssemblyIdentity(stripped[i]))
                     throw new NotSupportedException("ILDiet changed assembly identity or load order: " + paths[i]);
             }
-            backend.ILDietCompleted(registriesRewritten);
             return stripped;
         }
         finally

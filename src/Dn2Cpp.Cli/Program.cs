@@ -337,8 +337,7 @@ for (int i = 0; i < args.Length; i++)
     }
     else if (args[i] == "--trim-godot-classes")
     {
-        // The emission-stage fallback for a load set whose constructor registry
-        // ILDiet has not rewritten, including --no-ildiet builds.
+        // Applied to the loaded registry whether or not ILDiet rewrote it.
         trimGodotClasses = true;
     }
     else if (args[i] == "--godot-class-root" && i + 1 < args.Length)

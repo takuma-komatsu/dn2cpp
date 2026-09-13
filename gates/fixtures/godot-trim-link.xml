@@ -1,0 +1,5 @@
+<linker>
+  <assembly fullname="GodotSharp">
+    <type fullname="Godot.WeakRef" preserve="fields" />
+  </assembly>
+</linker>
