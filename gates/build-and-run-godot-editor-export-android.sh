@@ -118,7 +118,7 @@ if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
     export DN2CPP_GATE_CACHE=0
 fi
 if gate_cache_check "$OUT" \
-    "godot-editor-export-android|$(godot_fork_ctx)|ndk=$ANDROID_NDK_ROOT|ndkver=$(file_text "$ANDROID_NDK_ROOT/source.properties" 2)|tmpl=$(file_sig "$ANDROID_TEMPLATE")|sdk=$SDK_ROOT|editorjdk=$EDITOR_JDK" \
+    "godot-editor-export-android|trim-reflection=default-on|trim-godot-classes=default-on|shared-generics=default-on|$(godot_fork_ctx)|ndk=$ANDROID_NDK_ROOT|ndkver=$(file_text "$ANDROID_NDK_ROOT/source.properties" 2)|tmpl=$(file_sig "$ANDROID_TEMPLATE")|sdk=$SDK_ROOT|editorjdk=$EDITOR_JDK" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     gates/fixtures/declang-android-export-checks.py \

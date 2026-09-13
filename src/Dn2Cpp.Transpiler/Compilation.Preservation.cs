@@ -53,6 +53,7 @@ internal sealed partial class Compilation
         {
             NoteForceEmit(cls);
             _explicitReflectionKeep.Add(cls);
+            TrimNoteNamedClass(cls);
         }
         if ((kind & PreserveKind.Fields) != 0)
             foreach (var field in cls.Fields) PreserveField(field);
@@ -211,7 +212,11 @@ internal sealed partial class Compilation
         {
             case TypeKind.Class:
                 NoteForceEmit(type.Class);
-                if (type.Class is not null) _explicitReflectionKeep.Add(type.Class);
+                if (type.Class is not null)
+                {
+                    _explicitReflectionKeep.Add(type.Class);
+                    TrimNoteNamedClass(type.Class);
+                }
                 break;
             case TypeKind.SZArray:
             case TypeKind.MDArray:

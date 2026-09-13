@@ -72,8 +72,23 @@ omits the key. For dn2cpp exports, it uses ILDiet to remove unused types and
 methods from managed assemblies at the IL level before C++ conversion.
 Disabling it passes `--no-ildiet` to the CLI; enabling it uses the CLI default
 and preserves an explicit `--no-ildiet` in the project's
-`dotnet/dn2cpp/extra_transpile_args`. This setting is independent of the
-Web-specific reflection and Godot-class trimming options.
+`dotnet/dn2cpp/extra_transpile_args`. The following independent
+boolean preset options are visible when dn2cpp is selected on every platform.
+All default to `true`, including when an existing preset omits the key.
+
+| Preset option | Enabled | Disabled |
+|---------------|---------|----------|
+| `dotnet/dn2cpp/trim_reflection` | Adds `--trim-reflection`. | Omits that flag. |
+| `dotnet/dn2cpp/trim_godot_classes` | Adds `--trim-godot-classes`. | Omits that flag. |
+| `dotnet/dn2cpp/shared_generics` | Uses the CLI's shared-generics default. | Adds `--no-shared-generics`. |
+
+IL Pre-stripping does not alter these options or their argument generation.
+The exporter appends `dotnet/dn2cpp/extra_transpile_args` after these arguments;
+an explicit trim flag there enables the trim even when the preset option is
+disabled. The CLI and console CLI interfaces and defaults remain unchanged.
+Dynamic reflection needs `[Preserve]` or a linker descriptor, and dynamic engine
+wrapper lookups need preservation or `--godot-class-root`; see README's
+preservation rules.
 
 On every Incremental-GC-capable target, selecting `dn2cpp` also reveals the
 boolean `dotnet/dn2cpp/incremental_gc` option, default `true`. Web does not
@@ -1000,16 +1015,14 @@ condition so an unstamped or differently stamped zip is relinked.
   Mono-flavoured CoreLib, changing the very IL we transpile. The RID is a
   publish-only key; every name the engine reads is built from `arch` (`wasm32`).
 
-### The size levers this lane turns on — and the one it deliberately does not
+### Export size settings and Web imports
 
-`Dn2CppExporter.BuildDropIn` adds three flags for Web: `--direct-pinvoke '*'`,
-`--trim-reflection` and `--trim-godot-classes`. The direct-import flag is required
-because an Emscripten side module has no general-purpose OS loader; all imports
-must remain visible to wasm-ld. The two trim flags target
-`__wasm_apply_data_relocs`, the single function wasm-ld emits with one store per
-pointer in static data, against V8's compiled-in 7,654,321-byte per-function
-ceiling. That is not an optimization: over the ceiling the module does not
-instantiate at all.
+`Dn2CppExporter.BuildDropIn` adds `--direct-pinvoke '*'` for Web because an
+Emscripten side module has no general-purpose OS loader; imports must remain
+visible to wasm-ld. Reflection and Godot-class trimming use the common export
+preset settings above. They reduce pointer-bearing metadata and wrapper code;
+the Web relocation splitter keeps data-relocation functions within the engine's
+function-size limit.
 
 ILDiet also trims unused GodotSharp wrappers and project script types by default
 for `--dotnet-module`. The exporter supplies `--project-root`, so script roots
@@ -1019,31 +1032,29 @@ image resources; compressed or unknown resources conservatively retain the
 project's scripts and report why. SDK registration attributes are filtered to
 the surviving scripts. Engine constructor keys remain present, with removed
 wrappers redirected to their nearest retained ancestors. Dynamic concrete type
-names require preservation or `--godot-class-root`. When ILDiet reports that it
-rewrote the constructor table, the later `--trim-godot-classes` pass is suppressed;
-the flag still applies to `--no-ildiet` output. Hot-update and copy-all DLL output
-retains its original registration metadata.
+names require preservation or `--godot-class-root`.
 
-The manifest-resource trim (`--no-manifest-resources <Assembly>` /
-`--manifest-resource-root <name>`) is **not** among them, for three measured
-reasons. It pulls on the wrong budget: a resource blob is emitted
-relocation-free as `static const uint8_t[]` and only the table's rows carry
-pointers, so what it buys is download size. This lane carries no resource bytes
-to shed: blobs are emitted only when an emitted body lowers a manifest read
-(`Compilation.ManifestResourcesUsed`) and the `--dotnet-module` closure over the
-real GodotSharp lowers none, asserted by
-`gates/build-and-run-godot-dotnet-wasm.sh`. And the safety half is clean, since
-dn2cpp intercepts `System.SR` and folds BCL fault text in at transpile time
-rather than reading CoreLib's `Strings.resources`.
+The later `--trim-godot-classes` pass follows the actual constructed type even
+when ILDiet has already redirected a factory, and can redirect it again while
+preserving its registration key. ILDiet's availability and rewrite result do
+not change the export options or the rules governing later optimization.
+Hot-update keeps its independent trim suppression; copy-all DLL output retains
+its original registration metadata. Different managed inputs may produce
+different generated code and sizes; neither path guarantees a smaller result
+for every input.
 
-A game that *does* read manifest resources opts in with no code change: the
-exporter appends the `dotnet/dn2cpp/extra_transpile_args` project setting
-verbatim, so the drop and its `--manifest-resource-root` keep-list live in
-`project.godot`, versioned with the game. The keep-set itself stays a **global
-bit**, so a single read anywhere carries every loaded module's blobs; a static
-per-assembly narrowing was measured and rejected, since no site presents a
-constant receiver (`IEvalStack.Push` spills every value to a temporary, so the
-analysis returns "all").
+Unused code still disappears through ordinary reachability, and manifest-resource
+blobs are automatically omitted unless an emitted body reads manifest resources
+(`Compilation.ManifestResourcesUsed`). Resource blobs contain no relocations;
+only their table entries contribute pointers. The Godot closure's omission is
+checked by `gates/build-and-run-godot-dotnet-wasm.sh`.
+
+Explicit resource removal (`--no-manifest-resources <Assembly>`) and its
+`--manifest-resource-root <name>` keep-list remain project choices supplied
+through `dotnet/dn2cpp/extra_transpile_args`, as does forced method removal through
+`--cut`. A manifest read can retain blobs from every loaded module. When opting
+into explicit resource removal, supply keep rules for resources needed by
+dynamic lookups.
 
 Web diagnostic symbols are a separate, link-only lever. The Web export option
 `dotnet/dn2cpp/keep_symbols` defaults to `false`; when enabled,

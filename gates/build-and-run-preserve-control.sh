@@ -355,7 +355,10 @@ echo "== Conditional engine scripts and constructor registries are rewritten in 
 $PYTHON gates/fixtures/ildiet-metadata-validation/check-engine-policy.py "$ILD_DLL" \
     "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
     "$_CG_CORELIB" "artifacts/ildiet-engine-policy-$CONFIG"
-dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
-    --check-script-discovery "artifacts/ildiet-script-discovery-$CONFIG"
+script_discovery=$(dotnet exec "gates/fixtures/ildiet-metadata-validation/bin/$CONFIG/$TFM/MetadataValidation.dll" \
+    --check-script-discovery "artifacts/ildiet-script-discovery-$CONFIG")
+assert_output "$(strip_cr_win "$script_discovery")" \
+    "godot-script-discovery=all-scenes,autoload,relative-autoload,const-path,triple-path,resource,uid,relative,root-relative,global,import-uid,ignored-strings,binary-image,binary-script,ignored-output,unknown-resource,indirect-uid,escaped-path,missing-project
+godot-script-escapes=controls,unicode-path,unicode-uid,supplementary,surrogates,continuation,raw,invalid,unterminated,zero-replacement,missing-autoload,project-fallback,diagnostics"
 
 echo "OK"

@@ -190,7 +190,7 @@ godot_fork_template_check "$FORK_ROOT/web_template_debug.zip" "Debug Web export 
 # refreshes that binary.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export-web|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|tmpl_debug=$(file_sig "$FORK_ROOT/web_template_debug.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emcc_debug=$(file_text "$FORK_ROOT/web_emcc_debug.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
+    "godot-editor-export-web|trim-reflection=default-on|trim-godot-classes=default-on|shared-generics=default-on|$(godot_fork_ctx)|tmpl=$(file_sig "$FORK_ROOT/web_template.zip")|tmpl_debug=$(file_sig "$FORK_ROOT/web_template_debug.zip")|emcc=$(file_text "$FORK_ROOT/web_emcc.txt")|emcc_debug=$(file_text "$FORK_ROOT/web_emcc_debug.txt")|emsdk=$(file_text "$FORK_GODOTSHARP/Dn2Cpp/emsdk/.emsdk-stamp")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \

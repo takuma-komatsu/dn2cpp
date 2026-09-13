@@ -12,9 +12,6 @@ internal interface IEmitBackend
     /// transpiler model exists.</summary>
     void ConfigureILDiet(ILDietRootPolicy policy, IReadOnlyList<string> paths, TranspileOptions options) { }
 
-    /// <summary>Reports completed constructor-table rewriting before model construction.</summary>
-    void ILDietCompleted(bool constructorRegistriesRewritten) { }
-
     /// <summary>Runtime header the generated translation unit includes.</summary>
     string RuntimeHeader { get; }
 

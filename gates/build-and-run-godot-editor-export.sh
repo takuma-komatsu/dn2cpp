@@ -214,15 +214,22 @@ fi
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export|il-prestripping:unset,off,on,extra-no-ildiet|declang=${DN2CPP_DECLANG_COMPILER:-disabled}|declang-sig=$(if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then file_sig "$DN2CPP_DECLANG_COMPILER"; else echo disabled; fi)|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
+    "godot-editor-export|trim-reflection,trim-godot-classes,shared-generics:unset,on,off,mixed,extra|il-prestripping:unset,off,on,extra-no-ildiet|declang=${DN2CPP_DECLANG_COMPILER:-disabled}|declang-sig=$(if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then file_sig "$DN2CPP_DECLANG_COMPILER"; else echo disabled; fi)|os=$DN2CPP_OS|$(godot_fork_ctx)|tmpl=$(file_sig "$DESKTOP_TEMPLATE")|tmpl-debug=$DEBUG_TEMPLATE_SIG" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
     "$WINDOWS_DEPENDENCY_FIXTURE" \
     gates/fixtures/declang-export-checks.py \
+    gates/fixtures/godot-editor-export-options.py \
+    gates/fixtures/godot-editor-export-options.cs \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
 fi
+
+PYTHON="$(resolve_python)" || gate_skip "export option validation requires Python"
+# Execute the production option/argument methods for every target before the
+# host export checks the actual publish, transpiler and native runtime path.
+"$PYTHON" gates/fixtures/godot-editor-export-options.py "$FORK" "$OUT/options"
 
 echo "== 2/14 Installing the working tree's toolchain into the fork editor =="
 # Packaging still runs every run — that is what keeps a dn2cpp-side regression
@@ -335,7 +342,7 @@ fi
 
 # The first export deliberately omits the setting: absence is the compatibility
 # case for existing presets and must select the documented default (ON).
-for option in incremental_gc il_prestripping; do
+for option in incremental_gc il_prestripping trim_reflection trim_godot_classes shared_generics; do
     if awk -v preset="$PRESET" -v key="dotnet/dn2cpp/$option" '
         /^name=/ { selected = ($0 == "name=\"" preset "\"") }
         selected && index($0, key "=") == 1 { found = 1 }
@@ -617,6 +624,15 @@ assert_il_prestripping() {
         echo "FAIL: re-export wrote no new exporter log" >&2
         exit 1
     fi
+    # ILDiet must not change the default downstream optimization arguments.
+    for optimization_flag in --trim-reflection --trim-godot-classes; do
+        grep -qF -- "$optimization_flag" "$exporter_log" \
+            || { echo "FAIL: exporter omitted $optimization_flag ($exporter_log)" >&2; exit 1; }
+    done
+    if grep -qF -- '--no-shared-generics' "$exporter_log"; then
+        echo "FAIL: exporter disabled default shared generics ($exporter_log)" >&2
+        exit 1
+    fi
     PREVIOUS_ILDIET_LOG="$exporter_log"
     cp "$exporter_log" "$snapshot"
     if [ -e "$GEN_WITNESS" ]; then
@@ -737,6 +753,9 @@ assert_export_artifact_and_run "$OUT/run-incremental-gc-off.log" stop-the-world
 
 set_dn2cpp_bool_preset incremental_gc true
 set_dn2cpp_bool_preset il_prestripping true
+for option in trim_reflection trim_godot_classes shared_generics; do
+    set_dn2cpp_bool_preset "$option" true
+done
 : > "$GEN_WITNESS"
 REEXPORT_LOG="$OUT/export-incremental.log"
 rm -rf "$APP" "$DATA_DIR"
