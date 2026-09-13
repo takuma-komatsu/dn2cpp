@@ -48,7 +48,7 @@
 source "$(dirname "$0")/_common.sh"
 source "$(dirname "$0")/_godot_fork.sh"
 
-OUT=gates/out-godot-editor-export-android
+OUT=${DN2CPP_EDITOR_EXPORT_ANDROID_OUT:-gates/out-godot-editor-export-android}
 SAMPLE=samples/godot-dotnet/EditorExportSample
 PROJECT_NAME=EditorExportSample
 
@@ -112,10 +112,17 @@ godot_fork_pin_abi_check
 # and gate_cache_check answers that with a warning and no key, which
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
+# DeClang compiler resources and NDK tools participate in the exporter's own
+# signature; bypass the outer cache so it can inspect those inputs on each run.
+if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
+    export DN2CPP_GATE_CACHE=0
+fi
 if gate_cache_check "$OUT" \
     "godot-editor-export-android|$(godot_fork_ctx)|ndk=$ANDROID_NDK_ROOT|ndkver=$(file_text "$ANDROID_NDK_ROOT/source.properties" 2)|tmpl=$(file_sig "$ANDROID_TEMPLATE")|sdk=$SDK_ROOT|editorjdk=$EDITOR_JDK" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
+    gates/fixtures/declang-android-export-checks.py \
+    gates/fixtures/declang-export-checks.py \
     "$SAMPLE" \
     "$ABI_EXPECTED"; then
     { gate_cache_hit_msg; exit 0; }
@@ -272,6 +279,11 @@ if [ -n "$stray" ]; then
     exit 1
 fi
 echo "no .NET runtime in the APK"
+
+if [ -n "${DN2CPP_DECLANG_COMPILER:-}" ]; then
+    PYTHON="$(resolve_python)" || gate_skip "Android DeClang validation requires Python"
+    $PYTHON gates/fixtures/declang-android-export-checks.py "$PWD" "$PROJ" "$OUT" "$FORK_EDITOR"
+fi
 
 echo "== 7/7 Refusing an ABI set the backend cannot serve =="
 # arm64-v8a is all the backend builds. The exporter derives the publish

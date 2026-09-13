@@ -18,6 +18,7 @@ internal sealed partial class Compilation
                 var h = (MethodDefinitionHandle)handle;
                 if (!module.MethodMap.TryGetValue(h, out var mi))
                     return null;
+                NoteObfuscationMethod(mi);
                 // System.Exception::get_Message is cut as intrinsic (below), but a call to
                 // it — even the non-virtual base.Message inside an override — means the
                 // used-virtual × allocated-type cross product must reach every allocated
@@ -590,6 +591,8 @@ internal sealed partial class Compilation
                 // loaded (non-intrinsic) BCL type; otherwise treat as intrinsic.
                 MethodInfo? resolved = TryResolveMemberRefMethod(
                     module, (MemberReferenceHandle)handle, ctx);
+                if (resolved is not null)
+                    NoteObfuscationMethod(resolved);
                 if (resolved is not null
                     && resolved.DeclaringClass.FullName
                         == "System.Runtime.InteropServices.NativeLibrary"

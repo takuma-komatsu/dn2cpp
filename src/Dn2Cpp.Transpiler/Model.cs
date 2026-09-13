@@ -697,6 +697,24 @@ internal sealed class MethodInfo
     public bool IsAbstract => (Attributes & MethodAttributes.Abstract) != 0;
 
     public bool IsSynchronized => (ImplAttributes & MethodImplAttributes.Synchronized) != 0;
+    public bool HasObfuscateAttribute => HasMethodAttribute("Dn2Cpp.Runtime.ObfuscateAttribute");
+
+    public bool ObfuscationHasIlBody;
+
+    public bool IsObfuscationTarget => Module is not null && Module.Owner.ObfuscationEnabled
+        && HasObfuscateAttribute && SharedImpl is null;
+
+    public bool HasMethodAttribute(string fullName)
+    {
+        if (Handle.IsNil || Module is null)
+            return false;
+        var reader = Module.Reader;
+        foreach (var handle in reader.GetMethodDefinition(Handle).GetCustomAttributes())
+            if (Compilation.AttributeTypeName(reader, reader.GetCustomAttribute(handle)) == fullName)
+                return true;
+        return false;
+    }
+
     public bool IsNoInlining => (ImplAttributes & MethodImplAttributes.NoInlining) != 0;
     public bool IsAggressiveInlining => (ImplAttributes & MethodImplAttributes.AggressiveInlining) != 0;
 

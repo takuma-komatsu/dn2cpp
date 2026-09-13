@@ -19,6 +19,11 @@
 # files; they are wired but verified only on those hosts, not on macOS.
 
 cmake_minimum_required(VERSION 3.20)
+if(DN2CPP_DECLANG_CONFIG)
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/declang/disabled/.DeClang")
+    file(WRITE "${CMAKE_BINARY_DIR}/declang/disabled/.DeClang/config.json" "{\"enable_obfuscation\":0}\n")
+    set(ENV{DECLANG_HOME} "${CMAKE_BINARY_DIR}/declang/disabled")
+endif()
 project(dn2cpp CXX C)
 
 # CMAKE_BUILD_TYPE is intentionally left unset for the clang/gcc arms — see the
@@ -112,6 +117,7 @@ set(DN2CPP_APP_DIR        ""    CACHE PATH     "Transpiler output dir to build i
 set(DN2CPP_APP_NAME       "app" CACHE STRING   "Name of the app target (and of the output file in every lane but DN2CPP_GDEXTENSION)")
 set(DN2CPP_APP_LINK_FLAGS ""    CACHE STRING   "Extra link flags for the app (e.g. -L<dir>)")
 set(DN2CPP_RUNTIME_EXPORT ""    CACHE FILEPATH "Prebuilt dn2cpp-targets.cmake to import the runtime from")
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/dn2cpp_declang.cmake")
 option(DN2CPP_STRIP       "Strip the final binary's symbol table"                   ON)
 option(DN2CPP_DEAD_STRIP  "Dead-strip unreferenced code from the final binary"      ON)
 option(DN2CPP_HIDDEN_VISIBILITY "Compile the runtime and generated code with hidden symbol visibility" ON)
@@ -1049,6 +1055,10 @@ if(DN2CPP_APP_DIR)
     file(GLOB DN2CPP_APP_SRCS CONFIGURE_DEPENDS "${DN2CPP_APP_DIR}/generated*.cpp")
     if(DN2CPP_APP_SRCS STREQUAL "")
         message(FATAL_ERROR "DN2CPP_APP_DIR has no generated*.cpp: ${DN2CPP_APP_DIR}")
+    endif()
+
+    if(DN2CPP_DECLANG_CONFIG)
+        dn2cpp_declang_sources()
     endif()
 
     # [HotPath]-attributed method bodies land in dedicated TUs so stronger

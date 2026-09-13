@@ -8,6 +8,10 @@ namespace Dn2Cpp;
 /// internal, and their defaults are what that caller wants.</summary>
 public sealed record TranspileOptions
 {
+    /// <summary>Keep reachable attributed implementations out of line and emit
+    /// their DeClang target manifest.</summary>
+    public bool Obfuscate { get; init; }
+
     /// <summary>The input assembly — module 0 of the load set.</summary>
     public string Input { get; init; } = "";
 

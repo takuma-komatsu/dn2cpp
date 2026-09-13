@@ -584,6 +584,8 @@ CHAIN_E=(   # fork editor exports. The shared $FORK_GODOTSHARP/Dn2Cpp +
     # a lock held beside that tree, so it is safe even across suites. The chain
     # is kept because concurrent fork-editor launches contend for resources.
     "gates/build-and-run-godot-editor-export.sh"
+    "gates/build-and-run-godot-editor-export-declang.sh"
+    "gates/build-and-run-godot-editor-export-declang-android.sh"
     "gates/build-and-run-godot-editor-export-ios.sh"
     "gates/build-and-run-godot-editor-export-android.sh"
     "gates/build-and-run-godot-editor-export-web.sh"
