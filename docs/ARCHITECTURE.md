@@ -39,9 +39,11 @@ The backend receives the original assembly paths and project options through
 `ConfigureILDiet`. Its policy declares rewritable assemblies, type and method
 roots, conditional member roots for descendants, registration attributes and
 constructor registries. The XML protocol carries these declarations without
-engine names or resource parsing in the transpiler or ILDiet. A registry rewrite
-result disables the backend's later emission-stage registry trim only when the
-managed rewrite actually ran. Copy-all output preserves the original bytes.
+engine names or resource parsing in the transpiler or ILDiet. Registry rewrite
+results remain part of protocol validation; they do not control later
+emission-stage optimization. Effective preservation rules and validated cut
+selectors cross the process boundary. Copy-all output preserves the original
+bytes.
 
 For the .NET-module backend, `GodotProjectScripts` matches `ScriptPathAttribute`
 metadata to project resources before stripping. It scans all project scenes and
@@ -70,6 +72,14 @@ then redirects removed wrappers to compatible retained ancestor factories while
 preserving engine class-name keys. Unknown factory shapes remain conservative.
 The backend shares its native bootstrap root declarations between ILDiet and
 emission, including synchronization, exception reporting and interop layouts.
+When `--trim-godot-classes` is enabled, emission-stage reachability evaluates the
+actual type constructed by each factory, including factories already redirected
+by ILDiet. A further redirect preserves the registration key and selects a
+retained ancestor factory. Explicit reflection roots and preservation rules
+retain concrete wrapper factories as well as their requested metadata. ILDiet
+does not enable or suppress this pass;
+hot-update keeps its independent suppression rule. Reflection trimming and shared
+generics likewise depend on their own options, not the ILDiet result.
 
 Core invariants:
 
@@ -113,8 +123,6 @@ Optional, with the invariant each exists for:
   before model construction. GDExtension retains script descendants and public
   application exports; the .NET-module backend uses project resource roots and
   conditional script members while allowing GodotSharp wrapper removal.
-- `ILDietCompleted` — reports whether constructor registries were rewritten, so
-  a backend cannot apply its emission-stage trim to an already rewritten table.
 
 - `WantsSyntheticBody` — hot-update base only: give a skipped-body method a real,
   invoker-compatible body rendered from the intrinsic's own call lowering.

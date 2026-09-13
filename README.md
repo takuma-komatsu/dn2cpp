@@ -160,10 +160,25 @@ The constructor registry retains engine class-name keys. An engine object whose
 concrete wrapper was removed receives the nearest retained ancestor wrapper;
 `GodotObject` and `RefCounted` always remain. Use the repeatable
 `--godot-class-root Godot.TypeName` to retain a concrete engine wrapper needed by
-dynamic type-name queries, or use the preservation rules below. The
-`--trim-godot-classes` emission-stage option applies only when ILDiet has not
-rewritten that registry, including `--no-ildiet` builds. Hot-update and ILDiet's
-copy-all paths leave DLL registries and registration attributes unchanged.
+dynamic type-name queries. Explicit `--reflection-root` types, `[Preserve]` and
+linker-descriptor keeps also retain their concrete wrapper factories. The
+`--trim-godot-classes` emission-stage option also applies after ILDiet rewrites
+the registry. It follows each factory's actual constructed type and can redirect
+it again to a retained ancestor without changing the registered class name.
+ILDiet and emission-stage trimming are independent; changing the managed input
+can change the generated code and size. Hot-update retains its separate trim
+suppression, and ILDiet's copy-all paths leave DLL registries and registration
+attributes unchanged.
+
+Godot export presets default `dotnet/dn2cpp/trim_reflection`,
+`dotnet/dn2cpp/trim_godot_classes` and `dotnet/dn2cpp/shared_generics` to `true`
+on every platform, including presets that omit these keys. These settings are
+visible with the dn2cpp backend and independent of IL Pre-stripping. Disabling a
+trim setting omits its CLI flag; disabling shared generics adds
+`--no-shared-generics`. Project `dotnet/dn2cpp/extra_transpile_args` are appended
+after the preset arguments, so an explicit trim flag there still enables that
+trim when its preset setting is off. Direct CLI defaults are unchanged:
+reflection and Godot-class trimming are opt-in, and shared generics are on.
 
 Code used only through dynamic reflection needs an explicit preservation rule.
 The same Unity-compatible rules apply to ILDiet and C++ emission. Apply

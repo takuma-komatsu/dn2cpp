@@ -87,7 +87,7 @@ godot_fork_pin_abi_check
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
 if gate_cache_check "$OUT" \
-    "godot-editor-export-ios|$(godot_fork_ctx)|tmpl=$(file_sig "$IOS_TEMPLATE")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")|iossdk=$(or_none "$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)")" \
+    "godot-editor-export-ios|trim-reflection=default-on|trim-godot-classes=default-on|shared-generics=default-on|$(godot_fork_ctx)|tmpl=$(file_sig "$IOS_TEMPLATE")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")|iossdk=$(or_none "$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
