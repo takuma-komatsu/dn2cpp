@@ -145,14 +145,16 @@ Pass `--project-root` to retain scripts referenced by the project's
 `extends` or global-class references. Discovery includes all scenes and resources,
 autoloads, resource UIDs and uncompressed binary resource dependency tables.
 Static C# path literals in GDScript constants also contribute roots, including
-raw and triple-quoted strings.
+raw and triple-quoted strings. Ordinary and triple-quoted strings decode control
+and Unicode escapes and backslash line continuations before resolving paths or
+UIDs; raw strings leave Unicode escapes literal.
 Directories containing `.gdignore`, hidden directories, `bin`, `obj` and the
 current generated output directories are excluded. Without project information,
 all user Godot types remain. Compressed or unknown resource formats, unresolved
-resource references (including UID literals), unsupported escapes in non-raw
-GDScript strings and unavailable script sources retain the affected scripts and
-log the reason. Constructing a script path or class name dynamically requires an
-explicit preservation rule.
+resource references (including UID literals), invalid escapes or unterminated
+GDScript strings retain scripts associated with the affected project and log the
+reason. Scripts whose sources are unavailable are also retained. Constructing a
+script path or class name dynamically requires an explicit preservation rule.
 
 The constructor registry retains engine class-name keys. An engine object whose
 concrete wrapper was removed receives the nearest retained ancestor wrapper;

@@ -48,11 +48,14 @@ metadata to project resources before stripping. It scans all project scenes and
 resources, resolves autoloads and UIDs, recognizes static GDScript C# references,
 and reads uncompressed binary dependency tables without decoding payloads.
 Static path literals also contribute roots through GDScript constants, including
-raw and triple-quoted strings. Unknown resource formats, unresolved dependencies
-(including UID literals), or unsupported escapes in non-raw GDScript strings
-retain the affected project's scripts with a diagnostic; missing project
-information retains all user Godot types. Ignored and generated directories
-cannot contribute roots.
+raw and triple-quoted strings. Ordinary and triple-quoted strings share decoding
+of control escapes, Unicode escapes and backslash line continuations before path
+and UID resolution. Unicode decoding validates hexadecimal digits, code-point
+range and surrogate pairing; raw strings leave Unicode escapes literal. Unknown
+resource formats, unresolved dependencies (including UID literals), invalid
+escapes or unterminated strings retain scripts associated with the affected
+project with a diagnostic. Missing project information retains all user Godot
+types. Ignored and generated directories cannot contribute roots.
 
 User Godot descendants do not inherit the default public-member or
 static-constructor roots. The backend nominates compiler-generated nested helpers

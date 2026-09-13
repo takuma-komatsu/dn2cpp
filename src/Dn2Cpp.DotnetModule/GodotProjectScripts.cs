@@ -231,41 +231,14 @@ internal static class GodotProjectScripts
                 c = text[++i];
             if (c is '"' or '\'')
             {
-                char quote = c;
-                bool triple = i + 2 < text.Length && text[i + 1] == quote && text[i + 2] == quote;
-                if (triple)
-                    i += 2;
-                var value = new StringBuilder();
-                bool closed = false;
-                while (++i < text.Length)
-                {
-                    c = text[i];
-                    if (c == quote && (!triple
-                        || (i + 2 < text.Length && text[i + 1] == quote && text[i + 2] == quote)))
-                    {
-                        if (triple)
-                            i += 2;
-                        closed = true;
-                        break;
-                    }
-                    if (!raw && c == '\\' && i + 1 < text.Length)
-                    {
-                        c = text[++i];
-                        if (c is not ('n' or 'r' or 't' or '\\' or '"' or '\''))
-                            project.Failures.Add("unsupported GDScript string escape in " + resource);
-                        c = c switch { 'n' => '\n', 'r' => '\r', 't' => '\t', _ => c };
-                    }
-                    value.Append(c);
-                }
-                if (!closed)
-                    project.Failures.Add("unterminated GDScript string in " + resource);
-                project.ScriptLiterals.Add((resource, value.ToString()));
+                string value = ReadGDScriptString(project, resource, text, ref i, raw);
+                project.ScriptLiterals.Add((resource, value));
                 bool resourceCall = previous == "(" && (beforePrevious == "load"
                     ? earlier != "." || receiver == "ResourceLoader"
                     : beforePrevious == "preload" && earlier != ".");
                 if (resourceCall || previous == "extends")
                 {
-                    string path = value.ToString();
+                    string path = value;
                     if (path.StartsWith("uid://", StringComparison.Ordinal))
                         project.References.Add((resource, "", path));
                     else if (path.Length != 0)
@@ -294,6 +267,134 @@ internal static class GodotProjectScripts
             beforePrevious = previous;
             previous = token;
         }
+    }
+
+    private static string ReadGDScriptString(Project project, string resource, string text, ref int i, bool raw)
+    {
+        char quote = text[i];
+        bool triple = i + 2 < text.Length && text[i + 1] == quote && text[i + 2] == quote;
+        if (triple)
+            i += 2;
+        var value = new StringBuilder();
+        int leadSurrogate = 0;
+        bool closed = false;
+        bool valid = true;
+        while (++i < text.Length)
+        {
+            char c = text[i];
+            if (c == quote && (!triple
+                || (i + 2 < text.Length && text[i + 1] == quote && text[i + 2] == quote)))
+            {
+                if (triple)
+                    i += 2;
+                closed = true;
+                break;
+            }
+            if (raw)
+            {
+                value.Append(c);
+                // Raw strings retain both characters while shielding escaped quotes from termination.
+                if (c == '\\' && i + 1 < text.Length && (text[i + 1] == quote || text[i + 1] == '\\'))
+                    value.Append(text[++i]);
+                continue;
+            }
+            if (c == '\\' && i + 1 < text.Length)
+            {
+                c = text[++i];
+                if (c == '\n' || (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n'))
+                {
+                    // Godot consumes an escaped CR but leaves the following LF in the string.
+                    continue;
+                }
+                int codePoint;
+                if (c is 'u' or 'U')
+                {
+                    int digits = c == 'u' ? 4 : 6;
+                    codePoint = 0;
+                    int read = 0;
+                    while (read < digits && i + 1 < text.Length)
+                    {
+                        char digit = text[i + 1];
+                        int hex = digit is >= '0' and <= '9' ? digit - '0'
+                            : digit is >= 'a' and <= 'f' ? digit - 'a' + 10
+                            : digit is >= 'A' and <= 'F' ? digit - 'A' + 10 : -1;
+                        if (hex < 0)
+                            break;
+                        codePoint = (codePoint << 4) | hex;
+                        i++;
+                        read++;
+                    }
+                    if (read != digits || codePoint > 0x10ffff)
+                    {
+                        project.Failures.Add("invalid GDScript Unicode escape in " + resource);
+                        valid = false;
+                        continue;
+                    }
+                }
+                else
+                {
+                    codePoint = c switch
+                    {
+                        'a' => '\a', 'b' => '\b', 'f' => '\f', 'n' => '\n',
+                        'r' => '\r', 't' => '\t', 'v' => '\v',
+                        '\\' => '\\', '"' => '"', '\'' => '\'', _ => -1
+                    };
+                    if (codePoint < 0)
+                    {
+                        project.Failures.Add("unsupported GDScript string escape in " + resource);
+                        valid = false;
+                        continue;
+                    }
+                }
+                if (leadSurrogate != 0 && codePoint is >= 0xdc00 and <= 0xdfff)
+                {
+                    codePoint = 0x10000 + ((leadSurrogate - 0xd800) << 10) + codePoint - 0xdc00;
+                    leadSurrogate = 0;
+                }
+                else
+                {
+                    if (leadSurrogate != 0 || codePoint is >= 0xdc00 and <= 0xdfff)
+                    {
+                        project.Failures.Add("unpaired GDScript Unicode surrogate in " + resource);
+                        valid = false;
+                        leadSurrogate = 0;
+                        continue;
+                    }
+                    if (codePoint is >= 0xd800 and <= 0xdbff)
+                    {
+                        leadSurrogate = codePoint;
+                        continue;
+                    }
+                }
+                // Godot replaces escaped NUL with U+FFFD when constructing the string.
+                if (codePoint == 0)
+                    codePoint = 0xfffd;
+                if (codePoint <= 0xffff)
+                    value.Append((char)codePoint);
+                else
+                    value.Append(char.ConvertFromUtf32(codePoint));
+                continue;
+            }
+            if (leadSurrogate != 0)
+            {
+                project.Failures.Add("unpaired GDScript Unicode surrogate in " + resource);
+                valid = false;
+                leadSurrogate = 0;
+            }
+            value.Append(c);
+        }
+        if (leadSurrogate != 0)
+        {
+            project.Failures.Add("unpaired GDScript Unicode surrogate in " + resource);
+            valid = false;
+        }
+        if (!closed)
+        {
+            project.Failures.Add("unterminated GDScript string in " + resource);
+            valid = false;
+        }
+        // Malformed text must not feed a partially decoded path to filesystem APIs.
+        return valid ? value.ToString() : "";
     }
 
     private static void ReadText(Project project, string resource, string text, string extension)
@@ -426,6 +527,11 @@ internal static class GodotProjectScripts
         if (path.Length == 0)
         {
             project.Failures.Add("unresolved resource UID " + uid + " in " + source);
+            return;
+        }
+        if (path.Contains('\0'))
+        {
+            project.Failures.Add("invalid resource path containing a null character in " + source);
             return;
         }
         int subresource = path.IndexOf("::", StringComparison.Ordinal);
