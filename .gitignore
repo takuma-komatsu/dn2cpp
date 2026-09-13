@@ -3,6 +3,9 @@ artifacts/
 bin/
 obj/
 
+# Python bytecode caches
+__pycache__/
+
 # Local coding-agent state (settings, worktrees, caches — not part of the repo)
 .claude/
 
