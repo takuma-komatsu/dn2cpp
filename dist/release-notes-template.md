@@ -6,14 +6,13 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークのエクスポートプリセットに IL Pre-stripping（ILDiet によるマネージドアセンブリの事前ストリッピング）オプションを追加し、デフォルトで有効化しました（[godot-dn2cpp PR #13](https://github.com/takuma-komatsu/godot-dn2cpp/pull/13)）
-- [PR #122](https://github.com/takuma-komatsu/dn2cpp/pull/122) で、ILDiet による .NET モジュール内の未使用 Godot 型の削減に対応しました
-- [PR #121](https://github.com/takuma-komatsu/dn2cpp/pull/121) で、ネイティブ ILDiet ストリッピングの統合とマネージド出力パリティ検証を行いました
-- [PR #120](https://github.com/takuma-komatsu/dn2cpp/pull/120) で、Windows スモークテスト時のネイティブ ISA ゲートスキップを修正しました
-- [PR #119](https://github.com/takuma-komatsu/dn2cpp/pull/119) で、トランスパイル前に不要な型・メソッドを IL レベルで削減するアセンブリ前処理 ILDiet を導入しました
-- [PR #118](https://github.com/takuma-komatsu/dn2cpp/pull/118)（[PR #113](https://github.com/takuma-komatsu/dn2cpp/pull/113), [PR #114](https://github.com/takuma-komatsu/dn2cpp/pull/114), [PR #115](https://github.com/takuma-komatsu/dn2cpp/pull/115), [PR #117](https://github.com/takuma-komatsu/dn2cpp/pull/117)）で、プランニング時の C++ 本文描画省略やインターフェース閉包キャッシュによる性能改善、および文字列変性呼び出しの到達性判定を修正しました
+- Godot フォークのエクスポートプリセットに独立したサイズ最適化オプション（IL Pre-stripping、Registry Trim、Reflection Trim）を追加しました（[godot-dn2cpp PR #15](https://github.com/takuma-komatsu/godot-dn2cpp/pull/15)）
+- Godot フォークのエクスポートプリセットに DeClang による難読化オプションを追加し、Android エクスポートでの DeClang 難読化に対応しました（[godot-dn2cpp PR #14](https://github.com/takuma-komatsu/godot-dn2cpp/pull/14)）
+- [PR #127](https://github.com/takuma-komatsu/dn2cpp/pull/127) で、ILDiet によるマネージドアセンブリ削減後も Godot 登録表の trim を適用するようにし、GDScript 内のエスケープシーケンス解決や独立したエクスポートサイズ最適化オプションを検証・導入しました
+- [PR #124](https://github.com/takuma-komatsu/dn2cpp/pull/124) で、DeClang による C# メソッド単位の選択的難読化に対応し、Android (arm64-v8a) 向けネイティブビルドでの難読化コンパイルをサポートしました
+- [PR #123](https://github.com/takuma-komatsu/dn2cpp/pull/123) で、生成される C++ メソッドシンボルの命名規則を IL2CPP 形式に統一し、可読性とデバッグ性を向上させました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/308e30e00cdda083d7166a1b397d0fa417bc1898...@@DOCS_REF@@> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/42deb6848a9b72b8c965ef730daba35d62168a72...@@DOCS_REF@@> を参照してください。
 
 ## ダウンロード
 
