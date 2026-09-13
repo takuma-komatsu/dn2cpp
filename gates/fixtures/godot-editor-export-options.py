@@ -9,8 +9,8 @@ from xml.sax.saxutils import escape
 
 fork, output = map(pathlib.Path, sys.argv[1:])
 source_dir = fork / 'modules/mono/editor/GodotTools/GodotTools/Export'
-plugin = (source_dir / 'ExportPlugin.cs').read_text()
-exporter = (source_dir / 'Dn2CppExporter.cs').read_text()
+plugin = (source_dir / 'ExportPlugin.cs').read_text(encoding='utf-8')
+exporter = (source_dir / 'Dn2CppExporter.cs').read_text(encoding='utf-8')
 
 
 def method(source, signature):
@@ -31,11 +31,11 @@ read_options = plugin[read_start:read_end]
 assert re.search(r'BuildDropIn\([^;]+ilPrestripping, optimizationOptions\);', plugin)
 assert 'Transpile(publishOutputDir, assemblyName, ilDir, genDir, ilPrestripping, optimizationOptions);' in exporter
 
-fixture = pathlib.Path(__file__).with_suffix('.cs').read_text()
+fixture = pathlib.Path(__file__).with_suffix('.cs').read_text(encoding='utf-8')
 for marker, source in [('OPTIONS', options), ('VISIBILITY', visibility), ('TRANSPILE', transpile), ('READ_OPTIONS', read_options)]:
     fixture = fixture.replace('// INSERT_' + marker, source)
 output.mkdir(parents=True, exist_ok=True)
-(output / 'Program.cs').write_text(fixture)
+(output / 'Program.cs').write_text(fixture, encoding='utf-8')
 helper = escape(str((source_dir / 'Dn2CppOptimizationOptions.cs').resolve()), {'"': '&quot;'})
 (output / 'ExportOptions.csproj').write_text(f'''<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -44,5 +44,5 @@ helper = escape(str((source_dir / 'Dn2CppOptimizationOptions.cs').resolve()), {'
   </PropertyGroup>
   <ItemGroup><Compile Include="{helper}" Link="Dn2CppOptimizationOptions.cs" /></ItemGroup>
 </Project>
-''')
+''', encoding='utf-8')
 subprocess.run(['dotnet', 'run', '--project', str(output / 'ExportOptions.csproj'), '-c', os.environ.get('CONFIG', 'Release'), '--', str(output.resolve() / 'work')], check=True)
