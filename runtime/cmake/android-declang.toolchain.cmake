@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
-if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Darwin|Windows)$")
-    message(FATAL_ERROR "Android DeClang requires a macOS or Windows host")
+if(NOT CMAKE_HOST_SYSTEM_NAME MATCHES "^(Darwin|Linux|Windows)$")
+    message(FATAL_ERROR "Android DeClang requires a macOS, Linux, or Windows host")
 endif()
 set(DN2CPP_DECLANG_HOST_SUFFIX "")
 if(CMAKE_HOST_WIN32)

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Android DeClang compatibility and selective flattening in the linked AArch64 ELF.
 source "$(dirname "$0")/_common.sh"
-[[ "$DN2CPP_OS" == macos || "$DN2CPP_OS" == windows ]] || gate_skip "Android DeClang validation requires macOS or Windows"
+[[ "$DN2CPP_OS" == macos || "$DN2CPP_OS" == linux || "$DN2CPP_OS" == windows ]] \
+    || gate_skip "Android DeClang validation requires macOS, Linux, or Windows"
 source gates/_declang.sh
 [ -f "${ANDROID_NDK_ROOT:-}/build/cmake/android.toolchain.cmake" ] \
     || gate_skip "set ANDROID_NDK_ROOT to an installed Android NDK"

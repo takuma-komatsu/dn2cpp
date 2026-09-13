@@ -774,11 +774,9 @@ elif [ -n "$GC_LIB" ] || [ -d "$BUILD_DIR/CMakeFiles/dn2cpp_runtime.dir" ]; then
     exit 1
 fi
 
-# godot_export_refused RC LOG WHAT — the half every refusal assert shares: the
-# export failed (non-zero exit and the editor's own verdict), the C# export
-# plugin is what refused it, and it refused before the publish. The caller then
-# greps for the sentence identifying WHICH refusal fired, because all four of
-# them look identical here.
+# godot_export_refused RC LOG WHAT — require the editor and C# export plugin to
+# report failure before transpilation. Callers check the specific diagnostic;
+# DeClang refusals also require that publishing never started.
 godot_export_refused() {
     local rc="$1" log="$2" what="$3"
     [ "$rc" -ne 0 ] \
@@ -789,7 +787,7 @@ godot_export_refused() {
     grep -q "ERROR: Export .NET Project" "$log" \
         || { echo "FAIL: the export plugin accepted $what" >&2; cat "$log" >&2; exit 1; }
     if grep -qF "dn2cpp: transpiling" "$log"; then
-        echo "FAIL: $what was refused only after the publish had run" >&2
+        echo "FAIL: $what was refused only after transpilation had started" >&2
         cat "$log" >&2
         exit 1
     fi

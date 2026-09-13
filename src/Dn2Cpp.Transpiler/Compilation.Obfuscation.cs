@@ -65,8 +65,8 @@ internal sealed partial class Compilation
         }
         if (!_obfuscationMemberCandidates.Contains(owner + "::" + module.Reader.GetString(reference.Name)))
             return;
-        // Resolve only a candidate's exact overload. Record it without Reach: even
-        // a replaced body must be diagnosed, while its callees remain stripped.
+        // Resolve only a candidate's exact overload. Record it without Reach so
+        // a replaced body is diagnosed without rooting its callees.
         var target = handle.Kind == HandleKind.MethodSpecification
             ? ResolveMethodSpec(module, (MethodSpecificationHandle)handle, context)
             : ResolveMemberRefMethod(module, (MemberReferenceHandle)method, context);

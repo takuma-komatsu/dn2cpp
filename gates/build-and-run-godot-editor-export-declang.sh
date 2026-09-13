@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Selective DeClang export runs the desktop game's existing GC and callback assertions.
+# macOS DeClang export runs the game's existing GC and callback assertions.
 source "$(dirname "$0")/_common.sh"
-if [ "$DN2CPP_OS" = windows ]; then
-    gate_expected_partial "a desktop DeClang editor export has no reachable state on Windows because Windows desktop targets are outside this DeClang integration. The Windows-hosted editor and compiler path is asserted by gates/build-and-run-godot-editor-export-declang-android.sh; the desktop export and game execution are asserted by this gate, gates/build-and-run-godot-editor-export-declang.sh, on macOS."
+if [[ "$DN2CPP_OS" == linux || "$DN2CPP_OS" == windows ]]; then
+    gate_expected_partial "Linux and Windows desktop targets are outside this DeClang integration. Android arm64-v8a editor exports from these hosts are covered by gates/build-and-run-godot-editor-export-declang-android.sh; desktop export and game execution are covered by gates/build-and-run-godot-editor-export-declang.sh on macOS."
     exit 0
 fi
 if [ "$DN2CPP_OS" != macos ]; then

@@ -583,7 +583,8 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// and tiny IL bodies (field accessors, one-op operator wrappers —
     /// see <see cref="MethodInfo.IsTinyIlBody"/>) whose out-of-line form costs a
     /// real call per use in hot loops (e.g. Span.get_Length as a LINQ loop
-    /// condition). NoInlining wins when both flags are set; an
+    /// condition). NoInlining wins when both flags are set. A selected DeClang
+    /// body also stays out of line so the pass can match its implementation; an
     /// <c>[UnmanagedCallersOnly]</c> root is called from native code only, so
     /// there is no managed call site to inline into. A <c>[HotPath]</c> body is
     /// excluded too: promotion would compile it under every including TU's plain

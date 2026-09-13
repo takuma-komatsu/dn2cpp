@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Existing DeClang: selective native flattening, isolated compiler logs, and Ninja invalidation.
+# macOS DeClang: selective native flattening, isolated logs, and Ninja invalidation.
 source "$(dirname "$0")/_common.sh"
-if [ "$DN2CPP_OS" = windows ]; then
-    gate_expected_partial "native desktop DeClang has no reachable state on Windows because this integration supports only macOS desktop and Android arm64-v8a targets. The Windows-hosted compiler path is asserted by gates/build-and-run-declang-android.sh; the desktop compile, execution and machine-code comparison are asserted by this gate, gates/build-and-run-declang.sh, on macOS."
+if [[ "$DN2CPP_OS" == linux || "$DN2CPP_OS" == windows ]]; then
+    gate_expected_partial "Linux and Windows desktop targets are outside this DeClang integration. Android arm64-v8a compilation from these hosts is covered by gates/build-and-run-declang-android.sh; desktop compilation, execution and machine-code comparison are covered by gates/build-and-run-declang.sh on macOS."
     exit 0
 fi
 if [ "$DN2CPP_OS" != macos ]; then

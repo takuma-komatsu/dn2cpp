@@ -1,4 +1,4 @@
-"""Compare OFF/ON native bodies from the same dn2cpp emission and compiler."""
+"""Compare OFF/ON macOS or Android bodies; execute .NET parity only on macOS."""
 from collections import Counter
 import hashlib
 import json
@@ -241,4 +241,4 @@ if android:
 
     print("DeClang Android proof passed: same emitted C++, selected ELF control flow flattened, unselected body unchanged; device execution not performed")
 else:
-    print("DeClang native proof passed: same emitted C++, .NET parity, selected machine code differs")
+    print("DeClang macOS native proof passed: same emitted C++, .NET parity, selected machine code differs")

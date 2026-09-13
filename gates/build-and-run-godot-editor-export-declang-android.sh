@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Android DeClang APK packaging, selective application, and incremental rebuilds.
 source "$(dirname "$0")/_common.sh"
-if [ "$DN2CPP_OS" != macos ] && [ "$DN2CPP_OS" != windows ]; then
-    gate_skip "Android DeClang editor export requires macOS or Windows"
+if [ "$DN2CPP_OS" != macos ] && [ "$DN2CPP_OS" != linux ] && [ "$DN2CPP_OS" != windows ]; then
+    gate_skip "Android DeClang editor export requires macOS, Linux, or Windows"
 fi
 source "gates/_declang.sh"
 ensure_declang_android_compiler

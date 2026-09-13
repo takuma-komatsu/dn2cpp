@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Resolve only staged DeClang distributions; clang++ on PATH may be ordinary Clang.
+# Discover only staged DeClang distributions; clang++ on PATH may be ordinary Clang.
 ensure_declang_compiler() {
     local candidate selected="" suffix=""
     [ "${DN2CPP_OS:-}" != windows ] || suffix=".exe"
@@ -29,10 +29,11 @@ ensure_declang_compiler() {
     export DN2CPP_DECLANG_COMPILER
 }
 
-# Android builds use a newer LLVM baseline than the desktop distribution.
+# Prefer local Android builds prepared for newer NDK headers.
 ensure_declang_android_compiler() {
     local candidate selected=""
-    if [ "${DN2CPP_OS:-}" = macos ] && [ -z "${DN2CPP_DECLANG_COMPILER:-}" ]; then
+    if [[ "${DN2CPP_OS:-}" == macos || "${DN2CPP_OS:-}" == linux ]] \
+        && [ -z "${DN2CPP_DECLANG_COMPILER:-}" ]; then
         for candidate in "$PWD"/artifacts/declang-android-*/build/bin/clang++; do
             [ -f "$candidate" ] && [ -x "$candidate" ] || continue
             if [ -n "$selected" ]; then
@@ -48,8 +49,8 @@ ensure_declang_android_compiler() {
     ensure_declang_compiler
 }
 
-# The distributed DeClang is based on Clang 16. Newer NDK libc++ headers use
-# compiler builtins it does not have, so Android validation must use r26d.
+# Older DeClang drivers lack builtins required by newer NDK libc++ headers.
+# Gates select the compatible staged r26d for them; newer drivers use the caller's NDK.
 ensure_declang_android_ndk() {
     local staged="$PWD/artifacts/declang-ndk/android-ndk-r26d"
     local revision='Pkg.Revision = 26.3.11579264'
@@ -66,7 +67,7 @@ ensure_declang_android_ndk() {
             && grep -qF "$revision" "$ANDROID_NDK_ROOT/source.properties"; then
             :
         else
-            gate_skip "Clang $major based DeClang requires NDK r26d under artifacts/declang-ndk/android-ndk-r26d or ANDROID_NDK_ROOT"
+            gate_skip "this gate requires NDK r26d for Clang $major based DeClang; stage it under artifacts/declang-ndk/android-ndk-r26d or set ANDROID_NDK_ROOT"
         fi
     elif [ ! -f "${ANDROID_NDK_ROOT:-}/build/cmake/android.toolchain.cmake" ]; then
         gate_skip "set ANDROID_NDK_ROOT to an installed Android NDK"

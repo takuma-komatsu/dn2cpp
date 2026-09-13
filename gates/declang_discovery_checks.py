@@ -12,7 +12,7 @@ bash = resolve_bash()
 suffix = ".exe" if os.name == "nt" else ""
 env = os.environ.copy()
 env.pop("DN2CPP_DECLANG_COMPILER", None)
-env["DN2CPP_OS"] = "windows" if os.name == "nt" else "macos"
+env["DN2CPP_OS"] = "windows" if os.name == "nt" else ("macos" if sys.platform == "darwin" else "linux")
 
 with tempfile.TemporaryDirectory(prefix="declang discovery ") as temporary:
     work = Path(temporary).resolve()
@@ -76,6 +76,20 @@ with tempfile.TemporaryDirectory(prefix="declang discovery ") as temporary:
         android.chmod(0o644)
         assert "set DN2CPP_DECLANG_COMPILER" in resolve(77, android=True)
         assert "not an executable file" in resolve(1, android=True, override=android)
+
+        # Both POSIX host branches must prefer Android builds over distributions.
+        executable(android)
+        executable(desktop)
+        for host in ("macos", "linux"):
+            env["DN2CPP_OS"] = host
+            selected(android, android=True)
+            selected(desktop)
+            selected(desktop, android=True, override=desktop)
+            executable(second_android)
+            assert "multiple Android DeClang builds" in resolve(1, android=True)
+            second_android.unlink()
+        android.unlink()
+        desktop.unlink()
 
     env["DN2CPP_OS"] = "windows"
     desktop_exe = executable(work / "artifacts/declang-distribution/windows/compiler/bin/clang++.exe")

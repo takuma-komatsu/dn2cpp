@@ -1,4 +1,4 @@
-"""Exercise the shipped CMake helpers against an existing native DeClang driver."""
+"""Exercise the shipped CMake helpers against a native macOS DeClang driver."""
 import json
 import os
 from pathlib import Path
@@ -200,4 +200,4 @@ del env["DECLANG_TEST_LOG_MODE"]
 (source / "generated.cpp").write_text('__attribute__((noinline)) int selected(int a) { return a; }\nint main() { return selected(0); }\n')
 assert "DeClang" in run("cmake", "--build", build, success=False)
 assert not result.exists()
-print("DeClang helper checks passed: real flatten, native difference, exclusions, PCH, cache and failures")
+print("macOS DeClang helper checks passed: real flatten, native difference, exclusions, PCH, cache and failures")

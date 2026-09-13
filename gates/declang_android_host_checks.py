@@ -7,7 +7,12 @@ import sys
 
 root = Path(sys.argv[1]).resolve()
 ndk = Path(os.environ["ANDROID_NDK_ROOT"]).resolve()
-host = "windows-x86_64" if os.name == "nt" else "darwin-x86_64"
+if os.name == "nt":
+    host = "windows-x86_64"
+elif sys.platform == "darwin":
+    host = "darwin-x86_64"
+else:
+    host = "linux-x86_64"
 suffix = ".exe" if os.name == "nt" else ""
 driver = ndk / f"toolchains/llvm/prebuilt/{host}/bin/clang++{suffix}"
 work = root / "artifacts/declang android host checks"
@@ -36,6 +41,14 @@ def run(*args, expected=None):
         assert result.returncode != 0 and expected in result.stdout, result.stdout
     return result.stdout
 
+
+if sys.platform != "darwin":
+    run("cmake", f"-DCOMPILER={driver}", f"-DWORK_DIR={work / 'desktop'}",
+        "-P", helper / "declang_probe.cmake",
+        expected="DeClang requires native macOS, or an Android target")
+    run("cmake", f"-DDN2CPP_DECLANG_CONFIG={config}", "-DCMAKE_GENERATOR=Ninja",
+        "-P", helper / "dn2cpp_declang.cmake",
+        expected="DeClang requires Ninja and native macOS or the Android DeClang toolchain")
 
 run("cmake", "-S", source, "-B", build, "-G", "Ninja",
     f"-DCMAKE_TOOLCHAIN_FILE={helper.as_posix()}/android-declang.toolchain.cmake",
