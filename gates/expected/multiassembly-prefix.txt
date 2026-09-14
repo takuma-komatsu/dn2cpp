@@ -1,0 +1,13 @@
+lib module init: minicorlib-booted
+8
+49
+140
+cross assembly 
+321
+lib attr: type lib-class/3 method lib-method/4 field lib-field/1 prop lib-prop/2
+lib reflection ctor: reflected-title entry lib-entry/5 sections 1
+lib creator args: List`1 item WikiRef target w-ref version 1.0/0
+lib layout token: LayoutMid
+metadata-assembly-begin
+lib metadata definition: Subject`1 open=True constructed=True
+metadata-assembly-end

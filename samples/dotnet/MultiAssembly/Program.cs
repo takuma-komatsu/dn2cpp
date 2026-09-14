@@ -241,6 +241,7 @@ namespace MultiAssembly
                 + " open=" + definition.IsGenericTypeDefinition
                 + " constructed=" + firstAssembly.GetType().IsGenericType);
             Console.WriteLine("metadata-assembly-end");
+            MetadataCompression.Run();
             return 0;
         }
 

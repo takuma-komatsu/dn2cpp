@@ -14,12 +14,17 @@ def main():
     native_parameters = {}
     packed_blocks = {}
     pointer_parameters = {}
+    attributed_array = False
     declaration = re.compile(r"\b(md_(?:native|record)_\w+)\s*\[\s*\]\s*=")
-    method_table = re.compile(r"md_(native|record)_methtab_ReflectMetadataLayoutSubset_(NativeBase|PackedBase)\[\] = \{")
+    method_table = re.compile(r"md_(native|record)_methtab_(ReflectMetadataLayoutSubset_(?:NativeBase|PackedBase)|ReflectMetadataCompressionSubset_Direct)\[\] = \{")
     for path in output.glob("generated*.cpp"):
         native_owner = None
         with path.open(encoding="utf-8") as stream:
             for line in stream:
+                if line.startswith("const Dn2CppTypeInfo ti_arr_ReflectMetadataCompressionSubset_Direct ="):
+                    if not line.rstrip().endswith(", nullptr };"):
+                        raise ValueError("an element attribute must not create array reflection metadata")
+                    attributed_array = True
                 declarations.update(declaration.findall(line))
                 match = method_table.search(line)
                 if match:
@@ -59,7 +64,9 @@ def main():
     subject("PackedBase", overridden, ("fldtab", "methtab", "ctortab", "proptab"))
     require("attrtab_ReflectMetadataLayoutSubset_NativeBase", not overridden)
     require("attrtab_ReflectMetadataLayoutSubset_PackedBase", overridden)
-    for name, native in (("NativeBase", not overridden), ("PackedBase", overridden)):
+    for name, native in (("ReflectMetadataLayoutSubset_NativeBase", not overridden),
+                         ("ReflectMetadataLayoutSubset_PackedBase", overridden),
+                         ("ReflectMetadataCompressionSubset_Direct", not overridden)):
         if native or uncompressed:
             parameters = native_parameters.get(name, set())
             for table in parameters:
@@ -88,6 +95,42 @@ def main():
     for name, native in (("SignedBoundary", False), ("UnsignedBoundary", True)):
         for table in ("refl_ti", "fldtab", "enummembers"):
             require(table + "_ReflectMetadataPreservationSubset_" + name, native)
+    for name, native, tables in (
+            ("Direct", not overridden, ("fldtab", "methtab", "ctortab", "proptab", "attrtab")),
+            ("Middle", True, ("ctortab",)),
+            ("Descendant", True, ("ctortab",)),
+            ("Custom", True, ("fldtab", "attrtab")),
+            ("ValueSubject", True, ("fldtab",)),
+            ("EnumSubject", True, ("fldtab", "enummembers")),
+            ("DelegateSubject", True, ("methtab",)),
+            ("ISubject", True, ("methtab",)),
+            ("Implementation", False, ("methtab",)),
+            ("Generic_Int32", True, ("fldtab", "methtab", "ctortab")),
+            ("Generic_String", not overridden, ("fldtab", "methtab", "ctortab")),
+            ("Generic_ReflectMetadataCompressionSubset_Argument", True, ("fldtab", "methtab", "ctortab")),
+            ("GenericDescendant", True, ("ctortab",)),
+            ("Argument", False, ("fldtab",)),
+            ("PlainGeneric_ReflectMetadataCompressionSubset_Direct", False, ("fldtab", "ctortab")),
+            ("Outer", True, ("fldtab",)),
+            ("Outer_Nested", False, ("fldtab",)),
+            ("Container", False, ("fldtab",)),
+            ("Container_Nested", True, ("fldtab",)),
+            ("CliBase", overridden, ("fldtab",)),
+            ("CliDescendant", False, ("ctortab",)),
+            ("Other_Subject", False, ("fldtab", "attrtab"))):
+        require("refl_ti_ReflectMetadataCompressionSubset_" + name, native)
+        for table in tables:
+            require(table + "_ReflectMetadataCompressionSubset_" + name, native)
+    require("refl_gendef_ReflectMetadataCompressionSubset_Generic_1", True)
+    require("refl_gendef_ReflectMetadataCompressionSubset_PlainGeneric_1", False)
+    if not attributed_array:
+        raise ValueError("attributed array element case was not emitted")
+    member_attributes = [name for name in declarations
+                         if re.match(r"md_(?:native|record)_attrtab_(?:(?:methtab|ctortab)_)?ReflectMetadataCompressionSubset_Direct_", name)]
+    if len(member_attributes) < 5:
+        raise ValueError("direct subject must retain field, property, constructor, method, and parameter attributes")
+    for name in member_attributes:
+        require(re.sub(r"^md_(?:native|record)_", "", name), not overridden)
     if uncompressed:
         packed = sorted(name for name in declarations if name.startswith("md_record_"))
         if packed:

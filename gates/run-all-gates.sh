@@ -370,6 +370,7 @@ ok "Gate cache inputs: runtime-tree=$DN2CPP_RUNTIME_HASH dotnet-runtimes=$DN2CPP
 ORDERED_PROJECTS=(
     "src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj"
     "src/Dn2Cpp.Cli.Console/Dn2Cpp.Cli.Console.csproj"
+    "samples/dotnet/ReflectInvoke/ReflectInvoke.csproj"
     "samples/dotnet/PreserveControlLib/PreserveControlLib.csproj"
     "samples/dotnet/PreserveAssemblyLib/PreserveAssemblyLib.csproj"
     "samples/dotnet/PreserveControl/PreserveControl.csproj"

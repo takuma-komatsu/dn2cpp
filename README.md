@@ -759,8 +759,9 @@ optimization changed no results. All are on by default except
   cannot plausibly reflect over (the Godot Web export turns it on). The
   analysis is unsound by nature, so a stripped type **throws** rather than
   answering empty, and `--reflection-root` is the escape hatch.
-- **Reflection metadata storage** defaults to packed records. Types named by
-  a surviving `typeof` in reachable IL use native rows for their own reflection
+- **Reflection metadata storage** defaults to packed records. Types marked with
+  `[NoCompressMetadata]` (including derived classes), or named by
+  a surviving `typeof` in reachable IL, use native rows for their own reflection
   metadata and members. Runtime-owned types such as `System.String` always use
   native rows. `--no-metadata-compression` forces native, uncompressed rows for
   all metadata. The choice changes storage, without changing reflection roots.
@@ -791,14 +792,39 @@ to enabled, including in existing presets that omit it.
 
 With compression enabled, the storage policy is:
 
-Generated types recognized by a surviving `typeof` use native metadata; other
-generated types use packed metadata. An explicit per-type selector takes
-precedence over that automatic choice. Runtime-owned types always use native
-metadata.
+Generated types marked with `[Dn2Cpp.Runtime.NoCompressMetadata]`, including
+derived classes, use native metadata. Otherwise, types recognized by a surviving
+`typeof` use native metadata and other generated types use packed metadata.
+An explicit per-type selector takes precedence over both the attribute and
+automatic choice. Runtime-owned types always use native metadata.
+
+```csharp
+using Dn2Cpp.Runtime;
+
+[NoCompressMetadata]
+class Model { }
+
+class DerivedModel : Model { } // Inherits native metadata storage.
+
+sealed class FastReflectionAttribute : NoCompressMetadataAttribute { }
+
+[FastReflection]
+class SaveData { }
+```
+
+The marker accepts classes, structs, interfaces, enums and delegates. Custom
+attributes derived from `NoCompressMetadataAttribute` also select native storage,
+including through an inheritance chain in a referenced assembly. A generic type's
+marker applies to its open definition and each emitted constructed type. The
+choice passes down class inheritance only; it does not spread to enclosing or
+nested types, array types, generic arguments, or interface implementations.
+The type's own member, parameter and custom-attribute rows follow its format.
+This controls storage only: use `[Preserve]` or other retention settings to keep
+types and members that would otherwise be stripped.
 
 Use the repeatable `--reflection-metadata <type>=native|packed` option to
-override the automatic choice for an exact type. Quote selectors containing
-shell punctuation:
+override the attribute or automatic choice for an exact type. Quote selectors
+containing shell punctuation:
 
 ```bash
 dn2cpp app.dll --reflection-metadata 'App.SaveRecord=native'
@@ -823,9 +849,11 @@ overridden.
 
 Open generic definitions with the same CLR name share the runtime's existing
 definition handle across assemblies. That shared row uses native storage if
-any surviving `typeof` names it. A qualified explicit selector overrides the
-shared row's automatic choice; qualified selectors requesting different formats
-for that row are rejected. Closed generic types retain their individual choices.
+any owner has the marker (including through inheritance), or any surviving
+`typeof` names it. A qualified explicit selector overrides the
+shared row's attribute or automatic choice; qualified selectors requesting
+different formats for that row are rejected. Closed generic types retain their
+individual choices.
 
 Automatic selection recognizes `ldtoken <type>` followed by
 `System.Type.GetTypeFromHandle`, allowing intervening `nop` instructions.

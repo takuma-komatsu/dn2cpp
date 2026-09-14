@@ -14,6 +14,8 @@
 # referenced-only base chain. Its by-value field requires both size and alignment.
 # A shared open-generic metadata row honors typeof tokens and explicit format
 # selectors from every assembly declaring that full name.
+# Attribute storage policies resolve external ancestry and assembly scopes without
+# adding retention roots, including when ILDiet removes unreachable code.
 source "$(dirname "$0")/_common.sh"
 
 descriptor=samples/dotnet/MultiAssembly/link.xml
@@ -40,18 +42,52 @@ shared_definition_layout() {
 }
 
 metadata_section='metadata-assembly-begin'
-expected_metadata=$(run_bounded dotnet "$app" | sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p')
+expected_output=$(run_bounded dotnet "$app")
+assert_output "$(sed '/^metadata-policy-assembly-begin$/,$d' <<<"$expected_output")" \
+    "$(cat gates/expected/multiassembly-prefix.txt)"
+expected_metadata=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' <<<"$expected_output")
 grep -Fxq "$metadata_section" <<<"$expected_metadata"
+expected_policy=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' <<<"$expected_output")
+grep -Fxq metadata-policy-assembly-begin <<<"$expected_policy"
+grep -Fxq metadata-policy-assembly-end <<<"$expected_policy"
 metadata_section_parity() {
     local out="$1" actual
     run_bounded "$out/MultiAssembly$EXE_EXT" > "$out/metadata-assembly.stdout"
     actual=$(sed -n '/^metadata-assembly-begin$/,/^metadata-assembly-end$/p' "$out/metadata-assembly.stdout")
     assert_output "$actual" "$expected_metadata"
+    actual=$(sed -n '/^metadata-policy-assembly-begin$/,/^metadata-policy-assembly-end$/p' "$out/metadata-assembly.stdout")
+    assert_output "$actual" "$expected_policy"
+    assert_output "$(cat "$out/metadata-assembly.stdout")" "$expected_output"
+}
+
+policy_layout() {
+    local out="$1" symbol="$2" format="$3" other=record
+    [ "$format" = record ] && other=native
+    grep -qw "md_${format}_refl_$symbol" "$out"/generated*.cpp \
+        || { echo "FAIL: $out did not emit $format metadata for $symbol" >&2; return 1; }
+    if grep -qw "md_${other}_refl_$symbol" "$out"/generated*.cpp; then
+        echo "FAIL: $out emitted the wrong metadata format for $symbol" >&2
+        return 1
+    fi
 }
 for out in artifacts/multiasm artifacts/multiasm-inference; do
     shared_definition_layout "$out" native
     metadata_section_parity "$out"
+    policy_layout "$out" ti_MultiAssembly_MetadataExternalPolicy native
+    policy_layout "$out" ti_MultiAssembly_MetadataDerived native
+    policy_layout "$out" ti_MiniBcl_MetadataMiddle native
+    policy_layout "$out" ti_MetadataCompressionCollision_UnmarkedSubject record
+    policy_layout "$out" ti_MetadataCompressionCollision_MarkedSubject native
+    policy_layout "$out" ti_MultiAssembly_MetadataScopeUnmarked record
+    policy_layout "$out" ti_MultiAssembly_MetadataScopeMarked native
+    policy_layout "$out" gendef_MetadataCompressionCollision_SharedSubject_1 native
+    policy_layout "$out" ti_MetadataCompressionCollision_SharedSubject_Int32 record
+    policy_layout "$out" ti_MetadataCompressionCollision_SharedSubject_String native
 done
+if grep -Eq 'MetadataUnreachable|MustRemainUnreachable' artifacts/multiasm/generated*.cpp artifacts/multiasm/generated.h; then
+    echo "FAIL: metadata storage attributes retained unused types or members" >&2
+    exit 1
+fi
 
 echo "== qualified metadata formats for an assembly-shared generic definition =="
 metadata_emit_layout() {
@@ -70,6 +106,16 @@ metadata_emit_layout second-native native \
 metadata_emit_layout both-native native \
     --reflection-metadata 'MiniCorlib::MetadataAssemblyCollision.Subject`1=native' \
     --reflection-metadata 'MultiAssemblyAlias::MetadataAssemblyCollision.Subject`1=native'
+metadata_emit_layout policy-packed native \
+    --reflection-metadata 'MultiAssemblyAlias::MetadataCompressionCollision.SharedSubject`1=packed' \
+    --reflection-metadata 'MultiAssembly.MetadataExternalPolicy=packed' \
+    --reflection-metadata 'MiniBcl.MetadataMiddle=packed'
+policy_layout artifacts/multiasm-metadata-policy-packed gendef_MetadataCompressionCollision_SharedSubject_1 record
+policy_layout artifacts/multiasm-metadata-policy-packed ti_MultiAssembly_MetadataExternalPolicy record
+policy_layout artifacts/multiasm-metadata-policy-packed ti_MiniBcl_MetadataMiddle record
+policy_layout artifacts/multiasm-metadata-policy-packed ti_MultiAssembly_MetadataDerived native
+compile_console artifacts/multiasm-metadata-policy-packed MultiAssembly
+metadata_section_parity artifacts/multiasm-metadata-policy-packed
 
 metadata_reject_layout() {
     local name="$1" diagnostic="$2" status=0

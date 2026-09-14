@@ -42,6 +42,7 @@ namespace ReflectInvoke
             ReflectToStringSubset.Program.Run();
             ReflectMetadataPreservationSubset.Program.Run();
             ReflectMetadataLayoutSubset.Program.Run();
+            ReflectMetadataCompressionSubset.Program.Run();
         }
     }
 }

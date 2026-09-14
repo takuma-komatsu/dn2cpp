@@ -538,16 +538,33 @@ values flowing through locals are outside this inference. Explicit
 `ReflectionMetadataFormats` selectors override it without changing reachability
 or reflection preservation. The CLI syntax is documented in the README.
 
+The same policy recognizes the exact metadata name
+`Dn2Cpp.Runtime.NoCompressMetadataAttribute` and custom attributes derived from
+it. It walks attribute ancestry and the target's base-class chain through raw
+metadata, resolving assembly scopes, nested definitions and generic base types
+without materializing classes or adding reachability roots. Cycle guards and
+definition-level caches bound those walks. A generic definition's marker applies
+to every emitted constructed type. Containment, array elements, generic arguments
+and implemented interfaces do not propagate the choice.
+
+Storage precedence is global compression disable, explicit per-type selector,
+attribute selection (including inherited selection), then automatic inference.
+The CLI's exact-type selectors do not inherit. Runtime-owned storage restrictions
+and selector validation remain in force. Attributes change representation only;
+`[Preserve]` and the existing retention mechanisms still control which rows exist.
+
 Open generic definitions retain the existing CLR-name-keyed runtime identity.
 The emitter collects their concrete and token-site module owners before writing
-rows. Automatic native selection is the union of those owners' surviving
-`typeof` sites. A qualified explicit format overrides that shared row; conflicting
-explicit formats for the same physical row are rejected. This aggregation does
-not merge closed-type metadata identities.
+rows. Native selection is the union of those owners' attribute policies and
+surviving `typeof` sites. A qualified explicit format overrides that shared row;
+conflicting explicit formats for the same physical row are rejected. This
+aggregation does not merge closed-type metadata identities.
 
 The selected format applies to the type's cold row and its own fields,
 methods, constructors, properties, parameters, custom attributes and enum
-members. It does not propagate along inheritance or generic/array components.
+members. Automatic and explicit choices do not propagate along inheritance;
+only the attribute policy inherits. Generic arguments and array components
+never inherit a format choice.
 Empty cold metadata stays absent. Parameter and attribute interning includes
 the format in its key; both formats retain stable original row identities and
 constant initialization. Emission retains only a method-table symbol and extent

@@ -12,6 +12,8 @@ internal sealed partial class Compilation
     private readonly Dictionary<string, List<Module>> _reflectionDefinitionOwners = new(StringComparer.Ordinal);
     private readonly HashSet<string> _emittedReflectionDefinitions = new(StringComparer.Ordinal);
     private readonly Dictionary<string, bool> _reflectionDefinitionFormats = new(StringComparer.Ordinal);
+    private readonly Dictionary<(int Module, TypeDefinitionHandle Type), bool> _uncompressedMetadataTypes = new();
+    private readonly Dictionary<(int Module, TypeDefinitionHandle Type), bool> _noCompressMetadataAttributeTypes = new();
     private bool _reflectionMetadataFrozen;
     private bool _reflectionDefinitionsPrepared;
 
@@ -112,6 +114,7 @@ internal sealed partial class Compilation
         foreach (string name in _emittedReflectionDefinitions.OrderBy(name => name, StringComparer.Ordinal))
         {
             bool? selected = null;
+            bool attributed = false;
             var owners = _reflectionDefinitionOwners.TryGetValue(name, out var recorded)
                 ? recorded : new List<Module>();
             if (owners.Count == 0 && OpenGenericDefHandleByName(name) is { } definition)
@@ -120,6 +123,8 @@ internal sealed partial class Compilation
                 selected = ReflectionMetadataOverride(name, "System.Private.CoreLib", "definition:System.Private.CoreLib::" + name);
             foreach (var module in owners.OrderBy(module => module.Index))
             {
+                if (RawMetadataDefinition(module, name) is { } handle)
+                    attributed |= HasUncompressedMetadata(module, handle);
                 bool? choice = ReflectionMetadataOverride(name, module.AssemblyName,
                     "definition:" + module.AssemblyName + "::" + name);
                 if (choice is null)
@@ -128,7 +133,8 @@ internal sealed partial class Compilation
                     throw new NotSupportedException($"Conflicting --reflection-metadata formats for shared generic definition '{name}'; its runtime identity is shared across assemblies.");
                 selected = choice;
             }
-            _reflectionDefinitionFormats[name] = !CompressMetadata || (selected ?? _nativeReflectionDefinitions.Contains(name));
+            _reflectionDefinitionFormats[name] = !CompressMetadata
+                || (selected ?? (attributed || _nativeReflectionDefinitions.Contains(name)));
         }
         _reflectionDefinitionsPrepared = true;
     }
@@ -199,7 +205,10 @@ internal sealed partial class Compilation
     {
         if (ContainsCanonPlaceholder(type) || ContainsGenericVar(type))
             return !CompressMetadata;
-        return UsesNativeReflectionMetadata(MetadataTypeName(type), MetadataAssemblyName(type), MetadataStorageIdentity(type));
+        string identity = MetadataStorageIdentity(type);
+        bool? selected = ReflectionMetadataOverride(MetadataTypeName(type), MetadataAssemblyName(type), identity);
+        return !CompressMetadata || (selected ?? (HasUncompressedMetadata(type)
+            || _nativeReflectionMetadata.Contains(identity)));
     }
 
     internal bool UsesNativeReflectionMetadata(string definitionName)
@@ -209,10 +218,164 @@ internal sealed partial class Compilation
         return native;
     }
 
-    private bool UsesNativeReflectionMetadata(string name, string assembly, string identity)
+    private bool HasUncompressedMetadata(TypeDesc type)
     {
-        bool? selected = ReflectionMetadataOverride(name, assembly, identity);
-        return !CompressMetadata || (selected ?? _nativeReflectionMetadata.Contains(identity));
+        if (type.Kind == TypeKind.Class && !type.Class!.Handle.IsNil)
+            return HasUncompressedMetadata(type.Class.Module, type.Class.Handle);
+        if (type.Kind == TypeKind.Template)
+            return HasUncompressedMetadata(type.TemplateModule!, type.TemplateHandle);
+        return false;
+    }
+
+    // Storage policy reads raw definitions: resolving ClassInfo here can grow the
+    // emitted program after reachability and generic planning have finished.
+    private bool HasUncompressedMetadata(Module module, TypeDefinitionHandle handle)
+    {
+        if (_uncompressedMetadataTypes.TryGetValue((module.Index, handle), out bool cached))
+            return cached;
+        var path = new HashSet<(int Module, TypeDefinitionHandle Type)>();
+        bool native = false;
+        while (path.Add((module.Index, handle)))
+        {
+            if (_uncompressedMetadataTypes.TryGetValue((module.Index, handle), out native))
+                break;
+            var definition = module.Reader.GetTypeDefinition(handle);
+            foreach (var attributeHandle in definition.GetCustomAttributes())
+            {
+                var attribute = module.Reader.GetCustomAttribute(attributeHandle);
+                EntityHandle attributeType = attribute.Constructor.Kind switch
+                {
+                    HandleKind.MethodDefinition => module.Reader.GetMethodDefinition(
+                        (MethodDefinitionHandle)attribute.Constructor).GetDeclaringType(),
+                    HandleKind.MemberReference => module.Reader.GetMemberReference(
+                        (MemberReferenceHandle)attribute.Constructor).Parent,
+                    _ => default,
+                };
+                if (IsNoCompressMetadataAttribute(module, attributeType))
+                {
+                    native = true;
+                    break;
+                }
+            }
+            if (native || RawMetadataTypeDefinition(module, definition.BaseType) is not { } parent)
+                break;
+            module = parent.Module;
+            handle = parent.Handle;
+        }
+        foreach (var key in path)
+            _uncompressedMetadataTypes[key] = native;
+        return native;
+    }
+
+    private bool IsNoCompressMetadataAttribute(Module module, EntityHandle handle)
+    {
+        var path = new HashSet<(int Module, TypeDefinitionHandle Type)>();
+        bool matches = false;
+        while (!handle.IsNil)
+        {
+            if (IsNoCompressMetadataAttributeName(module.Reader, handle))
+            {
+                matches = true;
+                break;
+            }
+            if (RawMetadataTypeDefinition(module, handle) is not { } definition
+                || !path.Add((definition.Module.Index, definition.Handle)))
+                break;
+            if (_noCompressMetadataAttributeTypes.TryGetValue((definition.Module.Index, definition.Handle), out matches))
+                break;
+            module = definition.Module;
+            handle = module.Reader.GetTypeDefinition(definition.Handle).BaseType;
+        }
+        foreach (var key in path)
+            _noCompressMetadataAttributeTypes[key] = matches;
+        return matches;
+    }
+
+    private static bool IsNoCompressMetadataAttributeName(MetadataReader reader, EntityHandle handle)
+    {
+        if (handle.Kind == HandleKind.TypeDefinition)
+        {
+            var definition = reader.GetTypeDefinition((TypeDefinitionHandle)handle);
+            return definition.GetDeclaringType().IsNil
+                && reader.GetString(definition.Namespace) == "Dn2Cpp.Runtime"
+                && reader.GetString(definition.Name) == "NoCompressMetadataAttribute";
+        }
+        if (handle.Kind == HandleKind.TypeReference)
+        {
+            var reference = reader.GetTypeReference((TypeReferenceHandle)handle);
+            return reference.ResolutionScope.Kind != HandleKind.TypeReference
+                && reader.GetString(reference.Namespace) == "Dn2Cpp.Runtime"
+                && reader.GetString(reference.Name) == "NoCompressMetadataAttribute";
+        }
+        return false;
+    }
+
+    private TypeDefinitionHandle? RawMetadataDefinition(Module module, string name)
+    {
+        int cut = name.LastIndexOf('.');
+        var key = cut < 0 ? ("", name) : (name.Substring(0, cut), name.Substring(cut + 1));
+        if (TypeIndex().TryGetValue(key, out var candidates))
+            foreach (var (candidateModule, candidateHandle) in candidates)
+                if (candidateModule == module && MetadataDefinitionName(module, candidateHandle) == name)
+                    return candidateHandle;
+        return null;
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? RawMetadataTypeDefinition(Module module, EntityHandle handle)
+    {
+        return RawMetadataTypeDefinition(module, handle, new HashSet<(int, int)>());
+    }
+
+    private (Module Module, TypeDefinitionHandle Handle)? RawMetadataTypeDefinition(Module module,
+        EntityHandle handle, HashSet<(int, int)> seen)
+    {
+        if (handle.IsNil || !seen.Add((module.Index, SRME.GetToken(handle))))
+            return null;
+        if (handle.Kind == HandleKind.TypeDefinition)
+            return (module, (TypeDefinitionHandle)handle);
+        if (handle.Kind == HandleKind.TypeSpecification)
+        {
+            var blob = module.Reader.GetBlobReader(module.Reader.GetTypeSpecification((TypeSpecificationHandle)handle).Signature);
+            var code = blob.ReadSignatureTypeCode();
+            while (code is SignatureTypeCode.RequiredModifier or SignatureTypeCode.OptionalModifier)
+            {
+                blob.ReadTypeHandle();
+                code = blob.ReadSignatureTypeCode();
+            }
+            if (code == SignatureTypeCode.GenericTypeInstance)
+                code = blob.ReadSignatureTypeCode();
+            return code == SignatureTypeCode.TypeHandle
+                ? RawMetadataTypeDefinition(module, blob.ReadTypeHandle(), seen) : null;
+        }
+        if (handle.Kind != HandleKind.TypeReference)
+            return null;
+        var reference = module.Reader.GetTypeReference((TypeReferenceHandle)handle);
+        var key = (module.Reader.GetString(reference.Namespace), module.Reader.GetString(reference.Name));
+        if (!TypeIndex().TryGetValue(key, out var candidates))
+            return null;
+        if (reference.ResolutionScope.Kind == HandleKind.TypeReference)
+        {
+            if (RawMetadataTypeDefinition(module, reference.ResolutionScope, seen) is not { } declaring)
+                return null;
+            foreach (var (candidateModule, candidateHandle) in candidates)
+                if (candidateModule == declaring.Module
+                    && candidateModule.Reader.GetTypeDefinition(candidateHandle).GetDeclaringType() == declaring.Handle)
+                    return (candidateModule, candidateHandle);
+            return null;
+        }
+        Module? target = reference.ResolutionScope.Kind switch
+        {
+            HandleKind.AssemblyReference => Modules.FirstOrDefault(m => m.AssemblyName
+                == module.Reader.GetString(module.Reader.GetAssemblyReference(
+                    (AssemblyReferenceHandle)reference.ResolutionScope).Name)),
+            HandleKind.ModuleDefinition => module,
+            _ => null,
+        };
+        foreach (var (candidateModule, candidateHandle) in candidates)
+            if (candidateModule == target
+                && candidateModule.Reader.GetTypeDefinition(candidateHandle).GetDeclaringType().IsNil)
+                return (candidateModule, candidateHandle);
+        return null;
     }
 
     private bool? ReflectionMetadataOverride(string name, string assembly, string identity)

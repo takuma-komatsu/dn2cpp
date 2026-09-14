@@ -12,4 +12,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
+  </ItemGroup>
+
 </Project>

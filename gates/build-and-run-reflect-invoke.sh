@@ -57,6 +57,8 @@
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
+# NoCompressMetadata and derived attributes select native owner/member metadata
+# through class inheritance without changing containing types or interface users.
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
 source "$(dirname "$0")/_common.sh"
@@ -72,6 +74,13 @@ gate_extra_asserts() {
     grep -Fxq 'metadata-layout-cache-threads=1296/1296' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-interface-receivers=21000' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-layout-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-labels=field/property/constructor/method/parameter' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-inheritance=v5/Direct' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-generic-value=15/Int32/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-generic-reference=text/String/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-plain-generic=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'metadata-compression-end' "$out/metadata-layout.stdout"
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -97,18 +106,23 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
         --reflection-metadata 'ReflectMetadataLayoutSubset.PackedBase=native' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.String]=packed' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.Object]=native' \
+        --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
+        --reflection-metadata 'ReflectMetadataCompressionSubset.Generic`1[System.String]=packed' \
+        --reflection-metadata 'ReflectMetadataCompressionSubset.CliBase=native' \
         --reflection-metadata 'System.String=native'
 
 reflection_layout_axis=uncompressed
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
     corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression \
         --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
+        --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
         --reflection-metadata 'System.String=packed'
 
 # A global opt-out dominates packed selectors in either argument order.
 uncompressed_reverse=artifacts/reflection-metadata-uncompressed-reverse
 run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
+    --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
     -o "$uncompressed_reverse"
 "$py" gates/fixtures/check-reflection-layout.py "$uncompressed_reverse" uncompressed
