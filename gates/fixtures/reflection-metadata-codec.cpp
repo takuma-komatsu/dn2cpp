@@ -6,10 +6,9 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <limits>
+#include <utility>
 
 namespace {
-struct InvalidRecord {};
-
 void require(bool condition, const char* invariant)
 {
     if (!condition)
@@ -23,7 +22,11 @@ template<class Action> void require_rejected(Action action, const char* invarian
 {
     bool rejected = false;
     try { action(); }
-    catch (const InvalidRecord&) { rejected = true; }
+    catch (Dn2CppException& ex)
+    {
+        rejected = ex.obj != nullptr && ex.obj->type == &dn2cpp_invalid_operation_exception_type;
+        dn2cpp_exc_inflight_pop(ex.obj);
+    }
     require(rejected, invariant);
 }
 
@@ -75,6 +78,7 @@ constexpr char empty[] = "";
 constexpr char unicode[] = "共有接尾辞_Ω_𐐀";
 const void* const pointers[] = { &original_type, empty, unicode };
 const char* const display_tokens[] = { "共有", "接尾辞", "_Ω_𐐀" };
+const Record image_method = record(0, 0, {});
 
 Dn2CppObject* identity_getter(Dn2CppObject* object) { return object; }
 
@@ -82,17 +86,31 @@ DN2CPP_NATIVE_FIELDS(local_fields,
     { unicode, &original_type, &original_type, DN2CPP_FLDA_PUBLIC, identity_getter,
         nullptr, nullptr, 0, 0x6, INT32_MAX, INT64_MIN, unicode },
     { empty, &original_type, nullptr, 0, nullptr, nullptr, nullptr, 0, 0x6 });
-DN2CPP_NATIVE_TYPE_REFLECTION(local_type, local_fields, 2);
+DN2CPP_NATIVE_METADATA_STORAGE(local_fields);
+constexpr auto packed_local_fields = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(local_fields_storage.records.data());
+DN2CPP_NATIVE_TYPE_REFLECTION(local_type, packed_local_fields, 2);
+DN2CPP_NATIVE_METADATA_STORAGE(local_type);
+constexpr auto packed_local_type = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(local_type_storage.records.data());
 }
 
-const Dn2CppMetadataBlock dn2cpp_metadata_blocks[129] = { { pointers, display_tokens } };
+const Dn2CppMetadataBlock dn2cpp_metadata_blocks[129] = {
+    { pointers, display_tokens, image_method.bytes.data(), image_method.length }
+};
+const std::size_t dn2cpp_metadata_block_count = 129;
+// This native probe supplies the empty generated-image tables required by the runtime.
+const Dn2CppTypeRegEntry dn2cpp_type_registry[] = { {} };
+const int32_t dn2cpp_type_registry_count = 0;
+const Dn2CppTypeBind dn2cpp_type_binds[] = { {} };
+const int32_t dn2cpp_type_bind_count = 0;
+const Dn2CppAssemblyRegEntry dn2cpp_assembly_registry[] = { {} };
+const int32_t dn2cpp_assembly_registry_count = 0;
+const Dn2CppDelegateReflEntry dn2cpp_delegate_refl_registry[] = { {} };
+const int32_t dn2cpp_delegate_refl_registry_count = 0;
 const Dn2CppBclMessage dn2cpp_bcl_messages[] = { { nullptr, nullptr } };
 const int32_t dn2cpp_bcl_message_count = 0;
-
-[[noreturn]] void dn2cpp_throw_invalid_operation()
-{
-    throw InvalidRecord{};
-}
+const int32_t dn2cpp_exception_get_message_slot = -1;
+const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates = nullptr;
+const int32_t dn2cpp_runtime_template_count = 0;
 
 int main()
 {
@@ -155,6 +173,18 @@ int main()
     Dn2CppMetadataHandle<Dn2CppEnumMember> native_handle = &native_rows[0];
     require(native_handle.identity() == &native_rows[0] && native_handle->value == INT64_MIN,
         "native handle remains untagged");
+    auto native_view = native_handle.operator->();
+    native_rows[0].value = 31;
+    require(native_handle.native() == &native_rows[0] && native_view->value == 31,
+        "native views read the original row without a decoded snapshot");
+    auto decoded_view = minimum_handle.operator->();
+    auto copied_view = decoded_view;
+    auto moved_view = std::move(copied_view);
+    require(minimum_handle.native() == nullptr && moved_view->value == INT64_MIN
+        && moved_view.operator->() != decoded_view.operator->(),
+        "copied and moved packed views own independent decoded storage");
+    require(Dn2CppMetadataHandle<Dn2CppMethodInfo>{}.native() == nullptr,
+        "null method handle has no native row");
     require(dn2cpp_metadata_at(nullptr, Dn2CppMetadataKind::EnumMember,
         sizeof(Dn2CppEnumMember), 0) == nullptr, "empty native table needs no pointer arithmetic");
     require_rejected([&] {
@@ -190,13 +220,27 @@ int main()
     original.metadataToken = INT32_MAX;
     Dn2CppMethodDelta deltas[] = { { 1, &original, &substituted_type }, { 1, &original, &original_type } };
     auto delta = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&deltas[0]);
+    require(delta.native() == nullptr, "a method delta is decoded instead of treated as a native row");
     require(delta->declaringType == &substituted_type && delta->name == unicode
         && delta->metadataToken == INT32_MAX && original.declaringType == &original_type,
         "constructor delta preserves original metadata and changes only declaring type");
     require(dn2cpp_metadata_at(deltas, Dn2CppMetadataKind::Method, sizeof(Dn2CppMethodInfo), 1) == &deltas[1],
         "constructor delta table uses descriptor stride");
-    auto builtin = *local_type;
-    require(builtin.fieldCount == 2 && builtin.fields == local_fields,
+    auto image_method_handle = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(image_method.bytes.data());
+    auto transient_method = record(0, 0, {});
+    auto transient_method_handle = Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_static(transient_method.bytes.data());
+    require(dn2cpp_metadata_is_image_method(image_method_handle.identity()),
+        "registered image method records may enter the invocation cache");
+    require(!dn2cpp_metadata_is_image_method(transient_method_handle.identity())
+        && !dn2cpp_metadata_is_image_method(delta.identity())
+        && !dn2cpp_metadata_is_image_method(&original)
+        && !dn2cpp_metadata_is_image_method(packed_local_fields[0].identity())
+        && !dn2cpp_metadata_is_image_method(nullptr),
+        "stack records, deltas, local blocks, native rows and null cannot enter the invocation cache");
+    require(local_type.native() == local_type_rows && local_fields[0].native() == local_fields_rows,
+        "runtime-owned metadata macros retain native rows");
+    auto builtin = *packed_local_type;
+    require(builtin.fieldCount == 2 && builtin.fields == packed_local_fields,
         "local block retains its tagged field-table identity");
     require(builtin.fields[0]->name == unicode && builtin.fields[0]->declaringType == &original_type
         && builtin.fields[0]->literalValue == INT64_MIN && builtin.fields[0]->metadataToken == INT32_MAX,
@@ -207,16 +251,9 @@ int main()
         && builtin.fields[1]->ilAttrs == 0x6, "local block preserves empty names and explicit zero flags");
 
     auto malformed = record(0, 1ULL << 3, { UINT64_MAX });
-    bool rejected = false;
-    try
-    {
+    require_rejected([&] {
         (void)*Dn2CppMetadataHandle<Dn2CppFieldInfo>::from_static(malformed.bytes.data());
-    }
-    catch (const InvalidRecord&)
-    {
-        rejected = true;
-    }
-    require(rejected, "out-of-range 32-bit values are rejected rather than truncated");
+    }, "out-of-range 32-bit values are rejected rather than truncated");
     const char tokenized[] = { char(0xff), 0, 3, 0, 1, 2 };
     int64_t before = dn2cpp_gc_allocated_bytes_current_thread();
     Dn2CppString* plain_display = dn2cpp_metadata_string(unicode);

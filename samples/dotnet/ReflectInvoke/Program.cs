@@ -41,6 +41,7 @@ namespace ReflectInvoke
             ReflectedTypeSubset.Program.Run();
             ReflectToStringSubset.Program.Run();
             ReflectMetadataPreservationSubset.Program.Run();
+            ReflectMetadataLayoutSubset.Program.Run();
         }
     }
 }

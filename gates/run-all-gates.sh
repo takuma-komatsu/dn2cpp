@@ -376,6 +376,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/ILDietControlLib/ILDietControlLib.csproj"
     "samples/dotnet/ILDietControl/ILDietControl.csproj"
     "samples/dotnet/MiniCorlib/MiniCorlib.csproj"
+    "samples/dotnet/MultiAssemblyAlias/MultiAssemblyAlias.csproj"
     "samples/dotnet/XGenericMethodLib/XGenericMethodLib.csproj"
     "src/GodotSharpShim/GodotSharp.csproj"
     "samples/dotnet/MultiAssembly/MultiAssembly.csproj"

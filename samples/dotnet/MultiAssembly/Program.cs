@@ -1,3 +1,5 @@
+extern alias metadataAlias;
+
 using System;
 using System.Reflection;
 
@@ -231,6 +233,14 @@ namespace MultiAssembly
             // ordinary field-type closure.
             Type lm = typeof(MiniBcl.LayoutMid);
             Console.WriteLine("lib layout token: " + lm.Name);
+
+            Console.WriteLine("metadata-assembly-begin");
+            object firstAssembly = new MetadataAssemblyCollision.Subject<int>();
+            Type definition = metadataAlias::MetadataAssemblyCollision.MetadataDefinition.Read();
+            Console.WriteLine("lib metadata definition: " + definition.Name
+                + " open=" + definition.IsGenericTypeDefinition
+                + " constructed=" + firstAssembly.GetType().IsGenericType);
+            Console.WriteLine("metadata-assembly-end");
             return 0;
         }
 

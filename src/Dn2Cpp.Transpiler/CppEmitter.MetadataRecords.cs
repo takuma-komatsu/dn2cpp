@@ -6,6 +6,7 @@ internal sealed partial class CppEmitter
 {
     private sealed class TypeMetadata
     {
+        internal bool Native;
         internal string Name = "", Base = "nullptr", Vtable = "nullptr", Interfaces = "nullptr";
         internal string ToStringFn = "nullptr", HashFn = "nullptr", EqualsFn = "nullptr";
         internal string GenericDef = "nullptr", GenericArgs = "nullptr", EnumUnderlying = "nullptr", ElementType = "nullptr";
@@ -41,20 +42,20 @@ internal sealed partial class CppEmitter
             if (data.MarshalSize is { Size32: { } size32 } extent && size32 != extent.Size64)
             {
                 sb.AppendLine("#if INTPTR_MAX == INT64_MAX");
-                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) });
+                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) }, native: data.Native);
                 sb.AppendLine("#else");
                 cold[18] = MetadataValue.Signed(size32);
-                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) });
+                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) }, native: data.Native);
                 sb.AppendLine("#endif");
             }
             else
-                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) });
+                EmitMetadataTable(sb, "Dn2CppTypeReflection", coldSymbol, new[] { new MetadataRow(cold) }, native: data.Native);
         }
         string[] hot = {
             InternMetadataName(data.Name), data.Base, data.Vtable, data.Interfaces, data.ToStringFn, data.HashFn, data.EqualsFn,
             data.GenericDef, data.GenericArgs, data.EnumUnderlying, data.ElementType, data.FinalizeFn, data.Rgctx, data.TypeObject, data.FormatSpec,
             data.InstanceSize, data.InterfaceCount.ToString(), data.Flags, data.GenericArgCount.ToString(), data.ArrayRank.ToString(), data.VarianceMask.ToString(),
-            hasCold ? $"Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(md_record_{coldSymbol})" : "nullptr",
+            hasCold ? $"Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_raw({MetadataRowAddress(coldSymbol, 0)})" : "nullptr",
         };
         sb.AppendLine($"const Dn2CppTypeInfo {symbol} = {{ {string.Join(", ", hot)} }};");
     }

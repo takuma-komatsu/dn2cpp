@@ -81,11 +81,15 @@ All default to `true`, including when an existing preset omits the key.
 | `dotnet/dn2cpp/trim_reflection` | Adds `--trim-reflection`. | Omits that flag. |
 | `dotnet/dn2cpp/trim_godot_classes` | Adds `--trim-godot-classes`. | Omits that flag. |
 | `dotnet/dn2cpp/shared_generics` | Uses the CLI's shared-generics default. | Adds `--no-shared-generics`. |
+| `dotnet/dn2cpp/compress_metadata` (**Compress Metadata**) | Uses the CLI's metadata compression default. | Adds `--no-metadata-compression`, forcing native, uncompressed rows for all metadata. |
 
 IL Pre-stripping does not alter these options or their argument generation.
 The exporter appends `dotnet/dn2cpp/extra_transpile_args` after these arguments;
 an explicit trim flag there enables the trim even when the preset option is
-disabled. The CLI and console CLI interfaces and defaults remain unchanged.
+disabled. An explicit `--no-metadata-compression` there disables compression
+even when **Compress Metadata** is enabled. Disabling compression overrides
+per-type `--reflection-metadata` storage choices without changing reflection
+preservation. Both CLIs enable metadata compression by default.
 Dynamic reflection needs `[Preserve]` or a linker descriptor, and dynamic engine
 wrapper lookups need preservation or `--godot-class-root`; see README's
 preservation rules.

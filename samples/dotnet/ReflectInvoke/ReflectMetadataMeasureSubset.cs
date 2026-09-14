@@ -19,6 +19,13 @@ sealed class Subject
     public int Read(int value) => value + Value;
 }
 
+[Value(17)]
+sealed class Packed
+{
+    public int Value;
+    public int Read(int value) => value + Value;
+}
+
 abstract class DispatchBase
 {
     public abstract int Read(int value);
@@ -33,6 +40,8 @@ static class Program
 {
     static readonly Subject Instance = new Subject();
     static readonly Type SubjectType = typeof(Subject);
+    static readonly Packed PackedInstance = new Packed();
+    static readonly Type PackedType = PackedInstance.GetType();
     static readonly DispatchBase Dispatch = new DispatchDerived();
     static readonly object[] Arguments = new object[] { 7 };
     static object Sink;
@@ -86,6 +95,23 @@ static class Program
         Measure("attribute-value", () => Number = Attribute.Value);
         Measure("invoke", () => Sink = Method.Invoke(Instance, Arguments));
         Console.WriteLine("reflection-measure-observed," + Predicate + "," + Number + "," + Sink);
+        Measure("get-type-packed", () => Sink = PackedInstance.GetType());
+        Measure("type-test-packed", () => Predicate = PackedType.IsInstanceOfType(PackedInstance));
+        Measure("direct-call-packed", () => Number = PackedInstance.Read(7));
+        Measure("find-field-packed", () => Sink = PackedType.GetField("Value"));
+        Measure("find-method-packed", () => Sink = PackedType.GetMethod("Read"));
+        Method = PackedType.GetMethod("Read");
+        Measure("type-name-packed", () => Sink = PackedType.FullName);
+        Measure("member-name-packed", () => Sink = Method.Name);
+        Measure("signature-packed", () => Sink = Method.ToString());
+        Measure("enumerate-methods-packed", () => Sink = PackedType.GetMethods());
+        Measure("parameters-packed", () => Sink = Method.GetParameters());
+        Measure("attribute-data-packed", () => Sink = PackedType.GetCustomAttributesData());
+        Measure("create-attributes-packed", () => Sink = PackedType.GetCustomAttributes(typeof(ValueAttribute), false));
+        Attribute = (ValueAttribute)PackedType.GetCustomAttributes(typeof(ValueAttribute), false)[0];
+        Measure("attribute-value-packed", () => Number = Attribute.Value);
+        Measure("invoke-packed", () => Sink = Method.Invoke(PackedInstance, Arguments));
+        Console.WriteLine("reflection-measure-packed-observed," + Predicate + "," + Number + "," + Sink);
         Console.WriteLine("reflection-measure-managed-held-after," + GC.GetTotalMemory(true));
     }
 }

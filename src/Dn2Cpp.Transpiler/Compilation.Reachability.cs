@@ -4550,6 +4550,7 @@ internal sealed partial class Compilation
                 tok => ConstFoldedCallTarget(module, tok),
                 tok => ClassifyTypeIdentityCall(module, tok),
                 (tokA, tokB) => TypeEqualityVerdict(module, tokA, tokB, m.Context));
+            NoteStaticTypeofMetadata(m, insns, body, liveness);
             foreach (var insn in insns)
             {
                 if (liveness is not null && !liveness.LiveAt(insn.Offset))

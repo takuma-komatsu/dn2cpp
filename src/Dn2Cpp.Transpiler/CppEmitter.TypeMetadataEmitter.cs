@@ -536,6 +536,7 @@ internal sealed partial class CppEmitter
                 var (dfBase, dfItfs, dfItfCount) =
                     GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
                 _e.EmitTypeInfo(_sb, defSym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
                     Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
                     GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
@@ -602,6 +603,7 @@ internal sealed partial class CppEmitter
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
                 _e.EmitTypeInfo(_sb, c.CppTypeInfoName, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(c),
                     Name = displayName, Base = baseExpr, InstanceSize = size,
                     ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
                     GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
@@ -611,6 +613,7 @@ internal sealed partial class CppEmitter
 
         internal void Emit()
         {
+            _c.FreezeReflectionMetadataSelection();
             // Ahead of the note pass, which reads it: the set is a pure function of the
             // (final) emit set and ReferencedTypes, and the note pass only ever adds an
             // ENUM to the latter — which this set excludes. The row planting below does add
@@ -636,6 +639,14 @@ internal sealed partial class CppEmitter
             // rather than appending to it.
             if (_c.PlantUnmappedArrayGenericItfRows().Count > 0)
                 _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
+
+            // Open definitions share one emitted handle per CLR name. Collect all
+            // physical owners before selecting its format, including later chunks.
+            foreach (var cls in _e.TopoOrder().Where(c => !c.IsEnum && !_e.IsCanonicalWorld(c))
+                .Concat(_e._referencedIntrinsicTis))
+                if (_e.GenericDefInfo(cls) is { } definition)
+                    _c.NoteEmittedReflectionDefinition(definition.DefName, cls.Module);
+            _c.PrepareReflectionDefinitionFormats();
 
             // Type-info handles for classes, referenced enums, and per-element arrays are named
             // by method bodies in any TU (typeof / isinst / cast / typed array creation), so
@@ -721,6 +732,7 @@ internal sealed partial class CppEmitter
             foreach (var en in _c.ReferencedTypes.Where(c => c.IsEnum).OrderBy(c => c.CppName, System.StringComparer.Ordinal))
             {
                 string toStr = "nullptr";
+                _e._metadataNativeRows = _c.UsesNativeReflectionMetadata(en);
                 if (MethodCompiler.EnumToStringFn(en, $"enumtostr_{en.CppName}", _e._literals) is { } body)
                 {
                     _sb.AppendLine($"static Dn2CppString* enumtostr_{en.CppName}(Dn2CppObject*);");
@@ -762,6 +774,7 @@ internal sealed partial class CppEmitter
                 // Unsafe.SizeOf<E> from there).
                 string enSize = MethodCompiler.IsWideEnum(en) ? "(int32_t)sizeof(int64_t)" : "(int32_t)sizeof(int32_t)";
                 _e.EmitTypeInfo(_sb, en.CppTypeInfoName, new TypeMetadata {
+                    Native = _e._metadataNativeRows,
                     Name = Compilation.ReflectionTypeName(en), Base = "&dn2cpp_enum_type",
                     InstanceSize = enSize, ToStringFn = toStr, Flags = enFlags, Fields = fldExpr, FieldCount = fldCount,
                     EnumUnderlying = underlying, EnumMembers = membersExpr, EnumMemberCount = ordered.Count,
@@ -769,6 +782,7 @@ internal sealed partial class CppEmitter
                 });
                 _sb.AppendLine($"const Dn2CppType ty_{en.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(en, "enum ty_ companion")} }};");
             }
+            _e._metadataNativeRows = false;
 
             // Generic open-definition type-infos: one synthetic Dn2CppTypeInfo per
             // distinct closed-generic definition, so GetGenericTypeDefinition() returns a
@@ -826,6 +840,7 @@ internal sealed partial class CppEmitter
                 // metadataToken, defaultMemberName); an invariant one stops at typeObject exactly
                 // as before, so its text is unchanged.
                 _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(gi.DefName),
                     Name = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
                     GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
@@ -867,6 +882,7 @@ internal sealed partial class CppEmitter
                 var (synthBase, synthItfs, synthItfCount) = GenericDefRelations(
                     symBase, synthAnc.Base, synthAnc.Interfaces, synthValueType, synthInterface);
                 _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(defName),
                     Name = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
                     Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
                 });
@@ -960,7 +976,7 @@ internal sealed partial class CppEmitter
                     _invokerMissStubs.Clear();
                 }
                 _sb = block;
-                _e.BeginMetadataBlock();
+                _e.BeginMetadataBlock(_c.UsesNativeReflectionMetadata(cls));
                 RenderVtable(cls);
                 RenderItfTables(cls);
                 RenderFieldTable(cls);
@@ -1669,7 +1685,7 @@ internal sealed partial class CppEmitter
                     // linkage). Rows that reference a per-member attr table
                     // embed that unique symbol in the initializer text, so they
                     // never collide and simply get a pool entry of their own.
-                    string init = MetadataRowsKey(prows);
+                    string init = _e.MetadataTableKey(prows);
                     if (_parmPools.TryGetValue(init, out var pooled))
                     {
                         paramsExpr = pooled;
@@ -2236,6 +2252,7 @@ internal sealed partial class CppEmitter
             // and the [DefaultMember]-declared member name (GetDefaultMembers).
             var (tIlAttrs, tToken) = TypeIlMeta(cls);
             _e.EmitTypeInfo(_sb, cls.CppTypeInfoDefName, new TypeMetadata {
+                Native = _e._metadataNativeRows,
                 Name = Compilation.ReflectionTypeName(cls), Base = baseExpr,
                 InstanceSize = $"(int32_t)sizeof({cls.CppStructName})", Vtable = vt, Interfaces = itfs, InterfaceCount = interfaceCount,
                 ToStringFn = toStr, HashFn = getHash, EqualsFn = equals, Flags = flags,

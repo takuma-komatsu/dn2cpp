@@ -24,6 +24,7 @@
 #      whole non-reflection surface of a stripped type (Name/FullName/BaseType/cast/`is`/
 #      boxing/enum.ToString), and — deliberately outside the strip — GetConstructor /
 #      GetConstructors / Activator.CreateInstance, which keep answering on a stripped type.
+#      Selecting native metadata for LibWidget does not preserve its stripped members.
 #
 #   3. --trim-reflection --reflection-root TrimReflectLib.LibWidget --reflection-root
 #      TrimReflectLib.LibBox -> a second frozen snapshot in which exactly the rooted types
@@ -84,13 +85,16 @@ else
 fi
 
 # ── Arm 2: --trim-reflection — freeze ─────────────────────────────────────────
-echo "== Arm 2/4: --trim-reflection, diff vs frozen snapshot (stripped types throw) =="
+echo "== Arm 2/4: --trim-reflection with native metadata, diff vs frozen snapshot =="
 OUT=artifacts/trimreflect-trim
-invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection -o "$OUT"
-if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|$CORELIB" \
+invoke_cli "$APP" --no-ildiet -r "$CORELIB" -r "$LIBDLL" --trim-reflection \
+    --reflection-metadata "$LIBNAME.LibWidget=native" -o "$OUT"
+if gate_cache_check "$OUT" "trim-reflection-trim|no-ildiet|--reflection-metadata=$LIBNAME.LibWidget=native|$CORELIB" \
         "$APP" "$LIBDLL" "$EXPDIR/trim-reflection-trimmed.txt"; then
     gate_cache_hit_msg
 else
+    grep -qw 'md_native_refl_ti_TrimReflectLib_LibWidget' "$OUT"/generated*.cpp \
+        || { echo "FAIL: the stripped LibWidget type did not retain its selected native metadata layout" >&2; exit 1; }
     compile_console "$OUT" "$PROJECT"
     set +e
     native=$("./$OUT/$PROJECT"); native_code=$?

@@ -75,22 +75,40 @@ internal sealed partial class CppEmitter
     private MetadataBlock? _metadataRootBlock;
     private MetadataBlock? _metadataActiveBlock;
     private int _metadataBlockCount;
+    private bool _metadataNativeRows;
+    private readonly List<(string Symbol, int Size)> _metadataMethodRanges = new();
     private readonly Dictionary<string, string[]> _metadataRecordAddresses = new(System.StringComparer.Ordinal);
 
-    private MetadataBlock RootMetadataBlock => _metadataRootBlock ??= new MetadataBlock(_metadataBlockCount++);
-
-    private void BeginMetadataBlock()
+    private MetadataBlock NewMetadataBlock()
     {
-        _ = RootMetadataBlock;
-        _metadataActiveBlock = new MetadataBlock(_metadataBlockCount++);
+        if (_metadataDisplayBlock >= 0)
+            throw new InvalidOperationException("Metadata pointer blocks must precede the display dictionary.");
+        var block = new MetadataBlock(_metadataBlockCount++);
+        _metadataMethodRanges.Add(("nullptr", 0));
+        return block;
+    }
+
+    private MetadataBlock RootMetadataBlock => _metadataRootBlock ??= NewMetadataBlock();
+
+    private void BeginMetadataBlock(bool native)
+    {
+        native |= !_c.CompressMetadata;
+        _metadataNativeRows = native;
+        if (!native)
+        {
+            _ = RootMetadataBlock;
+            _metadataActiveBlock = NewMetadataBlock();
+        }
     }
 
     private void EndMetadataBlock(StringBuilder sb)
     {
-        if (_metadataActiveBlock is not { } block)
+        if (_metadataActiveBlock is { } block)
+            EmitMetadataPointers(sb, block);
+        else if (!_metadataNativeRows)
             throw new InvalidOperationException("No active metadata block.");
-        EmitMetadataPointers(sb, block);
         _metadataActiveBlock = null;
+        _metadataNativeRows = false;
     }
 
     private void EmitMetadataPointers(StringBuilder sb, MetadataBlock block)
@@ -107,14 +125,16 @@ internal sealed partial class CppEmitter
 
     private void FinishMetadataEncoding(StringBuilder sb)
     {
+        _ = RootMetadataBlock;
         FinishMetadataStrings(sb);
         EmitMetadataPointers(sb, RootMetadataBlock);
         sb.AppendLine("const Dn2CppMetadataBlock dn2cpp_metadata_blocks[] = {");
         for (int i = 0; i < _metadataBlockCount; i++)
             sb.AppendLine(i == _metadataDisplayBlock
-                ? "    { nullptr, md_display_tokens },"
-                : $"    {{ md_ptr_{i}, nullptr }},");
+                ? "    { nullptr, md_display_tokens, nullptr, 0 },"
+                : $"    {{ md_ptr_{i}, nullptr, {_metadataMethodRanges[i].Symbol}, {_metadataMethodRanges[i].Size} }},");
         sb.AppendLine("};");
+        sb.AppendLine($"const std::size_t dn2cpp_metadata_block_count = {_metadataBlockCount};");
     }
 
     private string MetadataPointer(string expression)
@@ -146,10 +166,15 @@ internal sealed partial class CppEmitter
     }
 
     private void EmitMetadataTable(StringBuilder sb, string rowType, string symbol,
-        IReadOnlyList<MetadataRow> rows, bool external = false)
+        IReadOnlyList<MetadataRow> rows, bool external = false, bool? native = null)
     {
         if (rows.Count == 0)
             throw new InvalidOperationException("An empty metadata table has no address.");
+        if (!_c.CompressMetadata || (native ?? _metadataNativeRows))
+        {
+            EmitNativeMetadataTable(sb, rowType, symbol, rows, external);
+            return;
+        }
         MetadataBlock block = _metadataActiveBlock ?? RootMetadataBlock;
         var bytes = new List<byte>();
         var addresses = new string[rows.Count];
@@ -216,6 +241,13 @@ internal sealed partial class CppEmitter
             ValidateMetadataRow(rowType, row, block, bytes, start);
         }
         _metadataRecordAddresses[symbol] = addresses;
+        if (rowType == "Dn2CppMethodInfo" && symbol.StartsWith("methtab_", System.StringComparison.Ordinal))
+        {
+            if (_metadataMethodRanges[block.Id].Size != 0)
+                throw new InvalidOperationException("A metadata block owns one method table.");
+            _metadataMethodRanges[block.Id] = (recordSymbol, bytes.Count);
+            external = true;
+        }
         if (external)
             _metadataHeader.AppendLine($"extern const uint8_t {recordSymbol}[{bytes.Count}];");
         sb.Append($"alignas(2) {(external ? "extern" : "static")} const uint8_t {recordSymbol}[] = {{ ");
@@ -227,6 +259,45 @@ internal sealed partial class CppEmitter
         sb.AppendLine(" };");
         (external ? _metadataHeader : sb).AppendLine($"[[maybe_unused]] static constexpr auto {symbol} = Dn2CppMetadataTable<{rowType}>::from_static({recordSymbol});");
     }
+
+    private void EmitNativeMetadataTable(StringBuilder sb, string rowType, string symbol,
+        IReadOnlyList<MetadataRow> rows, bool external)
+    {
+        string recordSymbol = "md_native_" + symbol;
+        var addresses = new string[rows.Count];
+        if (external)
+            _metadataHeader.AppendLine($"extern const {rowType} {recordSymbol}[{rows.Count}];");
+        sb.AppendLine($"{(external ? "extern" : "static")} const {rowType} {recordSymbol}[] = {{");
+        for (int i = 0; i < rows.Count; i++)
+        {
+            addresses[i] = recordSymbol + " + " + i;
+            var fields = new List<string>();
+            for (int field = 0; field < rows[i].Values.Length; field++)
+            {
+                var value = rows[i].Values[field];
+                string expression;
+                if (value.StringValue is { } text)
+                    expression = InternMetadataName(text);
+                else if (value.Pointer is { } pointer)
+                    expression = rowType == "Dn2CppPropInfo" && field is 3 or 4
+                        ? $"Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw({pointer})"
+                        : pointer;
+                else if (value.IsSigned)
+                    expression = value.SignedNumber == long.MinValue
+                        ? "(-9223372036854775807LL - 1)" : value.SignedNumber + "LL";
+                else
+                    expression = value.Encoded == 0 ? "0" : value.Encoded + "ULL";
+                fields.Add(expression);
+            }
+            sb.AppendLine("    { " + string.Join(", ", fields) + " },");
+        }
+        sb.AppendLine("};");
+        _metadataRecordAddresses[symbol] = addresses;
+        (external ? _metadataHeader : sb).AppendLine($"[[maybe_unused]] static constexpr Dn2CppMetadataTable<{rowType}> {symbol}{{ {recordSymbol} }};");
+    }
+
+    private string MetadataTableKey(IReadOnlyList<MetadataRow> rows) =>
+        (!_c.CompressMetadata || _metadataNativeRows ? "native:" : "packed:") + MetadataRowsKey(rows);
 
     private string MetadataRowAddress(string symbol, int row) => _metadataRecordAddresses[symbol][row];
 }

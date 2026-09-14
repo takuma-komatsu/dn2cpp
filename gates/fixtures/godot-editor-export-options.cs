@@ -9,9 +9,9 @@ string work = args[0];
 Directory.CreateDirectory(work);
 File.WriteAllText(Path.Combine(work, "Game.dll"), "published input");
 GodotSharpDirs.ProjectCsProjPath = Path.Combine(work, "Game.csproj");
-string[] names = ["trim_reflection", "trim_godot_classes", "shared_generics"];
-string[] flags = ["--trim-reflection", "--trim-godot-classes", "--no-shared-generics"];
-string[][] extras = [[], ["--trim-reflection", "--trim-godot-classes", "--shared-generics", "--no-ildiet"], ["--no-shared-generics"]];
+string[] names = ["trim_reflection", "trim_godot_classes", "shared_generics", "compress_metadata"];
+string[] flags = ["--trim-reflection", "--trim-godot-classes", "--no-shared-generics", "--no-metadata-compression"];
+string[][] extras = [[], ["--trim-reflection", "--trim-godot-classes", "--shared-generics", "--no-ildiet"], ["--no-shared-generics"], ["--no-metadata-compression"]];
 bool?[] values = [null, true, false];
 int runs = 0;
 foreach (string platform in OS.PlatformFeatureMap.Keys)
@@ -34,11 +34,12 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
     foreach (bool? reflection in values)
     foreach (bool? classes in values)
     foreach (bool? shared in values)
+    foreach (bool? compression in values)
     foreach (bool? ildiet in values)
     foreach (string[] extra in extras)
     {
         probe.Preset.Clear();
-        bool?[] selected = [reflection, classes, shared, ildiet];
+        bool?[] selected = [reflection, classes, shared, compression, ildiet];
         string[] keys = [.. names, "il_prestripping"];
         for (int i = 0; i < keys.Length; i++)
             if (selected[i].HasValue)
@@ -49,6 +50,7 @@ foreach (string platform in OS.PlatformFeatureMap.Keys)
         if (reflection ?? true) expected.Add(flags[0]);
         if (classes ?? true) expected.Add(flags[1]);
         if (!(shared ?? true)) expected.Add(flags[2]);
+        if (!(compression ?? true)) expected.Add(flags[3]);
         if (!(ildiet ?? true)) expected.Add("--no-ildiet");
         expected.AddRange(extra);
         string[] switches = actual.Where(arg => flags.Contains(arg) || arg is "--shared-generics" or "--no-ildiet").ToArray();

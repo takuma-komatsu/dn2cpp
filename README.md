@@ -759,6 +759,11 @@ optimization changed no results. All are on by default except
   cannot plausibly reflect over (the Godot Web export turns it on). The
   analysis is unsound by nature, so a stripped type **throws** rather than
   answering empty, and `--reflection-root` is the escape hatch.
+- **Reflection metadata storage** defaults to packed records. Types named by
+  a surviving `typeof` in reachable IL use native rows for their own reflection
+  metadata and members. Runtime-owned types such as `System.String` always use
+  native rows. `--no-metadata-compression` forces native, uncompressed rows for
+  all metadata. The choice changes storage, without changing reflection roots.
 - **GC modes and unscanned allocation** — stop-the-world or incremental
   (bounded frame pauses); arrays with no reference fields allocate through
   the unscanned allocator, so the collector never traces them.
@@ -774,6 +779,67 @@ optimization changed no results. All are on by default except
 Planned: devirtualization and inlining hints, unused-method elimination
 via ILLink integration, incremental transpilation (per-method differential
 C++ generation), and `#line` debug info mapping generated C++ back to C#.
+
+### Choosing reflection metadata storage
+
+Metadata compression is enabled by default in both CLIs. Pass
+`--no-metadata-compression` to force all metadata to use native, uncompressed
+rows, including types explicitly selected as `packed`. In the forked editor's
+dn2cpp export settings, turn off **Compress Metadata**
+(`dotnet/dn2cpp/compress_metadata`) for the same result. This setting defaults
+to enabled, including in existing presets that omit it.
+
+With compression enabled, the storage policy is:
+
+Generated types recognized by a surviving `typeof` use native metadata; other
+generated types use packed metadata. An explicit per-type selector takes
+precedence over that automatic choice. Runtime-owned types always use native
+metadata.
+
+Use the repeatable `--reflection-metadata <type>=native|packed` option to
+override the automatic choice for an exact type. Quote selectors containing
+shell punctuation:
+
+```bash
+dn2cpp app.dll --reflection-metadata 'App.SaveRecord=native'
+dn2cpp app.dll --reflection-metadata 'App::App.Box`1[System.Int32]=packed'
+```
+
+Names use their CLR namespace, `+` between nested types, and backtick arity for
+generic definitions. A closed type appends its comma-separated type arguments
+in brackets; arrays use `[]` or `[,]`. An optional assembly simple name followed
+by `::` disambiguates the owning assembly. Names and formats are case-sensitive.
+Assembly qualifications inside generic argument lists are not supported.
+Each selector matches only that exact shape: choosing ``App.Box`1`` affects the
+open definition, and choosing ``App.Box`1[System.Int32]`` affects that close alone.
+Duplicate, overlapping, ambiguous, or unmatched selectors are errors. A
+runtime-owned type represented in the loaded metadata accepts `native`;
+selecting `packed` for it is unsupported while compression is enabled.
+`--no-metadata-compression` overrides even those selectors to native storage.
+A type absent from the load set is unmatched even if the runtime has a builtin
+implementation. Selector syntax, matching, ambiguity, overlap and conflicting
+shared-definition choices are validated even when their storage choice is
+overridden.
+
+Open generic definitions with the same CLR name share the runtime's existing
+definition handle across assemblies. That shared row uses native storage if
+any surviving `typeof` names it. A qualified explicit selector overrides the
+shared row's automatic choice; qualified selectors requesting different formats
+for that row are rejected. Closed generic types retain their individual choices.
+
+Automatic selection recognizes `ldtoken <type>` followed by
+`System.Type.GetTypeFromHandle`, allowing intervening `nop` instructions.
+It includes reachable library code and resolves `typeof(T)` in each reached
+closed generic context, including contexts whose bodies are shared. A type
+comparison removed by constant folding contributes no selection. The choice
+does not spread to base types, generic arguments, or array elements. A type
+with no reflection-only fields needs no cold row in either format.
+
+Serialized attribute arguments, type-name strings, and custom IL that passes a
+type handle through locals or other instructions do not trigger this automatic
+choice. Use an explicit selector when those types need native storage. Storage
+selection never retains a type or member removed by ILDiet or
+`--trim-reflection`; use the preservation controls independently.
 
 ## Repository layout
 

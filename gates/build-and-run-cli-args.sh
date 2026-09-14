@@ -33,6 +33,7 @@
 #      whole gate exists to prevent, one flag later.
 #   7. Both frontends accept `--jobs 1` and `--jobs 2`.
 #   8. Both frontends reject a missing, zero, negative, or non-numeric jobs value.
+#   9. Both frontends accept the global metadata compression opt-out.
 source "$(dirname "$0")/_common.sh"
 
 PROJECT=HelloWorld
@@ -187,5 +188,17 @@ assert_rejected "console jobs zero" "0" console "$APP" -r "$CORELIB" -o "$OUT" -
 assert_rejected "console jobs negative" "-2" console "$APP" -r "$CORELIB" -o "$OUT" --jobs -2
 assert_rejected "console jobs non-numeric" "many" console "$APP" -r "$CORELIB" -o "$OUT" --jobs many
 
+echo "== Both CLIs accept --no-metadata-compression =="
+for frontend in full console; do
+    assert_accepted "$frontend no metadata compression" "$frontend" \
+        "$APP" -r "$CORELIB" -o "$OUT" --no-metadata-compression
+    if grep -Eq 'md_record_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp; then
+        echo "FAIL: $frontend emitted packed metadata with compression disabled" >&2
+        exit 1
+    fi
+    grep -Eq 'md_native_[[:alnum:]_]+\[\] =' "$OUT"/generated*.cpp \
+        || { echo "FAIL: $frontend emitted no native metadata" >&2; exit 1; }
+done
+
 gate_cache_commit
-echo "PASS: both CLIs accept positive --jobs counts and reject malformed values; other invalid arguments remain hard errors"
+echo "PASS: both CLIs accept worker counts and the metadata compression opt-out; invalid arguments remain hard errors"

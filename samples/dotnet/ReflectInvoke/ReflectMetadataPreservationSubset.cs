@@ -75,9 +75,10 @@ static class Program
             Console.WriteLine("metadata-attribute-fresh=" + !ReferenceEquals(first[i], second[i]));
         }
 
-        Console.WriteLine("metadata-enum-min=" + (long)(SignedBoundary)typeof(SignedBoundary).GetField("Minimum").GetValue(null));
-        Console.WriteLine("metadata-enum-negative=" + (long)(SignedBoundary)typeof(SignedBoundary).GetField("Negative").GetValue(null));
-        Console.WriteLine("metadata-enum-max=" + (long)(SignedBoundary)typeof(SignedBoundary).GetField("Maximum").GetValue(null));
+        Type signedType = SignedBoundary.Minimum.GetType();
+        Console.WriteLine("metadata-enum-min=" + (long)(SignedBoundary)signedType.GetField("Minimum").GetValue(null));
+        Console.WriteLine("metadata-enum-negative=" + (long)(SignedBoundary)signedType.GetField("Negative").GetValue(null));
+        Console.WriteLine("metadata-enum-max=" + (long)(SignedBoundary)signedType.GetField("Maximum").GetValue(null));
         Console.WriteLine("metadata-enum-unsigned=" + (ulong)(UnsignedBoundary)typeof(UnsignedBoundary).GetField("Maximum").GetValue(null));
         Console.WriteLine("metadata-preservation-end");
     }

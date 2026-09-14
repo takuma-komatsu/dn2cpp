@@ -157,13 +157,6 @@ uint64_t read_unsigned(const uint8_t*& cursor, const uint8_t* end = nullptr)
     dn2cpp_throw_invalid_operation();
 }
 
-bool is_method_delta(const void* data)
-{
-    uintptr_t marker;
-    std::memcpy(&marker, data, sizeof(marker));
-    return marker == 1;
-}
-
 int32_t access_flags(int32_t attrs)
 {
     int32_t result = (attrs & 0x10) != 0 ? DN2CPP_FLDA_STATIC : 0;
@@ -179,7 +172,7 @@ const void* dn2cpp_metadata_at(const void* table, Dn2CppMetadataKind kind,
     if ((reinterpret_cast<uintptr_t>(table) & 1) == 0)
     {
         if (kind == Dn2CppMetadataKind::Method && table != nullptr
-            && is_method_delta(table))
+            && dn2cpp_metadata_is_method_delta(table))
             stride = sizeof(Dn2CppMethodDelta);
         if (table == nullptr && index != 0)
             dn2cpp_throw_invalid_operation();
@@ -198,6 +191,27 @@ const void* dn2cpp_metadata_at(const void* table, Dn2CppMetadataKind kind,
     return metadata_add(record, 1);
 }
 
+bool dn2cpp_metadata_is_image_method(const void* handle)
+{
+    if ((reinterpret_cast<uintptr_t>(handle) & 1) == 0)
+        return false;
+    const auto* record = metadata_subtract(handle, 1);
+    auto* cursor = record;
+    uint64_t block = read_unsigned(cursor);
+    if (block >= dn2cpp_metadata_block_count)
+        return false;
+    const auto& image = dn2cpp_metadata_blocks[block];
+    uintptr_t offset = reinterpret_cast<uintptr_t>(record)
+        - reinterpret_cast<uintptr_t>(image.methodRecords);
+    if (image.methodRecords == nullptr || offset >= image.methodRecordsSize
+        || static_cast<uint64_t>(cursor - record) >= image.methodRecordsSize - offset)
+        return false;
+    uint64_t length = read_unsigned(cursor,
+        metadata_add(image.methodRecords, image.methodRecordsSize));
+    return length >= static_cast<uint64_t>(cursor - record)
+        && (length & 1) == 0 && length <= image.methodRecordsSize - offset;
+}
+
 void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const void* handle)
 {
     const Schema& schema = schemas[static_cast<unsigned>(kind)];
@@ -209,7 +223,7 @@ void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const vo
     if ((reinterpret_cast<uintptr_t>(handle) & 1) == 0)
     {
         if (kind == Dn2CppMetadataKind::Method
-            && is_method_delta(handle))
+            && dn2cpp_metadata_is_method_delta(handle))
         {
             const auto* delta = static_cast<const Dn2CppMethodDelta*>(handle);
             dn2cpp_metadata_decode(destination, kind, delta->original.identity());

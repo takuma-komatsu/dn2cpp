@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <new>
 #include <type_traits>
 
 struct Dn2CppString;
@@ -17,8 +19,11 @@ struct Dn2CppMetadataBlock
 {
     const void* pointers;
     const char* const* displayTokens;
+    const uint8_t* methodRecords = nullptr;
+    std::size_t methodRecordsSize = 0;
 };
 extern const Dn2CppMetadataBlock dn2cpp_metadata_blocks[];
+extern const std::size_t dn2cpp_metadata_block_count;
 
 enum class Dn2CppMetadataKind : unsigned char
 {
@@ -38,26 +43,59 @@ DN2CPP_METADATA_KIND(Dn2CppEnumMember, EnumMember);
 #undef DN2CPP_METADATA_KIND
 
 // Static records are even-aligned; the stored pointer is one byte past their
-// start. Untagged pointers remain real native pointers for dynamically rooted rows.
+// start. Native rows and dynamic constructor deltas keep untagged real addresses.
 // Records carry ULEB block id, padded byte length and presence bits, followed by
 // schema-ordered ULEBs: signed values use zigzag, pointers use one-based pool ids.
 // Block id UINT64_MAX inserts a backward offset before the presence mask, naming
 // an adjacent block instead of the generated image's global block registry.
-// Views decode on the stack; row identity always belongs to the original handle.
+// Packed views decode on the stack; native views borrow the row. Identity always
+// belongs to the original handle.
 void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const void* handle);
 const void* dn2cpp_metadata_at(const void* table, Dn2CppMetadataKind kind, std::size_t stride, std::size_t index);
+bool dn2cpp_metadata_is_image_method(const void* handle);
+
+inline bool dn2cpp_metadata_is_method_delta(const void* data)
+{
+    uintptr_t marker;
+    std::memcpy(&marker, data, sizeof(marker));
+    return marker == 1;
+}
+
+inline const void* dn2cpp_metadata_native(Dn2CppMetadataKind kind, const void* data)
+{
+    if (data == nullptr || (reinterpret_cast<uintptr_t>(data) & 1) != 0
+        || (kind == Dn2CppMetadataKind::Method && dn2cpp_metadata_is_method_delta(data)))
+        return nullptr;
+    return data;
+}
 
 template<class Row> class Dn2CppMetadataHandle
 {
     const void* data_ = nullptr;
     struct View
     {
-        Row value{};
+        // Native reads never initialize an expanded row. Decoded views own their
+        // row without storing its address, so copying a view cannot dangle.
+        union { Row value; };
+        const Row* native;
         explicit View(const void* data)
+            : native(static_cast<const Row*>(dn2cpp_metadata_native(Dn2CppMetadataTraits<Row>::kind, data)))
         {
-            dn2cpp_metadata_decode(&value, Dn2CppMetadataTraits<Row>::kind, data);
+            static_assert(std::is_trivially_destructible_v<Row>);
+            if (native == nullptr)
+            {
+                new (&value) Row;
+                dn2cpp_metadata_decode(&value, Dn2CppMetadataTraits<Row>::kind, data);
+            }
         }
-        const Row* operator->() const { return &value; }
+        View(const View& other) : native(other.native)
+        {
+            if (native == nullptr)
+                new (&value) Row(other.value);
+        }
+        View(View&& other) : View(other) {}
+        ~View() {}
+        const Row* operator->() const { return native != nullptr ? native : &value; }
     };
 public:
     constexpr Dn2CppMetadataHandle() = default;
@@ -76,8 +114,10 @@ public:
     }
     constexpr const void* identity() const { return data_; }
     constexpr explicit operator bool() const { return data_ != nullptr; }
+    const Row* native() const
+    { return static_cast<const Row*>(dn2cpp_metadata_native(Dn2CppMetadataTraits<Row>::kind, data_)); }
     View operator->() const { return View(data_); }
-    Row operator*() const { return View(data_).value; }
+    Row operator*() const { return *View(data_).operator->(); }
     friend constexpr bool operator==(Dn2CppMetadataHandle a, Dn2CppMetadataHandle b)
     { return a.data_ == b.data_; }
     friend constexpr bool operator!=(Dn2CppMetadataHandle a, Dn2CppMetadataHandle b)

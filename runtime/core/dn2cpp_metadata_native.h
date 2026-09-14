@@ -4,8 +4,8 @@
 #include <array>
 #include <utility>
 
-// Runtime-owned records use an adjacent block so referring to one builtin never
-// roots the metadata or accessor thunks belonging to unrelated builtins.
+// Adjacent local blocks keep each record's pointer dependencies together without
+// rooting metadata or accessor thunks belonging to unrelated blocks.
 namespace dn2cpp_native_metadata {
 using Getter = Dn2CppObject* (*)(Dn2CppObject*);
 using Setter = void (*)(Dn2CppObject*, Dn2CppObject*);
@@ -269,12 +269,11 @@ template<auto& Rows> constexpr auto make_bytes()
             std::make_index_sequence<dn2cpp_native_metadata::sources<Name##_rows>.count>{}), \
         dn2cpp_native_metadata::make_bytes<Name##_rows>() }
 
+// Shared runtime metadata stays native across application emission policies.
 #define DN2CPP_NATIVE_FIELDS(Name, ...) \
     static constexpr Dn2CppFieldInfo Name##_rows[] = { __VA_ARGS__ }; \
-    DN2CPP_NATIVE_METADATA_STORAGE(Name); \
-    static constexpr auto Name = Dn2CppMetadataTable<Dn2CppFieldInfo>::from_static(Name##_storage.records.data())
+    static constexpr Dn2CppMetadataTable<Dn2CppFieldInfo> Name{ Name##_rows }
 
 #define DN2CPP_NATIVE_TYPE_REFLECTION(Name, ...) \
     static constexpr Dn2CppTypeReflection Name##_rows[] = { { __VA_ARGS__ } }; \
-    DN2CPP_NATIVE_METADATA_STORAGE(Name); \
-    static constexpr auto Name = Dn2CppMetadataHandle<Dn2CppTypeReflection>::from_static(Name##_storage.records.data())
+    static constexpr Dn2CppMetadataHandle<Dn2CppTypeReflection> Name{ Name##_rows }

@@ -2144,25 +2144,27 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p)
 // Shared method dispatch: validate, adjust the receiver for a value-type
 // instance method (pass the unboxed payload at obj+1), and call through the per-shape
 // invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
-static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+template<class Method>
+static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
 {
     // A metadata-answerable row carries no body at all: it answers from its own type
     // arguments and receiver. A non-generic row is always closed; a generic one is
     // closed only once MakeGenericMethod has filled genericArgs, and an OPEN
     // definition falls through to the InvalidOperationException real .NET raises for
     // a late-bound call on one.
-    if (mi != nullptr && (mi->attrs & DN2CPP_MTHA_METAANSWER) != 0
-        && (mi->genericParamCount == 0 || mi->genericArgs != nullptr))
+    if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0
+        && (row.genericParamCount == 0 || row.genericArgs != nullptr))
     {
-        if (argc != mi->paramCount)
+        if (argc != row.paramCount)
             dn2cpp_throw_argument();
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
-            return d->answer(mi->genericArgs, obj);
+            return d->answer(row.genericArgs, obj);
     }
-    if (mi == nullptr || mi->invoker == nullptr)
+    if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();
-    void* fn = mi->fnPtr;
+    void* fn = row.fnPtr;
     // Late-bound call on an interface-declared row: the row is signature-only (an
     // interface method has no body, so fnPtr is null), but its invoker thunk was
     // emitted, and the receiver's implementation is what a callvirt would resolve —
@@ -2170,19 +2172,81 @@ static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     // since the value-type adjustment below keys on the DECLARING type and an
     // interface is never a value type. A miss in the walk stays the walk's own loud
     // abort; a receiverless call falls through to the InvalidOperationException below.
-    if (fn == nullptr && obj != nullptr && mi->vtableSlot >= 0
-        && (mi->declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
-        fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, mi->declaringType)[mi->vtableSlot]);
+    if (fn == nullptr && obj != nullptr && row.vtableSlot >= 0
+        && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+        fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, row.declaringType)[row.vtableSlot]);
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
-    if (argc != mi->paramCount)
+    if (argc != row.paramCount)
         dn2cpp_throw_argument();
-    bool isStatic = (mi->attrs & DN2CPP_MTHA_STATIC) != 0;
+    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
     Dn2CppObject* self = obj;
-    if (!isStatic && obj != nullptr && (mi->declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
+    if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(mi->invoker);
-    return invoker(fn, self, args, mi->returnType);
+    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(row.invoker);
+    return invoker(fn, self, args, row.returnType);
+}
+
+struct Dn2CppInvokePlan
+{
+    const Dn2CppTypeInfo* declaringType;
+    const Dn2CppTypeInfo* returnType;
+    void* fnPtr;
+    void* invoker;
+    const Dn2CppTypeInfo* const* genericArgs;
+    int32_t paramCount;
+    int32_t attrs;
+    int32_t vtableSlot;
+    int32_t genericParamCount;
+};
+
+static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+{
+    struct Entry
+    {
+        const void* identity;
+        Dn2CppInvokePlan plan;
+    };
+    constexpr std::size_t capacity = 64;
+    static thread_local Entry entries[capacity]{};
+    static_assert(sizeof(entries) <= 4096);
+    uintptr_t identity = reinterpret_cast<uintptr_t>(mi.identity());
+    Entry* entry = nullptr;
+    if ((identity & 1) != 0)
+    {
+        uintptr_t hash = (identity >> 1) ^ (identity >> 9) ^ (identity >> 17);
+        entry = &entries[hash & (capacity - 1)];
+        if (entry->identity == mi.identity())
+        {
+            const Dn2CppInvokePlan plan = entry->plan;
+            return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+        }
+    }
+    Dn2CppMethodInfo row;
+    dn2cpp_metadata_decode(&row, Dn2CppMetadataKind::Method, mi.identity());
+    // Only the generated method-table extent proves image lifetime. Dynamic
+    // rows, constructor deltas and locally encoded records never enter TLS.
+    if (entry != nullptr && dn2cpp_metadata_is_image_method(mi.identity()))
+    {
+        const Dn2CppInvokePlan plan = { row.declaringType, row.returnType,
+            row.fnPtr, row.invoker, row.genericArgs, row.paramCount, row.attrs,
+            row.vtableSlot, row.genericParamCount };
+        entry->plan = plan;
+        entry->identity = mi.identity();
+        return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+    }
+    return dn2cpp_invoke_row(mi, row, obj, args, argc);
+}
+
+static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+{
+    if (mi == nullptr)
+        dn2cpp_throw_invalid_operation();
+    if (const Dn2CppMethodInfo* row = mi.native())
+        return dn2cpp_invoke_row(mi, *row, obj, args, argc);
+    return dn2cpp_invoke_encoded(mi, obj, args, argc);
 }
 
 // MethodInfo.Invoke.

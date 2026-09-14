@@ -930,6 +930,7 @@ internal sealed partial class CppEmitter
                 genericInstantiations, _c.DefaultRefRecord);
         }
         EmitAssemblyRegistry(o.Data);
+        _c.ValidateReflectionMetadataFormats();
         FinishMetadataEncoding(o.Data);
         EmitStringLiterals(o);
         // Enum Object.ToString bodies, after the literal table they reference.
@@ -3336,6 +3337,7 @@ internal sealed partial class CppEmitter
         {
             string clr = ArrayClrName(md);
             EmitTypeInfo(sb, $"ti_md_{key}", new TypeMetadata {
+                Native = _c.UsesNativeReflectionMetadata(md),
                 Name = clr, Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED",
                 ElementType = ElemTi(md.Element!), ArrayRank = md.Rank, TypeObject = "&ty_md_" + key,
             });
@@ -3380,6 +3382,7 @@ internal sealed partial class CppEmitter
             // gethashcode, equals, flags(ARRAY), then the 18 metadata table slots (0),
             // then the trailing elementType / arrayRank.
             EmitTypeInfo(sb, sym, new TypeMetadata {
+                Native = _c.UsesNativeReflectionMetadata(TypeDesc.MakeSZArray(element)),
                 Name = clrName, Interfaces = itfsExpr, InterfaceCount = int.Parse(itfCount),
                 Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED", ElementType = ElemTi(element), ArrayRank = 1, TypeObject = "&ty_arr_" + key,
             });
@@ -4060,7 +4063,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Ref("&" + createName), MetadataValue.Display(RenderAttrDisplay(da)) }));
         if (rows.Count == 0)
             return ("nullptr", 0);
-        string init = MetadataRowsKey(rows);
+        string init = MetadataTableKey(rows);
         if (_attributeTables.TryGetValue(init, out var pooled))
             return (pooled, rows.Count);
         string tab = $"attrtab_{key}";
