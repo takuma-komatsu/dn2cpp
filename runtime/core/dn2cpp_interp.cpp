@@ -3726,7 +3726,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         bool isStatic = insn.op == 0x7E;
                         if (((fi->attrs & DN2CPP_FLDA_STATIC) != 0) != isStatic)
                             interp_fail("interp: field import staticness mismatch");
@@ -3794,7 +3794,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         bool isStatic = insn.op == 0x80;
                         if (((fi->attrs & DN2CPP_FLDA_STATIC) != 0) != isStatic)
                             interp_fail("interp: field import staticness mismatch");
@@ -4918,7 +4918,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) != 0)
                             interp_fail("interp: field import staticness mismatch");
                         auto* obj = static_cast<Dn2CppObject*>(regs[r1].ref);
@@ -4973,7 +4973,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) != 0)
                             interp_fail("interp: field import staticness mismatch");
                         auto* obj = static_cast<Dn2CppObject*>(regs[r0].ref);
@@ -4992,7 +4992,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) == 0)
                             interp_fail("interp: field import staticness mismatch");
                         if (fi->getter == nullptr)
@@ -5010,7 +5010,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        Dn2CppMetadataHandle<Dn2CppFieldInfo> fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) == 0)
                             interp_fail("interp: field import staticness mismatch");
                         if (fi->setter == nullptr)

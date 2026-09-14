@@ -618,12 +618,15 @@ Dn2CppArrayRef* dn2cpp_enum_get_names(Dn2CppType* t)
     if (t == nullptr || (t->typeInfo->flags & DN2CPP_TF_ENUM) == 0)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
+    {
+        const char* name = reflection.enumMembers[i]->name;
         dn2cpp_gc_store_ref(&arr->data[i], reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_string_from_utf8(ti->reflection().enumMembers[i]->name,
-                static_cast<int32_t>(std::strlen(ti->reflection().enumMembers[i]->name)))));
+            dn2cpp_string_from_utf8(name, static_cast<int32_t>(std::strlen(name)))));
+    }
     return arr;
 }
 
@@ -637,10 +640,11 @@ Dn2CppArrayRef* dn2cpp_enum_get_values_boxed(Dn2CppType* t)
     if (t == nullptr || (t->typeInfo->flags & DN2CPP_TF_ENUM) == 0)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
-        dn2cpp_gc_store_ref(&arr->data[i], dn2cpp_enum_box(ti, ti->reflection().enumMembers[i]->value));
+        dn2cpp_gc_store_ref(&arr->data[i], dn2cpp_enum_box(ti, reflection.enumMembers[i]->value));
     return arr;
 }
 
@@ -658,7 +662,8 @@ Dn2CppObject* dn2cpp_enum_get_values_underlying(Dn2CppType* t)
     const Dn2CppTypeInfo* ti = t->typeInfo;
     const Dn2CppTypeInfo* underlyingTi = ti->enumUnderlying != nullptr
         ? ti->enumUnderlying : &dn2cpp_int32_type;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     Dn2CppObject* obj = dn2cpp_array_create_instance(dn2cpp_get_type_from_handle(underlyingTi), &n, 1);
     // Element storage: int32/uint32 pack into Dn2CppArrayI4 (data at ->data), every other
     // primitive width into Dn2CppArrayN (element-sized inline storage at ->data).
@@ -671,7 +676,7 @@ Dn2CppObject* dn2cpp_enum_get_values_underlying(Dn2CppType* t)
         width = static_cast<int32_t>(sizeof(int32_t)); // defensive: unmodeled underlying
     for (int32_t i = 0; i < n; i++)
     {
-        int64_t v = ti->reflection().enumMembers[i]->value;
+        int64_t v = reflection.enumMembers[i]->value;
         std::memcpy(base + static_cast<size_t>(i) * static_cast<size_t>(width), &v,
                     static_cast<size_t>(width));
     }
@@ -702,10 +707,14 @@ Dn2CppString* dn2cpp_enum_get_name(Dn2CppType* t, Dn2CppObject* value)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
     int64_t v = dn2cpp_enum_box_value(ti, value);
-    for (int32_t i = 0; i < ti->reflection().enumMemberCount; i++)
-        if (ti->reflection().enumMembers[i]->value == v)
-            return dn2cpp_string_from_utf8(ti->reflection().enumMembers[i]->name,
-                static_cast<int32_t>(std::strlen(ti->reflection().enumMembers[i]->name)));
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
+    {
+        const auto member = reflection.enumMembers[i].operator->();
+        if (member->value == v)
+            return dn2cpp_string_from_utf8(member->name,
+                static_cast<int32_t>(std::strlen(member->name)));
+    }
     return nullptr;
 }
 
@@ -717,8 +726,9 @@ int32_t dn2cpp_enum_is_defined(Dn2CppType* t, Dn2CppObject* value)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
     int64_t v = dn2cpp_enum_box_value(ti, value);
-    for (int32_t i = 0; i < ti->reflection().enumMemberCount; i++)
-        if (ti->reflection().enumMembers[i]->value == v)
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.enumMemberCount; i++)
+        if (reflection.enumMembers[i]->value == v)
             return 1;
     return 0;
 }
@@ -739,14 +749,16 @@ static int32_t dn2cpp_enum_parse_type_core(Dn2CppType* t, Dn2CppString* s, int32
     if (t == nullptr || (t->typeInfo->flags & DN2CPP_TF_ENUM) == 0)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     auto* values = static_cast<int64_t*>(dn2cpp_alloc(sizeof(int64_t) * (n > 0 ? n : 1)));
     auto* names = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
     for (int32_t i = 0; i < n; i++)
     {
-        values[i] = ti->reflection().enumMembers[i]->value;
-        dn2cpp_gc_store_ref(&names[i], dn2cpp_string_from_utf8(ti->reflection().enumMembers[i]->name,
-            static_cast<int32_t>(std::strlen(ti->reflection().enumMembers[i]->name))));
+        const auto member = reflection.enumMembers[i].operator->();
+        values[i] = member->value;
+        dn2cpp_gc_store_ref(&names[i], dn2cpp_string_from_utf8(member->name,
+            static_cast<int32_t>(std::strlen(member->name))));
     }
     int32_t uWidth = 4;
     bool uUnsigned = false;
@@ -806,28 +818,34 @@ Dn2CppString* enum_flags_format(const Dn2CppTypeInfo* ti, uint64_t mask, uint64_
 {
     uint64_t result = uv & mask;
     uint64_t saveResult = result;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     std::string out;
     bool firstTime = true;
     for (int32_t i = n - 1; i >= 0; i--)
     {
-        uint64_t mv = static_cast<uint64_t>(ti->reflection().enumMembers[i]->value) & mask;
+        const auto member = reflection.enumMembers[i].operator->();
+        uint64_t mv = static_cast<uint64_t>(member->value) & mask;
         if (i == 0 && mv == 0)
             break;
         if (mv != 0 && (result & mv) == mv)
         {
             result -= mv;
-            if (firstTime) { out = ti->reflection().enumMembers[i]->name; firstTime = false; }
-            else out = std::string(ti->reflection().enumMembers[i]->name) + ", " + out;
+            if (firstTime) { out = member->name; firstTime = false; }
+            else out = std::string(member->name) + ", " + out;
         }
     }
     if (result != 0)
         return nullptr; // unaccounted bits: fall back to decimal
     if (saveResult == 0)
     {
-        if (n > 0 && (static_cast<uint64_t>(ti->reflection().enumMembers[0]->value) & mask) == 0)
-            return dn2cpp_string_from_utf8(ti->reflection().enumMembers[0]->name,
-                static_cast<int32_t>(std::strlen(ti->reflection().enumMembers[0]->name)));
+        if (n > 0)
+        {
+            const auto member = reflection.enumMembers[0].operator->();
+            if ((static_cast<uint64_t>(member->value) & mask) == 0)
+                return dn2cpp_string_from_utf8(member->name,
+                    static_cast<int32_t>(std::strlen(member->name)));
+        }
         return dn2cpp_string_from_utf8("0", 1);
     }
     return dn2cpp_string_from_utf8(out.c_str(), static_cast<int32_t>(out.size()));
@@ -869,10 +887,14 @@ Dn2CppString* dn2cpp_enum_format(Dn2CppType* t, Dn2CppObject* value, Dn2CppStrin
                     return f;
                 return enum_decimal(ev, uv, byteWidth, isUnsigned);
             }
-            for (int32_t i = 0; i < ti->reflection().enumMemberCount; i++)
-                if ((static_cast<uint64_t>(ti->reflection().enumMembers[i]->value) & mask) == uv)
-                    return dn2cpp_string_from_utf8(ti->reflection().enumMembers[i]->name,
-                        static_cast<int32_t>(std::strlen(ti->reflection().enumMembers[i]->name)));
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.enumMemberCount; i++)
+            {
+                const auto member = reflection.enumMembers[i].operator->();
+                if ((static_cast<uint64_t>(member->value) & mask) == uv)
+                    return dn2cpp_string_from_utf8(member->name,
+                        static_cast<int32_t>(std::strlen(member->name)));
+            }
             return enum_decimal(ev, uv, byteWidth, isUnsigned);
         }
         case u'F': case u'f':
@@ -1241,7 +1263,7 @@ static bool dn2cpp_member_matches(int32_t attrs, int32_t flags, bool inherited)
     return vis && scope;
 }
 
-static bool dn2cpp_field_matches(Dn2CppMetadataHandle<Dn2CppFieldInfo> f, int32_t flags, bool inherited)
+static bool dn2cpp_field_matches(const Dn2CppFieldInfo* f, int32_t flags, bool inherited)
 {
     return dn2cpp_member_matches(f->attrs, flags, inherited);
 }
@@ -1332,15 +1354,20 @@ static int32_t dn2cpp_collect_fields(const Dn2CppTypeInfo* type, int32_t flags, 
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != type);
-        for (int32_t i = 0; i < ti->reflection().fieldCount; i++)
-            if (dn2cpp_field_matches(ti->reflection().fields[i], flags, inherited))
+        for (int32_t i = 0; i < reflection.fieldCount; i++)
+        {
+            const auto field = reflection.fields[i];
+            const auto row = field.operator->();
+            if (dn2cpp_field_matches(row.operator->(), flags, inherited))
             {
                 if (out != nullptr)
                     dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_fieldref(ti->reflection().fields[i], type)));
+                        dn2cpp_make_fieldref(field, type)));
                 n++;
             }
+        }
         if (flags & DN2CPP_BF_DECLAREDONLY)
             break;
     }
@@ -1364,11 +1391,16 @@ Dn2CppFieldRef* dn2cpp_type_get_field(Dn2CppType* t, Dn2CppString* name, int32_t
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != t->typeInfo);
-        for (int32_t i = 0; i < ti->reflection().fieldCount; i++)
-            if (dn2cpp_field_matches(ti->reflection().fields[i], bindingFlags, inherited) &&
-                dn2cpp_ascii_str_eq(ti->reflection().fields[i]->name, name))
-                return dn2cpp_make_fieldref(ti->reflection().fields[i], t->typeInfo);
+        for (int32_t i = 0; i < reflection.fieldCount; i++)
+        {
+            const auto field = reflection.fields[i];
+            const auto row = field.operator->();
+            if (dn2cpp_field_matches(row.operator->(), bindingFlags, inherited) &&
+                dn2cpp_ascii_str_eq(row->name, name))
+                return dn2cpp_make_fieldref(field, t->typeInfo);
+        }
         if (bindingFlags & DN2CPP_BF_DECLAREDONLY)
             break;
     }
@@ -1657,21 +1689,23 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != type);
-        for (int32_t i = 0; i < ti->reflection().methodCount; i++)
+        for (int32_t i = 0; i < reflection.methodCount; i++)
         {
-            Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ti->reflection().methods[i];
-            if (!dn2cpp_member_matches(mi->attrs, flags, inherited))
+            const auto mi = reflection.methods[i];
+            const auto row = mi.operator->();
+            if (!dn2cpp_member_matches(row->attrs, flags, inherited))
                 continue;
-            if (mi->vtableSlot >= 0)
+            if (row->vtableSlot >= 0)
             {
                 bool hidden = false;
                 for (int32_t s = 0; s < seenCount; s++)
-                    if (seen[s] == mi->vtableSlot) { hidden = true; break; }
+                    if (seen[s] == row->vtableSlot) { hidden = true; break; }
                 if (hidden)
                     continue;
                 if (seenCount < 256)
-                    seen[seenCount++] = mi->vtableSlot;
+                    seen[seenCount++] = row->vtableSlot;
             }
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
@@ -2018,23 +2052,25 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != t->typeInfo);
-        for (int32_t i = 0; i < ti->reflection().methodCount; i++)
+        for (int32_t i = 0; i < reflection.methodCount; i++)
         {
-            Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ti->reflection().methods[i];
-            if (!dn2cpp_member_matches(mi->attrs, bindingFlags, inherited))
+            const auto mi = reflection.methods[i];
+            const auto row = mi.operator->();
+            if (!dn2cpp_member_matches(row->attrs, bindingFlags, inherited))
                 continue;
             bool hidden = false;
-            if (mi->vtableSlot >= 0)
+            if (row->vtableSlot >= 0)
             {
                 for (int32_t s = 0; s < seenCount; s++)
-                    if (seen[s] == mi->vtableSlot) { hidden = true; break; }
+                    if (seen[s] == row->vtableSlot) { hidden = true; break; }
                 if (!hidden && seenCount < 256)
-                    seen[seenCount++] = mi->vtableSlot;
+                    seen[seenCount++] = row->vtableSlot;
             }
-            if (hidden || !dn2cpp_ascii_str_eq(mi->name, name))
+            if (hidden || !dn2cpp_ascii_str_eq(row->name, name))
                 continue;
-            if (genericParamCount >= 0 && mi->genericParamCount != genericParamCount)
+            if (genericParamCount >= 0 && row->genericParamCount != genericParamCount)
                 continue;
             if (paramTypes != nullptr && !dn2cpp_params_match_types(mi, paramTypes))
                 continue;
@@ -2275,9 +2311,13 @@ Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
 {
-    for (int32_t i = 0; i < ti->reflection().methodCount; i++)
-        if (std::strcmp(ti->reflection().methods[i]->name, "Invoke") == 0)
-            return ti->reflection().methods[i];
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.methodCount; i++)
+    {
+        const auto mi = reflection.methods[i];
+        if (std::strcmp(mi->name, "Invoke") == 0)
+            return mi;
+    }
     return nullptr;
 }
 
@@ -2490,14 +2530,18 @@ static Dn2CppObject* dn2cpp_ctor_invoke_impl(Dn2CppMetadataHandle<Dn2CppMethodIn
 static int32_t dn2cpp_collect_ctors(const Dn2CppTypeInfo* ti, int32_t flags, Dn2CppObject** out)
 {
     int32_t n = 0;
-    for (int32_t i = 0; i < ti->reflection().ctorCount; i++)
-        if (dn2cpp_member_matches(ti->reflection().ctors[i]->attrs, flags, false))
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+    {
+        const auto ci = reflection.ctors[i];
+        if (dn2cpp_member_matches(ci->attrs, flags, false))
         {
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
-                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(ti->reflection().ctors[i], ti)));
+                    reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(ci, ti)));
             n++;
         }
+    }
     return n;
 }
 
@@ -2519,16 +2563,18 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef*
     dn2cpp_type_require(t);
     int32_t want = (paramTypes == nullptr) ? 0 : paramTypes->length;
     const Dn2CppTypeInfo* ti = t->typeInfo;
-    for (int32_t i = 0; i < ti->reflection().ctorCount; i++)
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
     {
-        Dn2CppMetadataHandle<Dn2CppMethodInfo> ci = ti->reflection().ctors[i];
-        if (!dn2cpp_member_matches(ci->attrs, bindingFlags, false) || ci->paramCount != want)
+        const auto ci = reflection.ctors[i];
+        const auto row = ci.operator->();
+        if (!dn2cpp_member_matches(row->attrs, bindingFlags, false) || row->paramCount != want)
             continue;
         bool match = true;
         for (int32_t j = 0; j < want; j++)
         {
             auto* pt = reinterpret_cast<Dn2CppType*>(paramTypes->data[j]);
-            if (pt == nullptr || ci->parameters[j]->paramType != pt->typeInfo)
+            if (pt == nullptr || row->parameters[j]->paramType != pt->typeInfo)
             {
                 match = false;
                 break;
@@ -2563,10 +2609,15 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
     const Dn2CppTypeInfo* ti = t->typeInfo;
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
-    for (int32_t i = 0; i < ti->reflection().ctorCount; i++)
-        if (ti->reflection().ctors[i]->paramCount == 0
-            && (nonPublic != 0 || (ti->reflection().ctors[i]->attrs & DN2CPP_MTHA_PUBLIC) != 0))
-            return dn2cpp_ctor_invoke_impl(ti->reflection().ctors[i], nullptr);
+    const auto reflection = ti->reflection();
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+    {
+        const auto ci = reflection.ctors[i];
+        const auto row = ci.operator->();
+        if (row->paramCount == 0
+            && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
+            return dn2cpp_ctor_invoke_impl(ci, nullptr);
+    }
     // A value type with no explicit parameterless ctor: zero-initialized boxed value.
     if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
     {
@@ -2621,19 +2672,21 @@ static int32_t dn2cpp_collect_props(const Dn2CppTypeInfo* type, int32_t flags, D
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != type);
-        for (int32_t i = 0; i < ti->reflection().propCount; i++)
+        for (int32_t i = 0; i < reflection.propCount; i++)
         {
-            Dn2CppMetadataHandle<Dn2CppPropInfo> p = ti->reflection().props[i];
-            if (!dn2cpp_member_matches(p->attrs, flags, inherited))
+            const auto p = reflection.props[i];
+            const auto row = p.operator->();
+            if (!dn2cpp_member_matches(row->attrs, flags, inherited))
                 continue;
             bool hidden = false;
             for (int32_t s = 0; s < seenCount; s++)
-                if (std::strcmp(seen[s], p->name) == 0) { hidden = true; break; }
+                if (std::strcmp(seen[s], row->name) == 0) { hidden = true; break; }
             if (hidden)
                 continue;
             if (seenCount < 256)
-                seen[seenCount++] = p->name;
+                seen[seenCount++] = row->name;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(p, type)));
@@ -2657,19 +2710,19 @@ Dn2CppArrayRef* dn2cpp_type_get_properties(Dn2CppType* t, int32_t bindingFlags)
 // A property's indexer parameters, read off its accessor rows (a PropInfo row
 // carries no parameter table of its own): the getter's parameters, or the
 // setter's minus the trailing value.
-static int32_t dn2cpp_prop_index_count(Dn2CppMetadataHandle<Dn2CppPropInfo> p)
+static Dn2CppMetadataTable<Dn2CppParamInfo> dn2cpp_prop_index_parameters(
+    const Dn2CppPropInfo* p, int32_t* count)
 {
-    if (p->getter != nullptr)
-        return p->getter->paramCount;
-    if (p->setter != nullptr && p->setter->paramCount > 0)
-        return p->setter->paramCount - 1;
-    return 0;
-}
-
-static const Dn2CppTypeInfo* dn2cpp_prop_index_type(Dn2CppMetadataHandle<Dn2CppPropInfo> p, int32_t i)
-{
-    return p->getter != nullptr ? p->getter->parameters[i]->paramType
-                                : p->setter->parameters[i]->paramType;
+    const auto accessor = p->getter != nullptr ? p->getter : p->setter;
+    if (accessor == nullptr)
+    {
+        *count = 0;
+        return {};
+    }
+    const auto row = accessor.operator->();
+    *count = p->getter != nullptr ? row->paramCount
+        : (row->paramCount > 0 ? row->paramCount - 1 : 0);
+    return row->parameters;
 }
 
 // Whether two property rows have the same reflection signature (property type +
@@ -2677,10 +2730,18 @@ static const Dn2CppTypeInfo* dn2cpp_prop_index_type(Dn2CppMetadataHandle<Dn2CppP
 // for an overridden/`new`-redeclared property.
 static bool dn2cpp_props_sig_equal(Dn2CppMetadataHandle<Dn2CppPropInfo> a, Dn2CppMetadataHandle<Dn2CppPropInfo> b)
 {
-    if (a->propType != b->propType || dn2cpp_prop_index_count(a) != dn2cpp_prop_index_count(b))
+    const auto rowA = a.operator->();
+    const auto rowB = b.operator->();
+    if (rowA->propType != rowB->propType)
         return false;
-    for (int32_t i = 0; i < dn2cpp_prop_index_count(a); i++)
-        if (dn2cpp_prop_index_type(a, i) != dn2cpp_prop_index_type(b, i))
+    int32_t countA;
+    int32_t countB;
+    const auto paramsA = dn2cpp_prop_index_parameters(rowA.operator->(), &countA);
+    const auto paramsB = dn2cpp_prop_index_parameters(rowB.operator->(), &countB);
+    if (countA != countB)
+        return false;
+    for (int32_t i = 0; i < countA; i++)
+        if (paramsA[i]->paramType != paramsB[i]->paramType)
             return false;
     return true;
 }
@@ -2703,18 +2764,22 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
+        const auto reflection = ti->reflection();
         bool inherited = (ti != t->typeInfo);
-        for (int32_t i = 0; i < ti->reflection().propCount; i++)
+        for (int32_t i = 0; i < reflection.propCount; i++)
         {
-            Dn2CppMetadataHandle<Dn2CppPropInfo> p = ti->reflection().props[i];
-            if (!dn2cpp_member_matches(p->attrs, bindingFlags, inherited)
-                || !dn2cpp_ascii_str_eq(p->name, name))
+            const auto p = reflection.props[i];
+            const auto row = p.operator->();
+            if (!dn2cpp_member_matches(row->attrs, bindingFlags, inherited)
+                || !dn2cpp_ascii_str_eq(row->name, name))
                 continue;
-            if (returnType != nullptr && p->propType != returnType->typeInfo)
+            if (returnType != nullptr && row->propType != returnType->typeInfo)
                 continue;
             if (indexTypes != nullptr)
             {
-                if (dn2cpp_prop_index_count(p) != indexTypes->length)
+                int32_t count;
+                const auto parameters = dn2cpp_prop_index_parameters(row.operator->(), &count);
+                if (count != indexTypes->length)
                     continue;
                 bool match = true;
                 for (int32_t j = 0; j < indexTypes->length; j++)
@@ -2722,7 +2787,7 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
                     auto* pt = reinterpret_cast<Dn2CppType*>(indexTypes->data[j]);
                     if (pt == nullptr)
                         dn2cpp_throw_argument_null();
-                    if (dn2cpp_prop_index_type(p, j) != pt->typeInfo) { match = false; break; }
+                    if (parameters[j]->paramType != pt->typeInfo) { match = false; break; }
                 }
                 if (!match)
                     continue;
@@ -2790,20 +2855,22 @@ void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject*
 }
 
 // PropertyInfo.GetIndexParameters(): the indexer parameters, read off the
-// accessor rows exactly like dn2cpp_prop_index_count (the getter's parameters,
+// accessor rows exactly like dn2cpp_prop_index_parameters (the getter's parameters,
 // or the setter's minus the trailing value). A non-indexed property yields an
 // empty array, matching .NET.
 Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
 {
     Dn2CppMetadataHandle<Dn2CppPropInfo> pi = dn2cpp_propref_require(p);
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> acc = pi->getter != nullptr ? pi->getter : pi->setter;
-    int32_t n = dn2cpp_prop_index_count(p->prop);
+    const auto row = pi.operator->();
+    const auto acc = row->getter != nullptr ? row->getter : row->setter;
+    int32_t n;
+    const auto parameters = dn2cpp_prop_index_parameters(row.operator->(), &n);
     Dn2CppArrayRef* arr = dn2cpp_newarr_ref(n);
     for (int32_t i = 0; i < n; i++)
     {
         auto* pr = static_cast<Dn2CppParamRef*>(dn2cpp_alloc(sizeof(Dn2CppParamRef)));
         pr->type = &dn2cpp_parameterinfo_type;
-        pr->param = acc->parameters[i];
+        pr->param = parameters[i];
         pr->position = i;
         pr->owner = acc;
         pr->ownerReflected = p->reflectedType;
@@ -2873,21 +2940,23 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
         for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
             bool inherited = (ti != type);
-            for (int32_t i = 0; i < ti->reflection().methodCount; i++)
+            for (int32_t i = 0; i < reflection.methodCount; i++)
             {
-                Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ti->reflection().methods[i];
-                if (!dn2cpp_member_matches(mi->attrs, flags, inherited))
+                const auto mi = reflection.methods[i];
+                const auto row = mi.operator->();
+                if (!dn2cpp_member_matches(row->attrs, flags, inherited))
                     continue;
                 bool hidden = false;
-                if (mi->vtableSlot >= 0)
+                if (row->vtableSlot >= 0)
                 {
                     for (int32_t s = 0; s < seenCount; s++)
-                        if (seen[s] == mi->vtableSlot) { hidden = true; break; }
+                        if (seen[s] == row->vtableSlot) { hidden = true; break; }
                     if (!hidden && seenCount < 256)
-                        seen[seenCount++] = mi->vtableSlot;
+                        seen[seenCount++] = row->vtableSlot;
                 }
-                if (hidden || !dn2cpp_name_pattern_matches(mi->name, name))
+                if (hidden || !dn2cpp_name_pattern_matches(row->name, name))
                     continue;
                 if (out != nullptr)
                     dn2cpp_gc_store_ref(&out[n],
@@ -2899,17 +2968,21 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
         }
     }
     if (memberTypes & DN2CPP_MT_CONSTRUCTOR)
-        for (int32_t i = 0; i < type->reflection().ctorCount; i++)
+    {
+        const auto reflection = type->reflection();
+        for (int32_t i = 0; i < reflection.ctorCount; i++)
         {
-            Dn2CppMetadataHandle<Dn2CppMethodInfo> ci = type->reflection().ctors[i];
-            if (!dn2cpp_member_matches(ci->attrs, flags, false)
-                || !dn2cpp_name_pattern_matches(ci->name, name))
+            const auto ci = reflection.ctors[i];
+            const auto row = ci.operator->();
+            if (!dn2cpp_member_matches(row->attrs, flags, false)
+                || !dn2cpp_name_pattern_matches(row->name, name))
                 continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(ci, type)));
             n++;
         }
+    }
     if (memberTypes & DN2CPP_MT_PROPERTY)
     {
         // Hide by name + reflection signature (not by name alone): overloaded
@@ -2921,21 +2994,23 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
         for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
             bool inherited = (ti != type);
-            for (int32_t i = 0; i < ti->reflection().propCount; i++)
+            for (int32_t i = 0; i < reflection.propCount; i++)
             {
-                Dn2CppMetadataHandle<Dn2CppPropInfo> p = ti->reflection().props[i];
-                if (!dn2cpp_member_matches(p->attrs, flags, inherited))
+                const auto p = reflection.props[i];
+                const auto row = p.operator->();
+                if (!dn2cpp_member_matches(row->attrs, flags, inherited))
                     continue;
                 bool hidden = false;
                 for (int32_t s = 0; s < seenCount; s++)
-                    if (std::strcmp(seenP[s]->name, p->name) == 0
+                    if (std::strcmp(seenP[s]->name, row->name) == 0
                         && dn2cpp_props_sig_equal(seenP[s], p)) { hidden = true; break; }
                 if (hidden)
                     continue;
                 if (seenCount < 256)
                     seenP[seenCount++] = p;
-                if (!dn2cpp_name_pattern_matches(p->name, name))
+                if (!dn2cpp_name_pattern_matches(row->name, name))
                     continue;
                 if (out != nullptr)
                     dn2cpp_gc_store_ref(&out[n],
@@ -2950,15 +3025,18 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
         for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
             bool inherited = (ti != type);
-            for (int32_t i = 0; i < ti->reflection().fieldCount; i++)
+            for (int32_t i = 0; i < reflection.fieldCount; i++)
             {
-                if (!dn2cpp_field_matches(ti->reflection().fields[i], flags, inherited)
-                    || !dn2cpp_name_pattern_matches(ti->reflection().fields[i]->name, name))
+                const auto field = reflection.fields[i];
+                const auto row = field.operator->();
+                if (!dn2cpp_field_matches(row.operator->(), flags, inherited)
+                    || !dn2cpp_name_pattern_matches(row->name, name))
                     continue;
                 if (out != nullptr)
                     dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_fieldref(ti->reflection().fields[i], type)));
+                        dn2cpp_make_fieldref(field, type)));
                 n++;
             }
             if (flags & DN2CPP_BF_DECLAREDONLY)
@@ -2966,19 +3044,23 @@ static int32_t dn2cpp_collect_member_matches(const Dn2CppTypeInfo* type, Dn2CppS
         }
     if ((memberTypes & (DN2CPP_MT_NESTEDTYPE | DN2CPP_MT_TYPEINFO)) != 0
         && (flags & DN2CPP_BF_PUBLIC) != 0)
-        for (int32_t i = 0; i < type->reflection().nestedCount; i++)
+    {
+        const auto reflection = type->reflection();
+        for (int32_t i = 0; i < reflection.nestedCount; i++)
         {
+            const Dn2CppTypeInfo* nested = reflection.nestedTypes[i];
             // The nested table holds the public emitted set; its entries carry the
             // full CLR reflection name ("Ns.Outer+Inner"), and .NET's GetMember
             // contract matches the pattern against the simple-name tail.
             if (!dn2cpp_name_pattern_matches(
-                    dn2cpp_simple_type_name(type->reflection().nestedTypes[i]->name), name))
+                    dn2cpp_simple_type_name(nested->name), name))
                 continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n], reinterpret_cast<Dn2CppObject*>(
-                    dn2cpp_get_type_from_handle(type->reflection().nestedTypes[i])));
+                    dn2cpp_get_type_from_handle(nested)));
             n++;
         }
+    }
     return n;
 }
 
@@ -3026,15 +3108,13 @@ Dn2CppArrayRef* dn2cpp_type_get_default_members(Dn2CppType* t)
 // for List<string>'s). Rows with no recorded token (hand-written/synthetic)
 // only match themselves. ArgumentNullException on a null member and
 // ArgumentException when no member of `t` matches, like real .NET.
-static bool dn2cpp_same_metadata_def(int32_t tokA, const Dn2CppTypeInfo* declA,
-                                     int32_t tokB, const Dn2CppTypeInfo* declB)
+static bool dn2cpp_same_metadata_def(int32_t tokA, const char* assemblyA,
+                                     int32_t tokB, const char* assemblyB)
 {
     if (tokA == 0 || tokB == 0 || tokA != tokB)
         return false;
-    const char* asmA = declA != nullptr && declA->reflection().assemblyName != nullptr
-        ? declA->reflection().assemblyName : "System.Private.CoreLib";
-    const char* asmB = declB != nullptr && declB->reflection().assemblyName != nullptr
-        ? declB->reflection().assemblyName : "System.Private.CoreLib";
+    const char* asmA = assemblyA != nullptr ? assemblyA : "System.Private.CoreLib";
+    const char* asmB = assemblyB != nullptr ? assemblyB : "System.Private.CoreLib";
     return std::strcmp(asmA, asmB) == 0;
 }
 
@@ -3048,59 +3128,83 @@ Dn2CppObject* dn2cpp_type_get_member_same_metadata(Dn2CppType* t, Dn2CppObject* 
     if (dn2cpp_is_methodref_header(member->type))
     {
         Dn2CppMetadataHandle<Dn2CppMethodInfo> m = reinterpret_cast<Dn2CppMethodRef*>(member)->method;
+        const auto memberRow = m.operator->();
+        const char* assembly = memberRow->declaringType != nullptr
+            ? memberRow->declaringType->reflection().assemblyName : nullptr;
         for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
-            for (int32_t i = 0; i < ti->reflection().methodCount; i++)
-                if (ti->reflection().methods[i] == m || dn2cpp_same_metadata_def(
-                        ti->reflection().methods[i]->metadataToken, ti,
-                        m->metadataToken, m->declaringType))
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.methodCount; i++)
+            {
+                const auto mi = reflection.methods[i];
+                if (mi == m || dn2cpp_same_metadata_def(
+                        mi->metadataToken, reflection.assemblyName, memberRow->metadataToken, assembly))
                     return reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_methodref(ti->reflection().methods[i], t->typeInfo));
-            for (int32_t i = 0; i < ti->reflection().ctorCount; i++)
-                if (ti->reflection().ctors[i] == m || dn2cpp_same_metadata_def(
-                        ti->reflection().ctors[i]->metadataToken, ti,
-                        m->metadataToken, m->declaringType))
+                        dn2cpp_make_methodref(mi, t->typeInfo));
+            }
+            for (int32_t i = 0; i < reflection.ctorCount; i++)
+            {
+                const auto ci = reflection.ctors[i];
+                if (ci == m || dn2cpp_same_metadata_def(
+                        ci->metadataToken, reflection.assemblyName, memberRow->metadataToken, assembly))
                     return reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_methodref(ti->reflection().ctors[i], t->typeInfo));
+                        dn2cpp_make_methodref(ci, t->typeInfo));
+            }
         }
     }
     else if (member->type == &dn2cpp_fieldinfo_type)
     {
         Dn2CppMetadataHandle<Dn2CppFieldInfo> f = reinterpret_cast<Dn2CppFieldRef*>(member)->field;
+        const auto memberRow = f.operator->();
+        const char* assembly = memberRow->declaringType != nullptr
+            ? memberRow->declaringType->reflection().assemblyName : nullptr;
         for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
-            for (int32_t i = 0; i < ti->reflection().fieldCount; i++)
-                if (ti->reflection().fields[i] == f || dn2cpp_same_metadata_def(
-                        ti->reflection().fields[i]->metadataToken, ti,
-                        f->metadataToken, f->declaringType))
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.fieldCount; i++)
+            {
+                const auto fi = reflection.fields[i];
+                if (fi == f || dn2cpp_same_metadata_def(
+                        fi->metadataToken, reflection.assemblyName, memberRow->metadataToken, assembly))
                     return reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_fieldref(ti->reflection().fields[i], t->typeInfo));
+                        dn2cpp_make_fieldref(fi, t->typeInfo));
+            }
         }
     }
     else if (member->type == &dn2cpp_propertyinfo_type)
     {
         Dn2CppMetadataHandle<Dn2CppPropInfo> p = reinterpret_cast<Dn2CppPropRef*>(member)->prop;
+        const auto memberRow = p.operator->();
+        const char* assembly = memberRow->declaringType != nullptr
+            ? memberRow->declaringType->reflection().assemblyName : nullptr;
         for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
-            for (int32_t i = 0; i < ti->reflection().propCount; i++)
-                if (ti->reflection().props[i] == p || dn2cpp_same_metadata_def(
-                        ti->reflection().props[i]->metadataToken, ti,
-                        p->metadataToken, p->declaringType))
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.propCount; i++)
+            {
+                const auto pi = reflection.props[i];
+                if (pi == p || dn2cpp_same_metadata_def(
+                        pi->metadataToken, reflection.assemblyName, memberRow->metadataToken, assembly))
                     return reinterpret_cast<Dn2CppObject*>(
-                        dn2cpp_make_propref(ti->reflection().props[i], t->typeInfo));
+                        dn2cpp_make_propref(pi, t->typeInfo));
+            }
         }
     }
     else if (member->type == &dn2cpp_type_type)
     {
         const Dn2CppTypeInfo* mi = reinterpret_cast<Dn2CppType*>(member)->typeInfo;
-        for (int32_t i = 0; i < t->typeInfo->reflection().nestedCount; i++)
+        const auto memberReflection = mi->reflection();
+        const auto reflection = t->typeInfo->reflection();
+        for (int32_t i = 0; i < reflection.nestedCount; i++)
         {
-            const Dn2CppTypeInfo* nt = t->typeInfo->reflection().nestedTypes[i];
-            if (nt == mi || dn2cpp_same_metadata_def(nt->reflection().metadataToken, nt,
-                    mi->reflection().metadataToken, mi))
+            const Dn2CppTypeInfo* nt = reflection.nestedTypes[i];
+            const auto nestedReflection = nt->reflection();
+            if (nt == mi || dn2cpp_same_metadata_def(
+                    nestedReflection.metadataToken, nestedReflection.assemblyName,
+                    memberReflection.metadataToken, memberReflection.assemblyName))
                 return reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(nt));
         }
     }
@@ -3985,13 +4089,14 @@ Dn2CppObject* dn2cpp_type_get_enum_values_as_underlying(Dn2CppType* t)
         dn2cpp_throw_argument();
     const Dn2CppTypeInfo* ti = t->typeInfo;
     const Dn2CppTypeInfo* u = ti->enumUnderlying != nullptr ? ti->enumUnderlying : &dn2cpp_int32_type;
-    int32_t n = ti->reflection().enumMemberCount;
+    const auto reflection = ti->reflection();
+    int32_t n = reflection.enumMemberCount;
     const Dn2CppTypeInfo* arrTi = dn2cpp_find_array_ti(u);
     if (u == &dn2cpp_int32_type || u == &dn2cpp_uint32_type)
     {
         Dn2CppArrayI4* a = arrTi != nullptr ? dn2cpp_newarr_i4_t(n, arrTi) : dn2cpp_newarr_i4(n);
         for (int32_t i = 0; i < n; i++)
-            a->data[i] = static_cast<int32_t>(ti->reflection().enumMembers[i]->value);
+            a->data[i] = static_cast<int32_t>(reflection.enumMembers[i]->value);
         return reinterpret_cast<Dn2CppObject*>(a);
     }
     int32_t sz = (u == &dn2cpp_byte_type || u == &dn2cpp_sbyte_type) ? 1
@@ -4000,7 +4105,7 @@ Dn2CppObject* dn2cpp_type_get_enum_values_as_underlying(Dn2CppType* t)
     Dn2CppArrayN* a = arrTi != nullptr ? dn2cpp_newarr_n_t(n, sz, arrTi) : dn2cpp_newarr_n(n, sz);
     for (int32_t i = 0; i < n; i++)
     {
-        int64_t v = ti->reflection().enumMembers[i]->value;
+        int64_t v = reflection.enumMembers[i]->value;
         char* at = a->data + static_cast<size_t>(i) * static_cast<size_t>(sz);
         if (sz == 1)
         {
