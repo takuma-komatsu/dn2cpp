@@ -204,6 +204,10 @@ int main()
     require_rejected([&] {
         (void)*Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(oversized.bytes.data());
     }, "record extent cannot overflow a native address on either pointer width");
+    auto invalid_block = record(dn2cpp_metadata_block_count, 1, { 1 });
+    require_rejected([&] {
+        (void)*Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(invalid_block.bytes.data());
+    }, "record block index must name a registered block before reading its pointer pool");
     auto invalid_pool_index = record(0, 1, { UINT64_MAX });
     require_rejected([&] {
         (void)*Dn2CppMetadataHandle<Dn2CppEnumMember>::from_static(invalid_pool_index.bytes.data());
@@ -254,6 +258,14 @@ int main()
     require_rejected([&] {
         (void)*Dn2CppMetadataHandle<Dn2CppFieldInfo>::from_static(malformed.bytes.data());
     }, "out-of-range 32-bit values are rejected rather than truncated");
+    Record invalid_display_block;
+    invalid_display_block.bytes[invalid_display_block.length++] = 0xff;
+    append_unsigned(invalid_display_block, dn2cpp_metadata_block_count);
+    append_unsigned(invalid_display_block, 1);
+    append_unsigned(invalid_display_block, 0);
+    require_rejected([&] {
+        dn2cpp_metadata_string(reinterpret_cast<const char*>(invalid_display_block.bytes.data()));
+    }, "display block index must name a registered block before reading its token pool");
     const char tokenized[] = { char(0xff), 0, 3, 0, 1, 2 };
     int64_t before = dn2cpp_gc_allocated_bytes_current_thread();
     Dn2CppString* plain_display = dn2cpp_metadata_string(unicode);

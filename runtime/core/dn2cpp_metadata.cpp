@@ -247,6 +247,8 @@ void dn2cpp_metadata_decode(void* destination, Dn2CppMetadataKind kind, const vo
         uint64_t backwards = read_unsigned(cursor, end);
         localBlock = reinterpret_cast<const Dn2CppMetadataBlock*>(metadata_subtract(record, backwards));
     }
+    else if (block >= dn2cpp_metadata_block_count)
+        dn2cpp_throw_invalid_operation();
     uint64_t presence = read_unsigned(cursor, end);
     if (schema.count < 64 && (presence >> schema.count) != 0)
         dn2cpp_throw_invalid_operation();
@@ -324,6 +326,8 @@ Dn2CppString* dn2cpp_metadata_string(const char* display)
     }
     auto* cursor = start + 1;
     uint64_t block = read_unsigned(cursor);
+    if (block >= dn2cpp_metadata_block_count)
+        dn2cpp_throw_invalid_operation();
     uint64_t count = read_unsigned(cursor);
     const auto* tokens = cursor;
     int64_t length = 0;
