@@ -271,12 +271,12 @@ static Dn2CppString* dn2cpp_box_to_string(Dn2CppObject* v)
         bool wide = t->enumUnderlying == &dn2cpp_int64_type || t->enumUnderlying == &dn2cpp_uint64_type;
         const void* p = dn2cpp_box_payload(v);
         int64_t ev = wide ? *static_cast<const int64_t*>(p) : *static_cast<const int32_t*>(p);
-        for (int32_t i = 0; i < t->enumMemberCount; i++)
+        for (int32_t i = 0; i < t->reflection().enumMemberCount; i++)
         {
-            int64_t mv = t->enumMembers[i].value;
+            int64_t mv = t->reflection().enumMembers[i]->value;
             if (wide ? mv == ev : static_cast<int32_t>(mv) == static_cast<int32_t>(ev))
-                return dn2cpp_string_from_utf8(t->enumMembers[i].name,
-                    static_cast<int32_t>(std::strlen(t->enumMembers[i].name)));
+                return dn2cpp_string_from_utf8(t->reflection().enumMembers[i]->name,
+                    static_cast<int32_t>(std::strlen(t->reflection().enumMembers[i]->name)));
         }
         return wide ? dn2cpp_long_to_string(ev) : dn2cpp_int_to_string(static_cast<int32_t>(ev));
     }

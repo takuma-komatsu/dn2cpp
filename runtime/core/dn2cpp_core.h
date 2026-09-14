@@ -19,6 +19,7 @@
 #include <exception>
 #include <type_traits>
 #include <limits>
+#include "dn2cpp_metadata.h"
 
 // Marks a host-facing ABI hook resolved by name from outside the process image
 // (dn2cpp_gdext_init as the .gdextension entry symbol; dn2cpp_runtime_quiesce
@@ -226,196 +227,75 @@ struct Dn2CppInterfaceEntry
 
 // Runtime type metadata (IL2CPP "klass" equivalent). One instance per
 // managed type; boxed values and objects point at it from their header.
-struct Dn2CppTypeInfo
+// Cold reflection metadata is absent for types without recorded answers.
+struct Dn2CppTypeReflection
 {
-    const char* name;             // namespace-qualified CLR name
-    const Dn2CppTypeInfo* base;    // inheritance chain (nullptr at root)
-    // A value type's UNBOXED payload size; a reference type's whole-object extent
-    // (sizeof of the C++ struct instances are allocated as). A hand-written
-    // type-info must state it too — the shallow clone and
-    // RuntimeHelpers.GetUninitializedObject have no other source. 0 on a reference
-    // type is the claim "no instance of this type-info exists" (System.Object,
-    // whose instance IS the header; the abstract shells MemberInfo/MethodBase/
-    // Enum/Void). Readers that size an ALLOCATION from it floor at the type's
-    // prefix, since the opaque exception shells legitimately state 0.
-    int32_t instanceSize;
-    const void** vtable;          // virtual slots (nullptr if none)
-    const Dn2CppInterfaceEntry* interfaces; // nullptr if none
-    int32_t interfaceCount;
-    // The reference type's overridden ToString, or null to format by default
-    // (boxed primitive / type name). Lets Object.ToString dispatch the override
-    // without depending on a vtable slot index. Existing initializers omit
-    // this trailing member, so it value-initializes to null.
-    Dn2CppString* (*tostring)(Dn2CppObject*);
-    // The type's overridden GetHashCode / Equals(object), or null for the default
-    // (identity hash / reference equality). Lets dn2cpp_object_gethashcode /
-    // dn2cpp_object_equals dispatch the override so a record/class with value
-    // equality works as a HashSet/Dictionary key. Same trailing-member
-    // convention as `tostring`: older initializers omit them → null.
-    int32_t (*gethashcode)(Dn2CppObject*);
-    int32_t (*equals)(Dn2CppObject*, Dn2CppObject*);
-    // Boolean Type properties that can't be derived from the other fields, packed
-    // into bits so the dn2cpp_type_is_* helpers answer them for any type (typeof or
-    // GetType()), not just static folds. Same trailing-member convention as
-    // tostring/gethashcode/equals: initializers that omit it value-initialize to 0.
-    int32_t flags;
-    // Reflection field metadata: the type's declared fields, emitted by
-    // CppEmitter and read by Type.GetFields/GetField. Same trailing-member 0-fill
-    // convention — hand-written/enum type-infos that omit it report no fields.
-    const Dn2CppFieldInfo* fields;
+    Dn2CppMetadataTable<Dn2CppFieldInfo> fields;
     int32_t fieldCount;
-    // Reflection method metadata: the type's declared methods, emitted by
-    // CppEmitter and read by Type.GetMethods/GetMethod. Same trailing-member 0-fill
-    // convention — type-infos that omit it report no methods.
-    const Dn2CppMethodInfo* methods;
+    Dn2CppMetadataTable<Dn2CppMethodInfo> methods;
     int32_t methodCount;
-    // Reflection constructor metadata: the type's declared instance constructors
-    // emitted by CppEmitter and read by Type.GetConstructors/GetConstructor.
-    // Same trailing-member 0-fill convention. Constructors are never inherited, so this
-    // table is not base-chain-walked.
-    const Dn2CppMethodInfo* ctors;
+    Dn2CppMetadataTable<Dn2CppMethodInfo> ctors;
     int32_t ctorCount;
-    // Reflection property metadata: the type's declared properties, emitted by
-    // CppEmitter and read by Type.GetProperties/GetProperty. Same trailing-member
-    // 0-fill convention; base-chain-walked like fields/methods.
-    const Dn2CppPropInfo* props;
+    Dn2CppMetadataTable<Dn2CppPropInfo> props;
     int32_t propCount;
-    // Reflection custom-attribute metadata: the attributes applied to this type,
-    // emitted by CppEmitter and read by Type.GetCustomAttributes/IsDefined. Named
-    // customAttrs (not attrs) to avoid colliding with the accessibility `attrs` bitfield
-    // on the member-info structs. Same trailing-member 0-fill convention.
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
-    // Generic reflection metadata. Same trailing-member 0-fill convention.
-    // For a closed generic instantiation (e.g. List<int>): genericDef points at the
-    // synthetic open-definition type-info (List`1), and genericArgs/genericArgCount
-    // list the closed type arguments. For the open definition itself: genericDef
-    // points at itself and it carries DN2CPP_TF_GENERICDEF (genericArgCount 0 — the
-    // type parameters are not modeled as Types; genericParamNames below is display text
-    // only). Non-generic types leave all three 0.
-    const Dn2CppTypeInfo* genericDef;
-    const Dn2CppTypeInfo* const* genericArgs;
-    int32_t genericArgCount;
-    // Enum reflection metadata. Same trailing-member 0-fill convention — only
-    // the per-enum type-infos set these. enumUnderlying is the underlying primitive's
-    // type-info (Type.GetEnumUnderlyingType); enumMembers is the (name, value) table
-    // pre-sorted by unsigned underlying magnitude (matching Enum.GetNames ordering),
-    // backing the non-generic Enum.GetNames/GetName/IsDefined/Parse(Type, …) bridge.
-    const Dn2CppTypeInfo* enumUnderlying;
-    const Dn2CppEnumMember* enumMembers;
+    Dn2CppMetadataTable<Dn2CppEnumMember> enumMembers;
     int32_t enumMemberCount;
-    // Nested-type metadata. Same trailing-member 0-fill convention. The type's
-    // *public* nested types that are emitted and non-generic (Type.GetNestedTypes() /
-    // GetNestedType(name) — the default BindingFlags.Public set).
     const Dn2CppTypeInfo* const* nestedTypes;
     int32_t nestedCount;
-    // Per-element array metadata. Same trailing 0-fill convention. Only the
-    // per-element array type-infos CppEmitter emits (ti_arr_<T>, DN2CPP_TF_ARRAY) set
-    // these: elementType is the SZArray element's type-info (backs Type.GetElementType),
-    // arrayRank the rank (Type.GetArrayRank — 1 for an SZArray). The shared
-    // dn2cpp_array_{ref,i4}_type handles and every non-array type-info leave them 0
-    // (elementType null, arrayRank 0 — GetArrayRank then reports 1 for the shared array
-    // handles, GetElementType null).
-    const Dn2CppTypeInfo* elementType;
-    int32_t arrayRank;
-    // The simple name of the type's defining assembly (Type.Assembly identity),
-    // emitted by CppEmitter from the type's module. Same trailing-member 0-fill
-    // convention: hand-written type-infos omit it (null) — they are all CoreLib, so
-    // dn2cpp_type_assembly_name treats null as "System.Private.CoreLib".
     const char* assemblyName;
-    // The Finalize() override (a 0-arg, void-returning instance method with a
-    // body) an instance of this type dispatches, or null when the type does not
-    // override Object.Finalize. Wired at newobj time: dn2cpp_register_finalizer
-    // is called on allocation only when this is non-null, so a program with no
-    // finalizers never starts the finalizer thread. Same trailing-member 0-fill
-    // convention as the fields above.
-    void (*finalize)(Dn2CppObject*);
-    // Runtime generic context (shared canonical generics): the per-instantiation
-    // lookup table a shared generic body reads its instantiation-dependent
-    // entries (type-infos, static-field addresses, cctor-ensure functions, …)
-    // from. Emitted only for generic instantiations grouped under a canonical
-    // owner; every other type-info leaves it null via the same trailing-member
-    // 0-fill convention as the fields above.
-    const void* const* rgctx;
-    // The interned System.Type object for this type — typeof(X)/GetType() are a
-    // lock-free load of this field. Statically-emitted type-infos bake a
-    // data-segment companion in (const, .rodata); runtime-constructed ones
-    // (hot-update patch/array types) stamp it at creation. Null falls back to
-    // the mutex-interned slow path (same trailing-member 0-fill convention).
-    const Dn2CppType* typeObject;
-    // Formats a boxed instance of this type against an explicit format spec
-    // (string.Format("{0:F2}", x), $"{dt:HH:mm}"), or null when the type has no
-    // spec-aware formatter and a specified hole falls back to ToString(). Wired
-    // where the type-info is defined, so the interpolation core never names a value
-    // type's formatter and never pins its translation unit into a program that has
-    // no dates in it. Same trailing-member 0-fill convention as the fields above.
-    Dn2CppString* (*formatspec)(Dn2CppObject*, Dn2CppString*, const Dn2CppNumberFormatInfo*);
-    // Raw ECMA TypeAttributes word (Type.Attributes and the IsPublic/IsVisible/
-    // NotPublic family) + the type's metadata token (MemberInfo.MetadataToken).
-    // CppEmitter stamps both on emitted user types/enums; hand-written and
-    // synthetic (array/generic-def) type-infos leave them 0 via the trailing
-    // 0-fill convention, and dn2cpp_type_il_attrs synthesizes a best-effort
-    // word from the flags bits for those.
     uint32_t ilAttrs;
     int32_t metadataToken;
-    // The member name the type's [DefaultMember] attribute declares ("Item" for a
-    // type with an indexer), backing Type.GetDefaultMembers. Stamped by CppEmitter
-    // from the metadata blob: DefaultMemberAttribute is a framework attribute and
-    // therefore outside the reflected attribute tables (the IL2CPP-managed-
-    // stripping bound), so the name rides the type-info instead. Null (0-fill
-    // trailing convention) when the type carries no [DefaultMember].
     const char* defaultMemberName;
-    // Generic variance, per type parameter, 2 bits each (parameter i at bits 2i):
-    // DN2CPP_VAR_NONE / _OUT / _IN. Set on an open-definition type-info whose IL
-    // declares an `in`/`out` parameter, and read by dn2cpp_itf_variant_match, which
-    // decides each argument in the direction its parameter declares. 0 elsewhere,
-    // which is exactly the "exact match only" the fast paths assume; the mask == 0
-    // arm of the match still honours DN2CPP_TF_COVARIANT for older type-infos.
-    int32_t varianceMask;
-    // The type's MARSHALLED size — what Marshal.SizeOf answers — or 0 when the
-    // marshalled-layout model has none. A different quantity from instanceSize, the
-    // REPRESENTATION size: a one-bool struct marshals as 4 and represents as 1, a
-    // one-char struct marshals as 1 and represents as 2, a [StructLayout(Sequential)]
-    // CLASS marshals as its unmanaged extent while instanceSize counts the header.
-    // Read ONLY by the size query in dn2cpp_marshal.cpp.
-    //
-    // 0 == "no answer" unambiguously: an empty struct marshals as 1 byte, so no type
-    // has a marshalled size of 0 — which is what lets it ride the 0-fill convention.
-    //
-    // DO NOT read this to size a COPY: the bytes at a boxed value are instanceSize
-    // bytes in the REPRESENTATION's layout, and this number describes a layout the
-    // runtime cannot produce for a non-blittable type. The copy paths go through
-    // dn2cpp_marshal_require_copyable, which never reads it.
-    //
-    // No type carries both this and the eventSource pair: the CLR loader refuses a
-    // sequential/explicit-layout class over an auto-layout base, and EventSource is
-    // auto-layout, so every provider is auto-layout and refused by the marshalled-
-    // layout model's top-level auto gate.
+    // Marshalled extent, never a copy size. Zero means the layout has no answer.
     int32_t marshalSize;
-    // System.Diagnostics.Tracing.EventSource provider identity, stamped on every
-    // emitted class whose base chain reaches EventSource, null elsewhere.
-    //
-    // It rides the type-info for the same reason defaultMemberName does:
-    // EventSourceAttribute is a FRAMEWORK attribute and so outside the reflected
-    // attribute tables. Reading it off the receiver's DYNAMIC type is what makes a
-    // two-level hierarchy (B : A : EventSource) answer with B's name; the base-ctor
-    // call site that would be the alternative sees only A.
-    //
-    // eventSourceGuid is the canonical 36-character form of an explicit
-    // [EventSource(Guid=…)], or null — then the guid is derived from the name by
-    // dn2cpp_eventsource_guid. Neither field is base-chain-walked: .NET reads the
-    // attribute with inherit:false.
     const char* eventSourceName;
     const char* eventSourceGuid;
-    // A generic DEFINITION handle's declared type-parameter names, comma-joined
-    // ("T", "TKey,TValue") — the bracket group Type.ToString() appends and FullName
-    // does not. A display list, not a model of the parameters: dn2cpp materializes
-    // no Type for a type parameter, so GetGenericArguments() on a definition stays
-    // empty. Null on every other type-info, and on a definition minted from a name
-    // alone (a cross-assembly typeof(Def<>) with no ClassInfo to read), which then
-    // prints the bare FullName.
     const char* genericParamNames;
 };
+
+inline constexpr Dn2CppTypeReflection dn2cpp_empty_type_reflection{};
+
+// Dispatch and allocation paths read this fixed metadata without decoding.
+struct Dn2CppTypeInfo
+{
+    const char* name;
+    const Dn2CppTypeInfo* base;
+    const void** vtable;
+    const Dn2CppInterfaceEntry* interfaces;
+    Dn2CppString* (*tostring)(Dn2CppObject*);
+    int32_t (*gethashcode)(Dn2CppObject*);
+    int32_t (*equals)(Dn2CppObject*, Dn2CppObject*);
+    // Closed instantiations name their definition; open definitions point at self.
+    const Dn2CppTypeInfo* genericDef;
+    const Dn2CppTypeInfo* const* genericArgs;
+    // Enum unboxing and array assignability need these without reflection decoding.
+    const Dn2CppTypeInfo* enumUnderlying;
+    const Dn2CppTypeInfo* elementType;
+    void (*finalize)(Dn2CppObject*);
+    const void* const* rgctx;
+    // Interned companion: typeof/GetType load it without a lock or allocation.
+    const Dn2CppType* typeObject;
+    Dn2CppString* (*formatspec)(Dn2CppObject*, Dn2CppString*, const Dn2CppNumberFormatInfo*);
+    // Unboxed payload extent for values; whole-object extent for references.
+    // Allocation readers floor zero-sized opaque reference shells at their header.
+    int32_t instanceSize;
+    int32_t interfaceCount;
+    int32_t flags;
+    int32_t genericArgCount;
+    int32_t arrayRank;
+    // Two bits per generic parameter; used directly by interface variance checks.
+    int32_t varianceMask;
+    Dn2CppMetadataHandle<Dn2CppTypeReflection> reflectionData;
+
+    Dn2CppTypeReflection reflection() const
+    {
+        return reflectionData != nullptr ? *reflectionData : dn2cpp_empty_type_reflection;
+    }
+};
+static_assert(sizeof(void*) != 8 || sizeof(Dn2CppTypeInfo) <= 152,
+    "The direct type metadata must fit in 152 bytes on 64-bit targets.");
 
 // Dn2CppTypeInfo::varianceMask, 2 bits per type parameter.
 #define DN2CPP_VAR_NONE 0
@@ -440,15 +320,6 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
     Dn2CppTypeInfo ti, Dn2CppString* (*fs)(Dn2CppObject*, Dn2CppString*, const Dn2CppNumberFormatInfo*))
 {
     ti.formatspec = fs;
-    return ti;
-}
-
-// The same, for a generic definition's parameter-name list. Wrapped rather than
-// spelled positionally because the member is the struct's last and a gendef row
-// stops at typeObject or varianceMask.
-constexpr Dn2CppTypeInfo dn2cpp_ti_with_generic_params(Dn2CppTypeInfo ti, const char* names)
-{
-    ti.genericParamNames = names;
     return ti;
 }
 
@@ -918,7 +789,7 @@ struct Dn2CppFieldInfo
     Dn2CppObject* (*getter)(Dn2CppObject* obj);
     void (*setter)(Dn2CppObject* obj, Dn2CppObject* value);
     // Custom attributes applied to this field; 0-fill trailing convention.
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // Raw ECMA FieldAttributes word (FieldInfo.Attributes/IsSpecialName) + the
     // field's metadata token. 0-fill trailing convention (0 when unrecorded).
@@ -966,7 +837,7 @@ struct Dn2CppFieldInfo
 // query.
 struct Dn2CppFieldRef : Dn2CppObject
 {
-    const Dn2CppFieldInfo* field;
+    Dn2CppMetadataHandle<Dn2CppFieldInfo> field;
     const Dn2CppTypeInfo* reflectedType;
 };
 
@@ -978,7 +849,7 @@ struct Dn2CppParamInfo
     const Dn2CppTypeInfo* paramType;
     const char* name;
     // Custom attributes applied to this parameter; 0-fill trailing convention.
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // Raw ECMA ParameterAttributes word (ParameterInfo.Attributes/IsOptional).
     // 0-fill trailing convention (0 == ParameterAttributes.None when unrecorded,
@@ -1010,7 +881,7 @@ struct Dn2CppMethodInfo
     const char* name;
     const Dn2CppTypeInfo* declaringType;
     const Dn2CppTypeInfo* returnType;
-    const Dn2CppParamInfo* parameters;
+    Dn2CppMetadataTable<Dn2CppParamInfo> parameters;
     int32_t paramCount;
     int32_t attrs;                       // DN2CPP_MTHA_* (== DN2CPP_FLDA_*) bits
     int32_t vtableSlot;                  // virtual slot, or -1
@@ -1022,7 +893,7 @@ struct Dn2CppMethodInfo
     //                     const Dn2CppTypeInfo* retType)
     void* invoker;
     // Custom attributes applied to this method/constructor; 0-fill trailing.
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // The method's v1 sigShape ("(paramTypes):retType" in TypeDesc rendering) —
     // the overload discriminator the hot-update loader matches an import against
@@ -1064,6 +935,16 @@ struct Dn2CppMethodInfo
     const char* genericDefinitionReturnDisplay;
 };
 
+// A synthesized constructor differs only in its allocation's declaring type.
+struct Dn2CppMethodDelta
+{
+    // Address one is inaccessible and cannot be a native row's name string.
+    uintptr_t storageKind = 1;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> original;
+    const Dn2CppTypeInfo* declaringType;
+};
+static_assert(sizeof(Dn2CppMethodDelta) == 3 * sizeof(void*));
+
 // Dn2CppMethodInfo::attrs bits; identical layout to DN2CPP_FLDA_* so the
 // binding-flag matcher is shared between fields and methods.
 #define DN2CPP_MTHA_STATIC      0x1
@@ -1086,7 +967,7 @@ struct Dn2CppMethodInfo
 // System.Reflection.MethodInfo (header type dn2cpp_methodinfo_type).
 struct Dn2CppMethodRef : Dn2CppObject
 {
-    const Dn2CppMethodInfo* method;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
     // MemberInfo.ReflectedType; see the Dn2CppFieldRef note for the model and
     // the mint-time normalization (never null on a minted handle).
     const Dn2CppTypeInfo* reflectedType;
@@ -1107,9 +988,9 @@ struct Dn2CppMethodRef : Dn2CppObject
 // created without one.
 struct Dn2CppParamRef : Dn2CppObject
 {
-    const Dn2CppParamInfo* param;
+    Dn2CppMetadataHandle<Dn2CppParamInfo> param;
     int32_t position;
-    const Dn2CppMethodInfo* owner;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> owner;
     // The reflectedType of the member handle GetParameters was called on.
     // ParameterInfo carries no ReflectedType of its own, but .NET's
     // ParameterInfo.Member IS the originating member instance with its
@@ -1128,11 +1009,11 @@ struct Dn2CppPropInfo
     const char* name;
     const Dn2CppTypeInfo* declaringType;
     const Dn2CppTypeInfo* propType;
-    const Dn2CppMethodInfo* getter;
-    const Dn2CppMethodInfo* setter;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> getter;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> setter;
     int32_t attrs;
     // Custom attributes applied to this property; 0-fill trailing convention.
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // The property's metadata token (MemberInfo.MetadataToken); 0-fill trailing.
     int32_t metadataToken;
@@ -1144,7 +1025,7 @@ struct Dn2CppPropInfo
 // System.Reflection.PropertyInfo (header type dn2cpp_propertyinfo_type).
 struct Dn2CppPropRef : Dn2CppObject
 {
-    const Dn2CppPropInfo* prop;
+    Dn2CppMetadataHandle<Dn2CppPropInfo> prop;
     // MemberInfo.ReflectedType; see the Dn2CppFieldRef note for the model and
     // the mint-time normalization (never null on a minted handle).
     const Dn2CppTypeInfo* reflectedType;
@@ -1202,7 +1083,7 @@ struct Dn2CppDelegate : Dn2CppObject
 #define DN2CPP_DGBIND_CLOSED_STATIC   3
 struct Dn2CppReflBind : Dn2CppObject
 {
-    const Dn2CppMethodInfo* method;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
     Dn2CppObject* target;
     int32_t mode;
 };
@@ -1841,7 +1722,7 @@ struct Dn2CppManifestResource
 struct Dn2CppAssemblyRegEntry
 {
     const char* name;                 // assembly simple name (the Assembly handle)
-    const Dn2CppAttrInfo* customAttrs;
+    Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
     // Assembly identity pieces read out of the module's metadata (the same
     // trailing-member 0-fill convention as Dn2CppTypeInfo): version is
@@ -1978,7 +1859,7 @@ Dn2CppString* dn2cpp_module_name(const char* name);
 // PlatformNotSupportedException at the call site.
 struct Dn2CppAttrDataRef : Dn2CppObject
 {
-    const Dn2CppAttrInfo* attr;
+    Dn2CppMetadataHandle<Dn2CppAttrInfo> attr;
 };
 extern const Dn2CppTypeInfo dn2cpp_customattributedata_type;
 // MemberInfo/ParameterInfo/Type.CustomAttributes / GetCustomAttributesData():

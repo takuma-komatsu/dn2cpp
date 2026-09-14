@@ -13,6 +13,12 @@ namespace ReflectInvoke
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
+            if (Environment.GetEnvironmentVariable("DN2CPP_REFLECTION_MEASURE") == "1")
+            {
+                ReflectMetadataMeasureSubset.Program.Run();
+                return;
+            }
+
             ReflectInvokeSubset.Program.Run();
             ReflectDispatchSubset.Program.Run();
             ReflectFieldValueSubset.Program.Run();
@@ -34,6 +40,7 @@ namespace ReflectInvoke
             GetInterfaceSubset.Program.Run();
             ReflectedTypeSubset.Program.Run();
             ReflectToStringSubset.Program.Run();
+            ReflectMetadataPreservationSubset.Program.Run();
         }
     }
 }

@@ -895,6 +895,7 @@ else()
         "${DN2CPP_ROOT}/runtime/core/dn2cpp_tasks.cpp"
         "${DN2CPP_ROOT}/runtime/core/dn2cpp_threading.cpp"
         "${DN2CPP_ROOT}/runtime/core/dn2cpp_typeinfo.cpp"
+        "${DN2CPP_ROOT}/runtime/core/dn2cpp_metadata.cpp"
         "${DN2CPP_ROOT}/runtime/core/dn2cpp_casts.cpp"
         "${DN2CPP_ROOT}/runtime/core/dn2cpp_marshal.cpp"
         # Hot-update BPI loader + IL interpreter. Static-archive semantics keep

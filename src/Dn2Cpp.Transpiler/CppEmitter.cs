@@ -186,6 +186,9 @@ internal sealed partial class CppEmitter
     // and flushed after the literal table, since the bodies reference those literals.
     private readonly System.Text.StringBuilder _enumToStringFns = new();
     private int _attrSeq;
+    private readonly Dictionary<string, string> _attributeFactories = new(System.StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _attributeTables = new(System.StringComparer.Ordinal);
+    private StringBuilder _metadataHeader = null!;
 
     /// <summary>The classes whose layout/metadata is actually emitted. With a
     /// real CoreLib pulled in via -r, <see cref="Compilation.Classes"/> holds
@@ -571,6 +574,7 @@ internal sealed partial class CppEmitter
         // The per-signature dispatch-trap thunks are defined inline in the header
         // (SlotTrapThunk), minted lazily wherever a table needs one.
         _trapThunkHeader = o.Header;
+        _metadataHeader = o.Header;
         // Inline-promoted bodies close the header, so they alone are buffered. They are
         // bounded by construction: only bodies of at most 128 IL bytes are promoted.
         var inlineBodies = new StringBuilder();
@@ -838,6 +842,7 @@ internal sealed partial class CppEmitter
         // After EmitStructs: a P/Invoke entry point may pass/return a blittable value
         // struct by value, so its extern "C" declaration references the managed struct's
         // complete C++ layout (t_<Name>), which EmitStructs defines.
+        _metadataStringHeaderOffset = o.Header.Length;
         EmitStructs(o.Header);
         Timing.Mark("emit-structs");
         // After EmitStructs (which defines every managed t_<Name> layout) and before the
@@ -925,6 +930,7 @@ internal sealed partial class CppEmitter
                 genericInstantiations, _c.DefaultRefRecord);
         }
         EmitAssemblyRegistry(o.Data);
+        FinishMetadataEncoding(o.Data);
         EmitStringLiterals(o);
         // Enum Object.ToString bodies, after the literal table they reference.
         if (_enumToStringFns.Length > 0)
@@ -3329,7 +3335,10 @@ internal sealed partial class CppEmitter
         foreach (var (key, md) in _c.MdArrayTypes.OrderBy(kv => kv.Key, System.StringComparer.Ordinal))
         {
             string clr = ArrayClrName(md);
-            sb.AppendLine($"const Dn2CppTypeInfo ti_md_{key} = {{ \"{clr}\", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, {ElemTi(md.Element!)}, {md.Rank}, nullptr, nullptr, nullptr, &ty_md_{key} }};");
+            EmitTypeInfo(sb, $"ti_md_{key}", new TypeMetadata {
+                Name = clr, Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED",
+                ElementType = ElemTi(md.Element!), ArrayRank = md.Rank, TypeObject = "&ty_md_" + key,
+            });
             sb.AppendLine($"const Dn2CppType ty_md_{key} = {{ {{ &dn2cpp_type_type }}, &ti_md_{key} }};");
             _arrayTypeSyms[clr] = "&ti_md_" + key;
         }
@@ -3370,7 +3379,10 @@ internal sealed partial class CppEmitter
             // name, base, instanceSize, vtable, interfaces, interfaceCount, tostring,
             // gethashcode, equals, flags(ARRAY), then the 18 metadata table slots (0),
             // then the trailing elementType / arrayRank.
-            sb.AppendLine($"const Dn2CppTypeInfo {sym} = {{ \"{clrName}\", nullptr, 0, nullptr, {itfsExpr}, {itfCount}, nullptr, nullptr, nullptr, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, {ElemTi(element)}, 1, nullptr, nullptr, nullptr, &ty_arr_{key} }};");
+            EmitTypeInfo(sb, sym, new TypeMetadata {
+                Name = clrName, Interfaces = itfsExpr, InterfaceCount = int.Parse(itfCount),
+                Flags = "DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED", ElementType = ElemTi(element), ArrayRank = 1, TypeObject = "&ty_arr_" + key,
+            });
             sb.AppendLine($"const Dn2CppType ty_arr_{key} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             _arrayTypeSyms[clrName] = "&" + sym;
         }
@@ -4041,14 +4053,19 @@ internal sealed partial class CppEmitter
     /// renderable are included; others are silently dropped (the IL2CPP-stripping bound).</summary>
     private (string Expr, int Count) BuildAttrTable(StringBuilder sb, string key, Module module, CustomAttributeHandleCollection handles)
     {
-        var rows = new List<string>();
+        var rows = new List<MetadataRow>();
         foreach (var da in _c.DecodeCustomAttributes(module, handles))
             if (RenderAttrCreate(sb, da) is { } createName)
-                rows.Add($"{{ {TypeInfoRef(da.AttrClass, "custom-attribute table row")}, &{createName}, \"{CLiteral(RenderAttrDisplay(da))}\" }}");
+                rows.Add(new MetadataRow(new[] { MetadataValue.Ref(TypeInfoRef(da.AttrClass, "custom-attribute table row")),
+                    MetadataValue.Ref("&" + createName), MetadataValue.Display(RenderAttrDisplay(da)) }));
         if (rows.Count == 0)
             return ("nullptr", 0);
+        string init = MetadataRowsKey(rows);
+        if (_attributeTables.TryGetValue(init, out var pooled))
+            return (pooled, rows.Count);
         string tab = $"attrtab_{key}";
-        sb.AppendLine($"static const Dn2CppAttrInfo {tab}[] = {{ {string.Join(", ", rows)} }};");
+        EmitMetadataTable(sb, "Dn2CppAttrInfo", tab, rows, true);
+        _attributeTables[init] = tab;
         return (tab, rows.Count);
     }
 
@@ -4154,9 +4171,7 @@ internal sealed partial class CppEmitter
                 return null;
             setLines.Add(line);
         }
-        string fn = $"attrcreate_{_attrSeq++}";
-        var body = sb;
-        body.AppendLine($"static Dn2CppObject* {fn}()");
+        var body = new StringBuilder();
         body.AppendLine("{");
         body.AppendLine($"    {cls.CppStructName}* o = ({cls.CppStructName}*)dn2cpp_alloc(sizeof({cls.CppStructName}));");
         body.AppendLine($"    ((Dn2CppObject*)o)->type = {TypeInfoRef(cls, "custom-attribute create function")};");
@@ -4168,6 +4183,13 @@ internal sealed partial class CppEmitter
             body.AppendLine($"    {line}");
         body.AppendLine("    return (Dn2CppObject*)o;");
         body.AppendLine("}");
+        string text = body.ToString();
+        if (_attributeFactories.TryGetValue(text, out var pooled))
+            return pooled;
+        string fn = $"attrcreate_{_attrSeq++}";
+        sb.AppendLine($"Dn2CppObject* {fn}()").Append(text);
+        _metadataHeader.AppendLine($"Dn2CppObject* {fn}();");
+        _attributeFactories[text] = fn;
         return fn;
     }
 
@@ -5314,7 +5336,7 @@ internal sealed partial class CppEmitter
         sb.AppendLine($"static {retSig} {name}({string.Join(", ", sigParams)})");
         sb.AppendLine("{");
         sb.AppendLine("    auto* ctx = reinterpret_cast<Dn2CppReflBind*>(ctx0);");
-        sb.AppendLine("    [[maybe_unused]] const Dn2CppParamInfo* mp = ctx->method->parameters;");
+        sb.AppendLine("    [[maybe_unused]] auto mp = ctx->method->parameters;");
         sb.AppendLine($"    Dn2CppObject* argv[{System.Math.Max(ps.Length + 1, 1)}];");
         sb.AppendLine("    int32_t k = 0;");
         sb.AppendLine("    Dn2CppObject* self = ctx->target;");
@@ -5325,7 +5347,7 @@ internal sealed partial class CppEmitter
             var (ptr, _) = Classify(ps[i]);
             string box = ptr
                 ? $"argv[k] = (Dn2CppObject*)a{i}; k++;"
-                : $"argv[k] = dn2cpp_box(mp[k].paramType, &a{i}, sizeof(a{i})); k++;";
+                : $"argv[k] = dn2cpp_box(mp[k]->paramType, &a{i}, sizeof(a{i})); k++;";
             if (i == 0)
             {
                 // Open-instance: the first delegate argument is the receiver. The

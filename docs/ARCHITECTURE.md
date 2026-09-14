@@ -493,6 +493,49 @@ Gate placement follows the verdict: a degraded API can never sit in a
 `corelib_freeze_gate`; a metadata-answered member matches real .NET, so its
 section belongs in a `corelib_diff_gate` (`samples/dotnet/ReflectInvoke`).
 
+#### Reflection metadata representation
+
+`Dn2CppTypeInfo` keeps type identity, layout, inheritance, dispatch, generic
+arguments and array classification directly addressable. Reflection-only fields
+are read through `reflection()`. Member handles and tables use the common
+`Dn2CppMetadataHandle` / `Dn2CppMetadataTable` API in
+`runtime/core/dn2cpp_metadata.h`; consumers must not assume a native row array.
+
+The producer is `CppEmitter.MetadataEncoding.cs` with row construction in
+`CppEmitter.MetadataRecords.cs`. Its field order and integer signedness must
+match the schemas in `runtime/core/dn2cpp_metadata.cpp`. Records carry a block
+index, their padded byte extent and a presence mask as unsigned variable-length
+integers; signed values use zigzag encoding. Pointer indices refer to constant
+symbol pools. Runtime-owned records use the reserved local-block marker and a
+backward offset to an adjacent pool, so one builtin cannot retain unrelated
+builtins through a global pointer array. An omitted derived member flag uses
+the recorded ECMA attributes; an explicitly recorded zero stays zero. Parameter
+modifier knowledge remains separate from the modifier vectors and counts.
+
+Static records are aligned and identified by the low address bit in a
+pointer-sized handle. Dynamic rows retain untagged real pointers and existing
+GC roots. Decoding creates a stack view, without an expanded-row cache; a view's
+address must not escape its expression. Member interning uses the encoded row
+identity together with the reflected type, never the temporary decoded address.
+A synthesized generic constructor stores its original handle and replacement
+declaring type in a delta descriptor.
+
+Names remain directly comparable UTF-8 strings with exact and suffix sharing.
+Signature displays can instead carry a token stream marked by an invalid UTF-8
+leading byte. The display reader computes the final UTF-16 length and writes
+directly into the returned managed string. The emitter accounts for dictionary
+cost when choosing tokenization. Attribute records retain order and factories;
+sharing their metadata does not share the attribute instances returned to callers.
+
+This is an internal generated-code/runtime ABI: regenerate the C++ and rebuild
+the runtime together. Changes must preserve streaming output, deterministic
+pool indices, trim refusals and the direct type-test/dispatch paths. The
+ReflectInvoke gate combines .NET parity with a native codec boundary fixture;
+its optional `DN2CPP_REFLECTION_MEASURE` mode records per-operation first and
+repeated allocations and clock ticks. `gates/measure-reflection-metadata.py`
+compares those captures and measures linked Mach-O sections and fixup payloads;
+retain symbols when attributing bytes to individual metadata pools.
+
 ### C. A Godot engine call — godot lane
 
 Engine-class bindings are generated: `BindingGenerator` emits the C# shim surface

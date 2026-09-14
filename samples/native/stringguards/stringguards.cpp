@@ -13,6 +13,7 @@
 // Generated programs supply these tables. This native probe has no managed
 // image, so it supplies the emitter's empty-table forms.
 const Dn2CppTypeRegEntry dn2cpp_type_registry[] = { {} };
+const Dn2CppMetadataBlock dn2cpp_metadata_blocks[] = { {} };
 const int32_t dn2cpp_type_registry_count = 0;
 const Dn2CppTypeBind dn2cpp_type_binds[] = { {} };
 const int32_t dn2cpp_type_bind_count = 0;
@@ -41,15 +42,21 @@ const void* g_broken_vtable[] = {
     reinterpret_cast<const void*>(&ThrowNative)
 };
 
-const Dn2CppTypeInfo g_not_string_type = {
-    "Probe.NotString", nullptr, static_cast<int32_t>(sizeof(Dn2CppObject)),
-    nullptr, nullptr, 0
-};
+constexpr Dn2CppTypeInfo g_not_string_type = [] {
+    Dn2CppTypeInfo type{};
+    type.name = "Probe.NotString";
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppObject));
+    return type;
+}();
 
-const Dn2CppTypeInfo g_broken_exception_type = {
-    "Probe.BrokenException", &dn2cpp_exception_type,
-    static_cast<int32_t>(sizeof(Dn2CppExceptionObject)), g_broken_vtable, nullptr, 0
-};
+constexpr Dn2CppTypeInfo g_broken_exception_type = [] {
+    Dn2CppTypeInfo type{};
+    type.name = "Probe.BrokenException";
+    type.base = &dn2cpp_exception_type;
+    type.instanceSize = static_cast<int32_t>(sizeof(Dn2CppExceptionObject));
+    type.vtable = g_broken_vtable;
+    return type;
+}();
 
 bool IsOom(Dn2CppException& ex)
 {

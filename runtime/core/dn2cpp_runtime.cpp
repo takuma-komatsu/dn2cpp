@@ -190,16 +190,16 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
         bool wide = t->enumUnderlying == &dn2cpp_int64_type || t->enumUnderlying == &dn2cpp_uint64_type;
         int64_t ev = wide ? *reinterpret_cast<const int64_t*>(payload)
                           : *reinterpret_cast<const int32_t*>(payload);
-        for (int32_t i = 0; i < t->enumMemberCount; i++)
+        for (int32_t i = 0; i < t->reflection().enumMemberCount; i++)
         {
-            int64_t mv = t->enumMembers[i].value;
+            int64_t mv = t->reflection().enumMembers[i]->value;
             // A 32-bit-underlying enum compares at 32-bit truncation (the table
             // may carry a uint32 member zero-extended while the int32 payload
             // read sign-extends); a 64-bit one compares at full width.
             bool hit = wide ? mv == ev : static_cast<int32_t>(mv) == static_cast<int32_t>(ev);
             if (hit)
-                return dn2cpp_string_from_utf8(t->enumMembers[i].name,
-                    static_cast<int32_t>(std::strlen(t->enumMembers[i].name)));
+                return dn2cpp_string_from_utf8(t->reflection().enumMembers[i]->name,
+                    static_cast<int32_t>(std::strlen(t->reflection().enumMembers[i]->name)));
         }
         return wide ? dn2cpp_long_to_string(ev) : dn2cpp_int_to_string(static_cast<int32_t>(ev));
     }
@@ -211,7 +211,7 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
         if (w != nullptr && w->name != nullptr)
             return dn2cpp_type_tostring(w);
     }
-    if (t != nullptr && t->eventSourceName != nullptr)
+    if (t != nullptr && t->reflection().eventSourceName != nullptr)
         return dn2cpp_eventsource_tostring(obj);
     // Default Object.ToString: GetType().ToString().
     if (t == nullptr || t->name == nullptr)

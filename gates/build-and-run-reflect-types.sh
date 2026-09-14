@@ -399,10 +399,25 @@ echo "== every ti_arr_ carries interface rows, whenever its element was noted ==
 # prerequisite, and the failed assignment must take the gate down.
 py="$(resolve_python)"
 arr_itf_missing=$($py - <<'PY'
-import re, glob
-# `const Dn2CppTypeInfo ti_arr_<key> = { "<clrname>", nullptr, 0, nullptr, <itfs>, <n>,`
-row = re.compile(r'^const Dn2CppTypeInfo (ti_arr_\S+) = \{ "[^"]*", nullptr, 0, nullptr, '
-                 r'(\S+), (\d+),')
+import csv, re, glob
+# Resolve initializer positions from the ABI declaration so metadata compaction
+# cannot silently make this scan read a different pointer or count.
+header = open('runtime/core/dn2cpp_core.h', encoding='utf-8').read()
+body = re.search(r'struct Dn2CppTypeInfo\s*\{(.*?)\n\};', header, re.S).group(1)
+fields = []
+for line in body.splitlines():
+    line = line.split('//', 1)[0].strip()
+    if '{' in line:
+        break
+    if not line.endswith(';'):
+        continue
+    field = re.search(r'\(\*(\w+)\)', line) or re.search(r'(\w+)\s*;', line)
+    if field is None:
+        raise RuntimeError('unrecognized type-info field: ' + line)
+    fields.append(field.group(1))
+itfs_index = fields.index('interfaces')
+count_index = fields.index('interfaceCount')
+row = re.compile(r'^const Dn2CppTypeInfo (ti_arr_\S+) = \{ (.*) \};$')
 total = relation = 0
 for f in sorted(glob.glob('artifacts/reflecttypes/generated*.cpp')):
     for line in open(f, encoding='utf-8', errors='replace'):
@@ -410,9 +425,11 @@ for f in sorted(glob.glob('artifacts/reflecttypes/generated*.cpp')):
         if not m:
             continue
         total += 1
-        if m.group(2).startswith('arrgenitf_'):
+        values = next(csv.reader([m.group(2)], skipinitialspace=True))
+        itfs, count = values[itfs_index], values[count_index]
+        if itfs.startswith('arrgenitf_'):
             relation += 1
-        if m.group(2) == 'nullptr' or m.group(3) == '0':
+        if itfs == 'nullptr' or count == '0':
             print(m.group(1))
 if total == 0:
     print('(no ti_arr_ emitted at all — the scan matched nothing and asserts nothing)')

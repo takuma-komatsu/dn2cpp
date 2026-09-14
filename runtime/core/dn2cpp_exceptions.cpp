@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_exceptions.cpp — exception machinery of the dn2cpp runtime:
 // dn2cpp_fail / the vcall trap, throw/rethrow + the in-flight exception list,
 // throw-time stack traces, and AggregateException.
@@ -66,9 +67,9 @@
         const char* sep = " — the method is one of: ";
         for (const Dn2CppTypeInfo* b = t; b != nullptr && n > 0 && n < static_cast<int>(sizeof(buf)); b = b->base)
         {
-            for (int32_t i = 0; i < b->methodCount; i++)
+            for (int32_t i = 0; i < b->reflection().methodCount; i++)
             {
-                const Dn2CppMethodInfo& m = b->methods[i];
+                const Dn2CppMethodInfo m = *b->reflection().methods[i];
                 if (m.vtableSlot < 0 || t->vtable[m.vtableSlot] != trap)
                     continue;
                 n += std::snprintf(buf + n, sizeof(buf) - static_cast<size_t>(n), "%s%s.%s",
@@ -135,7 +136,7 @@ static bool dn2cpp_is_vcall_trap(const void* fn)
 // of the uniform exception layout; built by dn2cpp_aggregate_exception_new.
 extern const Dn2CppType dn2cpp_aggregate_exception_type_obj;
 const Dn2CppTypeInfo dn2cpp_aggregate_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.AggregateException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_aggregate_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.AggregateException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_aggregate_exception_type_obj);
 const Dn2CppType dn2cpp_aggregate_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_aggregate_exception_type };
 
 // The in-flight exception list (see the declaration comment in dn2cpp.h): one
@@ -796,7 +797,7 @@ Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
 struct Dn2CppExcFrameEntry
 {
     uintptr_t fn;
-    const Dn2CppMethodInfo* mi;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi;
     bool collapsed; // several distinct rows share this fnPtr (shared generics / ICF)
 };
 
@@ -812,19 +813,19 @@ static std::vector<Dn2CppExcFrameEntry>& dn2cpp_exc_fn_index()
     std::call_once(state.once, []
     {
         std::vector<Dn2CppExcFrameEntry> rows;
-        auto add = [&rows](const Dn2CppMethodInfo* table, int32_t count)
+        auto add = [&rows](Dn2CppMetadataTable<Dn2CppMethodInfo> table, int32_t count)
         {
             for (int32_t i = 0; i < count; i++)
-                if (table[i].fnPtr != nullptr)
-                    rows.push_back({ reinterpret_cast<uintptr_t>(table[i].fnPtr), &table[i], false });
+                if (table[i]->fnPtr != nullptr)
+                    rows.push_back({ reinterpret_cast<uintptr_t>(table[i]->fnPtr), table[i], false });
         };
         for (int32_t k = 0; k < dn2cpp_type_registry_count; k++)
         {
             const Dn2CppTypeInfo* ti = dn2cpp_type_registry[k].type;
-            add(ti->methods, ti->methodCount);
-            add(ti->ctors, ti->ctorCount);
+            add(ti->reflection().methods, ti->reflection().methodCount);
+            add(ti->reflection().ctors, ti->reflection().ctorCount);
         }
-        auto nameOf = [](const Dn2CppMethodInfo* mi, bool decl)
+        auto nameOf = [](Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, bool decl)
         {
             const char* s = decl
                 ? (mi->declaringType != nullptr ? mi->declaringType->name : nullptr)
@@ -1199,32 +1200,30 @@ static const char* const k_stackframe_unavailable = "<stack frame unavailable in
 // value is a fact about the CLR, so the degraded trace model does not reach them.
 static Dn2CppObject* dn2cpp_ownfld_stackframe_OFFSET_UNKNOWN(Dn2CppObject*)
 { int32_t v = -1; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_stackframe[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_stackframe,
     { "OFFSET_UNKNOWN", &dn2cpp_stackframe_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_ownfld_stackframe_OFFSET_UNKNOWN, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_ownfld_stacktrace_METHODS_TO_SKIP(Dn2CppObject*)
 { int32_t v = 0; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_stacktrace[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_stacktrace,
     { "METHODS_TO_SKIP", &dn2cpp_stacktrace_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_ownfld_stacktrace_METHODS_TO_SKIP, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 
 extern const Dn2CppType dn2cpp_stackframe_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stackframe_type_reflection, dn2cpp_ownflds_stackframe, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_stackframe_type =
-    dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackFrame", nullptr, (int32_t)sizeof(Dn2CppStackFrame), nullptr, nullptr, 0,
-                                dn2cpp_stackframe_tostring, nullptr, nullptr, 0,
-                                dn2cpp_ownflds_stackframe, 1 },
+    dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackFrame", nullptr, nullptr, nullptr, dn2cpp_stackframe_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStackFrame), 0, 0, 0, 0, 0, dn2cpp_stackframe_type_reflection },
                               &dn2cpp_stackframe_type_obj);
 const Dn2CppType dn2cpp_stackframe_type_obj = { { &dn2cpp_type_type }, &dn2cpp_stackframe_type };
 
 extern const Dn2CppType dn2cpp_stacktrace_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_stacktrace_type_reflection, dn2cpp_ownflds_stacktrace, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_stacktrace_type =
-    dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackTrace", nullptr, (int32_t)sizeof(Dn2CppStackTrace), nullptr, nullptr, 0,
-                                dn2cpp_stacktrace_tostring, nullptr, nullptr, 0,
-                                dn2cpp_ownflds_stacktrace, 1 },
+    dn2cpp_ti_with_typeobject({ "System.Diagnostics.StackTrace", nullptr, nullptr, nullptr, dn2cpp_stacktrace_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStackTrace), 0, 0, 0, 0, 0, dn2cpp_stacktrace_type_reflection },
                               &dn2cpp_stacktrace_type_obj);
 const Dn2CppType dn2cpp_stacktrace_type_obj = { { &dn2cpp_type_type }, &dn2cpp_stacktrace_type };
 

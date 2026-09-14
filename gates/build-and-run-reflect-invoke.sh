@@ -61,3 +61,24 @@ source "$(dirname "$0")/_common.sh"
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 corelib_diff_gate ReflectInvoke --no-ildiet
+
+# Enforce each operation's first and repeated allocation budget independently.
+# The capture reports time too, but timing is not a pass/fail threshold.
+py="$(resolve_python)"
+DN2CPP_REFLECTION_MEASURE=1 "$_CG_OUT/ReflectInvoke$EXE_EXT" > "$_CG_OUT/allocations.csv"
+if ! "$py" gates/measure-reflection-metadata.py --check-allocation-limits \
+        gates/expected/reflection-allocations.csv "$_CG_OUT/allocations.csv" \
+        > "$_CG_OUT/allocation-check.json"; then
+    cat "$_CG_OUT/allocation-check.json" >&2
+    exit 1
+fi
+echo "reflection allocation budgets OK"
+
+# Exercise representation boundaries that C# metadata cannot express, using
+# the production decoder and the same CMake/Ninja path as the parity binary.
+codec_out=artifacts/reflection-metadata-codec
+mkdir -p "$codec_out"
+cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
+printf '#pragma once\n' > "$codec_out/generated.h"
+compile_console "$codec_out" MetadataCodec
+assert_output "$("$codec_out/MetadataCodec$EXE_EXT")" "metadata codec boundaries OK"
