@@ -5,80 +5,61 @@
 // build-and-run-http-get.sh's local http.server / TLS python servers are oracle
 // infrastructure rather than subject code.
 //
-// Listener registration order is the WHOLE CONTRACT with the gate: it reads the bound
-// ports back off IServerAddressesFeature.Addresses after StartAsync. The concrete
-// ServerAddressesFeature backs Addresses with a List<string>, and Kestrel's
-// AddressBinder appends to it in the order the listeners were registered below — so
-// index 0 is always the h2c (cleartext HTTP/2) listener, index 1 the plain HTTP/1.1
-// one, and (only when a certificate was supplied) index 2 the TLS+ALPN one. Changing
-// the registration order here without changing the gate silently swaps which port is
-// which.
+// Listener registration order is the WHOLE CONTRACT with the gate: the default mode
+// reports h2c followed by plain HTTP/1.1. TLS-only mode reports its sole TLS+ALPN
+// listener. Changing the registration order here without changing the gate silently
+// swaps which port is which.
 using System.Net;
-using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
 
-string certPath = null;
-string keyPath = null;
-string caPath = null;
+string pfxPath = null;
+string pfxPassword = null;
+bool tlsOnly = false;
 for (int i = 0; i < args.Length - 1; i++)
 {
-    if (args[i] == "--cert") certPath = args[i + 1];
-    else if (args[i] == "--key") keyPath = args[i + 1];
-    else if (args[i] == "--ca") caPath = args[i + 1];
+    if (args[i] == "--pfx") pfxPath = args[i + 1];
+    else if (args[i] == "--pfx-password") pfxPassword = args[i + 1];
 }
+tlsOnly = args.Contains("--tls-only");
 
-var builder = WebApplication.CreateBuilder(args);
+if (tlsOnly && pfxPath is null)
+    throw new ArgumentException("--tls-only requires --pfx");
+
+// These arguments are the server's listener contract, not ASP.NET configuration
+// switches. In particular, --tls-only intentionally has no value.
+var builder = WebApplication.CreateBuilder(Array.Empty<string>());
 // Suppress all stdout except the one READY line this process is contracted to print:
 // the default console logging provider would otherwise print the startup banner
 // ("Now listening on: ...") and per-request info lines.
 builder.Logging.ClearProviders();
+if (tlsOnly)
+{
+    builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+}
 
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.AddServerHeader = false;
 
-    // (1) h2c prior knowledge — cleartext, HTTP/2 only.
-    options.Listen(IPAddress.Loopback, 0, lo => lo.Protocols = HttpProtocols.Http2);
-    // (2) plain HTTP/1.1.
-    options.Listen(IPAddress.Loopback, 0, lo => lo.Protocols = HttpProtocols.Http1);
-    // (3) TLS + ALPN — only when a certificate was supplied on argv.
-    if (certPath is not null && keyPath is not null)
+    if (tlsOnly)
     {
         options.Listen(IPAddress.Loopback, 0, lo =>
         {
             lo.Protocols = HttpProtocols.Http1AndHttp2;
-            Console.Error.WriteLine("TLS: loading PEM certificate");
-            // Round-trip through PKCS#12 to avoid ephemeral-key TLS failures on
-            // macOS and Windows.
-            using X509Certificate2 pem = X509Certificate2.CreateFromPemFile(certPath, keyPath);
-            Console.Error.WriteLine("TLS: importing PKCS#12 certificate");
-            X509Certificate2 cert = X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null);
-            Console.Error.WriteLine("TLS: building offline certificate context");
-            using X509Certificate2 ca = X509Certificate2.CreateFromPem(File.ReadAllText(caPath
-                ?? throw new ArgumentException("TLS requires --ca")));
-            var certificateContext = SslStreamCertificateContext.Create(cert,
-                new X509Certificate2Collection(ca), offline: true);
-            // Supply the whole chain and prevent online issuer discovery during
-            // startup instead of letting Kestrel build a default certificate context.
-            lo.UseHttps(new TlsHandshakeCallbackOptions
-            {
-                OnConnection = _ => new ValueTask<SslServerAuthenticationOptions>(new SslServerAuthenticationOptions
-                {
-                    ServerCertificateContext = certificateContext,
-                    ApplicationProtocols = new List<SslApplicationProtocol>
-                    {
-                        SslApplicationProtocol.Http2,
-                        SslApplicationProtocol.Http11
-                    }
-                })
-            });
-            Console.Error.WriteLine("TLS: HTTPS listener configured");
+            X509Certificate2 cert = X509CertificateLoader.LoadPkcs12FromFile(pfxPath!, pfxPassword);
+            lo.UseHttps(cert);
         });
+    }
+    else
+    {
+        // (1) h2c prior knowledge — cleartext, HTTP/2 only.
+        options.Listen(IPAddress.Loopback, 0, lo => lo.Protocols = HttpProtocols.Http2);
+        // (2) plain HTTP/1.1.
+        options.Listen(IPAddress.Loopback, 0, lo => lo.Protocols = HttpProtocols.Http1);
     }
 });
 

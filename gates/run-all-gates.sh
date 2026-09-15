@@ -15,9 +15,11 @@
 #   Phase 3  Build every remaining (dependency-free) C# sample in parallel,
 #            except projects whose acquisition/build is owned by their gate.
 #   Phase 4  Export DN2CPP_SKIP_BUILD (every suite-owned project is now built)
-#            and run the
-#            non-Godot gates in parallel (xargs -P). With the build skipped, a
-#            gate is just transpile + CMake build + run, so nothing rebuilds a
+#            and run the non-Godot gates in parallel (xargs -P). http2-unary
+#            runs alone after those workers finish: its loopback TLS oracle must
+#            not compete with the suite's native-build load. With the build
+#            skipped,
+#            a gate is just transpile + CMake build + run, so nothing rebuilds a
 #            shared project concurrently. Each gate logs to $LOGDIR/<name>.log;
 #            failures are recorded in $LOGDIR/_failures.txt. Gates whose
 #            inputs are unchanged since their last pass report "cached green"
@@ -654,16 +656,26 @@ for g in "${PACKAGE_NATIVE_GATES[@]}"; do
 done
 
 NON_GODOT_GATES=("${PACKAGE_NATIVE_GATES[@]}")
+ISOLATED_NON_GODOT_GATES=()
 while IFS= read -r g; do
     in_list "$g" "${GODOT_GATES[@]}" && continue
     in_list "$g" "${PACKAGE_NATIVE_GATES[@]}" && continue
+    # Kestrel can be ready while a first loopback TLS handshake is still
+    # sensitive to runner load. Run this gate after all Phase-4 workers have
+    # exited. It still travels through run_gate, preserving the cache, watchdog,
+    # logs, timings, skip handling, and final summary contracts.
+    if [ "$g" = "gates/build-and-run-http2-unary.sh" ]; then
+        ISOLATED_NON_GODOT_GATES+=("$g")
+        continue
+    fi
     NON_GODOT_GATES+=("$g")
 done < <(ls gates/build-and-run-*.sh | sort)
 
 # run_gate SCRIPT [TAG] — run one gate, log output, record duration + verdict in
 # _timings.txt (one "name seconds ran|cached|skipped|failed" line per gate; the
 # summary aggregates it), record failures and skips by name. TAG prefixes the
-# status line with the Phase-5 chain the gate ran in.
+# status line with the gate's execution class (a Phase-5 chain or an isolated
+# Phase-4 run).
 #
 # Three outcomes. Exit 0 is a pass, exit 77 (GATE_SKIP_RC, from gate_skip) is an
 # opt-out for an absent prerequisite, anything else is a failure. A skip is
@@ -794,6 +806,11 @@ export DN2CPP_CMAKE_RUNTIME_EXPORT_SCALAR
 
 printf '%s\n' "${NON_GODOT_GATES[@]}" | \
     xargs -P "$JOBS" -I{} bash -c 'run_gate "$@"' _ {} || true
+if [ "${#ISOLATED_NON_GODOT_GATES[@]}" -ne 0 ]; then
+    for g in "${ISOLATED_NON_GODOT_GATES[@]}"; do
+        run_gate "$g" "isolated" || true
+    done
+fi
 ok "Phase 4 elapsed: $(( $(now) - T_PHASE ))s"
 
 # ── Phase 5: Godot gates (parallel chains) ───────────────────────────────────
@@ -888,7 +905,7 @@ fi
 
 header "Summary"
 
-TOTAL=${#NON_GODOT_GATES[@]}
+TOTAL=$(( ${#NON_GODOT_GATES[@]} + ${#ISOLATED_NON_GODOT_GATES[@]} ))
 [ "$SKIP_GODOT" = "0" ] && TOTAL=$((TOTAL + ${#GODOT_GATES[@]}))
 
 FAILED=()

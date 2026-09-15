@@ -116,22 +116,55 @@ compile_console "$out" http2unary
 [ -x "$out/http2unary" ] || { echo "FAIL: Http2Unary native binary was not built" >&2; exit 1; }
 echo "OK: Http2Unary transpiles gap-free and links against the h2/nghttp2 transport"
 
-# Shared by both live-server arms below: declared here (empty, so `set -u` and the
-# EXIT trap tolerate a not-yet-started process/dir), and the second arm's trap
-# REPLACES the first's, so it must fold in what the first already started —
-# mirroring build-and-run-http-get.sh's trap-folding discipline (see its section 12's
-# comment on why a fresh `trap ... EXIT` names every earlier arm's pid and dir too).
+# Shared by both live-server arms below: declared here so the EXIT trap tolerates a
+# not-yet-started process. TLS diagnostics live under the artifact directory and are
+# deliberately retained after both successful and failed runs.
 h2cdir=""
 h2cpid=""
 tlsdir=""
 tlspid=""
+
+cleanup_http2_unary() {
+    status=$?
+    set +e
+    if [ -n "$tlspid" ]; then
+        ps -p "$tlspid" -o pid=,etime=,%cpu=,state=,command= >"$tlsdir/server-state.txt" 2>&1
+        kill "$tlspid" 2>/dev/null
+        wait "$tlspid" 2>/dev/null
+        echo "cleanup-wait=$?" >>"$tlsdir/server-state.txt"
+    fi
+    if [ -n "$h2cpid" ]; then
+        kill "$h2cpid" 2>/dev/null
+        wait "$h2cpid" 2>/dev/null
+    fi
+    [ -z "$h2cdir" ] || rm -rf "$h2cdir"
+    if [ -n "$tlsdir" ] && [ -n "${LOGDIR:-}" ]; then
+        mkdir -p "$LOGDIR/http2-unary-tls"
+        for diagnostic in ready.out server.err openssl.log tls.out tls.err server-state.txt; do
+            [ ! -f "$tlsdir/$diagnostic" ] || cp "$tlsdir/$diagnostic" "$LOGDIR/http2-unary-tls/$diagnostic"
+        done
+    fi
+    if [ "$status" -ne 0 ] && [ -n "$tlsdir" ]; then
+        for diagnostic in ready.out server.err openssl.log tls.out tls.err server-state.txt; do
+            [ ! -s "$tlsdir/$diagnostic" ] || {
+                echo "TLS diagnostic: $diagnostic" >&2
+                cat "$tlsdir/$diagnostic" >&2
+            }
+        done
+    fi
+    if [ -n "$tlsdir" ]; then
+        rm -f "$tlsdir/ca.cnf" "$tlsdir/ca.key" "$tlsdir/ca.pem" \
+            "$tlsdir/srv.cnf" "$tlsdir/srv.csr" "$tlsdir/srv.key" \
+            "$tlsdir/srv.pem" "$tlsdir/srv.pfx"
+    fi
+}
 
 echo "== 4/5 Live h2c: version negotiation, trailers, the exact-policy miss, the OrLower downgrade =="
 h2cdir="$(mktemp -d)"
 dotnet "$srv" > "$h2cdir/ready.out" 2>"$h2cdir/server.err" &
 h2cpid=$!
 disown "$h2cpid" 2>/dev/null || true
-trap 'kill "$h2cpid" "$tlspid" 2>/dev/null; rm -rf "$h2cdir" "$tlsdir"' EXIT
+trap cleanup_http2_unary EXIT
 # Hosted macOS runners can take longer to schedule Kestrel's startup.
 ready=$(wait_ready_line "h2 oracle server" "$h2cpid" "$h2cdir/ready.out" "$h2cdir/server.err" 120) || exit 1
 read -r tag h2cport h1port <<<"$ready"
@@ -289,6 +322,14 @@ highwater="${BASH_REMATCH[3]}"
     echo "FAIL: the send queue peaked at $peak bytes against a 65536-byte bound — not bounded" >&2; exit 1; }
 echo "OK: a 4 MiB upload crossed a 65536-byte send queue — writer parked $parks time(s), peak $peak bytes, every byte arrived in order"
 
+# The TLS arm is independent infrastructure. Reap the h2c oracle before starting it
+# so a loaded runner has only one Kestrel process and one listener to schedule.
+kill "$h2cpid" 2>/dev/null || true
+wait "$h2cpid" 2>/dev/null || true
+h2cpid=""
+rm -rf "$h2cdir"
+h2cdir=""
+
 echo "== 5/5 Live TLS+ALPN: a real h2-over-TLS handshake (self-contained) =="
 # NOT oracle-diffed, for the same reason build-and-run-http-get.sh section 14's
 # trusted-anchor run is not (see that section's comment): real .NET on macOS verifies
@@ -302,8 +343,8 @@ echo "== 5/5 Live TLS+ALPN: a real h2-over-TLS handshake (self-contained) =="
 command -v openssl >/dev/null 2>&1 || {
     echo "FAIL: openssl not on PATH — this section mints the TLS server's throwaway certificate with it" >&2
     exit 1; }
-tlsdir="$(mktemp -d)"
-trap 'kill "$h2cpid" "$tlspid" 2>/dev/null; rm -rf "$h2cdir" "$tlsdir"' EXIT
+tlsdir="$out/tls"
+mkdir -p "$tlsdir"
 
 # openssl driven through CONFIG FILES, not -addext — see build-and-run-http-get.sh
 # sections 14-15 for why (-addext is OpenSSL 1.1.1+/LibreSSL 3.1+ only; both forms
@@ -341,18 +382,22 @@ openssl req -newkey rsa:2048 -nodes \
     -keyout "$tlsdir/srv.key" -out "$tlsdir/srv.csr" -config "$tlsdir/srv.cnf" >>"$tlsdir/openssl.log" 2>&1 &&
 openssl x509 -req -in "$tlsdir/srv.csr" -CA "$tlsdir/ca.pem" -CAkey "$tlsdir/ca.key" \
     -set_serial 1 -days 2 -extfile "$tlsdir/srv.cnf" -extensions v3_srv \
-    -out "$tlsdir/srv.pem" >>"$tlsdir/openssl.log" 2>&1 || {
+    -out "$tlsdir/srv.pem" >>"$tlsdir/openssl.log" 2>&1 &&
+openssl pkcs12 -export -out "$tlsdir/srv.pfx" -inkey "$tlsdir/srv.key" \
+    -in "$tlsdir/srv.pem" -certfile "$tlsdir/ca.pem" -passout pass:dn2cpp \
+    >>"$tlsdir/openssl.log" 2>&1 || {
     echo "FAIL: could not generate the throwaway TLS certificate:" >&2; cat "$tlsdir/openssl.log" >&2; exit 1; }
 
-dotnet "$srv" --cert "$tlsdir/srv.pem" --key "$tlsdir/srv.key" --ca "$tlsdir/ca.pem" \
+dotnet "$srv" --tls-only --pfx "$tlsdir/srv.pfx" --pfx-password dn2cpp \
     > "$tlsdir/ready.out" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
 # Hosted macOS runners can take longer to schedule Kestrel's TLS startup.
 tlsready=$(wait_ready_line "TLS oracle server" "$tlspid" "$tlsdir/ready.out" "$tlsdir/server.err" 120) || exit 1
-read -r tag _ _ tlsport <<<"$tlsready"
-[ "$tag" = "READY" ] && [ -n "${tlsport:-}" ] || {
-    echo "FAIL: could not parse the TLS oracle's READY line (expected 3 ports): $tlsready" >&2; exit 1; }
+read -r tag tlsport extra <<<"$tlsready"
+[ "$tag" = "READY" ] && [[ "${tlsport:-}" =~ ^[0-9]+$ ]] \
+    && (( tlsport >= 1 && tlsport <= 65535 )) && [ -z "${extra:-}" ] || {
+    echo "FAIL: could not parse the TLS oracle's READY line (expected 1 port): $tlsready" >&2; exit 1; }
 tlsbase="https://127.0.0.1:$tlsport"
 
 DN2CPP_HTTP_CAINFO="$tlsdir/ca.pem" "$out/http2unary" tls "$tlsbase" \
