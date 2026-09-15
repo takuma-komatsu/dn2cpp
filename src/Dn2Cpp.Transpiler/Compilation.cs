@@ -236,6 +236,8 @@ internal sealed partial class Compilation
     /// <see cref="ClassInfo.SharedUsers"/>) — emission is unchanged until shared
     /// body emission lands.</summary>
     public bool SharedGenericsEnabled { get; }
+
+    public bool CompressMetadata { get; }
     public bool ObfuscationEnabled { get; }
     internal HashSet<MethodInfo> ObfuscationMethods { get; } = new();
 
@@ -497,6 +499,8 @@ internal sealed partial class Compilation
         _cliCutMethods = (options.CutMethods ?? Array.Empty<string>()).Select(ParseCutSpec).ToHashSet();
         _trimReflection = options.TrimReflection;
         _reflectionRoots = new HashSet<string>(options.ReflectionRoots ?? Array.Empty<string>(), StringComparer.Ordinal);
+        CompressMetadata = options.CompressMetadata;
+        ConfigureReflectionMetadata(options.ReflectionMetadataFormats);
         _projectRoots = options.ProjectRoots;
         _linkXmlFiles = options.LinkXmlFiles;
         _cutMethodsValidated = options.CutMethodsValidated;

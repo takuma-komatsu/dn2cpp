@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../MiniCorlib/MiniCorlib.csproj" />
+    <ProjectReference Include="../MultiAssemblyAlias/MultiAssemblyAlias.csproj" Aliases="metadataAlias" />
   </ItemGroup>
 
 </Project>

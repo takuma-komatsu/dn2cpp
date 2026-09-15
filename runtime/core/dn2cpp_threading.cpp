@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_threading.cpp — threading primitives of the dn2cpp runtime:
 // Parallel.For/ForEach/Invoke, SemaphoreSlim,
 // ManualResetEvent(Slim) / AutoResetEvent, CountdownEvent / Barrier,
@@ -112,7 +113,7 @@ struct Dn2CppParallelLoopState : Dn2CppObject
 };
 extern const Dn2CppType dn2cpp_parallel_loop_state_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_loop_state_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopState", nullptr, (int32_t)sizeof(Dn2CppParallelLoopState), nullptr, nullptr, 0 }, &dn2cpp_parallel_loop_state_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopState", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelLoopState), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_parallel_loop_state_type_obj);
 const Dn2CppType dn2cpp_parallel_loop_state_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_loop_state_type };
 
 static Dn2CppObject* dn2cpp_parallel_loop_state_new(Dn2CppParallelLoopShared* shared, int64_t iteration)
@@ -668,7 +669,7 @@ Dn2CppParallelLoopResult dn2cpp_parallel_foreach_r8_state(Dn2CppArrayN* src, Dn2
 // Parallel.* call reading it).
 extern const Dn2CppType dn2cpp_parallel_options_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_options_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelOptions", nullptr, (int32_t)sizeof(Dn2CppParallelOptions), nullptr, nullptr, 0 }, &dn2cpp_parallel_options_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelOptions", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelOptions), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_parallel_options_type_obj);
 const Dn2CppType dn2cpp_parallel_options_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_options_type };
 
 Dn2CppObject* dn2cpp_parallel_options_new()
@@ -689,7 +690,7 @@ extern const Dn2CppType dn2cpp_semaphore_type_obj;
 // handles below). See the flag's definition in dn2cpp_core.h for why the bit and not
 // a missing extent.
 const Dn2CppTypeInfo dn2cpp_semaphore_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.SemaphoreSlim", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_semaphore_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.SemaphoreSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_semaphore_type_obj);
 const Dn2CppType dn2cpp_semaphore_type_obj = { { &dn2cpp_type_type }, &dn2cpp_semaphore_type };
 // The event family is FOUR CLR types over one Dn2CppEvent, and — unlike the Task and
 // ThreadLocal families, which share one handle — they are not instantiations of one
@@ -704,37 +705,38 @@ const Dn2CppType dn2cpp_semaphore_type_obj = { { &dn2cpp_type_type }, &dn2cpp_se
 // declare none, so their absent tables are already right.
 static Dn2CppObject* dn2cpp_ownfld_waithandle_WaitTimeout(Dn2CppObject*)
 { int32_t v = 258; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_waithandle[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_waithandle,
     { "WaitTimeout", &dn2cpp_waithandle_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_ownfld_waithandle_WaitTimeout, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 extern const Dn2CppType dn2cpp_waithandle_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_waithandle_type_reflection, dn2cpp_ownflds_waithandle, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_waithandle_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, sizeof(Dn2CppWaitHandle), nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE, dn2cpp_ownflds_waithandle, 1 }, &dn2cpp_waithandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_waithandle_type_reflection }, &dn2cpp_waithandle_type_obj);
 const Dn2CppType dn2cpp_waithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_waithandle_type };
 extern const Dn2CppType dn2cpp_event_type_obj;
 const Dn2CppTypeInfo dn2cpp_event_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.EventWaitHandle", &dn2cpp_waithandle_type, sizeof(Dn2CppWaitHandle), nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_event_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.EventWaitHandle", &dn2cpp_waithandle_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_event_type_obj);
 const Dn2CppType dn2cpp_event_type_obj = { { &dn2cpp_type_type }, &dn2cpp_event_type };
 extern const Dn2CppType dn2cpp_manualresetevent_type_obj;
 const Dn2CppTypeInfo dn2cpp_manualresetevent_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEvent", &dn2cpp_event_type, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_manualresetevent_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEvent", &dn2cpp_event_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_manualresetevent_type_obj);
 const Dn2CppType dn2cpp_manualresetevent_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualresetevent_type };
 extern const Dn2CppType dn2cpp_autoresetevent_type_obj;
 const Dn2CppTypeInfo dn2cpp_autoresetevent_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.AutoResetEvent", &dn2cpp_event_type, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_autoresetevent_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.AutoResetEvent", &dn2cpp_event_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_autoresetevent_type_obj);
 const Dn2CppType dn2cpp_autoresetevent_type_obj = { { &dn2cpp_type_type }, &dn2cpp_autoresetevent_type };
 // Base nullptr — i.e. System.Object. ManualResetEventSlim is a lightweight
 // non-WaitHandle type in real .NET, and stamping it under the event chain is exactly the
 // over-accept this arrangement exists to avoid.
 extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
 const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_manualreseteventslim_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
 extern const Dn2CppType dn2cpp_safewaithandle_type_obj;
 const Dn2CppTypeInfo dn2cpp_safewaithandle_type =
-    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", &dn2cpp_safehandle_zero_or_minus_one_type, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_safewaithandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeWaitHandle", &dn2cpp_safehandle_zero_or_minus_one_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_safewaithandle_type_obj);
 const Dn2CppType dn2cpp_safewaithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safewaithandle_type };
 
 struct Dn2CppSemaphore : Dn2CppObject
@@ -1282,11 +1284,11 @@ int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles)
 // entry names program-specific emitted type-info the runtime cannot spell.
 extern const Dn2CppType dn2cpp_countdown_type_obj;
 Dn2CppTypeInfo dn2cpp_countdown_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.CountdownEvent", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_countdown_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.CountdownEvent", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_countdown_type_obj);
 const Dn2CppType dn2cpp_countdown_type_obj = { { &dn2cpp_type_type }, &dn2cpp_countdown_type };
 extern const Dn2CppType dn2cpp_barrier_type_obj;
 Dn2CppTypeInfo dn2cpp_barrier_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Barrier", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_barrier_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Barrier", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_barrier_type_obj);
 const Dn2CppType dn2cpp_barrier_type_obj = { { &dn2cpp_type_type }, &dn2cpp_barrier_type };
 
 struct Dn2CppCountdown : Dn2CppObject
@@ -1575,7 +1577,7 @@ int64_t dn2cpp_barrier_current_phase(Dn2CppObject* o)
 // interface mouth is what needs the row.
 extern const Dn2CppType dn2cpp_rwlock_type_obj;
 Dn2CppTypeInfo dn2cpp_rwlock_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ReaderWriterLockSlim", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_rwlock_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.ReaderWriterLockSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_rwlock_type_obj);
 const Dn2CppType dn2cpp_rwlock_type_obj = { { &dn2cpp_type_type }, &dn2cpp_rwlock_type };
 
 struct Dn2CppRwReadHold
@@ -1969,10 +1971,10 @@ extern const Dn2CppType dn2cpp_timeprovider_timer_type_obj;
 // principal registry through `counted` — a bitwise copy would be a second owner of all
 // three. (The GC allocates it, but placement-new constructs it.)
 Dn2CppTypeInfo dn2cpp_timer_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Timer", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_timer_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Timer", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_timer_type_obj);
 const Dn2CppType dn2cpp_timer_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timer_type };
 Dn2CppTypeInfo dn2cpp_timeprovider_timer_type =
-    dn2cpp_ti_with_typeobject({ "System.TimeProvider+SystemTimeProviderTimer", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_timeprovider_timer_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.TimeProvider+SystemTimeProviderTimer", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_timeprovider_timer_type_obj);
 const Dn2CppType dn2cpp_timeprovider_timer_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timeprovider_timer_type };
 
 struct Dn2CppManagedTimer : Dn2CppObject

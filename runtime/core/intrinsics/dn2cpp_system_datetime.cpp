@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_system_datetime.cpp — System.DateTime / TimeSpan / DateTimeOffset /
 // DateOnly / TimeOnly intrinsics: tick-based (1 tick = 100ns) construction,
 // arithmetic, wall-clock reads, host-local time-zone conversion (DST included),
@@ -1829,7 +1830,7 @@ DN2CPP_TSFLD_I8(MinutesPerDay, 1440)
 // The one Int32 among them, and the one row a copy-paste would get wrong.
 static Dn2CppObject* dn2cpp_ownfld_timespan_HoursPerDay(Dn2CppObject*)
 { int32_t v = 24; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_timespan[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_timespan,
     DN2CPP_TSFLD_TS_ROW(Zero), DN2CPP_TSFLD_TS_ROW(MaxValue), DN2CPP_TSFLD_TS_ROW(MinValue),
     DN2CPP_TSFLD_I8_ROW(NanosecondsPerTick),
     DN2CPP_TSFLD_I8_ROW(TicksPerMicrosecond), DN2CPP_TSFLD_I8_ROW(TicksPerMillisecond),
@@ -1846,7 +1847,7 @@ static const Dn2CppFieldInfo dn2cpp_ownflds_timespan[] = {
     { "HoursPerDay", &dn2cpp_timespan_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_ownfld_timespan_HoursPerDay, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 #undef DN2CPP_TSFLD_I8
 #undef DN2CPP_TSFLD_I8_ROW
 #undef DN2CPP_TSFLD_TS
@@ -1864,9 +1865,9 @@ DN2CPP_DTFLD(MinValue, 0, 0)
 DN2CPP_DTFLD(MaxValue, DN2CPP_DT_MAX_TICKS, 0)
 // UnixEpoch is the one of the three that is Utc-kinded, which its ToString shows.
 DN2CPP_DTFLD(UnixEpoch, 621355968000000000LL, 1)
-static const Dn2CppFieldInfo dn2cpp_ownflds_datetime[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_datetime,
     DN2CPP_DTFLD_ROW(MinValue), DN2CPP_DTFLD_ROW(MaxValue), DN2CPP_DTFLD_ROW(UnixEpoch),
-};
+);
 #undef DN2CPP_DTFLD
 #undef DN2CPP_DTFLD_ROW
 
@@ -1881,34 +1882,37 @@ static const Dn2CppFieldInfo dn2cpp_ownflds_datetime[] = {
 DN2CPP_DTOFLD(MinValue, 0)
 DN2CPP_DTOFLD(MaxValue, DN2CPP_DT_MAX_TICKS)
 DN2CPP_DTOFLD(UnixEpoch, 621355968000000000LL)
-static const Dn2CppFieldInfo dn2cpp_ownflds_dto[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_dto,
     DN2CPP_DTOFLD_ROW(MinValue), DN2CPP_DTOFLD_ROW(MaxValue), DN2CPP_DTOFLD_ROW(UnixEpoch),
-};
+);
 #undef DN2CPP_DTOFLD
 #undef DN2CPP_DTOFLD_ROW
 
 extern const Dn2CppType dn2cpp_timespan_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_timespan_type_reflection, dn2cpp_ownflds_timespan, 25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_timespan_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.TimeSpan", nullptr, (int32_t)sizeof(Dn2CppTimeSpan), nullptr, nullptr, 0, &dn2cpp_timespan_box_tostring, &dn2cpp_timespan_box_hash, &dn2cpp_timespan_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), dn2cpp_ownflds_timespan, 25 }, &dn2cpp_timespan_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.TimeSpan", nullptr, nullptr, nullptr, &dn2cpp_timespan_box_tostring, &dn2cpp_timespan_box_hash, &dn2cpp_timespan_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeSpan), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_timespan_type_reflection }, &dn2cpp_timespan_type_obj),
     &dn2cpp_timespan_box_formatspec);
 const Dn2CppType dn2cpp_timespan_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timespan_type };
 extern const Dn2CppType dn2cpp_datetime_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetime_type_reflection, dn2cpp_ownflds_datetime, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_datetime_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.DateTime", nullptr, (int32_t)sizeof(Dn2CppDateTime), nullptr, nullptr, 0, &dn2cpp_datetime_box_tostring, &dn2cpp_datetime_box_hash, &dn2cpp_datetime_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), dn2cpp_ownflds_datetime, 3 }, &dn2cpp_datetime_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.DateTime", nullptr, nullptr, nullptr, &dn2cpp_datetime_box_tostring, &dn2cpp_datetime_box_hash, &dn2cpp_datetime_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateTime), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_datetime_type_reflection }, &dn2cpp_datetime_type_obj),
     &dn2cpp_datetime_box_formatspec);
 const Dn2CppType dn2cpp_datetime_type_obj = { { &dn2cpp_type_type }, &dn2cpp_datetime_type };
 extern const Dn2CppType dn2cpp_datetimeoffset_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_datetimeoffset_type_reflection, dn2cpp_ownflds_dto, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_datetimeoffset_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.DateTimeOffset", nullptr, (int32_t)sizeof(Dn2CppDateTimeOffset), nullptr, nullptr, 0, &dn2cpp_datetimeoffset_box_tostring, &dn2cpp_datetimeoffset_box_hash, &dn2cpp_datetimeoffset_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), dn2cpp_ownflds_dto, 3 }, &dn2cpp_datetimeoffset_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.DateTimeOffset", nullptr, nullptr, nullptr, &dn2cpp_datetimeoffset_box_tostring, &dn2cpp_datetimeoffset_box_hash, &dn2cpp_datetimeoffset_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateTimeOffset), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, dn2cpp_datetimeoffset_type_reflection }, &dn2cpp_datetimeoffset_type_obj),
     &dn2cpp_datetimeoffset_box_formatspec);
 const Dn2CppType dn2cpp_datetimeoffset_type_obj = { { &dn2cpp_type_type }, &dn2cpp_datetimeoffset_type };
 extern const Dn2CppType dn2cpp_dateonly_type_obj;
 const Dn2CppTypeInfo dn2cpp_dateonly_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.DateOnly", nullptr, (int32_t)sizeof(Dn2CppDateOnly), nullptr, nullptr, 0, &dn2cpp_dateonly_box_tostring, &dn2cpp_dateonly_box_hash, &dn2cpp_dateonly_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED) }, &dn2cpp_dateonly_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.DateOnly", nullptr, nullptr, nullptr, &dn2cpp_dateonly_box_tostring, &dn2cpp_dateonly_box_hash, &dn2cpp_dateonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDateOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_dateonly_type_obj),
     &dn2cpp_dateonly_box_formatspec);
 const Dn2CppType dn2cpp_dateonly_type_obj = { { &dn2cpp_type_type }, &dn2cpp_dateonly_type };
 extern const Dn2CppType dn2cpp_timeonly_type_obj;
 const Dn2CppTypeInfo dn2cpp_timeonly_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.TimeOnly", nullptr, (int32_t)sizeof(Dn2CppTimeOnly), nullptr, nullptr, 0, &dn2cpp_timeonly_box_tostring, &dn2cpp_timeonly_box_hash, &dn2cpp_timeonly_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED) }, &dn2cpp_timeonly_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.TimeOnly", nullptr, nullptr, nullptr, &dn2cpp_timeonly_box_tostring, &dn2cpp_timeonly_box_hash, &dn2cpp_timeonly_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTimeOnly), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_timeonly_type_obj),
     &dn2cpp_timeonly_box_formatspec);
 const Dn2CppType dn2cpp_timeonly_type_obj = { { &dn2cpp_type_type }, &dn2cpp_timeonly_type };

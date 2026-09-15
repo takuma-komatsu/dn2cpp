@@ -72,8 +72,10 @@
 # stack-format section re-bakes the same patch with --patch-stackcode and
 # replays the identical transcript through the v1 stack dispatch loop, which is
 # the end-to-end equivalence proof for the two formats and also runs every null
-# probe through both loops. A shadow-trace negative section reruns the same
-# binary + BPI under --shadow-trace (the --shadow-stack freeze of that mode is
+# probe through both loops. Counter's imported fields use packed metadata here
+# and native metadata in the conditional-default-reference base; both replay the
+# transcript through both dispatch loops. A shadow-trace negative section reruns
+# the same binary + BPI under --shadow-trace (the --shadow-stack freeze of that mode is
 # in build-and-run-shadow-stack.sh): this base is built WITHOUT --shadow-stack,
 # so the caught throw carries a kind-0 PC trace that must not name a single
 # interpreted patch frame — interpreter PCs are dropped, never misattributed.
@@ -122,6 +124,8 @@
 source "$(dirname "$0")/_common.sh"
 
 OUT=artifacts/hotupdate-subset
+field_packed='HotUpdateBase.Counter=packed'
+field_native='HotUpdateBase.Counter=native'
 
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
@@ -166,7 +170,10 @@ echo "== 2/5 Transpiling the base with --hotupdate-base =="
 # but the base program never uses (the generic type Holder<string> and the generic
 # method Counter.Echo<int>/<string>) — HybridCLR's AOTGenericReferences.
 invoke_cli "$base_app" --hotupdate-base \
+    --reflection-metadata "$field_packed" \
     --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$OUT"
+grep -qw 'md_record_fldtab_HotUpdateBase_Counter' "$OUT"/generated*.cpp \
+    || { echo "FAIL: Counter field metadata was not emitted packed" >&2; exit 1; }
 [ -f "$OUT/base-abi.json" ] || { echo "FAIL: base-abi.json sidecar missing" >&2; exit 1; }
 grep -q dn2cpp_base_image_abi_hash "$OUT/generated.cpp" \
     || { echo "FAIL: dn2cpp_base_image_abi_hash constant missing from generated.cpp" >&2; exit 1; }
@@ -182,7 +189,7 @@ tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP
 # against the REAL net10.0 CoreLib, so which CoreLib that resolves to is an input
 # of this gate the same way it is of net10_bcl_diff_gate — a runtime bump must
 # not be served a green recorded against the previous one.
-if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|corelib:$(resolve_net10_corelib)" \
+if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
         "$base_app" "$patch_app" "$bad_app" "$baditf_app" "$baddg_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
@@ -530,7 +537,10 @@ for arm in trigger notrigger; do
     trig_refs=(-r "$trig_corelib")
     [ "$arm" = trigger ] && trig_refs+=(-r "$trig_comp")
     invoke_cli "$base_app" "${trig_refs[@]}" --auto-ref --hotupdate-base \
+        --reflection-metadata "$field_native" \
         --hotupdate-refs samples/dotnet/HotUpdatePatch/hotupdate-refs.txt -o "$OUT/$arm"
+    grep -qw 'md_native_fldtab_HotUpdateBase_Counter' "$OUT/$arm"/generated*.cpp \
+        || { echo "FAIL: Counter field metadata was not emitted native" >&2; exit 1; }
     invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/$arm/base-abi.json" -o "$OUT/$arm"
 done
 # 1. the verdict is recorded, and the two arms disagree about it — otherwise the
@@ -556,6 +566,16 @@ set -e
 assert_output "$(strip_cr_win "$trig_out")" "$expected"
 assert_exit_code "$trig_rc" 0
 echo "OK (trigger-carrying base: shim injected + recorded, ABI hash and BPI unmoved, patch runs)"
+
+echo "-- native field metadata: stack-format replay --"
+invoke_cli --emit-patch "$patch_app" --base-abi "$OUT/trigger/base-abi.json" \
+    --patch-stackcode -o "$OUT/trigger/stack"
+set +e
+trig_out=$("./$OUT/trigger/HotUpdateBase" "$OUT/trigger/stack/HotUpdatePatch.bpi"); trig_rc=$?
+set -e
+assert_output "$(strip_cr_win "$trig_out")" "$expected"
+assert_exit_code "$trig_rc" 0
+echo "OK (native field metadata: stack-format bake, identical transcript)"
 
 echo "-- negative: a patch -r'ing a shim the base image does not carry --"
 # The reverse direction, and the one that is NOT benign. A caller who hands

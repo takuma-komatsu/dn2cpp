@@ -11,7 +11,7 @@ namespace Dn2Cpp;
 /// no 32-bit reading (the narrow walk refused the type), so the emitter must STATE that
 /// premise (<c>sizeof(void*) != 8 ||</c>) rather than pin a 64-bit-only number, the same
 /// convention the sequential-layout and marshalled-layout asserts follow.</summary>
-internal readonly record struct ModeledSize(string Text, bool Guarded, bool UsesPointerWidth)
+internal readonly record struct ModeledSize(string Text, bool Guarded, bool UsesPointerWidth, int Size64, int? Size32)
 {
     /// <summary>The size where the slot it fills is <c>int32_t</c>: <c>sizeof</c> is
     /// <c>size_t</c>, so only a width-bearing expression needs the narrowing cast.</summary>
@@ -36,24 +36,24 @@ internal static class PointerWidth
     internal static ModeledSize Model(int size64, int? size32)
     {
         if (size32 is not { } s32)
-            return new ModeledSize($"{size64}", true, false);
+            return new ModeledSize($"{size64}", true, false, size64, null);
         if ((size64 - s32) % (Bytes64 - Bytes32) != 0)
             return PerWidth(size64, s32);
         int ptrs = (size64 - s32) / (Bytes64 - Bytes32);
         int rest = size64 - ptrs * Bytes64;
         if (ptrs == 0)
-            return new ModeledSize($"{rest}", false, false);
+            return new ModeledSize($"{rest}", false, false, size64, s32);
         string term = ptrs is 1 or -1 ? "sizeof(void*)" : $"{Math.Abs(ptrs)} * sizeof(void*)";
         // The constant part is written on whichever side keeps every operand positive:
         // sizeof is size_t, so a negative literal would only come out right by unsigned
         // wraparound.
         if (ptrs > 0)
-            return new ModeledSize(rest == 0 ? term : rest > 0 ? $"{rest} + {term}" : $"{term} - {-rest}", false, true);
+            return new ModeledSize(rest == 0 ? term : rest > 0 ? $"{rest} + {term}" : $"{term} - {-rest}", false, true, size64, s32);
         if (rest > 0)
-            return new ModeledSize($"{rest} - {term}", false, true);
+            return new ModeledSize($"{rest} - {term}", false, true, size64, s32);
         return PerWidth(size64, s32);
     }
 
     private static ModeledSize PerWidth(int size64, int size32) =>
-        new ModeledSize($"(sizeof(void*) == 8 ? {size64} : {size32})", false, true);
+        new ModeledSize($"(sizeof(void*) == 8 ? {size64} : {size32})", false, true, size64, size32);
 }

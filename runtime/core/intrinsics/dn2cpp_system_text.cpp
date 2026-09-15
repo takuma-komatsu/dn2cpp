@@ -13,7 +13,7 @@
 // Each static type-info bakes its interned Type companion in (lock-free typeof/GetType).
 extern const Dn2CppType dn2cpp_stringbuilder_type_obj;
 const Dn2CppTypeInfo dn2cpp_stringbuilder_type =
-    dn2cpp_ti_with_typeobject({ "System.Text.StringBuilder", nullptr, (int32_t)sizeof(Dn2CppStringBuilder), nullptr, nullptr, 0 }, &dn2cpp_stringbuilder_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Text.StringBuilder", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppStringBuilder), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_stringbuilder_type_obj);
 const Dn2CppType dn2cpp_stringbuilder_type_obj = { { &dn2cpp_type_type }, &dn2cpp_stringbuilder_type };
 
 static void dn2cpp_sb_ensure(Dn2CppStringBuilder* sb, int32_t needed)

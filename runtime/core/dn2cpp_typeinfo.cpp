@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_typeinfo.cpp — type metadata of the dn2cpp runtime:
 // built-in type-infos + their interned Type
 // companions, the Type intern table, the type registry, and reflection-lite.
@@ -48,7 +49,7 @@
 // Each static type-info bakes its interned Type companion in (lock-free typeof/GetType).
 extern const Dn2CppType dn2cpp_object_type_obj;
 const Dn2CppTypeInfo dn2cpp_object_type =
-    dn2cpp_ti_with_typeobject({ "System.Object", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_object_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Object", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_object_type_obj);
 const Dn2CppType dn2cpp_object_type_obj = { { &dn2cpp_type_type }, &dn2cpp_object_type };
 
 // EqualityComparer<T>.Default is read once per element on the dictionary-probe and
@@ -125,16 +126,17 @@ Dn2CppObject* dn2cpp_default_equality_comparer(const Dn2CppTypeInfo* comparerTyp
 // hand-writing an owned handle's field table is at dn2cpp_primflds_bool).
 static Dn2CppObject* dn2cpp_ownfld_string_Empty(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u"", 0)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_string[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_string,
     { "Empty", &dn2cpp_string_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_string_Empty, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 // String is a sealed reference type — carries SEALED (not VALUETYPE). Non-const
 // (alone among the built-ins): its interface rows point at program-specific
 // transpiled CoreLib IL, so the generated init prologue wires them in at startup.
 extern const Dn2CppType dn2cpp_string_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_string_type_reflection, dn2cpp_ownflds_string, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 Dn2CppTypeInfo dn2cpp_string_type =
-    dn2cpp_ti_with_typeobject({ "System.String", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_SEALED, dn2cpp_ownflds_string, 1 }, &dn2cpp_string_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.String", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_SEALED, 0, 0, 0, dn2cpp_string_type_reflection }, &dn2cpp_string_type_obj);
 const Dn2CppType dn2cpp_string_type_obj = { { &dn2cpp_type_type }, &dn2cpp_string_type };
 
 void dn2cpp_string_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t count)
@@ -162,11 +164,11 @@ void dn2cpp_intrinsic_set_interfaces(Dn2CppTypeInfo* type, const Dn2CppInterface
 // GetArrayRank. The 18 metadata slots between flags and elementType are 0.
 extern const Dn2CppType dn2cpp_array_i4_type_obj;
 const Dn2CppTypeInfo dn2cpp_array_i4_type =
-    dn2cpp_ti_with_typeobject({ "System.Int32[]", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, &dn2cpp_int32_type, 1 }, &dn2cpp_array_i4_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Int32[]", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &dn2cpp_int32_type, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), 0, 1, 0, nullptr }, &dn2cpp_array_i4_type_obj);
 const Dn2CppType dn2cpp_array_i4_type_obj = { { &dn2cpp_type_type }, &dn2cpp_array_i4_type };
 extern const Dn2CppType dn2cpp_array_ref_type_obj;
 const Dn2CppTypeInfo dn2cpp_array_ref_type =
-    dn2cpp_ti_with_typeobject({ "System.Object[]", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, &dn2cpp_object_type, 1 }, &dn2cpp_array_ref_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Object[]", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, &dn2cpp_object_type, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), 0, 1, 0, nullptr }, &dn2cpp_array_ref_type_obj);
 const Dn2CppType dn2cpp_array_ref_type_obj = { { &dn2cpp_type_type }, &dn2cpp_array_ref_type };
 // The imprecise PACKED handle: a runtime-allocated Dn2CppArrayN with no precise
 // type-info. elementType stays null — deliberately, the unknown must read as unknown:
@@ -178,7 +180,7 @@ const Dn2CppType dn2cpp_array_ref_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ar
 // dispatch skips it, Buffer's DYN verdict refuses it (dn2cpp_blockcopy_rep_dyn).
 extern const Dn2CppType dn2cpp_array_n_type_obj;
 const Dn2CppTypeInfo dn2cpp_array_n_type =
-    dn2cpp_ti_with_typeobject({ "System.Array", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 1 }, &dn2cpp_array_n_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Array", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_ARRAY | DN2CPP_TF_SEALED), 0, 1, 0, nullptr }, &dn2cpp_array_n_type_obj);
 const Dn2CppType dn2cpp_array_n_type_obj = { { &dn2cpp_type_type }, &dn2cpp_array_n_type };
 // ---- The primitives' reflection field tables ----
 //
@@ -206,114 +208,114 @@ static Dn2CppObject* dn2cpp_primfld_bool_FalseString(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u"False", 5)); }
 static Dn2CppObject* dn2cpp_primfld_bool_TrueString(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u"True", 4)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_bool[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_bool,
     { "FalseString", &dn2cpp_bool_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_primfld_bool_FalseString, nullptr, nullptr, 0, 0x36, 0 },
     { "TrueString", &dn2cpp_bool_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_primfld_bool_TrueString, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_char_MaxValue(Dn2CppObject*)
 { int32_t v = 0xFFFF; return dn2cpp_box(&dn2cpp_char_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_char_MinValue(Dn2CppObject*)
 { int32_t v = 0; return dn2cpp_box(&dn2cpp_char_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_char[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_char,
     { "MaxValue", &dn2cpp_char_type, &dn2cpp_char_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_char_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_char_type, &dn2cpp_char_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_char_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_sbyte_MaxValue(Dn2CppObject*)
 { int32_t v = 127; return dn2cpp_box(&dn2cpp_sbyte_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_sbyte_MinValue(Dn2CppObject*)
 { int32_t v = -128; return dn2cpp_box(&dn2cpp_sbyte_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_sbyte[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_sbyte,
     { "MaxValue", &dn2cpp_sbyte_type, &dn2cpp_sbyte_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_sbyte_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_sbyte_type, &dn2cpp_sbyte_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_sbyte_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_byte_MaxValue(Dn2CppObject*)
 { int32_t v = 255; return dn2cpp_box(&dn2cpp_byte_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_byte_MinValue(Dn2CppObject*)
 { int32_t v = 0; return dn2cpp_box(&dn2cpp_byte_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_byte[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_byte,
     { "MaxValue", &dn2cpp_byte_type, &dn2cpp_byte_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_byte_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_byte_type, &dn2cpp_byte_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_byte_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_int16_MaxValue(Dn2CppObject*)
 { int32_t v = 32767; return dn2cpp_box(&dn2cpp_int16_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_int16_MinValue(Dn2CppObject*)
 { int32_t v = -32768; return dn2cpp_box(&dn2cpp_int16_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_int16[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_int16,
     { "MaxValue", &dn2cpp_int16_type, &dn2cpp_int16_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int16_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_int16_type, &dn2cpp_int16_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int16_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_uint16_MaxValue(Dn2CppObject*)
 { int32_t v = 65535; return dn2cpp_box(&dn2cpp_uint16_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_uint16_MinValue(Dn2CppObject*)
 { int32_t v = 0; return dn2cpp_box(&dn2cpp_uint16_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_uint16[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_uint16,
     { "MaxValue", &dn2cpp_uint16_type, &dn2cpp_uint16_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint16_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_uint16_type, &dn2cpp_uint16_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint16_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_int32_MaxValue(Dn2CppObject*)
 { int32_t v = 2147483647; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_int32_MinValue(Dn2CppObject*)
 { int32_t v = (-2147483647 - 1); return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_int32[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_int32,
     { "MaxValue", &dn2cpp_int32_type, &dn2cpp_int32_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int32_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_int32_type, &dn2cpp_int32_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int32_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_uint32_MaxValue(Dn2CppObject*)
 { int32_t v = (int32_t)0xFFFFFFFFu; return dn2cpp_box(&dn2cpp_uint32_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_uint32_MinValue(Dn2CppObject*)
 { int32_t v = 0; return dn2cpp_box(&dn2cpp_uint32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_uint32[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_uint32,
     { "MaxValue", &dn2cpp_uint32_type, &dn2cpp_uint32_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint32_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_uint32_type, &dn2cpp_uint32_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint32_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_int64_MaxValue(Dn2CppObject*)
 { int64_t v = 9223372036854775807LL; return dn2cpp_box(&dn2cpp_int64_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_int64_MinValue(Dn2CppObject*)
 { int64_t v = (-9223372036854775807LL - 1); return dn2cpp_box(&dn2cpp_int64_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_int64[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_int64,
     { "MaxValue", &dn2cpp_int64_type, &dn2cpp_int64_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int64_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_int64_type, &dn2cpp_int64_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_int64_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_uint64_MaxValue(Dn2CppObject*)
 { int64_t v = (int64_t)0xFFFFFFFFFFFFFFFFULL; return dn2cpp_box(&dn2cpp_uint64_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_uint64_MinValue(Dn2CppObject*)
 { int64_t v = 0; return dn2cpp_box(&dn2cpp_uint64_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_uint64[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_uint64,
     { "MaxValue", &dn2cpp_uint64_type, &dn2cpp_uint64_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint64_MaxValue, nullptr, nullptr, 0, 0x8056, 0 },
     { "MinValue", &dn2cpp_uint64_type, &dn2cpp_uint64_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_uint64_MinValue, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_intptr_Zero(Dn2CppObject*)
 { intptr_t v = 0; return dn2cpp_box(&dn2cpp_intptr_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_intptr[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_intptr,
     { "Zero", &dn2cpp_intptr_type, &dn2cpp_intptr_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_primfld_intptr_Zero, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_uintptr_Zero(Dn2CppObject*)
 { intptr_t v = 0; return dn2cpp_box(&dn2cpp_uintptr_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_uintptr[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_uintptr,
     { "Zero", &dn2cpp_uintptr_type, &dn2cpp_uintptr_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_primfld_uintptr_Zero, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_single_E(Dn2CppObject*)
 { float v = 2.7182817f; return dn2cpp_box(&dn2cpp_single_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_single_Epsilon(Dn2CppObject*)
@@ -334,7 +336,7 @@ static Dn2CppObject* dn2cpp_primfld_single_PositiveInfinity(Dn2CppObject*)
 { float v = std::numeric_limits<float>::infinity(); return dn2cpp_box(&dn2cpp_single_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_single_Tau(Dn2CppObject*)
 { float v = 6.2831855f; return dn2cpp_box(&dn2cpp_single_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_single[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_single,
     { "E", &dn2cpp_single_type, &dn2cpp_single_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_single_E, nullptr, nullptr, 0, 0x8056, 0 },
     { "Epsilon", &dn2cpp_single_type, &dn2cpp_single_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
@@ -355,7 +357,7 @@ static const Dn2CppFieldInfo dn2cpp_primflds_single[] = {
       dn2cpp_primfld_single_PositiveInfinity, nullptr, nullptr, 0, 0x8056, 0 },
     { "Tau", &dn2cpp_single_type, &dn2cpp_single_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_single_Tau, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 static Dn2CppObject* dn2cpp_primfld_double_E(Dn2CppObject*)
 { double v = 2.718281828459045; return dn2cpp_box(&dn2cpp_double_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_double_Epsilon(Dn2CppObject*)
@@ -376,7 +378,7 @@ static Dn2CppObject* dn2cpp_primfld_double_PositiveInfinity(Dn2CppObject*)
 { double v = std::numeric_limits<double>::infinity(); return dn2cpp_box(&dn2cpp_double_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_primfld_double_Tau(Dn2CppObject*)
 { double v = 6.283185307179586; return dn2cpp_box(&dn2cpp_double_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_primflds_double[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_primflds_double,
     { "E", &dn2cpp_double_type, &dn2cpp_double_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_double_E, nullptr, nullptr, 0, 0x8056, 0 },
     { "Epsilon", &dn2cpp_double_type, &dn2cpp_double_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
@@ -397,77 +399,91 @@ static const Dn2CppFieldInfo dn2cpp_primflds_double[] = {
       dn2cpp_primfld_double_PositiveInfinity, nullptr, nullptr, 0, 0x8056, 0 },
     { "Tau", &dn2cpp_double_type, &dn2cpp_double_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_LITERAL,
       dn2cpp_primfld_double_Tau, nullptr, nullptr, 0, 0x8056, 0 },
-};
+);
 
 extern const Dn2CppType dn2cpp_bool_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_bool_type_reflection, dn2cpp_primflds_bool, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_bool_type =
-    dn2cpp_ti_with_typeobject({ "System.Boolean", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_bool, 2 }, &dn2cpp_bool_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Boolean", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_bool_type_reflection }, &dn2cpp_bool_type_obj);
 const Dn2CppType dn2cpp_bool_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bool_type };
 // char + the small integer primitives. Their boxed payload is the int32/uint32
 // stack width (CppTypes.Of widens char/byte/short to int32_t), so dn2cpp_box
 // stores 4 bytes and ToString reads them back at that width.
 extern const Dn2CppType dn2cpp_char_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_char_type_reflection, dn2cpp_primflds_char, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_char_type =
-    dn2cpp_ti_with_typeobject({ "System.Char", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_char, 2 }, &dn2cpp_char_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Char", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_char_type_reflection }, &dn2cpp_char_type_obj);
 const Dn2CppType dn2cpp_char_type_obj = { { &dn2cpp_type_type }, &dn2cpp_char_type };
 extern const Dn2CppType dn2cpp_byte_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_byte_type_reflection, dn2cpp_primflds_byte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_byte_type =
-    dn2cpp_ti_with_typeobject({ "System.Byte", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_byte, 2 }, &dn2cpp_byte_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Byte", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_byte_type_reflection }, &dn2cpp_byte_type_obj);
 const Dn2CppType dn2cpp_byte_type_obj = { { &dn2cpp_type_type }, &dn2cpp_byte_type };
 extern const Dn2CppType dn2cpp_sbyte_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_sbyte_type_reflection, dn2cpp_primflds_sbyte, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_sbyte_type =
-    dn2cpp_ti_with_typeobject({ "System.SByte", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_sbyte, 2 }, &dn2cpp_sbyte_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.SByte", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_sbyte_type_reflection }, &dn2cpp_sbyte_type_obj);
 const Dn2CppType dn2cpp_sbyte_type_obj = { { &dn2cpp_type_type }, &dn2cpp_sbyte_type };
 extern const Dn2CppType dn2cpp_int16_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int16_type_reflection, dn2cpp_primflds_int16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int16_type =
-    dn2cpp_ti_with_typeobject({ "System.Int16", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_int16, 2 }, &dn2cpp_int16_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Int16", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int16_type_reflection }, &dn2cpp_int16_type_obj);
 const Dn2CppType dn2cpp_int16_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int16_type };
 extern const Dn2CppType dn2cpp_uint16_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint16_type_reflection, dn2cpp_primflds_uint16, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint16_type =
-    dn2cpp_ti_with_typeobject({ "System.UInt16", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_uint16, 2 }, &dn2cpp_uint16_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UInt16", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint16_type_reflection }, &dn2cpp_uint16_type_obj);
 const Dn2CppType dn2cpp_uint16_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint16_type };
 extern const Dn2CppType dn2cpp_uint32_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint32_type_reflection, dn2cpp_primflds_uint32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint32_type =
-    dn2cpp_ti_with_typeobject({ "System.UInt32", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_uint32, 2 }, &dn2cpp_uint32_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UInt32", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint32_type_reflection }, &dn2cpp_uint32_type_obj);
 const Dn2CppType dn2cpp_uint32_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint32_type };
 extern const Dn2CppType dn2cpp_int32_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int32_type_reflection, dn2cpp_primflds_int32, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int32_type =
-    dn2cpp_ti_with_typeobject({ "System.Int32", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_int32, 2 }, &dn2cpp_int32_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Int32", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int32_type_reflection }, &dn2cpp_int32_type_obj);
 const Dn2CppType dn2cpp_int32_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int32_type };
 extern const Dn2CppType dn2cpp_int64_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_int64_type_reflection, dn2cpp_primflds_int64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_int64_type =
-    dn2cpp_ti_with_typeobject({ "System.Int64", nullptr, 8, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_int64, 2 }, &dn2cpp_int64_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Int64", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_int64_type_reflection }, &dn2cpp_int64_type_obj);
 const Dn2CppType dn2cpp_int64_type_obj = { { &dn2cpp_type_type }, &dn2cpp_int64_type };
 extern const Dn2CppType dn2cpp_uint64_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uint64_type_reflection, dn2cpp_primflds_uint64, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uint64_type =
-    dn2cpp_ti_with_typeobject({ "System.UInt64", nullptr, 8, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_uint64, 2 }, &dn2cpp_uint64_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UInt64", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uint64_type_reflection }, &dn2cpp_uint64_type_obj);
 const Dn2CppType dn2cpp_uint64_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uint64_type };
 // IntPtr/UIntPtr: an 8-byte intptr_t payload (CppTypes.Of), read like int64/uint64.
 // IntPtr ToStrings signed, UIntPtr unsigned. GetType().FullName reports
 // "System.IntPtr"/"System.UIntPtr" (the box type-info name).
 extern const Dn2CppType dn2cpp_intptr_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_intptr_type_reflection, dn2cpp_primflds_intptr, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_intptr_type =
-    dn2cpp_ti_with_typeobject({ "System.IntPtr", nullptr, (int32_t)sizeof(intptr_t), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_intptr, 1 }, &dn2cpp_intptr_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_intptr_type_reflection }, &dn2cpp_intptr_type_obj);
 const Dn2CppType dn2cpp_intptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_intptr_type };
 extern const Dn2CppType dn2cpp_uintptr_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_uintptr_type_reflection, dn2cpp_primflds_uintptr, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_uintptr_type =
-    dn2cpp_ti_with_typeobject({ "System.UIntPtr", nullptr, (int32_t)sizeof(intptr_t), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_uintptr, 1 }, &dn2cpp_uintptr_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UIntPtr", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(intptr_t), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_uintptr_type_reflection }, &dn2cpp_uintptr_type_obj);
 const Dn2CppType dn2cpp_uintptr_type_obj = { { &dn2cpp_type_type }, &dn2cpp_uintptr_type };
 extern const Dn2CppType dn2cpp_single_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_single_type_reflection, dn2cpp_primflds_single, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_single_type =
-    dn2cpp_ti_with_typeobject({ "System.Single", nullptr, 4, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_single, 10 }, &dn2cpp_single_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Single", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_single_type_reflection }, &dn2cpp_single_type_obj);
 const Dn2CppType dn2cpp_single_type_obj = { { &dn2cpp_type_type }, &dn2cpp_single_type };
 extern const Dn2CppType dn2cpp_double_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_double_type_reflection, dn2cpp_primflds_double, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_double_type =
-    dn2cpp_ti_with_typeobject({ "System.Double", nullptr, 8, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), dn2cpp_primflds_double, 10 }, &dn2cpp_double_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Double", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_PRIMITIVE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_double_type_reflection }, &dn2cpp_double_type_obj);
 const Dn2CppType dn2cpp_double_type_obj = { { &dn2cpp_type_type }, &dn2cpp_double_type };
 extern const Dn2CppType dn2cpp_yield_awaiter_type_obj;
 const Dn2CppTypeInfo dn2cpp_yield_awaiter_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, (int32_t)sizeof(Dn2CppYieldAwaiter), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE) }, &dn2cpp_yield_awaiter_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.CompilerServices.YieldAwaitable+YieldAwaiter", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppYieldAwaiter), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED | DN2CPP_TF_NOT_MARSHALABLE), 0, 0, 0, nullptr }, &dn2cpp_yield_awaiter_type_obj);
 const Dn2CppType dn2cpp_yield_awaiter_type_obj = { { &dn2cpp_type_type }, &dn2cpp_yield_awaiter_type };
 extern const Dn2CppType dn2cpp_parallel_loop_result_type_obj;
 const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopResult", nullptr, (int32_t)sizeof(Dn2CppParallelLoopResult), nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED) }, &dn2cpp_parallel_loop_result_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.ParallelLoopResult", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParallelLoopResult), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_parallel_loop_result_type_obj);
 const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parallel_loop_result_type };
 // The System.Decimal type-info lives in intrinsics/dn2cpp_system_decimal.cpp, and
 // the System.TimeSpan / DateTime / DateTimeOffset / DateOnly / TimeOnly ones in
@@ -484,7 +500,7 @@ const Dn2CppType dn2cpp_parallel_loop_result_type_obj = { { &dn2cpp_type_type },
 // declare.
 extern const Dn2CppType dn2cpp_type_type_obj;
 const Dn2CppTypeInfo dn2cpp_type_type =
-    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppType), nullptr, nullptr, 0 }, &dn2cpp_type_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Type", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppType), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_type_type_obj);
 const Dn2CppType dn2cpp_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_type };
 // The reflection handle hierarchy mirrors .NET's: MemberInfo is the root,
 // MethodBase sits between it and MethodInfo/ConstructorInfo, and Type itself
@@ -495,19 +511,19 @@ const Dn2CppType dn2cpp_type_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_ty
 // MethodBase are abstract — no instance ever carries them as its header.
 extern const Dn2CppType dn2cpp_memberinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_memberinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.MemberInfo", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_memberinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.MemberInfo", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_memberinfo_type_obj);
 const Dn2CppType dn2cpp_memberinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_memberinfo_type };
 extern const Dn2CppType dn2cpp_methodbase_type_obj;
 const Dn2CppTypeInfo dn2cpp_methodbase_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodBase", &dn2cpp_memberinfo_type, 0, nullptr, nullptr, 0 }, &dn2cpp_methodbase_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodBase", &dn2cpp_memberinfo_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_methodbase_type_obj);
 const Dn2CppType dn2cpp_methodbase_type_obj = { { &dn2cpp_type_type }, &dn2cpp_methodbase_type };
 extern const Dn2CppType dn2cpp_fieldinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_fieldinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.FieldInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppFieldRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_fieldinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.FieldInfo", &dn2cpp_memberinfo_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppFieldRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_fieldinfo_type_obj);
 const Dn2CppType dn2cpp_fieldinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_fieldinfo_type };
 extern const Dn2CppType dn2cpp_methodinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_methodinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_methodinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.MethodInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_methodinfo_type_obj);
 const Dn2CppType dn2cpp_methodinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_methodinfo_type };
 // A reflected constructor handle: the same Dn2CppMethodRef representation as a
 // method (wrapping a ctortab row), but its own header type so `is
@@ -517,36 +533,37 @@ static Dn2CppObject* dn2cpp_ownfld_ctorinfo_ConstructorName(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u".ctor", 5)); }
 static Dn2CppObject* dn2cpp_ownfld_ctorinfo_TypeConstructorName(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u".cctor", 6)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_ctorinfo[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_ctorinfo,
     { "ConstructorName", &dn2cpp_constructorinfo_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_ctorinfo_ConstructorName, nullptr, nullptr, 0, 0x36, 0 },
     { "TypeConstructorName", &dn2cpp_constructorinfo_type, &dn2cpp_string_type, DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_ctorinfo_TypeConstructorName, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 extern const Dn2CppType dn2cpp_constructorinfo_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_constructorinfo_type_reflection, dn2cpp_ownflds_ctorinfo, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_constructorinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, (int32_t)sizeof(Dn2CppMethodRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, dn2cpp_ownflds_ctorinfo, 2 }, &dn2cpp_constructorinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.ConstructorInfo", &dn2cpp_methodbase_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMethodRef), 0, 0, 0, 0, 0, dn2cpp_constructorinfo_type_reflection }, &dn2cpp_constructorinfo_type_obj);
 const Dn2CppType dn2cpp_constructorinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_constructorinfo_type };
 extern const Dn2CppType dn2cpp_parameterinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_parameterinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.ParameterInfo", nullptr, (int32_t)sizeof(Dn2CppParamRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_parameterinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.ParameterInfo", nullptr, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppParamRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_parameterinfo_type_obj);
 const Dn2CppType dn2cpp_parameterinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_parameterinfo_type };
 extern const Dn2CppType dn2cpp_propertyinfo_type_obj;
 const Dn2CppTypeInfo dn2cpp_propertyinfo_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.PropertyInfo", &dn2cpp_memberinfo_type, (int32_t)sizeof(Dn2CppPropRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_propertyinfo_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.PropertyInfo", &dn2cpp_memberinfo_type, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppPropRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_propertyinfo_type_obj);
 const Dn2CppType dn2cpp_propertyinfo_type_obj = { { &dn2cpp_type_type }, &dn2cpp_propertyinfo_type };
 extern const Dn2CppType dn2cpp_customattributedata_type_obj;
 const Dn2CppTypeInfo dn2cpp_customattributedata_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.CustomAttributeData", nullptr, (int32_t)sizeof(Dn2CppAttrDataRef), nullptr, nullptr, 0, &dn2cpp_reflection_handle_tostring }, &dn2cpp_customattributedata_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.CustomAttributeData", nullptr, nullptr, nullptr, &dn2cpp_reflection_handle_tostring, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppAttrDataRef), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_customattributedata_type_obj);
 const Dn2CppType dn2cpp_customattributedata_type_obj = { { &dn2cpp_type_type }, &dn2cpp_customattributedata_type };
 // System.Void, so a void method's MethodInfo.ReturnType reports Name "Void".
 extern const Dn2CppType dn2cpp_void_type_obj;
 const Dn2CppTypeInfo dn2cpp_void_type =
-    dn2cpp_ti_with_typeobject({ "System.Void", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED) }, &dn2cpp_void_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Void", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, nullptr }, &dn2cpp_void_type_obj);
 const Dn2CppType dn2cpp_void_type_obj = { { &dn2cpp_type_type }, &dn2cpp_void_type };
 extern const Dn2CppType dn2cpp_exception_type_obj;
 const Dn2CppTypeInfo dn2cpp_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Exception", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Exception", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_exception_type_obj);
 const Dn2CppType dn2cpp_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_exception_type };
 // System.Enum is non-const like String: every emitted per-enum type-info bases on
 // this handle and deliberately carries no interface rows of its own, so the ONE
@@ -556,7 +573,7 @@ const Dn2CppType dn2cpp_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ex
 // through the base chain.
 extern const Dn2CppType dn2cpp_enum_type_obj;
 Dn2CppTypeInfo dn2cpp_enum_type =
-    dn2cpp_ti_with_typeobject({ "System.Enum", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_enum_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Enum", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_enum_type_obj);
 const Dn2CppType dn2cpp_enum_type_obj = { { &dn2cpp_type_type }, &dn2cpp_enum_type };
 
 // SafeWaitHandle is runtime-allocated, but its inherited SafeHandle methods and
@@ -564,11 +581,11 @@ const Dn2CppType dn2cpp_enum_type_obj = { { &dn2cpp_type_type }, &dn2cpp_enum_ty
 // dn2cpp_type_binds replace this stub with that complete emitted metadata at startup.
 extern const Dn2CppType dn2cpp_safehandle_type_obj;
 Dn2CppTypeInfo dn2cpp_safehandle_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.SafeHandle", nullptr, 0, nullptr, nullptr, 0 }, &dn2cpp_safehandle_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.SafeHandle", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_safehandle_type_obj);
 const Dn2CppType dn2cpp_safehandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_safehandle_type };
 extern const Dn2CppType dn2cpp_safehandle_zero_or_minus_one_type_obj;
 Dn2CppTypeInfo dn2cpp_safehandle_zero_or_minus_one_type =
-    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid", &dn2cpp_safehandle_type, 0, nullptr, nullptr, 0 }, &dn2cpp_safehandle_zero_or_minus_one_type_obj);
+    dn2cpp_ti_with_typeobject({ "Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid", &dn2cpp_safehandle_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_safehandle_zero_or_minus_one_type_obj);
 const Dn2CppType dn2cpp_safehandle_zero_or_minus_one_type_obj =
     { { &dn2cpp_type_type }, &dn2cpp_safehandle_zero_or_minus_one_type };
 
@@ -586,31 +603,31 @@ void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t cou
 // intentional carve-out (`is SystemException` on a trapped exception reports false).
 extern const Dn2CppType dn2cpp_overflow_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_overflow_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_overflow_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_overflow_exception_type_obj);
 const Dn2CppType dn2cpp_overflow_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_overflow_exception_type };
 extern const Dn2CppType dn2cpp_index_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IndexOutOfRangeException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_index_out_of_range_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IndexOutOfRangeException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_index_out_of_range_exception_type_obj);
 const Dn2CppType dn2cpp_index_out_of_range_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_index_out_of_range_exception_type };
 extern const Dn2CppType dn2cpp_argument_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_argument_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_exception_type_obj);
 const Dn2CppType dn2cpp_argument_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_exception_type };
 extern const Dn2CppType dn2cpp_com_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_com_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_com_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Runtime.InteropServices.COMException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_com_exception_type_obj);
 const Dn2CppType dn2cpp_com_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_com_exception_type };
 extern const Dn2CppType dn2cpp_argument_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_out_of_range_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentOutOfRangeException", &dn2cpp_argument_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_argument_out_of_range_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentOutOfRangeException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_out_of_range_exception_type_obj);
 const Dn2CppType dn2cpp_argument_out_of_range_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_out_of_range_exception_type };
 extern const Dn2CppType dn2cpp_argument_null_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_argument_null_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArgumentNullException", &dn2cpp_argument_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_argument_null_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArgumentNullException", &dn2cpp_argument_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_argument_null_exception_type_obj);
 const Dn2CppType dn2cpp_argument_null_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_argument_null_exception_type };
 extern const Dn2CppType dn2cpp_invalid_operation_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_invalid_operation_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.InvalidOperationException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_invalid_operation_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.InvalidOperationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_invalid_operation_exception_type_obj);
 const Dn2CppType dn2cpp_invalid_operation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_invalid_operation_exception_type };
 // Based on InvalidOperationException (as in .NET: ObjectDisposedException :
 // InvalidOperationException). The base link is what keeps a `catch
@@ -618,84 +635,84 @@ const Dn2CppType dn2cpp_invalid_operation_exception_type_obj = { { &dn2cpp_type_
 // what makes `catch (ObjectDisposedException)` catch it at all.
 extern const Dn2CppType dn2cpp_object_disposed_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_object_disposed_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ObjectDisposedException", &dn2cpp_invalid_operation_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_object_disposed_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ObjectDisposedException", &dn2cpp_invalid_operation_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_object_disposed_exception_type_obj);
 const Dn2CppType dn2cpp_object_disposed_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_object_disposed_exception_type };
 extern const Dn2CppType dn2cpp_out_of_memory_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_out_of_memory_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OutOfMemoryException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_out_of_memory_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OutOfMemoryException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_out_of_memory_exception_type_obj);
 const Dn2CppType dn2cpp_out_of_memory_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_out_of_memory_exception_type };
 extern const Dn2CppType dn2cpp_arithmetic_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_arithmetic_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArithmeticException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_arithmetic_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArithmeticException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_arithmetic_exception_type_obj);
 const Dn2CppType dn2cpp_arithmetic_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_arithmetic_exception_type };
 extern const Dn2CppType dn2cpp_invalid_cast_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_invalid_cast_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.InvalidCastException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_invalid_cast_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.InvalidCastException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_invalid_cast_exception_type_obj);
 const Dn2CppType dn2cpp_invalid_cast_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_invalid_cast_exception_type };
 extern const Dn2CppType dn2cpp_type_load_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_type_load_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.TypeLoadException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_type_load_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.TypeLoadException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_type_load_exception_type_obj);
 const Dn2CppType dn2cpp_type_load_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_type_load_exception_type };
 extern const Dn2CppType dn2cpp_dll_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.DllNotFoundException", &dn2cpp_type_load_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_dll_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.DllNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_dll_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_dll_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_dll_not_found_exception_type };
 extern const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.EntryPointNotFoundException", &dn2cpp_type_load_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_entry_point_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.EntryPointNotFoundException", &dn2cpp_type_load_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_entry_point_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_entry_point_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_entry_point_not_found_exception_type };
 extern const Dn2CppType dn2cpp_not_supported_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_not_supported_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.NotSupportedException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_not_supported_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.NotSupportedException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_not_supported_exception_type_obj);
 const Dn2CppType dn2cpp_not_supported_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_not_supported_exception_type };
 extern const Dn2CppType dn2cpp_format_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_format_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.FormatException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_format_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.FormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_format_exception_type_obj);
 const Dn2CppType dn2cpp_format_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_format_exception_type };
 // Based on NotSupportedException (as in .NET: PNSE : NotSupportedException), so
 // `catch (NotSupportedException)` also matches the dynamic-code-generation traps.
 extern const Dn2CppType dn2cpp_platform_not_supported_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_platform_not_supported_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.PlatformNotSupportedException", &dn2cpp_not_supported_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_platform_not_supported_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.PlatformNotSupportedException", &dn2cpp_not_supported_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_platform_not_supported_exception_type_obj);
 const Dn2CppType dn2cpp_platform_not_supported_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_platform_not_supported_exception_type };
 // File error paths (real .NET exception types, so `catch`/GetType match).
 extern const Dn2CppType dn2cpp_io_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_io_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.IOException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_io_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.IOException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_io_exception_type_obj);
 const Dn2CppType dn2cpp_io_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_io_exception_type };
 extern const Dn2CppType dn2cpp_file_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_file_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_file_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.FileNotFoundException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_file_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_file_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_file_not_found_exception_type };
 extern const Dn2CppType dn2cpp_path_too_long_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_path_too_long_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.IO.PathTooLongException", &dn2cpp_io_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_path_too_long_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.IO.PathTooLongException", &dn2cpp_io_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_path_too_long_exception_type_obj);
 const Dn2CppType dn2cpp_path_too_long_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_path_too_long_exception_type };
 extern const Dn2CppType dn2cpp_unauthorized_access_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_unauthorized_access_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.UnauthorizedAccessException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_unauthorized_access_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.UnauthorizedAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_unauthorized_access_exception_type_obj);
 const Dn2CppType dn2cpp_unauthorized_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_unauthorized_access_exception_type };
 extern const Dn2CppType dn2cpp_key_not_found_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_key_not_found_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Collections.Generic.KeyNotFoundException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_key_not_found_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Collections.Generic.KeyNotFoundException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_key_not_found_exception_type_obj);
 const Dn2CppType dn2cpp_key_not_found_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_key_not_found_exception_type };
 // Array.Copy over two arrays of different rank, matching .NET's RankException.
 extern const Dn2CppType dn2cpp_rank_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_rank_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.RankException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_rank_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.RankException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_rank_exception_type_obj);
 const Dn2CppType dn2cpp_rank_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_rank_exception_type };
 // Array.Copy over two arrays whose element types no arm of the CLR's
 // compatibility verdict relates, matching .NET's
 // ArrayTypeMismatchException. Direct System.Exception base, like RankException.
 extern const Dn2CppType dn2cpp_array_type_mismatch_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.ArrayTypeMismatchException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_array_type_mismatch_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.ArrayTypeMismatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_array_type_mismatch_exception_type_obj);
 const Dn2CppType dn2cpp_array_type_mismatch_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_array_type_mismatch_exception_type };
 // Reflection member lookup with several undecidable matches (Type.GetMethod /
 // GetProperty), matching .NET's AmbiguousMatchException.
 extern const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Reflection.AmbiguousMatchException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_ambiguous_match_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Reflection.AmbiguousMatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_ambiguous_match_exception_type_obj);
 const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ambiguous_match_exception_type };
 // Activator/ConstructorInfo constructor resolution with no matching ctor,
 // matching .NET's MissingMethodException. Direct System.Exception base (the
@@ -703,11 +720,11 @@ const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj = { { &dn2cpp_type_ty
 // the same posture as AmbiguousMatchException's missing SystemException).
 extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_missing_method_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
 const Dn2CppType dn2cpp_missing_method_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_method_exception_type };
 extern const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_missing_manifest_resource_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_manifest_resource_exception_type_obj);
 const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_manifest_resource_exception_type };
 // A runtime entry point's null managed receiver (a null FieldInfo's GetValue),
 // matching .NET's NullReferenceException for the instance call it stands in
@@ -715,7 +732,7 @@ const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj = { { &dn2c
 // modeled, the same posture as AmbiguousMatchException).
 extern const Dn2CppType dn2cpp_null_reference_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_null_reference_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.NullReferenceException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_null_reference_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.NullReferenceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_null_reference_exception_type_obj);
 const Dn2CppType dn2cpp_null_reference_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_null_reference_exception_type };
 
 // System.DivideByZeroException — raised by the emitted div/rem guards, the
@@ -724,7 +741,7 @@ const Dn2CppType dn2cpp_null_reference_exception_type_obj = { { &dn2cpp_type_typ
 // `catch (ArithmeticException)` around numeric parsing is a shape real code writes.
 extern const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_divide_by_zero_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.DivideByZeroException", &dn2cpp_arithmetic_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_divide_by_zero_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.DivideByZeroException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_divide_by_zero_exception_type_obj);
 const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_divide_by_zero_exception_type };
 
 // System.Threading.LockRecursionException — raised by ReaderWriterLockSlim's
@@ -733,7 +750,7 @@ const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj = { { &dn2cpp_type_typ
 // matching real .NET. Direct System.Exception base, as in .NET.
 extern const Dn2CppType dn2cpp_lock_recursion_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_lock_recursion_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.LockRecursionException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_lock_recursion_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.LockRecursionException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_lock_recursion_exception_type_obj);
 const Dn2CppType dn2cpp_lock_recursion_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_lock_recursion_exception_type };
 // System.Threading.SynchronizationLockException — raised by ReaderWriterLockSlim's
 // Exit* paths when the calling thread does not hold the lock being released
@@ -741,7 +758,7 @@ const Dn2CppType dn2cpp_lock_recursion_exception_type_obj = { { &dn2cpp_type_typ
 // stays unmodeled, as everywhere).
 extern const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_synchronization_lock_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_synchronization_lock_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_synchronization_lock_exception_type_obj);
 const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_synchronization_lock_exception_type };
 
 // Mutex-interned fallback behind the lock-free typeObject fast path (inline in
@@ -948,7 +965,7 @@ static inline bool dn2cpp_ti_is_closed_generic(const Dn2CppTypeInfo* ti)
 static inline bool dn2cpp_ti_shows_generic_params(const Dn2CppTypeInfo* ti, bool qualify)
 {
     return !qualify && ti != nullptr && (ti->flags & DN2CPP_TF_GENERICDEF) != 0
-        && ti->genericParamNames != nullptr;
+        && ti->reflection().genericParamNames != nullptr;
 }
 
 // Composes a closed generic's CLR name, Def`N[arg,arg], recursively. `qualify`
@@ -963,7 +980,7 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
         if (dn2cpp_ti_shows_generic_params(ti, qualify))
         {
             out += '[';
-            out += ti->genericParamNames;
+            out += ti->reflection().genericParamNames;
             out += ']';
         }
         return;
@@ -980,7 +997,7 @@ static void dn2cpp_append_type_display(const Dn2CppTypeInfo* ti, bool qualify, s
             out += '[';
             dn2cpp_append_type_display(a, true, out);
             out += ", ";
-            out += dn2cpp_assembly_display_name_utf8(a != nullptr ? a->assemblyName : nullptr);
+            out += dn2cpp_assembly_display_name_utf8(a != nullptr ? a->reflection().assemblyName : nullptr);
             out += ']';
         }
         else
@@ -1267,7 +1284,7 @@ int32_t dn2cpp_type_is_subclass_of(Dn2CppType* a, Dn2CppType* c)
 // JsonConverter..ctor only asks "is this converter in the STJ assembly?").
 const char* dn2cpp_type_assembly_name(Dn2CppType* a)
 {
-    const char* nm = dn2cpp_type_require(a)->assemblyName;
+    const char* nm = dn2cpp_type_require(a)->reflection().assemblyName;
     return nm != nullptr ? nm : "System.Private.CoreLib";
 }
 

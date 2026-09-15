@@ -565,17 +565,17 @@ static const void** dn2cpp_bbi_slots(const Dn2CppTypeInfo* itf, int32_t selfKind
         if (e->itf == itf && e->self == self)
             return e->slots;
     const void** slots = nullptr;
-    if (itf->methods != nullptr && itf->methodCount > 0)
+    if (itf->reflection().methods != nullptr && itf->reflection().methodCount > 0)
     {
-        slots = new const void*[static_cast<size_t>(itf->methodCount)];
-        for (int32_t i = 0; i < itf->methodCount; i++)
+        slots = new const void*[static_cast<size_t>(itf->reflection().methodCount)];
+        for (int32_t i = 0; i < itf->reflection().methodCount; i++)
             slots[i] = reinterpret_cast<const void*>(&dn2cpp_itf_slot_missing_anon);
-        for (int32_t i = 0; i < itf->methodCount; i++)
+        for (int32_t i = 0; i < itf->reflection().methodCount; i++)
         {
-            int32_t s = itf->methods[i].vtableSlot;
-            if (s < 0 || s >= itf->methodCount)
+            int32_t s = itf->reflection().methods[i]->vtableSlot;
+            if (s < 0 || s >= itf->reflection().methodCount)
                 continue;
-            if (const void* thunk = dn2cpp_bbi_thunk(itf, itf->methods[i].name, selfKind, self))
+            if (const void* thunk = dn2cpp_bbi_thunk(itf, itf->reflection().methods[i]->name, selfKind, self))
                 slots[s] = thunk;
         }
     }
@@ -1481,7 +1481,7 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
         if (t != nullptr && t->type == &dn2cpp_reflbind_type)
         {
             auto* rb = reinterpret_cast<Dn2CppReflBind*>(t);
-            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method))) * 1099511628211ull;
+            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity()))) * 1099511628211ull;
             h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->target))) * 1099511628211ull;
         }
         else

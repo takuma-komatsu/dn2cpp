@@ -247,7 +247,7 @@ struct ImportBinding
                                         // signature test reads — set by both bind
                                         // routes, from the resolved method row or from
                                         // the intrinsic row's own retTi
-    const Dn2CppMethodInfo* method;     // the base-image method row a METADATA bind
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method;     // the base-image method row a METADATA bind
                                         // resolved (null for an intrinsic-table bind,
                                         // which resolves no row). Carries the parameter
                                         // types the delegate-capture signature test
@@ -257,7 +257,7 @@ struct ImportBinding
                                         // type-info of its own.
     MarshalDesc ret;                    // result marshalling (kMarshalNone = void)
     MarshalDesc args[kMaxImportArgs];   // per-parameter marshalling
-    const Dn2CppFieldInfo* field;       // Field import: the bound accessor entry
+    Dn2CppMetadataHandle<Dn2CppFieldInfo> field;       // Field import: the bound accessor entry
     MarshalDesc fieldVal;               // Field import: value marshalling
     int8_t excMsgArg;   // exception-ctor intercept: the Message ctor-arg index or -1
     int8_t excInnerArg; // exception-ctor intercept: the innerException arg index or -1
@@ -398,7 +398,7 @@ struct Dn2CppInterpDgFtn : Dn2CppObject
     // bind and null for an intrinsic-table one, whose fixed `Dn2CppObject*
     // (*)(Dn2CppObject*)` shape needs none: aotArgCount is 0 and aotRetType is the
     // row's declared return. All three are zero for kDgFtnPatch.
-    const Dn2CppMethodInfo* aotMethod;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> aotMethod;
     const Dn2CppTypeInfo* aotRetType;
     uint32_t aotArgCount;
     uint32_t magic;
@@ -599,20 +599,20 @@ Dn2CppObject* intrinsic_string_concat_array(Dn2CppString* arr)
 // receiver guards raise the catchable NRE — rather than refusing a legitimate
 // static-method closure, whose null captured receiver is the format's own
 // encoding of "static".
-const Dn2CppMethodInfo* dg_invoke_row(const Dn2CppTypeInfo* dti)
+Dn2CppMetadataHandle<Dn2CppMethodInfo> dg_invoke_row(const Dn2CppTypeInfo* dti)
 {
-    if (dti == nullptr || dti->methods == nullptr)
+    if (dti == nullptr || dti->reflection().methods == nullptr)
         return nullptr;
-    for (int32_t i = 0; i < dti->methodCount; i++)
-        if (dti->methods[i].name != nullptr
-            && std::strcmp(dti->methods[i].name, "Invoke") == 0)
-            return &dti->methods[i];
+    for (int32_t i = 0; i < dti->reflection().methodCount; i++)
+        if (dti->reflection().methods[i]->name != nullptr
+            && std::strcmp(dti->reflection().methods[i]->name, "Invoke") == 0)
+            return dti->reflection().methods[i];
     return nullptr;
 }
 
 int32_t dg_invoke_param_count(const Dn2CppTypeInfo* dti)
 {
-    const Dn2CppMethodInfo* inv = dg_invoke_row(dti);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> inv = dg_invoke_row(dti);
     return inv != nullptr ? inv->paramCount : -1;
 }
 
@@ -909,7 +909,7 @@ bool dg_sig_position_ok(const Dn2CppTypeInfo* from, const Dn2CppTypeInfo* to)
 // state it completely.
 bool dg_aot_signature_ok(const Dn2CppInterpDgFtn* c, const Dn2CppTypeInfo* dti)
 {
-    const Dn2CppMethodInfo* inv = dg_invoke_row(dti);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> inv = dg_invoke_row(dti);
     if (inv == nullptr)
         return false;
     if (static_cast<uint32_t>(inv->paramCount) != c->aotArgCount)
@@ -926,8 +926,8 @@ bool dg_aot_signature_ok(const Dn2CppInterpDgFtn* c, const Dn2CppTypeInfo* dti)
     {
         if (inv->parameters == nullptr || c->aotMethod->parameters == nullptr)
             return false;
-        if (!dg_sig_position_ok(inv->parameters[i].paramType,
-                c->aotMethod->parameters[i].paramType))
+        if (!dg_sig_position_ok(inv->parameters[i]->paramType,
+                c->aotMethod->parameters[i]->paramType))
             return false;
     }
     return true;
@@ -1031,33 +1031,33 @@ enum OverloadStatus { kOverloadNone, kOverloadFound, kOverloadAmbiguous };
 // requested instantiation the base never emitted is a clean unresolved failure
 // rather than a silent mis-bind onto a different instantiation.
 OverloadStatus resolve_overload(
-    const Dn2CppMethodInfo* methods, int32_t count,
+    Dn2CppMetadataTable<Dn2CppMethodInfo> methods, int32_t count,
     const char* name, uint32_t nameLen, bool matchName,
     uint32_t paramCount, bool wantStatic,
     const char* shape, uint32_t shapeLen,
-    const Dn2CppMethodInfo** out)
+    Dn2CppMetadataHandle<Dn2CppMethodInfo>* out)
 {
-    const Dn2CppMethodInfo* exact = nullptr;
-    const Dn2CppMethodInfo* unshaped = nullptr;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> exact = nullptr;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> unshaped = nullptr;
     int cand = 0, unshapedCount = 0;
     for (int32_t i = 0; i < count; i++)
     {
-        const Dn2CppMethodInfo& mi = methods[i];
-        if (mi.paramCount != static_cast<int32_t>(paramCount))
+        auto mi = methods[i];
+        if (mi->paramCount != static_cast<int32_t>(paramCount))
             continue;
-        if (((mi.attrs & DN2CPP_MTHA_STATIC) != 0) != wantStatic)
+        if (((mi->attrs & DN2CPP_MTHA_STATIC) != 0) != wantStatic)
             continue;
-        if (matchName && !name_equals(name, nameLen, mi.name))
+        if (matchName && !name_equals(name, nameLen, mi->name))
             continue;
         cand++;
-        if (mi.sigShape == nullptr)
+        if (mi->sigShape == nullptr)
         {
-            unshaped = &mi;
+            unshaped = mi;
             unshapedCount++;
         }
-        else if (name_equals(shape, shapeLen, mi.sigShape))
+        else if (name_equals(shape, shapeLen, mi->sigShape))
         {
-            exact = &mi;
+            exact = mi;
         }
     }
     if (exact != nullptr)
@@ -1158,8 +1158,8 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     {
         if (!isInstance)
             interp_fail("BPI bind: static interface method imports need a later slice");
-        const Dn2CppMethodInfo* im = nullptr;
-        if (resolve_overload(declTi->methods, declTi->methodCount, name, nameLen, /*matchName*/ true,
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> im = nullptr;
+        if (resolve_overload(declTi->reflection().methods, declTi->reflection().methodCount, name, nameLen, /*matchName*/ true,
                 paramCount, /*wantStatic*/ false, shape, shapeLen, &im) == kOverloadAmbiguous)
             interp_fail("BPI bind: ambiguous interface method import (same-arity overloads share a sigShape)");
         if (im == nullptr || im->invoker == nullptr || im->vtableSlot < 0)
@@ -1204,7 +1204,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     }
 
     bool isCtor = name_equals(name, nameLen, ".ctor");
-    const Dn2CppMethodInfo* found = nullptr;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> found = nullptr;
     if (isCtor)
     {
         if (!isInstance)
@@ -1276,8 +1276,8 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
             // Ambiguity is rejected identically to the normal ctor path; a
             // miss (opaque type, or a ctor the base never emitted) leaves
             // fnPtr/invoker null for the seed-only degrade.
-            const Dn2CppMethodInfo* exFound = nullptr;
-            if (resolve_overload(declTi->ctors, declTi->ctorCount, nullptr, 0, /*matchName*/ false,
+            Dn2CppMetadataHandle<Dn2CppMethodInfo> exFound = nullptr;
+            if (resolve_overload(declTi->reflection().ctors, declTi->reflection().ctorCount, nullptr, 0, /*matchName*/ false,
                     paramCount, /*wantStatic*/ false, shape, shapeLen, &exFound) == kOverloadAmbiguous)
                 interp_fail("BPI bind: ambiguous constructor import (same-arity overloads share a sigShape)");
             if (exFound != nullptr && exFound->fnPtr != nullptr && exFound->invoker != nullptr)
@@ -1292,7 +1292,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
         }
         if ((declTi->flags & (DN2CPP_TF_VALUETYPE | DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
             interp_fail("BPI bind: newobj target is not a constructible reference type");
-        if (resolve_overload(declTi->ctors, declTi->ctorCount, nullptr, 0, /*matchName*/ false,
+        if (resolve_overload(declTi->reflection().ctors, declTi->reflection().ctorCount, nullptr, 0, /*matchName*/ false,
                 paramCount, /*wantStatic*/ false, shape, shapeLen, &found) == kOverloadAmbiguous)
             interp_fail("BPI bind: ambiguous constructor import (same-arity overloads share a sigShape)");
     }
@@ -1302,7 +1302,7 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
             interp_fail("BPI bind: value-type instance calls need a later slice");
         for (const Dn2CppTypeInfo* ti = declTi; ti != nullptr && found == nullptr; ti = ti->base)
         {
-            if (resolve_overload(ti->methods, ti->methodCount, name, nameLen, /*matchName*/ true,
+            if (resolve_overload(ti->reflection().methods, ti->reflection().methodCount, name, nameLen, /*matchName*/ true,
                     paramCount, /*wantStatic*/ !isInstance, shape, shapeLen, &found) == kOverloadAmbiguous)
                 interp_fail("BPI bind: ambiguous method import (same-arity overloads share a sigShape)");
         }
@@ -1384,14 +1384,14 @@ void bind_field_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp,
     const Dn2CppTypeInfo* declTi = img->bindings[imp.declTypeImport].type;
     if (declTi == nullptr)
         interp_fail("BPI bind: unresolved field import (declaring type not in the base image)");
-    const Dn2CppFieldInfo* found = nullptr;
+    Dn2CppMetadataHandle<Dn2CppFieldInfo> found = nullptr;
     for (const Dn2CppTypeInfo* ti = declTi; ti != nullptr && found == nullptr; ti = ti->base)
     {
-        for (int32_t i = 0; i < ti->fieldCount; i++)
+        for (int32_t i = 0; i < ti->reflection().fieldCount; i++)
         {
-            if (name_equals(name, nameLen, ti->fields[i].name))
+            if (name_equals(name, nameLen, ti->reflection().fields[i]->name))
             {
-                found = &ti->fields[i];
+                found = ti->reflection().fields[i];
                 break;
             }
         }
@@ -3726,7 +3726,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         bool isStatic = insn.op == 0x7E;
                         if (((fi->attrs & DN2CPP_FLDA_STATIC) != 0) != isStatic)
                             interp_fail("interp: field import staticness mismatch");
@@ -3794,7 +3794,7 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         bool isStatic = insn.op == 0x80;
                         if (((fi->attrs & DN2CPP_FLDA_STATIC) != 0) != isStatic)
                             interp_fail("interp: field import staticness mismatch");
@@ -4918,7 +4918,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) != 0)
                             interp_fail("interp: field import staticness mismatch");
                         auto* obj = static_cast<Dn2CppObject*>(regs[r1].ref);
@@ -4973,7 +4973,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) != 0)
                             interp_fail("interp: field import staticness mismatch");
                         auto* obj = static_cast<Dn2CppObject*>(regs[r0].ref);
@@ -4992,7 +4992,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) == 0)
                             interp_fail("interp: field import staticness mismatch");
                         if (fi->getter == nullptr)
@@ -5010,7 +5010,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         const ImportBinding& b = import_at(img, insn.a, DN2CPP_BPI_IMPORT_FIELD);
-                        const Dn2CppFieldInfo* fi = b.field;
+                        const auto fi = b.field.operator->();
                         if ((fi->attrs & DN2CPP_FLDA_STATIC) == 0)
                             interp_fail("interp: field import staticness mismatch");
                         if (fi->setter == nullptr)

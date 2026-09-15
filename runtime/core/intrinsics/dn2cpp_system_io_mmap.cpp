@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 #include "dn2cpp_core.h"
 
 static void dn2cpp_mappedfile_finalize(Dn2CppObject* obj)
@@ -12,14 +13,16 @@ static void dn2cpp_mappedfile_finalize(Dn2CppObject* obj)
     }
 }
 
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_mmap_reflection,
+    nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0,
+    nullptr, 0, "System.IO.MemoryMappedFiles");
+
 extern const Dn2CppType dn2cpp_mappedfile_type_obj;
 Dn2CppTypeInfo dn2cpp_mappedfile_type = [] {
     auto ti = dn2cpp_ti_with_typeobject(
-        { "System.IO.MemoryMappedFiles.MemoryMappedFile", &dn2cpp_object_type,
-          (int32_t)sizeof(Dn2CppMappedFile), nullptr, nullptr, 0,
-          nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE },
+        { "System.IO.MemoryMappedFiles.MemoryMappedFile", &dn2cpp_object_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMappedFile), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr },
         &dn2cpp_mappedfile_type_obj);
-    ti.assemblyName = "System.IO.MemoryMappedFiles";
+    ti.reflectionData = dn2cpp_mmap_reflection;
     ti.finalize = &dn2cpp_mappedfile_finalize;
     return ti;
 }();
@@ -78,20 +81,16 @@ extern const Dn2CppType dn2cpp_mappedview_type_obj;
 extern const Dn2CppType dn2cpp_unmanaged_memory_accessor_type_obj;
 Dn2CppTypeInfo dn2cpp_unmanaged_memory_accessor_type = [] {
     return dn2cpp_ti_with_typeobject(
-        { "System.IO.UnmanagedMemoryAccessor", &dn2cpp_object_type,
-          (int32_t)sizeof(Dn2CppMappedViewObject), nullptr, nullptr, 0,
-          nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE },
+        { "System.IO.UnmanagedMemoryAccessor", &dn2cpp_object_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMappedViewObject), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr },
         &dn2cpp_unmanaged_memory_accessor_type_obj);
 }();
 const Dn2CppType dn2cpp_unmanaged_memory_accessor_type_obj = {
     { &dn2cpp_type_type }, &dn2cpp_unmanaged_memory_accessor_type };
 Dn2CppTypeInfo dn2cpp_mappedview_type = [] {
     auto ti = dn2cpp_ti_with_typeobject(
-        { "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor", &dn2cpp_unmanaged_memory_accessor_type,
-          (int32_t)sizeof(Dn2CppMappedViewObject), nullptr, nullptr, 0,
-          nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE },
+        { "System.IO.MemoryMappedFiles.MemoryMappedViewAccessor", &dn2cpp_unmanaged_memory_accessor_type, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppMappedViewObject), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr },
         &dn2cpp_mappedview_type_obj);
-    ti.assemblyName = "System.IO.MemoryMappedFiles";
+    ti.reflectionData = dn2cpp_mmap_reflection;
     ti.finalize = &dn2cpp_mappedview_finalize;
     return ti;
 }();

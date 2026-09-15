@@ -493,6 +493,112 @@ Gate placement follows the verdict: a degraded API can never sit in a
 `corelib_freeze_gate`; a metadata-answered member matches real .NET, so its
 section belongs in a `corelib_diff_gate` (`samples/dotnet/ReflectInvoke`).
 
+#### Reflection metadata representation
+
+`Dn2CppTypeInfo` keeps type identity, layout, inheritance, dispatch, generic
+arguments and array classification directly addressable. Reflection-only fields
+are read through `reflection()`. Member handles and tables use the common
+`Dn2CppMetadataHandle` / `Dn2CppMetadataTable` API in
+`runtime/core/dn2cpp_metadata.h`; consumers must not assume a native row array.
+
+`TranspileOptions.CompressMetadata` defaults to `true`. Setting it to `false`
+through `--no-metadata-compression` forces native rows across all generated
+metadata, overriding automatic and explicit packed selections. Selector
+validation still runs. This changes representation without retaining stripped
+types or members.
+
+The producer is `CppEmitter.MetadataEncoding.cs` with row construction in
+`CppEmitter.MetadataRecords.cs`. Its field order and integer signedness must
+match the schemas in `runtime/core/dn2cpp_metadata.cpp`. Records carry a block
+index, their padded byte extent and a presence mask as unsigned variable-length
+integers; signed values use zigzag encoding. Pointer indices refer to constant
+symbol pools. The codec's reserved local-block marker and backward offset
+support records with an adjacent pool. Runtime-owned metadata uses native
+constant rows, so retaining one builtin does not retain unrelated builtins
+through a global pointer array. An omitted derived member flag uses
+the recorded ECMA attributes; an explicitly recorded zero stays zero. Parameter
+modifier knowledge remains separate from the modifier vectors and counts.
+
+Packed static records are aligned and identified by the low address bit in a
+pointer-sized handle. Native static and dynamic rows retain untagged real
+pointers; dynamic rows keep their existing GC roots. Native views read those
+rows directly. Packed views decode onto the stack, and a temporary view's
+address must not escape its expression. Member interning uses the original row
+identity together with the reflected type, never the temporary decoded address.
+A synthesized generic constructor stores its original handle and replacement
+declaring type in a delta descriptor.
+
+`Compilation.ReflectionMetadata.cs` selects native storage for exact types
+named by surviving `ldtoken`/`GetTypeFromHandle` pairs in reached IL. It uses
+each closed scan context and excludes canonical placeholders, dead code and
+folded-away type comparisons. Branch entries inside the pair prevent the
+inference. The selection freezes before metadata emission; adding a choice
+afterward is an invariant failure. Serialized attribute arguments and handle
+values flowing through locals are outside this inference. Explicit
+`ReflectionMetadataFormats` selectors override it without changing reachability
+or reflection preservation. The CLI syntax is documented in the README.
+
+The same policy recognizes the exact metadata name
+`Dn2Cpp.Runtime.NoCompressMetadataAttribute` and custom attributes derived from
+it. It walks attribute ancestry and the target's base-class chain through raw
+metadata, resolving assembly scopes, nested definitions and generic base types
+without materializing classes or adding reachability roots. Cycle guards and
+definition-level caches bound those walks. A generic definition's marker applies
+to every emitted constructed type. Containment, array elements, generic arguments
+and implemented interfaces do not propagate the choice.
+
+Storage precedence is global compression disable, explicit per-type selector,
+attribute selection (including inherited selection), then automatic inference.
+The CLI's exact-type selectors do not inherit. Runtime-owned storage restrictions
+and selector validation remain in force. Attributes change representation only;
+`[Preserve]` and the existing retention mechanisms still control which rows exist.
+
+Open generic definitions retain the existing CLR-name-keyed runtime identity.
+The emitter collects their concrete and token-site module owners before writing
+rows. Native selection is the union of those owners' attribute policies and
+surviving `typeof` sites. A qualified explicit format overrides that shared row;
+conflicting explicit formats for the same physical row are rejected. This
+aggregation does not merge closed-type metadata identities.
+
+The selected format applies to the type's cold row and its own fields,
+methods, constructors, properties, parameters, custom attributes and enum
+members. Automatic and explicit choices do not propagate along inheritance;
+only the attribute policy inherits. Generic arguments and array components
+never inherit a format choice.
+Empty cold metadata stays absent. Parameter and attribute interning includes
+the format in its key; both formats retain stable original row identities and
+constant initialization. Emission retains only a method-table symbol and extent
+per completed pointer block, so completed block contents can be released.
+
+Method invocation uses a bounded thread-local cache of immutable dispatch
+plans for generated packed method rows. Admission requires the row address to
+fall inside the owning block's emitted method table. Local codec records,
+native rows and synthesized deltas bypass the cache. A miss decodes once;
+native invocation reads the original row directly. Plans contain metadata and
+code pointers, never receivers, arguments, results or resolved interface
+implementations. Interface dispatch remains receiver-dependent. The cache
+adds native TLS storage per thread without enlarging managed reflection
+wrappers or changing their allocation budget. Generated images remain loaded
+and their records immutable; unloading or mutating them requires a new cache
+lifetime contract.
+
+Names remain directly comparable UTF-8 strings with exact and suffix sharing.
+Packed signature displays can carry a token stream marked by an invalid UTF-8
+leading byte. The display reader computes the final UTF-16 length and writes
+directly into the returned managed string. The emitter accounts for dictionary
+cost when choosing tokenization. Native rows use directly shared UTF-8 displays.
+Attribute records retain order and factories;
+sharing their metadata does not share the attribute instances returned to callers.
+
+This is an internal generated-code/runtime ABI: regenerate the C++ and rebuild
+the runtime together. Changes must preserve streaming output, deterministic
+pool indices, trim refusals and the direct type-test/dispatch paths. The
+ReflectInvoke gate combines .NET parity with a native codec boundary fixture;
+its optional `DN2CPP_REFLECTION_MEASURE` mode records per-operation first and
+repeated allocations and clock ticks. `gates/measure-reflection-metadata.py`
+compares those captures and measures linked Mach-O sections and fixup payloads;
+retain symbols when attributing bytes to individual metadata pools.
+
 ### C. A Godot engine call — godot lane
 
 Engine-class bindings are generated: `BindingGenerator` emits the C# shim surface

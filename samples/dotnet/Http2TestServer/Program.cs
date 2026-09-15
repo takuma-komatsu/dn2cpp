@@ -14,18 +14,22 @@
 // the registration order here without changing the gate silently swaps which port is
 // which.
 using System.Net;
+using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 
 string certPath = null;
 string keyPath = null;
+string caPath = null;
 for (int i = 0; i < args.Length - 1; i++)
 {
     if (args[i] == "--cert") certPath = args[i + 1];
     else if (args[i] == "--key") keyPath = args[i + 1];
+    else if (args[i] == "--ca") caPath = args[i + 1];
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,15 +52,32 @@ builder.WebHost.ConfigureKestrel(options =>
         options.Listen(IPAddress.Loopback, 0, lo =>
         {
             lo.Protocols = HttpProtocols.Http1AndHttp2;
-            // Re-export through Pkcs12 into a fresh X509Certificate2: on macOS a
-            // certificate loaded straight off PEM key files carries an ephemeral
-            // private-key handle that SslStream/Kestrel cannot use for a handshake —
-            // the same quirk build-and-run-http-get.sh's TLS section works around
-            // (search that file for "ephemeral"), and the fix is identical: round-trip
-            // the pair through PKCS#12.
+            Console.Error.WriteLine("TLS: loading PEM certificate");
+            // Round-trip through PKCS#12 to avoid ephemeral-key TLS failures on
+            // macOS and Windows.
             using X509Certificate2 pem = X509Certificate2.CreateFromPemFile(certPath, keyPath);
+            Console.Error.WriteLine("TLS: importing PKCS#12 certificate");
             X509Certificate2 cert = X509CertificateLoader.LoadPkcs12(pem.Export(X509ContentType.Pkcs12), null);
-            lo.UseHttps(cert);
+            Console.Error.WriteLine("TLS: building offline certificate context");
+            using X509Certificate2 ca = X509Certificate2.CreateFromPem(File.ReadAllText(caPath
+                ?? throw new ArgumentException("TLS requires --ca")));
+            var certificateContext = SslStreamCertificateContext.Create(cert,
+                new X509Certificate2Collection(ca), offline: true);
+            // Supply the whole chain and prevent online issuer discovery during
+            // startup instead of letting Kestrel build a default certificate context.
+            lo.UseHttps(new TlsHandshakeCallbackOptions
+            {
+                OnConnection = _ => new ValueTask<SslServerAuthenticationOptions>(new SslServerAuthenticationOptions
+                {
+                    ServerCertificateContext = certificateContext,
+                    ApplicationProtocols = new List<SslApplicationProtocol>
+                    {
+                        SslApplicationProtocol.Http2,
+                        SslApplicationProtocol.Http11
+                    }
+                })
+            });
+            Console.Error.WriteLine("TLS: HTTPS listener configured");
         });
     }
 });

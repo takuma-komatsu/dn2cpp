@@ -24,11 +24,13 @@ var linkXmlFiles = new List<string>();
 bool sharedGenerics = true;
 bool obfuscate = false;
 bool shadowStack = false;
+bool compressMetadata = true;
 int maxDegreeOfParallelism = 0;
 var references = new List<string>();
 var noDefaultRefs = new List<string>();
 var projectRoots = new List<string>();
 var linkFeatures = new List<string>();
+var reflectionMetadataFormats = new List<string>();
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -111,6 +113,14 @@ for (int i = 0; i < args.Length; i++)
         }
         linkFeatures.Add(feature);
     }
+    else if (args[i] == "--no-metadata-compression")
+    {
+        compressMetadata = false;
+    }
+    else if (args[i] == "--reflection-metadata" && i + 1 < args.Length)
+    {
+        reflectionMetadataFormats.Add(args[++i]);
+    }
     else if (args[i] == "--obfuscate")
     {
         obfuscate = true;
@@ -147,7 +157,7 @@ for (int i = 0; i < args.Length; i++)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--measure] [--verbose]");
+    Console.Error.WriteLine("Usage: dn2cpp-console <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--measure] [--verbose]");
     return 1;
 }
 
@@ -169,4 +179,6 @@ return TranspileDriver.RunConsole(new TranspileOptions
     LinkXmlFiles = linkXmlFiles,
     ProjectRoots = projectRoots,
     LinkFeatures = linkFeatures,
+    ReflectionMetadataFormats = reflectionMetadataFormats,
+    CompressMetadata = compressMetadata,
 });

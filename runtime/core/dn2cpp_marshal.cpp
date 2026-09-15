@@ -155,7 +155,7 @@ static int32_t marshal_require_size_impl(const Dn2CppTypeInfo* ti, bool allowMod
     if (ti->genericDef != nullptr || ti->genericArgCount > 0)
         dn2cpp_throw_argument_msg("The specified Type must not be a generic type.");
     if ((ti->flags & DN2CPP_TF_VALUETYPE) == 0 && (ti->flags & DN2CPP_TF_MARSHAL_INEXACT) == 0
-        && ti->marshalSize <= 0)
+        && ti->reflection().marshalSize <= 0)
         marshal_refuse(ti);
     dn2cpp_require_layout(ti);
     if ((ti->flags & DN2CPP_TF_NOT_MARSHALABLE) != 0)
@@ -166,8 +166,8 @@ static int32_t marshal_require_size_impl(const Dn2CppTypeInfo* ti, bool allowMod
     // that is right for Marshal.SizeOf and wrong for the byte image would turn a refusal
     // into a silent misread. A size query gets the number; a COPY still requires the two
     // layouts to coincide.
-    if (allowModelled && ti->marshalSize > 0)
-        return ti->marshalSize;
+    if (allowModelled && ti->reflection().marshalSize > 0)
+        return ti->reflection().marshalSize;
     if ((ti->flags & DN2CPP_TF_MARSHAL_INEXACT) != 0)
     {
         char buf[512];

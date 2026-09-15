@@ -53,6 +53,8 @@
 // zeroed row rather than none, the emitter's own spelling for an empty table:
 // the count is what the runtime reads, and MSVC rejects a zero-sized array.
 const Dn2CppTypeRegEntry dn2cpp_type_registry[] = { {} };
+const Dn2CppMetadataBlock dn2cpp_metadata_blocks[] = { {} };
+const std::size_t dn2cpp_metadata_block_count = 1;
 const int32_t dn2cpp_type_registry_count = 0;
 const Dn2CppTypeBind dn2cpp_type_binds[] = { {} };
 const int32_t dn2cpp_type_bind_count = 0;

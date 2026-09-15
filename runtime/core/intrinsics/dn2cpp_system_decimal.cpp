@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_system_decimal.cpp — System.Decimal intrinsics: libc-free 96-bit
 // fixed-point arithmetic, parsing and formatting emitted in place of the BCL's
 // Decimal IL. Value layout, rounding (half-away-from-zero to 96 bits / 28-place
@@ -865,15 +866,16 @@ DN2CPP_DECFLD(One, 1, 0, 0, 0)
 DN2CPP_DECFLD(MinusOne, 1, 0, 0, 1)
 DN2CPP_DECFLD(MaxValue, -1, -1, -1, 0)
 DN2CPP_DECFLD(MinValue, -1, -1, -1, 1)
-static const Dn2CppFieldInfo dn2cpp_ownflds_decimal[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_decimal,
     DN2CPP_DECFLD_ROW(Zero), DN2CPP_DECFLD_ROW(One), DN2CPP_DECFLD_ROW(MinusOne),
     DN2CPP_DECFLD_ROW(MaxValue), DN2CPP_DECFLD_ROW(MinValue),
-};
+);
 #undef DN2CPP_DECFLD
 #undef DN2CPP_DECFLD_ROW
 
 extern const Dn2CppType dn2cpp_decimal_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_decimal_type_reflection, dn2cpp_ownflds_decimal, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_decimal_type = dn2cpp_ti_with_formatspec(
-    dn2cpp_ti_with_typeobject({ "System.Decimal", nullptr, (int32_t)sizeof(Dn2CppDecimal), nullptr, nullptr, 0, &dn2cpp_decimal_box_tostring, &dn2cpp_decimal_box_hash, &dn2cpp_decimal_box_equals, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), dn2cpp_ownflds_decimal, 5 }, &dn2cpp_decimal_type_obj),
+    dn2cpp_ti_with_typeobject({ "System.Decimal", nullptr, nullptr, nullptr, &dn2cpp_decimal_box_tostring, &dn2cpp_decimal_box_hash, &dn2cpp_decimal_box_equals, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppDecimal), 0, (DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED), 0, 0, 0, dn2cpp_decimal_type_reflection }, &dn2cpp_decimal_type_obj),
     &dn2cpp_decimal_box_formatspec);
 const Dn2CppType dn2cpp_decimal_type_obj = { { &dn2cpp_type_type }, &dn2cpp_decimal_type };

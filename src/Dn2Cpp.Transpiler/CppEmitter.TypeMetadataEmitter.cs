@@ -120,7 +120,6 @@ internal sealed partial class CppEmitter
         // enum section has run (see the assignment there).
         private HashSet<ClassInfo> _emittedEnums = new();
         private readonly Dictionary<MethodInfo, ModifierSignature?> _modifierSignatures = new();
-        private int _customModifierSeq;
 
         private sealed class ModifiedType
         {
@@ -228,12 +227,10 @@ internal sealed partial class CppEmitter
         {
             if (modifiers.Length == 0)
                 return ("nullptr", 0);
-            string name = $"custommods_{_customModifierSeq++}";
             var rows = new string[modifiers.Length];
             for (int i = 0; i < rows.Length; i++)
                 rows[i] = _e.MemberTypeInfoExpr(modifiers[i], _emittedEnums);
-            _sb.AppendLine($"static const Dn2CppTypeInfo* const {name}[] = {{ {string.Join(", ", rows)} }};");
-            return (name, rows.Length);
+            return (TypeArgumentVector(string.Join(", ", rows)), rows.Length);
         }
 
         internal TypeMetadataEmitter(CppEmitter e, CppOutput o)
@@ -323,14 +320,6 @@ internal sealed partial class CppEmitter
             _sb.AppendLine($"static const Dn2CppInterfaceEntry {tab}[] = {{ {string.Join(", ", rows)} }};");
             return (baseExpr, tab, rows.Count);
         }
-
-        /// <summary>Wraps a <c>gendef_</c> row's positional initializer so the handle carries
-        /// <paramref name="names"/>, its definition's comma-joined type-parameter names —
-        /// the bracket group <c>Type.ToString()</c> appends. The member is the
-        /// struct's last and a gendef row stops well before it, hence the constexpr wrapper;
-        /// a null list leaves the row's text exactly as it was.</summary>
-        private static string WithGenericParams(string init, string? names) =>
-            names is null ? init : $"dn2cpp_ti_with_generic_params({init}, \"{names}\")";
 
         /// <summary>Record that this emission defines the type-info symbol
         /// <paramref name="sym"/> — the defined half of
@@ -500,6 +489,11 @@ internal sealed partial class CppEmitter
         private string GenericArgVector(ClassInfo cls)
         {
             string gaInit = string.Join(", ", cls.Context.TypeArgs.Select(a => _e.FieldTypeInfoExpr(a, _emittedEnums)));
+            return TypeArgumentVector(gaInit);
+        }
+
+        private string TypeArgumentVector(string gaInit)
+        {
             if (_genargPools.TryGetValue(gaInit, out var pooled))
                 return pooled;
             string arr = $"genargpool_{_genargPoolSeq++}";
@@ -541,9 +535,12 @@ internal sealed partial class CppEmitter
                 var defAnc = _c.OpenGenericDefAncestry(c.Module, c.Handle);
                 var (dfBase, dfItfs, dfItfCount) =
                     GenericDefRelations(defBase, defAnc.Base, defAnc.Interfaces, c.IsValueType, c.IsInterface);
-                string defInit = $"{{ \"{gi.DefName}\", {dfBase}, 0, nullptr, {dfItfs}, {dfItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{defSym} }}";
-                _sb.AppendLine($"const Dn2CppTypeInfo {defSym} = "
-                    + WithGenericParams(defInit, Compilation.GenericParamNames(c.Module, c.Handle)) + ";");
+                _e.EmitTypeInfo(_sb, defSym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(gi.DefName),
+                    Name = gi.DefName, Base = dfBase, Interfaces = dfItfs, InterfaceCount = dfItfCount,
+                    Flags = defFlags, GenericDef = "&" + defSym, TypeObject = "&ty_" + defSym,
+                    GenericParamNames = Compilation.GenericParamNames(c.Module, c.Handle),
+                });
                 _sb.AppendLine($"const Dn2CppType ty_{defSym} = {{ {{ &dn2cpp_type_type }}, &{defSym} }};");
             }
             foreach (var c in _e._referencedIntrinsicTis)
@@ -572,9 +569,6 @@ internal sealed partial class CppEmitter
                 if (c.IsSealed)
                     flagBits.Add("DN2CPP_TF_SEALED");
                 string flags = flagBits.Count == 0 ? "0" : string.Join(" | ", flagBits);
-                // Non-generic: stop at flags and let the trailing members 0-fill, so this
-                // row's text is what it always was. A closed generic has to spell the ten
-                // members between flags and genericDef to reach its positional slots.
                 string toString = _c.GenericDefFullName(c) == "System.Threading.Tasks.ValueTask"
                     && c.Context.TypeArgs.Length == 1
                         ? "&dn2cpp_valuetask_box_tostring"
@@ -596,19 +590,30 @@ internal sealed partial class CppEmitter
                     _sb.AppendLine($"static int32_t {eqThunk}(Dn2CppObject* a, Dn2CppObject* b) {{ return (b && b->type == a->type && ((Dn2CppCancelToken*)(a + 1))->source == ((Dn2CppCancelToken*)(b + 1))->source) ? 1 : 0; }}");
                     equals = $"&{eqThunk}";
                 }
-                string genTail = "";
+                string genericDef = "nullptr", genericArgs = "nullptr";
+                int genericCount = 0;
                 if (_e.GenericDefInfo(c) is { } gi && _e._genericDefSyms.TryGetValue(gi.DefName, out var defSym))
-                    genTail = $", nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{defSym}, {GenericArgVector(c)}, {c.Context.TypeArgs.Length}";
+                {
+                    genericDef = "&" + defSym;
+                    genericArgs = GenericArgVector(c);
+                    genericCount = c.Context.TypeArgs.Length;
+                }
                 string displayName = c.IntrinsicCppName == "Dn2CppTaskAwaiter"
                     && c.Context.TypeArgs.Length > 0 && IsNestedType(c)
                         ? _e.ClosedNestedTypeDisplay(c)
                         : Compilation.ReflectionTypeName(c);
-                _sb.AppendLine($"const Dn2CppTypeInfo {c.CppTypeInfoName} = {{ \"{displayName}\", {baseExpr}, {size}, nullptr, nullptr, 0, {toString}, {getHash}, {equals}, {flags}{genTail} }};");
+                _e.EmitTypeInfo(_sb, c.CppTypeInfoName, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(c),
+                    Name = displayName, Base = baseExpr, InstanceSize = size,
+                    ToStringFn = toString, HashFn = getHash, EqualsFn = equals, Flags = flags,
+                    GenericDef = genericDef, GenericArgs = genericArgs, GenericArgCount = genericCount,
+                });
             }
         }
 
         internal void Emit()
         {
+            _c.FreezeReflectionMetadataSelection();
             // Ahead of the note pass, which reads it: the set is a pure function of the
             // (final) emit set and ReferencedTypes, and the note pass only ever adds an
             // ENUM to the latter — which this set excludes. The row planting below does add
@@ -634,6 +639,14 @@ internal sealed partial class CppEmitter
             // rather than appending to it.
             if (_c.PlantUnmappedArrayGenericItfRows().Count > 0)
                 _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
+
+            // Open definitions share one emitted handle per CLR name. Collect all
+            // physical owners before selecting its format, including later chunks.
+            foreach (var cls in _e.TopoOrder().Where(c => !c.IsEnum && !_e.IsCanonicalWorld(c))
+                .Concat(_e._referencedIntrinsicTis))
+                if (_e.GenericDefInfo(cls) is { } definition)
+                    _c.NoteEmittedReflectionDefinition(definition.DefName, cls.Module);
+            _c.PrepareReflectionDefinitionFormats();
 
             // Type-info handles for classes, referenced enums, and per-element arrays are named
             // by method bodies in any TU (typeof / isinst / cast / typed array creation), so
@@ -719,6 +732,7 @@ internal sealed partial class CppEmitter
             foreach (var en in _c.ReferencedTypes.Where(c => c.IsEnum).OrderBy(c => c.CppName, System.StringComparer.Ordinal))
             {
                 string toStr = "nullptr";
+                _e._metadataNativeRows = _c.UsesNativeReflectionMetadata(en);
                 if (MethodCompiler.EnumToStringFn(en, $"enumtostr_{en.CppName}", _e._literals) is { } body)
                 {
                     _sb.AppendLine($"static Dn2CppString* enumtostr_{en.CppName}(Dn2CppObject*);");
@@ -740,8 +754,8 @@ internal sealed partial class CppEmitter
                     // Values render in hex, as the field-row site below does: a decimal
                     // long.MinValue has no C++ literal form (`-9223372036854775808LL` is a
                     // negation of an unsigned literal, which C++11-narrows and fails to compile).
-                    var rows = ordered.Select(m => $"{{ \"{m.name}\", (int64_t)0x{(ulong)m.value:X}ULL }}");
-                    _sb.AppendLine($"static const Dn2CppEnumMember {tab}[] = {{ {string.Join(", ", rows)} }};");
+                    var rows = ordered.Select(m => new MetadataRow(new[] { MetadataValue.Text(m.name), MetadataValue.Signed(m.value) })).ToList();
+                    _e.EmitMetadataTable(_sb, "Dn2CppEnumMember", tab, rows);
                     membersExpr = tab;
                 }
                 // The reflection field surface (value__ + one literal row per
@@ -759,9 +773,16 @@ internal sealed partial class CppEmitter
                 // width is enumUnderlying's answer (dn2cpp_layout_size backs
                 // Unsafe.SizeOf<E> from there).
                 string enSize = MethodCompiler.IsWideEnum(en) ? "(int32_t)sizeof(int64_t)" : "(int32_t)sizeof(int32_t)";
-                _sb.AppendLine($"const Dn2CppTypeInfo {en.CppTypeInfoName} = {{ \"{Compilation.ReflectionTypeName(en)}\", &dn2cpp_enum_type, {enSize}, nullptr, nullptr, 0, {toStr}, nullptr, nullptr, {enFlags}, {fldExpr}, {fldCount}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, 0, {underlying}, {membersExpr}, {ordered.Count}, nullptr, 0, nullptr, 0, {AsmLit(en)}, nullptr, nullptr, &ty_{en.CppName}, nullptr, 0x{enIlAttrs:X}u, {enToken} }};");
+                _e.EmitTypeInfo(_sb, en.CppTypeInfoName, new TypeMetadata {
+                    Native = _e._metadataNativeRows,
+                    Name = Compilation.ReflectionTypeName(en), Base = "&dn2cpp_enum_type",
+                    InstanceSize = enSize, ToStringFn = toStr, Flags = enFlags, Fields = fldExpr, FieldCount = fldCount,
+                    EnumUnderlying = underlying, EnumMembers = membersExpr, EnumMemberCount = ordered.Count,
+                    AssemblyName = string.IsNullOrEmpty(en.Module.AssemblyName) ? null : en.Module.AssemblyName, TypeObject = "&ty_" + en.CppName, IlAttrs = unchecked((uint)enIlAttrs), MetadataToken = enToken,
+                });
                 _sb.AppendLine($"const Dn2CppType ty_{en.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(en, "enum ty_ companion")} }};");
             }
+            _e._metadataNativeRows = false;
 
             // Generic open-definition type-infos: one synthetic Dn2CppTypeInfo per
             // distinct closed-generic definition, so GetGenericTypeDefinition() returns a
@@ -818,10 +839,12 @@ internal sealed partial class CppEmitter
                 // trailing 0-fill convention would otherwise leave implicit (formatspec, ilAttrs,
                 // metadataToken, defaultMemberName); an invariant one stops at typeObject exactly
                 // as before, so its text is unchanged.
-                string varTail = varMask != 0 ? $", nullptr, 0u, 0, nullptr, {varMask}" : "";
-                string init = $"{{ \"{gi.DefName}\", {relBase}, 0, nullptr, {relItfs}, {relItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym}{varTail} }}";
-                _sb.AppendLine($"const Dn2CppTypeInfo {sym} = "
-                    + WithGenericParams(init, Compilation.GenericParamNames(cls.Module, cls.Handle)) + ";");
+                _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(gi.DefName),
+                    Name = gi.DefName, Base = relBase, Interfaces = relItfs, InterfaceCount = relItfCount,
+                    Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, VarianceMask = varMask,
+                    GenericParamNames = Compilation.GenericParamNames(cls.Module, cls.Handle),
+                });
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
 
@@ -858,9 +881,11 @@ internal sealed partial class CppEmitter
                 var synthAnc = _c.OpenGenericDefAncestryByName(defName);
                 var (synthBase, synthItfs, synthItfCount) = GenericDefRelations(
                     symBase, synthAnc.Base, synthAnc.Interfaces, synthValueType, synthInterface);
-                string synthInit = $"{{ \"{defName}\", {synthBase}, 0, nullptr, {synthItfs}, {synthItfCount}, nullptr, nullptr, nullptr, {defFlags}, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, &{sym}, nullptr, 0, nullptr, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, nullptr, nullptr, &ty_{sym} }}";
-                _sb.AppendLine($"const Dn2CppTypeInfo {sym} = "
-                    + WithGenericParams(synthInit, def.ParamNames) + ";");
+                _e.EmitTypeInfo(_sb, sym, new TypeMetadata {
+                    Native = _c.UsesNativeReflectionMetadata(defName),
+                    Name = defName, Base = synthBase, Interfaces = synthItfs, InterfaceCount = synthItfCount,
+                    Flags = defFlags, GenericDef = "&" + sym, TypeObject = "&ty_" + sym, GenericParamNames = def.ParamNames,
+                });
                 _sb.AppendLine($"const Dn2CppType ty_{sym} = {{ {{ &dn2cpp_type_type }}, &{sym} }};");
             }
 
@@ -951,11 +976,13 @@ internal sealed partial class CppEmitter
                     _invokerMissStubs.Clear();
                 }
                 _sb = block;
+                _e.BeginMetadataBlock(_c.UsesNativeReflectionMetadata(cls));
                 RenderVtable(cls);
                 RenderItfTables(cls);
                 RenderFieldTable(cls);
                 RenderMemberTables(cls);
                 RenderTypeInfo(cls);
+                _e.EndMetadataBlock(block);
                 _sb = _o.Data;
                 if (block.Length > 0)
                     _o.AppendMetadata(block.ToString());
@@ -1027,12 +1054,6 @@ internal sealed partial class CppEmitter
                 _slotStubs.Count + _invokerMissStubs.Count, stubChars,
                 _invokerThunks.Count, thunkChars);
         }
-
-        // Type.Assembly identity: the type's defining-assembly simple name as a C string
-        // literal (or nullptr when unknown — the runtime then reports CoreLib). Assembly
-        // names are plain dotted identifiers, so no escaping is needed.
-        private static string AsmLit(ClassInfo c) =>
-            c.Module is { AssemblyName: { Length: > 0 } an } ? $"\"{an}\"" : "nullptr";
 
         // Emit (once per chunk) a stub that aborts with `desc` baked in and return its
         // symbol, for a slot whose receiver the shared traps cannot read. `reporter` is
@@ -1336,7 +1357,7 @@ internal sealed partial class CppEmitter
         {
             if (en.Handle.IsNil || !_c.KeepsReflectionMetadata(en))
                 return ("nullptr", 0);
-            var rows = new List<string>();
+            var rows = new List<MetadataRow>();
             try
             {
                 var reader = en.Module.Reader;
@@ -1351,14 +1372,7 @@ internal sealed partial class CppEmitter
                     bool literal = (fd.Attributes & System.Reflection.FieldAttributes.Literal) != 0;
                     bool isStatic = (fd.Attributes & System.Reflection.FieldAttributes.Static) != 0;
                     var access = fd.Attributes & System.Reflection.FieldAttributes.FieldAccessMask;
-                    var bits = new List<string>();
-                    if (isStatic) bits.Add("DN2CPP_FLDA_STATIC");
-                    if (access == System.Reflection.FieldAttributes.Public) bits.Add("DN2CPP_FLDA_PUBLIC");
-                    if (access == System.Reflection.FieldAttributes.Private) bits.Add("DN2CPP_FLDA_PRIVATE");
-                    if ((fd.Attributes & System.Reflection.FieldAttributes.InitOnly) != 0)
-                        bits.Add("DN2CPP_FLDA_INITONLY");
-                    if (literal) bits.Add("DN2CPP_FLDA_LITERAL");
-                    string attrs = bits.Count == 0 ? "0" : string.Join(" | ", bits);
+                    int attrs = MetadataFieldAttrs((int)fd.Attributes);
                     // A literal member's constant, at full 64-bit width (rendered in
                     // hex so long.MinValue needs no unary minus). The int32
                     // truncation EnumMembers applies for the model does not apply
@@ -1420,9 +1434,12 @@ internal sealed partial class CppEmitter
                     string fieldDisplayType = literal
                         ? _e.ReflectionSignatureType(TypeDesc.MakeClass(en))
                         : _e.ReflectionSignatureType(TypeDesc.MakePrimitive(en.EnumUnderlying));
-                    rows.Add($"{{ \"{fname}\", {_e.TypeInfoRef(en, "enum field row's declaring type")}, {ftInfo}, {attrs}, {get}, nullptr, "
-                        + $"{ca.Expr}, {ca.Count}, 0x{(int)fd.Attributes:X}, {fldToken}, "
-                        + $"(int64_t)0x{(ulong)lv:X}ULL, \"{CppEmitter.CLiteral(fieldDisplayType + " " + fname)}\" }}");
+                    rows.Add(new MetadataRow(new[] {
+                        MetadataValue.Text(fname), MetadataValue.Ref(_e.TypeInfoRef(en, "enum field row's declaring type")), MetadataValue.Ref(ftInfo),
+                        MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(null),
+                        MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count), MetadataValue.Signed((int)fd.Attributes), MetadataValue.Signed(fldToken),
+                        MetadataValue.Signed(lv), MetadataValue.Display(fieldDisplayType + " " + fname),
+                    }));
                 }
             }
             catch (System.Exception e) when (!Compilation.IsMustEscape(e))
@@ -1432,7 +1449,7 @@ internal sealed partial class CppEmitter
             }
             if (rows.Count == 0)
                 return ("nullptr", 0);
-            _sb.AppendLine($"static const Dn2CppFieldInfo fldtab_{en.CppName}[] = {{ {string.Join(", ", rows)} }};");
+            _e.EmitMetadataTable(_sb, "Dn2CppFieldInfo", $"fldtab_{en.CppName}", rows);
             return ($"fldtab_{en.CppName}", rows.Count);
         }
 
@@ -1462,17 +1479,10 @@ internal sealed partial class CppEmitter
             }
             catch (Exception e) when (!Compilation.IsMustEscape(e))
             { /* no decodable field metadata */ }
-            var rows = new List<string>();
+            var rows = new List<MetadataRow>();
             foreach (var f in cls.Fields)
             {
-                var bits = new List<string>();
-                if (f.IsStatic) bits.Add("DN2CPP_FLDA_STATIC");
-                if (f.IsPublic) bits.Add("DN2CPP_FLDA_PUBLIC");
-                if (f.IsPrivate) bits.Add("DN2CPP_FLDA_PRIVATE");
-                if ((f.Attributes & System.Reflection.FieldAttributes.InitOnly) != 0)
-                    bits.Add("DN2CPP_FLDA_INITONLY");
-                if (f.IsLiteral) bits.Add("DN2CPP_FLDA_LITERAL");
-                string attrs = bits.Count == 0 ? "0" : string.Join(" | ", bits);
+                int attrs = MetadataFieldAttrs((int)f.Attributes);
                 string ftInfo = _e.FieldTypeInfoExpr(f.Type, _emittedEnums);
                 // GetValue/SetValue accessor thunks, emitted only when the
                 // field is a real member of the emitted layout: a non-literal field of
@@ -1560,10 +1570,14 @@ internal sealed partial class CppEmitter
                             cls.Module.Reader.GetFieldDefinition(fdh).GetCustomAttributes());
                     fldToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(fdh);
                 }
-                string display = CppEmitter.CLiteral(_e.ReflectionSignatureType(f.Type) + " " + f.Name);
-                rows.Add($"{{ \"{f.Name}\", {_e.TypeInfoRef(cls, "field row's declaring type")}, {ftInfo}, {attrs}, {get}, {set}, {ca.Expr}, {ca.Count}, 0x{(int)f.Attributes:X}, {fldToken}, 0, \"{display}\" }}");
+                rows.Add(new MetadataRow(new[] {
+                    MetadataValue.Text(f.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "field row's declaring type")), MetadataValue.Ref(ftInfo),
+                    MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set), MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count),
+                    MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(0),
+                    MetadataValue.Display(_e.ReflectionSignatureType(f.Type) + " " + f.Name),
+                }));
             }
-            _sb.AppendLine($"static const Dn2CppFieldInfo fldtab_{cls.CppName}[] = {{ {string.Join(", ", rows)} }};");
+            _e.EmitMetadataTable(_sb, "Dn2CppFieldInfo", $"fldtab_{cls.CppName}", rows);
             _fieldTabs[cls] = ($"fldtab_{cls.CppName}", rows.Count);
         }
 
@@ -1575,7 +1589,7 @@ internal sealed partial class CppEmitter
             if (members.Count == 0)
                 return null;
             string tab = $"{prefix}_{cls.CppName}";
-            var rows = new List<string>();
+            var rows = new List<MetadataRow>();
             bool appCls = cls.Module == _c.AppModule && !_e.IsOpaque(cls);
             // Attribute factories cover user-module (app + referenced library) non-opaque
             // classes, so a library class's method/param attributes are emitted; the
@@ -1598,18 +1612,10 @@ internal sealed partial class CppEmitter
                 // visible, or the type's GetMethods() would come back empty.
                 if (trim && m.Rva != 0 && !_c.Reachable.Contains(m))
                     continue;
-                _memberAddr[m] = $"&{tab}[{rows.Count}]";
-                var bits = new List<string>();
-                if (m.IsStatic) bits.Add("DN2CPP_MTHA_STATIC");
-                if (m.IsPublic) bits.Add("DN2CPP_MTHA_PUBLIC");
-                if (m.IsPrivate) bits.Add("DN2CPP_MTHA_PRIVATE");
-                if ((m.Attributes & System.Reflection.MethodAttributes.SpecialName) != 0)
-                    bits.Add("DN2CPP_MTHA_SPECIALNAME");
-                // A generic method's closed instantiation (MethodBase.IsGenericMethod);
-                // ECMA MethodAttributes carries no genericness bit, so it rides ours.
-                if (m.Context.MethodArgs.Length > 0)
-                    bits.Add("DN2CPP_MTHA_GENERIC");
-                string attrs = bits.Count == 0 ? "0" : string.Join(" | ", bits);
+                _memberAddr[m] = rows.Count.ToString();
+                int attrs = MetadataMemberAttrs((int)m.Attributes)
+                    | (((int)m.Attributes & 0x800) != 0 ? 0x20 : 0)
+                    | (m.Context.MethodArgs.Length > 0 ? 0x40 : 0);
                 // Method + parameter custom attributes: the MethodDefinition's own
                 // attributes, and each Parameter's, for an app-module non-opaque class.
                 // Parameter handles are collected for every module: the raw
@@ -1642,11 +1648,11 @@ internal sealed partial class CppEmitter
                 string paramsExpr = "nullptr";
                 if (ps.Length > 0)
                 {
-                    var prows = new List<string>();
+                    var prows = new List<MetadataRow>();
                     for (int i = 0; i < ps.Length; i++)
                     {
                         string ptInfo = _e.MemberTypeInfoExpr(ps[i], _emittedEnums);
-                        string nm = names[i] is { Length: > 0 } pn ? $"\"{pn}\"" : "nullptr";
+
                         (string Expr, int Count) pca = ("nullptr", 0);
                         int pAttrs = 0;
                         if (paramHandles.TryGetValue(i, out var pph))
@@ -1665,10 +1671,13 @@ internal sealed partial class CppEmitter
                         }
                         string pdisplay = _e.ReflectionSignatureType(ps[i])
                             + (names[i] is { Length: > 0 } pName ? " " + pName : "");
-                        string genericDefinitionDisplay = genericDefinitionDisplays is { } parameterDisplays
-                            ? $"\"{CppEmitter.CLiteral(parameterDisplays.Parameters[i])}\"" : "nullptr";
-                        prows.Add($"{{ {ptInfo}, {nm}, {pca.Expr}, {pca.Count}, 0x{pAttrs:X}, "
-                            + $"{req.Expr}, {req.Count}, {opt.Expr}, {opt.Count}, {(modifiersKnown ? 1 : 0)}, \"{CppEmitter.CLiteral(pdisplay)}\", {genericDefinitionDisplay} }}");
+
+                        prows.Add(new MetadataRow(new[] {
+                            MetadataValue.Ref(ptInfo), MetadataValue.Text(names[i] is { Length: > 0 } parameterName ? parameterName : null),
+                            MetadataValue.Ref(pca.Expr), MetadataValue.Signed(pca.Count), MetadataValue.Signed(pAttrs),
+                            MetadataValue.Ref(req.Expr), MetadataValue.Signed(req.Count), MetadataValue.Ref(opt.Expr), MetadataValue.Signed(opt.Count),
+                            MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(pdisplay), MetadataValue.Display(genericDefinitionDisplays is { } pd ? pd.Parameters[i] : null),
+                        }));
                     }
                     // Intern byte-identical parameter tables across the whole
                     // emission (first definition wins; explicit `extern` because
@@ -1676,7 +1685,7 @@ internal sealed partial class CppEmitter
                     // linkage). Rows that reference a per-member attr table
                     // embed that unique symbol in the initializer text, so they
                     // never collide and simply get a pool entry of their own.
-                    string init = string.Join(", ", prows);
+                    string init = _e.MetadataTableKey(prows);
                     if (_parmPools.TryGetValue(init, out var pooled))
                     {
                         paramsExpr = pooled;
@@ -1684,8 +1693,7 @@ internal sealed partial class CppEmitter
                     else
                     {
                         string ptName = $"parmpool_{_parmPoolSeq++}";
-                        _sb.AppendLine($"extern const Dn2CppParamInfo {ptName}[] = {{ {init} }};");
-                        _o.Header.AppendLine($"extern const Dn2CppParamInfo {ptName}[];");
+                        _e.EmitMetadataTable(_sb, "Dn2CppParamInfo", ptName, prows, true);
                         _parmPools[init] = ptName;
                         paramsExpr = ptName;
                     }
@@ -1756,7 +1764,7 @@ internal sealed partial class CppEmitter
                 // normal builds keep it null). It lets the loader tell same-(name,
                 // arity, static) methods apart — chiefly a generic method's several
                 // instantiations, all emitted under one name.
-                string sigShape = _e._hotUpdateBase ? $"\"{m.SigShape}\"" : "nullptr";
+
                 // Trailing raw ECMA words + token: MethodAttributes, MethodImplAttributes,
                 // and the method's metadata token (MemberInfo.MetadataToken).
                 int mdToken = m.Handle.IsNil ? 0 : System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(m.Handle);
@@ -1769,9 +1777,7 @@ internal sealed partial class CppEmitter
                     var gargs = new List<string>(m.Context.MethodArgs.Length);
                     foreach (var ga in m.Context.MethodArgs)
                         gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
-                    string gaName = $"mgargs_{cls.CppName}_{m.CppName}";
-                    _sb.AppendLine($"static const Dn2CppTypeInfo* const {gaName}[] = {{ {string.Join(", ", gargs)} }};");
-                    genArgsExpr = gaName;
+                    genArgsExpr = TypeArgumentVector(string.Join(", ", gargs));
                 }
                 (string Expr, int Count) retReq = ("nullptr", 0);
                 (string Expr, int Count) retOpt = ("nullptr", 0);
@@ -1780,19 +1786,28 @@ internal sealed partial class CppEmitter
                     retReq = RenderCustomModifiers(modifierSig!.ReturnType.Required);
                     retOpt = RenderCustomModifiers(modifierSig.ReturnType.Optional);
                 }
-                string defDisplay = genericDefinitionDisplays is { } gd
-                    ? $"\"{CppEmitter.CLiteral(gd.Method)}\"" : "nullptr";
-                string defReturnDisplay = genericDefinitionDisplays is { } grd
-                    ? $"\"{CppEmitter.CLiteral(grd.Return)}\"" : "nullptr";
-                rows.Add($"{{ \"{m.Name}\", {_e.TypeInfoRef(cls, "method/ctor row's declaring type")}, {retInfo}, {paramsExpr}, {ps.Length}, {attrs}, {m.VtableSlot}, {fnPtr}, {invoker}, {mca.Expr}, {mca.Count}, {sigShape}, 0x{(int)m.Attributes:X}, 0x{(int)m.ImplAttributes:X}, {mdToken}, {m.Context.MethodArgs.Length}, {genArgsExpr}, "
-                    + $"{retReq.Expr}, {retReq.Count}, {retOpt.Expr}, {retOpt.Count}, {(modifiersKnown ? 1 : 0)}, \"{CppEmitter.CLiteral(_e.ReflectionMethodDisplay(m))}\", {defDisplay}, \"{CppEmitter.CLiteral(_e.ReflectionSignatureType(m.Signature.ReturnType))}\", {defReturnDisplay} }}");
+
+                rows.Add(new MetadataRow(new[] {
+                    MetadataValue.Text(m.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "method/ctor row's declaring type")),
+                    MetadataValue.Ref(retInfo), MetadataValue.Ref(paramsExpr), MetadataValue.Signed(ps.Length), MetadataValue.ExplicitSigned(attrs),
+                    MetadataValue.Signed(m.VtableSlot), MetadataValue.Ref(fnPtr), MetadataValue.Ref(invoker),
+                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? m.SigShape : null),
+                    MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
+                    MetadataValue.Signed(m.Context.MethodArgs.Length), MetadataValue.Ref(genArgsExpr),
+                    MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
+                    MetadataValue.Signed(modifiersKnown ? 1 : 0), MetadataValue.Display(_e.ReflectionMethodDisplay(m)), MetadataValue.Display(genericDefinitionDisplays is { } methodDisplayParts ? methodDisplayParts.Method : null),
+                    MetadataValue.Display(_e.ReflectionSignatureType(m.Signature.ReturnType)), MetadataValue.Display(genericDefinitionDisplays is { } rd ? rd.Return : null),
+                }));
             }
             // The trim can empty a table the member list did not. A zero-length array is
             // ill-formed, and no _memberAddr entry survives to point into it, so report
             // "no table" — the ti_ then carries nullptr/0, as for a type with no members.
             if (rows.Count == 0)
                 return null;
-            _sb.AppendLine($"static const Dn2CppMethodInfo {tab}[] = {{ {string.Join(", ", rows)} }};");
+            _e.EmitMetadataTable(_sb, "Dn2CppMethodInfo", tab, rows);
+            foreach (var m in members)
+                if (_memberAddr.TryGetValue(m, out var index) && int.TryParse(index, out int rowIndex))
+                    _memberAddr[m] = _e.MetadataRowAddress(tab, rowIndex);
             return (tab, rows.Count);
         }
 
@@ -1807,7 +1822,7 @@ internal sealed partial class CppEmitter
             var byHandle = new Dictionary<MethodDefinitionHandle, MethodInfo>();
             foreach (var m in methods)
                 byHandle.TryAdd(m.Handle, m);
-            var rows = new List<string>();
+            var rows = new List<MetadataRow>();
             try
             {
                 var reader = cls.Module.Reader;
@@ -1833,11 +1848,7 @@ internal sealed partial class CppEmitter
                     // uniform across its accessors).
                     var anyAcc = getter ?? setter!;
                     bool pub = (getter?.IsPublic ?? false) || (setter?.IsPublic ?? false);
-                    var bits = new List<string>();
-                    if (anyAcc.IsStatic) bits.Add("DN2CPP_MTHA_STATIC");
-                    if (pub) bits.Add("DN2CPP_MTHA_PUBLIC");
-                    else bits.Add("DN2CPP_MTHA_PRIVATE");
-                    string attrs = string.Join(" | ", bits);
+                    int attrs = (anyAcc.IsStatic ? 1 : 0) | (pub ? 2 : 4);
                     // Property custom attributes: user-module (app + referenced library)
                     // non-opaque classes.
                     (string Expr, int Count) pca = ("nullptr", 0);
@@ -1848,7 +1859,11 @@ internal sealed partial class CppEmitter
                         ? getter.Signature.ParameterTypes
                         : setter!.Signature.ParameterTypes.Take(setter.Signature.ParameterTypes.Length - 1).ToArray();
                     string display = _e.ReflectionPropertyDisplay(name, psig.ReturnType, indexParams);
-                    rows.Add($"{{ \"{name}\", {_e.TypeInfoRef(cls, "property row's declaring type")}, {propType}, {getterExpr}, {setterExpr}, {attrs}, {pca.Expr}, {pca.Count}, {prpToken}, \"{CppEmitter.CLiteral(display)}\" }}");
+                    rows.Add(new MetadataRow(new[] {
+                        MetadataValue.Text(name), MetadataValue.Ref(_e.TypeInfoRef(cls, "property row's declaring type")), MetadataValue.Ref(propType),
+                        MetadataValue.Ref(getterExpr), MetadataValue.Ref(setterExpr), MetadataValue.ExplicitSigned(attrs),
+                        MetadataValue.Ref(pca.Expr), MetadataValue.Signed(pca.Count), MetadataValue.Signed(prpToken), MetadataValue.Display(display),
+                    }));
                 }
             }
             catch (Exception e) when (!Compilation.IsMustEscape(e))
@@ -1858,7 +1873,7 @@ internal sealed partial class CppEmitter
             if (rows.Count == 0)
                 return null;
             string tab = $"proptab_{cls.CppName}";
-            _sb.AppendLine($"static const Dn2CppPropInfo {tab}[] = {{ {string.Join(", ", rows)} }};");
+            _e.EmitMetadataTable(_sb, "Dn2CppPropInfo", tab, rows);
             return (tab, rows.Count);
         }
 
@@ -1920,35 +1935,6 @@ internal sealed partial class CppEmitter
                 _propTabs[cls] = pt;
         }
 
-        /// <summary>Renders the positional TAIL of a <c>Dn2CppTypeInfo</c> initializer from
-        /// one ordered list of trailing members, each given as its 0-fill spelling and the
-        /// value this type has for it (null = none). The result stops after the LAST member
-        /// with a value, so a type that has none of them emits nothing and keeps a
-        /// byte-identical initializer.
-        ///
-        /// <para>A positional initializer cannot leave a hole: spelling member <i>k</i>
-        /// obliges every member before it, which is why the zero spellings are carried here
-        /// rather than assumed. Hence one function rather than one <c>?:</c> per feature:
-        /// independently written suffixes that each re-spell a shared member concatenate
-        /// into one feature's values landing in another's slots, and that failure is silent
-        /// — the C++ still compiles.</para>
-        ///
-        /// <para>Order the list so the RARER member is last — it is the one the 0-fill
-        /// convention then elides for everybody else.</para></summary>
-        private static string TypeInfoTail(params (string Zero, string? Value)[] members)
-        {
-            int last = -1;
-            for (int i = 0; i < members.Length; i++)
-                if (members[i].Value is not null)
-                    last = i;
-            if (last < 0)
-                return "";
-            var sb = new StringBuilder();
-            for (int i = 0; i <= last; i++)
-                sb.Append(", ").Append(members[i].Value ?? members[i].Zero);
-            return sb.ToString();
-        }
-
         // The class's type-info + interned Type object: the externally-visible
         // ti_/ty_ definitions closing its metadata block, referencing the
         // block's own file-local vtable/tables/thunks and (across TUs) only
@@ -1983,9 +1969,9 @@ internal sealed partial class CppEmitter
                     ? CoreIntrinsics.RuntimeExceptionTypeInfo(extBase) ?? "&dn2cpp_exception_type"
                     : "nullptr";
             string vt = cls.IsValueType || cls.IsInterface || cls.IsDelegate || _e.IsOpaque(cls) ? "nullptr" : cls.CppVtableName;
-            string itfs = _itfTables.TryGetValue(cls, out var list)
-                ? $"{_itfTabSyms[cls]}, {_itfRowCounts[cls]}"
-                : "nullptr, 0";
+            bool hasInterfaces = _itfTables.ContainsKey(cls);
+            string itfs = hasInterfaces ? _itfTabSyms[cls] : "nullptr";
+            int interfaceCount = hasInterfaces ? _itfRowCounts[cls] : 0;
             // The overridden ToString dispatched for an instance of this type, cast
             // to the Object-receiver signature (the override accesses fields via the
             // concrete layout). Null when the type does not override ToString.
@@ -2265,30 +2251,19 @@ internal sealed partial class CppEmitter
             // emitted class), the raw ECMA TypeAttributes word + metadata token,
             // and the [DefaultMember]-declared member name (GetDefaultMembers).
             var (tIlAttrs, tToken) = TypeIlMeta(cls);
-            string dmName = DefaultMemberName(cls) is { } dm ? $"\"{dm}\"" : "nullptr";
-            // The members AFTER defaultMemberName, in declaration order, built in one place
-            // (TypeInfoTail) rather than as one suffix per feature — see that method for why
-            // per-feature suffixes silently overwrite one another's slots.
-            //
-            // varianceMask is 0 for every CLASS whatever it declares: variance rides the
-            // open-DEFINITION handle (see the gendef emitter above), never a closed class's
-            // own type-info. It is in the list because it is a positional member the tail
-            // has to step over, not because this site ever has a value for it.
-            string? esName = null, esGuid = null;
-            if (EventSourceIdentity(cls) is { } es)
-            {
-                esName = $"\"{es.Name}\"";
-                esGuid = es.Guid is null ? null : $"\"{es.Guid}\"";
-            }
-            // The stamp and the folded SizeOf<T> constant are one text from one builder, which
-            // is what keeps the two spellings agreeing — do not re-decide the size here.
-            string? marshalSize = _c.MarshalStampSize(cls) is { } msz ? msz.Int32Expr : null;
-            string tail = TypeInfoTail(
-                ("0", null),                                 // varianceMask
-                ("0", marshalSize),                          // marshalSize
-                ("nullptr", esName),                         // eventSourceName
-                ("nullptr", esGuid));                        // eventSourceGuid
-            _sb.AppendLine($"const Dn2CppTypeInfo {cls.CppTypeInfoDefName} = {{ \"{Compilation.ReflectionTypeName(cls)}\", {baseExpr}, (int32_t)sizeof({cls.CppStructName}), {vt}, {itfs}, {toStr}, {getHash}, {equals}, {flags}, {fieldsExpr}, {fieldCount}, {methodsExpr}, {methodCount}, {ctorsExpr}, {ctorCount}, {propsExpr}, {propCount}, {typeAttrs.Expr}, {typeAttrs.Count}, {genDefExpr}, {genArgsExpr}, {genArgCount}, nullptr, nullptr, 0, {nestedExpr}, {nested.Count}, nullptr, 0, {AsmLit(cls)}, {finalize}, {rgctxExpr}, &ty_{cls.CppName}, nullptr, 0x{tIlAttrs:X}u, {tToken}, {dmName}{tail} }};");
+            _e.EmitTypeInfo(_sb, cls.CppTypeInfoDefName, new TypeMetadata {
+                Native = _e._metadataNativeRows,
+                Name = Compilation.ReflectionTypeName(cls), Base = baseExpr,
+                InstanceSize = $"(int32_t)sizeof({cls.CppStructName})", Vtable = vt, Interfaces = itfs, InterfaceCount = interfaceCount,
+                ToStringFn = toStr, HashFn = getHash, EqualsFn = equals, Flags = flags,
+                Fields = fieldsExpr, FieldCount = fieldCount, Methods = methodsExpr, MethodCount = methodCount,
+                Ctors = ctorsExpr, CtorCount = ctorCount, Props = propsExpr, PropCount = propCount,
+                CustomAttrs = typeAttrs.Expr, CustomAttrCount = typeAttrs.Count, GenericDef = genDefExpr,
+                GenericArgs = genArgsExpr, GenericArgCount = genArgCount, NestedTypes = nestedExpr, NestedCount = nested.Count,
+                AssemblyName = string.IsNullOrEmpty(cls.Module.AssemblyName) ? null : cls.Module.AssemblyName, FinalizeFn = finalize, Rgctx = rgctxExpr, TypeObject = "&ty_" + cls.CppName,
+                IlAttrs = unchecked((uint)tIlAttrs), MetadataToken = tToken, DefaultMemberName = DefaultMemberName(cls), MarshalSize = _c.MarshalStampSize(cls),
+                EventSourceName = EventSourceIdentity(cls)?.Name, EventSourceGuid = EventSourceIdentity(cls)?.Guid,
+            });
             _sb.AppendLine($"const Dn2CppType ty_{cls.CppName} = {{ {{ &dn2cpp_type_type }}, {_e.TypeInfoRef(cls, "class ty_ companion")} }};");
             // A bind-kind type whose layout/vtable/metadata this emission knows: its handle
             // is the runtime's, so the metadata just rendered has to be copied INTO that

@@ -288,11 +288,11 @@ Dn2CppString* StringOf(const char* utf8)
 
 Dn2CppString* dn2cpp_eventsource_type_name(const Dn2CppTypeInfo* ti)
 {
-    if (ti == nullptr || ti->eventSourceName == nullptr)
+    if (ti == nullptr || ti->reflection().eventSourceName == nullptr)
         dn2cpp_throw_platform_not_supported(
             "System.Diagnostics.Tracing.EventSource.Name: the receiver's type carries no "
             "provider name (it is not an emitted EventSource-derived class)");
-    return StringOf(ti->eventSourceName);
+    return StringOf(ti->reflection().eventSourceName);
 }
 
 void dn2cpp_eventsource_type_guid(const Dn2CppTypeInfo* ti, void* out16)
@@ -302,11 +302,11 @@ void dn2cpp_eventsource_type_guid(const Dn2CppTypeInfo* ti, void* out16)
         ZeroGuid(out16);
         return;
     }
-    if (ti->eventSourceGuid != nullptr && ParseGuid(ti->eventSourceGuid, out16))
+    if (ti->reflection().eventSourceGuid != nullptr && ParseGuid(ti->reflection().eventSourceGuid, out16))
         return;
-    if (ti->eventSourceName != nullptr)
+    if (ti->reflection().eventSourceName != nullptr)
     {
-        GuidFromName(ti->eventSourceName, out16);
+        GuidFromName(ti->reflection().eventSourceName, out16);
         return;
     }
     ZeroGuid(out16);

@@ -608,8 +608,7 @@ struct Dn2CppThreadLocal : Dn2CppObject  // GC-allocated
 // the shallow clone and GetUninitializedObject size an allocation from.
 extern const Dn2CppType dn2cpp_threadlocal_type_obj;
 Dn2CppTypeInfo dn2cpp_threadlocal_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadLocal`1", nullptr,
-                                (int32_t)sizeof(Dn2CppThreadLocal), nullptr, nullptr, 0 },
+    dn2cpp_ti_with_typeobject({ "System.Threading.ThreadLocal`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppThreadLocal), 0, 0, 0, 0, 0, nullptr },
                               &dn2cpp_threadlocal_type_obj);
 const Dn2CppType dn2cpp_threadlocal_type_obj = { { &dn2cpp_type_type }, &dn2cpp_threadlocal_type };
 

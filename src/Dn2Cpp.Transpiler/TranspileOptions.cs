@@ -102,6 +102,16 @@ public sealed record TranspileOptions
     /// matching no loaded type is a hard error.</summary>
     public IReadOnlyList<string>? ReflectionRoots { get; init; }
 
+    /// <summary>Enable automatic packed metadata storage. When false,
+    /// every record uses native storage regardless of per-type format selectors.</summary>
+    public bool CompressMetadata { get; init; } = true;
+
+    /// <summary>Exact type selectors followed by <c>=native</c> or <c>=packed</c>.
+    /// Overrides automatic native metadata for static typeof sites without preserving
+    /// any type or member. An optional assembly simple name precedes <c>::</c>.
+    /// Disabling <see cref="CompressMetadata"/> forces native storage.</summary>
+    public IReadOnlyList<string>? ReflectionMetadataFormats { get; init; }
+
     /// <summary>Project directories recursively searched for files named exactly
     /// <c>link.xml</c>. Direct CLI use performs no search unless a root is supplied.</summary>
     public IReadOnlyList<string> ProjectRoots { get; init; } = Array.Empty<string>();

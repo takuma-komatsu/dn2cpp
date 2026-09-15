@@ -54,11 +54,11 @@ struct Dn2CppBlockingCollection : Dn2CppObject
 // dispatch row, whose entry names program-specific emitted type-info.
 extern const Dn2CppType dn2cpp_blockingcollection_type_obj;
 Dn2CppTypeInfo dn2cpp_blockingcollection_type =
-    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1", nullptr, (int32_t)sizeof(Dn2CppBlockingCollection), nullptr, nullptr, 0 }, &dn2cpp_blockingcollection_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppBlockingCollection), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_blockingcollection_type_obj);
 const Dn2CppType dn2cpp_blockingcollection_type_obj = { { &dn2cpp_type_type }, &dn2cpp_blockingcollection_type };
 extern const Dn2CppType dn2cpp_blockingnode_type_obj;
 static const Dn2CppTypeInfo dn2cpp_blockingnode_type =
-    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1+Node", nullptr, (int32_t)sizeof(Dn2CppBlockingNode), nullptr, nullptr, 0 }, &dn2cpp_blockingnode_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Collections.Concurrent.BlockingCollection`1+Node", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppBlockingNode), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_blockingnode_type_obj);
 const Dn2CppType dn2cpp_blockingnode_type_obj = { { &dn2cpp_type_type }, &dn2cpp_blockingnode_type };
 
 // Link a value at the tail. Caller holds ctl->mtx. The node alloc may run the GC,

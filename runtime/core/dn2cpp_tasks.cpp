@@ -50,7 +50,7 @@
 
 extern const Dn2CppType dn2cpp_task_type_obj;
 const Dn2CppTypeInfo dn2cpp_task_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, (int32_t)sizeof(Dn2CppTask), nullptr, nullptr, 0 }, &dn2cpp_task_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Tasks.Task", &dn2cpp_object_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppTask), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_task_type_obj);
 const Dn2CppType dn2cpp_task_type_obj = { { &dn2cpp_type_type }, &dn2cpp_task_type };
 
 // Task.Id numbering: positive, monotonic, minted once per task at alloc time.
@@ -171,14 +171,14 @@ static Dn2CppString* dn2cpp_task_result_tostring(Dn2CppTask* task,
         && payload != nullptr)
     {
         Dn2CppObject* nullableBox = dn2cpp_box(resultType, payload, resultType->instanceSize);
-        const Dn2CppFieldInfo* hasValue = nullptr;
-        const Dn2CppFieldInfo* value = nullptr;
-        for (int32_t i = 0; i < resultType->fieldCount; i++)
+        Dn2CppMetadataHandle<Dn2CppFieldInfo> hasValue = nullptr;
+        Dn2CppMetadataHandle<Dn2CppFieldInfo> value = nullptr;
+        for (int32_t i = 0; i < resultType->reflection().fieldCount; i++)
         {
-            if (std::strcmp(resultType->fields[i].name, "hasValue") == 0)
-                hasValue = &resultType->fields[i];
-            else if (std::strcmp(resultType->fields[i].name, "value") == 0)
-                value = &resultType->fields[i];
+            if (std::strcmp(resultType->reflection().fields[i]->name, "hasValue") == 0)
+                hasValue = resultType->reflection().fields[i];
+            else if (std::strcmp(resultType->reflection().fields[i]->name, "value") == 0)
+                value = resultType->reflection().fields[i];
         }
         if (hasValue == nullptr || value == nullptr)
             return dn2cpp_string_from_utf8("", 0);
@@ -1147,7 +1147,7 @@ Dn2CppTask* dn2cpp_task_from_exception(Dn2CppObject* exception)
 // bare Exception type if a program cancels without ever naming the type.
 extern const Dn2CppType dn2cpp_operation_canceled_exception_type_obj;
 static const Dn2CppTypeInfo dn2cpp_operation_canceled_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OperationCanceledException", &dn2cpp_exception_type, 0, nullptr, nullptr, 0 }, &dn2cpp_operation_canceled_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OperationCanceledException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_operation_canceled_exception_type_obj);
 const Dn2CppType dn2cpp_operation_canceled_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_operation_canceled_exception_type };
 static std::atomic<const Dn2CppTypeInfo*> s_canceled_exc_type{
     &dn2cpp_operation_canceled_exception_type };
@@ -1334,7 +1334,7 @@ static std::condition_variable& g_cts_timer_cv = dn2cpp_never_destroyed<std::con
 
 extern const Dn2CppType dn2cpp_cancel_source_type_obj;
 const Dn2CppTypeInfo dn2cpp_cancel_source_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, (int32_t)sizeof(Dn2CppCancelSource), nullptr, nullptr, 0 }, &dn2cpp_cancel_source_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.CancellationTokenSource", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppCancelSource), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_cancel_source_type_obj);
 const Dn2CppType dn2cpp_cancel_source_type_obj = { { &dn2cpp_type_type }, &dn2cpp_cancel_source_type };
 
 Dn2CppCancelSource* dn2cpp_cts_new()
@@ -2239,7 +2239,7 @@ extern const Dn2CppType dn2cpp_thread_type_obj;
 // native-heap Dn2CppThreadSync; a bitwise copy would be a second joiner and a second
 // deleter of one OS thread.
 const Dn2CppTypeInfo dn2cpp_thread_type =
-    dn2cpp_ti_with_typeobject({ "System.Threading.Thread", nullptr, 0, nullptr, nullptr, 0, nullptr, nullptr, nullptr, DN2CPP_TF_NO_SHALLOW_CLONE }, &dn2cpp_thread_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.Threading.Thread", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_thread_type_obj);
 const Dn2CppType dn2cpp_thread_type_obj = { { &dn2cpp_type_type }, &dn2cpp_thread_type };
 
 // Native completion signal for a timed Join. Lives on the native heap (so its
@@ -3616,8 +3616,7 @@ struct Dn2CppWorkItemInvoker
 // Defined after the struct so the type-info can state the struct's extent.
 extern const Dn2CppType dn2cpp_workitem_invoker_type_obj;
 static const Dn2CppTypeInfo dn2cpp_workitem_invoker_type =
-    dn2cpp_ti_with_typeobject({ "dn2cpp.WorkItemInvoker", nullptr,
-                                (int32_t)sizeof(Dn2CppWorkItemInvoker), nullptr, nullptr, 0 },
+    dn2cpp_ti_with_typeobject({ "dn2cpp.WorkItemInvoker", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppWorkItemInvoker), 0, 0, 0, 0, 0, nullptr },
                               &dn2cpp_workitem_invoker_type_obj);
 const Dn2CppType dn2cpp_workitem_invoker_type_obj = { { &dn2cpp_type_type }, &dn2cpp_workitem_invoker_type };
 
@@ -3714,7 +3713,7 @@ struct Dn2CppVtsBridge
 
 extern const Dn2CppType dn2cpp_vts_bridge_type_obj;
 static const Dn2CppTypeInfo dn2cpp_vts_bridge_type =
-    dn2cpp_ti_with_typeobject({ "dn2cpp.ValueTaskSourceBridge", nullptr, (int32_t)sizeof(Dn2CppVtsBridge), nullptr, nullptr, 0 }, &dn2cpp_vts_bridge_type_obj);
+    dn2cpp_ti_with_typeobject({ "dn2cpp.ValueTaskSourceBridge", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppVtsBridge), 0, 0, 0, 0, 0, nullptr }, &dn2cpp_vts_bridge_type_obj);
 const Dn2CppType dn2cpp_vts_bridge_type_obj = { { &dn2cpp_type_type }, &dn2cpp_vts_bridge_type };
 
 static int32_t dn2cpp_vts_get_status(Dn2CppVtsBridge* b)

@@ -1,3 +1,4 @@
+#include "dn2cpp_metadata_native.h"
 // dn2cpp_system_resources.cpp — System.Resources.ResourceManager, served at run time
 // by reading the assembly's `<BaseName>.resources` blob out of .rodata.
 //
@@ -420,20 +421,19 @@ static Dn2CppObject* dn2cpp_ownfld_resmgr_MagicNumber(Dn2CppObject*)
 { int32_t v = (int32_t)0xBEEFCACEu; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
 static Dn2CppObject* dn2cpp_ownfld_resmgr_HeaderVersionNumber(Dn2CppObject*)
 { int32_t v = 1; return dn2cpp_box(&dn2cpp_int32_type, &v, sizeof(v)); }
-static const Dn2CppFieldInfo dn2cpp_ownflds_resmgr[] = {
+DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_resmgr,
     { "MagicNumber", &dn2cpp_resourcemanager_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_resmgr_MagicNumber, nullptr, nullptr, 0, 0x36, 0 },
     { "HeaderVersionNumber", &dn2cpp_resourcemanager_type, &dn2cpp_int32_type,
       DN2CPP_FLDA_STATIC | DN2CPP_FLDA_PUBLIC | DN2CPP_FLDA_INITONLY,
       dn2cpp_ownfld_resmgr_HeaderVersionNumber, nullptr, nullptr, 0, 0x36, 0 },
-};
+);
 
 extern const Dn2CppType dn2cpp_resourcemanager_type_obj;
+DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_resourcemanager_type_reflection, dn2cpp_ownflds_resmgr, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 const Dn2CppTypeInfo dn2cpp_resourcemanager_type =
-    dn2cpp_ti_with_typeobject({ "System.Resources.ResourceManager", nullptr, (int32_t)sizeof(Dn2CppResourceManager), nullptr, nullptr, 0,
-                                nullptr, nullptr, nullptr, 0,
-                                dn2cpp_ownflds_resmgr, 2 },
+    dn2cpp_ti_with_typeobject({ "System.Resources.ResourceManager", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppResourceManager), 0, 0, 0, 0, 0, dn2cpp_resourcemanager_type_reflection },
                               &dn2cpp_resourcemanager_type_obj);
 const Dn2CppType dn2cpp_resourcemanager_type_obj = { { &dn2cpp_type_type },
                                                      &dn2cpp_resourcemanager_type };

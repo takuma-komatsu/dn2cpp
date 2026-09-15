@@ -106,7 +106,8 @@ invoke_cli "$app" -r "$corelib" -r "$nethttp" -r "$dnhttp" --auto-ref -o "$out"
 # the transpile output, the runtime tree and the toolchain env have not moved.
 hit=0
 if gate_cache_check "$out" "http2-unary|$corelib" \
-        "$app" "$dnhttp" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json"; then
+        "$app" "$dnhttp" "${app%.dll}.runtimeconfig.json" "${app%.dll}.deps.json" \
+        "$srv" "${srv%.dll}.runtimeconfig.json" "${srv%.dll}.deps.json"; then
     gate_cache_hit_msg
     hit=1
 fi
@@ -343,7 +344,7 @@ openssl x509 -req -in "$tlsdir/srv.csr" -CA "$tlsdir/ca.pem" -CAkey "$tlsdir/ca.
     -out "$tlsdir/srv.pem" >>"$tlsdir/openssl.log" 2>&1 || {
     echo "FAIL: could not generate the throwaway TLS certificate:" >&2; cat "$tlsdir/openssl.log" >&2; exit 1; }
 
-dotnet "$srv" --cert "$tlsdir/srv.pem" --key "$tlsdir/srv.key" \
+dotnet "$srv" --cert "$tlsdir/srv.pem" --key "$tlsdir/srv.key" --ca "$tlsdir/ca.pem" \
     > "$tlsdir/ready.out" 2>"$tlsdir/server.err" &
 tlspid=$!
 disown "$tlspid" 2>/dev/null || true
