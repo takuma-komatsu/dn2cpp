@@ -6,13 +6,10 @@
 
 ## 前回リリース（@@PREV_VERSION@@）からの変更
 
-- Godot フォークのエクスポートプリセットに独立したサイズ最適化オプション（IL Pre-stripping、Registry Trim、Reflection Trim）を追加しました（[godot-dn2cpp PR #15](https://github.com/takuma-komatsu/godot-dn2cpp/pull/15)）
-- Godot フォークのエクスポートプリセットに DeClang による難読化オプションを追加し、Android エクスポートでの DeClang 難読化に対応しました（[godot-dn2cpp PR #14](https://github.com/takuma-komatsu/godot-dn2cpp/pull/14)）
-- [PR #127](https://github.com/takuma-komatsu/dn2cpp/pull/127) で、ILDiet によるマネージドアセンブリ削減後も Godot 登録表の trim を適用するようにし、GDScript 内のエスケープシーケンス解決や独立したエクスポートサイズ最適化オプションを検証・導入しました
-- [PR #124](https://github.com/takuma-komatsu/dn2cpp/pull/124) で、DeClang による C# メソッド単位の選択的難読化に対応し、Android (arm64-v8a) 向けネイティブビルドでの難読化コンパイルをサポートしました
-- [PR #123](https://github.com/takuma-komatsu/dn2cpp/pull/123) で、生成される C++ メソッドシンボルの命名規則を IL2CPP 形式に統一し、可読性とデバッグ性を向上させました
+- Godot フォークのエクスポートプリセットに Compress Metadata（メタデータ圧縮）オプションを追加し、デフォルトで有効化しました（[godot-dn2cpp PR #16](https://github.com/takuma-komatsu/godot-dn2cpp/pull/16)）
+- [PR #129](https://github.com/takuma-komatsu/dn2cpp/pull/129) で、リフレクションメタデータの圧縮（packed 形式）に対応し、バイナリサイズを削減しました。到達可能な typeof の対象を自動判定で非圧縮（native 形式）として維持するほか、NoCompressMetadata 属性や CLI オプション（`--reflection-metadata <type>=native|packed`、`--no-metadata-compression`）による型ごとの保存形式の制御をサポートしました
 
-全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/42deb6848a9b72b8c965ef730daba35d62168a72...@@DOCS_REF@@> を参照してください。
+全コミットは <https://github.com/takuma-komatsu/dn2cpp/compare/2bba0475a7ad27d598a17419851b2469885f69b8...@@DOCS_REF@@> を参照してください。
 
 ## ダウンロード
 
