@@ -1533,6 +1533,7 @@ cmake_build_app() {
     case "$mode" in
         gdext)  args+=(-DDN2CPP_GDEXTENSION=ON) ;;
         shared) args+=(-DDN2CPP_SHARED=ON) ;;
+        unrealsharp) args+=(-DDN2CPP_UNREALSHARP=ON) ;;
         dotnet) args+=(-DDN2CPP_DOTNET_MODULE=ON) ;;
     esac
     # Real MSVC opt-in: must match the imported runtime's compiler. Excluded on

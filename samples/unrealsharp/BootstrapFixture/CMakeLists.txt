@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.20)
+project(UnrealSharpBootstrapHost LANGUAGES CXX)
+add_executable(unrealsharp_bootstrap_host driver.cpp utf8.cpp)
+add_library(unrealsharp_utf8_fixture SHARED utf8.cpp)
+target_compile_features(unrealsharp_bootstrap_host PRIVATE cxx_std_17)
+target_include_directories(unrealsharp_bootstrap_host PRIVATE "${DN2CPP_ROOT}/runtime/unrealsharp")
+target_link_libraries(unrealsharp_bootstrap_host PRIVATE ${CMAKE_DL_LIBS})

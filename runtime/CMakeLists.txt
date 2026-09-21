@@ -111,7 +111,11 @@ option(DN2CPP_WASM_SIMD   "Compile the wasm runtime and app with SIMD (-msimd128
 option(DN2CPP_GODOT       "Build the Godot GDExtension runtime library"           OFF)
 option(DN2CPP_GDEXTENSION "Build the app (DN2CPP_APP_DIR) as a shared library"    OFF)
 option(DN2CPP_SHARED      "Build the app (DN2CPP_APP_DIR) as a plain shared library (no Godot runtime; exports the [UnmanagedCallersOnly] entry points)" OFF)
+option(DN2CPP_UNREALSHARP "Build an UnrealSharp native game library" OFF)
 option(DN2CPP_DOTNET_MODULE "Build the Godot .NET-module host runtime library, and the app (DN2CPP_APP_DIR) as a mono-module shared library" OFF)
+if(DN2CPP_UNREALSHARP AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE))
+    message(FATAL_ERROR "DN2CPP_UNREALSHARP is exclusive with other native backends")
+endif()
 option(DN2CPP_GC_INCREMENTAL_DEFAULT "Default the .NET-module app to incremental GC" ON)
 set(DN2CPP_APP_DIR        ""    CACHE PATH     "Transpiler output dir to build into a final binary")
 set(DN2CPP_APP_NAME       "app" CACHE STRING   "Name of the app target (and of the output file in every lane but DN2CPP_GDEXTENSION)")
@@ -212,7 +216,7 @@ if(EMSCRIPTEN)
     # currently believes; the empty case is "unset", i.e. cmake's supported
     # default, not a failure.
     get_property(_dn2cpp_shared_libs_ok GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS)
-    if(DN2CPP_APP_DIR AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE)
+    if(DN2CPP_APP_DIR AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE OR DN2CPP_UNREALSHARP)
             AND NOT "${_dn2cpp_shared_libs_ok}" STREQUAL "" AND NOT _dn2cpp_shared_libs_ok)
         message(FATAL_ERROR
             "This CMake (${CMAKE_VERSION}) cannot build Emscripten shared libraries: "
@@ -1168,6 +1172,17 @@ if(DN2CPP_APP_DIR)
             set_target_properties(${DN2CPP_APP_NAME} PROPERTIES PREFIX "lib" SUFFIX ".so")
             _dn2cpp_split_side_module_relocs(${DN2CPP_APP_NAME})
         endif()
+    elseif(DN2CPP_UNREALSHARP)
+        if(EMSCRIPTEN OR NOT APPLE OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
+            message(FATAL_ERROR "UnrealSharp initially requires macOS arm64")
+        endif()
+        if(CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+            message(FATAL_ERROR "UnrealSharp initially requires the arm64 target architecture")
+        endif()
+        add_library(${DN2CPP_APP_NAME} SHARED ${DN2CPP_APP_SRCS})
+        target_include_directories(${DN2CPP_APP_NAME} PRIVATE "${DN2CPP_ROOT}/runtime/unrealsharp")
+        target_link_libraries(${DN2CPP_APP_NAME} PRIVATE dn2cpp::dn2cpp_runtime)
+        set_target_properties(${DN2CPP_APP_NAME} PROPERTIES INSTALL_NAME_DIR "@rpath")
     elseif(DN2CPP_DOTNET_MODULE)
         # Godot mono-module shared library (NativeAOT drop-in style: the engine
         # loads it and calls the exported godotsharp_game_main_init). If the
@@ -1344,7 +1359,7 @@ if(DN2CPP_APP_DIR)
     endif()
 
     if(EXISTS "${DN2CPP_APP_DIR}/pinvoke-libs.txt"
-            AND NOT (EMSCRIPTEN AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE)))
+            AND NOT (EMSCRIPTEN AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE OR DN2CPP_UNREALSHARP)))
         file(STRINGS "${DN2CPP_APP_DIR}/pinvoke-libs.txt" DN2CPP_PINVOKE_LIBS)
 
         # Dn2Cpp.Build records the native assets selected for the publish RID.
@@ -1923,11 +1938,11 @@ extern "C" const PfnDliHook __pfnDliNotifyHook2 = dn2cpp_delay_hook;
     # embedded debug info by default (it all lives in the separate .pdb, which
     # this build simply does not copy out), so there is nothing to strip.
     if(DN2CPP_STRIP AND NOT EMSCRIPTEN AND NOT MSVC
-            AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE))
+            AND (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE OR DN2CPP_UNREALSHARP))
         target_link_options(${DN2CPP_APP_NAME} PRIVATE "-Wl,-x")
     endif()
     if(DN2CPP_STRIP AND NOT EMSCRIPTEN AND NOT MSVC
-            AND NOT (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE))
+            AND NOT (DN2CPP_GDEXTENSION OR DN2CPP_SHARED OR DN2CPP_DOTNET_MODULE OR DN2CPP_UNREALSHARP))
         add_custom_command(TARGET ${DN2CPP_APP_NAME} POST_BUILD
             COMMAND "${CMAKE_STRIP}" "$<TARGET_FILE:${DN2CPP_APP_NAME}>"
             COMMENT "Stripping ${DN2CPP_APP_NAME}"

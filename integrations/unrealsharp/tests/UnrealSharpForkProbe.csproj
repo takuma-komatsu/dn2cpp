@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>DN2CPP</DefineConstants>
+    <UnrealSharpDir Condition="'$(UnrealSharpDir)' == ''">$(MSBuildThisFileDirectory)../../../artifacts/unrealsharp/plugin</UnrealSharpDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(UnrealSharpDir)/Managed/UnrealSharp/UnrealSharp.Core/Dn2CppGCHandleUtilities.cs" />
+    <Compile Include="$(UnrealSharpDir)/Managed/UnrealSharp/UnrealSharp.Core/UnmanagedCallbacks.cs" />
+    <Compile Include="$(UnrealSharpDir)/Managed/UnrealSharp/UnrealSharp.Core/Dn2CppCallbackGate.cs" />
+  </ItemGroup>
+</Project>

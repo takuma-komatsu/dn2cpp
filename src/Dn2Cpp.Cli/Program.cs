@@ -1,6 +1,7 @@
 using Dn2Cpp;
 using Dn2Cpp.DotnetModule;
 using Dn2Cpp.Godot;
+using Dn2Cpp.UnrealSharp;
 
 bool generateBindings = false;
 bool checkWasmImports = false;
@@ -14,6 +15,8 @@ string input = "";
 string outDir = ".";
 bool gdExtension = false;
 bool dotnetModule = false;
+bool unrealSharp = false;
+var unrealSharpLoadOrder = new List<string>();
 bool measure = false;
 bool verbose = false;
 bool autoRef = false;
@@ -105,6 +108,14 @@ for (int i = 0; i < args.Length; i++)
     else if (args[i] == "--gdextension")
     {
         gdExtension = true;
+    }
+    else if (args[i] == "--unrealsharp")
+    {
+        unrealSharp = true;
+    }
+    else if (args[i] == "--unrealsharp-load-order" && i + 1 < args.Length)
+    {
+        unrealSharpLoadOrder.Add(args[++i]);
     }
     else if (args[i] == "--dotnet-module")
     {
@@ -425,6 +436,17 @@ for (int i = 0; i < args.Length; i++)
     }
 }
 
+if (unrealSharp && (generateBindings || checkWasmImports || printRuntimeDir))
+{
+    Console.Error.WriteLine("error: --unrealsharp cannot be combined with a utility command");
+    return 1;
+}
+if (unrealSharpLoadOrder.Count > 0 && !unrealSharp)
+{
+    Console.Error.WriteLine("error: --unrealsharp-load-order requires --unrealsharp");
+    return 1;
+}
+
 if (printRuntimeDir)
 {
     // Walk up from the executable directory to the nearest runtime/CMakeLists.txt.
@@ -501,16 +523,21 @@ if (generateBindings)
 
 if (string.IsNullOrEmpty(input))
 {
-    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
+    Console.Error.WriteLine("Usage: dn2cpp <assembly.dll> [-o <output-dir>] [-r <ref.dll>] [--no-default-ref <DnZlib|DnBrotli|DnHttp>] [--direct-pinvoke <module[!entrypoint]|*>] [--auto-ref] [--no-ildiet] [--ildiet-output <dir>] [--link-xml <file>] [--project-root <dir>] [--link-feature <com|sre|remoting>] [--jobs <n>] [--no-shared-generics] [--obfuscate] [--shadow-stack] [--no-metadata-compression] [--reflection-metadata <type>=native|packed] [--trim-reflection] [--reflection-root <Type.Full.Name>] [--no-manifest-resources <Assembly>] [--manifest-resource-root <manifest.name>] [--trim-godot-classes] [--godot-class-root <Godot.Full.Name>] [--max-heap-mb <n>] [--verbose] [--dump-isa-surface <file>] [--gdextension [--godot-api <extension_api.json>]] [--dotnet-module] [--unrealsharp --unrealsharp-load-order <file>...] [--hotupdate-base] [--emit-patch <patch.dll> --base-abi <base-abi.json> [--patch-version <n>] [--patch-stackcode]] [--generate-bindings <extension_api.json>] [--check-wasm-imports <side.wasm> <main.wasm> [<main.js>] [--peer-module <peer.wasm>]...] [--print-runtime-dir]");
     return 1;
 }
 
 // One backend per transpile: --gdextension and --dotnet-module name different
 // lanes (shim-based GDExtension vs. real-GodotSharp mono-module drop-in), so
 // asking for both is a mistake said out loud rather than silently resolved.
-if (gdExtension && dotnetModule)
+if ((gdExtension && dotnetModule) || (unrealSharp && (gdExtension || dotnetModule)))
 {
-    Console.Error.WriteLine("error: --gdextension and --dotnet-module are mutually exclusive (one backend per transpile)");
+    Console.Error.WriteLine("error: --gdextension, --dotnet-module and --unrealsharp are mutually exclusive (one backend per transpile)");
+    return 1;
+}
+if (unrealSharp && (unrealSharpLoadOrder.Count == 0 || trimReflection || hotupdateBase || emitPatch))
+{
+    Console.Error.WriteLine("error: --unrealsharp requires --unrealsharp-load-order and does not support --trim-reflection or hot-update images");
     return 1;
 }
 // --godot-api names the dump only the GDExtension backend reads — on any other
@@ -567,7 +594,8 @@ if (EnvKnobs.Int(EnvKnobs.SplitBytes) is { } splitOverride)
 // registration tables on top, and the .NET-module backend emits the engine mono
 // module's godotsharp_game_main_init export. The pipeline itself lives in the
 // shared backend-agnostic driver.
-IEmitBackend backend = dotnetModule ? new DotnetModuleBackend(trimGodotClasses, godotClassRoots)
+IEmitBackend backend = unrealSharp ? new UnrealSharpBackend(unrealSharpLoadOrder)
+    : dotnetModule ? new DotnetModuleBackend(trimGodotClasses, godotClassRoots)
     : gdExtension ? new GodotBackend(string.IsNullOrEmpty(godotApiPath) ? null : godotApiPath)
     : new ConsoleBackend();
 return TranspileDriver.Run(new TranspileOptions
