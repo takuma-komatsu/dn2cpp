@@ -2047,6 +2047,28 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            if (fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
+            {
+                var owner = TypeDesc.MakeClass(delegateMethod.DeclaringClass);
+                _c.NoteTypeIdentityClosure(owner);
+                string ownerTi = TypeInfoExpr(owner) ?? "nullptr";
+                var genericArgs = delegateMethod.Context.MethodArgs;
+                string argsName = "nullptr";
+                if (genericArgs.Length != 0)
+                {
+                    var argTypes = new List<string>();
+                    foreach (var arg in genericArgs)
+                    {
+                        _c.NoteTypeIdentityClosure(arg);
+                        argTypes.Add(TypeInfoExpr(arg) ?? "nullptr");
+                    }
+                    argsName = dg + "_method_args";
+                    Emit($"static const Dn2CppTypeInfo* const {argsName}[] = {{ {string.Join(", ", argTypes)} }};");
+                }
+                string identityName = dg + "_method_identity";
+                Emit($"static const Dn2CppDelegateMethodIdentity {identityName} = {{ {ownerTi}, {SRME.GetToken(delegateMethod.Handle)}, {genericArgs.Length}, {argsName}, {(fnPtr.DelegateVirtual ? "true" : "false")} }};");
+                Emit($"{dg}->f_identity = &{identityName};");
+            }
             Emit($"dn2cpp_gc_write_barrier((void*)({dg}));");
             _stack.Add(new StackEntry(dg, StackKind.Ref, cls.CppStructName + "*"));
             return;

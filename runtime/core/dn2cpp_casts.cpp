@@ -1388,6 +1388,22 @@ void* dn2cpp_unbox(Dn2CppObject* obj, const Dn2CppTypeInfo* ti)
     return obj + 1;
 }
 
+static bool dn2cpp_delegate_identity_equal(const Dn2CppDelegate* a, const Dn2CppDelegate* b)
+{
+    const auto* x = a->identity;
+    const auto* y = b->identity;
+    if (x == nullptr || y == nullptr)
+        return true;
+    if (x->genericArgCount != y->genericArgCount)
+        return false;
+    for (int32_t i = 0; i < x->genericArgCount; ++i)
+        if (x->genericArgs[i] != y->genericArgs[i])
+            return false;
+    // Virtual declarations can differ while binding the same receiver override.
+    return x->virtualBinding || y->virtualBinding
+        || (x->declaringType == y->declaringType && x->metadataToken == y->metadataToken);
+}
+
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == nullptr)
@@ -1399,6 +1415,7 @@ Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b)
     copy->type = bd->type;
     copy->target = bd->target;
     copy->method = bd->method;
+    copy->identity = bd->identity;
     dn2cpp_gc_store_ref(&copy->prev, dn2cpp_delegate_combine(a, bd->prev));
     return copy;
 }
@@ -1410,7 +1427,7 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
     auto* v = reinterpret_cast<Dn2CppDelegate*>(value);
     auto* s = reinterpret_cast<Dn2CppDelegate*>(source);
     // Remove the most recent matching entry (.NET removes the last occurrence).
-    if (s->target == v->target && s->method == v->method)
+    if (s->target == v->target && s->method == v->method && dn2cpp_delegate_identity_equal(s, v))
         return s->prev;
     Dn2CppObject* rest = dn2cpp_delegate_remove(s->prev, value);
     if (rest == s->prev)
@@ -1419,6 +1436,7 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
     copy->type = s->type;
     dn2cpp_gc_store_ref(&copy->target, s->target);
     copy->method = s->method;
+    copy->identity = s->identity;
     dn2cpp_gc_store_ref(&copy->prev, rest);
     return copy;
 }
@@ -1454,7 +1472,8 @@ int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b)
     // element-wise; a length mismatch is unequal).
     while (da != nullptr && db != nullptr)
     {
-        if (!dn2cpp_delegate_target_equal(da->target, db->target) || da->method != db->method)
+        if (!dn2cpp_delegate_target_equal(da->target, db->target) || da->method != db->method
+            || !dn2cpp_delegate_identity_equal(da, db))
             return 0;
         da = reinterpret_cast<Dn2CppDelegate*>(da->prev);
         db = reinterpret_cast<Dn2CppDelegate*>(db->prev);

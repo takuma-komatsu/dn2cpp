@@ -27,7 +27,7 @@ namespace Dn2Cpp;
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
 /// this entry holds (null for every other entry, including a <c>ldloca</c> one,
 /// which sets <c>SlotAddr</c> alone).</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null);
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false);
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -211,7 +211,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// under the user's full context, covering both dimensions); a plain
     /// canonical-class body keys it on the declaring class. Taints when the
     /// slot is known unresolvable for some group member.</summary>
-    private string RgctxSlotAccess(RgctxSlotKind kind, int token, string taintKind, object? site)
+    private string RgctxSlotAccess(RgctxSlotKind kind, int token, string taintKind, object? site, bool requiresContext = true)
     {
         if (!SharedTrial || token == 0)
             ThrowSharedTaint(taintKind, site);
@@ -224,7 +224,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             i = _c.RgctxMethodSlotIndex(_method, kind, token);
             if (SharedDirectCallees is not null)
             {
-                _c.SharedRgctxRoots.Add(_method);
+                if (requiresContext)
+                    _c.SharedRgctxRoots.Add(_method);
                 if (!_c.SharedMethodSlotKeys.TryGetValue(_method, out var keys))
                     _c.SharedMethodSlotKeys[_method] = keys = new List<(MethodInfo, RgctxSlot)>();
                 keys.Add((_method, new RgctxSlot(kind, token)));
@@ -239,7 +240,8 @@ internal sealed partial class MethodCompiler : IEvalStack
             i = _c.RgctxSlotIndex(owner, kind, token);
             if (SharedDirectCallees is not null)
             {
-                _c.SharedRgctxRoots.Add(_method);
+                if (requiresContext)
+                    _c.SharedRgctxRoots.Add(_method);
                 if (!_c.SharedSlotKeys.TryGetValue(_method, out var keys))
                     _c.SharedSlotKeys[_method] = keys = new List<(ClassInfo, RgctxSlot)>();
                 keys.Add((owner, new RgctxSlot(kind, token)));
@@ -256,7 +258,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // recording is armed (planning included: arming happens at emission).
         if (kind == RgctxSlotKind.CctorEnsureFn)
             _c.NoteHotIndirectCall(_method);
-        _usedRgctx = true;
+        if (requiresContext)
+            _usedRgctx = true;
         return $"__rgctx[{i}]";
     }
 
@@ -360,12 +363,22 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// callee, and vice versa), and any other needy callee — class- or
     /// method-context — needs a call-site token that verifiably names it (the
     /// table-forwarding slot's key).</summary>
-    private bool RgctxEdgePassable(MethodInfo impl) =>
-        !_c.WouldNeedRgctxParam(impl)
-        || ReferenceEquals(impl, _method)
-        || (impl.NameSuffix == "" && _method.NameSuffix == ""
-            && ReferenceEquals(impl.DeclaringClass, _method.DeclaringClass))
-        || CallTokenResolvesTo(impl);
+    private bool RgctxEdgePassable(MethodInfo impl)
+    {
+        if (!_c.WouldNeedRgctxParam(impl) || ReferenceEquals(impl, _method)
+            || (impl.NameSuffix == "" && _method.NameSuffix == ""
+                && ReferenceEquals(impl.DeclaringClass, _method.DeclaringClass)))
+            return true;
+        if (!CallTokenResolvesTo(impl))
+            return false;
+        // A live class shares one table across its methods, including methods cold
+        // for a particular real instantiation. Resolve their forwarding contexts
+        // before sharing is finalized; emission cannot discover and group them.
+        // Whether this call actually needs a hidden parameter remains an edge verdict.
+        RgctxSlotAccess(impl.NameSuffix != "" ? RgctxSlotKind.MethodRgctxTable : RgctxSlotKind.RgctxTable,
+            _callSiteToken, "rgctx-pass", impl.CppName, requiresContext: false);
+        return true;
+    }
 
     /// <summary>The full direct-call expression binding <paramref name="target"/>'s
     /// donated body: the shared canonical symbol when one is assigned, with a
@@ -896,7 +909,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // External linkage (no `static`): the body may live in a different translation unit
         // than its callers once the output is split across files; the header carries the
         // forward declaration. Unused external functions don't warn, so no [[maybe_unused]].
-        sb.AppendLine(signature);
+        bool callbackBoundary = _method.IsUnmanagedCallersOnly && _backend?.CatchUnmanagedCallbackExceptions is true;
+        sb.AppendLine(callbackBoundary ? signature + " try" : signature);
         sb.AppendLine("{");
         // An [UnmanagedCallersOnly] method can be invoked from a thread the
         // collector has never seen (a native host's own thread pool); the prologue
@@ -955,6 +969,18 @@ internal sealed partial class MethodCompiler : IEvalStack
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
         sb.AppendLine("}");
+        if (callbackBoundary)
+        {
+            string failureReturn = _method.Signature.ReturnType.IsVoid ? "    return;"
+                : "    return " + (_backend?.UnmanagedCallbackFailureValue(_method) ?? "{}") + ";";
+            sb.AppendLine("catch (Dn2CppException& ex) {");
+            sb.AppendLine($"    dn2cpp_report_boundary_exception(ex.obj, \"%s\", \"{ShadowFrameName()}\");");
+            sb.AppendLine(failureReturn);
+            sb.AppendLine("} catch (...) {");
+            sb.AppendLine($"    dn2cpp_report_boundary_exception(nullptr, \"%s\", \"{ShadowFrameName()}\");");
+            sb.AppendLine(failureReturn);
+            sb.AppendLine("}");
+        }
         return sb.ToString();
     }
 
@@ -3382,6 +3408,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
+                _stack[^1] = _stack[^1] with { DelegateMethod = m };
                 break;
             }
             case ILOpCode.Ldvirtftn:
@@ -3483,6 +3510,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         : $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
+                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual };
                 break;
             }
 

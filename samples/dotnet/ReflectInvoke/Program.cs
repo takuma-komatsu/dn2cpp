@@ -43,6 +43,11 @@ namespace ReflectInvoke
             ReflectMetadataPreservationSubset.Program.Run();
             ReflectMetadataLayoutSubset.Program.Run();
             ReflectMetadataCompressionSubset.Program.Run();
+            ReflectExistingConstructorSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_COLD_ACTIVATOR") != "1")
+                ReflectActivatorGenericSubset.ColdGenericFactory.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD") != "1")
+                ReflectDelegateIdentitySubset.Program.Run();
         }
     }
 }

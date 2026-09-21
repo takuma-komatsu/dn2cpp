@@ -81,6 +81,16 @@ gate_extra_asserts() {
     grep -Fxq 'metadata-compression-generic-reference=text/String/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-plain-generic=True/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'activator-cold-generic=73' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-shared=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic=Int32/String' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
+    sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
+    diff -u "$out/before-delegate-method.stdout" "$out/delegate-method-prefix.stdout"
+    DN2CPP_BEFORE_COLD_ACTIVATOR=1 DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-cold-activator.stdout"
+    sed '$d' "$out/before-delegate-method.stdout" > "$out/cold-activator-prefix.stdout"
+    diff -u "$out/before-cold-activator.stdout" "$out/cold-activator-prefix.stdout"
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -97,7 +107,8 @@ gate_extra_asserts() {
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 reflection_layout_axis=default
-corelib_diff_gate ReflectInvoke --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
+    corelib_diff_gate ReflectInvoke --no-ildiet
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \

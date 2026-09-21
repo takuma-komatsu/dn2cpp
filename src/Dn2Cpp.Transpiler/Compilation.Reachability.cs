@@ -4877,6 +4877,7 @@ internal sealed partial class Compilation
                                 .DecodeSignature(SigProvider, m.Context).ToArray();
                             if (aargs.Length > 0 && aargs[0].Kind == TypeKind.Class && aargs[0].Class is { } acls)
                             {
+                                EnsureCompleted(acls);
                                 // Public-only, mirroring the emit verdict: the factory binds
                                 // only a public parameterless ctor, so a non-public one
                                 // (Task<T>'s internal ctor) is not reached — emit routes that

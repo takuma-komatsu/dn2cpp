@@ -1022,10 +1022,10 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo
                 var args = Pop(); // object[]
                 Pop(); // Binder
-                Pop(); // BindingFlags
+                var flags = Pop(); // BindingFlags
                 var obj = Pop();
                 var m = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")}, ({flags.Expr} & 0x02000000) == 0)");
                 return true;
             }
             // MethodInfo.CreateDelegate(Type[, object target]): bind the methtab row
@@ -1097,9 +1097,9 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo
                 var args = Pop(); // object[]
                 Pop(); // Binder
-                Pop(); // BindingFlags
+                var flags = Pop(); // BindingFlags
                 var c = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")}, ({flags.Expr} & 0x02000000) == 0)");
                 return true;
             }
             // Non-generic Activator.CreateInstance(Type): invoke the type's

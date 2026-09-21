@@ -408,11 +408,7 @@ internal sealed partial class MethodCompiler
                     $"((((Dn2CppDelegate*){Cast(d, "Dn2CppObject*")})->prev == nullptr) ? 1 : 0)");
                 return true;
             }
-            // Delegate.Method: a reflection-bound delegate (CreateDelegate)
-            // reports its methtab row's MethodInfo; an IL-constructed delegate
-            // carries no method-metadata back-reference (f_method is a bare code
-            // address), so it stays null — callers null-propagate a missing
-            // MethodInfo into their "not valid" fallback.
+            // The logical method identity survives static adapters and shared bodies.
             case ("System.Delegate", "get_Method"):
             {
                 var d = Pop();

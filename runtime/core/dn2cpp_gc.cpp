@@ -2406,7 +2406,9 @@ void dn2cpp_weakcell_write_and_link(Dn2CppWeakCell* cell, Dn2CppObject* target)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     cell->hiddenTarget = static_cast<intptr_t>(GC_HIDE_POINTER(target));
-    if (target == nullptr)
+    // RuntimeType descriptors and literal strings can live in the image. They
+    // are immortal; Boehm cannot register a link against their missing heap header.
+    if (target == nullptr || GC_base(target) == nullptr)
         return;
     void** link = reinterpret_cast<void**>(&cell->hiddenTarget);
     if (cell->isLong)

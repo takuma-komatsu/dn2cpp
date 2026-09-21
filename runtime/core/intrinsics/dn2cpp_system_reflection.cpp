@@ -2180,9 +2180,29 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p)
 // Shared method dispatch: validate, adjust the receiver for a value-type
 // instance method (pass the unboxed payload at obj+1), and call through the per-shape
 // invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
+static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
+    Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions)
+{
+    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(thunk);
+    try
+    {
+        return invoker(fn, self, args, returnType);
+    }
+    catch (Dn2CppException& exception)
+    {
+        if (!wrapExceptions)
+            throw;
+        Dn2CppObject* wrapper = dn2cpp_exception_new(&dn2cpp_target_invocation_exception_type,
+            dn2cpp_string_from_utf8("Exception has been thrown by the target of an invocation.", 55), exception.obj);
+        reinterpret_cast<Dn2CppExceptionObject*>(wrapper)->hresult = static_cast<int32_t>(0x80131604u);
+        dn2cpp_exc_inflight_pop(exception.obj);
+        dn2cpp_throw(wrapper);
+    }
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     // A metadata-answerable row carries no body at all: it answers from its own type
     // arguments and receiver. A non-generic row is always closed; a generic one is
@@ -2219,8 +2239,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(row.invoker);
-    return invoker(fn, self, args, row.returnType);
+    return dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
 }
 
 struct Dn2CppInvokePlan
@@ -2237,7 +2256,7 @@ struct Dn2CppInvokePlan
 };
 
 static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     struct Entry
     {
@@ -2256,7 +2275,7 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
         if (entry->identity == mi.identity())
         {
             const Dn2CppInvokePlan plan = entry->plan;
-            return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+            return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
         }
     }
     Dn2CppMethodInfo row;
@@ -2270,26 +2289,26 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
             row.vtableSlot, row.genericParamCount };
         entry->plan = plan;
         entry->identity = mi.identity();
-        return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+        return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
     }
-    return dn2cpp_invoke_row(mi, row, obj, args, argc);
+    return dn2cpp_invoke_row(mi, row, obj, args, argc, wrapExceptions);
 }
 
 static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions = true)
 {
     if (mi == nullptr)
         dn2cpp_throw_invalid_operation();
     if (const Dn2CppMethodInfo* row = mi.native())
-        return dn2cpp_invoke_row(mi, *row, obj, args, argc);
-    return dn2cpp_invoke_encoded(mi, obj, args, argc);
+        return dn2cpp_invoke_row(mi, *row, obj, args, argc, wrapExceptions);
+    return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions);
 }
 
 // MethodInfo.Invoke.
-Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
     return dn2cpp_invoke_mi(dn2cpp_methodref_require(m), obj, (args == nullptr) ? nullptr : args->data,
-                            (args == nullptr) ? 0 : args->length);
+                            (args == nullptr) ? 0 : args->length, wrapExceptions);
 }
 
 // ---- reflection: CreateDelegate (the reflection -> delegate bridge) ----
@@ -2306,7 +2325,7 @@ Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
     if ((mi->attrs & DN2CPP_MTHA_STATIC) == 0 && self == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount);
+    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
@@ -2481,16 +2500,70 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         // instance even when the delegate was created from a derived-reflected row.
         return reinterpret_cast<Dn2CppObject*>(
             dn2cpp_make_methodref(reinterpret_cast<Dn2CppReflBind*>(t)->method, nullptr));
-    // An IL-constructed delegate's method slot is a bare code address with no
-    // metadata back-reference; callers null-propagate a missing MethodInfo.
-    return nullptr;
+    auto* dg = reinterpret_cast<Dn2CppDelegate*>(d);
+    const auto* identity = dg->identity;
+    if (identity == nullptr || identity->declaringType == nullptr)
+        return nullptr;
+    const auto matchesArguments = [identity](const Dn2CppMethodInfo& method) {
+        if (method.genericParamCount != identity->genericArgCount)
+            return false;
+        for (int32_t i = 0; i < identity->genericArgCount; ++i)
+            if (method.genericArgs[i] != identity->genericArgs[i])
+                return false;
+        return true;
+    };
+    const Dn2CppTypeInfo* owner = identity->declaringType;
+    dn2cpp_require_metadata(owner);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> declared{};
+    for (int32_t i = 0; i < owner->reflection().methodCount; ++i)
+    {
+        auto candidate = owner->reflection().methods[i];
+        if (candidate->metadataToken == identity->metadataToken && matchesArguments(*candidate))
+        {
+            declared = candidate;
+            break;
+        }
+    }
+    if (declared == nullptr)
+        dn2cpp_throw_platform_not_supported("Delegate.Method target metadata is absent from this image");
+    if (!identity->virtualBinding || t == nullptr)
+        return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(declared, nullptr));
+
+    const Dn2CppMethodInfo declaration = *declared;
+    const bool interfaceBinding = (owner->flags & DN2CPP_TF_INTERFACE) != 0;
+    for (const Dn2CppTypeInfo* ti = t->type; ti != nullptr; ti = ti->base)
+    {
+        dn2cpp_require_metadata(ti);
+        for (int32_t i = 0; i < ti->reflection().methodCount; ++i)
+        {
+            auto candidate = ti->reflection().methods[i];
+            if (!matchesArguments(*candidate))
+                continue;
+            bool matches = interfaceBinding ? candidate->fnPtr == dg->method
+                : declaration.vtableSlot >= 0 && candidate->vtableSlot == declaration.vtableSlot;
+            // Generic virtual dispatchers have no ordinary vtable slot.
+            if (!matches && declaration.vtableSlot < 0 && !interfaceBinding
+                && candidate->genericParamCount != 0 && (candidate->ilAttrs & 0x40) != 0
+                && std::strcmp(candidate->name, declaration.name) == 0
+                && candidate->paramCount == declaration.paramCount)
+            {
+                matches = true;
+                for (int32_t p = 0; p < declaration.paramCount; ++p)
+                    if (candidate->parameters[p]->paramType != declaration.parameters[p]->paramType)
+                        matches = false;
+            }
+            if (matches)
+                return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(candidate, nullptr));
+        }
+    }
+    dn2cpp_throw_platform_not_supported("Delegate.Method virtual target metadata is absent from this image");
 }
 
 // ---- reflection: constructors ----
 
 // Allocates a fresh instance of mi->declaringType (a boxed payload for a value type),
 // runs the ctor through its invoker thunk (instance, void return), and returns it.
-static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc)
+static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc, bool wrapExceptions = true)
 {
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2513,8 +2586,7 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppObject* self = isValue
         ? reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject))
         : obj;
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(mi->invoker);
-    invoker(mi->fnPtr, self, args, nullptr);
+    dn2cpp_invoke_target(mi->invoker, mi->fnPtr, self, args, nullptr, wrapExceptions);
     return obj;
 }
 
@@ -2591,9 +2663,10 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* para
     return dn2cpp_type_get_constructor_full(t, paramTypes, bindingFlags, 0, nullptr);
 }
 
-Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bool wrapExceptions)
 {
-    return dn2cpp_ctor_invoke_impl(dn2cpp_methodref_require(c), args);
+    return dn2cpp_ctor_invoke_argv(dn2cpp_methodref_require(c), args == nullptr ? nullptr : args->data,
+        args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
 // Activator.CreateInstance(Type[, bool nonPublic]): the parameterless form.

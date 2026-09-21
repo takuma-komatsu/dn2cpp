@@ -1062,13 +1062,60 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
-// Uniform layout of all generated delegate types ({target, method, prev}).
+struct Dn2CppDelegateMethodIdentity
+{
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+    int32_t genericArgCount;
+    const Dn2CppTypeInfo* const* genericArgs;
+    bool virtualBinding;
+};
+
+// Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).
 struct Dn2CppDelegate : Dn2CppObject
 {
     Dn2CppObject* target;
     void* method;
     Dn2CppObject* prev;
+    const Dn2CppDelegateMethodIdentity* identity;
+};
+
+// A synchronous native call owns the callback slot until it and its callbacks return.
+struct Dn2CppScopedDelegateCallback
+{
+    void* pointer = nullptr;
+    Dn2CppObject** root = nullptr;
+    std::atomic_flag* lock = nullptr;
+    Dn2CppScopedDelegateCallback() = default;
+    Dn2CppScopedDelegateCallback(void* p, Dn2CppObject** r, std::atomic_flag* l) : pointer(p), root(r), lock(l) { }
+    Dn2CppScopedDelegateCallback(const Dn2CppScopedDelegateCallback&) = delete;
+    Dn2CppScopedDelegateCallback& operator=(const Dn2CppScopedDelegateCallback&) = delete;
+    Dn2CppScopedDelegateCallback(Dn2CppScopedDelegateCallback&& other) noexcept { *this = std::move(other); }
+    Dn2CppScopedDelegateCallback& operator=(Dn2CppScopedDelegateCallback&& other) noexcept
+    {
+        reset();
+        pointer = other.pointer;
+        root = other.root;
+        lock = other.lock;
+        other.pointer = nullptr;
+        other.root = nullptr;
+        other.lock = nullptr;
+        return *this;
+    }
+    void reset() noexcept
+    {
+        if (root)
+        {
+            while (lock->test_and_set(std::memory_order_acquire)) { }
+            *root = nullptr;
+            lock->clear(std::memory_order_release);
+        }
+        pointer = nullptr;
+        root = nullptr;
+        lock = nullptr;
+    }
+    ~Dn2CppScopedDelegateCallback() { reset(); }
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1117,8 +1164,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
-// unwrapping a reflection-bind node. An IL-constructed delegate reports a null
-// Method (its `method` is a bare code address with no metadata back-reference).
+// unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
@@ -1529,7 +1575,7 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p);
 // static method); for a value-type receiver the unboxed payload is passed. Returns
 // the boxed result (null for void). A method with no emitted body (invoker == null)
 // throws InvalidOperationException; an arg-count mismatch throws ArgumentException.
-Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args);
+Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions = true);
 
 // Reflection constructor enumeration + invocation. Type.GetConstructors(flags)
 // returns a ConstructorInfo[] (the type's own ctors only — never inherited), and
@@ -1546,7 +1592,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* para
 Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef* paramTypes,
                                                   int32_t bindingFlags, int32_t callConv,
                                                   Dn2CppObject* binder);
-Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args);
+Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bool wrapExceptions = true);
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t);
 // Activator.CreateInstance(Type, bool nonPublic): the parameterless form with
 // the visibility switch; the no-arg form above is nonPublic: false. Missing /
@@ -2170,6 +2216,8 @@ extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
 // helpers (GetMethod/GetProperty with several undecidable matches), matching
 // real .NET's reflection contract.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
+extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
+extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;

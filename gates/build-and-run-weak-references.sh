@@ -26,6 +26,8 @@
 # edge is that array, so the Entry[] must come from the scanned allocator even
 # though the handle is one pointer-sized word in IL. The generated allocation is
 # asserted directly, and the section looks its keys up again after a collection.
+# Image-resident Type objects and string literals retain weak identity without
+# entering Boehm's heap-only disappearing-link table, including target replacement.
 # The Array.Resize run is a stress signal, not a deterministic proof of the GC's
 # held window. The exact generated store-before-barrier check below and the
 # deterministic runtime helper probe in build-and-run-gc-write-barrier.sh provide
@@ -99,7 +101,7 @@ if [ "$cwt_scanned" -lt 2 ] || [ "$cwt_atomic" -ne 0 ]; then
     exit 1
 fi
 
-ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness+cwt-entry-scanned+cwt-section"
+ctx="weak_references|$_CG_CORELIB|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1|assert:mode+diff+exit+generated-barriers+resize-ref+memmove-refs+pending-web-liveness+cwt-entry-scanned+cwt-section+immortal-weak-prefix"
 ctx="$ctx$(_gate_ctx_extras)"
 if _corelib_gate_check "$out" "$ctx"; then
     gate_cache_hit_msg
@@ -126,6 +128,8 @@ set +e
 _gate_run_argv
 expected=$(run_bounded dotnet "$_CG_APP" \
     ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); expected_code=$?
+before=$(DN2CPP_BEFORE_IMMORTAL_WEAK=1 run_bounded dotnet "$_CG_APP" \
+    ${_GATE_RUN_ARGV[@]+"${_GATE_RUN_ARGV[@]}"}); before_code=$?
 _gate_run_argv
 stw=$(DN2CPP_GC_INCREMENTAL=0 DN2CPP_GC_STATS=1 \
     run_bounded "./$out/$project" \
@@ -138,6 +142,8 @@ set -e
 _gate_scratch_cleanup
 
 assertions_failed=0
+assert_exit_code "$before_code" "$expected_code" || assertions_failed=1
+assert_output "${expected%$'\n'immortal weak targets: True}" "$before" || assertions_failed=1
 assert_output "$stw" "$expected" || assertions_failed=1
 assert_exit_code "$stw_code" "$expected_code" || assertions_failed=1
 assert_output "$incremental" "$expected" || assertions_failed=1
@@ -166,6 +172,10 @@ if [ "$(grep -cF 'Array.Resize field stress:' <<<"$incremental")" -ne 1 ]; then
     exit 1
 fi
 for run in "$stw" "$incremental"; do
+    if [ "$(grep -cFx 'immortal weak targets: True' <<<"$run")" -ne 1 ]; then
+        echo "FAIL: immortal weak-target section did not run exactly once" >&2
+        exit 1
+    fi
     if [ "$(grep -cF 'conditional weak table after collection:' <<<"$run")" -ne 1 ]; then
         echo "FAIL: ConditionalWeakTable section did not run exactly once" >&2
         exit 1

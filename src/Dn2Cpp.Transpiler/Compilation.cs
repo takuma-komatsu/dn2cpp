@@ -1322,6 +1322,7 @@ internal sealed partial class Compilation
     /// (<see cref="CppEmitter.EmitMarshalFnPtrThunks"/>) — the single delegate-to-fnptr
     /// path for both callers.</summary>
     public HashSet<ClassInfo> MarshalFnPtrDelegates { get; } = new();
+    public HashSet<ClassInfo> ScopedMarshalFnPtrDelegates { get; } = new();
 
     /// <summary>Whether any CreateDelegate intrinsic (MethodInfo.CreateDelegate /
     /// Delegate.CreateDelegate) was lowered. When set, the emitter generates the

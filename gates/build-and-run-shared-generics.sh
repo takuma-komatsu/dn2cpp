@@ -40,6 +40,7 @@
 # asserted by gates/build-and-run-transpiler-limits.sh.
 # Static synchronized prologues must taint even when the IL never mentions T;
 # instance synchronized bodies remain shared and lock the real receiver.
+# Cold method instantiations still close cross-class generic-context forwarding.
 # Fixed-type static operands remain direct while type-argument-dependent statics
 # in the same shared body use per-instantiation storage through rgctx.
 #
@@ -349,5 +350,12 @@ for line in \
     'sync instance string own=False' 'sync instance object own=False' 'sync instance other=True'; do
     grep -Fxq "$line" <<<"$native" \
         || { echo "FAIL: synchronized prologue witness missing: $line" >&2; exit 1; }
+done
+before_forwarding=$(dotnet "$app" before-forwarding)
+prefix=$(awk '/^rgctx cold forwarding=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_forwarding"
+for line in 'rgctx cold forwarding=1' 'rgctx cold identity=Cold'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: cold generic-context forwarding witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit
