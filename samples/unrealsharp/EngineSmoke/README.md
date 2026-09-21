@@ -67,11 +67,15 @@ or relocated application. It verifies an existing archive and does not build it.
 For signed sandboxed apps, child-written evidence goes into a unique app-container
 directory and is copied back on success or failure; the gate preserves signed
 entitlements. `runtime-directory.txt` records the child output location.
+`launch-args.txt` and `exit.txt` record the exact arguments and process status.
+The gate launches with the engine's ordinary LLM settings and does not force
+memory tracking.
 
 `gates/run-unrealsharp-package-failure-smoke.sh` clones the native app and checks
 missing-library and incompatible-library startup failures. Its incompatible
 library is a deliberately failing ABI fixture, not an UnrealSharp runtime; real
-backend ABI validation is covered by the standalone host tests.
+backend ABI validation is covered by the standalone host tests. It records each
+attempt's arguments, exit status, and signature verification result.
 
 To cook the generated fixture after the Editor gate succeeds:
 
@@ -87,14 +91,19 @@ binary directory. Select the packaging backend in the generated project's
 `Config/DefaultUnrealSharp.ini` before cooking each archive. Editor and Cook
 continue to use CLR when the native Game backend is selected.
 
+The Development Game target uses a unique build environment and defines
+`LLM_ENABLED_IN_CONFIG=0` for the whole target. In a UE source checkout, rebuild
+the Game target and its engine modules before packaging; an older packaged app
+still contains the LLM startup clear path. This build setting compiles out LLM
+without changing UE source. The Editor target retains its usual LLM setting.
+
 The cooked CLR Development baseline and native Development/Shipping packages
 pass the same gameplay artifact. Native relocation, signed missing/incompatible
 library failures, and ILDiet-enabled/disabled artifact parity are also verified.
 The packaged native runs retain sandbox entitlements and require CLR absence.
-The package gates retain `-LLM` as a verified mitigation for the pinned UE's
-pre-runtime tracker startup race. This preserves signed entitlements and does
-not modify the engine. Ordinary launches without the flag and an upstream fix
-remain separate concerns; see [the integration guide](../../../docs/UNREALSHARP.md).
+The package gates run without `-LLM` and preserve signed entitlements. The
+startup validation for this engine configuration is described in
+[the integration guide](../../../docs/UNREALSHARP.md).
 
 The opt-in pending-shutdown gate additionally checks a worker active at module
 shutdown and a real foreign-thread callback after native runtime shutdown. Its

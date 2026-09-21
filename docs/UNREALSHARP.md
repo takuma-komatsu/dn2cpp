@@ -157,6 +157,27 @@ workspace directory, including after a failed process. Standard output remains
 in the workspace. A sandbox file-access denial is not bypassed by removing the
 entitlement.
 
+To measure ordinary first launches of the native Development and Shipping
+packages, run the opt-in matrix with both signed apps:
+
+```bash
+UNREALSHARP_DEVELOPMENT_APP=/path/to/native-development/Baseline.app \
+UNREALSHARP_SHIPPING_APP=/path/to/native-shipping/Baseline-Mac-Shipping.app \
+  ./gates/run-unrealsharp-initial-launch-matrix.sh
+```
+
+The matrix clones each app near its source for normal placement and under a
+separate path containing spaces for relocation. Each clone is launched once
+through the package smoke without a forced `-LLM` flag, preserving the signed
+entitlements and checking gameplay and shutdown. Each run's `launch-args.txt`
+records the exact arguments. The matrix retains the copies, per-launch evidence,
+and a `summary.tsv` in a unique session under
+`artifacts/unrealsharp-initial-launch-matrix/`; set
+`UNREALSHARP_STARTUP_RESULT_DIR` to choose another evidence root. A failed copy
+or launch ends the matrix immediately, without a retry. On launch failure it
+also collects newly generated crash reports for that app's executable from
+`~/Library/Logs/DiagnosticReports/`.
+
 ## Verification and current limits
 
 ```bash
@@ -220,14 +241,14 @@ components, and the running sample checks loaded images. Cooked package
 contents require a separate `UnrealPak -List` inspection and UFS/NonUFS staging
 manifest scan; these scans passed for the Development and Shipping archives.
 
-The pinned UE has a pre-runtime macOS startup race: AppKit/LaunchServices
-allocation holds an LLM scope while startup clears LLM state, then scope exit
-asserts in `FLLMTracker::PopTag`. Captured failures precede loading the native
-game library. The package gates pass `-LLM` to keep tracking enabled; fresh-path
-positive and negative runs verify this fixture mitigation with signed
-entitlements preserved. This does not fix UE itself. Ordinary launches without
-the flag can still encounter the race, and enabling memory tracking has a
-runtime cost. The upstream engine follow-up remains in [STATUS](STATUS.md).
+A fresh stock UE 5.8.2 TP_Blank Development launch without `-LLM` reproduced
+the pre-runtime `FLLMTracker::PopTag` assertion without UnrealSharp loaded:
+an AppKit/LaunchServices allocation exits an LLM scope while
+`ProcessCommandLineInner` clears tracker state. This fixture compiles out LLM
+in a unique Development Game build with `LLM_ENABLED_IN_CONFIG=0`; rebuild the
+Game target and its engine modules from UE source before packaging. The package
+gates run without `-LLM`, and fresh-copy Development and Shipping launches pass
+in normal and relocated placements with signed entitlements preserved.
 
 The initial scope excludes dn2cpp Editor/PIE, native Hot Reload, runtime-added
 assemblies, comprehensive replication/RPC compatibility, and other platforms.

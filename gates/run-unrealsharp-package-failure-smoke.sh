@@ -28,11 +28,13 @@ for scenario in missing incompatible; do
         expected='UnrealSharp ABI mismatch: fixture library version 2, host version 1'
     fi
     codesign --force --deep --sign - --preserve-metadata=identifier,entitlements,requirements,flags,runtime "$copy" > "$trial/sign.log" 2>&1
+    codesign --verify --deep --strict "$copy" > "$trial/verify.log" 2>&1
     executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$copy/Contents/Info.plist")
+    args=(-Unattended -NullRHI -NoSound -NoCrashDialog -Dn2CppSmoke -Dn2CppSmokeExpectNative "-abslog=$trial/run.log")
+    printf '%s\n' "${args[@]}" > "$trial/launch-args.txt"
     status=0
     DN2CPP_RUN_WATCHDOG_SECS=30 run_bounded "$copy/Contents/MacOS/$executable" \
-        -LLM -Unattended -NullRHI -NoSound -NoCrashDialog -Dn2CppSmoke -Dn2CppSmokeExpectNative \
-        "-abslog=$trial/run.log" > "$trial/stdout.log" 2>&1 || status=$?
+        "${args[@]}" > "$trial/stdout.log" 2>&1 || status=$?
     printf '%s\n' "$status" > "$trial/exit.txt"
     if [ "$status" = 0 ] || grep -Fq 'WATCHDOG:' "$trial/stdout.log"; then
         echo "error: $scenario did not fail during startup; inspect $trial" >&2

@@ -9,8 +9,7 @@ app=$(cd "$UNREALSHARP_APP" && pwd -P)
 work="${UNREALSHARP_RESULT_DIR:-$PWD/artifacts/unrealsharp-package-smoke/$UNREALSHARP_BACKEND}"
 mkdir -p "$work"
 work=$(cd "$work" && pwd -P)
-# Keep LLM enabled: UE's startup clear can race an AppKit allocation scope.
-args=(-LLM -Unattended -NullRHI -NoSound -Dn2CppSmoke)
+args=(-Unattended -NullRHI -NoSound -Dn2CppSmoke)
 case "$UNREALSHARP_BACKEND" in
     Clr) clr=present ;;
     Dn2Cpp)
@@ -69,17 +68,21 @@ copy_runtime_evidence() {
     fi
 }
 gate_add_exit_hook copy_runtime_evidence
-rm -f "$work/result.txt" "$work/lifecycle.txt" "$work/run.log"
+rm -f "$work/result.txt" "$work/lifecycle.txt" "$work/run.log" "$work/exit.txt"
 printf '%s\n' "$runtime_work" > "$work/runtime-directory.txt"
 export DN2CPP_SMOKE_LIFECYCLE_FILE="$runtime_work/lifecycle.txt"
 if [ "$runtime_work" != "$work" ]; then
     [ -z "$pending_evidence" ] || export DN2CPP_SMOKE_PENDING_FILE="$runtime_work/pending.txt"
     [ -z "$late_evidence" ] || export DN2CPP_SMOKE_LATE_CALLBACK_FILE="$runtime_work/late-callback.txt"
 fi
+args+=("-Dn2CppSmokeResult=$runtime_work/result.txt" "-abslog=$runtime_work/run.log")
+printf '%s\n' "${args[@]}" > "$work/launch-args.txt"
+status=0
 DN2CPP_RUN_WATCHDOG_SECS=120 run_bounded "$app/Contents/MacOS/$executable" \
-    "${args[@]}" \
-    "-Dn2CppSmokeResult=$runtime_work/result.txt" "-abslog=$runtime_work/run.log" > "$work/stdout.log" 2>&1
+    "${args[@]}" > "$work/stdout.log" 2>&1 || status=$?
+printf '%s\n' "$status" > "$work/exit.txt"
 copy_runtime_evidence
+[ "$status" = 0 ] || { echo "error: packaged game exited with status $status; inspect $work" >&2; exit "$status"; }
 if grep -E 'Native shutdown failed|Native tick failed|UnrealSharp callback failure' "$work/stdout.log" "$work/run.log" 2>/dev/null; then
     echo "error: native shutdown or callback boundary failure" >&2
     exit 1
