@@ -1,0 +1,6 @@
+{
+    "FileVersion": 3,
+    "EngineAssociation": "",
+    "Modules": [{ "Name": "Baseline", "Type": "Runtime", "LoadingPhase": "Default" }],
+    "Plugins": [{ "Name": "UnrealSharp", "Enabled": true }]
+}

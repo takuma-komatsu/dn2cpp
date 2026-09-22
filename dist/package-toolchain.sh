@@ -266,7 +266,7 @@ done
 # references carry executable payloads in their own directories and never join the
 # managed load set. The remaining references are adjacent DLL inputs. Each row's
 # assembly name is its csproj basename.
-CLI_LINK_TIME_REFS="Dn2Cpp.Transpiler Dn2Cpp.Godot Dn2Cpp.DotnetModule"
+CLI_LINK_TIME_REFS="Dn2Cpp.Transpiler Dn2Cpp.Godot Dn2Cpp.DotnetModule Dn2Cpp.UnrealSharp"
 CLI_COMPANION_REFS="ILDiet"
 bin_missing=""
 for sib in $(grep -h -o 'ProjectReference Include="[^"]*"' src/Dn2Cpp.Cli/Dn2Cpp.Cli.csproj src/ILDiet.Companion.targets \
@@ -287,6 +287,7 @@ cp "runtime/CMakeLists.txt"  "$LAYOUT/runtime/"
 cp -R "runtime/cmake"        "$LAYOUT/runtime/"
 cp -R "runtime/core"         "$LAYOUT/runtime/"
 cp -R "runtime/dotnetmodule" "$LAYOUT/runtime/"
+cp -R "runtime/unrealsharp"  "$LAYOUT/runtime/"
 
 # runtime/cmake/ is build machinery, not documentation: dn2cpp_embed_bytes.cmake is
 # a `cmake -P` script the DN2CPP_USE_CURL arm runs at BUILD time to turn

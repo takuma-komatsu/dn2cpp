@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(UnrealSharpAbiMismatch LANGUAGES CXX)
+add_library(UnrealSharpGame SHARED mismatch.cpp)
+target_compile_features(UnrealSharpGame PRIVATE cxx_std_17)
+target_include_directories(UnrealSharpGame PRIVATE ../../../runtime/unrealsharp)
+set_target_properties(UnrealSharpGame PROPERTIES MACOSX_RPATH ON)
