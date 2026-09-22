@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
-revision=7f197e0ad75fc9bf0d5bfb206f2f4962ed346535
+revision=9c1d4f5434ca4c5cba9934902acede8f6de757a4
 destination="${1:-$root/artifacts/unrealsharp/plugin}"
 if [[ -e "$destination" || -L "$destination" ]]; then
     echo "Refusing to modify an existing checkout: $destination" >&2
