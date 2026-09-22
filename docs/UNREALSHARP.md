@@ -7,8 +7,9 @@ managed/native callbacks, wrapper and handle ownership, and UAT packaging.
 Standalone contract probes and a real UE sample exercise these paths separately;
 the validation section distinguishes their evidence.
 
-The integration targets macOS arm64 Game Development and Shipping builds.
-`UE_ROOT` identifies the installed engine.
+The integration targets macOS arm64 Game Development and Shipping builds and
+Android arm64-v8a Game Development APKs. Android Shipping has not been
+validated. `UE_ROOT` identifies the installed engine.
 The ABI compatibility baseline is UE `5.8.3` and upstream UnrealSharp commit
 `b78e073ab4e81e6eae3c57ba1f5ecf5f29eef1f4`. The native ABI retains this upstream
 identity; it is distinct from the integration commit selected by `prepare.sh`
@@ -27,7 +28,7 @@ integrations/unrealsharp/check-abi.sh /path/to/Game/Plugins/UnrealSharp
 ```
 
 The prepare script clones the fork and checks out integration commit
-[`7f197e0ad75fc9bf0d5bfb206f2f4962ed346535`](https://github.com/takuma-komatsu/UnrealSharp-dn2cpp/commit/7f197e0ad75fc9bf0d5bfb206f2f4962ed346535)
+[`9c1d4f5434ca4c5cba9934902acede8f6de757a4`](https://github.com/takuma-komatsu/UnrealSharp-dn2cpp/commit/9c1d4f5434ca4c5cba9934902acede8f6de757a4)
 in detached HEAD state. It refuses an existing destination and applies no local
 patches. Plugin implementation changes belong in the fork; this repository owns
 the backend, native ABI contract, packaging helper, and verification probes.
@@ -91,6 +92,13 @@ UnrealSharp Game sources do not themselves read that override.
 
 ## Packaging path
 
+Android packaging requires UE 5.8.3 with its Android Target Platform component,
+Android SDK Platform 36, Build Tools 36.0.0, NDK r27c
+(`27.2.12479018`), and JDK 17. Set `ANDROID_NDK_ROOT` to that NDK and
+`JAVA_HOME` to JDK 17; NDK r30 beta is outside UE's accepted range, and JDK 27
+fails the Gradle packaging step. The device gate
+requires an authorized arm64 device visible to `adb`.
+
 The fork defaults `PackagingBackend` to `Clr`. Native Game loading is selected
 in the project's `Config/DefaultUnrealSharp.ini` before cooking:
 
@@ -107,8 +115,11 @@ with the `DN2CPP` compilation branch and invokes
 `integrations/unrealsharp/package-native.py`. Generated C++ and runtime code
 build with CMake/Ninja, separately from UBT's plugin/game build. Native managed
 intermediates are separate from CLR output. `StageUnrealSharp` defaults native
-staging to the project's `Intermediate/UnrealSharp/NativeStage` tree, preserving
-the CLR files used by Editor; `-ArchiveDirectory` selects an explicit destination.
+staging under the project's `Intermediate/UnrealSharp/NativeStage` tree; the
+Android Development archive is at
+`Intermediate/UnrealSharp/NativeStage/Android/Development`.
+`-ArchiveDirectory` selects an explicit destination. Editor and Cook CLR files
+remain available in the project.
 
 Register the plugin automation scripts for the installed engine:
 
@@ -133,18 +144,31 @@ python3 integrations/unrealsharp/package-native.py \
   --configuration Development
 ```
 
-It rejects a CLR backend setting and DLLs or CLR runtime libraries anywhere in
-the archive or enclosing application. Set the backend before cooking; changing
-the source configuration does not rewrite an existing cooked configuration.
-It requires a clean archive, builds the native library, sets its install name,
-signs and verifies it, and stages the library with load-order manifests. It
+`--platform` defaults to `Mac`. For Android, pass `--platform Android` and
+`--archive /path/to/Game/Intermediate/UnrealSharp/NativeStage/Android/Development`
+with `ANDROID_NDK_ROOT` set. The helper builds for `arm64-v8a`, API 26 and
+`c++_static`. It verifies that the result is an AArch64 ELF shared object with
+16 KiB `PT_LOAD` alignment, the UnrealSharp ABI exports, and only Android
+system-library dependencies. It stages
+`Binaries/Android/arm64-v8a/libUnrealSharpGame.so` and the load-order
+manifests plus `UnrealSharpBuild.flag` under `Binaries/Managed/net10.0` in the
+archive. The fork's Android UPL adds the `.so` to the APK's `lib/arm64-v8a`
+directory. Its UFS receipt places the manifests and flag in packaged
+`Content/Dn2Cpp/Managed/net10.0`, separate from the helper archive's source
+paths and the Editor CLR files.
+
+The helper rejects a CLR backend setting. Mac packaging also rejects DLLs and
+CLR runtime libraries anywhere in the archive or enclosing application. Set
+the backend before cooking; changing the source configuration does not rewrite
+an existing cooked configuration. The Mac path requires a clean archive, builds
+the native library, sets its install name, signs and verifies it, and stages the
+library with load-order manifests. It
 generates a fixed plugin manifest ahead of generated bindings and user modules;
 the compiler and native loader receive the same ordered manifests. When
 the destination is inside a Mac application, it re-signs and verifies the outer
-application after writing the staged files. It does not stage execution DLLs
-or a CLR runtime. Non-system native dependencies are currently rejected rather
-than copied; a library depending on additional native dylibs cannot be packaged
-by this helper. `--identity` or `DN2CPP_SIGN_IDENTITY` selects the signing
+application after writing the staged files. Neither platform stages execution
+DLLs or a CLR runtime. Non-system native dependencies are rejected rather
+than copied. On Mac, `--identity` or `DN2CPP_SIGN_IDENTITY` selects the signing
 identity; the default is ad-hoc signing. The helper selects the macOS SDK and
 compiler through `xcrun`, honoring explicit `SDKROOT` and
 `CMAKE_CXX_COMPILER` overrides. Successful staging alone does not prove
@@ -170,7 +194,23 @@ python3 integrations/unrealsharp/check-project-outputs.py /path/to/Game/Plugins/
 python3 integrations/unrealsharp/test-smoke-sandbox.py
 dotnet run --project integrations/unrealsharp/tests/UnrealSharpForkProbe.csproj \
   -p:UnrealSharpDir=/absolute/path/to/Game/Plugins/UnrealSharp
+UE_ROOT=/path/to/UnrealEngine \
+UNREALSHARP_PLUGIN=/path/to/UnrealSharp-dn2cpp \
+ANDROID_NDK_ROOT=/path/to/android-sdk/ndk/27.2.12479018 \
+JAVA_HOME=/path/to/jdk-17 \
+./gates/run-unrealsharp-android-minimal.sh
 ```
+
+Set `ANDROID_SERIAL` for the Android gate when multiple devices are attached.
+The gate copies the [Minimal sample](../samples/unrealsharp/Minimal/README.md),
+generates Android Game bindings, runs `StageUnrealSharp`, cooks and packages a
+Development APK, then installs and launches it. It checks the APK for the
+arm64 library and UFS manifest/flag, and rejects execution DLLs and CLR runtime
+components. On the device it requires managed startup, a C# call returning
+`42`, the absence of a loaded CLR image, no fatal error, and a continuing game
+process. Its output and logcat evidence are under
+`artifacts/unrealsharp-android-minimal` unless
+`UNREALSHARP_ANDROID_RESULT_DIR` is set.
 
 The fork probe compiles the actual fork handle registry and unmanaged
 callbacks with minimal dependencies. It checks owner closure, strong and weak
@@ -199,11 +239,12 @@ argument passing, alignment and allocation.
 | CLR Editor scripting | Gameplay fixture and saved Blueprint/map creation. |
 | CLR PIE | Play-session entry, automatic managed BeginPlay, Blueprint override/call and PIE exit. |
 | CLR cooked Development | Deterministic gameplay artifact from the self-contained baseline. |
-| Native cooked Development and Shipping | The same gameplay results in signed sandboxed apps, with CLR absent. |
-| Native shutdown | Reverse module shutdown, pending-worker completion with live handles, and harmless foreign callback arrival after shutdown. |
-| Native ILDiet disabled | Gameplay, lifecycle and shutdown artifact parity with the enabled image. |
-| Native Development and Shipping relocation | Gameplay and shutdown results from moved applications. |
-| Signed native startup failures | Explicit diagnostics for missing-library and incompatible-ABI fixtures. |
+| Mac native cooked Development and Shipping | The same gameplay results in signed sandboxed apps, with CLR absent. |
+| Android native cooked Development | Minimal managed startup and C# result `42` in an APK on a device, with no loaded CLR image. |
+| Mac native shutdown | Reverse module shutdown, pending-worker completion with live handles, and harmless foreign callback arrival after shutdown. |
+| Mac native ILDiet disabled | Gameplay, lifecycle and shutdown artifact parity with the enabled image. |
+| Mac native Development and Shipping relocation | Gameplay and shutdown results from moved applications. |
+| Mac signed native startup failures | Explicit diagnostics for missing-library and incompatible-ABI fixtures. |
 
 Each runtime gate requires both process success and its deterministic artifacts.
 The native package checks preserve signed sandbox entitlements. Shipping CLR
@@ -215,10 +256,12 @@ The interface fixture uses Blueprint events; the pinned upstream callable-only
 interface route remains unsupported. Soft-reference checks use loaded objects
 and do not establish asynchronous loading of unloaded cooked assets.
 
-The package gate scans staged files for managed execution DLLs and CLR runtime
-components, and the running sample checks loaded images. Cooked package
-contents require a separate `UnrealPak -List` inspection and UFS/NonUFS staging
-manifest scan.
+The Mac package gate scans staged files for managed execution DLLs and CLR
+runtime components, and the running sample checks loaded images. The Android
+gate inspects APK ZIP entries and packaged Pak contents with `UnrealPak -List`,
+then checks the running process. The Android Minimal check establishes the
+Development native path and one managed call; it does not cover the Mac
+EngineSmoke behavior matrix or Android Shipping.
 
 The initial scope excludes dn2cpp Editor/PIE, native Hot Reload, runtime-added
 assemblies, comprehensive replication/RPC compatibility, and other platforms.
