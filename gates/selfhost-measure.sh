@@ -51,6 +51,7 @@ add_ref() { [ -f "$1" ] && refs+=(-r "$1"); }
 add_ref "$BIN/Dn2Cpp.Transpiler.dll"
 add_ref "$BIN/Dn2Cpp.Godot.dll"
 add_ref "$BIN/Dn2Cpp.DotnetModule.dll"
+add_ref "$BIN/Dn2Cpp.UnrealSharp.dll"
 add_ref "$BIN/Dn2Cpp.Runtime.dll"
 add_ref "$corelib"
 add_ref "$bcl/System.Text.Json.dll"

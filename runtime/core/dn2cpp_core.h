@@ -1091,6 +1091,43 @@ struct Dn2CppDelegate : Dn2CppObject
     const Dn2CppDelegateMethodIdentity* identity;
 };
 
+// A synchronous native call owns the callback slot until it and its callbacks return.
+struct Dn2CppScopedDelegateCallback
+{
+    void* pointer = nullptr;
+    Dn2CppObject** root = nullptr;
+    std::atomic_flag* lock = nullptr;
+    Dn2CppScopedDelegateCallback() = default;
+    Dn2CppScopedDelegateCallback(void* p, Dn2CppObject** r, std::atomic_flag* l) : pointer(p), root(r), lock(l) { }
+    Dn2CppScopedDelegateCallback(const Dn2CppScopedDelegateCallback&) = delete;
+    Dn2CppScopedDelegateCallback& operator=(const Dn2CppScopedDelegateCallback&) = delete;
+    Dn2CppScopedDelegateCallback(Dn2CppScopedDelegateCallback&& other) noexcept { *this = std::move(other); }
+    Dn2CppScopedDelegateCallback& operator=(Dn2CppScopedDelegateCallback&& other) noexcept
+    {
+        reset();
+        pointer = other.pointer;
+        root = other.root;
+        lock = other.lock;
+        other.pointer = nullptr;
+        other.root = nullptr;
+        other.lock = nullptr;
+        return *this;
+    }
+    void reset() noexcept
+    {
+        if (root)
+        {
+            while (lock->test_and_set(std::memory_order_acquire)) { }
+            *root = nullptr;
+            lock->clear(std::memory_order_release);
+        }
+        pointer = nullptr;
+        root = nullptr;
+        lock = nullptr;
+    }
+    ~Dn2CppScopedDelegateCallback() { reset(); }
+};
+
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
 // Delegate.CreateDelegate): parked in the delegate's `target` slot and unpacked
 // by the per-Invoke-signature dgrefl_* trampoline the emitter generates as the

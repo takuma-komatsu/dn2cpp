@@ -900,7 +900,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // External linkage (no `static`): the body may live in a different translation unit
         // than its callers once the output is split across files; the header carries the
         // forward declaration. Unused external functions don't warn, so no [[maybe_unused]].
-        sb.AppendLine(signature);
+        bool callbackBoundary = _method.IsUnmanagedCallersOnly && _backend?.CatchUnmanagedCallbackExceptions is true;
+        sb.AppendLine(callbackBoundary ? signature + " try" : signature);
         sb.AppendLine("{");
         // An [UnmanagedCallersOnly] method can be invoked from a thread the
         // collector has never seen (a native host's own thread pool); the prologue
@@ -959,6 +960,18 @@ internal sealed partial class MethodCompiler : IEvalStack
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
         sb.AppendLine("}");
+        if (callbackBoundary)
+        {
+            string failureReturn = _method.Signature.ReturnType.IsVoid ? "    return;"
+                : "    return " + (_backend?.UnmanagedCallbackFailureValue(_method) ?? "{}") + ";";
+            sb.AppendLine("catch (Dn2CppException& ex) {");
+            sb.AppendLine($"    dn2cpp_report_boundary_exception(ex.obj, \"%s\", \"{ShadowFrameName()}\");");
+            sb.AppendLine(failureReturn);
+            sb.AppendLine("} catch (...) {");
+            sb.AppendLine($"    dn2cpp_report_boundary_exception(nullptr, \"%s\", \"{ShadowFrameName()}\");");
+            sb.AppendLine(failureReturn);
+            sb.AppendLine("}");
+        }
         return sb.ToString();
     }
 

@@ -1256,15 +1256,41 @@ internal sealed partial class MethodCompiler
         var ftn = Pop(); // ECMA-335 III.3.20: the function pointer is on top, args below.
         var ps = sig.ParameterTypes;
         var args = new string[ps.Length];
+        var abiParameters = new string[ps.Length];
+        var callbackLeases = new List<string>();
+        bool scopedCallbacks = _backend?.ScopedCalliDelegateCallbacks(_method) is true
+            && ps.Any(p => p.Class is { IsDelegate: true });
+        if (scopedCallbacks)
+            Emit("try {");
         for (int i = ps.Length - 1; i >= 0; i--)
+        {
             args[i] = CoerceTo(Pop(), ps[i], CppTypes.Of(ps[i]));
+            if (_backend?.ScopedCalliDelegateCallbacks(_method) is true && ps[i].Class is { IsDelegate: true } delegateClass)
+            {
+                _c.EnsureCompleted(delegateClass);
+                if (!CppTypes.IsBlittableCallbackDelegate(ps[i]))
+                    throw new NotSupportedException("calli callback requires a blittable native signature: " + delegateClass.FullName);
+                _c.MarshalFnPtrDelegates.Add(delegateClass);
+                _c.ScopedMarshalFnPtrDelegates.Add(delegateClass);
+                _c.NoteForceEmit(delegateClass);
+                string lease = NewTemp("Dn2CppScopedDelegateCallback");
+                Emit($"{lease} = dn2cpp_scoped_fnptr_for_delegate_{delegateClass.CppName}((Dn2CppObject*)({args[i]}));");
+                args[i] = lease + ".pointer";
+                abiParameters[i] = "void*";
+                callbackLeases.Add(lease);
+                continue;
+            }
+            var marshalled = _backend?.MarshalCalliArgument(_method, ps[i], args[i]);
+            abiParameters[i] = marshalled?.Type ?? CppTypes.Of(ps[i]);
+            args[i] = marshalled?.Expression ?? args[i];
+        }
 
         string retC = sig.ReturnType.IsVoid ? "void" : CppTypes.Of(sig.ReturnType);
         // The pointer must be spelled with the callee's ABI return, which the backend
         // may know to be narrower than the declaration (IEmitBackend.CalliAbiType).
         string abiRetC = sig.ReturnType.IsVoid ? "void"
             : _backend?.CalliAbiType(_method, sig.ReturnType) ?? retC;
-        string fnPtrType = $"{abiRetC} (*)({string.Join(", ", ps.Select(CppTypes.Of))})";
+        string fnPtrType = $"{abiRetC} (*)({string.Join(", ", abiParameters)})";
         string call = $"(({fnPtrType})({Cast(ftn, "void*")}))({string.Join(", ", args)})";
         // A plain cast, so the widening takes its direction from the narrow type's
         // signedness rather than from the declaration's.
@@ -1275,6 +1301,16 @@ internal sealed partial class MethodCompiler
             Emit(call + ";");
         else
             Push(CppTypes.KindOf(sig.ReturnType), retC, call);
+        foreach (string lease in callbackLeases)
+            Emit($"{lease}.reset();");
+        if (scopedCallbacks)
+        {
+            Emit("} catch (...) {");
+            foreach (string lease in callbackLeases)
+                Emit($"{lease}.reset();");
+            Emit("throw;");
+            Emit("}");
+        }
     }
 
     /// <summary>Whether a <c>newobj</c> instruction constructs a delegate type, and if

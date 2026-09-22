@@ -5509,6 +5509,50 @@ internal sealed partial class CppEmitter
                 + $"{cls.FullName} ({poolSize} distinct function pointers per delegate type per process)\");");
             sb.AppendLine("}");
 
+            if (_c.ScopedMarshalFnPtrDelegates.Contains(cls))
+            {
+                const int scopedPoolSize = 32;
+                string scopedPool = pool + "_scoped";
+                string scopedLock = poolLock + "_scoped";
+                var scopedThunks = new List<string>();
+                sb.AppendLine($"static DN2CPP_GC_STATIC_ROOT Dn2CppObject* {scopedPool}[{scopedPoolSize}];");
+                sb.AppendLine($"static std::atomic_flag {scopedLock} = ATOMIC_FLAG_INIT;");
+                for (int i = 0; i < scopedPoolSize; ++i)
+                {
+                    string thunk = $"dn2cpp_scoped_fnptrtramp_{cls.CppName}_{i}";
+                    scopedThunks.Add("(void*)&" + thunk);
+                    sb.AppendLine($"static {nativeRet} {thunk}({string.Join(", ", sigParams)}) try {{");
+                    sb.AppendLine("    dn2cpp_native_callback_prologue();");
+                    sb.AppendLine($"    auto* dg = ({cls.CppStructName}*){scopedPool}[{i}];");
+                    string invokeCall = $"dginvoke_{cls.CppName}({string.Join(", ", callArgs)})";
+                    sb.AppendLine(rt.IsVoid ? $"    {invokeCall};" : $"    return ({nativeRet}){invokeCall};");
+                    sb.AppendLine("} catch (Dn2CppException& ex) {");
+                    sb.AppendLine("    dn2cpp_report_boundary_exception(ex.obj, \"a scoped native delegate callback\");");
+                    sb.AppendLine(rt.IsVoid ? "    return;" : "    return {};");
+                    sb.AppendLine("} catch (...) {");
+                    sb.AppendLine("    dn2cpp_report_boundary_exception(nullptr, \"a scoped native delegate callback\");");
+                    sb.AppendLine(rt.IsVoid ? "    return;" : "    return {};");
+                    sb.AppendLine("}");
+                }
+                string factory = $"dn2cpp_scoped_fnptr_for_delegate_{cls.CppName}";
+                o.Header.AppendLine($"Dn2CppScopedDelegateCallback {factory}(Dn2CppObject* dg);");
+                sb.AppendLine($"static void* const {thunks}_scoped[] = {{ {string.Join(", ", scopedThunks)} }};");
+                sb.AppendLine($"Dn2CppScopedDelegateCallback {factory}(Dn2CppObject* dg) {{");
+                sb.AppendLine("    if (!dg) return {};");
+                sb.AppendLine("    dn2cpp_enable_native_delegate_callback_gc_registration();");
+                sb.AppendLine($"    while ({scopedLock}.test_and_set(std::memory_order_acquire)) {{ }}");
+                sb.AppendLine($"    for (int32_t i = 0; i < {scopedPoolSize}; ++i) {{");
+                sb.AppendLine($"        if (!{scopedPool}[i]) {{");
+                sb.AppendLine($"            {scopedPool}[i] = dg;");
+                sb.AppendLine($"            {scopedLock}.clear(std::memory_order_release);");
+                sb.AppendLine($"            return {{ {thunks}_scoped[i], &{scopedPool}[i], &{scopedLock} }};");
+                sb.AppendLine("        }");
+                sb.AppendLine("    }");
+                sb.AppendLine($"    {scopedLock}.clear(std::memory_order_release);");
+                sb.AppendLine("    dn2cpp_throw_platform_not_supported(\"simultaneous native delegate callback capacity exceeded\");");
+                sb.AppendLine("}");
+            }
+
             // The reverse direction (Marshal.GetDelegateForFunctionPointer<T>): a
             // managed-ABI forwarder over a raw native pointer, plus the wrapper factory.
             string managedRet = rt.IsVoid ? "void" : CppTypes.Of(rt);
