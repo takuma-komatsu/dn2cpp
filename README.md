@@ -27,10 +27,11 @@ stock engine with no .NET support can load. Godot is an output, not a
 premise.
 
 The experimental `--unrealsharp` backend compiles Game assemblies for a pinned
-UnrealSharp fork into a native macOS arm64 library. Editor and Cook retain CLR
-and the existing development workflow. The integration includes static assembly
-registration, UE callback and lifetime handling, and native packaging through
-UAT and CMake/Ninja. See [UnrealSharp setup and validation](docs/UNREALSHARP.md)
+UnrealSharp fork into a native macOS arm64 or Android arm64-v8a library. Android
+targets Development APKs; macOS also targets Shipping. Editor and Cook retain
+CLR and the existing development workflow. The integration includes static
+assembly registration, UE callback and lifetime handling, and native packaging
+through UAT and CMake/Ninja. See [UnrealSharp setup and validation](docs/UNREALSHARP.md)
 for the real-engine probes and current compatibility limits.
 
 What goes in is real .NET IL — the actual `System.Private.CoreLib`, the

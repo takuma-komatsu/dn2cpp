@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,89 @@ spec.loader.exec_module(module)
 
 
 class NativePackagingTests(unittest.TestCase):
+    def test_android_build_and_elf_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            managed = root / 'publish'
+            managed.mkdir()
+            for name in (*module.PLUGIN_ASSEMBLIES, 'Game'):
+                (managed / (name + '.dll')).touch()
+            (managed / 'Game.LoadOrder.json').write_text(json.dumps({'Priority': 0, 'Collectible': False, 'LoadOrder': ['Game']}))
+            cli = root / 'src/Dn2Cpp.Cli/bin/Release/net10.0/dn2cpp.dll'
+            cli.parent.mkdir(parents=True)
+            cli.touch()
+            config = root / 'DefaultUnrealSharp.ini'
+            config.write_text('[/Script/UnrealSharpCore.CSUnrealSharpSettings]\nPackagingBackend=Dn2Cpp\n')
+            archive = root / 'project'
+            editor_dll = archive / 'Binaries/Managed/net10.0/Editor.dll'
+            editor_dll.parent.mkdir(parents=True)
+            editor_dll.write_bytes(b'editor-only')
+            ndk = root / 'ndk'
+            toolchain = ndk / 'build/cmake/android.toolchain.cmake'
+            readelf = ndk / 'toolchains/llvm/prebuilt/host/bin/llvm-readelf'
+            strip = readelf.with_name('llvm-strip')
+            toolchain.parent.mkdir(parents=True)
+            readelf.parent.mkdir(parents=True)
+            toolchain.touch()
+            readelf.touch()
+            strip.touch()
+            calls = []
+
+            def run(*args):
+                args = [str(arg) for arg in args]
+                calls.append(args)
+                if args[:2] == ['cmake', '--build']:
+                    Path(args[2]).mkdir(parents=True, exist_ok=True)
+                    (Path(args[2]) / 'libUnrealSharpGame.so').write_bytes(b'with-debug')
+                elif args[0] == str(strip):
+                    self.assertEqual(args[1], '--strip-debug')
+                    self.assertEqual(Path(args[2]).read_bytes(), b'with-debug')
+                    Path(args[2]).write_bytes(b'stripped')
+
+            def inspect(args, text):
+                self.assertEqual(Path(args[-1]).read_bytes(), b'stripped')
+                if '-h' in args:
+                    return 'Class: ELF64\nType: DYN (Shared object file)\nMachine: AArch64\n'
+                if '-lW' in args:
+                    return 'Program Headers:\n  LOAD 0x000000 0x000000 0x000000 0x1000 0x1000 R E 0x4000\n  LOAD 0x001000 0x001000 0x001000 0x1000 0x1000 RW 0x4000\n'
+                if '--dyn-syms' in args:
+                    return '\n'.join(f'  {index}: 000000 0 FUNC GLOBAL DEFAULT 12 {name}'
+                        for index, name in enumerate(sorted(module.ANDROID_ABI_EXPORTS)))
+                return ' 0x0000000000000001 (NEEDED) Shared library: [libc.so]\n'
+
+            arguments = ['package-native.py', '--platform', 'Android', '--dn2cpp-root', str(root),
+                '--managed', str(managed), '--archive', str(archive), '--work', str(root / 'work'),
+                '--configuration', 'Development', '--unrealsharp-config', str(config)]
+            with patch.dict(os.environ, {'ANDROID_NDK_ROOT': str(ndk)}), patch('sys.argv', arguments), \
+                    patch.object(module, 'run', run), patch.object(module.shutil, 'which', return_value='/tool'), \
+                    patch.object(module.subprocess, 'check_output', side_effect=inspect):
+                module.main()
+            self.assertIn('-DCMAKE_TOOLCHAIN_FILE=' + str(toolchain), calls[1])
+            self.assertIn('-DANDROID_ABI=arm64-v8a', calls[1])
+            self.assertIn('-DANDROID_PLATFORM=android-26', calls[1])
+            self.assertIn('-DANDROID_STL=c++_static', calls[1])
+            self.assertNotIn('-DCMAKE_OSX_ARCHITECTURES=arm64', calls[1])
+            self.assertEqual(calls[3], [str(strip), '--strip-debug', calls[2][2] + '/libUnrealSharpGame.so'])
+            self.assertTrue((archive / 'Binaries/Android/arm64-v8a/libUnrealSharpGame.so').exists())
+            self.assertEqual((archive / 'Binaries/Android/arm64-v8a/libUnrealSharpGame.so').read_bytes(), b'stripped')
+            self.assertTrue((archive / 'Binaries/Managed/net10.0/Game.LoadOrder.json').exists())
+            self.assertTrue((archive / 'Binaries/Managed/net10.0/UnrealSharpBuild.flag').exists())
+            self.assertEqual(editor_dll.read_bytes(), b'editor-only')
+            self.assertFalse(any(call[0] in ('codesign', 'install_name_tool') for call in calls))
+            native = archive / 'Binaries/Android/arm64-v8a/libUnrealSharpGame.so'
+            with patch.object(module.subprocess, 'check_output', side_effect=lambda args, text: inspect(args, text).replace('AArch64', 'x86-64')):
+                with self.assertRaisesRegex(SystemExit, 'AArch64 ELF64'):
+                    module.validate_android_library(native, readelf)
+            with patch.object(module.subprocess, 'check_output', side_effect=lambda args, text: inspect(args, text).replace('RW 0x4000', 'RW 0x1000')):
+                with self.assertRaisesRegex(SystemExit, '16 KiB PT_LOAD alignment'):
+                    module.validate_android_library(native, readelf)
+            with patch.object(module.subprocess, 'check_output', side_effect=lambda args, text: inspect(args, text).replace('dn2cpp_unrealsharp_tick', 'missing')):
+                with self.assertRaisesRegex(SystemExit, 'lacks UnrealSharp ABI exports'):
+                    module.validate_android_library(native, readelf)
+            with patch.object(module.subprocess, 'check_output', side_effect=lambda args, text: inspect(args, text).replace('[libc.so]', '[libc++_shared.so]')):
+                with self.assertRaisesRegex(SystemExit, 'Unstaged Android native dependency'):
+                    module.validate_android_library(native, readelf)
+
     def test_builds_game_and_stages_only_native_and_manifests(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
