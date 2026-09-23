@@ -1160,6 +1160,7 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError)
 #define DN2CPP_BF_PUBLIC       0x10
 #define DN2CPP_BF_NONPUBLIC    0x20
 #define DN2CPP_BF_FLATTEN      0x40
+#define DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS 0x02000000
 
 // Whole-string compare of a managed UTF-16 string against an ASCII C string.
 static bool dn2cpp_ascii_str_eq(const char* c, const Dn2CppString* s)
@@ -2177,12 +2178,41 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p)
     return dn2cpp_string_from_utf8(nm, static_cast<int32_t>(std::strlen(nm)));
 }
 
+void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
+{
+    Dn2CppObject* wrapper = dn2cpp_exception_new(&dn2cpp_target_invocation_exception_type,
+        dn2cpp_default_message(&dn2cpp_target_invocation_exception_type), inner);
+    reinterpret_cast<Dn2CppExceptionObject*>(wrapper)->hresult = static_cast<int32_t>(0x80131604u);
+    dn2cpp_exc_inflight_pop(inner);
+    dn2cpp_throw(wrapper);
+}
+
 // Shared method dispatch: validate, adjust the receiver for a value-type
 // instance method (pass the unboxed payload at obj+1), and call through the per-shape
 // invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
+static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
+    Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions)
+{
+    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(thunk);
+    try
+    {
+        return invoker(fn, self, args, returnType);
+    }
+    catch (Dn2CppInvokerMissing&)
+    {
+        throw;
+    }
+    catch (Dn2CppException& exception)
+    {
+        if (!wrapExceptions)
+            throw;
+        dn2cpp_throw_target_invocation(exception.obj);
+    }
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     // A metadata-answerable row carries no body at all: it answers from its own type
     // arguments and receiver. A non-generic row is always closed; a generic one is
@@ -2213,14 +2243,17 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, row.declaringType)[row.vtableSlot]);
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
+    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
+    // A missing receiver is the caller's fault, raised before the target runs, so
+    // it is never wrapped.
+    if (!isStatic && obj == nullptr)
+        dn2cpp_throw_null_reference();
     if (argc != row.paramCount)
         dn2cpp_throw_argument();
-    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(row.invoker);
-    return invoker(fn, self, args, row.returnType);
+    return dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
 }
 
 struct Dn2CppInvokePlan
@@ -2237,7 +2270,7 @@ struct Dn2CppInvokePlan
 };
 
 static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     struct Entry
     {
@@ -2256,7 +2289,7 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
         if (entry->identity == mi.identity())
         {
             const Dn2CppInvokePlan plan = entry->plan;
-            return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+            return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
         }
     }
     Dn2CppMethodInfo row;
@@ -2270,26 +2303,26 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
             row.vtableSlot, row.genericParamCount };
         entry->plan = plan;
         entry->identity = mi.identity();
-        return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+        return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
     }
-    return dn2cpp_invoke_row(mi, row, obj, args, argc);
+    return dn2cpp_invoke_row(mi, row, obj, args, argc, wrapExceptions);
 }
 
 static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     if (mi == nullptr)
         dn2cpp_throw_invalid_operation();
     if (const Dn2CppMethodInfo* row = mi.native())
-        return dn2cpp_invoke_row(mi, *row, obj, args, argc);
-    return dn2cpp_invoke_encoded(mi, obj, args, argc);
+        return dn2cpp_invoke_row(mi, *row, obj, args, argc, wrapExceptions);
+    return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions);
 }
 
 // MethodInfo.Invoke.
-Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
     return dn2cpp_invoke_mi(dn2cpp_methodref_require(m), obj, (args == nullptr) ? nullptr : args->data,
-                            (args == nullptr) ? 0 : args->length);
+                            (args == nullptr) ? 0 : args->length, wrapExceptions);
 }
 
 // ---- reflection: CreateDelegate (the reflection -> delegate bridge) ----
@@ -2306,7 +2339,7 @@ Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
     if ((mi->attrs & DN2CPP_MTHA_STATIC) == 0 && self == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount);
+    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
@@ -2490,7 +2523,7 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
 
 // Allocates a fresh instance of mi->declaringType (a boxed payload for a value type),
 // runs the ctor through its invoker thunk (instance, void return), and returns it.
-static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc)
+static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2513,15 +2546,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppObject* self = isValue
         ? reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject))
         : obj;
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(mi->invoker);
-    invoker(mi->fnPtr, self, args, nullptr);
+    dn2cpp_invoke_target(mi->invoker, mi->fnPtr, self, args, nullptr, wrapExceptions);
     return obj;
-}
-
-static Dn2CppObject* dn2cpp_ctor_invoke_impl(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppArrayRef* args)
-{
-    return dn2cpp_ctor_invoke_argv(mi, (args == nullptr) ? nullptr : args->data,
-                                   (args == nullptr) ? 0 : args->length);
 }
 
 // Collects a type's own constructors (no base walk — ctors are never inherited,
@@ -2591,9 +2617,10 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* para
     return dn2cpp_type_get_constructor_full(t, paramTypes, bindingFlags, 0, nullptr);
 }
 
-Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bool wrapExceptions)
 {
-    return dn2cpp_ctor_invoke_impl(dn2cpp_methodref_require(c), args);
+    return dn2cpp_ctor_invoke_argv(dn2cpp_methodref_require(c), args == nullptr ? nullptr : args->data,
+        args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
 // Activator.CreateInstance(Type[, bool nonPublic]): the parameterless form.
@@ -2602,7 +2629,8 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args)
 // parameterless ctor is non-public when nonPublic wasn't requested — the
 // parameterless CreateInstance(Type) binds PUBLIC ctors only. A value type
 // with no explicit parameterless ctor yields the zero-initialized boxed value.
-Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
+static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonPublic,
+    bool wrapExceptions)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null();
@@ -2616,7 +2644,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
         const auto row = ci.operator->();
         if (row->paramCount == 0
             && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
-            return dn2cpp_ctor_invoke_impl(ci, nullptr);
+            return dn2cpp_ctor_invoke_argv(ci, nullptr, 0, wrapExceptions);
     }
     // A value type with no explicit parameterless ctor: zero-initialized boxed value.
     if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
@@ -2633,6 +2661,11 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
     std::snprintf(buf, sizeof(buf), "No parameterless constructor defined for type '%s'.",
                   ti->name != nullptr ? ti->name : "?");
     dn2cpp_throw_missing_method(buf);
+}
+
+Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
+{
+    return dn2cpp_activator_create_default(t, nonPublic, true);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)
@@ -2845,13 +2878,13 @@ Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32
 
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj)
 {
-    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0);
+    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0, true);
 }
 
 void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value)
 {
     Dn2CppObject* args[1] = { value };
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1, true);
 }
 
 // PropertyInfo.GetIndexParameters(): the indexer parameters, read off the
@@ -2888,16 +2921,18 @@ Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
 // (a non-null Binder is the AOT PlatformNotSupportedException; culture is a
 // no-op like real .NET's default binder on the non-parse path).
 Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj,
-                                               Dn2CppArrayRef* index, Dn2CppObject* binder)
+                                               Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                               bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
     return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj,
                             (index == nullptr) ? nullptr : index->data,
-                            (index == nullptr) ? 0 : index->length);
+                            (index == nullptr) ? 0 : index->length, wrapExceptions);
 }
 
 void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value,
-                                      Dn2CppArrayRef* index, Dn2CppObject* binder)
+                                      Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                      bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
     int32_t n = (index == nullptr) ? 0 : index->length;
@@ -2909,7 +2944,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];
     args[n] = value;
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1, wrapExceptions);
 }
 
 // ---- reflection: mixed member lookup (GetMember/GetMembers/GetDefaultMembers) ----
@@ -5343,9 +5378,10 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
         dn2cpp_throw_argument_null();
     const Dn2CppTypeInfo* ti = t->typeInfo;
     int32_t argc = (args == nullptr) ? 0 : args->length;
+    const bool wrapExceptions = (bindingFlags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0;
     if (argc == 0)
-        return dn2cpp_activator_create_instance_nonpublic(
-            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0);
+        return dn2cpp_activator_create_default(
+            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0, wrapExceptions);
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
     if (argc > 30)
@@ -5403,5 +5439,5 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     Dn2CppObject* adapted[30];
     for (int32_t j = 0; j < argc; j++)
         adapted[j] = dn2cpp_binder_adapt_arg(args->data[j], best->parameters[j]->paramType);
-    return dn2cpp_ctor_invoke_argv(best, adapted, argc);
+    return dn2cpp_ctor_invoke_argv(best, adapted, argc, wrapExceptions);
 }

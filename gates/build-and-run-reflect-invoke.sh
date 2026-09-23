@@ -81,6 +81,18 @@ gate_extra_asserts() {
     grep -Fxq 'metadata-compression-generic-reference=text/String/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-plain-generic=True/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-message: Exception has been thrown by the target of an invocation.' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'activator-cold-generic=73' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_EXISTING_CONSTRUCTOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-existing-constructor.stdout"
+    sed '/^existing-constructor-begin/,$d' "$out/metadata-layout.stdout" > "$out/existing-constructor-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-existing-constructor.stdout") \
+        <(strip_cr_win_file "$out/existing-constructor-prefix.stdout")
+    DN2CPP_BEFORE_COLD_ACTIVATOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-cold-activator.stdout"
+    sed '/^activator-cold-generic=/,$d' "$out/metadata-layout.stdout" > "$out/cold-activator-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-cold-activator.stdout") \
+        <(strip_cr_win_file "$out/cold-activator-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -97,7 +109,8 @@ gate_extra_asserts() {
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 reflection_layout_axis=default
-corelib_diff_gate ReflectInvoke --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
+    corelib_diff_gate ReflectInvoke --no-ildiet
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \

@@ -1095,7 +1095,7 @@ internal sealed partial class CppEmitter
                 string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 _sb.AppendLine($"static Dn2CppObject* {name}([[maybe_unused]] void* fn, "
                     + "[[maybe_unused]] Dn2CppObject* self, [[maybe_unused]] Dn2CppObject** args, "
-                    + $"[[maybe_unused]] const Dn2CppTypeInfo* retType) {{ dn2cpp_throw_not_supported_msg(\"{lit}\"); }}");
+                    + $"[[maybe_unused]] const Dn2CppTypeInfo* retType) {{ dn2cpp_throw_invoker_missing(\"{lit}\"); }}");
                 _invokerMissStubs[desc] = name;
             }
             return name;

@@ -2357,7 +2357,7 @@ internal sealed partial class Compilation
     }
 
     internal static MethodInfo? ParameterlessCtor(ClassInfo c) =>
-        c.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
 
     /// <summary>The parameterless instance ctor that is also <b>public</b>, or null.
     /// The generic factory <c>Activator.CreateInstance&lt;T&gt;()</c> (and <c>new T()</c>
@@ -2369,7 +2369,7 @@ internal sealed partial class Compilation
     /// their C# constraint already guarantees the match is public, so the visibility test
     /// is unneeded there and would only cost a decode.</summary>
     internal static MethodInfo? PublicParameterlessCtor(ClassInfo c) =>
-        c.Methods.FirstOrDefault(m => !m.IsStatic && m.IsPublic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.IsPublic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
 
     /// <summary>Reaches <paramref name="c"/>'s implementation of the virtual or
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>

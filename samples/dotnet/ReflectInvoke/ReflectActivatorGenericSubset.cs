@@ -4,6 +4,20 @@ using System.Threading.Tasks;
 
 namespace ReflectActivatorGenericSubset
 {
+    class ColdGeneric<T>
+    {
+        public int Value;
+        public ColdGeneric() { Value = 73; }
+    }
+
+    static class ColdGenericFactory
+    {
+        public static void Run()
+        {
+            Console.WriteLine("activator-cold-generic=" + Activator.CreateInstance<ColdGeneric<string>>().Value);
+        }
+    }
+
     // SUBJECT: Activator.CreateInstance<T>() and Lazy<T>'s default-ctor path when
     // T has no public parameterless ctor. The generic factory reflects, so the
     // miss is a RUN-TIME MissingMethodException, never a compile-time reject;

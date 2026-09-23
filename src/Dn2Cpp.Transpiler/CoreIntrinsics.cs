@@ -1211,6 +1211,8 @@ internal static partial class CoreIntrinsics
         ["System.Collections.Generic.KeyNotFoundException"] = "&dn2cpp_key_not_found_exception_type",
         ["System.AggregateException"] = "&dn2cpp_aggregate_exception_type",
         ["System.Reflection.AmbiguousMatchException"] = "&dn2cpp_ambiguous_match_exception_type",
+        ["System.Reflection.TargetInvocationException"] = "&dn2cpp_target_invocation_exception_type",
+        ["System.ApplicationException"] = "&dn2cpp_application_exception_type",
         // Raised by the array block-move helpers on a rank mismatch, so a
         // `catch (RankException)` in the same program must bind THIS handle.
         ["System.RankException"] = "&dn2cpp_rank_exception_type",

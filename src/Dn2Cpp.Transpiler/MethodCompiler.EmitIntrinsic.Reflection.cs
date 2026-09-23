@@ -1022,10 +1022,10 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo
                 var args = Pop(); // object[]
                 Pop(); // Binder
-                Pop(); // BindingFlags
+                var flags = Pop(); // BindingFlags
                 var obj = Pop();
                 var m = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_methodref_invoke((Dn2CppMethodRef*)({m.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(args, "Dn2CppArrayRef*")}, {WrapsInvokeExceptions(flags)})");
                 return true;
             }
             // MethodInfo.CreateDelegate(Type[, object target]): bind the methtab row
@@ -1097,9 +1097,9 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo
                 var args = Pop(); // object[]
                 Pop(); // Binder
-                Pop(); // BindingFlags
+                var flags = Pop(); // BindingFlags
                 var c = Pop();
-                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")})");
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_ctorref_invoke((Dn2CppMethodRef*)({c.Expr}), {Cast(args, "Dn2CppArrayRef*")}, {WrapsInvokeExceptions(flags)})");
                 return true;
             }
             // Non-generic Activator.CreateInstance(Type): invoke the type's
@@ -1354,11 +1354,12 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo — ignored
                 var index = Pop();
                 var binder = Pop();
-                Pop(); // BindingFlags — a resolved PropertyInfo no longer filters
+                // A resolved PropertyInfo no longer filters; only DoNotWrapExceptions is read.
+                var flags = Pop();
                 var obj = Pop();
                 var p = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
-                    $"dn2cpp_propref_get_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, {Cast(binder, "Dn2CppObject*")})");
+                    $"dn2cpp_propref_get_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, {Cast(binder, "Dn2CppObject*")}, {WrapsInvokeExceptions(flags)})");
                 return true;
             }
             // SetValue(obj, value, BindingFlags, Binder, object[] index, CultureInfo).
@@ -1368,11 +1369,11 @@ internal sealed partial class MethodCompiler
                 Pop(); // CultureInfo — ignored
                 var index = Pop();
                 var binder = Pop();
-                Pop(); // BindingFlags
+                var flags = Pop();
                 var value = Pop();
                 var obj = Pop();
                 var p = Pop();
-                Emit($"dn2cpp_propref_set_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, {Cast(binder, "Dn2CppObject*")});");
+                Emit($"dn2cpp_propref_set_value_indexed((Dn2CppPropRef*)({p.Expr}), {Cast(obj, "Dn2CppObject*")}, {Cast(value, "Dn2CppObject*")}, {Cast(index, "Dn2CppArrayRef*")}, {Cast(binder, "Dn2CppObject*")}, {WrapsInvokeExceptions(flags)});");
                 return true;
             }
             // ParameterInfo members: ParameterType / Position / Name.
@@ -2243,6 +2244,12 @@ internal sealed partial class MethodCompiler
         ret is { Kind: TypeKind.Class, Class.Context.TypeArgs: [{ } cad] }
             ? cad
             : TypeDesc.MakeExternal("System.Reflection.CustomAttributeData");
+
+    /// <summary>The wrapExceptions argument for a BindingFlags invoke overload. The operand
+    /// is parenthesized because a stack expression may be an unparenthesized <c>a | b</c>,
+    /// which <c>&amp;</c> would otherwise bind first.</summary>
+    private static string WrapsInvokeExceptions(StackEntry flags) =>
+        $"((({flags.Expr}) & 0x02000000) == 0)";
 
     /// <summary>The classified+popped arguments of one Type.GetMethod /
     /// GetConstructor / GetProperty overload: each is a C++ expression, or null
