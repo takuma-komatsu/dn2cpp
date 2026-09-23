@@ -21,6 +21,8 @@ namespace WeakReferences
             PendingCallArgumentSubset.Program.__GateEntry();
             IncrementalWriteBarrierSubset.Program.__ResizeGateEntry();
             ConditionalWeakTableSubset.Program.__GateEntry();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_IMMORTAL_WEAK") != "1")
+                WeakReferenceImmortalSubset.Program.__GateEntry();
         }
     }
 }
