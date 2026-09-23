@@ -44,7 +44,7 @@ internal sealed partial class CppEmitter
     {
         internal string? Body;
         internal Exception? Error;
-        internal List<(MethodInfo Callee, bool RgctxPassable)>? SharedDirectCallees;
+        internal List<(MethodInfo Callee, bool RgctxPassable, int ForwardToken)>? SharedDirectCallees;
     }
 
     /// <summary>A resident, bounded worker set used by one body-compilation round.
@@ -1982,7 +1982,7 @@ internal sealed partial class CppEmitter
             {
                 mc.SharedTrial = true;
                 if (planning)
-                    mc.SharedDirectCallees = new List<(MethodInfo, bool)>();
+                    mc.SharedDirectCallees = new List<(MethodInfo, bool, int)>();
             }
             string body = mc.Compile();
             if (!planning)
@@ -2228,7 +2228,14 @@ internal sealed partial class CppEmitter
                 compiledMethods.Add(m);
             }
             if (batch.Count == 0 && minted.Count == 0 && !rgctxFilled)
+            {
+                // Forwarding slots wait for quiescence: only the complete call
+                // graph says which callees take a context. New slots mean
+                // another round, whose fill resolves them.
+                if (planning && _c.RegisterRgctxForwardingSlots())
+                    continue;
                 break;
+            }
             // Compile in a content-derived order: three numberings are handed out by first
             // use during body compilation and baked into the emitted text (the literal
             // pool's str_N / blob_N, the rgctx registry's slot indices, and — through
@@ -2495,7 +2502,7 @@ internal sealed partial class CppEmitter
                             var mc = new MethodCompiler(_c, m, literals, _backend)
                             {
                                 SharedTrial = true,
-                                SharedDirectCallees = planning ? new List<(MethodInfo, bool)>() : null,
+                                SharedDirectCallees = planning ? new List<(MethodInfo, bool, int)>() : null,
                             };
                             if (planning)
                             {

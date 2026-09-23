@@ -152,8 +152,9 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// canonical methods this body binds by symbol — direct calls, value-type
     /// ctor calls, devirtualized struct-override calls — the edges the
     /// unshareability cascade and the retention closure walk, each flagged with
-    /// whether the site could pass a runtime generic context on.</summary>
-    internal List<(MethodInfo Callee, bool RgctxPassable)>? SharedDirectCallees;
+    /// whether the site could pass a runtime generic context on and, when that
+    /// takes a forwarding slot, the call-site token keying it (0 otherwise).</summary>
+    internal List<(MethodInfo Callee, bool RgctxPassable, int ForwardToken)>? SharedDirectCallees;
     // Whether this shared body read the runtime generic context (loaded a slot
     // or forwarded it) — drives the lazy __rgctx prologue.
     private bool _usedRgctx;
@@ -345,27 +346,31 @@ internal sealed partial class MethodCompiler : IEvalStack
     {
         var impl = _c.SharedDonor(target).Emittable;
         if (SharedDirectCallees is not null && Compilation.IsCanonicalMethod(impl))
-            SharedDirectCallees.Add((impl, RgctxEdgePassable(impl)));
+            SharedDirectCallees.Add(SharedCallEdge(impl));
         // This body is about to spell impl's symbol out; some body must define it.
         _c.NoteNamedBodySymbol(_method, impl);
         return impl.CppName;
     }
 
-    /// <summary>Whether this body could hand <paramref name="impl"/> a runtime
-    /// generic context if the callee turns out to need the hidden parameter:
-    /// receiver-derivable callees never need one, self-recursion forwards this
-    /// body's own <c>__rgctx</c> unchanged, a same-class callee of a
-    /// same-class-context caller gets that <c>__rgctx</c> too (a generic-method
-    /// caller's own table is a METHOD table — never handed to a class-context
-    /// callee, and vice versa), and any other needy callee — class- or
-    /// method-context — needs a call-site token that verifiably names it (the
-    /// table-forwarding slot's key).</summary>
-    private bool RgctxEdgePassable(MethodInfo impl) =>
-        !_c.WouldNeedRgctxParam(impl)
-        || ReferenceEquals(impl, _method)
-        || (impl.NameSuffix == "" && _method.NameSuffix == ""
-            && ReferenceEquals(impl.DeclaringClass, _method.DeclaringClass))
-        || CallTokenResolvesTo(impl);
+    /// <summary>The cascade edge to <paramref name="impl"/>, flagged with whether
+    /// this body could hand it a runtime generic context if the callee turns out
+    /// to need the hidden parameter: receiver-derivable callees never need one,
+    /// self-recursion forwards this body's own <c>__rgctx</c> unchanged, a
+    /// same-class callee of a same-class-context caller gets that <c>__rgctx</c>
+    /// too (a generic-method caller's own table is a METHOD table — never handed
+    /// to a class-context callee, and vice versa), and any other needy callee —
+    /// class- or method-context — needs a call-site token that verifiably names
+    /// it. That token is the forwarding slot's key; the slot itself is allocated
+    /// only once planning knows the callee uses a context
+    /// (<see cref="Compilation.RegisterRgctxForwardingSlots"/>).</summary>
+    private (MethodInfo Callee, bool RgctxPassable, int ForwardToken) SharedCallEdge(MethodInfo impl)
+    {
+        if (!_c.WouldNeedRgctxParam(impl) || ReferenceEquals(impl, _method)
+            || (impl.NameSuffix == "" && _method.NameSuffix == ""
+                && ReferenceEquals(impl.DeclaringClass, _method.DeclaringClass)))
+            return (impl, true, 0);
+        return CallTokenResolvesTo(impl) ? (impl, true, _callSiteToken) : (impl, false, 0);
+    }
 
     /// <summary>The full direct-call expression binding <paramref name="target"/>'s
     /// donated body: the shared canonical symbol when one is assigned, with a
@@ -438,8 +443,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: rgctx pass to {impl.CppName} "
                 + "has no verifiable call-site token (the planning pass should have tainted this body)");
         string slot = RgctxSlotAccess(
-            impl.NameSuffix != "" ? RgctxSlotKind.MethodRgctxTable : RgctxSlotKind.RgctxTable,
-            _callSiteToken, "rgctx-pass", impl.CppName);
+            Compilation.ForwardSlotKind(impl), _callSiteToken, "rgctx-pass", impl.CppName);
         return $", (const void* const*){slot}";
     }
 
