@@ -1534,9 +1534,9 @@ internal sealed partial class Compilation
         {
             if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
                 break;
-            var tmpl = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
-                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
-            if (tmpl is null || !GvmTemplateUsesSlot(disp, b, tmpl.Value))
+            var tmpl = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
+                disp.Gvm.Signature, false, true);
+            if (tmpl is null)
                 continue;
             var over = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
             Reach(over);
@@ -1593,11 +1593,10 @@ internal sealed partial class Compilation
                     }
                 if (declClass is not null)
                 {
-                    var sig = mr.DecodeMethodSignature(SigProvider, GenericContext.Empty);
-                    var key = string.Join(",", sig.ParameterTypes.Select(p => p.ToString()));
-                    declTemplate = FindGenericMethodTemplate(declClass.Module, declClass.Handle,
-                        reader.GetString(mr.Name), sig.GenericParameterCount,
-                        sig.ParameterTypes.Length, key);
+                    var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+                    var sig = mr.DecodeMethodSignature(SigProvider, ctx);
+                    declTemplate = FindGvmClassTemplate(disp, declClass,
+                        reader.GetString(mr.Name), sig, true, false);
                 }
             }
             if (declClass is not null && declTemplate is { } target
@@ -1605,6 +1604,41 @@ internal sealed partial class Compilation
                 return true;
         }
         return false;
+    }
+
+    // Match the closed parameter types before asking which virtual slot a row uses.
+    // A same-name overload with the same arity and parameter count can override a
+    // different slot; the generic-template lookup's fallback must not select it.
+    private MethodDefinitionHandle? FindGvmClassTemplate(
+        GvmDispatch disp, ClassInfo owner, string name,
+        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot)
+    {
+        var reader = owner.Module.Reader;
+        if (!TypeDefMethodNames(owner.Module, owner.Handle).ByName.TryGetValue(name, out var candidates))
+            return null;
+        var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+        foreach (var candidate in candidates)
+        {
+            var md = reader.GetMethodDefinition(candidate);
+            if ((md.Attributes & MethodAttributes.Virtual) == 0
+                || md.GetGenericParameters().Count != disp.MethodArgs.Length)
+                continue;
+            var sig = md.DecodeSignature(SigProvider, ctx);
+            if (sig.ParameterTypes.Length != expected.ParameterTypes.Length
+                || (matchReturn && !SameTypeArg(sig.ReturnType, expected.ReturnType)))
+                continue;
+            bool sameParams = true;
+            for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                if (!SameTypeArg(sig.ParameterTypes[i], expected.ParameterTypes[i]))
+                {
+                    sameParams = false;
+                    break;
+                }
+            if (!sameParams || (requireSlot && !GvmTemplateUsesSlot(disp, owner, candidate)))
+                continue;
+            return candidate;
+        }
+        return null;
     }
 
     private bool GvmTemplateUsesSlot(
@@ -1621,15 +1655,15 @@ internal sealed partial class Compilation
             return true;
         if ((attrs & MethodAttributes.NewSlot) != 0)
             return false;
+        var signature = owner.Module.Reader.GetMethodDefinition(template)
+            .DecodeSignature(SigProvider, new GenericContext(owner.Context.TypeArgs, disp.MethodArgs));
         for (var b = owner.BaseClass; b is not null && DerivesFromOrIs(b, disp.Decl); b = b.BaseClass)
         {
-            var baseTemplate = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
-                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
+            var baseTemplate = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
+                signature, true, false);
             if (baseTemplate is null)
                 continue;
-            var baseAttrs = b.Module.Reader.GetMethodDefinition(baseTemplate.Value).Attributes;
-            if ((baseAttrs & MethodAttributes.Virtual) != 0)
-                return GvmTemplateUsesSlot(disp, b, baseTemplate.Value);
+            return GvmTemplateUsesSlot(disp, b, baseTemplate.Value);
         }
         return false;
     }

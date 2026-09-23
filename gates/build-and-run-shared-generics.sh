@@ -46,6 +46,7 @@
 # in the same shared body use per-instantiation storage through rgctx.
 # A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
 # dispatches a base-typed call to the base body, never to the hider's override.
+# Same-name generic overloads with equal arity and parameter count keep distinct slots.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -388,6 +389,7 @@ assert_output "$prefix" "$before_gvm_hider"
 for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
     'gvm hider mid=mid:String' 'gvm hider midhider=midleaf:String' \
     'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32' \
+    'gvm hider overload generic=generic' 'gvm hider overload object=derived object' \
     'gvm hider covariant=True'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }

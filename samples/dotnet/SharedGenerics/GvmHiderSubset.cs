@@ -45,6 +45,17 @@ namespace GvmHiderSubset
     {
     }
 
+    internal class GvmOverloadBase
+    {
+        public virtual string Tag<T>(T value) => "generic";
+        public virtual string Tag<T>(object value) => "object";
+    }
+
+    internal sealed class GvmOverloadLeaf : GvmOverloadBase
+    {
+        public override string Tag<T>(object value) => "derived object";
+    }
+
     internal class GvmCovariantBase
     {
         public virtual GvmCovariantBase Tag<T>() => new GvmCovariantBase();
@@ -69,6 +80,9 @@ namespace GvmHiderSubset
             GvmBase plain = new GvmPlainLeaf();
             Console.WriteLine("gvm hider plain=" + plain.Tag<int>());
             Console.WriteLine("gvm hider plain direct=" + ((GvmPlainHider)plain).Tag<int>());
+            GvmOverloadBase overloaded = new GvmOverloadLeaf();
+            Console.WriteLine("gvm hider overload generic=" + overloaded.Tag<int>(1));
+            Console.WriteLine("gvm hider overload object=" + overloaded.Tag<int>((object)1));
             GvmCovariantBase covariant = new GvmCovariantLeaf();
             Console.WriteLine("gvm hider covariant=" + (covariant.Tag<int>() is GvmCovariantLeaf));
         }
