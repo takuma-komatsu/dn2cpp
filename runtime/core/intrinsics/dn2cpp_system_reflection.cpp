@@ -2524,7 +2524,6 @@ Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d)
 // ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
 #define DN2CPP_MA_FINAL    0x20
 #define DN2CPP_MA_VIRTUAL  0x40
-#define DN2CPP_MA_NEWSLOT  0x100
 #define DN2CPP_MA_ABSTRACT 0x400
 
 // Whether a row closes the instantiation whose arguments argAt(0..argc-1) name.
@@ -2635,36 +2634,26 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_targ
     return {};
 }
 
-// The class generic-virtual override bound for `receiver`, in the dispatcher's
-// order: the most derived override below `owner` that no new-slot hider between
-// it and `owner` detaches. A stripped level could hold either, so it throws.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_gvm_target(
+// Use the emitter's GVM dispatch decision: a new-slot row may explicitly bind an
+// inherited slot, so its attributes alone cannot identify the bound method. A
+// stripped level could hide a different binding and must still throw.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_gvm_target(
     const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
-    const Dn2CppMethodInfo& decl, const Dn2CppDelegateMethodIdentity* identity)
+    const Dn2CppDelegateMethodIdentity* identity)
 {
-    const auto argAt = [identity](int32_t i) { return identity->genericArgs[i]; };
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> pending{};
     for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
-    {
         dn2cpp_require_metadata(ti);
-        const auto reflection = ti->reflection();
-        for (int32_t i = 0; i < reflection.methodCount; i++)
-        {
-            const auto handle = reflection.methods[i];
-            const auto row = handle.operator->();
-            if ((row->attrs & DN2CPP_MTHA_STATIC) != 0 || (row->ilAttrs & DN2CPP_MA_VIRTUAL) == 0
-                || std::strcmp(row->name, decl.name) != 0
-                || !dn2cpp_row_args_equal(*row.operator->(), identity->genericArgCount, argAt)
-                || !dn2cpp_row_params_equal(*row.operator->(), decl))
-                continue;
-            if ((row->ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
-                pending = {};
-            else if (!pending)
-                pending = handle;
-            break;
-        }
+    for (int32_t i = 0; i < identity->gvmTargetCount; i++)
+    {
+        const auto& target = identity->gvmTargets[i];
+        if (target.receiverType != receiver)
+            continue;
+        dn2cpp_require_metadata(target.declaringType);
+        return dn2cpp_find_method_instantiation(target.declaringType->reflection(),
+            target.metadataToken, identity->genericArgCount,
+            [identity](int32_t arg) { return identity->genericArgs[arg]; });
     }
-    return pending;
+    return {};
 }
 
 // The implementation an interface binding reached, or {} to answer the declaration
@@ -2797,12 +2786,12 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     // only when no override binds.
     const Dn2CppMethodInfo decl = *declared;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
-    if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
+    if (decl.genericParamCount != 0 && decl.vtableSlot < 0)
+        hit = dn2cpp_delegate_gvm_target(t->type, owner, identity);
+    else if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
         hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
     else if (decl.vtableSlot >= 0)
         hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
-    else if (decl.genericParamCount != 0)
-        hit = dn2cpp_delegate_class_gvm_target(t->type, owner, decl, identity);
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));
 }
 

@@ -52,7 +52,8 @@
 # inherits the property handle's reflected type, and ParameterInfo.Member is the
 # very instance GetParameters was called on.
 # ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
-# class and generic virtual overrides (new-slot hiders included), interface
+# class and generic virtual overrides (new-slot hiders and covariant returns
+# included), interface
 # bindings over class, struct, explicit, default and generic implementations,
 # array generic arguments, and runtime-owned declaring types, which may answer
 # null but never a wrong method.
@@ -107,6 +108,7 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"

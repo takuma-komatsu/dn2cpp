@@ -1062,6 +1062,14 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
+// Exact receiver-to-method cases selected by the generic virtual dispatcher.
+struct Dn2CppDelegateGvmTarget
+{
+    const Dn2CppTypeInfo* receiverType;
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+};
+
 struct Dn2CppDelegateMethodIdentity
 {
     const Dn2CppTypeInfo* declaringType;
@@ -1069,6 +1077,8 @@ struct Dn2CppDelegateMethodIdentity
     int32_t genericArgCount;
     const Dn2CppTypeInfo* const* genericArgs;
     bool virtualBinding;
+    int32_t gvmTargetCount;
+    const Dn2CppDelegateGvmTarget* gvmTargets;
 };
 
 // Uniform layout of all generated delegate types; the identity is static metadata.

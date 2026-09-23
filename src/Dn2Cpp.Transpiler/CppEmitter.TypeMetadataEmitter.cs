@@ -1012,6 +1012,7 @@ internal sealed partial class CppEmitter
             var identities = _c.FreezeDelegateIdentities();
             if (identities.Count == 0)
                 return;
+            var gvms = _c.UsedGvms.ToDictionary(g => g.Gvm.CppName, System.StringComparer.Ordinal);
             _sb.AppendLine("// ---- delegate method identities ----");
             foreach (var (sym, m, isVirtual) in identities)
             {
@@ -1029,9 +1030,36 @@ internal sealed partial class CppEmitter
                     argsExpr = TypeArgumentVector(string.Join(", ", gargs));
                 }
                 int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(m.Handle);
+                string targetsExpr = "nullptr";
+                int targetCount = 0;
+                if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
+                {
+                    var targets = disp.Cases
+                        .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
+                            && !_e.SkipsCanonicalMetadata(kv.Key)
+                            && !_e.IsRuntimeTemplateLevel(kv.Key)
+                            && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
+                        .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
+                        .ToList();
+                    if (targets.Count > 0)
+                    {
+                        targetsExpr = sym + "_gvm_targets";
+                        targetCount = targets.Count;
+                        _sb.AppendLine($"static const Dn2CppDelegateGvmTarget {targetsExpr}[] = {{");
+                        foreach (var (receiver, target) in targets)
+                        {
+                            string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
+                            string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
+                            int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+                            _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
+                        }
+                        _sb.AppendLine("};");
+                    }
+                }
                 _o.Header.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym};");
                 _sb.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym} = "
-                    + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")} }};");
+                    + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")}, "
+                    + $"{targetCount}, {targetsExpr} }};");
             }
             _sb.AppendLine();
         }

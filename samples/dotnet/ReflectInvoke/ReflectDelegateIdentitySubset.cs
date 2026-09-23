@@ -57,6 +57,14 @@ namespace ReflectDelegateIdentitySubset
         {
             public override string Tag<T>() => "leaf";
         }
+        class CovariantBase
+        {
+            public virtual CovariantBase Tag<T>() => new CovariantBase();
+        }
+        class CovariantLeaf : CovariantBase
+        {
+            public override CovariantLeaf Tag<T>() => this;
+        }
         static class IdentityOwner<T>
         {
             public static T Echo(T value) => value;
@@ -139,6 +147,11 @@ namespace ReflectDelegateIdentitySubset
             Func<string> hiderTag = ((GvmHider)leaf).Tag<int>;
             Console.WriteLine("delegate-method-generic-hider=" + baseTag.Method.DeclaringType.Name + "/" + baseTag()
                 + "/" + hiderTag.Method.DeclaringType.Name + "/" + hiderTag());
+            CovariantBase covariantReceiver = new CovariantLeaf();
+            Func<CovariantBase> covariantTag = covariantReceiver.Tag<int>;
+            Console.WriteLine("delegate-method-generic-covariant=" + covariantTag.Method.DeclaringType.Name
+                + "/" + covariantTag.Method.Invoke(covariantReceiver, null)!.GetType().Name
+                + "/" + covariantTag().GetType().Name);
             Console.WriteLine("delegate-method-end");
         }
     }

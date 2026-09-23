@@ -49,8 +49,9 @@
 # Every arm also runs a Delegate.Method section over library receivers met only as
 # their base: the delegate's declaring type is kept for the read, a stripped
 # receiver that inherits the slot answers through its vtable, and a stripped level
-# that overrides it throws the same PNSE naming that level (arm 1 answers as .NET
-# and must print the pre-section output unchanged when the section is skipped).
+# that overrides it throws the same PNSE naming that level. Generic-virtual
+# bindings use the dispatcher's selected target with the same trim guard. Arm 1
+# answers as .NET and keeps its pre-section output unchanged when skipped.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
@@ -103,6 +104,7 @@ else
         '  inherited slot -> LibShape/shape' \
         '  overriding level -> LibCircle/circle' \
         '  inherited override -> LibCircle/circle' \
+        '  generic virtual -> LibGvmLeaf/gvm-leaf' \
         '  interface slot -> LibWidget/8'
     before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
     prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
@@ -132,6 +134,7 @@ else
         '  inherited slot -> LibShape/shape' \
         "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
         "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'"
     gate_cache_commit
 fi
@@ -155,6 +158,7 @@ else
         '  inherited slot -> LibShape/shape' \
         "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
         '  interface slot -> LibWidget/8'
     gate_cache_commit
 fi

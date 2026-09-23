@@ -218,11 +218,13 @@ namespace TrimReflect
             Func<string> square = Factory.MakeSquare().Kind;
             Func<string> circle = Factory.MakeCircle().Kind;
             Func<string> disc = Factory.MakeDisc().Kind;
+            Func<string> generic = Factory.MakeGenericShape().Kind<int>;
             ILibThing thing = (ILibThing)Factory.Make();
             Func<int, int> twice = thing.Twice;
             Probe("inherited slot", () => square.Method.DeclaringType.Name + "/" + square());
             Probe("overriding level", () => circle.Method.DeclaringType.Name + "/" + circle());
             Probe("inherited override", () => disc.Method.DeclaringType.Name + "/" + disc());
+            Probe("generic virtual", () => generic.Method.DeclaringType.Name + "/" + generic());
             Probe("interface slot", () => twice.Method.DeclaringType.Name + "/" + twice(4));
         }
 
