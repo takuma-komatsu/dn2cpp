@@ -1527,37 +1527,23 @@ internal sealed partial class Compilation
         if (!DerivesFromOrIs(c, disp.Decl))
             return;
         // Walk from the concrete type up to the GVM's declaring type, taking the most
-        // derived override template. A `new virtual` hider opens a fresh slot, so an
-        // override below it belongs to the hider, not to this GVM; a non-virtual
-        // `new` never takes the slot at all. No surviving override -> the base default.
-        (ClassInfo Owner, MethodDefinitionHandle Tmpl)? pending = null;
+        // derived method bound to this slot. A `new virtual` hider opens a fresh slot,
+        // but a descendant's MethodImpl can explicitly bind the original slot even
+        // across that hider. A non-virtual `new` never takes the slot.
         for (var b = c; b is not null; b = b.BaseClass)
         {
             if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
                 break;
             var tmpl = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
                 disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
-            if (tmpl is null)
+            if (tmpl is null || !GvmTemplateUsesSlot(disp, b, tmpl.Value))
                 continue;
-            var attrs = b.Module.Reader.GetMethodDefinition(tmpl.Value).Attributes;
-            if ((attrs & MethodAttributes.Virtual) == 0)
-                continue;
-            if ((attrs & MethodAttributes.NewSlot) != 0
-                && !GvmExplicitlyOverridesSlot(disp, b, tmpl.Value))
-            {
-                pending = null;
-                continue;
-            }
-            pending ??= (b, tmpl.Value);
-        }
-        if (pending is not { } hit)
-        {
-            disp.Cases[c] = disp.Gvm;
+            var over = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
+            Reach(over);
+            disp.Cases[c] = over;
             return;
         }
-        var over = InstantiateMethodOnClass(hit.Owner, hit.Owner.Module, hit.Tmpl, disp.MethodArgs);
-        Reach(over);
-        disp.Cases[c] = over;
+        disp.Cases[c] = disp.Gvm;
     }
 
     // A covariant-return override has newslot metadata and a MethodImpl row
@@ -1631,8 +1617,10 @@ internal sealed partial class Compilation
         var attrs = owner.Module.Reader.GetMethodDefinition(template).Attributes;
         if ((attrs & MethodAttributes.Virtual) == 0)
             return false;
+        if (GvmExplicitlyOverridesSlot(disp, owner, template))
+            return true;
         if ((attrs & MethodAttributes.NewSlot) != 0)
-            return GvmExplicitlyOverridesSlot(disp, owner, template);
+            return false;
         for (var b = owner.BaseClass; b is not null && DerivesFromOrIs(b, disp.Decl); b = b.BaseClass)
         {
             var baseTemplate = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
