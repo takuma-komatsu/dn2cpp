@@ -2226,7 +2226,24 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
             dn2cpp_throw_argument();
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
-            return d->answer(row.genericArgs, obj);
+        {
+            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && obj == nullptr)
+                dn2cpp_throw_null_reference();
+            try
+            {
+                return d->answer(row.genericArgs, obj);
+            }
+            catch (Dn2CppInvokerMissing&)
+            {
+                throw;
+            }
+            catch (Dn2CppException& exception)
+            {
+                if (!wrapExceptions)
+                    throw;
+                dn2cpp_throw_target_invocation(exception.obj);
+            }
+        }
     }
     if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();

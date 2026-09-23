@@ -56,8 +56,18 @@ static class Program
 
     // The Arch.Core.ComponentRegistry.SizeOf(Type) shape: a size looked up for a type
     // known only at run time. No static call site names any of these instantiations.
-    static string SizeOf(Type t) =>
-        Try(() => typeof(Unsafe).GetMethod("SizeOf")!.MakeGenericMethod(t).Invoke(null, null));
+    static string SizeOf(Type t)
+    {
+        try
+        {
+            return typeof(Unsafe).GetMethod("SizeOf")!.MakeGenericMethod(t).Invoke(null, null)?.ToString() ?? "null";
+        }
+        // Invoke wraps the target's layout refusal; the frozen verdict names its cause.
+        catch (TargetInvocationException e) when (e.InnerException is PlatformNotSupportedException inner)
+        {
+            return inner.GetType().Name;
+        }
+    }
 
     static void Report(string label, Type t)
     {

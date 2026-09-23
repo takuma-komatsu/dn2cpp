@@ -1489,3 +1489,5 @@ arg-array runtime=True expected=True wrong=False
 arg-mdarray runtime=True expected=True wrong=False
 arg-metadata ref=True struct=True enum=True array=True mdarray=True
 shared-arg ref=True nested=True
+== metadata-answer invoke flags ==
+SemaphoreSlim unwrapped -> PlatformNotSupportedException
