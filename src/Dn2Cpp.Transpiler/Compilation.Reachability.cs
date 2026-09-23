@@ -1542,7 +1542,8 @@ internal sealed partial class Compilation
             var attrs = b.Module.Reader.GetMethodDefinition(tmpl.Value).Attributes;
             if ((attrs & MethodAttributes.Virtual) == 0)
                 continue;
-            if ((attrs & MethodAttributes.NewSlot) != 0)
+            if ((attrs & MethodAttributes.NewSlot) != 0
+                && !GvmExplicitlyOverridesSlot(disp, b, tmpl.Value))
             {
                 pending = null;
                 continue;
@@ -1557,6 +1558,92 @@ internal sealed partial class Compilation
         var over = InstantiateMethodOnClass(hit.Owner, hit.Owner.Module, hit.Tmpl, disp.MethodArgs);
         Reach(over);
         disp.Cases[c] = over;
+    }
+
+    // A covariant-return override has newslot metadata and a MethodImpl row
+    // binding its body to the inherited class slot. Generic MethodImpl rows are
+    // not materialized as MethodInfo, so inspect the template metadata here.
+    private bool GvmExplicitlyOverridesSlot(
+        GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle body)
+    {
+        var reader = owner.Module.Reader;
+        foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
+        {
+            var impl = reader.GetMethodImplementation(mih);
+            if (impl.MethodBody.Kind != HandleKind.MethodDefinition
+                || (MethodDefinitionHandle)impl.MethodBody != body)
+                continue;
+
+            ClassInfo? declClass = null;
+            MethodDefinitionHandle? declTemplate = null;
+            if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
+            {
+                var declared = (MethodDefinitionHandle)impl.MethodDeclaration;
+                var declaringType = reader.GetMethodDefinition(declared).GetDeclaringType();
+                for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
+                    if (b.Module == owner.Module && b.Handle == declaringType)
+                    {
+                        declClass = b;
+                        declTemplate = declared;
+                        break;
+                    }
+            }
+            else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
+            {
+                var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
+                var referencedClass = mr.Parent.Kind switch
+                {
+                    HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)mr.Parent),
+                    HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)mr.Parent)?.Class,
+                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                        .DecodeSignature(SigProvider, owner.Context).Class,
+                    _ => null,
+                };
+                for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
+                    if (b == referencedClass)
+                    {
+                        declClass = b;
+                        break;
+                    }
+                if (declClass is not null)
+                {
+                    var sig = mr.DecodeMethodSignature(SigProvider, GenericContext.Empty);
+                    var key = string.Join(",", sig.ParameterTypes.Select(p => p.ToString()));
+                    declTemplate = FindGenericMethodTemplate(declClass.Module, declClass.Handle,
+                        reader.GetString(mr.Name), sig.GenericParameterCount,
+                        sig.ParameterTypes.Length, key);
+                }
+            }
+            if (declClass is not null && declTemplate is { } target
+                && GvmTemplateUsesSlot(disp, declClass, target))
+                return true;
+        }
+        return false;
+    }
+
+    private bool GvmTemplateUsesSlot(
+        GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle template)
+    {
+        if (owner == disp.Decl)
+            return template == disp.Gvm.Handle;
+        if (!DerivesFromOrIs(owner, disp.Decl))
+            return false;
+        var attrs = owner.Module.Reader.GetMethodDefinition(template).Attributes;
+        if ((attrs & MethodAttributes.Virtual) == 0)
+            return false;
+        if ((attrs & MethodAttributes.NewSlot) != 0)
+            return GvmExplicitlyOverridesSlot(disp, owner, template);
+        for (var b = owner.BaseClass; b is not null && DerivesFromOrIs(b, disp.Decl); b = b.BaseClass)
+        {
+            var baseTemplate = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
+                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
+            if (baseTemplate is null)
+                continue;
+            var baseAttrs = b.Module.Reader.GetMethodDefinition(baseTemplate.Value).Attributes;
+            if ((baseAttrs & MethodAttributes.Virtual) != 0)
+                return GvmTemplateUsesSlot(disp, b, baseTemplate.Value);
+        }
+        return false;
     }
 
     /// <summary>If <paramref name="msh"/> is one of the element-scanning generic

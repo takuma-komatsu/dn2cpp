@@ -387,7 +387,8 @@ prefix=$(awk '/^gvm hider base=/ { exit } { print }' <<< "$native")
 assert_output "$prefix" "$before_gvm_hider"
 for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
     'gvm hider mid=mid:String' 'gvm hider midhider=midleaf:String' \
-    'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32'; do
+    'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32' \
+    'gvm hider covariant=True'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
 done

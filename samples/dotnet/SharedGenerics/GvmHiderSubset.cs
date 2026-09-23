@@ -45,6 +45,16 @@ namespace GvmHiderSubset
     {
     }
 
+    internal class GvmCovariantBase
+    {
+        public virtual GvmCovariantBase Tag<T>() => new GvmCovariantBase();
+    }
+
+    internal sealed class GvmCovariantLeaf : GvmCovariantBase
+    {
+        public override GvmCovariantLeaf Tag<T>() => this;
+    }
+
     internal static class Program
     {
         internal static void Run()
@@ -59,6 +69,8 @@ namespace GvmHiderSubset
             GvmBase plain = new GvmPlainLeaf();
             Console.WriteLine("gvm hider plain=" + plain.Tag<int>());
             Console.WriteLine("gvm hider plain direct=" + ((GvmPlainHider)plain).Tag<int>());
+            GvmCovariantBase covariant = new GvmCovariantLeaf();
+            Console.WriteLine("gvm hider covariant=" + (covariant.Tag<int>() is GvmCovariantLeaf));
         }
     }
 }
