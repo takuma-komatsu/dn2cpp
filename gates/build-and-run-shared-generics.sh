@@ -44,6 +44,8 @@
 # instantiation's class table still forwards the class and per-method tables.
 # Fixed-type static operands remain direct while type-argument-dependent statics
 # in the same shared body use per-instantiation storage through rgctx.
+# A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
+# dispatches a base-typed call to the base body, never to the hider's override.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -379,5 +381,14 @@ assert_output "$prefix" "$before_forwarding"
 for line in 'rgctx cold forwarding=1' 'rgctx cold method forwarding=1' 'rgctx cold identity=Cold'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: cold generic-context forwarding witness missing: $line" >&2; exit 1; }
+done
+before_gvm_hider=$(strip_cr_win "$(dotnet "$app" before-gvm-hider)")
+prefix=$(awk '/^gvm hider base=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_gvm_hider"
+for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
+    'gvm hider mid=mid:String' 'gvm hider midhider=midleaf:String' \
+    'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

@@ -1527,25 +1527,36 @@ internal sealed partial class Compilation
         if (!DerivesFromOrIs(c, disp.Decl))
             return;
         // Walk from the concrete type up to the GVM's declaring type, taking the most
-        // derived override template. A match whose declaring type def is the GVM's own
-        // (the base virtual) means c does not override -> route to the base default.
+        // derived override template. A `new virtual` hider opens a fresh slot, so an
+        // override below it belongs to the hider, not to this GVM; a non-virtual
+        // `new` never takes the slot at all. No surviving override -> the base default.
+        (ClassInfo Owner, MethodDefinitionHandle Tmpl)? pending = null;
         for (var b = c; b is not null; b = b.BaseClass)
         {
+            if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
+                break;
             var tmpl = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
                 disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
             if (tmpl is null)
                 continue;
-            if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
+            var attrs = b.Module.Reader.GetMethodDefinition(tmpl.Value).Attributes;
+            if ((attrs & MethodAttributes.Virtual) == 0)
+                continue;
+            if ((attrs & MethodAttributes.NewSlot) != 0)
             {
-                disp.Cases[c] = disp.Gvm; // no override below: the base default applies
-                return;
+                pending = null;
+                continue;
             }
-            var impl = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
-            Reach(impl);
-            disp.Cases[c] = impl;
+            pending ??= (b, tmpl.Value);
+        }
+        if (pending is not { } hit)
+        {
+            disp.Cases[c] = disp.Gvm;
             return;
         }
-        disp.Cases[c] = disp.Gvm; // no template found at all: base default
+        var over = InstantiateMethodOnClass(hit.Owner, hit.Owner.Module, hit.Tmpl, disp.MethodArgs);
+        Reach(over);
+        disp.Cases[c] = over;
     }
 
     /// <summary>If <paramref name="msh"/> is one of the element-scanning generic
