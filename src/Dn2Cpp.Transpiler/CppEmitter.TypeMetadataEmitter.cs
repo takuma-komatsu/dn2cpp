@@ -437,7 +437,7 @@ internal sealed partial class CppEmitter
                     // (constructors are deliberately not stripped); methtab/proptab are not.
                     if (!(ctorRow || (methodRow && keepRefl)))
                         continue;
-                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m))
+                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
                         continue;
                     NoteReflectedArrayType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
@@ -995,11 +995,45 @@ internal sealed partial class CppEmitter
             _e.EmitEnumInterfaceMap(_sb);
             _e.EmitIntrinsicInterfaceMaps(_sb);
             _sb.AppendLine();
+            EmitDelegateIdentities();
 
             // Last statement of the emission, and it has to be: this object is unreferenced
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
             // later would report the pools as free rather than as big.
             Census();
+        }
+
+        /// <summary>The delegate method identities the shipped bodies named, spelled as the
+        /// method rows spell their declaring type and generic arguments so the runtime can
+        /// match a row by pointer identity. An owner with no defined type-info has no rows
+        /// either, and answers through a null declaring type.</summary>
+        private void EmitDelegateIdentities()
+        {
+            var identities = _c.FreezeDelegateIdentities();
+            if (identities.Count == 0)
+                return;
+            _sb.AppendLine("// ---- delegate method identities ----");
+            foreach (var (sym, m, isVirtual) in identities)
+            {
+                var owner = m.DeclaringClass;
+                string ownerExpr = _e.TypeInfoSymbolDefined(owner.CppTypeInfoName)
+                    ? _e.TypeInfoRef(owner, "delegate method identity's declaring type")
+                    : "nullptr";
+                var margs = m.Context.MethodArgs;
+                string argsExpr = "nullptr";
+                if (margs.Length > 0)
+                {
+                    var gargs = new List<string>(margs.Length);
+                    foreach (var ga in margs)
+                        gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
+                    argsExpr = TypeArgumentVector(string.Join(", ", gargs));
+                }
+                int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(m.Handle);
+                _o.Header.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym};");
+                _sb.AppendLine($"extern const Dn2CppDelegateMethodIdentity {sym} = "
+                    + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")} }};");
+            }
+            _sb.AppendLine();
         }
 
         /// <summary>Hands the emitter's own tables to <see cref="EmitCensus"/>. Gated at
@@ -1610,7 +1644,7 @@ internal sealed partial class CppEmitter
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m))
+                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
                 int attrs = MetadataMemberAttrs((int)m.Attributes)

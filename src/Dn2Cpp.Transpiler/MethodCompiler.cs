@@ -27,7 +27,7 @@ namespace Dn2Cpp;
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
 /// this entry holds (null for every other entry, including a <c>ldloca</c> one,
 /// which sets <c>SlotAddr</c> alone).</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null);
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false);
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -3386,6 +3386,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
+                _stack[^1] = _stack[^1] with { DelegateMethod = m };
                 break;
             }
             case ILOpCode.Ldvirtftn:
@@ -3487,6 +3488,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         : $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
+                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual };
                 break;
             }
 

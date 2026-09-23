@@ -2047,6 +2047,15 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            // The identity is emitted with the method rows, spelled as they spell the
+            // declaring type and arguments; the arguments only need type-infos. A
+            // canonical target has already tainted at its ldftn/ldvirtftn.
+            if (fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
+            {
+                foreach (var arg in delegateMethod.Context.MethodArgs)
+                    _c.NoteTypeIdentityClosure(arg, keepSeed: false);
+                Emit($"{dg}->f_identity = &{_c.NoteDelegateIdentity(delegateMethod, fnPtr.DelegateVirtual)};");
+            }
             Emit($"dn2cpp_gc_write_barrier((void*)({dg}));");
             _stack.Add(new StackEntry(dg, StackKind.Ref, cls.CppStructName + "*"));
             return;

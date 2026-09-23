@@ -376,10 +376,12 @@ template; the fork changes editor tooling only.**
 - **Carve-outs.** Editor F5 (export-run only; TOOLS builds use the hostfxr
   6-argument path), editor hot-reload state (`Callable` / delegate
   serialization reports "unserializable", which the engine already
-  handles), GDScript→C# `CallStatic`, `Delegate.Method` (returns null),
-  async void signal handlers, managed stack traces (an exception's
-  `GD.PushError` text is real, but its file is null and line 0), and
-  `Variant` → `GodotObject[]` conversion.
+  handles), GDScript→C# `CallStatic`, `Delegate.Method` for a target
+  declared on a runtime-provided type and for delegates the runtime or the
+  hot-update interpreter builds (returns null), async void signal
+  handlers, managed stack traces (an exception's `GD.PushError` text is
+  real, but its file is null and line 0), and `Variant` → `GodotObject[]`
+  conversion.
 
 ### GDExtension
 

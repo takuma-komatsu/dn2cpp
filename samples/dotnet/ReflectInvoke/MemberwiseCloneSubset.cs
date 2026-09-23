@@ -157,8 +157,8 @@ static class Program
         object bareClone = mwc.Invoke(bare, null)!;
         Console.WriteLine(bareClone.GetType().FullName + " " + ReferenceEquals(bare, bareClone));
 
-        // A null receiver is a TargetException/NullReferenceException wrapped by Invoke
-        // on both runtimes; only the fact that it threw is diffed.
+        // A null receiver throws unwrapped on both runtimes (TargetException in .NET,
+        // NullReferenceException here); only the fact that it threw is diffed.
         try
         {
             mwc.Invoke(null, null);

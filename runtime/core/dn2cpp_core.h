@@ -1062,13 +1062,23 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
-// Uniform layout of all generated delegate types ({target, method, prev}).
+struct Dn2CppDelegateMethodIdentity
+{
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+    int32_t genericArgCount;
+    const Dn2CppTypeInfo* const* genericArgs;
+    bool virtualBinding;
+};
+
+// Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).
 struct Dn2CppDelegate : Dn2CppObject
 {
     Dn2CppObject* target;
     void* method;
     Dn2CppObject* prev;
+    const Dn2CppDelegateMethodIdentity* identity;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1117,18 +1127,19 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
-// unwrapping a reflection-bind node. An IL-constructed delegate reports a null
-// Method (its `method` is a bare code address with no metadata back-reference).
+// unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
-// Delegate value equality/hash over the uniform {target, method, prev} layout:
-// two delegates are equal iff they are the same delegate type and their
-// invocation chains match pairwise (matching .NET Delegate/MulticastDelegate
-// semantics); the hash folds the chain's (target, method) pairs so equal
-// delegates always agree (stable per process — the exact .NET number, which is
-// type-identity based, is not modeled). Backs Delegate.op_Equality/Equals/
+// Delegate value equality/hash: two delegates are equal iff they are the same
+// delegate type and their invocation chains match pairwise on target, code
+// address and method identity (matching .NET Delegate/MulticastDelegate
+// semantics). A null identity matches any, and a virtual binding compares only
+// generic arguments, since different declarations can bind one override. The
+// hash folds only the chain's (target, method) pairs, so equal delegates always
+// agree (stable per process — the exact .NET number, which is type-identity
+// based, is not modeled). Backs Delegate.op_Equality/Equals/
 // GetHashCode and the DN2CPP_TF_DELEGATE branches of the object hash/equality
 // helpers (e.g. GodotSharp's DelegateUtils callbacks, where the engine keys
 // Callable dedup on managed delegate identity).

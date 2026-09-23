@@ -51,6 +51,11 @@
 # GetGenericMethodDefinition normalizes it away, a property's GetGetMethod
 # inherits the property handle's reflected type, and ParameterInfo.Member is the
 # very instance GetParameters was called on.
+# ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
+# class and generic virtual overrides (new-slot hiders included), interface
+# bindings over class, struct, explicit, default and generic implementations,
+# array generic arguments, and runtime-owned declaring types, which may answer
+# null but never a wrong method.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -93,6 +98,20 @@ gate_extra_asserts() {
     sed '/^activator-cold-generic=/,$d' "$out/metadata-layout.stdout" > "$out/cold-activator-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-cold-activator.stdout") \
         <(strip_cr_win_file "$out/cold-activator-prefix.stdout")
+    grep -Fxq 'delegate-method-shared=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic=Int32/String' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-runtime-owned=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-struct-interface=StructProbe/Value/31/31' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
+    sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
+        <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

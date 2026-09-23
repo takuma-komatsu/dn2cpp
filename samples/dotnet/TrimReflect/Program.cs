@@ -54,6 +54,9 @@ namespace TrimReflect
             Stripped();
             KeptByToken();
             Roots();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD") == "1")
+                return;
+            DelegateMethod();
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.
@@ -204,6 +207,23 @@ namespace TrimReflect
             // rooted arm and throw under the plain trim.
             Probe("GetMethods", () => "any=" + (bt.GetMethods().Length > 0));
             Probe("GetField(Value)", () => "found=" + (bt.GetField("Value") != null));
+        }
+
+        // 6. Delegate.Method over stripped receivers. The declaring type is kept for the
+        //    read, and a stripped receiver level is passed only where its vtable proves it
+        //    inherits the slot; a level that overrides it answers PNSE naming that level.
+        private static void DelegateMethod()
+        {
+            Console.WriteLine("== Delegate.Method over stripped receivers ==");
+            Func<string> square = Factory.MakeSquare().Kind;
+            Func<string> circle = Factory.MakeCircle().Kind;
+            Func<string> disc = Factory.MakeDisc().Kind;
+            ILibThing thing = (ILibThing)Factory.Make();
+            Func<int, int> twice = thing.Twice;
+            Probe("inherited slot", () => square.Method.DeclaringType.Name + "/" + square());
+            Probe("overriding level", () => circle.Method.DeclaringType.Name + "/" + circle());
+            Probe("inherited override", () => disc.Method.DeclaringType.Name + "/" + disc());
+            Probe("interface slot", () => twice.Method.DeclaringType.Name + "/" + twice(4));
         }
 
         // Prints what a member-metadata read answers, or the exception it throws. The full

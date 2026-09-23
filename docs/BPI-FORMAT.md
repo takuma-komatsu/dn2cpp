@@ -1031,16 +1031,19 @@ stamps the manifest hash into each BPI. The loader checks
 ## Delegate thunks (interpreted delegate targets)
 
 A delegate is the uniform runtime object `Dn2CppDelegate { target, method,
-prev }` (`prev` = the multicast chain, always null on the patch surface —
-single-target only). An `Invoke` calls `method(target, args…)` with the
-delegate's Invoke C++ ABI (the target is always the first argument; an
-instance method's real address takes it as `this`, a static one goes through
-an adapter that drops it). A patch method has neither a native address nor an
-adapter, so binding one into a base-image delegate needs a native bridge — one
-per **bridgeable emitted delegate type** (its Invoke return + parameters all
-inside the marshalling surface), pre-emitted by a `--hotupdate-base` build in
-two type-info-keyed registration tables (a delegate's Invoke signature is
-neither a vtable nor an interface slot, so the type-info pointer is the key):
+prev, identity }` (`prev` = the multicast chain, always null on the patch
+surface — single-target only; `identity` = the emitter's static method
+identity, which an interpreter-built delegate leaves null from the zeroing
+allocation, so its `Delegate.Method` is null). An `Invoke` calls
+`method(target, args…)` with the delegate's Invoke C++ ABI (the target is
+always the first argument; an instance method's real address takes it as
+`this`, a static one goes through an adapter that drops it). A patch method
+has neither a native address nor an adapter, so binding one into a
+base-image delegate needs a native bridge — one per **bridgeable emitted
+delegate type** (its Invoke return + parameters all inside the marshalling
+surface), pre-emitted by a `--hotupdate-base` build in two type-info-keyed
+registration tables (a delegate's Invoke signature is neither a vtable nor
+an interface slot, so the type-info pointer is the key):
 
 - `dn2cpp_n2m_delegate_thunks[]` (rows of `{ dg, fn }`): the `method` a
   patch-bound delegate carries. `fn` is a native function with the delegate's

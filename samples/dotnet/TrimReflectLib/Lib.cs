@@ -84,6 +84,24 @@ namespace TrimReflectLib
         public int Echo(int x) => x;
     }
 
+    // Delegate.Method over receivers the app meets only as their library base. The
+    // base declares the slot; the receivers inherit it (LibSquare), override it
+    // (LibCircle) or inherit an override (LibDisc). Only LibShape is named, as the
+    // delegate's declaring type, so the receivers strip.
+    public class LibShape
+    {
+        public virtual string Kind() => "shape";
+    }
+
+    public class LibSquare : LibShape { }
+
+    public class LibCircle : LibShape
+    {
+        public override string Kind() => "circle";
+    }
+
+    public class LibDisc : LibCircle { }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what
@@ -101,5 +119,9 @@ namespace TrimReflectLib
         public static object MakeBoxDefault() => new LibBox<int>();
 
         public static object MakeColor() => LibColor.Green;
+
+        public static LibShape MakeSquare() => new LibSquare();
+        public static LibShape MakeCircle() => new LibCircle();
+        public static LibShape MakeDisc() => new LibDisc();
     }
 }

@@ -6317,6 +6317,7 @@ internal sealed partial class CppEmitter
                 sb.AppendLine("    Dn2CppObject* f_target;");
                 sb.AppendLine("    void* f_method;");
                 sb.AppendLine("    Dn2CppObject* f_prev;");
+                sb.AppendLine("    const Dn2CppDelegateMethodIdentity* f_identity;");
                 sb.AppendLine("};");
                 continue;
             }

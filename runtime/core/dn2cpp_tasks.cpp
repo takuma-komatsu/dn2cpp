@@ -643,7 +643,7 @@ static void dn2cpp_task_on_completed_sync(Dn2CppTask* t, void (*fn)(void*), void
 
 // Invoke a no-arg System.Action delegate and its multicast chain. The continuation
 // a custom suspending awaiter receives is an Action wrapping a boxed state machine's
-// MoveNext (or any user Action); the uniform {target, method, prev} delegate layout
+// MoveNext (or any user Action); the uniform delegate layout's {target, method, prev}
 // lets one helper invoke any Action without the per-type dginvoke.
 void dn2cpp_action_invoke(Dn2CppObject* action)
 {
