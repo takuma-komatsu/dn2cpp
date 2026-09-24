@@ -90,10 +90,10 @@ internal sealed partial class CppEmitter
         // by-value struct cannot read its receiver out of argument 0 (an indirect return
         // spends that register on the caller's hidden result buffer), so the shared
         // receiver-reading traps would report "(unknown)"; the slot's descriptor is baked
-        // into a stub instead. Deduplicated per chunk on (reporter, descriptor) text —
-        // the file-local statics reset on a chunk roll like the pools above — while the
-        // sequence counter stays monotonic across the emission so names are unique and
-        // deterministic.
+        // into a stub instead. The ambiguous-slot stubs (slotambig_) share the map.
+        // Deduplicated per chunk on (reporter, descriptor) text — the file-local statics
+        // reset on a chunk roll like the pools above — while the sequence counter stays
+        // monotonic across the emission so names are unique and deterministic.
         private readonly Dictionary<string, string> _slotStubs = new(System.StringComparer.Ordinal);
         private int _slotStubSeq;
         // Per-row invoker trap stubs (invmiss_), the reflection-invoker sibling of the
@@ -1161,13 +1161,25 @@ internal sealed partial class CppEmitter
         // (CppEmitter.NamedSlotMissStubDef): a wasm call_indirect checks the callee's
         // type immediate, so the historical void() form dies there as an anonymous
         // signature-mismatch trap before the named abort can run.
-        private string SlotMissStub(string reporter, string desc, MethodInfo decl)
+        private string SlotMissStub(string reporter, string desc, MethodInfo decl) =>
+            PooledSlotStub("slotmiss_", reporter + "\0" + desc,
+                name => _e.NamedSlotMissStubDef(name, reporter, desc, decl));
+
+        // A slot whose sibling interface overrides leave no most specific body:
+        // the stub throws .NET's AmbiguousImplementationException with its message.
+        private string AmbiguousSlotStub(ClassInfo cls, ClassInfo itf, MethodInfo decl)
         {
-            string key = reporter + "\0" + desc;
+            string message = AmbiguousImplementationMessage(cls, itf, decl);
+            return PooledSlotStub("slotambig_", "\0ambiguous\0" + message,
+                name => _e.AmbiguousSlotStubDef(name, message, decl));
+        }
+
+        private string PooledSlotStub(string prefix, string key, Func<string, string> define)
+        {
             if (!_slotStubs.TryGetValue(key, out var name))
             {
-                name = $"slotmiss_{_slotStubSeq++}";
-                _sb.AppendLine(_e.NamedSlotMissStubDef(name, reporter, desc, decl));
+                name = prefix + _slotStubSeq++;
+                _sb.AppendLine(define(name));
                 _slotStubs[key] = name;
             }
             return name;
@@ -1311,7 +1323,12 @@ internal sealed partial class CppEmitter
                     // Null when the class has no implementation for the interface method —
                     // e.g. a boxed primitive's corlib ClassInfo gets a full interface table
                     // but IntPtr has no concrete IBinaryInteger.DivRem.
-                    var impl = _c.ResolveItfImplOrNull(cls, im);
+                    var impl = _c.ResolveItfImplOrNull(cls, im, out bool ambiguous);
+                    if (ambiguous)
+                    {
+                        slots.Add($"(const void*)&{AmbiguousSlotStub(cls, itf, im)}");
+                        continue;
+                    }
                     // A slot with no resolvable impl, or whose impl is unreachable, is never
                     // dispatched through — degrade it to a TRAP, not a null pointer.
                     // "Never dispatched" is a claim about the reachability closure, and when

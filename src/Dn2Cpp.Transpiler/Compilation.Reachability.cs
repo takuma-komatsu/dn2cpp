@@ -3007,8 +3007,17 @@ internal sealed partial class Compilation
     /// on a level that lists the interface; a level that does not list it
     /// contributes only by overriding the class slot the selected body occupies.
     /// With no class body, the most specific interface override applies.</summary>
-    internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod)
+    internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod) =>
+        ResolveItfImplOrNull(c, itfMethod, out _);
+
+    /// <summary><see cref="ResolveItfImplOrNull(ClassInfo, MethodInfo)"/>, also
+    /// reporting through <paramref name="ambiguous"/> that a null answer comes
+    /// from sibling interface overrides with no most specific one: a call through
+    /// that slot throws AmbiguousImplementationException rather than binding a
+    /// body.</summary>
+    internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod, out bool ambiguous)
     {
+        ambiguous = false;
         var declaring = itfMethod.DeclaringClass;
         List<ClassInfo>? listing = null;
         MethodInfo? hit = null;
@@ -3048,7 +3057,7 @@ internal sealed partial class Compilation
             return null;
         // A derived interface's reabstraction, or sibling overrides with no most
         // specific one, leave the slot without a body.
-        if (DerivedInterfaceImplOrNull(c, itfMethod, out bool ambiguous) is { } derived)
+        if (DerivedInterfaceImplOrNull(c, itfMethod, out ambiguous) is { } derived)
             return derived.IsAbstract ? null : derived;
         if (ambiguous)
             return null;

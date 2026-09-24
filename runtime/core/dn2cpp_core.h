@@ -2202,6 +2202,9 @@ extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
 // helpers (GetMethod/GetProperty with several undecidable matches), matching
 // real .NET's reflection contract.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
+// System.Runtime.AmbiguousImplementationException: raised by an invoked
+// interface slot whose derived interfaces give it no most specific body.
+extern Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
@@ -2585,6 +2588,10 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
 [[noreturn]] void dn2cpp_throw_missing_method(const char* message);
+// An invoked interface slot or generic-virtual case with no most specific
+// default body. The emitter bakes .NET's message into the call; the exception
+// carries .NET's HResult.
+[[noreturn]] void dn2cpp_throw_ambiguous_implementation(const char* message);
 // A runtime entry point's null managed receiver (matching real .NET's
 // NullReferenceException for the instance call it stands in for) — catchable,
 // where the dereference it replaces was a SIGSEGV.

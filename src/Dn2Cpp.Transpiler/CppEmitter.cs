@@ -5662,14 +5662,15 @@ internal sealed partial class CppEmitter
                 }
                 branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
             }
-            // An ambiguous interface override reaches the same trap as an
-            // unresolved interface-table slot instead of the base default.
+            // An ambiguous interface override throws .NET's exception, as the
+            // matching interface-table slot does, instead of running the base default.
             foreach (var type in disp.Ambiguous.OrderBy(t => t.CppName, StringComparer.Ordinal))
             {
                 if (SkipsCanonicalMetadata(type))
                     continue;
                 templateCase |= IsRuntimeTemplateLevel(type);
-                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) dn2cpp_itf_slot_missing(a0);");
+                string thrown = AmbiguousImplementationThrow(AmbiguousImplementationMessage(type, disp.Decl, gvm));
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}");
             }
             // A runtime-synthesized clone takes its template level's case. The
             // verdict keeps that case independent of the clone's arguments.
@@ -5842,10 +5843,25 @@ internal sealed partial class CppEmitter
     internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
     {
         string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return SlotStubDef(name, $"{reporter}(\"{lit}\");", decl);
+    }
+
+    /// <summary>Renders the stub for an interface slot with no most specific
+    /// body, in the same exact-signature form as a named slot-miss stub.</summary>
+    internal string AmbiguousSlotStubDef(string name, string message, MethodInfo decl) =>
+        SlotStubDef(name, AmbiguousImplementationThrow(message), decl);
+
+    /// <summary>The statement raising .NET's AmbiguousImplementationException
+    /// with <paramref name="message"/>.</summary>
+    private static string AmbiguousImplementationThrow(string message) =>
+        $"dn2cpp_throw_ambiguous_implementation({CppUtf8Literal(message)});";
+
+    private string SlotStubDef(string name, string body, MethodInfo decl)
+    {
         string sig = SlotTrapShape(decl) is { } s
             ? $"{s.Ret} {name}({string.Join(", ", s.ParamTypes)})"
             : $"void {name}()";
-        return $"[[maybe_unused]] static {sig} {{ {reporter}(\"{lit}\"); }}";
+        return $"[[maybe_unused]] static {sig} {{ {body} }}";
     }
 
     private static void EmitUnboxingThunk(StringBuilder sb, string thunk, ClassInfo cls, MethodInfo im, MethodInfo impl)
