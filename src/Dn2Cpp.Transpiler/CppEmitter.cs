@@ -3009,11 +3009,12 @@ internal sealed partial class CppEmitter
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!stubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!stubs.TryGetValue(key, out var name))
             {
                 name = $"mdarrslotmiss_{stubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                stubs[desc] = name;
+                stubs[key] = name;
             }
             return name;
         }
@@ -3155,11 +3156,12 @@ internal sealed partial class CppEmitter
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!stubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!stubs.TryGetValue(key, out var name))
             {
                 name = $"enumslotmiss_{stubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                stubs[desc] = name;
+                stubs[key] = name;
             }
             return name;
         }
@@ -3425,11 +3427,12 @@ internal sealed partial class CppEmitter
         // these tables all live in the one metadata section that calls this.
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!arrSlotStubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!arrSlotStubs.TryGetValue(key, out var name))
             {
                 name = $"arrslotmiss_{arrSlotStubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                arrSlotStubs[desc] = name;
+                arrSlotStubs[key] = name;
             }
             return name;
         }
@@ -5862,6 +5865,12 @@ internal sealed partial class CppEmitter
         var (head, tail) = AmbiguousImplementationMessageParts(receiver, itf, slot);
         return $"dn2cpp_throw_ambiguous_implementation_for({self}, {CppUtf8Literal(head)}, {CppUtf8Literal(tail)});";
     }
+
+    /// <summary>A slot stub's pool key. Slots whose stub texts match can still
+    /// differ in signature, and a stub entered through another signature traps
+    /// under wasm's call_indirect check.</summary>
+    private string SlotStubKey(string text, MethodInfo decl) =>
+        text + "\0" + SlotTrapShape(decl)?.Key;
 
     /// <summary>A non-null <paramref name="self"/> names the receiver parameter
     /// for <paramref name="body"/>, so the slot's signature must render.</summary>

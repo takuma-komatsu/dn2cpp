@@ -11,6 +11,8 @@ namespace AmbiguousDefaultLib
         string IBase.PickGeneric<T>() => "right";
         string IBase.Unused() => "right";
         string IBase.UnusedGeneric<T>() => "right";
+        string IBase.Find(First.Key key) => "right";
+        int IBase.Find(Second.Key key) => 2;
     }
 
     public interface IBoxRight<T> : IBox<T>

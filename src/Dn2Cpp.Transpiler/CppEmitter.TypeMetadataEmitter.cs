@@ -1162,7 +1162,7 @@ internal sealed partial class CppEmitter
         // type immediate, so the historical void() form dies there as an anonymous
         // signature-mismatch trap before the named abort can run.
         private string SlotMissStub(string reporter, string desc, MethodInfo decl) =>
-            PooledSlotStub("slotmiss_", reporter + "\0" + desc,
+            PooledSlotStub("slotmiss_", reporter + "\0" + desc, decl,
                 name => _e.NamedSlotMissStubDef(name, reporter, desc, decl));
 
         // A slot whose sibling interface overrides leave no most specific body:
@@ -1173,12 +1173,13 @@ internal sealed partial class CppEmitter
         {
             string? self = _e.IsRuntimeTemplateLevel(cls) && _e.SlotTrapShape(decl) is not null ? "self" : null;
             string body = AmbiguousImplementationThrow(cls, itf, decl, self);
-            return PooledSlotStub("slotambig_", body,
+            return PooledSlotStub("slotambig_", body, decl,
                 name => _e.SlotStubDef(name, body, decl, self));
         }
 
-        private string PooledSlotStub(string prefix, string key, Func<string, string> define)
+        private string PooledSlotStub(string prefix, string text, MethodInfo decl, Func<string, string> define)
         {
+            string key = _e.SlotStubKey(text, decl);
             if (!_slotStubs.TryGetValue(key, out var name))
             {
                 name = prefix + _slotStubSeq++;

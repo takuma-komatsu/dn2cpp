@@ -61,6 +61,24 @@ namespace AmbiguousDefault
             }
             Console.WriteLine("after: " + value.Plain());
 
+            Console.WriteLine("== overloads whose messages match ==");
+            try
+            {
+                Console.WriteLine("find(First.Key): " + value.Find(new First.Key()));
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("find(First.Key)", e);
+            }
+            try
+            {
+                Console.WriteLine("find(Second.Key): " + value.Find(new Second.Key()));
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("find(Second.Key)", e);
+            }
+
             Console.WriteLine("== a MakeGenericType receiver ==");
             Type made = typeof(BothOf<>).MakeGenericType(typeof(int));
             IBase madeValue = (IBase)Activator.CreateInstance(made);
