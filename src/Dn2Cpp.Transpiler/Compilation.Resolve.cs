@@ -816,26 +816,18 @@ internal sealed partial class Compilation
         // template both decode (in the empty context) to the same `!0&,…,!!0` key — the
         // struct closes the interface's element type with its own first type parameter —
         // so the interface template's open parameter signature finds the struct body.
-        // The interface's simple name also matches a static explicit body's dotted
-        // metadata name ("Ns.IItf<T>.Name"). Intrinsic-mapped TSelf suppresses that
-        // lookup, as described above.
+        // A static explicit body's dotted metadata name ("Ns.IItf<T>.Name") matches
+        // too. Intrinsic-mapped TSelf suppresses the MethodImpl and dotted-name
+        // lookups, as described above.
         var openParams = callee.Module.Reader.GetMethodDefinition(callee.Handle)
             .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
         string wantKey = string.Join(",", openParams.Select(p => p.ToString()));
-        string? itfSimple = null;
-        if (!sccIntrinsic)
-        {
-            itfSimple = callee.DeclaringClass.Module.Reader.GetString(
-                callee.DeclaringClass.Module.Reader.GetTypeDefinition(callee.DeclaringClass.Handle).Name);
-            int tick = itfSimple.IndexOf('`');
-            if (tick >= 0)
-                itfSimple = itfSimple[..tick];
-        }
         for (var c = scc; c is not null; c = c.BaseClass)
         {
             var tmpl = !sccIntrinsic ? FindInterfaceGenericMethodImpl(c, callee) : null;
             tmpl ??= FindGenericMethodTemplate(c.Module, c.Handle, callee.Name,
-                callee.Context.MethodArgs.Length, openParams.Length, wantKey, itfSimple);
+                callee.Context.MethodArgs.Length, openParams.Length, wantKey,
+                sccIntrinsic ? null : callee.DeclaringClass, callee.IsStatic);
             if (tmpl is { } selected)
                 return InstantiateMethodOnClass(c, c.Module, selected, callee.Context.MethodArgs);
         }
@@ -849,55 +841,117 @@ internal sealed partial class Compilation
     /// name="wantKey"/> (the wanted parameter signature, decoded with an empty
     /// context) breaks the tie so overloads differing only by a delegate
     /// parameter's arity — e.g. Select(Func&lt;T,R&gt;) vs Select(Func&lt;T,int,R&gt;)
-    /// — bind to the right one instead of the first defined. For interface
-    /// members, <paramref name="explicitItfName"/> searches dotted explicit
-    /// bodies before plainly named bodies.</summary>
+    /// — bind to the right one instead of the first defined. For an interface
+    /// member, <paramref name="explicitItf"/> also admits the dotted explicit
+    /// bodies whose qualifier names exactly that interface, and
+    /// <paramref name="isStatic"/> keeps bodies of the slot's kind.</summary>
     private MethodDefinitionHandle? FindGenericMethodTemplate(
         Module mod, TypeDefinitionHandle classDef, string name, int genArity, int paramCount,
-        string? wantKey = null, string? explicitItfName = null)
+        string? wantKey = null, ClassInfo? explicitItf = null, bool? isStatic = null)
     {
         // The lazy per-TypeDef index limits signature decoding to matching names.
-        // Explicit bodies must precede plain bodies even when their metadata
-        // rows come later.
+        // An exact signature key wins over any arity-only match, so an explicit
+        // body for a sibling overload never displaces a plain exact match. Among
+        // equal keys, explicit bodies precede plain ones.
         var reader = mod.Reader;
         var idx = TypeDefMethodNames(mod, classDef);
-        idx.ByName.TryGetValue(name, out var exact);
-        List<MethodDefinitionHandle>? dotted = null;
-        if (explicitItfName is not null)
+        MethodDefinitionHandle? firstDotted = null;
+        MethodDefinitionHandle? firstPlain = null;
+        int Match(MethodDefinitionHandle mh)
         {
-            // An explicit interface body has the dotted
-            // "Ns.IItf<T>.Name" metadata name. Require the ".Name" suffix and
-            // the interface's simple name in its qualifier.
+            var md = reader.GetMethodDefinition(mh);
+            if (md.GetGenericParameters().Count != genArity
+                || (isStatic is { } s && ((md.Attributes & MethodAttributes.Static) != 0) != s))
+                return 0;
+            // Decode with an empty context: generic parameters remain open.
+            var ps = md.DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
+            if (ps.Length != paramCount)
+                return 0;
+            return wantKey is null || string.Join(",", ps.Select(p => p.ToString())) == wantKey ? 2 : 1;
+        }
+        if (explicitItf is not null)
+        {
+            var (itfName, itfArity) = TypeDefSimpleName(explicitItf);
             foreach (var (mname, mh) in idx.Dotted)
-                if (mname != name
-                    && mname.EndsWith("." + name, StringComparison.Ordinal)
-                    && mname.Contains(explicitItfName, StringComparison.Ordinal))
-                    (dotted ??= new()).Add(mh);
-        }
-        int groups = explicitItfName is null ? 1 : 2;
-        for (int group = 0; group < groups; group++)
-        {
-            var candidates = groups == 1 || group == 1 ? exact : dotted;
-            if (candidates is null)
-                continue;
-            MethodDefinitionHandle? first = null;
-            foreach (var mh in candidates)
             {
-                var md = reader.GetMethodDefinition(mh);
-                if (md.GetGenericParameters().Count != genArity) continue;
-                // Decode with an empty context: generic parameters remain open.
-                var ps = md.DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
-                if (ps.Length != paramCount) continue;
-                first ??= mh;
-                if (wantKey is null || string.Join(",", ps.Select(p => p.ToString())) == wantKey)
+                if (mname == name || !mname.EndsWith("." + name, StringComparison.Ordinal)
+                    || !QualifierNamesInterface(mname.AsSpan(0, mname.Length - name.Length - 1), itfName, itfArity))
+                    continue;
+                int match = Match(mh);
+                if (match == 2)
                     return mh;
+                if (match == 1)
+                    firstDotted ??= mh;
             }
-            // A signature representation difference may prevent an exact key.
-            // Keep the explicit candidate before considering a plain method.
-            if (first is not null)
-                return first;
         }
-        return null;
+        if (idx.ByName.TryGetValue(name, out var exact))
+            foreach (var mh in exact)
+            {
+                int match = Match(mh);
+                if (match == 2)
+                    return mh;
+                if (match == 1)
+                    firstPlain ??= mh;
+            }
+        // A signature representation difference may prevent every exact key.
+        return firstDotted ?? firstPlain;
+    }
+
+    /// <summary>A type definition's simple metadata name without its arity suffix,
+    /// and that suffix's own generic arity (an enclosing type's parameters excluded).</summary>
+    private static (string Name, int Arity) TypeDefSimpleName(ClassInfo c)
+    {
+        var reader = c.Module.Reader;
+        string name = reader.GetString(reader.GetTypeDefinition(c.Handle).Name);
+        int tick = name.IndexOf('`');
+        if (tick < 0)
+            return (name, 0);
+        int arity = 0;
+        for (int i = tick + 1; i < name.Length && name[i] >= '0' && name[i] <= '9'; i++)
+            arity = arity * 10 + (name[i] - '0');
+        return (name[..tick], arity);
+    }
+
+    /// <summary>Whether an explicit implementation's qualifier
+    /// ("Ns.Outer&lt;A&gt;.IItf&lt;B, C&gt;") names the interface: its last segment
+    /// has the interface's simple name and as many top-level type arguments as
+    /// the interface's own arity. Type arguments may contain dots and commas.</summary>
+    private static bool QualifierNamesInterface(ReadOnlySpan<char> qualifier, string itfName, int itfArity)
+    {
+        int segment = 0;
+        int depth = 0;
+        for (int i = 0; i < qualifier.Length; i++)
+        {
+            char ch = qualifier[i];
+            if (ch is '<' or '(' or '[')
+                depth++;
+            else if (ch is '>' or ')' or ']')
+                depth--;
+            else if (ch == '.' && depth == 0)
+                segment = i + 1;
+        }
+        var last = qualifier[segment..];
+        int open = last.IndexOf('<');
+        var simple = open < 0 ? last : last[..open];
+        if (!simple.SequenceEqual(itfName.AsSpan()))
+            return false;
+        int args = 0;
+        if (open >= 0)
+        {
+            args = 1;
+            depth = 0;
+            for (int i = open + 1; i < last.Length; i++)
+            {
+                char ch = last[i];
+                if (ch is '<' or '(' or '[')
+                    depth++;
+                else if (ch is '>' or ')' or ']')
+                    depth--;
+                else if (ch == ',' && depth == 0)
+                    args++;
+            }
+        }
+        return args == itfArity;
     }
 
     /// <summary>Visits <paramref name="owner"/>'s MethodImpl rows whose body is a
@@ -980,17 +1034,10 @@ internal sealed partial class Compilation
     /// <summary>MethodImpl binds an interface generic slot before ordinary
     /// name-and-signature matching, regardless of MethodDef row order.</summary>
     private MethodDefinitionHandle? FindInterfaceGenericMethodTemplate(
-        ClassInfo owner, MethodInfo slot, string wantKey, int paramCount)
-    {
-        string itfSimple = slot.DeclaringClass.Module.Reader.GetString(
-            slot.DeclaringClass.Module.Reader.GetTypeDefinition(slot.DeclaringClass.Handle).Name);
-        int tick = itfSimple.IndexOf('`');
-        if (tick >= 0)
-            itfSimple = itfSimple[..tick];
-        return FindInterfaceGenericMethodImpl(owner, slot)
+        ClassInfo owner, MethodInfo slot, string wantKey, int paramCount) =>
+        FindInterfaceGenericMethodImpl(owner, slot)
             ?? FindGenericMethodTemplate(owner.Module, owner.Handle, slot.Name,
-                slot.Context.MethodArgs.Length, paramCount, wantKey, itfSimple);
-    }
+                slot.Context.MethodArgs.Length, paramCount, wantKey, slot.DeclaringClass, slot.IsStatic);
 
     private ClassInfo? ResolveMethodImplParent(ClassInfo owner, EntityHandle declaration)
     {
@@ -1016,7 +1063,7 @@ internal sealed partial class Compilation
     /// pass over its method rows reading only their metadata names — decode-free, and
     /// never stale because TypeDef metadata is immutable. Per-name lists are in metadata
     /// row order; <see cref="Dotted"/> carries dotted names in row order for the
-    /// static explicit-implementation suffix match.</summary>
+    /// explicit-implementation suffix match.</summary>
     private sealed class TypeDefMethodNameIndexEntry
     {
         public readonly Dictionary<string, List<MethodDefinitionHandle>> ByName = new();

@@ -103,6 +103,42 @@ namespace ReflectDelegateIdentitySubset
             string IOverloadedGeneric.Pick<T>(T generic) => "generic";
             string IOverloadedGeneric.Pick<T>(int number) => "integer";
         }
+        // Declared through a closed generic interface, the MethodImpl rows name
+        // MemberRefs whose open signatures must tell the overloads apart.
+        interface IOverloadedGenericOf<T>
+        {
+            string Pick<U>(U generic);
+            string Pick<U>(int number);
+        }
+        class OverloadedGenericOf : IOverloadedGenericOf<string>
+        {
+            string IOverloadedGenericOf<string>.Pick<U>(U generic) => "generic";
+            string IOverloadedGenericOf<string>.Pick<U>(int number) => "integer";
+        }
+        interface IPlainOverload
+        {
+            string Pick<T>(T generic);
+            string Pick<T>(int number);
+        }
+        class PlainOverload : IPlainOverload
+        {
+            public string Pick<T>(T generic) => "plain";
+            string IPlainOverload.Pick<T>(int number) => "int-explicit";
+        }
+        interface IPrefix { string Pick<T>(); }
+        interface IPrefixLonger { string Pick<T>(); }
+        class PrefixQualified : IPrefix, IPrefixLonger
+        {
+            public string Pick<T>() => "plain";
+            string IPrefixLonger.Pick<T>() => "longer";
+        }
+        interface IArityPick { string Pick<U>(); }
+        interface IArityPick<T> { string Pick<U>(); }
+        class ArityQualified : IArityPick, IArityPick<int>
+        {
+            public string Pick<U>() => "plain";
+            string IArityPick<int>.Pick<U>() => "explicit-generic";
+        }
         // A new-slot hider detaches the leaf's override from the base's slot.
         class GvmBase
         {
@@ -211,6 +247,18 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("delegate-method-generic-covariant=" + covariantTag.Method.DeclaringType.Name
                 + "/" + covariantTag.Method.Invoke(covariantReceiver, null)!.GetType().Name
                 + "/" + covariantTag().GetType().Name);
+            Console.WriteLine("delegate-method-end");
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_SELECTION") == "1")
+                return;
+            RunInterfaceMethod();
+            RunInterfaceGenericDispatch();
+        }
+
+        // Delegate.Method for the body an interface binding selects: explicit over
+        // plain generic bodies, and derived-interface overrides of a default.
+        static void RunInterfaceMethod()
+        {
+            Console.WriteLine("delegate-method-interface-begin");
             IRowGeneric plainFirstReceiver = new PlainFirstGeneric();
             IRowGeneric explicitFirstReceiver = new ExplicitFirstGeneric();
             Func<string> plainFirstPick = plainFirstReceiver.Pick<int>;
@@ -222,9 +270,6 @@ namespace ReflectDelegateIdentitySubset
             Func<string> derivedDefaultPick = derivedDefaultReceiver.Pick;
             Console.WriteLine("delegate-method-derived-default=" + derivedDefaultPick() + "/" + derivedDefaultPick.Method.DeclaringType.Name
                 + "/" + derivedDefaultPick.Method.Name.EndsWith(".Pick"));
-            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD_EXTENSIONS") == "1")
-                return;
-            Console.WriteLine("delegate-method-extensions-begin");
             IBaseGenericDefault genericDefaultReceiver = new DerivedGenericDefault();
             Func<string> genericDefaultPick = genericDefaultReceiver.Pick<int>;
             Console.WriteLine("delegate-method-derived-generic=" + genericDefaultPick() + "/"
@@ -246,10 +291,39 @@ namespace ReflectDelegateIdentitySubset
             Func<string> sameTag = sameReceiver.Tag;
             Console.WriteLine("delegate-method-derived-same=" + sameTag() + "/"
                 + sameTag.Method.DeclaringType.Name);
+            Console.WriteLine("delegate-method-interface-end");
+        }
+
+        // The body an interface generic method call binds among overloads and
+        // explicit bodies for other interfaces, with the delegate's Method alongside.
+        static void RunInterfaceGenericDispatch()
+        {
+            Console.WriteLine("interface-gvm-dispatch-begin");
             IOverloadedGeneric overloaded = new OverloadedGeneric();
-            Console.WriteLine("delegate-method-generic-overloads=" + overloaded.Pick<int>(generic: 5)
+            Console.WriteLine("interface-gvm-explicit-overloads=" + overloaded.Pick<int>(generic: 5)
                 + "/" + overloaded.Pick<int>(number: 5));
-            Console.WriteLine("delegate-method-end");
+            IOverloadedGenericOf<string> overloadedOf = new OverloadedGenericOf();
+            Console.WriteLine("interface-gvm-explicit-overloads-generic-interface=" + overloadedOf.Pick<int>(generic: 5)
+                + "/" + overloadedOf.Pick<int>(number: 5));
+            IPlainOverload plainOverload = new PlainOverload();
+            Func<string, string> plainOverloadPick = plainOverload.Pick<string>;
+            Func<int, string> explicitOverloadPick = plainOverload.Pick<string>;
+            Console.WriteLine("interface-gvm-plain-and-explicit-overload=" + plainOverload.Pick<string>("s")
+                + "/" + plainOverload.Pick<string>(5) + "/" + plainOverloadPick.Method.Name
+                + "/" + explicitOverloadPick.Method.Name.EndsWith(".Pick"));
+            var prefix = new PrefixQualified();
+            Func<string> prefixPick = ((IPrefix)prefix).Pick<int>;
+            Func<string> longerPick = ((IPrefixLonger)prefix).Pick<int>;
+            Console.WriteLine("interface-gvm-qualifier-prefix=" + ((IPrefix)prefix).Pick<int>()
+                + "/" + ((IPrefixLonger)prefix).Pick<int>() + "/" + prefixPick.Method.Name
+                + "/" + longerPick.Method.Name.EndsWith(".Pick"));
+            var arity = new ArityQualified();
+            Func<string> arityPick = ((IArityPick)arity).Pick<int>;
+            Func<string> genericArityPick = ((IArityPick<int>)arity).Pick<int>;
+            Console.WriteLine("interface-gvm-qualifier-arity=" + ((IArityPick)arity).Pick<int>()
+                + "/" + ((IArityPick<int>)arity).Pick<int>() + "/" + arityPick.Method.Name
+                + "/" + genericArityPick.Method.Name.EndsWith(".Pick"));
+            Console.WriteLine("interface-gvm-dispatch-end");
         }
     }
 }

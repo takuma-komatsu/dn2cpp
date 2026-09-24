@@ -60,6 +60,20 @@ internal struct StaticRow : IStaticRow<StaticRow>
     static string IStaticRow<StaticRow>.Pick<T>() => "explicit";
 }
 
+internal interface IStaticOverload<TSelf> where TSelf : IStaticOverload<TSelf>
+{
+    static abstract string Pick<T>(T generic);
+    static abstract string Pick<T>(int number);
+}
+
+// Both overloads close to Pick<int>(int); their MethodImpl rows still name
+// different slots, so the T overload binds the plain body.
+internal struct StaticOverload : IStaticOverload<StaticOverload>
+{
+    public static string Pick<T>(T generic) => "plain";
+    static string IStaticOverload<StaticOverload>.Pick<T>(int number) => "explicit-int";
+}
+
 internal interface IStaticBase<TSelf>
 {
     static abstract string Tag();
@@ -79,6 +93,8 @@ internal static class StaticAbstractGenericMethod
 {
     static string PickStatic<T>() where T : IStaticRow<T> => T.Pick<int>();
     static string TagStatic<T>() where T : IStaticBase<T> => T.Tag();
+    static string OverloadByT<T>() where T : IStaticOverload<T> => T.Pick<int>(generic: 5);
+    static string OverloadByInt<T>() where T : IStaticOverload<T> => T.Pick<int>(number: 5);
     // constrained. !!T; call IPackable<T>::Pack<TSink> — both type dimensions closed
     // by the caller: T by the class context, TSink by the method args.
     static string ViaListSink<T>() where T : IPackable<T>
@@ -108,10 +124,11 @@ internal static class StaticAbstractGenericMethod
         Console.WriteLine($"class/count   {ViaCountSink<LabelPk>()}");
     }
 
-    internal static void __GateReviewEntry()
+    internal static void __GateImplSelectionEntry()
     {
         Console.WriteLine("== Static interface implementation selection ==");
         Console.WriteLine($"static explicit {PickStatic<StaticRow>()}");
         Console.WriteLine($"static class {TagStatic<StaticDerived>()}");
+        Console.WriteLine($"static overload {OverloadByT<StaticOverload>()}/{OverloadByInt<StaticOverload>()}");
     }
 }

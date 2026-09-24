@@ -53,12 +53,16 @@
 # very instance GetParameters was called on.
 # ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
 # class and generic virtual overrides (new-slot hiders and covariant returns
-# included), interface
-# bindings over class, struct, explicit, default and generic implementations,
-# including competing plain and explicit generic methods in either metadata
-# order and a derived interface override of a default method,
-# array generic arguments, and runtime-owned declaring types, which may answer
-# null but never a wrong method.
+# included), interface bindings over class, struct, explicit, default and
+# generic implementations, array generic arguments, and runtime-owned declaring
+# types, which may answer null but never a wrong method. Its interface section
+# pins the selected method for competing plain and explicit generic bodies in
+# either metadata order, and for a derived interface's override of a default
+# over class, struct, inherited, typed, generic and identical-body receivers.
+# Its interface generic dispatch section pins which body a call binds: explicit
+# overloads through a plain and a closed generic interface, a plain overload
+# beside an explicit sibling, and explicit bodies for an interface whose name
+# extends the called one's or differs in arity.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -108,23 +112,30 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-interface-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-extensions-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-typed=derived/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-overloads=generic/integer' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
-    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
-    DN2CPP_BEFORE_DELEGATE_METHOD_EXTENSIONS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-extensions.stdout"
-    sed '/^delegate-method-extensions-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-extensions-prefix.stdout"
-    diff -u <(strip_cr_win_file "$out/before-delegate-extensions.stdout") \
-        <(strip_cr_win_file "$out/delegate-extensions-prefix.stdout")
+    grep -Fxq 'delegate-method-interface-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-dispatch-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-explicit-overloads-generic-interface=generic/integer' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-dispatch-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_INTERFACE_SELECTION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-selection.stdout"
+    sed '/^delegate-method-interface-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-selection-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-interface-selection.stdout") \
+        <(strip_cr_win_file "$out/interface-selection-prefix.stdout")
     DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
