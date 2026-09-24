@@ -397,6 +397,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_null_reference_exception_type) return DN2CPP_SR_NULL_REFERENCE;
     if (ti == &dn2cpp_divide_by_zero_exception_type) return DN2CPP_SR_DIVIDE_BY_ZERO;
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
+    if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
     return nullptr;
 }
 
@@ -544,6 +545,15 @@ void dn2cpp_throw_not_supported_msg(const char* message)
 {
     dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
+}
+
+void dn2cpp_throw_invoker_missing(const char* message)
+{
+    Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
+        dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr);
+    dn2cpp_exc_stamp_trace(obj);
+    dn2cpp_exc_inflight_push(obj);
+    throw Dn2CppInvokerMissing{ { obj } };
 }
 
 // Diagnosable ArgumentException — the same catchable type as the bare

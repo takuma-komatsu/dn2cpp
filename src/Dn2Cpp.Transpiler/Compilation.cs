@@ -925,28 +925,100 @@ internal sealed partial class Compilation
     /// compiles, never as live layouts.</summary>
     public HashSet<ClassInfo> ReferencedTypes { get; } = new();
 
-    public void NoteReferencedType(ClassInfo cls) => ReferencedTypes.Add(cls);
+    public void NoteReferencedType(ClassInfo cls)
+    {
+        ReferencedTypes.Add(cls);
+        _identityOnlyReferences.Remove(cls);
+    }
+
+    /// <summary>The <see cref="ReferencedTypes"/> members only an identity handle names:
+    /// their type-info must exist, but naming one is no sign the program reflects over
+    /// it, so they seed no reflection keep. Any ordinary note removes a class, which makes
+    /// the final set independent of note order.</summary>
+    private readonly HashSet<ClassInfo> _identityOnlyReferences = new();
 
     /// <summary>Notes every concrete handle that a constructed type's runtime identity
-    /// points through, including generic arguments and array elements.</summary>
-    internal void NoteTypeIdentityClosure(TypeDesc type)
+    /// points through, including generic arguments and array elements. Without
+    /// <paramref name="keepSeed"/> the classes are referenced for their type-info
+    /// alone.</summary>
+    internal void NoteTypeIdentityClosure(TypeDesc type, bool keepSeed = true)
     {
         switch (type.Kind)
         {
             case TypeKind.Class:
-                NoteReferencedType(type.Class!);
+                if (keepSeed)
+                    NoteReferencedType(type.Class!);
+                else if (ReferencedTypes.Add(type.Class!))
+                    _identityOnlyReferences.Add(type.Class!);
                 foreach (var arg in type.Class!.Context.TypeArgs)
-                    NoteTypeIdentityClosure(arg);
+                    NoteTypeIdentityClosure(arg, keepSeed);
                 break;
             case TypeKind.SZArray:
                 NoteArrayElementType(type.Element!);
-                NoteTypeIdentityClosure(type.Element!);
+                NoteTypeIdentityClosure(type.Element!, keepSeed);
                 break;
             case TypeKind.MDArray:
                 NoteMdArrayType(type);
-                NoteTypeIdentityClosure(type.Element!);
+                NoteTypeIdentityClosure(type.Element!, keepSeed);
                 break;
         }
+    }
+
+    /// <summary>Delegate method identities named by emitted bodies, by symbol. Planning
+    /// bodies never record: their text is discarded, so only the shipped pass may name
+    /// what the metadata emitter defines.</summary>
+    private readonly Dictionary<string, (MethodInfo Method, bool Virtual)> _delegateIdentities =
+        new(StringComparer.Ordinal);
+    private readonly HashSet<string> _delegateIdentityTargets = new(StringComparer.Ordinal);
+    private bool _delegateIdentitiesFrozen;
+    private bool _delegateMethodRead;
+
+    /// <summary>The identity symbol a delegate over <paramref name="m"/> points at; one
+    /// definition per (method, binding) whichever body names it.</summary>
+    internal string NoteDelegateIdentity(MethodInfo m, bool isVirtual)
+    {
+        string sym = (isVirtual ? "dgidv_" : "dgid_") + m.CppName;
+        if (Phase != EmitPhase.Emission)
+            return sym;
+        if (_delegateIdentitiesFrozen)
+            throw new InvalidOperationException(
+                $"emit protocol: delegate identity {sym} named after the identity table was emitted");
+        if (!_delegateIdentities.ContainsKey(sym))
+        {
+            _delegateIdentities.Add(sym, (m, isVirtual));
+            _delegateIdentityTargets.Add(m.CppName);
+        }
+        return sym;
+    }
+
+    /// <summary>Records that a shipped body reads <c>Delegate.Method</c>: only then do the
+    /// identities' declaring types need their method rows.</summary>
+    internal void NoteDelegateMethodRead()
+    {
+        if (Phase == EmitPhase.Emission)
+            _delegateMethodRead = true;
+    }
+
+    /// <summary>Whether <paramref name="m"/>'s method row must survive the unreached-row
+    /// trim: <c>Delegate.Method</c> answers a delegate's declaration from it even when
+    /// every receiver overrides the body.</summary>
+    internal bool KeepsDelegateTargetRow(MethodInfo m) =>
+        _delegateMethodRead && _delegateIdentityTargets.Contains(m.CppName);
+
+    /// <summary>The recorded identities in symbol order; no body may name one
+    /// afterwards.</summary>
+    internal List<(string Symbol, MethodInfo Method, bool Virtual)> FreezeDelegateIdentities()
+    {
+        _delegateIdentitiesFrozen = true;
+        var symbols = new List<string>(_delegateIdentities.Keys);
+        symbols.Sort(StringComparer.Ordinal);
+        var result = new List<(string, MethodInfo, bool)>(symbols.Count);
+        foreach (string sym in symbols)
+        {
+            var (m, isVirtual) = _delegateIdentities[sym];
+            result.Add((sym, m, isVirtual));
+        }
+        return result;
     }
 
     /// <summary>Open generic DEFINITIONS a body took the runtime <c>typeof</c> of —
@@ -1048,7 +1120,7 @@ internal sealed partial class Compilation
             // costs a run-time throw. The other route to a Type — x.GetType() — is not
             // statically decidable at all, which is precisely why a stripped read must fail
             // loudly instead of answering empty.
-            else if (ReferencedTypes.Contains(cls))
+            else if (ReferencedTypes.Contains(cls) && !_identityOnlyReferences.Contains(cls))
                 keep.Add(cls);
             // The escape hatch. rootsHit records the ROOT that matched, not the class, because
             // that is what the typo check below is asking about.
@@ -1060,6 +1132,11 @@ internal sealed partial class Compilation
             if (_explicitReflectionKeep.Contains(cls))
                 keep.Add(cls);
         }
+        // Delegate.Method answers from the method rows of each delegate target's
+        // declaring type, a type the delegate's IL names but no token keeps.
+        if (_delegateMethodRead)
+            foreach (var (m, _) in _delegateIdentities.Values)
+                keep.Add(m.DeclaringClass);
         // A root matching no loaded type is a hard error: a typo silently becoming a no-op
         // root would surface as a PlatformNotSupportedException in a shipped game, which is
         // the one place this diagnostic cannot reach anybody.

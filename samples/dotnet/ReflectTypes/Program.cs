@@ -82,6 +82,7 @@ namespace ReflectTypes
             ReflectIntrinsicTemplateSubset.Program.Run();
             MemberHandleSubset.Program.Run();
             TaskRuntimeIdentitySubset.Program.Run();
+            ReflectShallowCloneRefusalSubset.Program.RunUnwrappedProbe();
         }
     }
 }

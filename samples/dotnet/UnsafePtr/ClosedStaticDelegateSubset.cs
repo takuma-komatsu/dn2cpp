@@ -144,9 +144,8 @@ namespace ClosedStaticDelegateSubset
             chained(0);
 
             // 7. Target is the bound argument, and two bindings of the same
-            // (static, target) pair compare equal. Delegate.Method is deliberately
-            // NOT asserted: an IL-constructed delegate carries no metadata
-            // back-reference here, so it reports null where .NET reports a MethodInfo.
+            // (static, target) pair compare equal. ReflectDelegateIdentitySubset
+            // asserts this binding's Delegate.Method.
             Console.WriteLine($"target => {ReferenceEquals(known.Target, contexts)}");
             Func<Ctx, bool> known2 = contexts.Contains;
             Console.WriteLine($"equal => {known == known2}");

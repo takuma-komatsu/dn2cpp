@@ -42,6 +42,12 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "legacy")
                 return;
             GenericStaticsSubset.Program.ConcreteAndDependentStatics();
+            if (args.Length > 0 && args[0] == "before-forwarding")
+                return;
+            RgctxForwardingSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-gvm-hider")
+                return;
+            GvmHiderSubset.Program.Run();
         }
     }
 }

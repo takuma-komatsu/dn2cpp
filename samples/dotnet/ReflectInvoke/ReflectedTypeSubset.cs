@@ -74,8 +74,8 @@ namespace ReflectedTypeSubset
             Console.WriteLine(typeof(D).GetMethod("W")!.GetBaseDefinition().ReflectedType!.Name);
 
             // delegate.Method: declaring-typed even when created from the
-            // derived-reflected handle. An IL-constructed delegate's Method has no
-            // metadata back-reference, so only the reflection-bound form is diffable.
+            // derived-reflected handle. ReflectDelegateIdentitySubset covers
+            // IL-bound delegates.
             var del = (Func<string>)mD.CreateDelegate(typeof(Func<string>), b);
             Console.WriteLine(del() + " " + (del.Method == mB) + " " + (del.Method == mD)
                 + " " + del.Method.ReflectedType!.Name);

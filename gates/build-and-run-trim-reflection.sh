@@ -46,6 +46,12 @@
 # name (and so does not keep) the stripped type — an interface-slot dispatch for LibWidget's
 # Twice/Tag, a field (fields are never tree-shaken) for the rest — so arm 1 matches real
 # .NET exactly while those same types still strip. See samples/dotnet/TrimReflect/Program.cs.
+# Every arm also runs a Delegate.Method section over library receivers met only as
+# their base: the delegate's declaring type is kept for the read, a stripped
+# receiver that inherits the slot answers through its vtable, and a stripped level
+# that overrides it throws the same PNSE naming that level. Generic-virtual
+# bindings use the dispatcher's selected target with the same trim guard. Arm 1
+# answers as .NET and keeps its pre-section output unchanged when skipped.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"
@@ -66,6 +72,19 @@ LIBDLL="samples/dotnet/$PROJECT/bin/$CONFIG/$TFM/$LIBNAME.dll"
 CORELIB=$(locate_corelib)
 echo "corelib: $CORELIB"
 
+# Delegate.Method witnesses (a PNSE line by its prefix), so the section cannot drop
+# out of a frozen snapshot unnoticed.
+assert_delegate_method_lines() {
+    local out="$1" line
+    shift
+    grep -Fxq '== Delegate.Method over stripped receivers ==' <<<"$(strip_cr_win "$out")" \
+        || { echo "FAIL: the Delegate.Method section did not run" >&2; exit 1; }
+    for line in "$@"; do
+        grep -Fq -- "$line" <<<"$(strip_cr_win "$out")" \
+            || { echo "FAIL: Delegate.Method witness missing: $line" >&2; exit 1; }
+    done
+}
+
 # ── Arm 1: no flag — live diff against real .NET ──────────────────────────────
 echo "== Arm 1/4: no flag, exact diff vs real .NET =="
 OUT=artifacts/trimreflect
@@ -81,6 +100,16 @@ else
     set -e
     assert_output "$native" "$expected"
     assert_exit_code "$native_code" "$expected_code"
+    assert_delegate_method_lines "$native" \
+        '  inherited slot -> LibShape/shape' \
+        '  overriding level -> LibCircle/circle' \
+        '  inherited override -> LibCircle/circle' \
+        '  generic virtual -> LibGvmLeaf/gvm-leaf' \
+        '  interface slot -> LibWidget/8'
+    before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
+    prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
+        <<<"$(strip_cr_win "$native")")
+    assert_output "$prefix" "$before"
     gate_cache_commit
 fi
 
@@ -101,6 +130,12 @@ else
     set -e
     assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/trim-reflection-trimmed.txt")"
     assert_exit_code "$native_code" 0
+    assert_delegate_method_lines "$native" \
+        '  inherited slot -> LibShape/shape' \
+        "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
+        "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'"
     gate_cache_commit
 fi
 
@@ -119,6 +154,12 @@ else
     set -e
     assert_output "$(strip_cr_win "$native")" "$(cat "$EXPDIR/trim-reflection-rooted.txt")"
     assert_exit_code "$native_code" 0
+    assert_delegate_method_lines "$native" \
+        '  inherited slot -> LibShape/shape' \
+        "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
+        "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
+        '  interface slot -> LibWidget/8'
     gate_cache_commit
 fi
 

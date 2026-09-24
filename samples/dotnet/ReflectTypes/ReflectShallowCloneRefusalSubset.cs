@@ -53,15 +53,6 @@ namespace ReflectShallowCloneRefusalSubset
                 Console.WriteLine(label + " -> " + inner.GetType().Name + ": "
                     + (colon >= 0 ? msg.Substring(0, colon) : msg));
             }
-            catch (PlatformNotSupportedException e)
-            {
-                // dn2cpp's reflective Invoke propagates the helper's throw directly rather
-                // than wrapping it, so both shapes are handled and reduced to one line.
-                string msg = e.Message;
-                int colon = msg.IndexOf(':');
-                Console.WriteLine(label + " -> " + e.GetType().Name + ": "
-                    + (colon >= 0 ? msg.Substring(0, colon) : msg));
-            }
         }
 
         internal static void Run()
@@ -130,6 +121,23 @@ namespace ReflectShallowCloneRefusalSubset
             GC.KeepAlive(rw);
             GC.KeepAlive(thread);
             GC.KeepAlive(cts);
+        }
+
+        internal static void RunUnwrappedProbe()
+        {
+            Console.WriteLine("== metadata-answer invoke flags ==");
+            var sem = new SemaphoreSlim(1, 1);
+            MethodInfo method = typeof(object).GetMethod(
+                "MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic);
+            try
+            {
+                method.Invoke(sem, BindingFlags.DoNotWrapExceptions, null, null, null);
+                Console.WriteLine("SemaphoreSlim unwrapped -> clone returned");
+            }
+            catch (PlatformNotSupportedException e)
+            {
+                Console.WriteLine("SemaphoreSlim unwrapped -> " + e.GetType().Name);
+            }
         }
     }
 }

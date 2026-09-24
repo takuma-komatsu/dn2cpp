@@ -730,8 +730,10 @@ internal sealed partial class Compilation
     /// callee turns out to need the hidden parameter (same canonical class — the
     /// caller's own context serves — or a call-site token that verifiably
     /// re-resolves to the callee); a needy callee behind an unpassable edge
-    /// taints the caller instead.</summary>
-    internal readonly Dictionary<MethodInfo, List<(MethodInfo Callee, bool RgctxPassable)>> SharedCallEdges = new();
+    /// taints the caller instead. A nonzero <c>ForwardToken</c> is that call-site
+    /// token: the caller then passes the callee's table out of a forwarding slot
+    /// keyed on it.</summary>
+    internal readonly Dictionary<MethodInfo, List<(MethodInfo Callee, bool RgctxPassable, int ForwardToken)>> SharedCallEdges = new();
     /// <summary>Canonical methods whose trial compile allocated at least one
     /// rgctx slot of their own (the roots of the context-use closure).</summary>
     internal readonly HashSet<MethodInfo> SharedRgctxRoots = new();
@@ -761,6 +763,145 @@ internal sealed partial class Compilation
     /// <summary>Root fallback reasons (taint kind -> count), before cascade.</summary>
     internal IReadOnlyDictionary<string, int> SharedTaintReasons => _sharedTaintReasons;
     private readonly Dictionary<string, int> _sharedTaintReasons = new();
+
+    /// <summary>Steps 0 and 1 of <see cref="FinalizeSharedGenerics"/> over
+    /// <paramref name="taint"/>, which they extend: returns the bodies that read a
+    /// runtime generic context (tainted ones included; callers skip those).
+    /// <see cref="RegisterRgctxForwardingSlots"/> runs it on a copy of the
+    /// planning taint, so both see the same closure.</summary>
+    private HashSet<MethodInfo> RgctxUseClosure(Dictionary<MethodInfo, string> taint)
+    {
+        // 0. A slot whose planning-pass fill failed to resolve for some real
+        // instantiation is unusable group-wide: taint every body that uses it.
+        foreach (var kv in SharedSlotKeys)
+        {
+            if (taint.ContainsKey(kv.Key))
+                continue;
+            foreach (var key in kv.Value)
+                if (Rgctx.Classes.SlotKnownBad(key))
+                {
+                    taint[kv.Key] = "rgctx-fill";
+                    break;
+                }
+        }
+        foreach (var kv in SharedMethodSlotKeys)
+        {
+            if (taint.ContainsKey(kv.Key))
+                continue;
+            foreach (var key in kv.Value)
+                if (Rgctx.Methods.SlotKnownBad(key))
+                {
+                    taint[kv.Key] = "rgctx-fill";
+                    break;
+                }
+        }
+
+        // 1. Joint fixpoint over the direct-call edges: cascade unshareability
+        // (a caller of an unshareable/never-compiled callee is unshareable) and
+        // propagate context use (a caller of a context-needing hidden-parameter
+        // callee must supply the table — through its own context or a forwarding
+        // slot when the edge is passable, else it taints; a forwarding slot whose
+        // fill failed taints like any other bad slot). All monotone, so one loop.
+        var uses = new HashSet<MethodInfo>(SharedRgctxRoots);
+        bool changed = true;
+        while (changed)
+        {
+            changed = false;
+            foreach (var kv in SharedCallEdges)
+            {
+                var m = kv.Key;
+                if (taint.ContainsKey(m))
+                    continue;
+                foreach (var (callee, passable, token) in kv.Value)
+                {
+                    if (taint.ContainsKey(callee) || !SharedTrialCompiled.Contains(callee))
+                    {
+                        taint[m] = "cascade";
+                        changed = true;
+                        break;
+                    }
+                    if (uses.Contains(callee) && WouldNeedRgctxParam(callee))
+                    {
+                        if (!passable)
+                        {
+                            taint[m] = "rgctx-pass";
+                            changed = true;
+                            break;
+                        }
+                        if (ForwardSlotKnownBad(m, callee, token))
+                        {
+                            taint[m] = "rgctx-fill";
+                            changed = true;
+                            break;
+                        }
+                        if (uses.Add(m))
+                            changed = true;
+                    }
+                }
+            }
+        }
+        return uses;
+    }
+
+    /// <summary>The slot kind a shared body forwards <paramref name="callee"/>'s
+    /// table through: the callee's per-method table for a generic-method
+    /// instantiation, else its class's.</summary>
+    internal static RgctxSlotKind ForwardSlotKind(MethodInfo callee) =>
+        callee.NameSuffix != "" ? RgctxSlotKind.MethodRgctxTable : RgctxSlotKind.RgctxTable;
+
+    /// <summary>Whether the forwarding slot <paramref name="caller"/> would pass
+    /// <paramref name="callee"/>'s table through failed its planning fill. Keyed
+    /// as MethodCompiler.RgctxSlotAccess keys it: a generic-method caller in its
+    /// own method registry, any other caller in its declaring class's.</summary>
+    private bool ForwardSlotKnownBad(MethodInfo caller, MethodInfo callee, int token)
+    {
+        if (token == 0)
+            return false;
+        var kind = ForwardSlotKind(callee);
+        return caller.NameSuffix != ""
+            ? Rgctx.Methods.SlotKnownBad(caller, kind, token)
+            : Rgctx.Classes.SlotKnownBad(caller.DeclaringClass, kind, token);
+    }
+
+    /// <summary>At a planning quiescence point, allocates the forwarding slot of
+    /// every committed edge whose callee takes the hidden parameter under the
+    /// current use closure, so the next fill resolves it for every live user —
+    /// users for which the calling body is cold included, since they share its
+    /// class table. The emission fill resolves the same keys and must never meet
+    /// one planning did not. Returns whether a registry grew. Touches no roots,
+    /// slot keys or taint: the verdicts come from the closure alone.</summary>
+    internal bool RegisterRgctxForwardingSlots()
+    {
+        if (Phase is not EmitPhase.Planning)
+            throw new InvalidOperationException(
+                $"emit protocol: RegisterRgctxForwardingSlots in phase {Phase} (legal: Planning)");
+        var taint = new Dictionary<MethodInfo, string>(SharedTaint);
+        var uses = RgctxUseClosure(taint);
+        bool grew = false;
+        foreach (var kv in SharedCallEdges)
+        {
+            var m = kv.Key;
+            if (taint.ContainsKey(m))
+                continue;
+            foreach (var (callee, _, token) in kv.Value)
+            {
+                if (token == 0 || !uses.Contains(callee) || !WouldNeedRgctxParam(callee))
+                    continue;
+                var kind = ForwardSlotKind(callee);
+                if (m.NameSuffix != "")
+                {
+                    int before = Rgctx.Methods.SlotsOf(m)?.Count ?? 0;
+                    grew |= Rgctx.Methods.SlotIndex(m, kind, token) == before;
+                }
+                else
+                {
+                    int before = Rgctx.Classes.SlotsOf(m.DeclaringClass)?.Count ?? 0;
+                    grew |= Rgctx.Classes.SlotIndex(m.DeclaringClass, kind, token) == before;
+                }
+            }
+        }
+        return grew;
+    }
 
     /// <summary>Turns the planning-pass trial results into final shared-body
     /// assignments:
@@ -821,68 +962,8 @@ internal sealed partial class Compilation
                         SharedTaint[kv.Key] = "itf-collision";
         }
 
-        // 0. A slot whose planning-pass fill failed to resolve for some real
-        // instantiation is unusable group-wide: taint every body that uses it.
-        foreach (var kv in SharedSlotKeys)
-        {
-            if (SharedTaint.ContainsKey(kv.Key))
-                continue;
-            foreach (var key in kv.Value)
-                if (Rgctx.Classes.SlotKnownBad(key))
-                {
-                    SharedTaint[kv.Key] = "rgctx-fill";
-                    break;
-                }
-        }
-        foreach (var kv in SharedMethodSlotKeys)
-        {
-            if (SharedTaint.ContainsKey(kv.Key))
-                continue;
-            foreach (var key in kv.Value)
-                if (Rgctx.Methods.SlotKnownBad(key))
-                {
-                    SharedTaint[kv.Key] = "rgctx-fill";
-                    break;
-                }
-        }
-
-        // 1. Joint fixpoint over the direct-call edges: cascade unshareability
-        // (a caller of an unshareable/never-compiled callee is unshareable) and
-        // propagate context use (a caller of a context-needing hidden-parameter
-        // callee must supply the table — through its own context when the edge
-        // is passable, else it taints). Both are monotone, so one loop.
-        var uses = new HashSet<MethodInfo>(SharedRgctxRoots);
-        bool changed = true;
-        while (changed)
-        {
-            changed = false;
-            foreach (var kv in SharedCallEdges)
-            {
-                var m = kv.Key;
-                if (SharedTaint.ContainsKey(m))
-                    continue;
-                foreach (var (callee, passable) in kv.Value)
-                {
-                    if (SharedTaint.ContainsKey(callee) || !SharedTrialCompiled.Contains(callee))
-                    {
-                        SharedTaint[m] = "cascade";
-                        changed = true;
-                        break;
-                    }
-                    if (uses.Contains(callee) && WouldNeedRgctxParam(callee))
-                    {
-                        if (!passable)
-                        {
-                            SharedTaint[m] = "rgctx-pass";
-                            changed = true;
-                            break;
-                        }
-                        if (uses.Add(m))
-                            changed = true;
-                    }
-                }
-            }
-        }
+        // 0-1. Bad-slot taint and the cascade / context-use fixpoint.
+        var uses = RgctxUseClosure(SharedTaint);
         foreach (var m in uses)
         {
             if (SharedTaint.ContainsKey(m))
@@ -978,7 +1059,7 @@ internal sealed partial class Compilation
             if (!retained.Add(m))
                 continue;
             if (SharedCallEdges.TryGetValue(m, out var callees))
-                foreach (var (c, _) in callees)
+                foreach (var (c, _, _) in callees)
                     work.Push(c);
         }
         foreach (var m in Reachable.Where(IsCanonicalMethod).ToList())
@@ -1569,6 +1650,7 @@ internal sealed partial class Compilation
                 var callee = ResolveMethodHandle(module, handle, ctx, scope)
                     ?? throw new NotSupportedException("rgctx: unresolved cross-class callee token");
                 var rc = callee.DeclaringClass;
+                LinkMintedForwardingTarget(rc);
                 if (rc.SharedOwner is null)
                     throw new NotSupportedException($"rgctx: {rc.FullName} is not a grouped instantiation");
                 // The referenced table must itself fill/emit, even when none of
@@ -1584,6 +1666,7 @@ internal sealed partial class Compilation
                 // Resolving under the real context can instantiate the real
                 // generic method for the first time (all its callers shared);
                 // link it on the spot — the emission pass runs no sync rounds.
+                LinkMintedForwardingTarget(callee.DeclaringClass);
                 LinkCanonicalMethodInstance(callee);
                 if (callee.SharedOwner is null)
                     throw new NotSupportedException(
@@ -1598,6 +1681,17 @@ internal sealed partial class Compilation
             default:
                 throw new NotSupportedException($"rgctx slot kind {slot.Kind}");
         }
+    }
+
+    /// <summary>Links a class a planning-pass forwarding slot just instantiated
+    /// (the callee's class for a user whose calling body is cold, which nothing
+    /// else resolved), so its table can be required this round rather than the
+    /// slot marked bad before the next sync links it. Emission groups nothing:
+    /// there, an unlinked target stays an error.</summary>
+    private void LinkMintedForwardingTarget(ClassInfo cls)
+    {
+        if (Phase == EmitPhase.Planning && cls.SharedOwner is null && cls.GenericArity > 0)
+            LinkCanonicalOwners();
     }
 
     /// <summary>Re-resolves an intrinsic producer's raw token so each real

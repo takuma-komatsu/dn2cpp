@@ -51,6 +51,12 @@
 # GetGenericMethodDefinition normalizes it away, a property's GetGetMethod
 # inherits the property handle's reflected type, and ParameterInfo.Member is the
 # very instance GetParameters was called on.
+# ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
+# class and generic virtual overrides (new-slot hiders and covariant returns
+# included), interface
+# bindings over class, struct, explicit, default and generic implementations,
+# array generic arguments, and runtime-owned declaring types, which may answer
+# null but never a wrong method.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -81,6 +87,33 @@ gate_extra_asserts() {
     grep -Fxq 'metadata-compression-generic-reference=text/String/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-plain-generic=True/True' "$out/metadata-layout.stdout"
     grep -Fxq 'metadata-compression-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-message: Exception has been thrown by the target of an invocation.' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-method-composed-flags: TargetInvocationException InvalidOperationException 80131604' "$out/metadata-layout.stdout"
+    grep -Fxq 'existing-constructor-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'activator-cold-generic=73' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_EXISTING_CONSTRUCTOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-existing-constructor.stdout"
+    sed '/^existing-constructor-begin/,$d' "$out/metadata-layout.stdout" > "$out/existing-constructor-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-existing-constructor.stdout") \
+        <(strip_cr_win_file "$out/existing-constructor-prefix.stdout")
+    DN2CPP_BEFORE_COLD_ACTIVATOR=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-cold-activator.stdout"
+    sed '/^activator-cold-generic=/,$d' "$out/metadata-layout.stdout" > "$out/cold-activator-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-cold-activator.stdout") \
+        <(strip_cr_win_file "$out/cold-activator-prefix.stdout")
+    grep -Fxq 'delegate-method-shared=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic=Int32/String' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-runtime-owned=True/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-struct-interface=StructProbe/Value/31/31' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-explicit-interface=ExplicitProbe/True/41/41' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-default-interface=IDefaultProbe/Default/101' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
+    sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
+        <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -97,7 +130,8 @@ gate_extra_asserts() {
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
 reflection_layout_axis=default
-corelib_diff_gate ReflectInvoke --no-ildiet
+DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
+    corelib_diff_gate ReflectInvoke --no-ildiet
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \

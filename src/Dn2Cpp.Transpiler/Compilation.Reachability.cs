@@ -1527,25 +1527,145 @@ internal sealed partial class Compilation
         if (!DerivesFromOrIs(c, disp.Decl))
             return;
         // Walk from the concrete type up to the GVM's declaring type, taking the most
-        // derived override template. A match whose declaring type def is the GVM's own
-        // (the base virtual) means c does not override -> route to the base default.
+        // derived method bound to this slot. A `new virtual` hider opens a fresh slot,
+        // but a descendant's MethodImpl can explicitly bind the original slot even
+        // across that hider. A non-virtual `new` never takes the slot.
         for (var b = c; b is not null; b = b.BaseClass)
         {
-            var tmpl = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
-                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey);
+            if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
+                break;
+            var tmpl = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
+                disp.Gvm.Signature, false, true);
             if (tmpl is null)
                 continue;
-            if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
-            {
-                disp.Cases[c] = disp.Gvm; // no override below: the base default applies
-                return;
-            }
-            var impl = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
-            Reach(impl);
-            disp.Cases[c] = impl;
+            var over = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
+            Reach(over);
+            disp.Cases[c] = over;
             return;
         }
-        disp.Cases[c] = disp.Gvm; // no template found at all: base default
+        disp.Cases[c] = disp.Gvm;
+    }
+
+    // A covariant-return override has newslot metadata and a MethodImpl row
+    // binding its body to the inherited class slot. Generic MethodImpl rows are
+    // not materialized as MethodInfo, so inspect the template metadata here.
+    private bool GvmExplicitlyOverridesSlot(
+        GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle body)
+    {
+        var reader = owner.Module.Reader;
+        foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
+        {
+            var impl = reader.GetMethodImplementation(mih);
+            if (impl.MethodBody.Kind != HandleKind.MethodDefinition
+                || (MethodDefinitionHandle)impl.MethodBody != body)
+                continue;
+
+            ClassInfo? declClass = null;
+            MethodDefinitionHandle? declTemplate = null;
+            if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
+            {
+                var declared = (MethodDefinitionHandle)impl.MethodDeclaration;
+                var declaringType = reader.GetMethodDefinition(declared).GetDeclaringType();
+                for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
+                    if (b.Module == owner.Module && b.Handle == declaringType)
+                    {
+                        declClass = b;
+                        declTemplate = declared;
+                        break;
+                    }
+            }
+            else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
+            {
+                var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
+                var referencedClass = mr.Parent.Kind switch
+                {
+                    HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)mr.Parent),
+                    HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)mr.Parent)?.Class,
+                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                        .DecodeSignature(SigProvider, owner.Context).Class,
+                    _ => null,
+                };
+                for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
+                    if (b == referencedClass)
+                    {
+                        declClass = b;
+                        break;
+                    }
+                if (declClass is not null)
+                {
+                    var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+                    var sig = mr.DecodeMethodSignature(SigProvider, ctx);
+                    declTemplate = FindGvmClassTemplate(disp, declClass,
+                        reader.GetString(mr.Name), sig, true, false);
+                }
+            }
+            if (declClass is not null && declTemplate is { } target
+                && GvmTemplateUsesSlot(disp, declClass, target))
+                return true;
+        }
+        return false;
+    }
+
+    // Match the closed parameter types before asking which virtual slot a row uses.
+    // A same-name overload with the same arity and parameter count can override a
+    // different slot; the generic-template lookup's fallback must not select it.
+    private MethodDefinitionHandle? FindGvmClassTemplate(
+        GvmDispatch disp, ClassInfo owner, string name,
+        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot)
+    {
+        var reader = owner.Module.Reader;
+        if (!TypeDefMethodNames(owner.Module, owner.Handle).ByName.TryGetValue(name, out var candidates))
+            return null;
+        var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+        foreach (var candidate in candidates)
+        {
+            var md = reader.GetMethodDefinition(candidate);
+            if ((md.Attributes & MethodAttributes.Virtual) == 0
+                || md.GetGenericParameters().Count != disp.MethodArgs.Length)
+                continue;
+            var sig = md.DecodeSignature(SigProvider, ctx);
+            if (sig.ParameterTypes.Length != expected.ParameterTypes.Length
+                || (matchReturn && !SameTypeArg(sig.ReturnType, expected.ReturnType)))
+                continue;
+            bool sameParams = true;
+            for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                if (!SameTypeArg(sig.ParameterTypes[i], expected.ParameterTypes[i]))
+                {
+                    sameParams = false;
+                    break;
+                }
+            if (!sameParams || (requireSlot && !GvmTemplateUsesSlot(disp, owner, candidate)))
+                continue;
+            return candidate;
+        }
+        return null;
+    }
+
+    private bool GvmTemplateUsesSlot(
+        GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle template)
+    {
+        if (owner == disp.Decl)
+            return template == disp.Gvm.Handle;
+        if (!DerivesFromOrIs(owner, disp.Decl))
+            return false;
+        var attrs = owner.Module.Reader.GetMethodDefinition(template).Attributes;
+        if ((attrs & MethodAttributes.Virtual) == 0)
+            return false;
+        if (GvmExplicitlyOverridesSlot(disp, owner, template))
+            return true;
+        if ((attrs & MethodAttributes.NewSlot) != 0)
+            return false;
+        var signature = owner.Module.Reader.GetMethodDefinition(template)
+            .DecodeSignature(SigProvider, new GenericContext(owner.Context.TypeArgs, disp.MethodArgs));
+        for (var b = owner.BaseClass; b is not null && DerivesFromOrIs(b, disp.Decl); b = b.BaseClass)
+        {
+            var baseTemplate = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
+                signature, true, false);
+            if (baseTemplate is null)
+                continue;
+            return GvmTemplateUsesSlot(disp, b, baseTemplate.Value);
+        }
+        return false;
     }
 
     /// <summary>If <paramref name="msh"/> is one of the element-scanning generic
@@ -2357,7 +2477,7 @@ internal sealed partial class Compilation
     }
 
     internal static MethodInfo? ParameterlessCtor(ClassInfo c) =>
-        c.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
 
     /// <summary>The parameterless instance ctor that is also <b>public</b>, or null.
     /// The generic factory <c>Activator.CreateInstance&lt;T&gt;()</c> (and <c>new T()</c>
@@ -2369,7 +2489,7 @@ internal sealed partial class Compilation
     /// their C# constraint already guarantees the match is public, so the visibility test
     /// is unneeded there and would only cost a decode.</summary>
     internal static MethodInfo? PublicParameterlessCtor(ClassInfo c) =>
-        c.Methods.FirstOrDefault(m => !m.IsStatic && m.IsPublic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
+        c.EnsureMembers().Methods.FirstOrDefault(m => !m.IsStatic && m.IsPublic && m.Name == ".ctor" && m.Signature.ParameterTypes.Length == 0);
 
     /// <summary>Reaches <paramref name="c"/>'s implementation of the virtual or
     /// interface slot declared by <paramref name="decl"/>, if it provides one.</summary>

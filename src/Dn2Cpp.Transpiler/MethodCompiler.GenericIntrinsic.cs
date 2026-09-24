@@ -586,7 +586,7 @@ internal sealed partial class MethodCompiler
                 // does not register against a null slot.
                 if (Compilation.EffectiveFinalize(cls) is { } fin && Comp.Reachable.Contains(fin))
                     Emit($"dn2cpp_register_finalizer((Dn2CppObject*){obj});");
-                Emit($"{DirectCallSym(ctor)}({ArgsWithRgctx(obj, ctor)});");
+                EmitActivatorCtorCall($"{DirectCallSym(ctor)}({ArgsWithRgctx(obj, ctor)});");
                 PushEntry(new StackEntry(obj, StackKind.Ref, cls.CppStructName + "*", StaticType: TypeDesc.MakeClass(cls)));
                 return;
             }
@@ -601,7 +601,7 @@ internal sealed partial class MethodCompiler
             {
                 string val = NewTemp(ct);
                 Emit($"{val} = {zero};");
-                Emit($"{DirectCallSym(vctor)}({ArgsWithRgctx($"&{val}", vctor)});");
+                EmitActivatorCtorCall($"{DirectCallSym(vctor)}({ArgsWithRgctx($"&{val}", vctor)});");
                 Push(StackKind.Struct, ct, val);
                 return;
             }
@@ -2239,6 +2239,16 @@ internal sealed partial class MethodCompiler
         throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: generic intrinsic {declType}::{name}" +
             $"<{methodArgs.Length}> has no intrinsic mapping yet");
+    }
+
+    /// <summary>The constructor call of an <c>Activator.CreateInstance&lt;T&gt;()</c> lowering.
+    /// <c>RuntimeType.CreateInstanceOfT</c> reports whatever the constructor throws as the
+    /// inner exception of a <c>TargetInvocationException</c>; the allocation and the
+    /// instantiability verdict stay outside the wrap.</summary>
+    private void EmitActivatorCtorCall(string call)
+    {
+        Emit($"try {{ {call} }}");
+        Emit("catch (Dn2CppException& __ctorex) { dn2cpp_throw_target_invocation(__ctorex.obj); }");
     }
 
     /// <summary>Guards the trailing <c>IEqualityComparer&lt;T&gt;</c> of a

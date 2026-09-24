@@ -1062,13 +1062,33 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
-// Uniform layout of all generated delegate types ({target, method, prev}).
+// Exact receiver-to-method cases selected by the generic virtual dispatcher.
+struct Dn2CppDelegateGvmTarget
+{
+    const Dn2CppTypeInfo* receiverType;
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+};
+
+struct Dn2CppDelegateMethodIdentity
+{
+    const Dn2CppTypeInfo* declaringType;
+    int32_t metadataToken;
+    int32_t genericArgCount;
+    const Dn2CppTypeInfo* const* genericArgs;
+    bool virtualBinding;
+    int32_t gvmTargetCount;
+    const Dn2CppDelegateGvmTarget* gvmTargets;
+};
+
+// Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).
 struct Dn2CppDelegate : Dn2CppObject
 {
     Dn2CppObject* target;
     void* method;
     Dn2CppObject* prev;
+    const Dn2CppDelegateMethodIdentity* identity;
 };
 
 // A reflection-bound delegate's context node (MethodInfo.CreateDelegate /
@@ -1117,18 +1137,19 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
-// unwrapping a reflection-bind node. An IL-constructed delegate reports a null
-// Method (its `method` is a bare code address with no metadata back-reference).
+// unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d);
 Dn2CppObject* dn2cpp_delegate_combine(Dn2CppObject* a, Dn2CppObject* b);
 Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value);
-// Delegate value equality/hash over the uniform {target, method, prev} layout:
-// two delegates are equal iff they are the same delegate type and their
-// invocation chains match pairwise (matching .NET Delegate/MulticastDelegate
-// semantics); the hash folds the chain's (target, method) pairs so equal
-// delegates always agree (stable per process — the exact .NET number, which is
-// type-identity based, is not modeled). Backs Delegate.op_Equality/Equals/
+// Delegate value equality/hash: two delegates are equal iff they are the same
+// delegate type and their invocation chains match pairwise on target, code
+// address and method identity (matching .NET Delegate/MulticastDelegate
+// semantics). A null identity matches any, and a virtual binding compares only
+// generic arguments, since different declarations can bind one override. The
+// hash folds only the chain's (target, method) pairs, so equal delegates always
+// agree (stable per process — the exact .NET number, which is type-identity
+// based, is not modeled). Backs Delegate.op_Equality/Equals/
 // GetHashCode and the DN2CPP_TF_DELEGATE branches of the object hash/equality
 // helpers (e.g. GodotSharp's DelegateUtils callbacks, where the engine keys
 // Callable dedup on managed delegate identity).
@@ -1413,6 +1434,7 @@ inline constexpr const char* DN2CPP_SR_MISSING_METHOD = "Arg_MissingMethodExcept
 inline constexpr const char* DN2CPP_SR_NULL_REFERENCE = "Arg_NullReferenceException";
 inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
+inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_DATEONLY = "Format_BadDateOnly";
@@ -1529,7 +1551,10 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p);
 // static method); for a value-type receiver the unboxed payload is passed. Returns
 // the boxed result (null for void). A method with no emitted body (invoker == null)
 // throws InvalidOperationException; an arg-count mismatch throws ArgumentException.
-Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args);
+Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions = true);
+// Raises TargetInvocationException around `inner`, an in-flight exception a
+// reflective call's target threw; inner leaves the in-flight list.
+[[noreturn]] void dn2cpp_throw_target_invocation(Dn2CppObject* inner);
 
 // Reflection constructor enumeration + invocation. Type.GetConstructors(flags)
 // returns a ConstructorInfo[] (the type's own ctors only — never inherited), and
@@ -1546,7 +1571,7 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* para
 Dn2CppMethodRef* dn2cpp_type_get_constructor_full(Dn2CppType* t, Dn2CppArrayRef* paramTypes,
                                                   int32_t bindingFlags, int32_t callConv,
                                                   Dn2CppObject* binder);
-Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args);
+Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bool wrapExceptions = true);
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t);
 // Activator.CreateInstance(Type, bool nonPublic): the parameterless form with
 // the visibility switch; the no-arg form above is nonPublic: false. Missing /
@@ -1614,9 +1639,11 @@ void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject*
 // PlatformNotSupportedException); the plain overloads pass null.
 Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p);
 Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj,
-                                               Dn2CppArrayRef* index, Dn2CppObject* binder);
+                                               Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                               bool wrapExceptions = true);
 void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value,
-                                      Dn2CppArrayRef* index, Dn2CppObject* binder);
+                                      Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                      bool wrapExceptions = true);
 
 // Boxed-value <-> element-storage conversion cores, defined in
 // dn2cpp_system_reflection.cpp beside the Activator argument binder (which
@@ -2170,6 +2197,8 @@ extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
 // helpers (GetMethod/GetProperty with several undecidable matches), matching
 // real .NET's reflection contract.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
+extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
+extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
@@ -2517,6 +2546,8 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // The same catchable NotSupportedException, carrying a diagnosable reason —
 // for AOT-boundary misses (MakeGenericType) where the bare throw names nothing.
 [[noreturn]] void dn2cpp_throw_not_supported_msg(const char* message);
+// The same exception, thrown as Dn2CppInvokerMissing by an invmiss_ stub.
+[[noreturn]] void dn2cpp_throw_invoker_missing(const char* message);
 // The dynamic-code-generation surface trap (Reflection.Emit, DLR CallSite,
 // Expression.Compile): catchable, message names the cut member.
 [[noreturn]] void dn2cpp_throw_platform_not_supported(const char* message);
@@ -2968,6 +2999,11 @@ struct Dn2CppException
 {
     Dn2CppObject* obj;
 };
+
+// A member-table row with no materialized invoker raises its NotSupportedException
+// as this subtype, so reflection invoke can tell the image's refusal from a fault
+// of the target and leave it unwrapped.
+struct Dn2CppInvokerMissing : Dn2CppException {};
 
 // In-flight exception rooting: between the throw and the handler that consumes
 // it, the managed exception object may exist ONLY in the __cxa exception buffer

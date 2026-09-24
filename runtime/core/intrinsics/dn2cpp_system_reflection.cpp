@@ -1160,6 +1160,7 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError)
 #define DN2CPP_BF_PUBLIC       0x10
 #define DN2CPP_BF_NONPUBLIC    0x20
 #define DN2CPP_BF_FLATTEN      0x40
+#define DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS 0x02000000
 
 // Whole-string compare of a managed UTF-16 string against an ASCII C string.
 static bool dn2cpp_ascii_str_eq(const char* c, const Dn2CppString* s)
@@ -2177,12 +2178,41 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p)
     return dn2cpp_string_from_utf8(nm, static_cast<int32_t>(std::strlen(nm)));
 }
 
+void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
+{
+    Dn2CppObject* wrapper = dn2cpp_exception_new(&dn2cpp_target_invocation_exception_type,
+        dn2cpp_default_message(&dn2cpp_target_invocation_exception_type), inner);
+    reinterpret_cast<Dn2CppExceptionObject*>(wrapper)->hresult = static_cast<int32_t>(0x80131604u);
+    dn2cpp_exc_inflight_pop(inner);
+    dn2cpp_throw(wrapper);
+}
+
 // Shared method dispatch: validate, adjust the receiver for a value-type
 // instance method (pass the unboxed payload at obj+1), and call through the per-shape
 // invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
+static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
+    Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions)
+{
+    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(thunk);
+    try
+    {
+        return invoker(fn, self, args, returnType);
+    }
+    catch (Dn2CppInvokerMissing&)
+    {
+        throw;
+    }
+    catch (Dn2CppException& exception)
+    {
+        if (!wrapExceptions)
+            throw;
+        dn2cpp_throw_target_invocation(exception.obj);
+    }
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     // A metadata-answerable row carries no body at all: it answers from its own type
     // arguments and receiver. A non-generic row is always closed; a generic one is
@@ -2196,7 +2226,24 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
             dn2cpp_throw_argument();
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
-            return d->answer(row.genericArgs, obj);
+        {
+            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && obj == nullptr)
+                dn2cpp_throw_null_reference();
+            try
+            {
+                return d->answer(row.genericArgs, obj);
+            }
+            catch (Dn2CppInvokerMissing&)
+            {
+                throw;
+            }
+            catch (Dn2CppException& exception)
+            {
+                if (!wrapExceptions)
+                    throw;
+                dn2cpp_throw_target_invocation(exception.obj);
+            }
+        }
     }
     if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2213,14 +2260,17 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, row.declaringType)[row.vtableSlot]);
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
+    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
+    // A missing receiver is the caller's fault, raised before the target runs, so
+    // it is never wrapped.
+    if (!isStatic && obj == nullptr)
+        dn2cpp_throw_null_reference();
     if (argc != row.paramCount)
         dn2cpp_throw_argument();
-    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(row.invoker);
-    return invoker(fn, self, args, row.returnType);
+    return dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
 }
 
 struct Dn2CppInvokePlan
@@ -2237,7 +2287,7 @@ struct Dn2CppInvokePlan
 };
 
 static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     struct Entry
     {
@@ -2256,7 +2306,7 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
         if (entry->identity == mi.identity())
         {
             const Dn2CppInvokePlan plan = entry->plan;
-            return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+            return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
         }
     }
     Dn2CppMethodInfo row;
@@ -2270,26 +2320,26 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
             row.vtableSlot, row.genericParamCount };
         entry->plan = plan;
         entry->identity = mi.identity();
-        return dn2cpp_invoke_row(mi, plan, obj, args, argc);
+        return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
     }
-    return dn2cpp_invoke_row(mi, row, obj, args, argc);
+    return dn2cpp_invoke_row(mi, row, obj, args, argc, wrapExceptions);
 }
 
 static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     if (mi == nullptr)
         dn2cpp_throw_invalid_operation();
     if (const Dn2CppMethodInfo* row = mi.native())
-        return dn2cpp_invoke_row(mi, *row, obj, args, argc);
-    return dn2cpp_invoke_encoded(mi, obj, args, argc);
+        return dn2cpp_invoke_row(mi, *row, obj, args, argc, wrapExceptions);
+    return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions);
 }
 
 // MethodInfo.Invoke.
-Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
     return dn2cpp_invoke_mi(dn2cpp_methodref_require(m), obj, (args == nullptr) ? nullptr : args->data,
-                            (args == nullptr) ? 0 : args->length);
+                            (args == nullptr) ? 0 : args->length, wrapExceptions);
 }
 
 // ---- reflection: CreateDelegate (the reflection -> delegate bridge) ----
@@ -2306,7 +2356,7 @@ Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
     if ((mi->attrs & DN2CPP_MTHA_STATIC) == 0 && self == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount);
+    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
@@ -2471,6 +2521,242 @@ Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d)
     return t;
 }
 
+// ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
+#define DN2CPP_MA_FINAL    0x20
+#define DN2CPP_MA_VIRTUAL  0x40
+#define DN2CPP_MA_ABSTRACT 0x400
+
+// Whether a row closes the instantiation whose arguments argAt(0..argc-1) name.
+template<class ArgAt>
+static bool dn2cpp_row_args_equal(const Dn2CppMethodInfo& row, int32_t argc, ArgAt argAt)
+{
+    if (row.genericParamCount != argc)
+        return false;
+    if (argc == 0)
+        return true;
+    if (row.genericArgs == nullptr)
+        return false;
+    for (int32_t i = 0; i < argc; i++)
+        if (row.genericArgs[i] != argAt(i))
+            return false;
+    return true;
+}
+
+// The row compiled for definition `token` at the given arguments; token 0 names no
+// definition, so it never matches.
+template<class ArgAt>
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_find_method_instantiation(
+    const Dn2CppTypeReflection& reflection, int32_t token, int32_t argc, ArgAt argAt)
+{
+    if (token == 0)
+        return {};
+    for (int32_t i = 0; i < reflection.methodCount; i++)
+    {
+        const auto handle = reflection.methods[i];
+        const auto row = handle.operator->();
+        if (row->metadataToken == token && dn2cpp_row_args_equal(*row.operator->(), argc, argAt))
+            return handle;
+    }
+    return {};
+}
+
+static bool dn2cpp_row_params_equal(const Dn2CppMethodInfo& a, const Dn2CppMethodInfo& b)
+{
+    if (a.paramCount != b.paramCount)
+        return false;
+    for (int32_t p = 0; p < a.paramCount; p++)
+        if (a.parameters[p]->paramType != b.parameters[p]->paramType)
+            return false;
+    return true;
+}
+
+// `name` is `member` itself or an explicit implementation "Qualifier.member"; the
+// qualifier is returned through `qualifierLength` (0 for the plain form).
+static bool dn2cpp_names_member(const char* name, const char* member, size_t memberLength,
+                                size_t* qualifierLength)
+{
+    size_t length = std::strlen(name);
+    *qualifierLength = 0;
+    if (length == memberLength)
+        return std::memcmp(name, member, memberLength) == 0;
+    if (length <= memberLength + 1 || name[length - memberLength - 1] != '.'
+        || std::memcmp(name + length - memberLength, member, memberLength) != 0)
+        return false;
+    *qualifierLength = length - memberLength - 1;
+    return true;
+}
+
+// Whether an explicit implementation's qualifier names `itf`: its simple definition
+// name, namespace, nesting and arity suffix stripped — the transpiler's own test.
+static bool dn2cpp_qualifier_names(const char* qualifier, size_t qualifierLength,
+                                   const Dn2CppTypeInfo* itf)
+{
+    const char* full = itf->genericDef != nullptr ? itf->genericDef->name : itf->name;
+    if (full == nullptr)
+        return false;
+    const char* simple = full;
+    for (const char* c = full; *c != '\0'; c++)
+        if (*c == '.' || *c == '+')
+            simple = c + 1;
+    size_t simpleLength = std::strcspn(simple, "`[");
+    if (simpleLength == 0 || simpleLength > qualifierLength)
+        return false;
+    for (size_t i = 0; i + simpleLength <= qualifierLength; i++)
+        if (std::memcmp(qualifier + i, simple, simpleLength) == 0)
+            return true;
+    return false;
+}
+
+// The class override of vtable slot `slot` bound for `receiver`, searched below
+// `owner`. Slots are chain-consistent, so the first row on the slot is the
+// override. A stripped level is passed only when its vtable provably inherits the
+// slot (the strip keeps vtables); otherwise its missing rows could hide the answer.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_target(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner, int32_t slot)
+{
+    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
+    {
+        if ((ti->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
+        {
+            if (ti->vtable != nullptr && ti->base != nullptr && ti->base->vtable != nullptr
+                && ti->vtable[slot] == ti->base->vtable[slot])
+                continue;
+            dn2cpp_require_metadata(ti);
+        }
+        const auto reflection = ti->reflection();
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const auto handle = reflection.methods[i];
+            if (handle->vtableSlot == slot)
+                return handle;
+        }
+    }
+    return {};
+}
+
+// Use the emitter's GVM dispatch decision: a new-slot row may explicitly bind an
+// inherited slot, so its attributes alone cannot identify the bound method. A
+// stripped level could hide a different binding and must still throw.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_gvm_target(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
+    const Dn2CppDelegateMethodIdentity* identity)
+{
+    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
+        dn2cpp_require_metadata(ti);
+    for (int32_t i = 0; i < identity->gvmTargetCount; i++)
+    {
+        const auto& target = identity->gvmTargets[i];
+        if (target.receiverType != receiver)
+            continue;
+        dn2cpp_require_metadata(target.declaringType);
+        return dn2cpp_find_method_instantiation(target.declaringType->reflection(),
+            target.metadataToken, identity->genericArgCount,
+            [identity](int32_t arg) { return identity->genericArgs[arg]; });
+    }
+    return {};
+}
+
+// The implementation an interface binding reached, or {} to answer the declaration
+// (Invoke re-dispatches an interface row through the receiver's table).
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
+    const Dn2CppMethodInfo& decl, const Dn2CppDelegateMethodIdentity* identity, void* bound)
+{
+    const auto argAt = [identity](int32_t i) { return identity->genericArgs[i]; };
+    const bool gvm = decl.genericParamCount != 0;
+    const size_t nameLength = std::strlen(decl.name);
+    size_t qualifierLength = 0;
+    // A reference receiver's slot holds the implementation's own symbol. The name
+    // guard keeps a folded identical body (MSVC /OPT:ICF) from answering; parameter
+    // types may differ from the declaration's under variance.
+    if (!gvm && (receiver->flags & DN2CPP_TF_VALUETYPE) == 0)
+        for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
+        {
+            dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.methodCount; i++)
+            {
+                const auto handle = reflection.methods[i];
+                const auto row = handle.operator->();
+                if ((row->attrs & DN2CPP_MTHA_STATIC) == 0 && row->fnPtr == bound
+                    && row->paramCount == decl.paramCount
+                    && dn2cpp_names_member(row->name, decl.name, nameLength, &qualifierLength))
+                    return handle;
+            }
+        }
+    // A default interface method binds the declaration's own body.
+    if (decl.fnPtr != nullptr && decl.fnPtr == bound)
+        return {};
+    // Value-type unboxing thunks, NFI-erasing thunks and generic-virtual dispatchers
+    // hide the implementation's address: resolve by name as the transpiler bound it.
+    // Plain matches (1) need a body; explicit ones (2) must name the owner.
+    const auto kindOf = [&](const Dn2CppMethodInfo& row) -> int {
+        if ((row.attrs & DN2CPP_MTHA_STATIC) != 0
+            || !dn2cpp_names_member(row.name, decl.name, nameLength, &qualifierLength)
+            || !dn2cpp_row_args_equal(row, identity->genericArgCount, argAt)
+            || !dn2cpp_row_params_equal(row, decl))
+            return 0;
+        if (qualifierLength == 0)
+            return row.fnPtr != nullptr ? 1 : 0;
+        return dn2cpp_qualifier_names(row.name, qualifierLength, owner) ? 2 : 0;
+    };
+    // One level's candidate, explicit preferred; false when two explicit
+    // candidates make the level ambiguous.
+    const auto levelHit = [&](const Dn2CppTypeInfo* ti, bool explicitOnly,
+                              Dn2CppMetadataHandle<Dn2CppMethodInfo>* hit) -> bool {
+        const auto reflection = ti->reflection();
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> explicitHit{};
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> plainHit{};
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const auto handle = reflection.methods[i];
+            const auto row = handle.operator->();
+            int kind = kindOf(*row.operator->());
+            if (kind == 2)
+            {
+                if (explicitHit)
+                    return false;
+                explicitHit = handle;
+            }
+            else if (kind == 1 && !explicitOnly && !plainHit)
+                plainHit = handle;
+        }
+        *hit = explicitHit ? explicitHit : plainHit;
+        return true;
+    };
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
+    if (gvm)
+    {
+        // The dispatcher's order: the first level with any implementation wins.
+        for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
+        {
+            dn2cpp_require_metadata(ti);
+            if (!levelHit(ti, false, &hit))
+                return {};
+            if (hit)
+                return hit;
+        }
+        return {};
+    }
+    // The interface-table order: an explicit implementation anywhere in the chain
+    // beats a plain one.
+    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
+    {
+        dn2cpp_require_metadata(ti);
+        if (!levelHit(ti, true, &hit))
+            return {};
+        if (hit)
+            return hit;
+    }
+    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
+    {
+        levelHit(ti, false, &hit);
+        if (hit)
+            return hit;
+    }
+    return {};
+}
+
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
 {
     if (d == nullptr)
@@ -2481,16 +2767,39 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         // instance even when the delegate was created from a derived-reflected row.
         return reinterpret_cast<Dn2CppObject*>(
             dn2cpp_make_methodref(reinterpret_cast<Dn2CppReflBind*>(t)->method, nullptr));
-    // An IL-constructed delegate's method slot is a bare code address with no
-    // metadata back-reference; callers null-propagate a missing MethodInfo.
-    return nullptr;
+    auto* dg = reinterpret_cast<Dn2CppDelegate*>(d);
+    // Runtime-created and interpreted delegates carry no static identity.
+    const auto* identity = dg->identity;
+    if (identity == nullptr || identity->declaringType == nullptr)
+        return nullptr;
+    const Dn2CppTypeInfo* owner = identity->declaringType;
+    dn2cpp_require_metadata(owner);
+    const auto declared = dn2cpp_find_method_instantiation(owner->reflection(),
+        identity->metadataToken, identity->genericArgCount,
+        [identity](int32_t i) { return identity->genericArgs[i]; });
+    // A runtime-owned or opaque owner carries no method rows.
+    if (!declared)
+        return nullptr;
+    if (!identity->virtualBinding || t == nullptr)
+        return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(declared, nullptr));
+    // A class row's Invoke calls its body directly, so the declaration may answer
+    // only when no override binds.
+    const Dn2CppMethodInfo decl = *declared;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
+    if (decl.genericParamCount != 0 && decl.vtableSlot < 0)
+        hit = dn2cpp_delegate_gvm_target(t->type, owner, identity);
+    else if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
+        hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
+    else if (decl.vtableSlot >= 0)
+        hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));
 }
 
 // ---- reflection: constructors ----
 
 // Allocates a fresh instance of mi->declaringType (a boxed payload for a value type),
 // runs the ctor through its invoker thunk (instance, void return), and returns it.
-static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc)
+static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
 {
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2513,15 +2822,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     Dn2CppObject* self = isValue
         ? reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject))
         : obj;
-    auto invoker = reinterpret_cast<Dn2CppObject* (*)(void*, Dn2CppObject*, Dn2CppObject**, const Dn2CppTypeInfo*)>(mi->invoker);
-    invoker(mi->fnPtr, self, args, nullptr);
+    dn2cpp_invoke_target(mi->invoker, mi->fnPtr, self, args, nullptr, wrapExceptions);
     return obj;
-}
-
-static Dn2CppObject* dn2cpp_ctor_invoke_impl(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, Dn2CppArrayRef* args)
-{
-    return dn2cpp_ctor_invoke_argv(mi, (args == nullptr) ? nullptr : args->data,
-                                   (args == nullptr) ? 0 : args->length);
 }
 
 // Collects a type's own constructors (no base walk — ctors are never inherited,
@@ -2591,9 +2893,10 @@ Dn2CppMethodRef* dn2cpp_type_get_constructor(Dn2CppType* t, Dn2CppArrayRef* para
     return dn2cpp_type_get_constructor_full(t, paramTypes, bindingFlags, 0, nullptr);
 }
 
-Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args)
+Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args, bool wrapExceptions)
 {
-    return dn2cpp_ctor_invoke_impl(dn2cpp_methodref_require(c), args);
+    return dn2cpp_ctor_invoke_argv(dn2cpp_methodref_require(c), args == nullptr ? nullptr : args->data,
+        args == nullptr ? 0 : args->length, wrapExceptions);
 }
 
 // Activator.CreateInstance(Type[, bool nonPublic]): the parameterless form.
@@ -2602,7 +2905,8 @@ Dn2CppObject* dn2cpp_ctorref_invoke(Dn2CppMethodRef* c, Dn2CppArrayRef* args)
 // parameterless ctor is non-public when nonPublic wasn't requested — the
 // parameterless CreateInstance(Type) binds PUBLIC ctors only. A value type
 // with no explicit parameterless ctor yields the zero-initialized boxed value.
-Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
+static Dn2CppObject* dn2cpp_activator_create_default(Dn2CppType* t, int32_t nonPublic,
+    bool wrapExceptions)
 {
     if (t == nullptr)
         dn2cpp_throw_argument_null();
@@ -2616,7 +2920,7 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
         const auto row = ci.operator->();
         if (row->paramCount == 0
             && (nonPublic != 0 || (row->attrs & DN2CPP_MTHA_PUBLIC) != 0))
-            return dn2cpp_ctor_invoke_impl(ci, nullptr);
+            return dn2cpp_ctor_invoke_argv(ci, nullptr, 0, wrapExceptions);
     }
     // A value type with no explicit parameterless ctor: zero-initialized boxed value.
     if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
@@ -2633,6 +2937,11 @@ Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t 
     std::snprintf(buf, sizeof(buf), "No parameterless constructor defined for type '%s'.",
                   ti->name != nullptr ? ti->name : "?");
     dn2cpp_throw_missing_method(buf);
+}
+
+Dn2CppObject* dn2cpp_activator_create_instance_nonpublic(Dn2CppType* t, int32_t nonPublic)
+{
+    return dn2cpp_activator_create_default(t, nonPublic, true);
 }
 
 Dn2CppObject* dn2cpp_activator_create_instance(Dn2CppType* t)
@@ -2845,13 +3154,13 @@ Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32
 
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj)
 {
-    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0);
+    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0, true);
 }
 
 void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value)
 {
     Dn2CppObject* args[1] = { value };
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1, true);
 }
 
 // PropertyInfo.GetIndexParameters(): the indexer parameters, read off the
@@ -2888,16 +3197,18 @@ Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
 // (a non-null Binder is the AOT PlatformNotSupportedException; culture is a
 // no-op like real .NET's default binder on the non-parse path).
 Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj,
-                                               Dn2CppArrayRef* index, Dn2CppObject* binder)
+                                               Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                               bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
     return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj,
                             (index == nullptr) ? nullptr : index->data,
-                            (index == nullptr) ? 0 : index->length);
+                            (index == nullptr) ? 0 : index->length, wrapExceptions);
 }
 
 void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value,
-                                      Dn2CppArrayRef* index, Dn2CppObject* binder)
+                                      Dn2CppArrayRef* index, Dn2CppObject* binder,
+                                      bool wrapExceptions)
 {
     dn2cpp_reflection_check_binder(binder);
     int32_t n = (index == nullptr) ? 0 : index->length;
@@ -2909,7 +3220,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];
     args[n] = value;
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1, wrapExceptions);
 }
 
 // ---- reflection: mixed member lookup (GetMember/GetMembers/GetDefaultMembers) ----
@@ -5343,9 +5654,10 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
         dn2cpp_throw_argument_null();
     const Dn2CppTypeInfo* ti = t->typeInfo;
     int32_t argc = (args == nullptr) ? 0 : args->length;
+    const bool wrapExceptions = (bindingFlags & DN2CPP_BF_DO_NOT_WRAP_EXCEPTIONS) == 0;
     if (argc == 0)
-        return dn2cpp_activator_create_instance_nonpublic(
-            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0);
+        return dn2cpp_activator_create_default(
+            t, (bindingFlags & DN2CPP_BF_NONPUBLIC) != 0 ? 1 : 0, wrapExceptions);
     if ((ti->flags & (DN2CPP_TF_ABSTRACT | DN2CPP_TF_INTERFACE)) != 0)
         dn2cpp_throw_missing_method("Cannot create an instance of an abstract class or interface");
     if (argc > 30)
@@ -5403,5 +5715,5 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
     Dn2CppObject* adapted[30];
     for (int32_t j = 0; j < argc; j++)
         adapted[j] = dn2cpp_binder_adapt_arg(args->data[j], best->parameters[j]->paramType);
-    return dn2cpp_ctor_invoke_argv(best, adapted, argc);
+    return dn2cpp_ctor_invoke_argv(best, adapted, argc, wrapExceptions);
 }

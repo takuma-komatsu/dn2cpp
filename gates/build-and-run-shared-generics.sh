@@ -40,8 +40,13 @@
 # asserted by gates/build-and-run-transpiler-limits.sh.
 # Static synchronized prologues must taint even when the IL never mentions T;
 # instance synchronized bodies remain shared and lock the real receiver.
+# A forwarding caller cold for one real instantiation stays shared: that
+# instantiation's class table still forwards the class and per-method tables.
 # Fixed-type static operands remain direct while type-argument-dependent statics
 # in the same shared body use per-instantiation storage through rgctx.
+# A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
+# dispatches a base-typed call to the base body, never to the hider's override.
+# Same-name generic overloads with equal arity and parameter count keep distinct slots.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -305,6 +310,27 @@ if grep -Eq 'sf_GenericStaticsSubset_StaticCell_(String|Object|_CnRef)_Value' <<
     exit 1
 fi
 
+# Consumer<Cold> never reaches Forward/ForwardPair but shares their class table,
+# so the bodies stay shared only if Cold's table forwards real callee tables.
+for body in Forward ForwardPair; do
+    grep -Fxq "// RgctxForwardingSubset.Consumer_\$CnRef::$body" "$out"/generated* \
+        || { echo "FAIL: cold forwarding caller lost its shared body: $body" >&2; exit 1; }
+    if grep -Fxq "// RgctxForwardingSubset.Consumer_RgctxForwardingSubset_Warm::$body" "$out"/generated*; then
+        echo "FAIL: cold forwarding caller fell back to per-instantiation bodies: $body" >&2
+        exit 1
+    fi
+done
+cold_table=$(grep -h '^const void\* const rgctx_RgctxForwardingSubset_Consumer_RgctxForwardingSubset_Cold\[\] = ' \
+    "$out"/generated* || true)
+grep -Fq '(rgctx_RgctxForwardingSubset_Provider_RgctxForwardingSubset_Cold)' <<< "$cold_table" \
+    || { echo "FAIL: Consumer<Cold> table does not forward Provider<Cold>'s table" >&2; exit 1; }
+pair_table=$(grep -oE 'rgctx_PairProvider_1_Pair_TisCold_m[0-9]+' <<< "$cold_table" || true)
+[ -n "$pair_table" ] \
+    || { echo "FAIL: Consumer<Cold> table does not forward PairProvider<Cold>.Pair<Cold>'s table" >&2; exit 1; }
+pair_def=$(grep -h "^const void\\* const ${pair_table}\\[\\] = " "$out"/generated* || true)
+grep -Fq '(&sf_RgctxForwardingSubset_Tally_RgctxForwardingSubset_Cold_Count)' <<< "$pair_def" \
+    || { echo "FAIL: forwarded per-method table $pair_table is not defined over Tally<Cold>" >&2; exit 1; }
+
 echo "== 5/7 Transpiling with --no-shared-generics (size regression check) =="
 invoke_cli "$app" "${refs[@]}" --no-shared-generics -o "$out-off"
 on_bytes=$(cat "$out"/generated*.cpp | wc -c | tr -d ' ')
@@ -349,5 +375,23 @@ for line in \
     'sync instance string own=False' 'sync instance object own=False' 'sync instance other=True'; do
     grep -Fxq "$line" <<<"$native" \
         || { echo "FAIL: synchronized prologue witness missing: $line" >&2; exit 1; }
+done
+before_forwarding=$(strip_cr_win "$(dotnet "$app" before-forwarding)")
+prefix=$(awk '/^rgctx cold forwarding=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_forwarding"
+for line in 'rgctx cold forwarding=1' 'rgctx cold method forwarding=1' 'rgctx cold identity=Cold'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: cold generic-context forwarding witness missing: $line" >&2; exit 1; }
+done
+before_gvm_hider=$(strip_cr_win "$(dotnet "$app" before-gvm-hider)")
+prefix=$(awk '/^gvm hider base=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_gvm_hider"
+for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
+    'gvm hider mid=mid:String' 'gvm hider midhider=midleaf:String' \
+    'gvm hider plain=base:Int32' 'gvm hider plain direct=plain:Int32' \
+    'gvm hider overload generic=generic' 'gvm hider overload object=derived object' \
+    'gvm hider covariant=True'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

@@ -326,7 +326,7 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // Delegate.Target: the bound receiver out of the uniform delegate
-            // layout ({target, method, prev}); null for a static-method delegate.
+            // layout's target slot; null for a static-method delegate.
             // The runtime helper unwraps a reflection-bind node (CreateDelegate)
             // to the user-visible bound target.
             case ("System.Delegate", "get_Target"):
@@ -408,13 +408,10 @@ internal sealed partial class MethodCompiler
                     $"((((Dn2CppDelegate*){Cast(d, "Dn2CppObject*")})->prev == nullptr) ? 1 : 0)");
                 return true;
             }
-            // Delegate.Method: a reflection-bound delegate (CreateDelegate)
-            // reports its methtab row's MethodInfo; an IL-constructed delegate
-            // carries no method-metadata back-reference (f_method is a bare code
-            // address), so it stays null — callers null-propagate a missing
-            // MethodInfo into their "not valid" fallback.
+            // The logical method identity survives static adapters and shared bodies.
             case ("System.Delegate", "get_Method"):
             {
+                Comp.NoteDelegateMethodRead();
                 var d = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({Cast(d, "Dn2CppObject*")})");
                 return true;

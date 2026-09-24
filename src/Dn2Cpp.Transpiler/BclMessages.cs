@@ -44,6 +44,7 @@ internal static class BclMessages
         "Arg_NullReferenceException",
         "Arg_DivideByZero",
         "Arg_SynchronizationLockException",
+        "Arg_TargetInvocationException",
         // Composite formats a runtime throw site fills from what it already holds.
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",

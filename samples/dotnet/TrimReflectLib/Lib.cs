@@ -84,6 +84,33 @@ namespace TrimReflectLib
         public int Echo(int x) => x;
     }
 
+    // Delegate.Method over receivers met only through library bases. LibSquare
+    // inherits a slot; LibCircle overrides it; LibDisc inherits that override;
+    // LibGvmLeaf overrides a generic virtual slot. The receivers can all strip.
+    public class LibShape
+    {
+        public virtual string Kind() => "shape";
+    }
+
+    public class LibSquare : LibShape { }
+
+    public class LibCircle : LibShape
+    {
+        public override string Kind() => "circle";
+    }
+
+    public class LibDisc : LibCircle { }
+
+    public class LibGvmShape
+    {
+        public virtual string Kind<T>() => "gvm-base";
+    }
+
+    public class LibGvmLeaf : LibGvmShape
+    {
+        public override string Kind<T>() => "gvm-leaf";
+    }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what
@@ -101,5 +128,10 @@ namespace TrimReflectLib
         public static object MakeBoxDefault() => new LibBox<int>();
 
         public static object MakeColor() => LibColor.Green;
+
+        public static LibShape MakeSquare() => new LibSquare();
+        public static LibShape MakeCircle() => new LibCircle();
+        public static LibShape MakeDisc() => new LibDisc();
+        public static LibGvmShape MakeGenericShape() => new LibGvmLeaf();
     }
 }
