@@ -4894,8 +4894,8 @@ internal sealed partial class Compilation
                                 _reflectionInvokeUsed = true;
                             // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type)
                             // -> reach app-module ctors so a reflected ctor is invokable.
-                            else if ((mrName == "Invoke" && mrParent == "System.Reflection.ConstructorInfo")
-                                || (mrName == "CreateInstance" && mrParent == "System.Activator"))
+                            // ILDiet keeps typeof-named ctors on the same predicate.
+                            else if (PreservationReader.ConstructsFromRuntimeType(mrParent, mrName))
                                 _reflectionCtorUsed = true;
                             // Type.MakeGenericType -> arm the runtime-instantiation
                             // template pass (paired with the typeof(D<>) record in

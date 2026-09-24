@@ -40,6 +40,10 @@ operands. Generic arguments retain instance constructors and property accessors,
 including private setters, because generic factories and serializers can select
 them without direct call tokens. Their base types, instance field and property
 types, and constructor parameter types retain the same data surface recursively.
+Once a retained body calls non-generic `Activator.CreateInstance` or
+`ConstructorInfo.Invoke`, or a copied assembly references either, every
+application type that a retained body names with `typeof`, open generic
+definitions included, retains its instance constructors.
 It does not specialize generics or perform dn2cpp intrinsic lowering.
 Framework assemblies and dn2cpp runtime/codec/HTTP shims are copied unchanged.
 They contain runtime dependencies that are introduced during later transpilation.
