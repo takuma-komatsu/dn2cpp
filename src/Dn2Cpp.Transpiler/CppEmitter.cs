@@ -5669,8 +5669,10 @@ internal sealed partial class CppEmitter
             {
                 if (SkipsCanonicalMetadata(type))
                     continue;
-                templateCase |= IsRuntimeTemplateLevel(type);
-                string thrown = AmbiguousImplementationThrow(AmbiguousImplementationMessage(type, disp.Decl, gvm));
+                bool template = IsRuntimeTemplateLevel(type);
+                templateCase |= template;
+                // __t names a clone's template; the message names the clone.
+                string thrown = AmbiguousImplementationThrow(type, disp.Decl, gvm, template ? "a0" : null);
                 branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}");
             }
             // A runtime-synthesized clone takes its template level's case. The
@@ -5847,21 +5849,36 @@ internal sealed partial class CppEmitter
         return SlotStubDef(name, $"{reporter}(\"{lit}\");", decl);
     }
 
-    /// <summary>Renders the stub for an interface slot with no most specific
-    /// body, in the same exact-signature form as a named slot-miss stub.</summary>
-    internal string AmbiguousSlotStubDef(string name, string message, MethodInfo decl) =>
-        SlotStubDef(name, AmbiguousImplementationThrow(message), decl);
-
     /// <summary>The statement raising .NET's AmbiguousImplementationException
-    /// with <paramref name="message"/>.</summary>
-    private static string AmbiguousImplementationThrow(string message) =>
-        $"dn2cpp_throw_ambiguous_implementation({CppUtf8Literal(message)});";
-
-    private string SlotStubDef(string name, string body, MethodInfo decl)
+    /// for <paramref name="receiver"/>. A non-null <paramref name="self"/> is
+    /// the C++ receiver expression, whose type the runtime names in the
+    /// message: a MakeGenericType instantiation shares the dispatch of the
+    /// runtime template it was cloned from. Every other receiver's name is
+    /// exact at compile time.</summary>
+    private static string AmbiguousImplementationThrow(ClassInfo receiver, ClassInfo itf, MethodInfo slot, string? self)
     {
-        string sig = SlotTrapShape(decl) is { } s
-            ? $"{s.Ret} {name}({string.Join(", ", s.ParamTypes)})"
-            : $"void {name}()";
+        if (self is null)
+            return $"dn2cpp_throw_ambiguous_implementation({CppUtf8Literal(AmbiguousImplementationMessage(receiver, itf, slot))});";
+        var (head, tail) = AmbiguousImplementationMessageParts(receiver, itf, slot);
+        return $"dn2cpp_throw_ambiguous_implementation_for({self}, {CppUtf8Literal(head)}, {CppUtf8Literal(tail)});";
+    }
+
+    /// <summary>A non-null <paramref name="self"/> names the receiver parameter
+    /// for <paramref name="body"/>, so the slot's signature must render.</summary>
+    private string SlotStubDef(string name, string body, MethodInfo decl, string? self = null)
+    {
+        string sig;
+        if (SlotTrapShape(decl) is { } s)
+        {
+            var ps = s.ParamTypes;
+            if (self is not null)
+                ps[0] = "void* " + self;
+            sig = $"{s.Ret} {name}({string.Join(", ", ps)})";
+        }
+        else if (self is null)
+            sig = $"void {name}()";
+        else
+            throw new InvalidOperationException($"{name}: a receiver-reading stub needs the slot's signature");
         return $"[[maybe_unused]] static {sig} {{ {body} }}";
     }
 

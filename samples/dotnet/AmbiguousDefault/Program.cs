@@ -11,6 +11,12 @@ namespace AmbiguousDefault
     {
     }
 
+    // Named only through typeof, so MakeGenericType synthesizes the receiver
+    // from a runtime template.
+    public sealed class BothOf<T> : ILeft, IRight
+    {
+    }
+
     internal static class Program
     {
         private static void Main()
@@ -54,6 +60,28 @@ namespace AmbiguousDefault
                 Report("take<string>", e);
             }
             Console.WriteLine("after: " + value.Plain());
+
+            Console.WriteLine("== a MakeGenericType receiver ==");
+            Type made = typeof(BothOf<>).MakeGenericType(typeof(int));
+            IBase madeValue = (IBase)Activator.CreateInstance(made);
+            Console.WriteLine("made plain: " + madeValue.Plain());
+            try
+            {
+                Console.WriteLine("made pick: " + madeValue.Pick(3, "three"));
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("made pick", e);
+            }
+            try
+            {
+                Console.WriteLine("made pick-generic<int>: " + madeValue.PickGeneric<int>());
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("made pick-generic<int>", e);
+            }
+            Console.WriteLine("made after: " + madeValue.Plain());
         }
 
         private static void Report(string label, AmbiguousImplementationException e)

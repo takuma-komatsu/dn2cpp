@@ -13,12 +13,22 @@ internal sealed partial class CppEmitter
     /// and the receiver's assembly display name.</summary>
     internal static string AmbiguousImplementationMessage(ClassInfo receiver, ClassInfo itf, MethodInfo slot)
     {
+        var (head, tail) = AmbiguousImplementationMessageParts(receiver, itf, slot);
+        return head + ClrTypeName(receiver, canonical: false) + tail;
+    }
+
+    /// <summary><see cref="AmbiguousImplementationMessage"/> before and after
+    /// the receiver's type name, for a receiver only the runtime can
+    /// name.</summary>
+    private static (string Head, string Tail) AmbiguousImplementationMessageParts(
+        ClassInfo receiver, ClassInfo itf, MethodInfo slot)
+    {
         string method = ClrTypeName(itf, canonical: true) + "." + slot.Name
             + "(" + string.Join(", ", ClrSignatureParameters(itf, slot)) + ")";
-        return "Could not call method '" + method + "' on interface '" + ClrTypeName(itf, canonical: false)
-            + "' with type '" + ClrTypeName(receiver, canonical: false) + "' from assembly '"
-            + AssemblyDisplayName(receiver.Module)
-            + "' because there are multiple incompatible interface methods overriding this method.";
+        return ("Could not call method '" + method + "' on interface '" + ClrTypeName(itf, canonical: false)
+                + "' with type '",
+            "' from assembly '" + AssemblyDisplayName(receiver.Module)
+                + "' because there are multiple incompatible interface methods overriding this method.");
     }
 
     /// <summary><c>Name, Version=v, Culture=c, PublicKeyToken=t</c>, as

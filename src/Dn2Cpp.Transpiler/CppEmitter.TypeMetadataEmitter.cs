@@ -1167,11 +1167,14 @@ internal sealed partial class CppEmitter
 
         // A slot whose sibling interface overrides leave no most specific body:
         // the stub throws .NET's AmbiguousImplementationException with its message.
+        // A MakeGenericType instantiation copies its runtime template's table, so
+        // a template's stub reads the receiver's type name where it has a receiver.
         private string AmbiguousSlotStub(ClassInfo cls, ClassInfo itf, MethodInfo decl)
         {
-            string message = AmbiguousImplementationMessage(cls, itf, decl);
-            return PooledSlotStub("slotambig_", "\0ambiguous\0" + message,
-                name => _e.AmbiguousSlotStubDef(name, message, decl));
+            string? self = _e.IsRuntimeTemplateLevel(cls) && _e.SlotTrapShape(decl) is not null ? "self" : null;
+            string body = AmbiguousImplementationThrow(cls, itf, decl, self);
+            return PooledSlotStub("slotambig_", body,
+                name => _e.SlotStubDef(name, body, decl, self));
         }
 
         private string PooledSlotStub(string prefix, string key, Func<string, string> define)

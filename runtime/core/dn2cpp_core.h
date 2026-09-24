@@ -2593,6 +2593,9 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // default body. The emitter bakes .NET's message into the call; the exception
 // carries .NET's HResult.
 [[noreturn]] void dn2cpp_throw_ambiguous_implementation(const char* message);
+// The same exception for a receiver whose type the emitter cannot name (a
+// MakeGenericType instantiation): its Type.ToString() between head and tail.
+[[noreturn]] void dn2cpp_throw_ambiguous_implementation_for(const void* receiver, const char* head, const char* tail);
 // A runtime entry point's null managed receiver (matching real .NET's
 // NullReferenceException for the instance call it stands in for) — catchable,
 // where the dereference it replaces was a SIGSEGV.
