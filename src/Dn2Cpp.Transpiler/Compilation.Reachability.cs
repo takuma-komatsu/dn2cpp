@@ -1439,6 +1439,9 @@ internal sealed partial class Compilation
         public int ParamCount;
         // concrete allocated type -> its override impl (or Gvm itself for the base default).
         public readonly Dictionary<ClassInfo, MethodInfo> Cases = new();
+        // Interface GVM receivers whose derived-interface overrides have no most
+        // specific body; they must not fall back to the base default.
+        public readonly HashSet<ClassInfo> Ambiguous = new();
     }
 
     private readonly Dictionary<string, GvmDispatch> _usedGvms = new();
@@ -1488,7 +1491,7 @@ internal sealed partial class Compilation
     /// Routes to the base default when <paramref name="c"/> declares no override.</summary>
     private void ReachGvmImpl(GvmDispatch disp, ClassInfo c)
     {
-        if (disp.Cases.ContainsKey(c))
+        if (disp.Cases.ContainsKey(c) || disp.Ambiguous.Contains(c))
             return;
         if (disp.Decl.IsInterface)
         {
@@ -1510,7 +1513,7 @@ internal sealed partial class Compilation
                 disp.Cases[c] = impl;
                 return;
             }
-            var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm);
+            var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out bool ambiguous);
             if (derived is { } selected)
             {
                 var impl = InstantiateMethodOnClass(selected.Interface, selected.Interface.Module,
@@ -1519,9 +1522,15 @@ internal sealed partial class Compilation
                 disp.Cases[c] = impl;
                 return;
             }
-            // No implementation template anywhere in the chain: the type is never
-            // dispatched through this GVM (no case emitted; the dispatcher's
-            // fallback traps, matching an abstract slot that cannot bind).
+            // Sibling overrides give the CLR no most specific body, so the
+            // base default must not run.
+            if (ambiguous)
+            {
+                disp.Ambiguous.Add(c);
+                return;
+            }
+            // No implementation anywhere: the dispatcher's fallback runs the
+            // declaration's default body, or traps when it has none.
             return;
         }
         if (!DerivesFromOrIs(c, disp.Decl))
@@ -1547,8 +1556,9 @@ internal sealed partial class Compilation
     }
 
     private (ClassInfo Interface, MethodDefinitionHandle Body)?
-        FindDerivedInterfaceGenericMethodTemplate(ClassInfo receiver, MethodInfo slot)
+        FindDerivedInterfaceGenericMethodTemplate(ClassInfo receiver, MethodInfo slot, out bool ambiguous)
     {
+        ambiguous = false;
         var candidates = new List<(ClassInfo Interface, MethodDefinitionHandle Body)>();
         foreach (var itf in GetInterfaceClosure(receiver).Ordered)
         {
@@ -1571,7 +1581,10 @@ internal sealed partial class Compilation
             if (shadowed)
                 continue;
             if (selected is not null)
+            {
+                ambiguous = true;
                 return null;
+            }
             selected = candidate;
         }
         return selected;

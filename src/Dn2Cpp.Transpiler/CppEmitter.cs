@@ -5652,6 +5652,14 @@ internal sealed partial class CppEmitter
                     continue;
                 o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
             }
+            // An ambiguous interface override reaches the same trap as an
+            // unresolved interface-table slot instead of the base default.
+            foreach (var type in disp.Ambiguous.OrderBy(t => t.CppName, StringComparer.Ordinal))
+            {
+                if (SkipsCanonicalMetadata(type) || IsRuntimeTemplateLevel(type))
+                    continue;
+                o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) dn2cpp_itf_slot_missing(a0);");
+            }
             // Base default: the GVM's own (declaring-type) implementation. When it has no
             // body (an abstract generic virtual), every concrete type must have overridden
             // it, so the fallback is unreachable — trap rather than link a missing symbol.
