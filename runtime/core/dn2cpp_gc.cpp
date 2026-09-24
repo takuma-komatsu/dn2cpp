@@ -2398,15 +2398,16 @@ Dn2CppObject* dn2cpp_weakcell_read(const Dn2CppWeakCell* cell)
 #endif
 }
 
-// Stores target (hidden) and, if non-null, registers &cell->hiddenTarget as a
-// disappearing/long link of the kind cell->isLong says. Boehm requires the
-// link to be a pointer-sized slot inside a GC-allocated object —
-// Dn2CppWeakCell itself, allocated via dn2cpp_alloc, satisfies that.
+// Stores target (hidden) and registers a disappearing or long link for GC-heap
+// targets. Boehm requires the link slot inside a GC-allocated object; the
+// atomic Dn2CppWeakCell satisfies that.
 void dn2cpp_weakcell_write_and_link(Dn2CppWeakCell* cell, Dn2CppObject* target)
 {
 #ifdef DN2CPP_USE_BOEHM_GC
     cell->hiddenTarget = static_cast<intptr_t>(GC_HIDE_POINTER(target));
-    if (target == nullptr)
+    // Managed targets outside Boehm's heap, including image-resident
+    // RuntimeType objects, have process lifetime and need no disappearing link.
+    if (target == nullptr || GC_base(target) == nullptr)
         return;
     void** link = reinterpret_cast<void**>(&cell->hiddenTarget);
     if (cell->isLong)
