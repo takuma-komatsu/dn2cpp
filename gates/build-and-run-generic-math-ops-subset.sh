@@ -54,8 +54,9 @@ gate_extra_asserts() {
     grep -Fxq 'static inherited generic derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
     grep -Fxq 'static inherited most most:Int32/most:String/derived/derived/most' "$out/static-selection.stdout"
     DN2CPP_BEFORE_STATIC_IMPL_SELECTION=1 run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection-prefix.stdout"
-    diff -u "$out/static-selection-prefix.stdout" \
-        <(sed '/^== Static interface implementation selection ==/,$d' "$out/static-selection.stdout")
+    # Native stdout uses CRLF on Windows; normalize both sides before diffing.
+    diff -u <(tr -d '\r' < "$out/static-selection-prefix.stdout") \
+        <(sed '/^== Static interface implementation selection ==/,$d' "$out/static-selection.stdout" | tr -d '\r')
 }
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime
