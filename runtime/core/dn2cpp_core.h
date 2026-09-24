@@ -1441,6 +1441,8 @@ inline constexpr const char* DN2CPP_SR_NULL_REFERENCE = "Arg_NullReferenceExcept
 inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
+inline constexpr const char* DN2CPP_SR_TARGET_EXCEPTION = "Arg_TargetException";
+inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_DATEONLY = "Format_BadDateOnly";
@@ -2207,6 +2209,8 @@ extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // interface slot whose derived interfaces give it no most specific body.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
+extern Dn2CppTypeInfo dn2cpp_target_exception_type;
+extern Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type;
 extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.

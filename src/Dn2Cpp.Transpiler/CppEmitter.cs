@@ -4454,7 +4454,9 @@ internal sealed partial class CppEmitter
     /// unboxes/casts each boxed arg to the parameter's C++ type, calls the method's
     /// fn pointer with the correct signature, and boxes the result. Reference-typed
     /// params/return collapse to a uniform pointer (so all-ref signatures share one
-    /// thunk); value types keep their exact C++ type. A value-type receiver's payload
+    /// thunk); value types keep their exact C++ type and accept null as their default
+    /// value. The dispatcher checks non-null arguments against the row's parameter
+    /// types before entering the thunk. A value-type receiver's payload
     /// adjustment is done by the runtime dispatcher, so the receiver is a plain
     /// pointer here. ref/out/pointer params are treated as pointers — invoking such a
     /// method via reflection is out of scope (the thunk still links). Callers gate on
@@ -4519,7 +4521,7 @@ internal sealed partial class CppEmitter
             {
                 key.Append('_').Append(CppNaming.Sanitize(cpp));
                 sigParams.Add(cpp);
-                callArgs.Add($"*({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject))");
+                callArgs.Add($"(args[{i}] == nullptr ? {cpp}{{}} : *({cpp}*)((char*)args[{i}] + sizeof(Dn2CppObject)))");
             }
         }
         // Return shape.

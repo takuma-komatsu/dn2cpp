@@ -729,6 +729,14 @@ const Dn2CppType dn2cpp_application_exception_type_obj = { { &dn2cpp_type_type }
 Dn2CppTypeInfo dn2cpp_target_invocation_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.TargetInvocationException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_invocation_exception_type_obj);
 const Dn2CppType dn2cpp_target_invocation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_invocation_exception_type };
+extern const Dn2CppType dn2cpp_target_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_target_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_exception_type_obj);
+const Dn2CppType dn2cpp_target_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_exception_type };
+extern const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetParameterCountException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_parameter_count_exception_type_obj);
+const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_parameter_count_exception_type };
 // Activator/ConstructorInfo constructor resolution with no matching ctor,
 // matching .NET's MissingMethodException. Direct System.Exception base (the
 // MissingMemberException/MemberAccessException intermediates are not modeled,

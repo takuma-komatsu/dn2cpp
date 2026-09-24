@@ -1909,8 +1909,6 @@ static Dn2CppObject* dn2cpp_meta_object_memberwise_clone(const Dn2CppTypeInfo* c
                                                          Dn2CppObject* receiver)
 {
     (void)args; // non-generic
-    // A null receiver is a catchable NullReferenceException from the helper itself,
-    // which is what an instance Invoke(null, …) raises on both runtimes.
     return dn2cpp_object_memberwise_clone(receiver);
 }
 
@@ -2229,6 +2227,27 @@ static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* s
     }
 }
 
+static void dn2cpp_validate_invoke_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    Dn2CppObject** args, int32_t argc)
+{
+    for (int32_t i = 0; i < argc; i++)
+    {
+        Dn2CppObject* arg = args[i];
+        if (arg == nullptr)
+            continue;
+        const Dn2CppTypeInfo* expected = mi->parameters[i]->paramType;
+        if (dn2cpp_typeinfo_assignable(arg->type, expected) != 0)
+            continue;
+        // CultureInfo and NumberFormatInfo escape through runtime wrappers whose
+        // type headers have no emitted IFormatProvider interface table.
+        if (expected != nullptr && expected->name != nullptr
+            && std::strcmp(expected->name, "System.IFormatProvider") == 0
+            && dn2cpp_nfi_isinst(arg, DN2CPP_NFI_KIND_PROVIDER, expected) != nullptr)
+            continue;
+        dn2cpp_throw_argument();
+    }
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
@@ -2242,12 +2261,15 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         && (row.genericParamCount == 0 || row.genericArgs != nullptr))
     {
         if (argc != row.paramCount)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
         {
-            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && obj == nullptr)
-                dn2cpp_throw_null_reference();
+            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0
+                && (obj == nullptr || dn2cpp_typeinfo_assignable(obj->type,
+                        row.declaringType) == 0))
+                dn2cpp_throw_of(&dn2cpp_target_exception_type);
+            dn2cpp_validate_invoke_args(mi, args, argc);
             try
             {
                 return d->answer(row.genericArgs, obj);
@@ -2267,25 +2289,25 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();
     void* fn = row.fnPtr;
+    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
+    if (!isStatic && (obj == nullptr || dn2cpp_typeinfo_assignable(obj->type,
+            row.declaringType) == 0))
+        dn2cpp_throw_of(&dn2cpp_target_exception_type);
+    if (argc != row.paramCount)
+        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
+    dn2cpp_validate_invoke_args(mi, args, argc);
     // Late-bound call on an interface-declared row: the row is signature-only (an
     // interface method has no body, so fnPtr is null), but its invoker thunk was
     // emitted, and the receiver's implementation is what a callvirt would resolve —
     // same walk, same slot index, same ABI. The thunk passes the receiver unadjusted,
     // since the value-type adjustment below keys on the DECLARING type and an
     // interface is never a value type. A miss in the walk stays the walk's own loud
-    // abort; a receiverless call falls through to the InvalidOperationException below.
+    // abort.
     if (fn == nullptr && obj != nullptr && row.vtableSlot >= 0
         && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
         fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, row.declaringType)[row.vtableSlot]);
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
-    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
-    // A missing receiver is the caller's fault, raised before the target runs, so
-    // it is never wrapped.
-    if (!isStatic && obj == nullptr)
-        dn2cpp_throw_null_reference();
-    if (argc != row.paramCount)
-        dn2cpp_throw_argument();
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
@@ -2978,7 +3000,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
     if (argc != mi->paramCount)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
+    dn2cpp_validate_invoke_args(mi, args, argc);
     const Dn2CppTypeInfo* ti = mi->declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
@@ -3365,11 +3388,10 @@ Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
 // PropertyInfo.GetValue(obj, object[] index) / SetValue(obj, value, object[]
 // index): the indexed forms, routed through the accessor rows' boxed invokers.
 // A null/empty index behaves like the plain forms; an index-count mismatch
-// surfaces as the invoker's argument-count ArgumentException (a documented
-// divergence from .NET's TargetParameterCountException, same posture as
-// MethodInfo.Invoke). The BindingFlags/Binder/CultureInfo forms route here too
-// (a non-null Binder is the AOT PlatformNotSupportedException; culture is a
-// no-op like real .NET's default binder on the non-parse path).
+// raises TargetParameterCountException. The BindingFlags/Binder/CultureInfo
+// forms route here too (a non-null Binder is the AOT
+// PlatformNotSupportedException; culture is a no-op like real .NET's default
+// binder on the non-parse path).
 Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj,
                                                Dn2CppArrayRef* index, Dn2CppObject* binder,
                                                bool wrapExceptions)
@@ -3389,7 +3411,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     // The setter's signature is (indices..., value): cap indexer arity at a
     // generous fixed bound rather than allocating (real indexers are tiny).
     if (n > 30)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
     Dn2CppObject* args[31];
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];

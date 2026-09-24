@@ -398,6 +398,8 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_divide_by_zero_exception_type) return DN2CPP_SR_DIVIDE_BY_ZERO;
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
     if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
+    if (ti == &dn2cpp_target_exception_type) return DN2CPP_SR_TARGET_EXCEPTION;
+    if (ti == &dn2cpp_target_parameter_count_exception_type) return DN2CPP_SR_TARGET_PARAMETER_COUNT;
     return nullptr;
 }
 
