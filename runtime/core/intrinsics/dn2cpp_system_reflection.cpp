@@ -87,6 +87,13 @@ static const Dn2CppRuntimeTemplate* dn2cpp_runtime_template_by_ti(const Dn2CppTy
     return nullptr;
 }
 
+// One row per definition, so the clone's genericDef names the row it was copied from.
+const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
+{
+    const Dn2CppRuntimeTemplate* row = dn2cpp_runtime_template_by_def(clone->genericDef);
+    return row != nullptr ? row->templateTi : clone;
+}
+
 // Synthesized instantiations intern on (def, args): one managed type is exactly
 // one Dn2CppTypeInfo* (the invariant every pointer-comparing walk rests on), so a
 // second MakeGenericType with the same arguments must return the first pointer.
@@ -2671,15 +2678,19 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_targ
 }
 
 // Use the emitter's selected method for an interface or GVM binding. An
-// unrecorded class GVM still needs metadata for each receiver level.
+// unrecorded class GVM still needs metadata for each receiver level. A clone's
+// case is recorded on its template level, as its dispatcher branches.
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_recorded_target(
     const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
     const Dn2CppDelegateMethodIdentity* identity)
 {
+    const Dn2CppTypeInfo* recorded = (receiver->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0
+        ? dn2cpp_runtime_template_of(receiver)
+        : receiver;
     for (int32_t i = 0; i < identity->targetCount; i++)
     {
         const auto& target = identity->targets[i];
-        if (target.receiverType != receiver)
+        if (target.receiverType != recorded)
             continue;
         dn2cpp_require_metadata(target.declaringType);
         return dn2cpp_find_method_instantiation(target.declaringType->reflection(),

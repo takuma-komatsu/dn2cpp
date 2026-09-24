@@ -1034,10 +1034,11 @@ internal sealed partial class CppEmitter
                 int targetCount = 0;
                 if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
                 {
+                    // The dispatcher's branches, template levels included: the
+                    // runtime looks a clone up by its template level.
                     var targets = disp.Cases
                         .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
                             && !_e.SkipsCanonicalMetadata(kv.Key)
-                            && !_e.IsRuntimeTemplateLevel(kv.Key)
                             && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
                         .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
                         .ToList();
@@ -1060,7 +1061,8 @@ internal sealed partial class CppEmitter
                 {
                     // A declaration's own default body is recorded too, so the
                     // runtime can tell an emitted receiver from one it must
-                    // resolve without this table.
+                    // resolve without this table. A clone resolves without it:
+                    // its interface slots hold the bodies its own rows name.
                     var targets = new List<(ClassInfo Receiver, MethodInfo Target)>();
                     foreach (var receiver in _c.AllocatedRefTypes.ToList())
                     {

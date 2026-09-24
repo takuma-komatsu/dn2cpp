@@ -1131,10 +1131,13 @@ internal sealed partial class Compilation
     /// shareable, and every rgctx slot its level accumulated must be a TypeInfo
     /// read whose token re-resolves (under the template's own context) to a bare
     /// per-index placeholder — the one entry a MakeGenericType fill can synthesize
-    /// from its argument array. Anything else fails the WHOLE template: its
-    /// bodies stay undonated and are dropped like any other canonical world's,
-    /// and the runtime diagnostic keeps naming the missing instantiation.
-    /// Returns the eligible templates' bodies as retention seeds.</summary>
+    /// from its argument array. No level may own a generic-virtual body a clone
+    /// would dispatch to (see <see cref="OverridesPlaceholderLevelGvm"/>), so a
+    /// template level's dispatcher case serves every clone. Anything else fails
+    /// the WHOLE template: its bodies stay undonated and are dropped like any
+    /// other canonical world's, and the runtime diagnostic keeps naming the
+    /// missing instantiation. Returns the eligible templates' bodies as
+    /// retention seeds.</summary>
     private List<MethodInfo> JudgeRuntimeTemplates(Func<ClassInfo, MethodInfo, bool> backendSkips)
     {
         var seeds = new List<MethodInfo>();
@@ -1153,7 +1156,7 @@ internal sealed partial class Compilation
             var levels = new List<ClassInfo>();
             for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
                 levels.Add(lv);
-            bool ok = levels.Count > 0;
+            bool ok = levels.Count > 0 && !OverridesPlaceholderLevelGvm(levels);
             var bodies = new List<MethodInfo>();
             foreach (var lv in levels)
             {
@@ -1224,6 +1227,43 @@ internal sealed partial class Compilation
             seeds.AddRange(bodies);
         }
         return seeds;
+    }
+
+    /// <summary>Whether a clone of the chain <paramref name="levels"/> (derived
+    /// first) could dispatch a used class generic virtual method to a body on a
+    /// placeholder level. When the method's declaring instantiation shares a
+    /// level's definition, clones are receivers of its dispatcher while the
+    /// template is not, and an override above that level would run as a
+    /// per-argument generic-method instantiation no clone can mint. Name,
+    /// generic arity and the virtual bit match every override spelling and may
+    /// also match a hider, which only fails the template. Interface-declared
+    /// methods need no check: the shape bound keeps placeholders out of every
+    /// interface a level implements.</summary>
+    private bool OverridesPlaceholderLevelGvm(List<ClassInfo> levels)
+    {
+        foreach (var disp in _usedGvms.Values)
+        {
+            if (disp.Decl.IsInterface)
+                continue;
+            int declLevel = levels.FindIndex(lv =>
+                lv.Module == disp.Decl.Module && lv.Handle == disp.Decl.Handle);
+            for (int i = 0; i < declLevel; i++)
+            {
+                var lv = levels[i];
+                if (!TypeDefMethodNames(lv.Module, lv.Handle).ByName
+                        .TryGetValue(disp.Gvm.Name, out var candidates))
+                    continue;
+                var reader = lv.Module.Reader;
+                foreach (var candidate in candidates)
+                {
+                    var md = reader.GetMethodDefinition(candidate);
+                    if ((md.Attributes & System.Reflection.MethodAttributes.Virtual) != 0
+                        && md.GetGenericParameters().Count == disp.MethodArgs.Length)
+                        return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ---- runtime generic context (rgctx): slot registries and table fill ----

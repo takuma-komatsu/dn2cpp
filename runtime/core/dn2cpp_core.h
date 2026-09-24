@@ -1381,6 +1381,11 @@ struct Dn2CppRuntimeTemplate
 };
 extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
 extern const int32_t dn2cpp_runtime_template_count;
+// The template type-info a DN2CPP_TF_RUNTIME_SYNTH clone was copied from (its
+// definition's row). Generic-virtual dispatchers and Delegate.Method key a
+// clone's case on it; the emitter keeps that case independent of the clone's
+// type arguments.
+const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone);
 
 // Startup type-info binds: the generated metadata for a type whose HANDLE the runtime
 // owns (the runtime-raised exception types further down) — `target` is that handle,

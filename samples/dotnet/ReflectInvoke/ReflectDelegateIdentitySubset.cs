@@ -17,6 +17,30 @@ namespace ReflectDelegateIdentitySubset
     // closed instantiation in the image.
     class RuntimeDerivedDefault<T> : IRuntimeDerivedDefault { }
 
+    interface IRuntimeGenericBaseDefault
+    {
+        string Pick<T>() => "base";
+    }
+
+    interface IRuntimeGenericDerivedDefault : IRuntimeGenericBaseDefault
+    {
+        string IRuntimeGenericBaseDefault.Pick<T>() => "derived";
+    }
+
+    class RuntimeGenericBox<T> : IRuntimeGenericDerivedDefault { }
+
+    class RuntimeGvmRoot
+    {
+        public virtual string Tag<T>() => "root";
+    }
+
+    class RuntimeGvmMid : RuntimeGvmRoot
+    {
+        public override string Tag<T>() => "mid";
+    }
+
+    class RuntimeGvmBox<T> : RuntimeGvmMid { }
+
     static class Extensions
     {
         public static string Decorate(this string prefix, string value) => prefix + value;
@@ -269,7 +293,9 @@ namespace ReflectDelegateIdentitySubset
         }
 
         // Delegate.Method for the body an interface binding selects: explicit over
-        // plain generic bodies, and derived-interface overrides of a default.
+        // plain generic bodies, and derived-interface overrides of a default. The
+        // MakeGenericType receivers also take a derived interface's generic
+        // override and an inherited class generic override.
         static void RunInterfaceMethod()
         {
             Console.WriteLine("delegate-method-interface-begin");
@@ -310,6 +336,17 @@ namespace ReflectDelegateIdentitySubset
             Func<string> runtimePick = runtimeReceiver.Pick;
             Console.WriteLine("delegate-method-derived-runtime-type=" + runtimePick() + "/"
                 + runtimePick.Method.DeclaringType.Name + "/" + runtimePick.Method.Name.EndsWith(".Pick"));
+            var runtimeGenericReceiver = (IRuntimeGenericBaseDefault)Activator.CreateInstance(
+                typeof(RuntimeGenericBox<>).MakeGenericType(typeof(string)));
+            Func<string> runtimeGenericPick = runtimeGenericReceiver.Pick<int>;
+            Console.WriteLine("delegate-method-derived-generic-runtime-type=" + runtimeGenericReceiver.Pick<int>()
+                + "/" + runtimeGenericPick() + "/" + runtimeGenericPick.Method.DeclaringType.Name
+                + "/" + runtimeGenericPick.Method.Name.EndsWith(".Pick"));
+            var runtimeGvmReceiver = (RuntimeGvmRoot)Activator.CreateInstance(
+                typeof(RuntimeGvmBox<>).MakeGenericType(typeof(string)));
+            Func<string> runtimeGvmTag = runtimeGvmReceiver.Tag<int>;
+            Console.WriteLine("delegate-method-inherited-generic-runtime-type=" + runtimeGvmReceiver.Tag<int>()
+                + "/" + runtimeGvmTag() + "/" + runtimeGvmTag.Method.DeclaringType.Name);
             Console.WriteLine("delegate-method-interface-end");
         }
 

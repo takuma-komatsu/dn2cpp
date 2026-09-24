@@ -22,7 +22,9 @@ using System;
 // boundary: a
 // definition with a T-typed field is shape-ineligible, so real .NET constructs
 // Holder<int> while dn2cpp throws the catchable NotSupportedException naming the
-// missing instantiation — the frozen snapshot asserts that message.
+// missing instantiation — the frozen snapshot asserts that message. So does a
+// definition overriding a generic virtual method its own generic base declares:
+// a clone would run that override instantiated per type argument.
 
 namespace ReflectRuntimeInstantiationSubset
 {
@@ -74,6 +76,18 @@ namespace ReflectRuntimeInstantiationSubset
 
     class Twig<T> : Anchor<T>
     {
+    }
+
+    // Ineligible: GvmRoot<int>.Tag<U> on a GvmLeaf<int> clone would need the
+    // leaf override instantiated for that argument.
+    class GvmRoot<T>
+    {
+        public virtual string Tag<U>() => "root";
+    }
+
+    class GvmLeaf<T> : GvmRoot<T>
+    {
+        public override string Tag<U>() => "leaf";
     }
 
     // Shape-ineligible: a T-typed field means a per-argument layout no runtime
@@ -135,6 +149,18 @@ namespace ReflectRuntimeInstantiationSubset
                 + " assignable=" + typeof(Anchor<int>).IsAssignableFrom(twig)
                 + " isinst=" + (tw is Anchor<int>)
                 + " aot=" + anchored.Who());
+
+            GvmRoot<int> root = new GvmRoot<int>();
+            try
+            {
+                GvmRoot<int> leaf = (GvmRoot<int>)Activator.CreateInstance(
+                    typeof(GvmLeaf<>).MakeGenericType(typeof(int)));
+                Console.WriteLine("gvm-override<int>: " + root.Tag<string>() + "/" + leaf.Tag<string>());
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine("gvm-override<int>: NotSupportedException: " + e.Message);
+            }
         }
     }
 }

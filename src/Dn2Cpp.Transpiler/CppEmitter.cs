@@ -325,9 +325,9 @@ internal sealed partial class CppEmitter
     /// <c>Compilation.JudgeRuntimeTemplates</c>): the one canonical-world class
     /// kind that emits full metadata — ti_, vtable, member tables, flagged
     /// SHARED_CANON|RUNTIME_TEMPLATE — because a runtime MakeGenericType clones
-    /// it. It still stays out of the static type registry, the hot-update ABI
-    /// manifests and the GVM dispatchers: what runtime code observes is a
-    /// synthesized clone, never the template itself. Empty until
+    /// it. It still stays out of the static type registry and the hot-update ABI
+    /// manifests: what runtime code observes is a synthesized clone, never the
+    /// template itself. A GVM dispatcher keys the clones' case on it. Empty until
     /// FinalizeSharedGenerics runs, which is before any metadata renders.</summary>
     private bool IsRuntimeTemplateLevel(ClassInfo c) =>
         _c.EligibleRuntimeTemplateLevels.Count > 0 && _c.EligibleRuntimeTemplateLevels.Contains(c);
@@ -5641,6 +5641,8 @@ internal sealed partial class CppEmitter
                 $"{Compilation.GvmDispatchName(gvm)}, reach {_c.ReachChain(gvm)}";
             // One branch per concrete type whose override differs from the base default;
             // types that don't override fall through to the shared base case.
+            var branches = new List<string>();
+            bool templateCase = false;
             foreach (var (type, impl) in disp.Cases
                          .Where(kv => kv.Value != gvm && _c.Reachable.Contains(kv.Value))
                          .OrderBy(kv => kv.Key.CppName, StringComparer.Ordinal))
@@ -5648,18 +5650,33 @@ internal sealed partial class CppEmitter
                 // A canonical group owner is allocated but has no type-info and can never
                 // BE a receiver's type-info (see this method's doc): drop the dead branch
                 // rather than name a symbol nothing defines.
-                if (SkipsCanonicalMetadata(type) || IsRuntimeTemplateLevel(type))
+                if (SkipsCanonicalMetadata(type))
                     continue;
-                o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
+                if (IsRuntimeTemplateLevel(type))
+                {
+                    if (Compilation.ContainsCanonPlaceholder(impl.DeclaringClass))
+                        throw new InvalidOperationException(
+                            $"runtime template {type.FullName}: {name} selects {impl.DeclaringClass.FullName}, "
+                            + "a placeholder level the eligibility verdict should have rejected");
+                    templateCase = true;
+                }
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
             }
             // An ambiguous interface override reaches the same trap as an
             // unresolved interface-table slot instead of the base default.
             foreach (var type in disp.Ambiguous.OrderBy(t => t.CppName, StringComparer.Ordinal))
             {
-                if (SkipsCanonicalMetadata(type) || IsRuntimeTemplateLevel(type))
+                if (SkipsCanonicalMetadata(type))
                     continue;
-                o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) dn2cpp_itf_slot_missing(a0);");
+                templateCase |= IsRuntimeTemplateLevel(type);
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) dn2cpp_itf_slot_missing(a0);");
             }
+            // A runtime-synthesized clone takes its template level's case. The
+            // verdict keeps that case independent of the clone's arguments.
+            if (templateCase)
+                o.Data.AppendLine("    if ((__t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0) __t = dn2cpp_runtime_template_of(__t);");
+            foreach (var branch in branches)
+                o.Data.AppendLine(branch);
             // Base default: the GVM's own (declaring-type) implementation. When it has no
             // body (an abstract generic virtual), every concrete type must have overridden
             // it, so the fallback is unreachable — trap rather than link a missing symbol.
