@@ -50,8 +50,12 @@
 # their base: the delegate's declaring type is kept for the read, a stripped
 # receiver that inherits the slot answers through its vtable, and a stripped level
 # that overrides it throws the same PNSE naming that level. Generic-virtual
-# bindings use the dispatcher's selected target with the same trim guard. Arm 1
-# answers as .NET and keeps its pre-section output unchanged when skipped.
+# bindings use the dispatcher's selected target with the same trim guard. Under
+# the flag, its interface-default probes pin that a receiver bound to the
+# declaration's default answers beside a stripped derived interface that
+# overrides nothing, while a derived interface's selected override throws the
+# PNSE naming that stripped interface. Arm 1 answers as .NET and keeps its
+# pre-section output unchanged when skipped.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"

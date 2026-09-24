@@ -3,6 +3,20 @@ using System.Reflection;
 
 namespace ReflectDelegateIdentitySubset
 {
+    interface IRuntimeBaseDefault
+    {
+        string Pick() => "base";
+    }
+
+    interface IRuntimeDerivedDefault : IRuntimeBaseDefault
+    {
+        string IRuntimeBaseDefault.Pick() => "derived";
+    }
+
+    // A top-level definition only typeof names: a MakeGenericType instance has no
+    // closed instantiation in the image.
+    class RuntimeDerivedDefault<T> : IRuntimeDerivedDefault { }
+
     static class Extensions
     {
         public static string Decorate(this string prefix, string value) => prefix + value;
@@ -291,6 +305,11 @@ namespace ReflectDelegateIdentitySubset
             Func<string> sameTag = sameReceiver.Tag;
             Console.WriteLine("delegate-method-derived-same=" + sameTag() + "/"
                 + sameTag.Method.DeclaringType.Name);
+            var runtimeReceiver = (IRuntimeBaseDefault)Activator.CreateInstance(
+                typeof(RuntimeDerivedDefault<>).MakeGenericType(typeof(string)));
+            Func<string> runtimePick = runtimeReceiver.Pick;
+            Console.WriteLine("delegate-method-derived-runtime-type=" + runtimePick() + "/"
+                + runtimePick.Method.DeclaringType.Name + "/" + runtimePick.Method.Name.EndsWith(".Pick"));
             Console.WriteLine("delegate-method-interface-end");
         }
 

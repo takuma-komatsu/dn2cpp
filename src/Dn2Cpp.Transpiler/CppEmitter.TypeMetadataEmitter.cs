@@ -1058,6 +1058,9 @@ internal sealed partial class CppEmitter
                 }
                 else if (isVirtual && owner.IsInterface)
                 {
+                    // A declaration's own default body is recorded too, so the
+                    // runtime can tell an emitted receiver from one it must
+                    // resolve without this table.
                     var targets = new List<(ClassInfo Receiver, MethodInfo Target)>();
                     foreach (var receiver in _c.AllocatedRefTypes.ToList())
                     {
@@ -1067,7 +1070,7 @@ internal sealed partial class CppEmitter
                             || !_e.TypeInfoSymbolDefined(receiver.CppTypeInfoName))
                             continue;
                         var target = _c.ResolveItfImplOrNull(receiver, m);
-                        if (target is not null && target != m
+                        if (target is not null
                             && _c.Reachable.Contains(target)
                             && _e.TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
                             targets.Add((receiver, target));

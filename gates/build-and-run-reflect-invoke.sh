@@ -58,11 +58,11 @@
 # types, which may answer null but never a wrong method. Its interface section
 # pins the selected method for competing plain and explicit generic bodies in
 # either metadata order, and for a derived interface's override of a default
-# over class, struct, inherited, typed, generic and identical-body receivers.
-# Its interface generic dispatch section pins which body a call binds: explicit
-# overloads through a plain and a closed generic interface, a plain overload
-# beside an explicit sibling, and explicit bodies for an interface whose name
-# extends the called one's or differs in arity.
+# over class, struct, inherited, typed, generic, identical-body and
+# MakeGenericType receivers. Its interface generic dispatch section pins which
+# body a call binds: explicit overloads through a plain and a closed generic
+# interface, a plain overload beside an explicit sibling, and explicit bodies
+# for an interface whose name extends the called one's or differs in arity.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -124,6 +124,7 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-typed=derived/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-interface-end' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-gvm-dispatch-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' "$out/metadata-layout.stdout"
