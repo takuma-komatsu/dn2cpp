@@ -284,8 +284,15 @@ check_subject() {
         return
     fi
 
-    o="$WORK/$p"; mkdir -p "$o"
-    if ! dotnet build "$csproj" -c "$CONFIG" -o "$o/bin" >"$o/build.log" 2>&1; then
+    o="$WORK/$p"; mkdir -p "$o/bin"
+    if [ "$p" = AmbiguousDefault ]; then
+        # Its two referenced projects emit the same assembly name. Keep their
+        # outputs separate so the app can copy the next version after building.
+        if ! dotnet build "$csproj" -c "$CONFIG" >"$o/build.log" 2>&1 ||
+           ! cp -R "$REPO/samples/dotnet/$p/bin/$CONFIG/net10.0/." "$o/bin/" >>"$o/build.log" 2>&1; then
+            bad "$p (build failed; see $o/build.log)"; return
+        fi
+    elif ! dotnet build "$csproj" -c "$CONFIG" -o "$o/bin" >"$o/build.log" 2>&1; then
         bad "$p (build failed; see $o/build.log)"; return
     fi
     dll="$o/bin/$p.dll"
