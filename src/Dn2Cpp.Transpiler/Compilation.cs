@@ -6229,8 +6229,8 @@ internal sealed partial class Compilation
             // instantiated in the placeholder world (generic virtual methods are
             // a per-instantiation fallback under sharing) — skip such rows there
             // too; every real instantiation still resolves its rows strictly.
-            catch (NotSupportedException) when (cls.Module != AppModule
-                || ContainsCanonPlaceholder(cls))
+            catch (NotSupportedException e) when (!IsMustEscape(e)
+                && (cls.Module != AppModule || ContainsCanonPlaceholder(cls)))
             {
             }
         }

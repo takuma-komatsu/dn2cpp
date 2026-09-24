@@ -1584,12 +1584,10 @@ internal sealed partial class Compilation
         GvmDispatch disp, ClassInfo owner, MethodDefinitionHandle body)
     {
         var reader = owner.Module.Reader;
-        foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
+        return AnyMethodImpl(owner, impl =>
         {
-            var impl = reader.GetMethodImplementation(mih);
-            if (impl.MethodBody.Kind != HandleKind.MethodDefinition
-                || (MethodDefinitionHandle)impl.MethodBody != body)
-                continue;
+            if ((MethodDefinitionHandle)impl.MethodBody != body)
+                return false;
 
             ClassInfo? declClass = null;
             MethodDefinitionHandle? declTemplate = null;
@@ -1624,11 +1622,9 @@ internal sealed partial class Compilation
                         reader.GetString(mr.Name), sig, true, false);
                 }
             }
-            if (declClass is not null && declTemplate is { } target
-                && GvmTemplateUsesSlot(disp, declClass, target))
-                return true;
-        }
-        return false;
+            return declClass is not null && declTemplate is { } target
+                && GvmTemplateUsesSlot(disp, declClass, target);
+        });
     }
 
     // Match the closed parameter types before asking which virtual slot a row uses.

@@ -900,10 +900,11 @@ internal sealed partial class Compilation
         return null;
     }
 
-    /// <summary>Finds the body a MethodImpl row binds to an instantiated interface
-    /// generic method. The declaration identifies the slot independently of the
-    /// body's metadata name or its position among plainly named methods.</summary>
-    private MethodDefinitionHandle? FindInterfaceGenericMethodImpl(ClassInfo owner, MethodInfo slot)
+    /// <summary>Visits <paramref name="owner"/>'s MethodImpl rows whose body is a
+    /// MethodDef until <paramref name="visit"/> returns true. A reference assembly or
+    /// a canonical placeholder world can carry rows naming members dn2cpp does not
+    /// model; such a row is skipped, while every real app-module row stays strict.</summary>
+    private bool AnyMethodImpl(ClassInfo owner, Func<MethodImplementation, bool> visit)
     {
         var reader = owner.Module.Reader;
         foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
@@ -911,58 +912,69 @@ internal sealed partial class Compilation
             try
             {
                 var impl = reader.GetMethodImplementation(mih);
-                if (impl.MethodBody.Kind != HandleKind.MethodDefinition)
-                    continue;
-                bool matches = false;
-                if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
-                {
-                    matches = owner.Module == slot.Module
-                        && (MethodDefinitionHandle)impl.MethodDeclaration == slot.Handle;
-                }
-                else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
-                {
-                    var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
-                    if (reader.GetString(mr.Name) != slot.Name)
-                        continue;
-                    var decl = ResolveMethodImplParent(owner, impl.MethodDeclaration);
-                    if (decl is not null && decl.FullName == slot.DeclaringClass.FullName)
-                    {
-                        // Keep method variables open: M<T>(T) and M<T>(int)
-                        // are different slots even when this call uses T=int.
-                        var sig = mr.DecodeMethodSignature(SigProvider,
-                            new GenericContext(decl.Context.TypeArgs, Array.Empty<TypeDesc>()));
-                        var target = slot.Module.Reader.GetMethodDefinition(slot.Handle)
-                            .DecodeSignature(SigProvider,
-                                new GenericContext(slot.DeclaringClass.Context.TypeArgs, Array.Empty<TypeDesc>()));
-                        if (sig.GenericParameterCount == target.GenericParameterCount
-                            && sig.ParameterTypes.Length == target.ParameterTypes.Length
-                            && SameTypeArg(sig.ReturnType, target.ReturnType))
-                        {
-                            matches = true;
-                            for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                                if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
-                                {
-                                    matches = false;
-                                    break;
-                                }
-                        }
-                    }
-                }
-                if (!matches)
-                    continue;
-                var body = (MethodDefinitionHandle)impl.MethodBody;
-                var md = reader.GetMethodDefinition(body);
-                if (md.GetDeclaringType() == owner.Handle
-                    && md.GetGenericParameters().Count == slot.Context.MethodArgs.Length
-                    && ((md.Attributes & MethodAttributes.Static) != 0) == slot.IsStatic)
-                    return body;
+                if (impl.MethodBody.Kind == HandleKind.MethodDefinition && visit(impl))
+                    return true;
             }
-            catch (NotSupportedException) when (owner.Module != AppModule
-                || ContainsCanonPlaceholder(owner))
+            catch (NotSupportedException e) when (!IsMustEscape(e)
+                && (owner.Module != AppModule || ContainsCanonPlaceholder(owner)))
             {
             }
         }
-        return null;
+        return false;
+    }
+
+    /// <summary>Finds the body a MethodImpl row binds to an instantiated interface
+    /// generic method. The declaration identifies the slot independently of the
+    /// body's metadata name or its position among plainly named methods.</summary>
+    private MethodDefinitionHandle? FindInterfaceGenericMethodImpl(ClassInfo owner, MethodInfo slot)
+    {
+        var reader = owner.Module.Reader;
+        MethodDefinitionHandle? found = null;
+        AnyMethodImpl(owner, impl =>
+        {
+            if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
+            {
+                if (owner.Module != slot.Module
+                    || (MethodDefinitionHandle)impl.MethodDeclaration != slot.Handle)
+                    return false;
+            }
+            else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
+            {
+                var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
+                if (reader.GetString(mr.Name) != slot.Name)
+                    return false;
+                var decl = ResolveMethodImplParent(owner, impl.MethodDeclaration);
+                if (decl is null || decl.FullName != slot.DeclaringClass.FullName)
+                    return false;
+                // Keep method variables open: M<T>(T) and M<T>(int)
+                // are different slots even when this call uses T=int.
+                var sig = mr.DecodeMethodSignature(SigProvider,
+                    new GenericContext(decl.Context.TypeArgs, Array.Empty<TypeDesc>()));
+                var target = slot.Module.Reader.GetMethodDefinition(slot.Handle)
+                    .DecodeSignature(SigProvider,
+                        new GenericContext(slot.DeclaringClass.Context.TypeArgs, Array.Empty<TypeDesc>()));
+                if (sig.GenericParameterCount != target.GenericParameterCount
+                    || sig.ParameterTypes.Length != target.ParameterTypes.Length
+                    || !SameTypeArg(sig.ReturnType, target.ReturnType))
+                    return false;
+                for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                    if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
+                        return false;
+            }
+            else
+            {
+                return false;
+            }
+            var body = (MethodDefinitionHandle)impl.MethodBody;
+            var md = reader.GetMethodDefinition(body);
+            if (md.GetDeclaringType() != owner.Handle
+                || md.GetGenericParameters().Count != slot.Context.MethodArgs.Length
+                || ((md.Attributes & MethodAttributes.Static) != 0) != slot.IsStatic)
+                return false;
+            found = body;
+            return true;
+        });
+        return found;
     }
 
     /// <summary>MethodImpl binds an interface generic slot before ordinary
