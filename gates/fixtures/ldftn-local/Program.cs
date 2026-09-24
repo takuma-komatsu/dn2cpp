@@ -5,10 +5,11 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
-if (args.Length is < 1 or > 2 || (args.Length == 2 && args[1] != "--byref-overwrite"))
-    throw new ArgumentException("expected ReflectInvoke.dll [--byref-overwrite]");
+string[] byRefModes = ["--byref-overwrite", "--byref-overwrite-int64", "--byref-copy"];
+if (args.Length is < 1 or > 2 || (args.Length == 2 && !byRefModes.Contains(args[1])))
+    throw new ArgumentException("expected ReflectInvoke.dll [" + string.Join("|", byRefModes) + "]");
 
-bool byRefOverwrite = args.Length == 2;
+string? byRefMode = args.Length == 2 ? args[1] : null;
 
 string path = Path.GetFullPath(args[0]);
 using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
@@ -50,17 +51,36 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
 }
 
 {
-    var il = Body(stored, pointerLocal: true).GetILProcessor();
+    // Every byref mode overwrites the stored Add with Subtract through the
+    // local's address; --byref-copy then builds the delegate from a copy.
+    bool int64 = byRefMode == "--byref-overwrite-int64";
+    var body = Body(stored, pointerLocal: !int64);
+    if (int64)
+        body.Variables.Add(new VariableDefinition(module.TypeSystem.Int64));
+    if (byRefMode == "--byref-copy")
+        body.Variables.Add(new VariableDefinition(module.TypeSystem.IntPtr));
+    var il = body.GetILProcessor();
     il.Emit(OpCodes.Ldnull);
     il.Emit(OpCodes.Ldftn, add);
+    if (int64)
+        il.Emit(OpCodes.Conv_U8);
     il.Emit(OpCodes.Stloc_0);
-    if (byRefOverwrite)
+    if (byRefMode is not null)
     {
-        il.Emit(OpCodes.Ldloca_S, stored.Body.Variables[0]);
+        il.Emit(OpCodes.Ldloca_S, body.Variables[0]);
         il.Emit(OpCodes.Ldftn, subtract);
-        il.Emit(OpCodes.Stind_I);
+        if (int64)
+            il.Emit(OpCodes.Conv_U8);
+        il.Emit(int64 ? OpCodes.Stind_I8 : OpCodes.Stind_I);
     }
     il.Emit(OpCodes.Ldloc_0);
+    if (int64)
+        il.Emit(OpCodes.Conv_U);
+    if (byRefMode == "--byref-copy")
+    {
+        il.Emit(OpCodes.Stloc_1);
+        il.Emit(OpCodes.Ldloc_1);
+    }
     il.Emit(OpCodes.Newobj, DelegateCtor(stored));
     il.Emit(OpCodes.Ret);
 }

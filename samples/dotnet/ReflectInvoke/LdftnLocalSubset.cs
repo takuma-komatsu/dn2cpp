@@ -33,6 +33,16 @@ namespace LdftnLocalSubset
         [MethodImpl(MethodImplOptions.NoInlining)]
         static int RawCalli() => throw new InvalidOperationException();
 
+        // Roslyn takes these locals' addresses in a body that also creates a delegate.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static string AddressTakenBesideDelegate()
+        {
+            IntPtr.TryParse("42", out IntPtr handle);
+            long.TryParse("9", out long count);
+            Func<int, int> add = Add;
+            return handle.ToString() + "/" + count + "/" + add(5) + "/" + add.Method.Name;
+        }
+
         public static void Run()
         {
             Console.WriteLine("ldftn-local-begin");
@@ -55,6 +65,7 @@ namespace LdftnLocalSubset
             var closed = ClosedStored();
             Console.WriteLine("ldftn-local-closed=" + closed("x") + "/" + closed.Method.Name);
             Console.WriteLine("ldftn-local-calli=" + RawCalli());
+            Console.WriteLine("ldftn-local-address-taken=" + AddressTakenBesideDelegate());
             Console.WriteLine("ldftn-local-end");
         }
     }

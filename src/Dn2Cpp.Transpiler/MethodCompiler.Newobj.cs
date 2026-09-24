@@ -2049,6 +2049,12 @@ internal sealed partial class MethodCompiler
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
             if (!fnPtr.DelegateAddressReady && fnPtr.DelegateTag is { } tag)
             {
+                if (tag == UntrackedDelegateTag)
+                    throw new NotSupportedException(
+                        $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target loaded from an address-taken local cannot preserve delegate identity");
+                // A copy of an address-taken local reaches here only at run time.
+                if (!tag.All(char.IsAsciiDigit))
+                    Emit($"if ({tag} < 0) dn2cpp_throw_not_supported_msg(\"a delegate target loaded from an address-taken local cannot preserve delegate identity\");");
                 foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
                 {
                     var (method, isVirtual, fromVirtFtn) = origin.Value;

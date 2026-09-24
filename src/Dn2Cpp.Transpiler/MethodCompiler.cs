@@ -79,6 +79,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// classification pass in <c>Compile</c>.</summary>
     private readonly Dictionary<int, ClassInfo?> _ftnDelegateUse = new();
     private readonly Dictionary<int, (MethodInfo Method, bool Virtual, bool VirtFtn)> _ftnOrigins = new();
+    /// <summary>Locals whose address is taken. A write through that address bypasses
+    /// the local's tag, so these carry <see cref="UntrackedDelegateTag"/> instead of one.</summary>
+    private readonly HashSet<int> _addressTakenLocals = new();
+    private const string UntrackedDelegateTag = "-1";
 
     private List<StackEntry> _stack = new();
     private List<(string Name, string CppType, StackKind Kind, TypeDesc? Type)> _args = new();
@@ -735,6 +739,8 @@ internal sealed partial class MethodCompiler : IEvalStack
         // the constructor uses it to choose the adapter and reflected identity.
         foreach (var insn in insns)
         {
+            if (insn.OpCode is ILOpCode.Ldloca or ILOpCode.Ldloca_s)
+                _addressTakenLocals.Add((int)insn.Operand);
             if (_liveness is not null && !_liveness.LiveAt(insn.Offset))
                 continue;
             if (insn.OpCode == ILOpCode.Ldftn || insn.OpCode == ILOpCode.Ldvirtftn)
@@ -975,9 +981,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 sb.AppendLine($"    {elemSt}* __restrict {localName} = ({elemSt}*){argName}.f__reference;");
         foreach (var l in _locals)
             sb.AppendLine($"    {l.CppType} {l.Name} = {CppTypes.ZeroInit(l.CppType)};");
-        foreach (var l in _locals)
-            if (_ftnOrigins.Count > 0)
-                sb.AppendLine($"    int32_t {l.Name}_delegate_tag = 0;");
+        if (_ftnOrigins.Count > 0)
+            for (int li = 0; li < _locals.Count; li++)
+                if (!_addressTakenLocals.Contains(li))
+                    sb.AppendLine($"    int32_t {_locals[li].Name}_delegate_tag = 0;");
         foreach (var d in _decls)
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
@@ -1554,22 +1561,28 @@ internal sealed partial class MethodCompiler : IEvalStack
     // of its own or is carrying metadata Push's four parameters cannot express.
     public void PushEntry(StackEntry entry) => _stack.Add(entry);
 
-    private void PushLocal((string Name, string CppType, StackKind Kind, TypeDesc? Type) local)
+    private void PushLocal(int index)
     {
+        var local = _locals[index];
         PushVar(local);
         if (_ftnOrigins.Count > 0)
         {
-            string tag = NewTemp("int32_t");
-            Emit($"{tag} = {local.Name}_delegate_tag;");
+            string tag = UntrackedDelegateTag;
+            if (!_addressTakenLocals.Contains(index))
+            {
+                tag = NewTemp("int32_t");
+                Emit($"{tag} = {local.Name}_delegate_tag;");
+            }
             _stack[^1] = _stack[^1] with { DelegateTag = tag };
         }
     }
 
-    private void StoreLocal((string Name, string CppType, StackKind Kind, TypeDesc? Type) local)
+    private void StoreLocal(int index)
     {
+        var local = _locals[index];
         var value = Pop();
         Emit($"{local.Name} = {CoerceTo(value, local.Type, local.CppType)};");
-        if (_ftnOrigins.Count > 0)
+        if (_ftnOrigins.Count > 0 && !_addressTakenLocals.Contains(index))
             Emit($"{local.Name}_delegate_tag = {value.DelegateTag ?? "0"};");
     }
 
@@ -2107,18 +2120,14 @@ internal sealed partial class MethodCompiler : IEvalStack
                 break;
             }
             case ILOpCode.Ldloc_0: case ILOpCode.Ldloc_1: case ILOpCode.Ldloc_2: case ILOpCode.Ldloc_3:
-                PushLocal(_locals[(int)op - (int)ILOpCode.Ldloc_0]);
+                PushLocal((int)op - (int)ILOpCode.Ldloc_0);
                 break;
             case ILOpCode.Ldloc_s: case ILOpCode.Ldloc:
-                PushLocal(_locals[(int)insn.Operand]);
+                PushLocal((int)insn.Operand);
                 break;
             case ILOpCode.Ldloca_s: case ILOpCode.Ldloca:
             {
                 var v = _locals[(int)insn.Operand];
-                if (_ftnOrigins.Count > 0
-                    && (v.CppType is "intptr_t" or "uintptr_t" || v.Type is { Kind: TypeKind.Pointer }))
-                    throw new NotSupportedException(
-                        $"{_method.DeclaringClass.FullName}.{_method.Name}: address-taken function pointer local {v.Name} cannot preserve delegate identity");
                 Push(StackKind.Ptr, v.CppType + "*", $"&{v.Name}");
                 // Mark the entry as a direct local/arg slot address: the byref
                 // sub-word out-arg fixup (NoteByRefSlotFixup) must only rewrite a
@@ -2141,17 +2150,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 break;
             }
             case ILOpCode.Stloc_0: case ILOpCode.Stloc_1: case ILOpCode.Stloc_2: case ILOpCode.Stloc_3:
-            {
-                var dst = _locals[(int)op - (int)ILOpCode.Stloc_0];
-                StoreLocal(dst);
+                StoreLocal((int)op - (int)ILOpCode.Stloc_0);
                 break;
-            }
             case ILOpCode.Stloc_s: case ILOpCode.Stloc:
-            {
-                var dst = _locals[(int)insn.Operand];
-                StoreLocal(dst);
+                StoreLocal((int)insn.Operand);
                 break;
-            }
 
             case ILOpCode.Dup:
             {

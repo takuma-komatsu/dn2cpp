@@ -87,8 +87,11 @@
 # select two targets through one local or a stack join, snapshot a loaded pointer
 # before overwriting its local, and call a stored raw pointer through calli. The
 # delegate address and method identity follow the selected pointer; calli keeps
-# the raw address. An address-taken function pointer local is refused before a
-# byref write can leave its delegate identity stale.
+# the raw address. A local whose address is taken keeps no delegate identity,
+# because a byref write would leave it stale: a delegate built from it is refused
+# when transpiled, from a native-int or int64 local alike, and one built from a
+# copy of it throws NotSupportedException when constructed. Address-taken locals
+# beside a delegate in plain C# still transpile.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -213,6 +216,7 @@ gate_extra_asserts() {
     grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-closed=C:x/Decorate' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-calli=14' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ldftn-local.stdout"
     sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
@@ -286,33 +290,57 @@ expect_policy_rejection conflicting 'Duplicate --reflection-metadata selector' \
 expect_policy_rejection runtime-owned "cannot select packed metadata for runtime-owned type 'System.String'" \
     --reflection-metadata 'System.String=packed'
 
-byref_dir="$invalid_out/byref-app"
-mkdir -p "$byref_dir"
-byref_app="$byref_dir/ReflectInvoke.dll"
-cp "$_CG_APP" "$byref_app"
-cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/ReflectInvoke.runtimeconfig.json"
-cp "${_CG_APP%.dll}.deps.json" "$byref_dir/ReflectInvoke.deps.json"
-cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/Dn2Cpp.Runtime.dll"
-dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
-    "$byref_app" --byref-overwrite
-run_bounded dotnet "$byref_app" > "$invalid_out/byref-dotnet.stdout"
-grep -Fxq 'ldftn-local-direct=2/Subtract' "$invalid_out/byref-dotnet.stdout"
+# Each mode rewrites Stored to overwrite its local's Add with Subtract through
+# the local's address. .NET binds Subtract; dn2cpp must refuse, never bind Add.
+byref_diagnostic='a delegate target loaded from an address-taken local cannot preserve delegate identity'
 DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded dotnet "$_CG_APP" \
     > "$invalid_out/byref-prefix.stdout"
-sed '/^ldftn-local-begin/,$d' "$invalid_out/byref-dotnet.stdout" \
-    > "$invalid_out/byref-actual-prefix.stdout"
-diff -u "$invalid_out/byref-prefix.stdout" "$invalid_out/byref-actual-prefix.stdout"
+for byref_mode in overwrite overwrite-int64 copy; do
+    byref_dir="$invalid_out/byref-$byref_mode"
+    byref_app="$byref_dir/app/ReflectInvoke.dll"
+    mkdir -p "$byref_dir/app"
+    cp "$_CG_APP" "$byref_app"
+    cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/app/ReflectInvoke.runtimeconfig.json"
+    cp "${_CG_APP%.dll}.deps.json" "$byref_dir/app/ReflectInvoke.deps.json"
+    cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/app/Dn2Cpp.Runtime.dll"
+    dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$byref_app" "--byref-$byref_mode"
+    run_bounded dotnet "$byref_app" > "$byref_dir/dotnet.stdout"
+    grep -Fxq 'ldftn-local-direct=2/Subtract' "$byref_dir/dotnet.stdout"
+    sed '/^ldftn-local-begin/,$d' "$byref_dir/dotnet.stdout" > "$byref_dir/dotnet-prefix.stdout"
+    diff -u "$invalid_out/byref-prefix.stdout" "$byref_dir/dotnet-prefix.stdout"
+    byref_status=0
+    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
+        -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
+    if [ "$byref_mode" = copy ]; then
+        if [ "$byref_status" -ne 0 ]; then
+            cat "$byref_dir/transpile.log" >&2
+            echo 'error: a copied address-taken delegate target did not transpile' >&2
+            exit 1
+        fi
+    elif [ "$byref_status" -ne 2 ] || ! grep -Fq "$byref_diagnostic" "$byref_dir/transpile.log"; then
+        cat "$byref_dir/transpile.log" >&2
+        echo "error: byref-$byref_mode delegate target was not rejected" >&2
+        exit 1
+    fi
+done
+
+# The copy carries its origin only at run time, so construction must throw.
+byref_copy="$invalid_out/byref-copy"
+compile_console "$byref_copy/out" ReflectInvoke
 byref_status=0
-run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
-    -o "$invalid_out/byref-pointer-local" > "$invalid_out/byref-pointer-local.log" 2>&1 \
-    || byref_status=$?
+run_bounded "$byref_copy/out/ReflectInvoke$EXE_EXT" > "$byref_copy/native.stdout" \
+    2> "$byref_copy/native.stderr" || byref_status=$?
 if [ "$byref_status" -eq 0 ] \
-    || ! grep -Fq 'address-taken function pointer local loc0 cannot preserve delegate identity' \
-        "$invalid_out/byref-pointer-local.log"; then
-    cat "$invalid_out/byref-pointer-local.log" >&2
-    echo 'error: address-taken function pointer local was not rejected' >&2
+    || ! grep -Fq "System.NotSupportedException: $byref_diagnostic" "$byref_copy/native.stderr" \
+    || grep -q '^ldftn-local-direct=' "$byref_copy/native.stdout"; then
+    cat "$byref_copy/native.stderr" >&2
+    echo 'error: a copied address-taken delegate target was not refused at construction' >&2
     exit 1
 fi
+sed '/^ldftn-local-begin/,$d' "$byref_copy/native.stdout" > "$byref_copy/native-prefix.stdout"
+diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
+    <(strip_cr_win_file "$byref_copy/native-prefix.stdout")
 
 # Exercise representation boundaries that C# metadata cannot express, using
 # the production decoder and the same CMake/Ninja path as the parity binary.
