@@ -82,6 +82,12 @@
 # instantiation), and an interface implementation, beside a plain virtual and
 # an interface method of the same instantiations and a delegate created from
 # the plain virtual's reflected method row.
+# LdftnLocalSubset uses hand-authored IL to store method pointers before delegate
+# construction, separate ldftn from newobj with a nop or native-int conversion,
+# select two targets through one local or a stack join, snapshot a loaded pointer
+# before overwriting its local, and call a stored raw pointer through calli. The
+# delegate address and method identity follow the selected pointer; calli keeps
+# the raw address.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -198,6 +204,19 @@ gate_extra_asserts() {
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
         <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
+    grep -Fxq 'ldftn-local-direct=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-nop=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-conv=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-snapshot=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-selected=12/Add/2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-closed=C:x/Decorate' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-calli=14' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ldftn-local.stdout"
+    sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
+        <(strip_cr_win_file "$out/ldftn-local-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

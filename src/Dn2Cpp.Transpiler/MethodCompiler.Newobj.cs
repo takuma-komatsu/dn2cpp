@@ -2047,6 +2047,52 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            if (!fnPtr.DelegateAddressReady && fnPtr.DelegateTag is { } tag)
+            {
+                foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
+                {
+                    var (method, isVirtual, fromVirtFtn) = origin.Value;
+                    var invoke = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
+                    if (invoke is not null)
+                    {
+                        int invokeArity = invoke.Signature.ParameterTypes.Length;
+                        int targetArity = method.Signature.ParameterTypes.Length;
+                        if (invokeArity != targetArity
+                            && (!method.IsStatic || invokeArity != targetArity - 1
+                                || CppTypes.KindOf(method.Signature.ParameterTypes[0]) != StackKind.Ref))
+                            continue;
+                    }
+                    string? adapterExpr = null;
+                    if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+                        adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (_c.IsDynamicCodegenMember(method.DeclaringClass, method.Name))
+                        adapterExpr = DynamicCodegenFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (_c.IsAbsentNetworkPalMember(method.DeclaringClass, method.Name))
+                        adapterExpr = AbsentNetworkPalFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (!fromVirtFtn && (method.IsStatic || NeedsNfiErasedAdapter(method.Emittable)))
+                    {
+                        var impl = method.Emittable;
+                        var adapter = new DelegateAdapter(impl,
+                            method.IsStatic && IsClosedStaticDelegate(cls, impl),
+                            NeedsNfiErasedAdapter(impl));
+                        if (!_c.DelegateAdapters.Contains(adapter))
+                            _c.DelegateAdapters.Add(adapter);
+                        NoteFtnTargetBody(impl);
+                        _c.NoteNamedBodySymbol(_method, impl);
+                        adapterExpr = $"(void*)&{adapter.CppName}";
+                    }
+                    Emit($"if ({tag} == {origin.Key}) {{");
+                    if (adapterExpr is not null)
+                        Emit($"    {dg}->f_method = {adapterExpr};");
+                    if (!method.Handle.IsNil)
+                    {
+                        foreach (var arg in method.Context.MethodArgs)
+                            _c.NoteTypeIdentityClosure(arg, keepSeed: false);
+                        Emit($"    {dg}->f_identity = &{_c.NoteDelegateIdentity(method, isVirtual)};");
+                    }
+                    Emit("}");
+                }
+            }
             // The identity is emitted with the method rows, spelled as they spell the
             // declaring type and arguments; the arguments only need type-infos. A
             // canonical target has already tainted at its ldftn/ldvirtftn.

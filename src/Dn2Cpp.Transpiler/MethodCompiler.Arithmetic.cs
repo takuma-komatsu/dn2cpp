@@ -318,6 +318,8 @@ internal sealed partial class MethodCompiler
         string narrow = a.Kind == StackKind.I4 ? (unsigned ? "(uint32_t)" : "(int32_t)") : "";
         string mid = unsigned ? "(uint64_t)" : "(int64_t)";
         Push(StackKind.I8, "int64_t", $"(int64_t)({mid}({narrow}({a.Expr})))");
+        if (a.Kind is (StackKind.Ptr or StackKind.I8) && a.DelegateTag is not null)
+            _stack[^1] = _stack[^1] with { DelegateTag = a.DelegateTag };
     }
 
     // ---- arrays ----
