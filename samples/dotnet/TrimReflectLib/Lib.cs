@@ -111,6 +111,22 @@ namespace TrimReflectLib
         public override string Kind<T>() => "gvm-leaf";
     }
 
+    public interface IDefaultKind
+    {
+        string Kind() => "base";
+    }
+
+    public interface IUnusedDefaultKind : IDefaultKind { }
+
+    public interface IChosenDefaultKind : IDefaultKind
+    {
+        string IDefaultKind.Kind() => "chosen";
+    }
+
+    public class LibUnusedDefault : IUnusedDefaultKind { }
+
+    public class LibChosenDefault : IChosenDefaultKind { }
+
     public static class Factory
     {
         // Each returns `object`, never the concrete type: the app's IL must not name what
@@ -133,5 +149,7 @@ namespace TrimReflectLib
         public static LibShape MakeCircle() => new LibCircle();
         public static LibShape MakeDisc() => new LibDisc();
         public static LibGvmShape MakeGenericShape() => new LibGvmLeaf();
+        public static IDefaultKind MakeUnusedDefault() => new LibUnusedDefault();
+        public static IDefaultKind MakeChosenDefault() => new LibChosenDefault();
     }
 }

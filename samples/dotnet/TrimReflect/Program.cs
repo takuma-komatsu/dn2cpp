@@ -226,6 +226,10 @@ namespace TrimReflect
             Probe("inherited override", () => disc.Method.DeclaringType.Name + "/" + disc());
             Probe("generic virtual", () => generic.Method.DeclaringType.Name + "/" + generic());
             Probe("interface slot", () => twice.Method.DeclaringType.Name + "/" + twice(4));
+            Func<string> unusedDefault = Factory.MakeUnusedDefault().Kind;
+            Func<string> chosenDefault = Factory.MakeChosenDefault().Kind;
+            Probe("unrelated stripped interface", () => unusedDefault.Method.DeclaringType.Name + "/" + unusedDefault());
+            Probe("selected stripped interface", () => chosenDefault.Method.DeclaringType.Name + "/" + chosenDefault());
         }
 
         // Prints what a member-metadata read answers, or the exception it throws. The full

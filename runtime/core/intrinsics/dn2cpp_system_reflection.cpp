@@ -2634,18 +2634,15 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_targ
     return {};
 }
 
-// Use the emitter's GVM dispatch decision: a new-slot row may explicitly bind an
-// inherited slot, so its attributes alone cannot identify the bound method. A
-// stripped level could hide a different binding and must still throw.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_gvm_target(
+// Use the emitter's selected method for an interface or GVM binding. An
+// unrecorded class GVM still needs metadata for each receiver level.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_recorded_target(
     const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
     const Dn2CppDelegateMethodIdentity* identity)
 {
-    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
-        dn2cpp_require_metadata(ti);
-    for (int32_t i = 0; i < identity->gvmTargetCount; i++)
+    for (int32_t i = 0; i < identity->targetCount; i++)
     {
-        const auto& target = identity->gvmTargets[i];
+        const auto& target = identity->targets[i];
         if (target.receiverType != receiver)
             continue;
         dn2cpp_require_metadata(target.declaringType);
@@ -2653,20 +2650,10 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_gvm_target(
             target.metadataToken, identity->genericArgCount,
             [identity](int32_t arg) { return identity->genericArgs[arg]; });
     }
+    if ((owner->flags & DN2CPP_TF_INTERFACE) == 0)
+        for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
+            dn2cpp_require_metadata(ti);
     return {};
-}
-
-static bool dn2cpp_delegate_interface_derives_from(
-    const Dn2CppTypeInfo* derived, const Dn2CppTypeInfo* ancestor)
-{
-    for (int32_t i = 0; i < derived->interfaceCount; i++)
-    {
-        const Dn2CppTypeInfo* parent = derived->interfaces[i].itf;
-        if (parent == ancestor || (parent != nullptr
-            && dn2cpp_delegate_interface_derives_from(parent, ancestor)))
-            return true;
-    }
-    return false;
 }
 
 // The implementation an interface binding reached, or {} to answer the declaration
@@ -2679,6 +2666,9 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     const bool gvm = decl.genericParamCount != 0;
     const size_t nameLength = std::strlen(decl.name);
     size_t qualifierLength = 0;
+    // An emitted receiver with a different selected body has a recorded case.
+    if (decl.fnPtr != nullptr && decl.fnPtr == bound)
+        return {};
     // A reference receiver's slot holds the implementation's own symbol. The name
     // guard keeps a folded identical body (MSVC /OPT:ICF) from answering; parameter
     // types may differ from the declaration's under variance.
@@ -2697,67 +2687,6 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
                     return handle;
             }
         }
-    // A default interface method binds the declaration's own body.
-    if (decl.fnPtr != nullptr && decl.fnPtr == bound)
-        return {};
-    // A derived interface's MethodImpl can replace the declaration's default
-    // body. The bound address came from the receiver's interface slot; look for
-    // that body on an implemented interface derived from the declaration owner.
-    if (!gvm)
-    {
-        struct InterfaceHit
-        {
-            const Dn2CppTypeInfo* owner;
-            Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
-        };
-        std::vector<InterfaceHit> derivedHits;
-        for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
-            for (int32_t i = 0; i < ti->interfaceCount; i++)
-            {
-                const Dn2CppTypeInfo* derived = ti->interfaces[i].itf;
-                if (derived == nullptr || derived == owner
-                    || (derived->flags & DN2CPP_TF_SHARED_CANON) != 0
-                    || !dn2cpp_delegate_interface_derives_from(derived, owner))
-                    continue;
-                dn2cpp_require_metadata(derived);
-                const auto reflection = derived->reflection();
-                for (int32_t j = 0; j < reflection.methodCount; j++)
-                {
-                    const auto handle = reflection.methods[j];
-                    const auto row = handle.operator->();
-                    if (row->fnPtr != bound || row->paramCount != decl.paramCount
-                        || !dn2cpp_row_params_equal(*row.operator->(), decl)
-                        || !dn2cpp_names_member(row->name, decl.name,
-                            nameLength, &qualifierLength)
-                        || qualifierLength == 0
-                        || !dn2cpp_qualifier_names(row->name, qualifierLength, owner))
-                        continue;
-                    derivedHits.push_back({derived, handle});
-                }
-            }
-        Dn2CppMetadataHandle<Dn2CppMethodInfo> selected{};
-        const Dn2CppTypeInfo* selectedOwner = nullptr;
-        for (const auto& candidate : derivedHits)
-        {
-            bool shadowed = false;
-            for (const auto& other : derivedHits)
-                if (other.owner != candidate.owner
-                    && dn2cpp_delegate_interface_derives_from(other.owner, candidate.owner))
-                {
-                    shadowed = true;
-                    break;
-                }
-            if (shadowed)
-                continue;
-            if (selected && selectedOwner != candidate.owner)
-                dn2cpp_throw_platform_not_supported(
-                    "Delegate.Method cannot identify an ambiguous interface override");
-            selected = candidate.method;
-            selectedOwner = candidate.owner;
-        }
-        if (selected)
-            return selected;
-    }
     // Value-type unboxing thunks, NFI-erasing thunks and generic-virtual dispatchers
     // hide the implementation's address: resolve by name as the transpiler bound it.
     // Plain matches (1) need a body; explicit ones (2) must name the owner.
@@ -2858,9 +2787,13 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     const Dn2CppMethodInfo decl = *declared;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
     if (decl.genericParamCount != 0 && decl.vtableSlot < 0)
-        hit = dn2cpp_delegate_gvm_target(t->type, owner, identity);
+        hit = dn2cpp_delegate_recorded_target(t->type, owner, identity);
     else if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
-        hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
+    {
+        hit = dn2cpp_delegate_recorded_target(t->type, owner, identity);
+        if (!hit)
+            hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
+    }
     else if (decl.vtableSlot >= 0)
         hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));

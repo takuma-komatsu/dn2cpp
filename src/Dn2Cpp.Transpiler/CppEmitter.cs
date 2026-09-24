@@ -5838,8 +5838,12 @@ internal sealed partial class CppEmitter
         // slot stays populated (index alignment is preserved) but the boxed receiver
         // `o` is ignored, which is correct: a static member never reads the instance.
         var callArgs = new List<string>();
+        // An interface default body receives the box; a value-type body receives
+        // the payload after its object header.
         if (!impl.Emittable.IsStatic)
-            callArgs.Add($"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
+            callArgs.Add(impl.DeclaringClass.IsInterface
+                ? $"({impl.DeclaringClass.CppStructName}*)o"
+                : $"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
         for (int k = 0; k < ps.Length; k++)
             callArgs.Add(NfiSlotArg(implPs[k], $"a{k}"));
         string body = $"{impl.Emittable.CppName}({string.Join(", ", callArgs)})";

@@ -5257,6 +5257,8 @@ internal sealed partial class Compilation
     /// via direct constrained calls.</summary>
     public bool IsAllocated(ClassInfo c) => _allocatedRefTypes.Contains(c);
 
+    internal IEnumerable<ClassInfo> AllocatedRefTypes => _allocatedRefTypes;
+
     /// <summary>The recorded reachability path to <paramref name="m"/> (newest
     /// first), for actionable diagnostics when a reached method cannot be
     /// emitted. Empty for roots.</summary>

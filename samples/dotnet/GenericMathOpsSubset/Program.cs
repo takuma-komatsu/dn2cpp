@@ -159,6 +159,8 @@ internal static class Program
         GenericMathOutWidth.OutSlotWidth.__GateEntry();
         GenericMathStaticAbstractGvm.StaticAbstractGenericMethod.__GateEntry();
         GenericMathInterfaceStaticImpl.InterfaceStaticImpl.__GateEntry();
+        if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_STATIC_REVIEW") != "1")
+            GenericMathStaticAbstractGvm.StaticAbstractGenericMethod.__GateReviewEntry();
 
         return 0;
     }

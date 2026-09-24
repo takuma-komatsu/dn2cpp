@@ -1045,11 +1045,43 @@ internal sealed partial class CppEmitter
                     {
                         targetsExpr = sym + "_gvm_targets";
                         targetCount = targets.Count;
-                        _sb.AppendLine($"static const Dn2CppDelegateGvmTarget {targetsExpr}[] = {{");
+                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
                         foreach (var (receiver, target) in targets)
                         {
                             string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
                             string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
+                            int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+                            _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
+                        }
+                        _sb.AppendLine("};");
+                    }
+                }
+                else if (isVirtual && owner.IsInterface)
+                {
+                    var targets = new List<(ClassInfo Receiver, MethodInfo Target)>();
+                    foreach (var receiver in _c.AllocatedRefTypes.ToList())
+                    {
+                        if (receiver.IsInterface || !_c.ImplementsInterface(receiver, owner)
+                            || _e.SkipsCanonicalMetadata(receiver)
+                            || _e.IsRuntimeTemplateLevel(receiver)
+                            || !_e.TypeInfoSymbolDefined(receiver.CppTypeInfoName))
+                            continue;
+                        var target = _c.ResolveItfImplOrNull(receiver, m);
+                        if (target is not null && target != m
+                            && _c.Reachable.Contains(target)
+                            && _e.TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
+                            targets.Add((receiver, target));
+                    }
+                    if (targets.Count > 0)
+                    {
+                        targetsExpr = sym + "_interface_targets";
+                        targetCount = targets.Count;
+                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
+                        foreach (var (receiver, target) in targets.OrderBy(t => t.Receiver.CppName,
+                            System.StringComparer.Ordinal))
+                        {
+                            string receiverExpr = _e.TypeInfoRef(receiver, "delegate interface receiver");
+                            string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate interface target");
                             int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
                             _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
                         }
@@ -1274,7 +1306,7 @@ internal sealed partial class CppEmitter
                     // Null when the class has no implementation for the interface method —
                     // e.g. a boxed primitive's corlib ClassInfo gets a full interface table
                     // but IntPtr has no concrete IBinaryInteger.DivRem.
-                    var impl = Compilation.ResolveItfImplOrNull(cls, im);
+                    var impl = _c.ResolveItfImplOrNull(cls, im);
                     // A slot with no resolvable impl, or whose impl is unreachable, is never
                     // dispatched through — degrade it to a TRAP, not a null pointer.
                     // "Never dispatched" is a claim about the reachability closure, and when
@@ -1306,12 +1338,10 @@ internal sealed partial class CppEmitter
                             : $"(const void*)&{SlotMissStub("dn2cpp_itf_slot_missing_named", $"{cls.FullName}::{itf.FullName}.{im.Name}", im)}");
                         continue;
                     }
-                    // A reference-type impl receives the object pointer directly as
-                    // `this`. A boxed value-type impl, however, expects the unboxed
-                    // payload (`obj + 1`), so its interface slot points to an
-                    // unboxing thunk that offsets past the box header before calling
-                    // the impl — the dispatch site is type-agnostic and just calls
-                    // through the slot with the object pointer.
+                    // A reference-type impl receives the object pointer directly.
+                    // A value-type body needs the unboxed payload; an interface
+                    // default body still receives the box. The slot thunk chooses
+                    // the receiver representation for the selected body.
                     if (!cls.IsValueType)
                     {
                         // Usually the implementation symbol goes straight into the

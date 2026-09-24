@@ -49,8 +49,36 @@ internal sealed class LabelPk : IPackable<LabelPk>
     static LabelPk IPackable<LabelPk>.Seed() => new LabelPk { Name = "lbl" };
 }
 
+internal interface IStaticRow<TSelf>
+{
+    static abstract string Pick<T>();
+}
+
+internal struct StaticRow : IStaticRow<StaticRow>
+{
+    public static string Pick<T>() => "plain";
+    static string IStaticRow<StaticRow>.Pick<T>() => "explicit";
+}
+
+internal interface IStaticBase<TSelf>
+{
+    static abstract string Tag();
+}
+
+internal interface IStaticDerived<TSelf> : IStaticBase<TSelf>
+{
+    static string IStaticBase<TSelf>.Tag() => "derived";
+}
+
+internal class StaticDerived : IStaticDerived<StaticDerived>
+{
+    public static string Tag() => "class";
+}
+
 internal static class StaticAbstractGenericMethod
 {
+    static string PickStatic<T>() where T : IStaticRow<T> => T.Pick<int>();
+    static string TagStatic<T>() where T : IStaticBase<T> => T.Tag();
     // constrained. !!T; call IPackable<T>::Pack<TSink> — both type dimensions closed
     // by the caller: T by the class context, TSink by the method args.
     static string ViaListSink<T>() where T : IPackable<T>
@@ -78,5 +106,12 @@ internal static class StaticAbstractGenericMethod
         Console.WriteLine($"class/list    {ViaListSink<LabelPk>()}");
         Console.WriteLine($"struct/count  {ViaCountSink<PointPk>()}");
         Console.WriteLine($"class/count   {ViaCountSink<LabelPk>()}");
+    }
+
+    internal static void __GateReviewEntry()
+    {
+        Console.WriteLine("== Static interface implementation selection ==");
+        Console.WriteLine($"static explicit {PickStatic<StaticRow>()}");
+        Console.WriteLine($"static class {TagStatic<StaticDerived>()}");
     }
 }

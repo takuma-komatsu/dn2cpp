@@ -1510,6 +1510,15 @@ internal sealed partial class Compilation
                 disp.Cases[c] = impl;
                 return;
             }
+            var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm);
+            if (derived is { } selected)
+            {
+                var impl = InstantiateMethodOnClass(selected.Interface, selected.Interface.Module,
+                    selected.Body, disp.MethodArgs);
+                Reach(impl);
+                disp.Cases[c] = impl;
+                return;
+            }
             // No implementation template anywhere in the chain: the type is never
             // dispatched through this GVM (no case emitted; the dispatcher's
             // fallback traps, matching an abstract slot that cannot bind).
@@ -1537,6 +1546,37 @@ internal sealed partial class Compilation
         disp.Cases[c] = disp.Gvm;
     }
 
+    private (ClassInfo Interface, MethodDefinitionHandle Body)?
+        FindDerivedInterfaceGenericMethodTemplate(ClassInfo receiver, MethodInfo slot)
+    {
+        var candidates = new List<(ClassInfo Interface, MethodDefinitionHandle Body)>();
+        foreach (var itf in GetInterfaceClosure(receiver).Ordered)
+        {
+            if (itf == slot.DeclaringClass || !ImplementsInterface(itf, slot.DeclaringClass))
+                continue;
+            if (FindInterfaceGenericMethodImpl(itf, slot) is { } body)
+                candidates.Add((itf, body));
+        }
+        (ClassInfo Interface, MethodDefinitionHandle Body)? selected = null;
+        foreach (var candidate in candidates)
+        {
+            bool shadowed = false;
+            foreach (var other in candidates)
+                if (other.Interface != candidate.Interface
+                    && ImplementsInterface(other.Interface, candidate.Interface))
+                {
+                    shadowed = true;
+                    break;
+                }
+            if (shadowed)
+                continue;
+            if (selected is not null)
+                return null;
+            selected = candidate;
+        }
+        return selected;
+    }
+
     // A covariant-return override has newslot metadata and a MethodImpl row
     // binding its body to the inherited class slot. Generic MethodImpl rows are
     // not materialized as MethodInfo, so inspect the template metadata here.
@@ -1556,9 +1596,10 @@ internal sealed partial class Compilation
             if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
             {
                 var declared = (MethodDefinitionHandle)impl.MethodDeclaration;
-                var declaringType = reader.GetMethodDefinition(declared).GetDeclaringType();
+                var referencedClass = ResolveMethodImplParent(owner, impl.MethodDeclaration);
                 for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
-                    if (b.Module == owner.Module && b.Handle == declaringType)
+                    if (referencedClass is not null && b.Module == referencedClass.Module
+                        && b.Handle == referencedClass.Handle)
                     {
                         declClass = b;
                         declTemplate = declared;
@@ -1568,16 +1609,9 @@ internal sealed partial class Compilation
             else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
             {
                 var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
-                var referencedClass = mr.Parent.Kind switch
-                {
-                    HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)mr.Parent),
-                    HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)mr.Parent)?.Class,
-                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
-                        .DecodeSignature(SigProvider, owner.Context).Class,
-                    _ => null,
-                };
+                var referencedClass = ResolveMethodImplParent(owner, impl.MethodDeclaration);
                 for (var b = owner.BaseClass; b is not null; b = b.BaseClass)
-                    if (b == referencedClass)
+                    if (b == referencedClass || b.FullName == referencedClass?.FullName)
                     {
                         declClass = b;
                         break;
@@ -2844,7 +2878,7 @@ internal sealed partial class Compilation
         return false;
     }
 
-    private bool ImplementsInterface(ClassInfo c, ClassInfo itf) =>
+    internal bool ImplementsInterface(ClassInfo c, ClassInfo itf) =>
         GetInterfaceClosure(c).Members.Contains(itf);
 
     // Comparer interfaces can be added after shape completion. A compilation-wide
@@ -2894,7 +2928,7 @@ internal sealed partial class Compilation
 
     /// <summary>Resolves <paramref name="c"/>'s body for an interface method:
     /// class implementations first, then the most specific interface override.</summary>
-    internal static MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod)
+    internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod)
     {
         for (var b = c; b is not null; b = b.BaseClass)
         {
@@ -2920,27 +2954,14 @@ internal sealed partial class Compilation
         // to the implementing class. Inspect the implemented interface graph and
         // select the override whose declaring interface derives from every other
         // candidate; metadata order cannot decide between sibling overrides.
-        var seen = new HashSet<ClassInfo>();
-        var stack = new Stack<ClassInfo>();
-        for (var b = c; b is not null; b = b.BaseClass)
-            foreach (var itf in b.Interfaces)
-                stack.Push(itf);
-        var derivedInterfaces = new List<ClassInfo>();
-        while (stack.Count > 0)
-        {
-            var itf = stack.Pop();
-            if (!seen.Add(itf))
-                continue;
-            foreach (var parent in itf.Interfaces)
-                stack.Push(parent);
-            if (itf == itfMethod.DeclaringClass
-                || !InterfaceDerivesFrom(itf, itfMethod.DeclaringClass))
-                continue;
-            derivedInterfaces.Add(itf);
-        }
+        if (itfMethod.IsStatic)
+            return null;
         var candidates = new List<(ClassInfo Interface, MethodInfo Body)>();
-        foreach (var itf in derivedInterfaces)
+        foreach (var itf in GetInterfaceClosure(c).Ordered)
         {
+            if (itf == itfMethod.DeclaringClass
+                || !ImplementsInterface(itf, itfMethod.DeclaringClass))
+                continue;
             itf.EnsureMembers();
             if (ExplicitInterfaceImplOrNull(itf, itfMethod) is { } body)
                 candidates.Add((itf, body));
@@ -2951,7 +2972,7 @@ internal sealed partial class Compilation
             bool shadowed = false;
             foreach (var other in candidates)
                 if (other.Interface != candidate.Interface
-                    && InterfaceDerivesFrom(other.Interface, candidate.Interface))
+                    && ImplementsInterface(other.Interface, candidate.Interface))
                 {
                     shadowed = true;
                     break;
@@ -2959,9 +2980,7 @@ internal sealed partial class Compilation
             if (shadowed)
                 continue;
             if (selected is not null)
-                throw new NotSupportedException(
-                    $"{c.FullName}: ambiguous interface implementation of "
-                    + $"{itfMethod.DeclaringClass.FullName}.{itfMethod.Name}");
+                return null;
             selected = candidate;
         }
         if (selected is { } mostSpecific)
@@ -2996,25 +3015,6 @@ internal sealed partial class Compilation
                 if (kv.Key.SigKey == declaration.SigKey)
                     return kv.Value;
         return null;
-    }
-
-    private static bool InterfaceDerivesFrom(ClassInfo derived, ClassInfo ancestor)
-    {
-        var seen = new HashSet<ClassInfo>();
-        var stack = new Stack<ClassInfo>();
-        foreach (var parent in derived.Interfaces)
-            stack.Push(parent);
-        while (stack.Count > 0)
-        {
-            var current = stack.Pop();
-            if (current == ancestor)
-                return true;
-            if (!seen.Add(current))
-                continue;
-            foreach (var parent in current.Interfaces)
-                stack.Push(parent);
-        }
-        return false;
     }
 
     // ---- third-party custom async task types ----

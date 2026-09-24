@@ -37,4 +37,15 @@
 # an unimplemented static-virtual default still binds the default body.
 source "$(dirname "$0")/_common.sh"
 
+gate_extra_asserts() {
+    local out="$1"
+    run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection.stdout"
+    grep -Fxq '== Static interface implementation selection ==' "$out/static-selection.stdout"
+    grep -Fxq 'static explicit explicit' "$out/static-selection.stdout"
+    grep -Fxq 'static class class' "$out/static-selection.stdout"
+    DN2CPP_BEFORE_STATIC_REVIEW=1 run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection-prefix.stdout"
+    diff -u "$out/static-selection-prefix.stdout" \
+        <(sed '/^== Static interface implementation selection ==/,$d' "$out/static-selection.stdout")
+}
+
 corelib_diff_gate GenericMathOpsSubset System.Runtime

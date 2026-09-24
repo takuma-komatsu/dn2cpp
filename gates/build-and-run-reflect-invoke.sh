@@ -110,10 +110,21 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-interface-generic=ImplicitGeneric/String/ExplicitGeneric/True/Int32/p5' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-extensions-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-typed=derived/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-overloads=generic/integer' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_DELEGATE_METHOD_EXTENSIONS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-extensions.stdout"
+    sed '/^delegate-method-extensions-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-extensions-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-delegate-extensions.stdout") \
+        <(strip_cr_win_file "$out/delegate-extensions-prefix.stdout")
     DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \

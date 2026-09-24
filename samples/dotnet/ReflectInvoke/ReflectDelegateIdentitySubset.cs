@@ -64,6 +64,45 @@ namespace ReflectDelegateIdentitySubset
             string IBaseDefault.Pick() => "derived";
         }
         class DerivedDefault : IDerivedDefault { }
+        struct StructDerivedDefault : IDerivedDefault { }
+        class InheritedDerivedDefault : DerivedDefault { }
+        interface IBaseGenericDefault
+        {
+            string Pick<T>() => "base";
+        }
+        interface IDerivedGenericDefault : IBaseGenericDefault
+        {
+            string IBaseGenericDefault.Pick<T>() => "derived";
+        }
+        class DerivedGenericDefault : IDerivedGenericDefault { }
+        interface IBaseTyped<T>
+        {
+            string Tag() => "base";
+        }
+        interface IDerivedTyped<T> : IBaseTyped<T>
+        {
+            string IBaseTyped<T>.Tag() => "derived";
+        }
+        class DerivedTyped : IDerivedTyped<int> { }
+        interface IBaseSame
+        {
+            string Tag() => "same";
+        }
+        interface IDerivedSame : IBaseSame
+        {
+            string IBaseSame.Tag() => "same";
+        }
+        class DerivedSame : IDerivedSame { }
+        interface IOverloadedGeneric
+        {
+            string Pick<T>(T generic);
+            string Pick<T>(int number);
+        }
+        class OverloadedGeneric : IOverloadedGeneric
+        {
+            string IOverloadedGeneric.Pick<T>(T generic) => "generic";
+            string IOverloadedGeneric.Pick<T>(int number) => "integer";
+        }
         // A new-slot hider detaches the leaf's override from the base's slot.
         class GvmBase
         {
@@ -172,7 +211,6 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("delegate-method-generic-covariant=" + covariantTag.Method.DeclaringType.Name
                 + "/" + covariantTag.Method.Invoke(covariantReceiver, null)!.GetType().Name
                 + "/" + covariantTag().GetType().Name);
-            Console.WriteLine("delegate-method-end");
             IRowGeneric plainFirstReceiver = new PlainFirstGeneric();
             IRowGeneric explicitFirstReceiver = new ExplicitFirstGeneric();
             Func<string> plainFirstPick = plainFirstReceiver.Pick<int>;
@@ -184,6 +222,34 @@ namespace ReflectDelegateIdentitySubset
             Func<string> derivedDefaultPick = derivedDefaultReceiver.Pick;
             Console.WriteLine("delegate-method-derived-default=" + derivedDefaultPick() + "/" + derivedDefaultPick.Method.DeclaringType.Name
                 + "/" + derivedDefaultPick.Method.Name.EndsWith(".Pick"));
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD_EXTENSIONS") == "1")
+                return;
+            Console.WriteLine("delegate-method-extensions-begin");
+            IBaseGenericDefault genericDefaultReceiver = new DerivedGenericDefault();
+            Func<string> genericDefaultPick = genericDefaultReceiver.Pick<int>;
+            Console.WriteLine("delegate-method-derived-generic=" + genericDefaultPick() + "/"
+                + genericDefaultPick.Method.DeclaringType.Name + "/"
+                + genericDefaultPick.Method.Name.EndsWith(".Pick"));
+            IBaseDefault structDefaultReceiver = new StructDerivedDefault();
+            Func<string> structDefaultPick = structDefaultReceiver.Pick;
+            Console.WriteLine("delegate-method-derived-struct=" + structDefaultPick() + "/"
+                + structDefaultPick.Method.DeclaringType.Name);
+            IBaseDefault inheritedDefaultReceiver = new InheritedDerivedDefault();
+            Func<string> inheritedDefaultPick = inheritedDefaultReceiver.Pick;
+            Console.WriteLine("delegate-method-derived-inherited=" + inheritedDefaultPick() + "/"
+                + inheritedDefaultPick.Method.DeclaringType.Name);
+            IBaseTyped<int> typedDefaultReceiver = new DerivedTyped();
+            Func<string> typedDefaultTag = typedDefaultReceiver.Tag;
+            Console.WriteLine("delegate-method-derived-typed=" + typedDefaultTag() + "/"
+                + (typedDefaultTag.Method.DeclaringType == typeof(IDerivedTyped<int>)));
+            IBaseSame sameReceiver = new DerivedSame();
+            Func<string> sameTag = sameReceiver.Tag;
+            Console.WriteLine("delegate-method-derived-same=" + sameTag() + "/"
+                + sameTag.Method.DeclaringType.Name);
+            IOverloadedGeneric overloaded = new OverloadedGeneric();
+            Console.WriteLine("delegate-method-generic-overloads=" + overloaded.Pick<int>(generic: 5)
+                + "/" + overloaded.Pick<int>(number: 5));
+            Console.WriteLine("delegate-method-end");
         }
     }
 }

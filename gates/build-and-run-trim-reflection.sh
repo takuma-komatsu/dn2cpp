@@ -106,6 +106,9 @@ else
         '  inherited override -> LibCircle/circle' \
         '  generic virtual -> LibGvmLeaf/gvm-leaf' \
         '  interface slot -> LibWidget/8'
+    assert_delegate_method_lines "$native" \
+        '  unrelated stripped interface -> IDefaultKind/base' \
+        '  selected stripped interface -> IChosenDefaultKind/chosen'
     before=$(strip_cr_win "$(DN2CPP_BEFORE_DELEGATE_METHOD=1 "./$OUT/$PROJECT")")
     prefix=$(awk '/^== Delegate.Method over stripped receivers ==$/ { exit } { print }' \
         <<<"$(strip_cr_win "$native")")
@@ -135,7 +138,9 @@ else
         "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
-        "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'"
+        "  interface slot -> PNSE: Reflection over the members of 'TrimReflectLib.LibWidget'" \
+        '  unrelated stripped interface -> IDefaultKind/base' \
+        "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
     gate_cache_commit
 fi
 
@@ -159,7 +164,9 @@ else
         "  overriding level -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  inherited override -> PNSE: Reflection over the members of 'TrimReflectLib.LibCircle'" \
         "  generic virtual -> PNSE: Reflection over the members of 'TrimReflectLib.LibGvmLeaf'" \
-        '  interface slot -> LibWidget/8'
+        '  interface slot -> LibWidget/8' \
+        '  unrelated stripped interface -> IDefaultKind/base' \
+        "  selected stripped interface -> PNSE: Reflection over the members of 'TrimReflectLib.IChosenDefaultKind'"
     gate_cache_commit
 fi
 

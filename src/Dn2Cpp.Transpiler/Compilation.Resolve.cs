@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Reflection.Metadata;
 using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
 
@@ -832,9 +833,11 @@ internal sealed partial class Compilation
         }
         for (var c = scc; c is not null; c = c.BaseClass)
         {
-            if (FindGenericMethodTemplate(c.Module, c.Handle, callee.Name,
-                    callee.Context.MethodArgs.Length, openParams.Length, wantKey, itfSimple) is { } tmpl)
-                return InstantiateMethodOnClass(c, c.Module, tmpl, callee.Context.MethodArgs);
+            var tmpl = !sccIntrinsic ? FindInterfaceGenericMethodImpl(c, callee) : null;
+            tmpl ??= FindGenericMethodTemplate(c.Module, c.Handle, callee.Name,
+                callee.Context.MethodArgs.Length, openParams.Length, wantKey, itfSimple);
+            if (tmpl is { } selected)
+                return InstantiateMethodOnClass(c, c.Module, selected, callee.Context.MethodArgs);
         }
         return null;
     }
@@ -846,56 +849,55 @@ internal sealed partial class Compilation
     /// name="wantKey"/> (the wanted parameter signature, decoded with an empty
     /// context) breaks the tie so overloads differing only by a delegate
     /// parameter's arity — e.g. Select(Func&lt;T,R&gt;) vs Select(Func&lt;T,int,R&gt;)
-    /// — bind to the right one instead of the first defined. For static virtual
-    /// interface members, <paramref name="explicitItfName"/> includes dotted
-    /// explicit bodies in this name-based lookup.</summary>
+    /// — bind to the right one instead of the first defined. For interface
+    /// members, <paramref name="explicitItfName"/> searches dotted explicit
+    /// bodies before plainly named bodies.</summary>
     private MethodDefinitionHandle? FindGenericMethodTemplate(
         Module mod, TypeDefinitionHandle classDef, string name, int genArity, int paramCount,
         string? wantKey = null, string? explicitItfName = null)
     {
         // The lazy per-TypeDef index limits signature decoding to matching names.
-        // For static explicit bodies, merge the dotted names in metadata row order
-        // so the fallback and wantKey tie-break preserve the full-walk choice.
+        // Explicit bodies must precede plain bodies even when their metadata
+        // rows come later.
         var reader = mod.Reader;
         var idx = TypeDefMethodNames(mod, classDef);
         idx.ByName.TryGetValue(name, out var exact);
-        List<MethodDefinitionHandle>? candidates;
-        if (explicitItfName is null)
+        List<MethodDefinitionHandle>? dotted = null;
+        if (explicitItfName is not null)
         {
-            candidates = exact;
-        }
-        else
-        {
-            // A static explicit interface body has the dotted
+            // An explicit interface body has the dotted
             // "Ns.IItf<T>.Name" metadata name. Require the ".Name" suffix and
-            // the interface's simple name in its qualifier. The exact-name list
-            // already includes a dotted name that equals name.
-            List<MethodDefinitionHandle>? dotted = null;
+            // the interface's simple name in its qualifier.
             foreach (var (mname, mh) in idx.Dotted)
                 if (mname != name
                     && mname.EndsWith("." + name, StringComparison.Ordinal)
                     && mname.Contains(explicitItfName, StringComparison.Ordinal))
                     (dotted ??= new()).Add(mh);
-            candidates = MergeByRow(exact, dotted);
         }
-        if (candidates is null)
-            return null;
-        MethodDefinitionHandle? first = null;
-        foreach (var mh in candidates)
+        int groups = explicitItfName is null ? 1 : 2;
+        for (int group = 0; group < groups; group++)
         {
-            var md = reader.GetMethodDefinition(mh);
-            if (md.GetGenericParameters().Count != genArity) continue;
-            // Decode with an empty context: generic parameters decode to GenVar
-            // placeholders (substitution is deferred), so the arity count is exact.
-            var ps = md.DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
-            if (ps.Length != paramCount) continue;
-            first ??= mh;
-            // Exact parameter-signature match wins when disambiguating overloads;
-            // fall back to the first arity-match (representational differences).
-            if (wantKey is null || string.Join(",", ps.Select(p => p.ToString())) == wantKey)
-                return mh;
+            var candidates = groups == 1 || group == 1 ? exact : dotted;
+            if (candidates is null)
+                continue;
+            MethodDefinitionHandle? first = null;
+            foreach (var mh in candidates)
+            {
+                var md = reader.GetMethodDefinition(mh);
+                if (md.GetGenericParameters().Count != genArity) continue;
+                // Decode with an empty context: generic parameters remain open.
+                var ps = md.DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
+                if (ps.Length != paramCount) continue;
+                first ??= mh;
+                if (wantKey is null || string.Join(",", ps.Select(p => p.ToString())) == wantKey)
+                    return mh;
+            }
+            // A signature representation difference may prevent an exact key.
+            // Keep the explicit candidate before considering a plain method.
+            if (first is not null)
+                return first;
         }
-        return first;
+        return null;
     }
 
     /// <summary>Finds the body a MethodImpl row binds to an instantiated interface
@@ -906,54 +908,59 @@ internal sealed partial class Compilation
         var reader = owner.Module.Reader;
         foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
         {
-            var impl = reader.GetMethodImplementation(mih);
-            if (impl.MethodBody.Kind != HandleKind.MethodDefinition)
-                continue;
-            bool matches = false;
-            if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
+            try
             {
-                matches = owner.Module == slot.Module
-                    && (MethodDefinitionHandle)impl.MethodDeclaration == slot.Handle;
-            }
-            else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
-            {
-                var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
-                if (reader.GetString(mr.Name) != slot.Name)
+                var impl = reader.GetMethodImplementation(mih);
+                if (impl.MethodBody.Kind != HandleKind.MethodDefinition)
                     continue;
-                ClassInfo? decl = mr.Parent.Kind switch
+                bool matches = false;
+                if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
                 {
-                    HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)mr.Parent),
-                    HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)mr.Parent)?.Class,
-                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
-                        .DecodeSignature(SigProvider, owner.Context).Class,
-                    _ => null,
-                };
-                if (decl == slot.DeclaringClass)
+                    matches = owner.Module == slot.Module
+                        && (MethodDefinitionHandle)impl.MethodDeclaration == slot.Handle;
+                }
+                else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
                 {
-                    var sig = mr.DecodeMethodSignature(SigProvider,
-                        new GenericContext(decl.Context.TypeArgs, slot.Context.MethodArgs));
-                    var target = slot.Signature;
-                    if (sig.GenericParameterCount == slot.Context.MethodArgs.Length
-                        && sig.ParameterTypes.Length == target.ParameterTypes.Length
-                        && SameTypeArg(sig.ReturnType, target.ReturnType))
+                    var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
+                    if (reader.GetString(mr.Name) != slot.Name)
+                        continue;
+                    var decl = ResolveMethodImplParent(owner, impl.MethodDeclaration);
+                    if (decl is not null && decl.FullName == slot.DeclaringClass.FullName)
                     {
-                        matches = true;
-                        for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                            if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
-                            {
-                                matches = false;
-                                break;
-                            }
+                        // Keep method variables open: M<T>(T) and M<T>(int)
+                        // are different slots even when this call uses T=int.
+                        var sig = mr.DecodeMethodSignature(SigProvider,
+                            new GenericContext(decl.Context.TypeArgs, Array.Empty<TypeDesc>()));
+                        var target = slot.Module.Reader.GetMethodDefinition(slot.Handle)
+                            .DecodeSignature(SigProvider,
+                                new GenericContext(slot.DeclaringClass.Context.TypeArgs, Array.Empty<TypeDesc>()));
+                        if (sig.GenericParameterCount == target.GenericParameterCount
+                            && sig.ParameterTypes.Length == target.ParameterTypes.Length
+                            && SameTypeArg(sig.ReturnType, target.ReturnType))
+                        {
+                            matches = true;
+                            for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                                if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
+                                {
+                                    matches = false;
+                                    break;
+                                }
+                        }
                     }
                 }
+                if (!matches)
+                    continue;
+                var body = (MethodDefinitionHandle)impl.MethodBody;
+                var md = reader.GetMethodDefinition(body);
+                if (md.GetDeclaringType() == owner.Handle
+                    && md.GetGenericParameters().Count == slot.Context.MethodArgs.Length
+                    && ((md.Attributes & MethodAttributes.Static) != 0) == slot.IsStatic)
+                    return body;
             }
-            if (!matches)
-                continue;
-            var body = (MethodDefinitionHandle)impl.MethodBody;
-            var md = reader.GetMethodDefinition(body);
-            if (md.GetDeclaringType() == owner.Handle
-                && md.GetGenericParameters().Count == slot.Context.MethodArgs.Length)
-                return body;
+            catch (NotSupportedException) when (owner.Module != AppModule
+                || ContainsCanonPlaceholder(owner))
+            {
+            }
         }
         return null;
     }
@@ -963,9 +970,33 @@ internal sealed partial class Compilation
     private MethodDefinitionHandle? FindInterfaceGenericMethodTemplate(
         ClassInfo owner, MethodInfo slot, string wantKey, int paramCount)
     {
+        string itfSimple = slot.DeclaringClass.Module.Reader.GetString(
+            slot.DeclaringClass.Module.Reader.GetTypeDefinition(slot.DeclaringClass.Handle).Name);
+        int tick = itfSimple.IndexOf('`');
+        if (tick >= 0)
+            itfSimple = itfSimple[..tick];
         return FindInterfaceGenericMethodImpl(owner, slot)
             ?? FindGenericMethodTemplate(owner.Module, owner.Handle, slot.Name,
-                slot.Context.MethodArgs.Length, paramCount, wantKey);
+                slot.Context.MethodArgs.Length, paramCount, wantKey, itfSimple);
+    }
+
+    private ClassInfo? ResolveMethodImplParent(ClassInfo owner, EntityHandle declaration)
+    {
+        var reader = owner.Module.Reader;
+        if (declaration.Kind == HandleKind.MethodDefinition)
+            return GetClass(owner.Module,
+                reader.GetMethodDefinition((MethodDefinitionHandle)declaration).GetDeclaringType());
+        if (declaration.Kind != HandleKind.MemberReference)
+            return null;
+        var parent = reader.GetMemberReference((MemberReferenceHandle)declaration).Parent;
+        return parent.Kind switch
+        {
+            HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)parent),
+            HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)parent)?.Class,
+            HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)parent)
+                .DecodeSignature(SigProvider, owner.Context).Class,
+            _ => null,
+        };
     }
 
     /// <summary>Per-TypeDef method-name index for <see cref="FindGenericMethodTemplate"/>.
@@ -1000,33 +1031,6 @@ internal sealed partial class Compilation
         }
         _typeDefMethodNames.Add(key, idx);
         return idx;
-    }
-
-    /// <summary>Merges two row-ascending handle lists into metadata row order — how
-    /// <see cref="FindGenericMethodTemplate"/> restores the full-walk visit order across
-    /// the exact-name hits and static explicit bodies. Either side may be null;
-    /// the inputs are never mutated (the exact list is the shared index's).</summary>
-    private static List<MethodDefinitionHandle>? MergeByRow(
-        List<MethodDefinitionHandle>? exact, List<MethodDefinitionHandle>? dotted)
-    {
-        if (dotted is null)
-            return exact;
-        if (exact is null)
-            return dotted;
-        var merged = new List<MethodDefinitionHandle>(exact.Count + dotted.Count);
-        int i = 0, j = 0;
-        while (i < exact.Count && j < dotted.Count)
-        {
-            if (SRME.GetRowNumber(exact[i]) < SRME.GetRowNumber(dotted[j]))
-                merged.Add(exact[i++]);
-            else
-                merged.Add(dotted[j++]);
-        }
-        while (i < exact.Count)
-            merged.Add(exact[i++]);
-        while (j < dotted.Count)
-            merged.Add(dotted[j++]);
-        return merged;
     }
 
     /// <summary>Resolves a field reference whose parent is either a closed
