@@ -2204,9 +2204,157 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
     dn2cpp_throw(wrapper);
 }
 
-// Shared method dispatch: validate, adjust the receiver for a value-type
-// instance method (pass the unboxed payload at obj+1), and call through the per-shape
-// invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
+// The caller faults reflection raises before the target runs, with the message and
+// HResult real .NET gives each. None is wrapped in TargetInvocationException.
+[[noreturn]] static void dn2cpp_throw_reflection_fault(const Dn2CppTypeInfo* ti,
+    Dn2CppString* message, uint32_t hresult)
+{
+    Dn2CppObject* e = dn2cpp_exception_new(ti,
+        message != nullptr ? message : dn2cpp_default_message(ti), nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(hresult);
+    dn2cpp_throw(e);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_target(const Dn2CppObject* obj,
+    const Dn2CppTypeInfo* declaring)
+{
+    Dn2CppString* message;
+    if (obj == nullptr)
+        message = dn2cpp_sr_message(DN2CPP_SR_TARGET_REQUIRED, nullptr, 0);
+    else
+    {
+        Dn2CppString* names[2] = { dn2cpp_type_tostring(declaring), dn2cpp_type_tostring(obj->type) };
+        message = dn2cpp_sr_message(DN2CPP_SR_TARGET_MISMATCH, names, 2);
+    }
+    dn2cpp_throw_reflection_fault(&dn2cpp_target_exception_type, message, 0x80131603u);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_parameter_count()
+{
+    dn2cpp_throw_reflection_fault(&dn2cpp_target_parameter_count_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_PARAMETER_COUNT, nullptr, 0), 0x8002000Eu);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_argument(const Dn2CppTypeInfo* from,
+    const Dn2CppTypeInfo* to)
+{
+    Dn2CppString* names[2] = { dn2cpp_type_tostring(from), dn2cpp_type_tostring(to) };
+    dn2cpp_throw_reflection_fault(&dn2cpp_argument_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_OBJECT_CONVERSION, names, 2), 0x80070057u);
+}
+
+static bool dn2cpp_prim_widens(int32_t src, int32_t dst);
+static const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
+static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeInfo* p);
+
+static const Dn2CppTypeInfo* dn2cpp_enum_underlying_or_self(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+        return ti;
+    return ti->enumUnderlying != nullptr ? ti->enumUnderlying : &dn2cpp_int32_type;
+}
+
+// RuntimeType.CheckValue for one non-null argument: the value to pass, or the
+// conversion ArgumentException. Besides an argument the parameter admits, .NET
+// takes a boxed U for Nullable<U>, and an enum or primitive for an enum or
+// primitive parameter whose underlying type CanPrimitiveWiden reaches from the
+// argument's. Those re-box in the representation the invoker thunk reads.
+static Dn2CppObject* dn2cpp_invoke_check_arg(Dn2CppObject* arg, const Dn2CppTypeInfo* expected)
+{
+    if (dn2cpp_typeinfo_assignable(arg->type, expected) != 0)
+        return arg;
+    // CultureInfo and NumberFormatInfo escape through runtime wrappers whose
+    // type headers have no emitted IFormatProvider interface table.
+    if (expected->name != nullptr && std::strcmp(expected->name, "System.IFormatProvider") == 0
+        && dn2cpp_nfi_isinst(arg, DN2CPP_NFI_KIND_PROVIDER, expected) != nullptr)
+        return arg;
+    if ((expected->flags & DN2CPP_TF_VALUETYPE) != 0)
+    {
+        if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(expected))
+        {
+            if (arg->type == u)
+                return dn2cpp_binder_adapt_arg(arg, expected);
+        }
+        else
+        {
+            int32_t to = dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(expected));
+            int32_t from = dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(arg->type));
+            if (to >= 0 && from >= 0 && dn2cpp_prim_widens(from, to))
+                return from == to ? arg : dn2cpp_binder_adapt_arg(arg, expected);
+        }
+    }
+    dn2cpp_throw_invoke_argument(arg->type, expected);
+}
+
+// The argument list the invoker thunk receives: `args` itself unless an argument
+// converts, then a copy, since a by-value conversion never writes the caller's
+// array. The caller has already matched argc against the row's parameter count.
+static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    Dn2CppObject** args, int32_t argc)
+{
+    if (argc == 0)
+        return args;
+    const auto parameters = mi->parameters;
+    Dn2CppArrayRef* copy = nullptr;
+    for (int32_t i = 0; i < argc; i++)
+    {
+        if (args[i] == nullptr)
+            continue;
+        Dn2CppObject* arg = dn2cpp_invoke_check_arg(args[i], parameters[i]->paramType);
+        if (arg == args[i])
+            continue;
+        if (copy == nullptr)
+        {
+            copy = dn2cpp_newarr_ref(argc);
+            for (int32_t k = 0; k < argc; k++)
+                dn2cpp_gc_store_ref(&copy->data[k], args[k]);
+        }
+        dn2cpp_gc_store_ref(&copy->data[i], arg);
+    }
+    return copy != nullptr ? copy->data : args;
+}
+
+// Whether `objType` is an instance of the row's declaring type. A clone
+// MakeGenericType synthesized shares its template's member rows, whose declaring
+// type is the template, and no clone's base chain reaches the template, so a
+// template level is matched by generic definition.
+static bool dn2cpp_invoke_target_matches(const Dn2CppTypeInfo* objType,
+    const Dn2CppTypeInfo* declaring)
+{
+    if (dn2cpp_typeinfo_assignable(objType, declaring) != 0)
+        return true;
+    if ((declaring->flags & DN2CPP_TF_RUNTIME_TEMPLATE) == 0)
+        return false;
+    const Dn2CppRuntimeTemplate* level = dn2cpp_runtime_template_by_ti(declaring);
+    if (level == nullptr)
+        return false;
+    for (const Dn2CppTypeInfo* t = objType; t != nullptr; t = t->base)
+        if ((t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0 && t->genericDef == level->def)
+            return true;
+    return false;
+}
+
+// ValidateInvokeTarget: the receiver an instance row runs on. Boxing a
+// Nullable<U> yields a boxed U, which .NET accepts for a Nullable<U> method, so
+// that receiver re-boxes in the Nullable layout the method's `this` reads.
+template<class Method>
+static Dn2CppObject* dn2cpp_invoke_receiver(const Method& row, Dn2CppObject* obj)
+{
+    if ((row.attrs & DN2CPP_MTHA_STATIC) != 0)
+        return obj;
+    if (obj == nullptr)
+        dn2cpp_throw_invoke_target(obj, row.declaringType);
+    if (dn2cpp_invoke_target_matches(obj->type, row.declaringType))
+        return obj;
+    const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(row.declaringType);
+    if (u == nullptr || obj->type != u)
+        dn2cpp_throw_invoke_target(obj, row.declaringType);
+    return dn2cpp_binder_adapt_arg(obj, row.declaringType);
+}
+
+// Calls through the per-shape invoker thunk (which unboxes/casts the args, calls
+// fnPtr, and boxes the result), wrapping what the target throws unless the
+// caller asked for DoNotWrapExceptions.
 static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
     Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions)
 {
@@ -2227,27 +2375,6 @@ static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* s
     }
 }
 
-static void dn2cpp_validate_invoke_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject** args, int32_t argc)
-{
-    for (int32_t i = 0; i < argc; i++)
-    {
-        Dn2CppObject* arg = args[i];
-        if (arg == nullptr)
-            continue;
-        const Dn2CppTypeInfo* expected = mi->parameters[i]->paramType;
-        if (dn2cpp_typeinfo_assignable(arg->type, expected) != 0)
-            continue;
-        // CultureInfo and NumberFormatInfo escape through runtime wrappers whose
-        // type headers have no emitted IFormatProvider interface table.
-        if (expected != nullptr && expected->name != nullptr
-            && std::strcmp(expected->name, "System.IFormatProvider") == 0
-            && dn2cpp_nfi_isinst(arg, DN2CPP_NFI_KIND_PROVIDER, expected) != nullptr)
-            continue;
-        dn2cpp_throw_argument();
-    }
-}
-
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
@@ -2260,16 +2387,12 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0
         && (row.genericParamCount == 0 || row.genericArgs != nullptr))
     {
-        if (argc != row.paramCount)
-            dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
         {
-            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0
-                && (obj == nullptr || dn2cpp_typeinfo_assignable(obj->type,
-                        row.declaringType) == 0))
-                dn2cpp_throw_of(&dn2cpp_target_exception_type);
-            dn2cpp_validate_invoke_args(mi, args, argc);
+            obj = dn2cpp_invoke_receiver(row, obj);
+            if (argc != row.paramCount)
+                dn2cpp_throw_invoke_parameter_count();
             try
             {
                 return d->answer(row.genericArgs, obj);
@@ -2290,12 +2413,10 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         dn2cpp_throw_invalid_operation();
     void* fn = row.fnPtr;
     bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
-    if (!isStatic && (obj == nullptr || dn2cpp_typeinfo_assignable(obj->type,
-            row.declaringType) == 0))
-        dn2cpp_throw_of(&dn2cpp_target_exception_type);
+    obj = dn2cpp_invoke_receiver(row, obj);
     if (argc != row.paramCount)
-        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
-    dn2cpp_validate_invoke_args(mi, args, argc);
+        dn2cpp_throw_invoke_parameter_count();
+    args = dn2cpp_invoke_check_args(mi, args, argc);
     // Late-bound call on an interface-declared row: the row is signature-only (an
     // interface method has no body, so fnPtr is null), but its invoker thunk was
     // emitted, and the receiver's implementation is what a callvirt would resolve —
@@ -2376,10 +2497,15 @@ static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions);
 }
 
-// MethodInfo.Invoke.
+// MethodInfo.Invoke. A definition view runs its representative closed row, so it
+// is refused before the row's receiver and argument checks, as .NET refuses it.
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
-    return dn2cpp_invoke_mi(dn2cpp_methodref_require(m), obj, (args == nullptr) ? nullptr : args->data,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
+    if (m->isGenericDefView != 0)
+        dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type,
+            dn2cpp_sr_message(DN2CPP_SR_UNBOUND_GENERIC, nullptr, 0), 0x80131509u);
+    return dn2cpp_invoke_mi(mi, obj, (args == nullptr) ? nullptr : args->data,
                             (args == nullptr) ? 0 : args->length, wrapExceptions);
 }
 
@@ -3000,8 +3126,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
     if (argc != mi->paramCount)
-        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
-    dn2cpp_validate_invoke_args(mi, args, argc);
+        dn2cpp_throw_invoke_parameter_count();
+    args = dn2cpp_invoke_check_args(mi, args, argc);
     const Dn2CppTypeInfo* ti = mi->declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
@@ -3411,7 +3537,7 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     // The setter's signature is (indices..., value): cap indexer arity at a
     // generous fixed bound rather than allocating (real indexers are tiny).
     if (n > 30)
-        dn2cpp_throw_of(&dn2cpp_target_parameter_count_exception_type);
+        dn2cpp_throw_invoke_parameter_count();
     Dn2CppObject* args[31];
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];
@@ -5769,7 +5895,7 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
         int32_t off, w, uc;
         if (!dn2cpp_nullable_layout(u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
-                "Activator: binding a Nullable<T> parameter of a non-primitive T is not supported");
+                "Reflection: binding a Nullable<T> argument of a non-primitive T is not supported");
         int32_t sz = p->instanceSize > 0 ? p->instanceSize : off + w;
         auto* box = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(sz)));
         box->type = p;

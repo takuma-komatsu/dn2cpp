@@ -4455,8 +4455,9 @@ internal sealed partial class CppEmitter
     /// fn pointer with the correct signature, and boxes the result. Reference-typed
     /// params/return collapse to a uniform pointer (so all-ref signatures share one
     /// thunk); value types keep their exact C++ type and accept null as their default
-    /// value. The dispatcher checks non-null arguments against the row's parameter
-    /// types before entering the thunk. A value-type receiver's payload
+    /// value. The thunk trusts each box's representation: the reflection dispatcher
+    /// rejects or re-boxes a non-null argument before entering it, and the
+    /// interpreter boxes its typed values exactly. A value-type receiver's payload
     /// adjustment is done by the runtime dispatcher, so the receiver is a plain
     /// pointer here. ref/out/pointer params are treated as pointers — invoking such a
     /// method via reflection is out of scope (the thunk still links). Callers gate on

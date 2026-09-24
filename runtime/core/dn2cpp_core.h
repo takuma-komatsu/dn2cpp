@@ -1441,8 +1441,12 @@ inline constexpr const char* DN2CPP_SR_NULL_REFERENCE = "Arg_NullReferenceExcept
 inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
-inline constexpr const char* DN2CPP_SR_TARGET_EXCEPTION = "Arg_TargetException";
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
+inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
+inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
+inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
+inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
+inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
 inline constexpr const char* DN2CPP_SR_BAD_DATEONLY = "Format_BadDateOnly";
@@ -1461,6 +1465,8 @@ inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_Actual
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
 const char* dn2cpp_sr_text(const char* key);
+// The key's text with `{0}`..`{argc-1}` replaced by `args`, or null when the text is absent.
+Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc);
 // Dynamic side-chain of the type-name registry: type-infos constructed at run
 // time (the hot-update loader's patch types) registered by CLR FullName.
 // Lookups scan the static table first — a built-in type can never be shadowed
@@ -1558,7 +1564,10 @@ Dn2CppString* dn2cpp_paramref_name(Dn2CppParamRef* p);
 // signature-deduplicated invoker thunk. obj is the instance (null/ignored for a
 // static method); for a value-type receiver the unboxed payload is passed. Returns
 // the boxed result (null for void). A method with no emitted body (invoker == null)
-// throws InvalidOperationException; an arg-count mismatch throws ArgumentException.
+// throws InvalidOperationException. Before the target runs, a missing or mismatched
+// receiver throws TargetException, an argument-count mismatch
+// TargetParameterCountException, and an argument .NET would not convert
+// ArgumentException.
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions = true);
 // Raises TargetInvocationException around `inner`, an in-flight exception a
 // reflective call's target threw; inner leaves the in-flight list.

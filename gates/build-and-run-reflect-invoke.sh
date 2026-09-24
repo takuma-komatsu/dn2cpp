@@ -3,7 +3,9 @@
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
 #   MethodInfo.Invoke (instance/static, args, return boxing, void, private,
-#   receiver and argument validation, and target exception wrapping),
+#   and target exception wrapping), the receiver, arity and argument checks
+#   MethodInfo/ConstructorInfo/PropertyInfo run before the target with .NET's
+#   messages, and the by-value argument conversions they accept,
 #   delegate/interface dynamic dispatch via reflection, FieldInfo.GetValue/SetValue
 #   (instance/static/value-type/unbox), and a reflection-driven serializer
 #   (attribute-named members + enum names).
