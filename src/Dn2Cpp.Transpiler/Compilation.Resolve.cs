@@ -1039,14 +1039,6 @@ internal sealed partial class Compilation
         return found;
     }
 
-    /// <summary>MethodImpl binds an interface generic slot before ordinary
-    /// name-and-signature matching, regardless of MethodDef row order.</summary>
-    private MethodDefinitionHandle? FindInterfaceGenericMethodTemplate(
-        ClassInfo owner, MethodInfo slot, string wantKey, int paramCount) =>
-        FindInterfaceGenericMethodImpl(owner, slot)
-            ?? FindGenericMethodTemplate(owner.Module, owner.Handle, slot.Name,
-                slot.Context.MethodArgs.Length, paramCount, wantKey, slot.DeclaringClass, slot.IsStatic);
-
     private ClassInfo? ResolveMethodImplParent(ClassInfo owner, EntityHandle declaration)
     {
         var reader = owner.Module.Reader;

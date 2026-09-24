@@ -41,6 +41,26 @@ namespace ReflectDelegateIdentitySubset
 
     class RuntimeGvmBox<T> : RuntimeGvmMid { }
 
+    interface IRuntimeRedeclared
+    {
+        string Tag();
+    }
+
+    class RuntimeRedeclaredBase : IRuntimeRedeclared
+    {
+        string IRuntimeRedeclared.Tag() => "runtime-base-explicit";
+    }
+
+    class RuntimeRedeclaredBox<T> : RuntimeRedeclaredBase, IRuntimeRedeclared
+    {
+        public string Tag() => "runtime-box";
+    }
+
+    class SharedRedeclaredBox<T> : RuntimeRedeclaredBase, IRuntimeRedeclared
+    {
+        public string Tag() => "shared-box-" + typeof(T).Name;
+    }
+
     static class Extensions
     {
         public static string Decorate(this string prefix, string value) => prefix + value;
@@ -198,6 +218,110 @@ namespace ReflectDelegateIdentitySubset
         {
             public override CovariantLeaf Tag<T>() => this;
         }
+        interface IRedeclared { string Tag(); }
+        class RedeclaredBase : IRedeclared
+        {
+            string IRedeclared.Tag() => "base-explicit";
+        }
+        class RedeclaredDerived : RedeclaredBase, IRedeclared
+        {
+            public string Tag() => "derived-plain";
+        }
+        class RedeclaredUnrelated : RedeclaredBase
+        {
+            public string Tag() => "unrelated";
+        }
+        class ImplicitRedeclared : IRedeclared
+        {
+            public string Tag() => "implicit";
+        }
+        class ImplicitHider : ImplicitRedeclared
+        {
+            public new virtual string Tag() => "hider";
+        }
+        abstract class AbstractRedeclared : IRedeclared
+        {
+            public abstract string Tag();
+        }
+        class AbstractLeaf : AbstractRedeclared
+        {
+            public override string Tag() => "abstract-leaf";
+        }
+        class FillSource
+        {
+            public virtual string Tag() => "fill-source";
+        }
+        class FillTarget : FillSource, IRedeclared { }
+        class FillOverride : FillTarget
+        {
+            public override string Tag() => "fill-override";
+        }
+        class ExplicitMid : RedeclaredBase
+        {
+            public virtual string Tag() => "explicit-mid";
+        }
+        class ExplicitMidRedeclared : ExplicitMid, IRedeclared { }
+        interface IRedeclaredDefault
+        {
+            string Tag() => "default";
+        }
+        class DefaultFirst : IRedeclaredDefault { }
+        class DefaultMid : DefaultFirst
+        {
+            public virtual string Tag() => "default-mid";
+        }
+        class DefaultRedeclared : DefaultMid, IRedeclaredDefault { }
+        interface IRedeclaredOf<T> { string Tag(T value); }
+        class RedeclaredOfBase : IRedeclaredOf<int>
+        {
+            string IRedeclaredOf<int>.Tag(int value) => "of-base-explicit";
+        }
+        class RedeclaredOfDerived : RedeclaredOfBase, IRedeclaredOf<int>
+        {
+            public string Tag(int value) => "of-derived-plain";
+        }
+        interface IRedeclaredPick { string Pick<T>(); }
+        class PickBase : IRedeclaredPick
+        {
+            string IRedeclaredPick.Pick<T>() => "pick-base-explicit";
+        }
+        class PickDerived : PickBase, IRedeclaredPick
+        {
+            public string Pick<T>() => "pick-derived-plain";
+        }
+        class PickUnrelated : PickBase
+        {
+            public string Pick<T>() => "pick-unrelated";
+        }
+        class PickImplicit : IRedeclaredPick
+        {
+            public string Pick<T>() => "pick-implicit";
+        }
+        class PickHider : PickImplicit
+        {
+            public new virtual string Pick<T>() => "pick-hider";
+        }
+        class PickVirtual : IRedeclaredPick
+        {
+            public virtual string Pick<T>() => "pick-virtual";
+        }
+        class PickOverride : PickVirtual
+        {
+            public override string Pick<T>() => "pick-override";
+        }
+        class PickVirtualHider : PickVirtual
+        {
+            public new virtual string Pick<T>() => "pick-virtual-hider";
+        }
+        class PickSource
+        {
+            public virtual string Pick<T>() => "pick-source";
+        }
+        class PickTarget : PickSource, IRedeclaredPick { }
+        class PickTargetOverride : PickTarget
+        {
+            public override string Pick<T>() => "pick-target-override";
+        }
         static class IdentityOwner<T>
         {
             public static T Echo(T value) => value;
@@ -290,6 +414,9 @@ namespace ReflectDelegateIdentitySubset
                 return;
             RunInterfaceMethod();
             RunInterfaceGenericDispatch();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_REDECLARATION") == "1")
+                return;
+            RunInterfaceRedeclaration();
         }
 
         // Delegate.Method for the body an interface binding selects: explicit over
@@ -380,6 +507,71 @@ namespace ReflectDelegateIdentitySubset
                 + "/" + ((IArityPick<int>)arity).Pick<int>() + "/" + arityPick.Method.Name
                 + "/" + genericArityPick.Method.Name.EndsWith(".Pick"));
             Console.WriteLine("interface-gvm-dispatch-end");
+        }
+
+        static string Bound(Delegate d, string name) =>
+            d.Method.DeclaringType.Name + "/" + (d.Method.Name == name ? "plain"
+                : d.Method.Name.EndsWith("." + name) ? "explicit" : d.Method.Name);
+
+        static string Redeclared(IRedeclared receiver)
+        {
+            Func<string> tag = receiver.Tag;
+            return receiver.Tag() + "/" + tag() + "/" + Bound(tag, "Tag");
+        }
+
+        static string RuntimeRedeclared(IRuntimeRedeclared receiver)
+        {
+            Func<string> tag = receiver.Tag;
+            return receiver.Tag() + "/" + tag() + "/" + Bound(tag, "Tag");
+        }
+
+        static string RedeclaredDefault(IRedeclaredDefault receiver)
+        {
+            Func<string> tag = receiver.Tag;
+            return receiver.Tag() + "/" + tag() + "/" + Bound(tag, "Tag");
+        }
+
+        static string RedeclaredPick(IRedeclaredPick receiver)
+        {
+            Func<string> pick = receiver.Pick<int>;
+            return receiver.Pick<int>() + "/" + pick() + "/" + Bound(pick, "Pick");
+        }
+
+        // Which class level supplies an interface body, for the call and for
+        // Delegate.Method: a level listing the interface prefers its own public
+        // method to the inherited mapping; a level that does not list it
+        // contributes only by overriding the class slot the mapping chose; a
+        // base without the interface fills a listing level's empty slot.
+        static void RunInterfaceRedeclaration()
+        {
+            Console.WriteLine("interface-redeclaration-begin");
+            Console.WriteLine("interface-redeclaration-plain=" + Redeclared(new RedeclaredDerived()));
+            Console.WriteLine("interface-redeclaration-unlisted=" + Redeclared(new RedeclaredUnrelated()));
+            Console.WriteLine("interface-redeclaration-hider=" + Redeclared(new ImplicitHider()));
+            Console.WriteLine("interface-redeclaration-abstract=" + Redeclared(new AbstractLeaf()));
+            Console.WriteLine("interface-redeclaration-generic-class=" + RuntimeRedeclared(new SharedRedeclaredBox<string>()));
+            Console.WriteLine("interface-redeclaration-fill=" + Redeclared(new FillTarget())
+                + "/" + Redeclared(new FillOverride()));
+            Console.WriteLine("interface-redeclaration-explicit-mid=" + Redeclared(new ExplicitMidRedeclared()));
+            Console.WriteLine("interface-redeclaration-default=" + RedeclaredDefault(new DefaultMid())
+                + "/" + RedeclaredDefault(new DefaultRedeclared()));
+            IRedeclaredOf<int> closed = new RedeclaredOfDerived();
+            Func<int, string> closedTag = closed.Tag;
+            Console.WriteLine("interface-redeclaration-closed-generic=" + closed.Tag(1) + "/" + closedTag(1)
+                + "/" + Bound(closedTag, "Tag"));
+            var runtime = (IRuntimeRedeclared)Activator.CreateInstance(
+                typeof(RuntimeRedeclaredBox<>).MakeGenericType(typeof(string)));
+            Func<string> runtimeTag = runtime.Tag;
+            Console.WriteLine("interface-redeclaration-runtime-type=" + runtime.Tag() + "/" + runtimeTag()
+                + "/" + runtimeTag.Method.Name);
+            Console.WriteLine("interface-redeclaration-pick-plain=" + RedeclaredPick(new PickDerived()));
+            Console.WriteLine("interface-redeclaration-pick-unlisted=" + RedeclaredPick(new PickUnrelated()));
+            Console.WriteLine("interface-redeclaration-pick-hider=" + RedeclaredPick(new PickHider())
+                + "/" + RedeclaredPick(new PickVirtualHider()));
+            Console.WriteLine("interface-redeclaration-pick-override=" + RedeclaredPick(new PickOverride()));
+            Console.WriteLine("interface-redeclaration-pick-fill=" + RedeclaredPick(new PickTarget())
+                + "/" + RedeclaredPick(new PickTargetOverride()));
+            Console.WriteLine("interface-redeclaration-end");
         }
     }
 }

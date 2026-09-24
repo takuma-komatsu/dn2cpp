@@ -2806,8 +2806,11 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     if (decl.fnPtr != nullptr && decl.fnPtr == bound)
         return {};
     // Value-type unboxing thunks, NFI-erasing thunks and generic-virtual dispatchers
-    // hide the implementation's address: resolve by name as the transpiler bound it.
-    // Plain matches (1) need a body; explicit ones (2) must name the owner.
+    // hide the implementation's address: resolve by name. Interface rows are
+    // transitive, so which class level lists the interface is invisible here; the
+    // orders below are exact for one implementing level, and the emitter records
+    // the selected body for the class receivers it allocates. Plain matches (1)
+    // need a body; explicit ones (2) must name the owner.
     const auto kindOf = [&](const Dn2CppMethodInfo& row) -> int {
         if ((row.attrs & DN2CPP_MTHA_STATIC) != 0
             || !dn2cpp_names_member(row.name, decl.name, nameLength, &qualifierLength)
@@ -2845,7 +2848,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
     if (gvm)
     {
-        // The dispatcher's order: the first level with any implementation wins.
+        // The first level with any implementation wins.
         for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
@@ -2856,8 +2859,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
         }
         return {};
     }
-    // The interface-table order: an explicit implementation anywhere in the chain
-    // beats a plain one.
+    // An explicit implementation anywhere in the chain beats a plain one.
     for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);

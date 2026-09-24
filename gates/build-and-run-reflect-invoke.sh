@@ -65,6 +65,14 @@
 # which body a call binds: explicit overloads through a plain and a closed generic
 # interface, a plain overload beside an explicit sibling, and explicit bodies
 # for an interface whose name extends the called one's or differs in arity.
+# Its interface redeclaration section pins which class level supplies an
+# interface body, plain and generic, for the call and Delegate.Method: a level
+# listing the interface again prefers its own public method to a base's
+# explicit body, a level that does not list it neither displaces the inherited
+# body with a same-name method or hider nor hides a default, a subclass
+# override takes the class slot the mapping chose (abstract bases included),
+# and a base without the interface fills a listing level's empty slot, over
+# closed generic interfaces, shared generic classes and MakeGenericType receivers.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -137,6 +145,27 @@ gate_extra_asserts() {
     grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-gvm-dispatch-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_INTERFACE_REDECLARATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-redeclaration.stdout"
+    sed '/^interface-redeclaration-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-redeclaration-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-interface-redeclaration.stdout") \
+        <(strip_cr_win_file "$out/interface-redeclaration-prefix.stdout")
     DN2CPP_BEFORE_INTERFACE_SELECTION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-selection.stdout"
     sed '/^delegate-method-interface-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-selection-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-interface-selection.stdout") \

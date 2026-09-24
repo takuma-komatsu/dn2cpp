@@ -1424,11 +1424,10 @@ internal sealed partial class Compilation
     // CreateOrderedEnumerable<TKey>, behind Enumerable.ThenBy) goes through the same
     // dispatcher: its closed instantiation has no interface-table slot either (the
     // plain interface dispatch would index the slots array at -1). The cases are the
-    // allocated types implementing the closed interface, each bound to its own
-    // implementation template instantiated at the call's method args. MethodImpl
-    // rows select explicit bodies ahead of plain-name matches. With no default
-    // body to fall back on, a case-less dispatch traps, matching an abstract
-    // slot that cannot bind.
+    // allocated types implementing the closed interface, each bound to the template
+    // its interface map selects (ResolveItfImplOrNull's rule), instantiated at the
+    // call's method args. With no default body to fall back on, a case-less
+    // dispatch traps, matching an abstract slot that cannot bind.
 
     internal sealed class GvmDispatch
     {
@@ -1496,21 +1495,14 @@ internal sealed partial class Compilation
         if (disp.Decl.IsInterface)
         {
             // Interface GVM: the cases are the allocated types implementing the
-            // closed interface, each dispatching to its own (usually explicit)
-            // implementation instantiated at the dispatcher's method args.
-            // MethodImpl rows bind explicit implementations even when a plain
-            // same-name method appears earlier in metadata.
+            // closed interface, each dispatching to the class body the interface
+            // map selects, instantiated at the dispatcher's method args.
             if (c.IsInterface || !ImplementsInterface(c, disp.Decl))
                 return;
-            for (var b = c; b is not null; b = b.BaseClass)
+            if (InterfaceGvmClassImplOrNull(disp, c) is { } classImpl)
             {
-                var tmpl = FindInterfaceGenericMethodTemplate(b, disp.Gvm,
-                    disp.WantKey, disp.ParamCount);
-                if (tmpl is null)
-                    continue;
-                var impl = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
-                Reach(impl);
-                disp.Cases[c] = impl;
+                Reach(classImpl);
+                disp.Cases[c] = classImpl;
                 return;
             }
             var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out bool ambiguous);
@@ -1535,24 +1527,98 @@ internal sealed partial class Compilation
         }
         if (!DerivesFromOrIs(c, disp.Decl))
             return;
-        // Walk from the concrete type up to the GVM's declaring type, taking the most
-        // derived method bound to this slot. A `new virtual` hider opens a fresh slot,
-        // but a descendant's MethodImpl can explicitly bind the original slot even
-        // across that hider. A non-virtual `new` never takes the slot.
+        if (ClassGvmOverrideOrNull(disp, c) is { } over)
+        {
+            Reach(over);
+            disp.Cases[c] = over;
+            return;
+        }
+        disp.Cases[c] = disp.Gvm;
+    }
+
+    /// <summary>The most derived override of class GVM <paramref name="disp"/>
+    /// that <paramref name="c"/> or a level below the declaring type binds to its
+    /// slot. A `new virtual` hider opens a fresh slot, but a descendant's
+    /// MethodImpl can explicitly bind the original slot even across that hider.
+    /// A non-virtual `new` never takes the slot.</summary>
+    private MethodInfo? ClassGvmOverrideOrNull(GvmDispatch disp, ClassInfo c)
+    {
         for (var b = c; b is not null; b = b.BaseClass)
         {
             if (b.Handle == disp.Decl.Handle && b.Module == disp.Decl.Module)
                 break;
             var tmpl = FindGvmClassTemplate(disp, b, disp.Gvm.Name,
                 disp.Gvm.Signature, false, true);
-            if (tmpl is null)
-                continue;
-            var over = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
-            Reach(over);
-            disp.Cases[c] = over;
-            return;
+            if (tmpl is not null)
+                return InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
         }
-        disp.Cases[c] = disp.Gvm;
+        return null;
+    }
+
+    /// <summary>The class body interface GVM <paramref name="disp"/> binds for
+    /// <paramref name="c"/>, by the rule <see cref="ResolveItfImplOrNull"/>
+    /// follows: a MethodImpl at any level, then a listing level's own virtual,
+    /// then a listing level's inherited public virtual; an override below the
+    /// selected level takes its class slot.</summary>
+    private MethodInfo? InterfaceGvmClassImplOrNull(GvmDispatch disp, ClassInfo c)
+    {
+        ClassInfo? level = null;
+        MethodDefinitionHandle? tmpl = null;
+        List<ClassInfo>? listing = null;
+        for (var b = c; b is not null && tmpl is null; b = b.BaseClass)
+        {
+            tmpl = FindInterfaceGenericMethodImpl(b, disp.Gvm);
+            if (tmpl is null && LevelListsInterface(b, disp.Decl))
+            {
+                (listing ??= new List<ClassInfo>()).Add(b);
+                tmpl = VirtualGvmTemplateOrNull(disp, b, disp.Decl);
+            }
+            level = b;
+        }
+        if (tmpl is null && listing is not null)
+            for (int i = listing.Count - 1; i >= 0 && tmpl is null; i--)
+            {
+                var stop = i + 1 < listing.Count ? listing[i + 1] : null;
+                for (var b = listing[i].BaseClass; b is not null && b != stop && tmpl is null; b = b.BaseClass)
+                {
+                    tmpl = VirtualGvmTemplateOrNull(disp, b, null);
+                    level = b;
+                }
+            }
+        if (tmpl is not { } selected || level is null)
+            return null;
+        var impl = InstantiateMethodOnClass(level, level.Module, selected, disp.MethodArgs);
+        if (level == c || (impl.Attributes & MethodAttributes.Final) != 0)
+            return impl;
+        var classSlot = new GvmDispatch
+        {
+            Gvm = impl,
+            Decl = level,
+            MethodArgs = disp.MethodArgs,
+            WantKey = disp.WantKey,
+            ParamCount = disp.ParamCount,
+        };
+        return ClassGvmOverrideOrNull(classSlot, c) ?? impl;
+    }
+
+    /// <summary>A virtual template on <paramref name="owner"/> for interface GVM
+    /// <paramref name="disp"/>: an explicit body naming <paramref name="explicitItf"/>,
+    /// or a public plain-name match.</summary>
+    private MethodDefinitionHandle? VirtualGvmTemplateOrNull(
+        GvmDispatch disp, ClassInfo owner, ClassInfo? explicitItf)
+    {
+        if (FindGenericMethodTemplate(owner.Module, owner.Handle, disp.Gvm.Name,
+                disp.MethodArgs.Length, disp.ParamCount, disp.WantKey, explicitItf, isStatic: false)
+            is not { } tmpl)
+            return null;
+        var reader = owner.Module.Reader;
+        var md = reader.GetMethodDefinition(tmpl);
+        if ((md.Attributes & MethodAttributes.Virtual) == 0)
+            return null;
+        bool plain = reader.StringComparer.Equals(md.Name, disp.Gvm.Name);
+        return !plain || (md.Attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public
+            ? tmpl
+            : null;
     }
 
     private (ClassInfo Interface, MethodDefinitionHandle Body)?
@@ -2935,29 +3001,49 @@ internal sealed partial class Compilation
         return ready;
     }
 
-    /// <summary>Resolves <paramref name="c"/>'s body for an interface method:
-    /// class implementations first, then the most specific interface override.</summary>
+    /// <summary>Resolves <paramref name="c"/>'s body for an interface method as
+    /// ECMA-335 II.12.2 builds an interface map. Walking from <paramref name="c"/>,
+    /// a level's MethodImpl wins, then a public virtual name-and-signature match
+    /// on a level that lists the interface; a level that does not list it
+    /// contributes only by overriding the class slot the selected body occupies.
+    /// With no class body, the most specific interface override applies.</summary>
     internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod)
     {
-        for (var b = c; b is not null; b = b.BaseClass)
+        var declaring = itfMethod.DeclaringClass;
+        List<ClassInfo>? listing = null;
+        MethodInfo? hit = null;
+        for (var b = c; b is not null && hit is null; b = b.BaseClass)
         {
             b.EnsureMembers();
-            // Exact-handle hit is the common case — one O(1) dictionary probe
-            // instead of a linear key scan + re-index.
-            if (ExplicitInterfaceImplOrNull(b, itfMethod) is { } direct)
-                return direct;
+            hit = ExplicitInterfaceImplOrNull(b, itfMethod);
+            if (hit is null && LevelListsInterface(b, declaring))
+            {
+                (listing ??= new List<ClassInfo>()).Add(b);
+                hit = PublicVirtualImplOrNull(b, itfMethod);
+            }
         }
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            // Name-indexed: same candidates in the same order as the full
-            // Methods scan — the index filters on Name (a plain field) exactly as the
-            // predicate's short-circuit did, so SigKey (a decode on first read) is
-            // still consulted only for same-name candidates.
-            if (b.MethodsNamed(itfMethod.Name) is { } named)
-                foreach (var m in named)
-                    if (!m.IsStatic && m.Rva != 0 && m.SigKey == itfMethod.SigKey)
-                        return m;
-        }
+        // A listing level with an empty inherited slot fills it from the
+        // public virtuals it inherits, base-most listing level first.
+        if (hit is null && listing is not null)
+            for (int i = listing.Count - 1; i >= 0 && hit is null; i--)
+            {
+                var stop = i + 1 < listing.Count ? listing[i + 1] : null;
+                for (var b = listing[i].BaseClass; b is not null && b != stop && hit is null; b = b.BaseClass)
+                    hit = PublicVirtualImplOrNull(b, itfMethod);
+            }
+        // A type that does not implement the interface has no listing level;
+        // any same-signature body answers.
+        if (hit is null && listing is null)
+            for (var b = c; b is not null && hit is null; b = b.BaseClass)
+                if (b.MethodsNamed(itfMethod.Name) is { } named)
+                    foreach (var m in named)
+                        if (!m.IsStatic && m.Rva != 0 && m.SigKey == itfMethod.SigKey)
+                        {
+                            hit = m;
+                            break;
+                        }
+        if (hit is not null)
+            return ClassSlotBodyOrNull(c, hit);
         if (itfMethod.IsStatic)
             return null;
         // A derived interface's reabstraction, or sibling overrides with no most
@@ -3038,6 +3124,44 @@ internal sealed partial class Compilation
                 if (kv.Key.SigKey == declaration.SigKey)
                     return kv.Value;
         return null;
+    }
+
+    /// <summary>Whether <paramref name="level"/>'s own InterfaceImpl rows name
+    /// <paramref name="itf"/> or an interface inheriting it. Only such a level
+    /// maps the interface by name; a base's listing does not count.</summary>
+    private bool LevelListsInterface(ClassInfo level, ClassInfo itf)
+    {
+        foreach (var listed in level.Interfaces)
+            if (listed == itf || ImplementsInterface(listed, itf))
+                return true;
+        return false;
+    }
+
+    // Only a public virtual can implement an interface method by name. An
+    // abstract one still names the class slot a subclass fills.
+    private static MethodInfo? PublicVirtualImplOrNull(ClassInfo level, MethodInfo itfMethod)
+    {
+        if (level.MethodsNamed(itfMethod.Name) is { } named)
+            foreach (var m in named)
+                if (!m.IsStatic && m.IsVirtual && m.IsPublic && (m.Rva != 0 || m.IsAbstract)
+                    && m.SigKey == itfMethod.SigKey)
+                    return m;
+        return null;
+    }
+
+    /// <summary>The body <paramref name="c"/>'s vtable holds in the class slot
+    /// <paramref name="body"/> owns: an interface map records the slot, so an
+    /// override below the mapping level replaces the body, and an abstract slot
+    /// binds none.</summary>
+    private static MethodInfo? ClassSlotBodyOrNull(ClassInfo c, MethodInfo body)
+    {
+        var owner = body.DeclaringClass;
+        int slot = body.VtableSlot;
+        if (!owner.IsInterface && body.IsVirtual && slot >= 0
+            && slot < owner.SlotOwners.Count && owner.SlotOwners[slot] == body
+            && slot < c.Vtable.Count && c.Vtable[slot] is { } current)
+            return current;
+        return body.IsAbstract ? null : body;
     }
 
     // ---- third-party custom async task types ----
