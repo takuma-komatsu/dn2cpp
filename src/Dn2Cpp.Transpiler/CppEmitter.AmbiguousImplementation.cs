@@ -10,10 +10,7 @@ internal sealed partial class CppEmitter
     /// <paramref name="itf"/> and sibling interface overrides leave no most
     /// specific body. The CLR builds it from native resources: the method in its
     /// shared-code signature spelling, the interface and receiver type names,
-    /// and the receiver's assembly display name.
-    /// <para>For a generic method on a generic interface the CLR spells the
-    /// declaring type with the method's own type parameters; that spelling is
-    /// not reproduced.</para></summary>
+    /// and the receiver's assembly display name.</summary>
     internal static string AmbiguousImplementationMessage(ClassInfo receiver, ClassInfo itf, MethodInfo slot)
     {
         string method = ClrTypeName(itf, canonical: true) + "." + slot.Name
