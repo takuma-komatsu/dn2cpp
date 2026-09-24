@@ -113,13 +113,10 @@
 # carried blobs, and build-and-run-manifest-resources.sh diffs that
 # surface against real .NET.
 #
-# The indexer-edge section (ReflectIndexerEdgeSubset) freezes the indexed-
-# property error paths: an index-count mismatch surfaces as the accessor
-# invoker's ArgumentException (real .NET: TargetParameterCountException, not
-# modeled — the MethodInfo.Invoke posture), and reading a set-only / writing a
-# get-only property as the null accessor's InvalidOperationException (real
-# .NET: ArgumentException). The happy paths live in the reflect-invoke live
-# diff (ReflectActivatorSubset).
+# The indexer-edge section (ReflectIndexerEdgeSubset) freezes reading a
+# set-only / writing a get-only property as the null accessor's
+# InvalidOperationException (real .NET: ArgumentException). The parity paths
+# live in the reflect-invoke live diff.
 #
 # The generic-method section (ReflectGenericMethodSubset) freezes the AOT
 # boundary of the per-closed-instantiation methtab model (no open generic

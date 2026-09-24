@@ -2,7 +2,8 @@
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
-#   MethodInfo.Invoke (instance/static, args, return boxing, void, private),
+#   MethodInfo.Invoke (instance/static, args, return boxing, void, private,
+#   receiver and argument validation, and target exception wrapping),
 #   delegate/interface dynamic dispatch via reflection, FieldInfo.GetValue/SetValue
 #   (instance/static/value-type/unbox), and a reflection-driven serializer
 #   (attribute-named members + enum names).
@@ -222,6 +223,13 @@ gate_extra_asserts() {
     sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
         <(strip_cr_win_file "$out/ldftn-local-prefix.stdout")
+    grep -Fxq '== reflection invoke validation ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'target calls: 2' "$out/metadata-layout.stdout"
+    grep -Fxq 'plain get, stray index: TargetParameterCountException' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
+    sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
+        <(strip_cr_win_file "$out/invoke-validation-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

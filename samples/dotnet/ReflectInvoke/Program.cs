@@ -56,6 +56,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_LDFTN_LOCAL") == "1")
                 return;
             LdftnLocalSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INVOKE_VALIDATION") == "1")
+                return;
+            ReflectInvokeValidationSubset.Program.Run();
         }
     }
 }

@@ -754,10 +754,6 @@ notes=List`1 item=NoteLine wrapped=3 bound count=3
 dictwrap=DictionaryWrapper`2 ctor(IDictionary`2) count=2 a=1 contains-b=True
 wrap<Unlisted>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation Newtonsoft.Json.Utilities.CollectionWrapper`1[ReflectSerializerWrapperSeedSubset.Unlisted]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
 == indexer error edges ==
-indexed get, no index: ArgumentException
-indexed get, null index: ArgumentException
-indexed get, extra index: ArgumentException
-plain get, stray index: ArgumentException
 set-only get: InvalidOperationException
 get-only set: InvalidOperationException
 Lambda
