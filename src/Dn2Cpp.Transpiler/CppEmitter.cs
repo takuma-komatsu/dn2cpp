@@ -5654,10 +5654,11 @@ internal sealed partial class CppEmitter
                     continue;
                 if (IsRuntimeTemplateLevel(type))
                 {
-                    if (Compilation.ContainsCanonPlaceholder(impl.DeclaringClass))
+                    if (Compilation.ContainsCanonPlaceholder(impl.DeclaringClass)
+                        && !_c.RuntimeTemplateBodies.Contains(impl))
                         throw new InvalidOperationException(
-                            $"runtime template {type.FullName}: {name} selects {impl.DeclaringClass.FullName}, "
-                            + "a placeholder level the eligibility verdict should have rejected");
+                            $"runtime template {type.FullName}: {name} selects {impl.CppName}, "
+                            + "a placeholder-level body the eligibility verdict did not admit");
                     templateCase = true;
                 }
                 branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");

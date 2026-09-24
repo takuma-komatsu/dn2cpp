@@ -61,6 +61,68 @@ namespace ReflectDelegateIdentitySubset
         public string Tag() => "shared-box-" + typeof(T).Name;
     }
 
+    // Generic virtual bodies declared on a MakeGenericType instance's own generic
+    // levels: overrides of a generic base's method, of a non-generic base's, and
+    // an interface implementation. No closed instantiation of these levels is
+    // constructed, except the generic base over int.
+    class RuntimeLevelRoot<T>
+    {
+        public virtual string Tag<U>() => "root:" + typeof(T).Name + "/" + typeof(U).Name;
+    }
+
+    class RuntimeLevelLeaf<T> : RuntimeLevelRoot<T>
+    {
+        public override string Tag<U>() => "leaf:" + typeof(T).Name + "/" + typeof(U).Name + "+" + base.Tag<U>();
+    }
+
+    class RuntimeLevelPair<T, V> : RuntimeLevelRoot<T>
+    {
+        public override string Tag<U>() => "pair:" + typeof(T).Name + "," + typeof(V).Name + "/" + typeof(U).Name;
+    }
+
+    class RuntimeLevelPlainRoot
+    {
+        public virtual string Tag<U>() => "plain-root";
+        public virtual string Who() => "plain-root";
+    }
+
+    class RuntimeLevelOwnBox<T> : RuntimeLevelPlainRoot
+    {
+        public override string Tag<U>() => "own:" + typeof(T).Name + "/" + typeof(U).Name;
+        public override string Who() => "own:" + typeof(T).Name;
+    }
+
+    class RuntimeLevelMid<T> : RuntimeLevelPlainRoot
+    {
+        public override string Tag<U>() => "mid:" + typeof(T).Name + "/" + typeof(U).Name;
+    }
+
+    class RuntimeLevelChain<T> : RuntimeLevelMid<T>
+    {
+        public override string Tag<U>() => "chain:" + typeof(T).Name + "+" + base.Tag<U>();
+    }
+
+    class RuntimeLevelTail<T> : RuntimeLevelMid<T> { }
+
+    abstract class RuntimeLevelAbstractMid<T> : RuntimeLevelPlainRoot
+    {
+        public override string Tag<U>() => "abstract-mid:" + typeof(T).Name + "/" + typeof(U).Name;
+    }
+
+    class RuntimeLevelAbstractTail<T> : RuntimeLevelAbstractMid<T> { }
+
+    interface IRuntimeLevelPick
+    {
+        string Pick<U>();
+        string Name();
+    }
+
+    class RuntimeLevelPicker<T> : IRuntimeLevelPick
+    {
+        public string Pick<U>() => "picker:" + typeof(T).Name + "/" + typeof(U).Name;
+        public string Name() => "picker:" + typeof(T).Name;
+    }
+
     static class Extensions
     {
         public static string Decorate(this string prefix, string value) => prefix + value;
@@ -417,6 +479,9 @@ namespace ReflectDelegateIdentitySubset
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_REDECLARATION") == "1")
                 return;
             RunInterfaceRedeclaration();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_LEVEL_GVM") == "1")
+                return;
+            RunRuntimeLevelGenericVirtual();
         }
 
         // Delegate.Method for the body an interface binding selects: explicit over
@@ -572,6 +637,75 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("interface-redeclaration-pick-fill=" + RedeclaredPick(new PickTarget())
                 + "/" + RedeclaredPick(new PickTargetOverride()));
             Console.WriteLine("interface-redeclaration-end");
+        }
+
+        // The generic virtual body a MakeGenericType receiver runs when one of its
+        // own generic levels declares it, and the method Delegate.Method reports.
+        // The generic base is constructed over int and only cast to over string;
+        // the chain and tail receivers' generic middle level is minted with them.
+        static void RunRuntimeLevelGenericVirtual()
+        {
+            Console.WriteLine("runtime-level-gvm-begin");
+            var aotRoot = new RuntimeLevelRoot<int>();
+            Type leafInt = typeof(RuntimeLevelLeaf<>).MakeGenericType(typeof(int));
+            var leafIntReceiver = (RuntimeLevelRoot<int>)Activator.CreateInstance(leafInt);
+            Func<string> leafIntTag = leafIntReceiver.Tag<string>;
+            Func<string> leafIntAgain = leafIntReceiver.Tag<string>;
+            Console.WriteLine("runtime-level-gvm-generic-base=" + aotRoot.Tag<string>() + "|" + leafIntReceiver.Tag<string>()
+                + "|" + leafIntTag() + "|" + leafIntTag.Method.Name + "|" + (leafIntTag.Method.DeclaringType == leafInt)
+                + "|" + ReferenceEquals(leafIntTag.Method, leafIntAgain.Method)
+                + "|" + (leafInt.BaseType == typeof(RuntimeLevelRoot<int>)));
+            Type leafText = typeof(RuntimeLevelLeaf<>).MakeGenericType(typeof(string));
+            var leafTextReceiver = (RuntimeLevelRoot<string>)Activator.CreateInstance(leafText);
+            Func<string> leafTextTag = leafTextReceiver.Tag<int>;
+            Console.WriteLine("runtime-level-gvm-unconstructed-base=" + leafTextReceiver.Tag<int>() + "|" + leafTextTag()
+                + "|" + (leafTextTag.Method.DeclaringType == leafText)
+                + "|" + leafTextTag.Method.GetGenericArguments()[0].Name);
+            Type pairText = typeof(RuntimeLevelPair<,>).MakeGenericType(typeof(int), typeof(string));
+            Type pairFlag = typeof(RuntimeLevelPair<,>).MakeGenericType(typeof(int), typeof(bool));
+            var pairTextReceiver = (RuntimeLevelRoot<int>)Activator.CreateInstance(pairText);
+            var pairFlagReceiver = (RuntimeLevelRoot<int>)Activator.CreateInstance(pairFlag);
+            Func<string> pairTag = pairFlagReceiver.Tag<string>;
+            Console.WriteLine("runtime-level-gvm-two-arguments=" + pairTextReceiver.Tag<string>() + "|" + pairFlagReceiver.Tag<string>()
+                + "|" + pairTag() + "|" + (pairTag.Method.DeclaringType == pairFlag));
+            Type own = typeof(RuntimeLevelOwnBox<>).MakeGenericType(typeof(decimal));
+            var ownReceiver = (RuntimeLevelPlainRoot)Activator.CreateInstance(own);
+            Func<string> ownTag = ownReceiver.Tag<string>;
+            Func<string> ownWho = ownReceiver.Who;
+            Console.WriteLine("runtime-level-gvm-plain-base=" + ownReceiver.Tag<string>() + "|" + ownTag()
+                + "|" + (ownTag.Method.DeclaringType == own) + "|" + ownWho() + "|" + (ownWho.Method.DeclaringType == own));
+            MethodInfo ownWhoRow = own.GetMethod("Who");
+            var ownWhoBound = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), ownReceiver, ownWhoRow);
+            Console.WriteLine("runtime-level-method-row=" + (ownWhoRow.DeclaringType == own) + "|" + ownWhoBound()
+                + "|" + (ownWhoBound.Method.DeclaringType == own) + "|" + ownWhoBound.Method.Name);
+            Type chain = typeof(RuntimeLevelChain<>).MakeGenericType(typeof(string));
+            var chainReceiver = (RuntimeLevelPlainRoot)Activator.CreateInstance(chain);
+            Func<string> chainTag = chainReceiver.Tag<int>;
+            Console.WriteLine("runtime-level-gvm-chain=" + chainReceiver.Tag<int>() + "|" + chainTag()
+                + "|" + (chainTag.Method.DeclaringType == chain));
+            Type tail = typeof(RuntimeLevelTail<>).MakeGenericType(typeof(bool));
+            var tailReceiver = (RuntimeLevelPlainRoot)Activator.CreateInstance(tail);
+            Func<string> tailTag = tailReceiver.Tag<int>;
+            Console.WriteLine("runtime-level-gvm-inherited=" + tailReceiver.Tag<int>() + "|" + tailTag()
+                + "|" + (tailTag.Method.DeclaringType == tail.BaseType) + "|" + tail.BaseType.GetGenericArguments()[0].Name);
+            // The abstract middle level over int is only type-tested, so the
+            // image's type carries no instantiation of the body the tail runs.
+            Type abstractTail = typeof(RuntimeLevelAbstractTail<>).MakeGenericType(typeof(int));
+            var abstractTailReceiver = (RuntimeLevelPlainRoot)Activator.CreateInstance(abstractTail);
+            Func<string> abstractTailTag = abstractTailReceiver.Tag<int>;
+            Func<string> abstractTailAgain = abstractTailReceiver.Tag<int>;
+            Console.WriteLine("runtime-level-gvm-image-level=" + abstractTailTag()
+                + "|" + (abstractTailReceiver is RuntimeLevelAbstractMid<int>)
+                + "|" + (abstractTailTag.Method.DeclaringType == abstractTail.BaseType)
+                + "|" + ReferenceEquals(abstractTailTag.Method, abstractTailAgain.Method));
+            Type picker = typeof(RuntimeLevelPicker<>).MakeGenericType(typeof(int));
+            var pickReceiver = (IRuntimeLevelPick)Activator.CreateInstance(picker);
+            Func<string> pick = pickReceiver.Pick<string>;
+            Func<string> name = pickReceiver.Name;
+            Console.WriteLine("runtime-level-gvm-interface=" + pickReceiver.Pick<string>() + "|" + pick()
+                + "|" + (pick.Method.DeclaringType == picker) + "|" + name() + "|" + (name.Method.DeclaringType == picker)
+                + "|" + name.Method.Name);
+            Console.WriteLine("runtime-level-gvm-end");
         }
     }
 }

@@ -73,6 +73,15 @@
 # override takes the class slot the mapping chose (abstract bases included),
 # and a base without the interface fills a listing level's empty slot, over
 # closed generic interfaces, shared generic classes and MakeGenericType receivers.
+# Its runtime-level section pins the generic virtual body a MakeGenericType
+# receiver runs when one of the instantiation's own generic levels declares it,
+# and the method Delegate.Method reports on that level: an override of a generic
+# base's method with a base call, over a constructed and an unconstructed base,
+# a two-parameter level, overrides of a non-generic base's method on the leaf and
+# on a middle level (minted, or the image's own abstract type without that
+# instantiation), and an interface implementation, beside a plain virtual and
+# an interface method of the same instantiations and a delegate created from
+# the plain virtual's reflected method row.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -162,6 +171,21 @@ gate_extra_asserts() {
     grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' "$out/metadata-layout.stdout"
     grep -Fxq 'interface-redeclaration-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-method-row=True|own:Decimal|True|Who' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_RUNTIME_LEVEL_GVM=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-level-gvm.stdout"
+    sed '/^runtime-level-gvm-begin/,$d' "$out/metadata-layout.stdout" > "$out/runtime-level-gvm-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-runtime-level-gvm.stdout") \
+        <(strip_cr_win_file "$out/runtime-level-gvm-prefix.stdout")
     DN2CPP_BEFORE_INTERFACE_REDECLARATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-redeclaration.stdout"
     sed '/^interface-redeclaration-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-redeclaration-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-interface-redeclaration.stdout") \

@@ -1366,8 +1366,9 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
 // `def`. One row per eligible template chain level (the emitter proves the
 // definition's bodies never give a type argument value semantics — typeof-only):
 // the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
-// two template bits, synthesizes its base the same way when the template's base
-// is itself a row (looked up by templateTi), and fills a fresh rgctx table with
+// two template bits, gives its method and constructor rows itself as declaring
+// type, synthesizes its base the same way when the template's base is itself a
+// row (looked up by templateTi), and fills a fresh rgctx table with
 // rgctx[i] = args[rgctxDesc[i]]'s type-info. Synthesized instantiations intern
 // on (def, args) — same arguments, same pointer — and register their closed
 // name on the registry's dynamic side-chain.

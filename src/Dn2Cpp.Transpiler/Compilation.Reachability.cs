@@ -1526,7 +1526,10 @@ internal sealed partial class Compilation
             return;
         }
         if (!DerivesFromOrIs(c, disp.Decl))
+        {
+            ReachTemplateLevelGvmImpl(disp, c);
             return;
+        }
         if (ClassGvmOverrideOrNull(disp, c) is { } over)
         {
             Reach(over);
@@ -1534,6 +1537,39 @@ internal sealed partial class Compilation
             return;
         }
         disp.Cases[c] = disp.Gvm;
+    }
+
+    /// <summary>The case of runtime template <paramref name="c"/> in a class GVM
+    /// dispatcher declared on a closed instantiation of one of its placeholder
+    /// levels' definitions: its clones over matching arguments are receivers
+    /// although the template is not. The case runs the override the chain
+    /// binds to the slot on that level over the placeholders; the dispatcher
+    /// reaches it only through such clones.</summary>
+    private void ReachTemplateLevelGvmImpl(GvmDispatch disp, ClassInfo c)
+    {
+        if (!_runtimeTemplateRoots.Contains(c) || ContainsCanonPlaceholder(disp.Decl))
+            return;
+        for (ClassInfo? lv = c; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+        {
+            if (lv.Module != disp.Decl.Module || lv.Handle != disp.Decl.Handle)
+                continue;
+            var slot = new GvmDispatch
+            {
+                Gvm = InstantiateMethodOnClass(lv, disp.Gvm.Module, disp.Gvm.Handle, disp.MethodArgs),
+                Decl = lv,
+                MethodArgs = disp.MethodArgs,
+                WantKey = disp.WantKey,
+                ParamCount = disp.ParamCount,
+            };
+            if (ClassGvmOverrideOrNull(slot, c) is { } over)
+            {
+                Reach(over);
+                disp.Cases[c] = over;
+            }
+            else
+                disp.Cases[c] = disp.Gvm;
+            return;
+        }
     }
 
     /// <summary>The most derived override of class GVM <paramref name="disp"/>

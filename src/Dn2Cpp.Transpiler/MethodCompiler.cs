@@ -210,14 +210,15 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// generic-method instantiation keys the slot in its own method registry
     /// (every slot, even a class-argument-dependent one — the fill resolves
     /// under the user's full context, covering both dimensions); a plain
-    /// canonical-class body keys it on the declaring class. Taints when the
+    /// canonical-class body, or a runtime template level's instantiation over
+    /// closed method arguments, keys it on the declaring class. Taints when the
     /// slot is known unresolvable for some group member.</summary>
     private string RgctxSlotAccess(RgctxSlotKind kind, int token, string taintKind, object? site)
     {
         if (!SharedTrial || token == 0)
             ThrowSharedTaint(taintKind, site);
         int i;
-        if (_method.NameSuffix != "")
+        if (_c.KeysMethodRgctxSlots(_method))
         {
             if (!Compilation.IsCanonicalMethod(_method)
                 || _c.RgctxMethodSlotKnownBad(_method, kind, token))

@@ -291,10 +291,11 @@
 # depended on the PROGRAM too (one the emit set carries gets its row from the emitted-class
 # loop), which is why the seed is derived. Every line matches real .NET.
 #
-# ReflectRuntimeInstantiationSubset's gvm-override line freezes a template the
-# verdict rejects: a definition overriding a generic virtual method its own
-# generic base declares would need that override instantiated per argument, so
-# the mint throws the catchable NotSupportedException where real .NET constructs.
+# ReflectRuntimeInstantiationSubset's gvm-placeholder-helper line freezes a
+# template the verdict rejects: its generic virtual override instantiates a
+# generic method over the definition's own type parameter, which a clone would
+# need minted per argument, so the mint throws the catchable
+# NotSupportedException where real .NET constructs.
 #
 # ReflectIntrinsicTemplateSubset freezes the intrinsic-open-definition negative:
 # typeof(BlockingCollection<>) + MakeGenericType roots no runtime template

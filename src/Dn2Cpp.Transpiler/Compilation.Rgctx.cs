@@ -851,14 +851,14 @@ internal sealed partial class Compilation
 
     /// <summary>Whether the forwarding slot <paramref name="caller"/> would pass
     /// <paramref name="callee"/>'s table through failed its planning fill. Keyed
-    /// as MethodCompiler.RgctxSlotAccess keys it: a generic-method caller in its
-    /// own method registry, any other caller in its declaring class's.</summary>
+    /// as MethodCompiler.RgctxSlotAccess keys it (see
+    /// <see cref="KeysMethodRgctxSlots"/>).</summary>
     private bool ForwardSlotKnownBad(MethodInfo caller, MethodInfo callee, int token)
     {
         if (token == 0)
             return false;
         var kind = ForwardSlotKind(callee);
-        return caller.NameSuffix != ""
+        return KeysMethodRgctxSlots(caller)
             ? Rgctx.Methods.SlotKnownBad(caller, kind, token)
             : Rgctx.Classes.SlotKnownBad(caller.DeclaringClass, kind, token);
     }
@@ -888,7 +888,7 @@ internal sealed partial class Compilation
                 if (token == 0 || !uses.Contains(callee) || !WouldNeedRgctxParam(callee))
                     continue;
                 var kind = ForwardSlotKind(callee);
-                if (m.NameSuffix != "")
+                if (KeysMethodRgctxSlots(m))
                 {
                     int before = Rgctx.Methods.SlotsOf(m)?.Count ?? 0;
                     grew |= Rgctx.Methods.SlotIndex(m, kind, token) == before;
@@ -1127,52 +1127,45 @@ internal sealed partial class Compilation
     /// <summary>Judges each rooted template (see
     /// <see cref="BuildRuntimeInstantiationTemplates"/>) against what a runtime
     /// clone can actually run: every reachable method of every placeholder-bearing
-    /// chain level must be an instance, non-generic body that trial-compiled
-    /// shareable, and every rgctx slot its level accumulated must be a TypeInfo
-    /// read whose token re-resolves (under the template's own context) to a bare
-    /// per-index placeholder — the one entry a MakeGenericType fill can synthesize
-    /// from its argument array. No level may own a generic-virtual body a clone
-    /// would dispatch to (see <see cref="OverridesPlaceholderLevelGvm"/>), so a
-    /// template level's dispatcher case serves every clone. Anything else fails
-    /// the WHOLE template: its bodies stay undonated and are dropped like any
-    /// other canonical world's, and the runtime diagnostic keeps naming the
-    /// missing instantiation. Returns the eligible templates' bodies as
-    /// retention seeds.</summary>
+    /// chain level must be an instance body that trial-compiled shareable — a
+    /// generic-method instantiation only over closed method arguments (see
+    /// <see cref="IsTemplateLevelMethodInstance"/>), which is how a generic
+    /// virtual override on a level serves every clone from one dispatcher case —
+    /// and every rgctx slot its level accumulated must be a TypeInfo read whose
+    /// token re-resolves (under the template's own context) to a bare per-index
+    /// placeholder — the one entry a MakeGenericType fill can synthesize from its
+    /// argument array. Anything else fails the WHOLE template: its bodies stay
+    /// undonated and are dropped like any other canonical world's, and the
+    /// runtime diagnostic keeps naming the missing instantiation. Returns the
+    /// eligible templates' bodies as retention seeds.</summary>
     private List<MethodInfo> JudgeRuntimeTemplates(Func<ClassInfo, MethodInfo, bool> backendSkips)
     {
         var seeds = new List<MethodInfo>();
         if (RuntimeInstantiationTemplates.Count == 0)
             return seeds;
-        // Reachable generic-METHOD instantiations by declaring class, collected
-        // once: a template level that owns one is ineligible (the runtime clone
-        // cannot mint per-method tables), and the class's own Methods list does
-        // not enumerate instantiations.
-        var genericInstanceOwners = new HashSet<ClassInfo>();
-        foreach (var gm in _methodInstanceOrder)
-            if (Reachable.Contains(gm))
-                genericInstanceOwners.Add(gm.DeclaringClass);
         foreach (var (defName, tmpl) in RuntimeInstantiationTemplates)
         {
             var levels = new List<ClassInfo>();
             for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
                 levels.Add(lv);
-            bool ok = levels.Count > 0 && !OverridesPlaceholderLevelGvm(levels);
+            bool ok = levels.Count > 0;
             var bodies = new List<MethodInfo>();
             foreach (var lv in levels)
             {
                 if (!ok)
                     break;
-                if (!lv.MembersReady || genericInstanceOwners.Contains(lv))
+                if (!lv.MembersReady)
                 {
                     ok = false;
                     break;
                 }
+                // Methods lists the level's generic-method instantiations too.
                 foreach (var m in lv.Methods)
                 {
                     if (m.Rva == 0 || m.Name == ".cctor" || !Reachable.Contains(m)
                         || backendSkips(lv, m))
                         continue;
-                    if (m.IsStatic || m.NameSuffix != ""
+                    if (m.IsStatic || (m.NameSuffix != "" && !IsTemplateLevelMethodInstance(m))
                         || !SharedTrialCompiled.Contains(m) || SharedTaint.ContainsKey(m))
                     {
                         ok = false;
@@ -1225,46 +1218,15 @@ internal sealed partial class Compilation
             foreach (var lv in levels)
                 EligibleRuntimeTemplateLevels.Add(lv);
             seeds.AddRange(bodies);
+            RuntimeTemplateBodies.UnionWith(bodies);
         }
         return seeds;
     }
 
-    /// <summary>Whether a clone of the chain <paramref name="levels"/> (derived
-    /// first) could dispatch a used class generic virtual method to a body on a
-    /// placeholder level. When the method's declaring instantiation shares a
-    /// level's definition, clones are receivers of its dispatcher while the
-    /// template is not, and an override above that level would run as a
-    /// per-argument generic-method instantiation no clone can mint. Name,
-    /// generic arity and the virtual bit match every override spelling and may
-    /// also match a hider, which only fails the template. Interface-declared
-    /// methods need no check: the shape bound keeps placeholders out of every
-    /// interface a level implements.</summary>
-    private bool OverridesPlaceholderLevelGvm(List<ClassInfo> levels)
-    {
-        foreach (var disp in _usedGvms.Values)
-        {
-            if (disp.Decl.IsInterface)
-                continue;
-            int declLevel = levels.FindIndex(lv =>
-                lv.Module == disp.Decl.Module && lv.Handle == disp.Decl.Handle);
-            for (int i = 0; i < declLevel; i++)
-            {
-                var lv = levels[i];
-                if (!TypeDefMethodNames(lv.Module, lv.Handle).ByName
-                        .TryGetValue(disp.Gvm.Name, out var candidates))
-                    continue;
-                var reader = lv.Module.Reader;
-                foreach (var candidate in candidates)
-                {
-                    var md = reader.GetMethodDefinition(candidate);
-                    if ((md.Attributes & System.Reflection.MethodAttributes.Virtual) != 0
-                        && md.GetGenericParameters().Count == disp.MethodArgs.Length)
-                        return true;
-                }
-            }
-        }
-        return false;
-    }
+    /// <summary>The eligible templates' level bodies: the only canonical-world
+    /// bodies a generic-virtual dispatcher case may name. Filled by
+    /// <see cref="FinalizeSharedGenerics"/>.</summary>
+    internal readonly HashSet<MethodInfo> RuntimeTemplateBodies = new();
 
     // ---- runtime generic context (rgctx): slot registries and table fill ----
 
@@ -1352,6 +1314,11 @@ internal sealed partial class Compilation
     /// and whose rgctx slots all resolved to bare type arguments.</summary>
     internal readonly List<(string DefName, ClassInfo Template)> RuntimeInstantiationTemplates = new();
 
+    // The shape-eligible templates and their placeholder chain levels, filled
+    // with RuntimeInstantiationTemplates at the start of planning.
+    private readonly HashSet<ClassInfo> _runtimeTemplateRoots = new();
+    private readonly HashSet<ClassInfo> _runtimeTemplateLevels = new();
+
     /// <summary>Builds the runtime-instantiation TEMPLATES: for each open generic
     /// definition the program both typeofs (<c>ldtoken D&lt;&gt;</c>) and could hand
     /// to <c>Type.MakeGenericType</c>, instantiate the definition over the
@@ -1399,6 +1366,11 @@ internal sealed partial class Compilation
             if (!RuntimeTemplateShapeEligible(tmpl))
                 continue;
             RuntimeInstantiationTemplates.Add((defName, tmpl));
+            // Before the rooting below: it crosses the template with the used
+            // generic virtual methods, whose cases ask these sets.
+            _runtimeTemplateRoots.Add(tmpl);
+            for (ClassInfo? lv = tmpl; lv is not null && ContainsCanonPlaceholder(lv); lv = lv.BaseClass)
+                _runtimeTemplateLevels.Add(lv);
             // Root it like an allocated type: arms the used-slot × allocated-type
             // cross product, so every virtual override a base-typed caller can
             // dispatch into is trial-compiled; instance ctors are what the
@@ -1468,13 +1440,30 @@ internal sealed partial class Compilation
 
     /// <summary>Whether a context-using shared body of <paramref name="m"/>'s
     /// shape receives the context as the hidden trailing parameter (no
-    /// receiver-derivable source): generic-method instantiations (the receiver
-    /// type determines class arguments only, never method arguments), statics,
-    /// value-type receivers, and reference receivers of classes with no
-    /// open-definition anchor (nested generics).</summary>
+    /// receiver-derivable source): generic-method instantiations whose context
+    /// may depend on method arguments (the receiver type determines class
+    /// arguments only), statics, value-type receivers, and reference receivers
+    /// of classes with no open-definition anchor (nested generics).</summary>
     internal bool WouldNeedRgctxParam(MethodInfo m) =>
-        m.NameSuffix != "" || m.IsStatic || m.DeclaringClass.IsValueType
+        KeysMethodRgctxSlots(m) || m.IsStatic || m.DeclaringClass.IsValueType
         || RgctxAnchorSym(m.DeclaringClass) is null;
+
+    /// <summary>Whether <paramref name="m"/>'s rgctx slots live in its own
+    /// method registry rather than its declaring class's. Every slot keying
+    /// site asks this, so a slot is filled and read in one registry.</summary>
+    internal bool KeysMethodRgctxSlots(MethodInfo m) =>
+        m.NameSuffix != "" && !IsTemplateLevelMethodInstance(m);
+
+    /// <summary>Whether <paramref name="m"/> is an instance generic-method
+    /// instantiation on a runtime template's placeholder level whose method
+    /// arguments are closed. Its context depends on class arguments alone, so
+    /// it reads the level's class table off the receiver and a clone runs it
+    /// unchanged. A placeholder method argument would need a table minted per
+    /// clone, which the runtime cannot do.</summary>
+    private bool IsTemplateLevelMethodInstance(MethodInfo m) =>
+        m.NameSuffix != "" && !m.IsStatic
+        && _runtimeTemplateLevels.Contains(m.DeclaringClass)
+        && !m.Context.MethodArgs.Any(ContainsCanonPlaceholder);
 
     /// <summary>The open-definition type-info symbol a reference-receiver shared
     /// body anchors its rgctx walk on (<c>dn2cpp_rgctx(recv->type, &amp;SYM)</c>),

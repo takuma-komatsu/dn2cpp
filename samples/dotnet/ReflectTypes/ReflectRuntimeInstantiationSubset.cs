@@ -23,8 +23,9 @@ using System;
 // definition with a T-typed field is shape-ineligible, so real .NET constructs
 // Holder<int> while dn2cpp throws the catchable NotSupportedException naming the
 // missing instantiation — the frozen snapshot asserts that message. So does a
-// definition overriding a generic virtual method its own generic base declares:
-// a clone would run that override instantiated per type argument.
+// definition whose generic virtual override instantiates a generic method over
+// the definition's own type parameter: a clone would need that instantiation
+// minted per type argument.
 
 namespace ReflectRuntimeInstantiationSubset
 {
@@ -78,16 +79,17 @@ namespace ReflectRuntimeInstantiationSubset
     {
     }
 
-    // Ineligible: GvmRoot<int>.Tag<U> on a GvmLeaf<int> clone would need the
-    // leaf override instantiated for that argument.
-    class GvmRoot<T>
+    // Ineligible: the override runs Helper<T>, whose method argument is the
+    // clone's own type argument.
+    class GvmHelperRoot<T>
     {
         public virtual string Tag<U>() => "root";
     }
 
-    class GvmLeaf<T> : GvmRoot<T>
+    class GvmHelperLeaf<T> : GvmHelperRoot<T>
     {
-        public override string Tag<U>() => "leaf";
+        public override string Tag<U>() => Helper<T>();
+        private string Helper<V>() => typeof(V).Name;
     }
 
     // Shape-ineligible: a T-typed field means a per-argument layout no runtime
@@ -150,16 +152,16 @@ namespace ReflectRuntimeInstantiationSubset
                 + " isinst=" + (tw is Anchor<int>)
                 + " aot=" + anchored.Who());
 
-            GvmRoot<int> root = new GvmRoot<int>();
+            GvmHelperRoot<int> root = new GvmHelperRoot<int>();
             try
             {
-                GvmRoot<int> leaf = (GvmRoot<int>)Activator.CreateInstance(
-                    typeof(GvmLeaf<>).MakeGenericType(typeof(int)));
-                Console.WriteLine("gvm-override<int>: " + root.Tag<string>() + "/" + leaf.Tag<string>());
+                GvmHelperRoot<int> leaf = (GvmHelperRoot<int>)Activator.CreateInstance(
+                    typeof(GvmHelperLeaf<>).MakeGenericType(typeof(int)));
+                Console.WriteLine("gvm-placeholder-helper<int>: " + root.Tag<string>() + "/" + leaf.Tag<string>());
             }
             catch (NotSupportedException e)
             {
-                Console.WriteLine("gvm-override<int>: NotSupportedException: " + e.Message);
+                Console.WriteLine("gvm-placeholder-helper<int>: NotSupportedException: " + e.Message);
             }
         }
     }

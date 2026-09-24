@@ -211,6 +211,18 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
         }
         synthesized->reflection.ctors = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(ctors);
     }
+    // Method rows name the clone as their declaring type, so every binding
+    // resolved against the clone's rows reports the clone, as .NET does.
+    if (ti->reflection().methodCount > 0)
+    {
+        auto* methods = new Dn2CppMethodDelta[ti->reflection().methodCount];
+        for (int32_t i = 0; i < ti->reflection().methodCount; i++)
+        {
+            methods[i].original = row->templateTi->reflection().methods[i];
+            methods[i].declaringType = ti;
+        }
+        synthesized->reflection.methods = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(methods);
+    }
     if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
     {
         const Dn2CppRuntimeTemplate* brow = dn2cpp_runtime_template_by_ti(ti->base);
@@ -2677,6 +2689,40 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_targ
     return {};
 }
 
+// A template level's method row as the receiver's own level of that definition
+// declares it: the clone's row, the image's row for an interned level, or an
+// interned delta when the image's level has no such instantiation.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_clone_level_method(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* level,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> row, int32_t argc, const Dn2CppTypeInfo* const* args)
+{
+    const Dn2CppTypeInfo* own = receiver;
+    while (own != nullptr && own->genericDef != level->genericDef)
+        own = own->base;
+    if (own == nullptr || !row)
+        return row;
+    dn2cpp_require_metadata(own);
+    if (const auto hit = dn2cpp_find_method_instantiation(own->reflection(), row->metadataToken,
+            argc, [args](int32_t arg) { return args[arg]; }))
+        return hit;
+    struct LevelRow
+    {
+        Dn2CppMethodDelta delta;
+        LevelRow* next;
+    };
+    static LevelRow* rows = nullptr;
+    std::lock_guard<std::mutex> lock(g_synth_mtx);
+    for (LevelRow* r = rows; r != nullptr; r = r->next)
+        if (r->delta.original.identity() == row.identity() && r->delta.declaringType == own)
+            return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&r->delta);
+    auto* r = new LevelRow{};
+    r->delta.original = row;
+    r->delta.declaringType = own;
+    r->next = rows;
+    rows = r;
+    return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&r->delta);
+}
+
 // Use the emitter's selected method for an interface or GVM binding. An
 // unrecorded class GVM still needs metadata for each receiver level. A clone's
 // case is recorded on its template level, as its dispatcher branches.
@@ -2693,9 +2739,13 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_recorded_target(
         if (target.receiverType != recorded)
             continue;
         dn2cpp_require_metadata(target.declaringType);
-        return dn2cpp_find_method_instantiation(target.declaringType->reflection(),
+        const auto hit = dn2cpp_find_method_instantiation(target.declaringType->reflection(),
             target.metadataToken, identity->genericArgCount,
             [identity](int32_t arg) { return identity->genericArgs[arg]; });
+        if ((target.declaringType->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
+            return dn2cpp_clone_level_method(receiver, target.declaringType, hit,
+                identity->genericArgCount, identity->genericArgs);
+        return hit;
     }
     if ((owner->flags & DN2CPP_TF_INTERFACE) == 0)
         for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
