@@ -757,7 +757,8 @@ internal sealed partial class Compilation
     /// template's open parameter signature, then instantiate at the callee's method
     /// args.</item>
     /// </list>
-    /// Returns null when the value type provides no such body (the caller then either
+    /// Without a body on the type, the most specific derived interface's explicit
+    /// body binds. Returns null when neither provides one (the caller then either
     /// falls through to the member's own default body — a `static virtual` with an
     /// implementation — or surfaces the existing precise diagnostic). Shared by the
     /// emit side (<c>MethodCompiler.EmitManagedCall</c>) and reachability
@@ -809,7 +810,11 @@ internal sealed partial class Compilation
                 if (m is not null)
                     return m;
             }
-            return null;
+            // Without a class body, the most specific derived interface's explicit
+            // body replaces the declaration's own default.
+            return !sccIntrinsic && DerivedInterfaceImplOrNull(scc, callee, out _) is { IsAbstract: false } derived
+                ? derived
+                : null;
         }
 
         // Generic static-abstract member. The interface template and the struct's open
@@ -831,6 +836,9 @@ internal sealed partial class Compilation
             if (tmpl is { } selected)
                 return InstantiateMethodOnClass(c, c.Module, selected, callee.Context.MethodArgs);
         }
+        if (!sccIntrinsic && FindDerivedInterfaceGenericMethodTemplate(scc, callee, out _) is { } inherited)
+            return InstantiateMethodOnClass(inherited.Interface, inherited.Interface.Module,
+                inherited.Body, callee.Context.MethodArgs);
         return null;
     }
 

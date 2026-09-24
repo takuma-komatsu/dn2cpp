@@ -2958,13 +2958,36 @@ internal sealed partial class Compilation
                     if (!m.IsStatic && m.Rva != 0 && m.SigKey == itfMethod.SigKey)
                         return m;
         }
-        // A derived interface can explicitly replace the declaring interface's
-        // default body. Its MethodImpl row belongs to the derived interface, not
-        // to the implementing class. Inspect the implemented interface graph and
-        // select the override whose declaring interface derives from every other
-        // candidate; metadata order cannot decide between sibling overrides.
         if (itfMethod.IsStatic)
             return null;
+        // A derived interface's reabstraction, or sibling overrides with no most
+        // specific one, leave the slot without a body.
+        if (DerivedInterfaceImplOrNull(c, itfMethod, out bool ambiguous) is { } derived)
+            return derived.IsAbstract ? null : derived;
+        if (ambiguous)
+            return null;
+        // No class in the hierarchy provides an implementation. If the interface
+        // method itself is a *default interface method* — a concrete (non-abstract)
+        // instance body declared on the interface — the CLR binds the dispatch to
+        // that default. Return it so the implementing type's interface slot points at
+        // the default body rather than a null one, which would fault on dispatch (a
+        // class that inherits an interface's default without overriding it, e.g.
+        // ConsoleBackend inheriting IEmitBackend.ExternallyAllocatedClasses's default).
+        // A truly abstract slot (Rva == 0) has no default and stays null.
+        if (!itfMethod.IsStatic && !itfMethod.IsAbstract && itfMethod.Rva != 0)
+            return itfMethod;
+        return null;
+    }
+
+    /// <summary>The explicit body that the most specific interface deriving from
+    /// <paramref name="itfMethod"/>'s declaring interface supplies for
+    /// <paramref name="c"/>. Its MethodImpl row belongs to the derived interface,
+    /// not to the implementing class. The selected interface derives from every
+    /// other candidate; metadata order cannot decide between sibling overrides,
+    /// which answer null and set <paramref name="ambiguous"/>.</summary>
+    private MethodInfo? DerivedInterfaceImplOrNull(ClassInfo c, MethodInfo itfMethod, out bool ambiguous)
+    {
+        ambiguous = false;
         var candidates = new List<(ClassInfo Interface, MethodInfo Body)>();
         foreach (var itf in GetInterfaceClosure(c).Ordered)
         {
@@ -2989,22 +3012,13 @@ internal sealed partial class Compilation
             if (shadowed)
                 continue;
             if (selected is not null)
+            {
+                ambiguous = true;
                 return null;
+            }
             selected = candidate;
         }
-        if (selected is { } mostSpecific)
-            return mostSpecific.Body.IsAbstract ? null : mostSpecific.Body;
-        // No class in the hierarchy provides an implementation. If the interface
-        // method itself is a *default interface method* — a concrete (non-abstract)
-        // instance body declared on the interface — the CLR binds the dispatch to
-        // that default. Return it so the implementing type's interface slot points at
-        // the default body rather than a null one, which would fault on dispatch (a
-        // class that inherits an interface's default without overriding it, e.g.
-        // ConsoleBackend inheriting IEmitBackend.ExternallyAllocatedClasses's default).
-        // A truly abstract slot (Rva == 0) has no default and stays null.
-        if (!itfMethod.IsStatic && !itfMethod.IsAbstract && itfMethod.Rva != 0)
-            return itfMethod;
-        return null;
+        return selected?.Body;
     }
 
     private static MethodInfo? ExplicitInterfaceImplOrNull(ClassInfo owner, MethodInfo declaration)
