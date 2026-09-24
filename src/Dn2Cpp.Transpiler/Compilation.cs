@@ -6200,10 +6200,10 @@ internal sealed partial class Compilation
                     continue;
                 // A generic method's .override row (e.g. a static abstract
                 // Serialize<TBufferWriter> on a generic interface): open templates are
-                // not modeled as MethodInfo, so the row cannot key this map — and needs
-                // to reach nobody: ReachGvmImpl and ResolveStaticVirtualImpl's generic
-                // arm resolve the implementation by template lookup, dotted explicit
-                // names included (FindGenericMethodTemplate). Skip, don't resolve.
+                // not modeled as MethodInfo, so the row cannot key this map.
+                // Interface GVM dispatch reads the MethodImpl row when binding
+                // the template; static virtual dispatch resolves its template
+                // by name. Skip this row rather than trying to resolve it here.
                 bool declIsGenericMethod = mi.MethodDeclaration.Kind switch
                 {
                     HandleKind.MemberReference => reader.GetBlobReader(

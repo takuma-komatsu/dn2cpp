@@ -1424,10 +1424,11 @@ internal sealed partial class Compilation
     // CreateOrderedEnumerable<TKey>, behind Enumerable.ThenBy) goes through the same
     // dispatcher: its closed instantiation has no interface-table slot either (the
     // plain interface dispatch would index the slots array at -1). The cases are the
-    // allocated types implementing the closed interface, each bound to its own —
-    // usually explicit, dotted-name — implementation template instantiated at the
-    // call's method args; with no default body to fall back on, a case-less dispatch
-    // traps, matching an abstract slot that cannot bind.
+    // allocated types implementing the closed interface, each bound to its own
+    // implementation template instantiated at the call's method args. MethodImpl
+    // rows select explicit bodies ahead of plain-name matches. With no default
+    // body to fall back on, a case-less dispatch traps, matching an abstract
+    // slot that cannot bind.
 
     internal sealed class GvmDispatch
     {
@@ -1493,25 +1494,15 @@ internal sealed partial class Compilation
         {
             // Interface GVM: the cases are the allocated types implementing the
             // closed interface, each dispatching to its own (usually explicit)
-            // implementation instantiated at the dispatcher's method args. An
-            // explicit implementation's metadata name is the source-qualified
-            // dotted form ("System.Linq.IOrderedEnumerable<TElement>.
-            // CreateOrderedEnumerable"), so the template lookup matches by
-            // suffix + the interface's simple name as well as by plain name.
+            // implementation instantiated at the dispatcher's method args.
+            // MethodImpl rows bind explicit implementations even when a plain
+            // same-name method appears earlier in metadata.
             if (c.IsInterface || !ImplementsInterface(c, disp.Decl))
                 return;
-            // A closed spec's Name is the mangled form ("IOrderedEnumerable_String");
-            // the explicit implementation's dotted qualifier names the *definition*
-            // ("…IOrderedEnumerable<TElement>…"), so take the typedef's simple name.
-            string itfSimple = disp.Decl.Module.Reader.GetString(
-                disp.Decl.Module.Reader.GetTypeDefinition(disp.Decl.Handle).Name);
-            int tick = itfSimple.IndexOf('`');
-            if (tick >= 0)
-                itfSimple = itfSimple[..tick];
             for (var b = c; b is not null; b = b.BaseClass)
             {
-                var tmpl = FindGenericMethodTemplate(b.Module, b.Handle, disp.Gvm.Name,
-                    disp.MethodArgs.Length, disp.ParamCount, disp.WantKey, itfSimple);
+                var tmpl = FindInterfaceGenericMethodTemplate(b, disp.Gvm,
+                    disp.WantKey, disp.ParamCount);
                 if (tmpl is null)
                     continue;
                 var impl = InstantiateMethodOnClass(b, b.Module, tmpl.Value, disp.MethodArgs);
@@ -2901,8 +2892,8 @@ internal sealed partial class Compilation
         return ready;
     }
 
-    /// <summary>Resolves <paramref name="c"/>'s body for an interface method
-    /// (explicit impl first, then signature match), or null if it has none.</summary>
+    /// <summary>Resolves <paramref name="c"/>'s body for an interface method:
+    /// class implementations first, then the most specific interface override.</summary>
     internal static MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod)
     {
         for (var b = c; b is not null; b = b.BaseClass)
@@ -2910,13 +2901,8 @@ internal sealed partial class Compilation
             b.EnsureMembers();
             // Exact-handle hit is the common case — one O(1) dictionary probe
             // instead of a linear key scan + re-index.
-            if (b.ExplicitInterfaceImpls.TryGetValue(itfMethod, out var direct))
+            if (ExplicitInterfaceImplOrNull(b, itfMethod) is { } direct)
                 return direct;
-            foreach (var kv in b.ExplicitInterfaceImpls)
-                if (kv.Key.DeclaringClass.FullName == itfMethod.DeclaringClass.FullName
-                    && kv.Key.Name == itfMethod.Name
-                    && kv.Key.SigKey == itfMethod.SigKey)
-                    return kv.Value;
         }
         for (var b = c; b is not null; b = b.BaseClass)
         {
@@ -2929,6 +2915,57 @@ internal sealed partial class Compilation
                     if (!m.IsStatic && m.Rva != 0 && m.SigKey == itfMethod.SigKey)
                         return m;
         }
+        // A derived interface can explicitly replace the declaring interface's
+        // default body. Its MethodImpl row belongs to the derived interface, not
+        // to the implementing class. Inspect the implemented interface graph and
+        // select the override whose declaring interface derives from every other
+        // candidate; metadata order cannot decide between sibling overrides.
+        var seen = new HashSet<ClassInfo>();
+        var stack = new Stack<ClassInfo>();
+        for (var b = c; b is not null; b = b.BaseClass)
+            foreach (var itf in b.Interfaces)
+                stack.Push(itf);
+        var derivedInterfaces = new List<ClassInfo>();
+        while (stack.Count > 0)
+        {
+            var itf = stack.Pop();
+            if (!seen.Add(itf))
+                continue;
+            foreach (var parent in itf.Interfaces)
+                stack.Push(parent);
+            if (itf == itfMethod.DeclaringClass
+                || !InterfaceDerivesFrom(itf, itfMethod.DeclaringClass))
+                continue;
+            derivedInterfaces.Add(itf);
+        }
+        var candidates = new List<(ClassInfo Interface, MethodInfo Body)>();
+        foreach (var itf in derivedInterfaces)
+        {
+            itf.EnsureMembers();
+            if (ExplicitInterfaceImplOrNull(itf, itfMethod) is { } body)
+                candidates.Add((itf, body));
+        }
+        (ClassInfo Interface, MethodInfo Body)? selected = null;
+        foreach (var candidate in candidates)
+        {
+            bool shadowed = false;
+            foreach (var other in candidates)
+                if (other.Interface != candidate.Interface
+                    && InterfaceDerivesFrom(other.Interface, candidate.Interface))
+                {
+                    shadowed = true;
+                    break;
+                }
+            if (shadowed)
+                continue;
+            if (selected is not null)
+                throw new NotSupportedException(
+                    $"{c.FullName}: ambiguous interface implementation of "
+                    + $"{itfMethod.DeclaringClass.FullName}.{itfMethod.Name}");
+            selected = candidate;
+        }
+        if (selected is { } mostSpecific)
+            return mostSpecific.Body.IsAbstract ? null : mostSpecific.Body;
         // No class in the hierarchy provides an implementation. If the interface
         // method itself is a *default interface method* — a concrete (non-abstract)
         // instance body declared on the interface — the CLR binds the dispatch to
@@ -2940,6 +2977,44 @@ internal sealed partial class Compilation
         if (!itfMethod.IsStatic && !itfMethod.IsAbstract && itfMethod.Rva != 0)
             return itfMethod;
         return null;
+    }
+
+    private static MethodInfo? ExplicitInterfaceImplOrNull(ClassInfo owner, MethodInfo declaration)
+    {
+        if (owner.ExplicitInterfaceImpls.TryGetValue(declaration, out var direct))
+            return direct;
+        // A signature decode can instantiate classes. Finish enumerating the
+        // MethodImpl map before comparing signatures so that growth cannot
+        // invalidate the walk.
+        List<KeyValuePair<MethodInfo, MethodInfo>>? matches = null;
+        foreach (var kv in owner.ExplicitInterfaceImpls)
+            if (kv.Key.DeclaringClass.FullName == declaration.DeclaringClass.FullName
+                && kv.Key.Name == declaration.Name)
+                (matches ??= new List<KeyValuePair<MethodInfo, MethodInfo>>()).Add(kv);
+        if (matches is not null)
+            foreach (var kv in matches)
+                if (kv.Key.SigKey == declaration.SigKey)
+                    return kv.Value;
+        return null;
+    }
+
+    private static bool InterfaceDerivesFrom(ClassInfo derived, ClassInfo ancestor)
+    {
+        var seen = new HashSet<ClassInfo>();
+        var stack = new Stack<ClassInfo>();
+        foreach (var parent in derived.Interfaces)
+            stack.Push(parent);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (current == ancestor)
+                return true;
+            if (!seen.Add(current))
+                continue;
+            foreach (var parent in current.Interfaces)
+                stack.Push(parent);
+        }
+        return false;
     }
 
     // ---- third-party custom async task types ----

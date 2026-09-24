@@ -44,6 +44,26 @@ namespace ReflectDelegateIdentitySubset
         {
             T IGenericProbe.Pick<T>(T value) => value;
         }
+        interface IRowGeneric { string Pick<T>(); }
+        class PlainFirstGeneric : IRowGeneric
+        {
+            public string Pick<T>() => "plain";
+            string IRowGeneric.Pick<T>() => "explicit";
+        }
+        class ExplicitFirstGeneric : IRowGeneric
+        {
+            string IRowGeneric.Pick<T>() => "explicit";
+            public string Pick<T>() => "plain";
+        }
+        interface IBaseDefault
+        {
+            string Pick() => "base";
+        }
+        interface IDerivedDefault : IBaseDefault
+        {
+            string IBaseDefault.Pick() => "derived";
+        }
+        class DerivedDefault : IDerivedDefault { }
         // A new-slot hider detaches the leaf's override from the base's slot.
         class GvmBase
         {
@@ -153,6 +173,17 @@ namespace ReflectDelegateIdentitySubset
                 + "/" + covariantTag.Method.Invoke(covariantReceiver, null)!.GetType().Name
                 + "/" + covariantTag().GetType().Name);
             Console.WriteLine("delegate-method-end");
+            IRowGeneric plainFirstReceiver = new PlainFirstGeneric();
+            IRowGeneric explicitFirstReceiver = new ExplicitFirstGeneric();
+            Func<string> plainFirstPick = plainFirstReceiver.Pick<int>;
+            Func<string> explicitFirstPick = explicitFirstReceiver.Pick<int>;
+            Console.WriteLine("delegate-method-generic-explicit-order=" + plainFirstPick() + "/" + plainFirstPick.Method.DeclaringType.Name
+                + "/" + plainFirstPick.Method.Name.EndsWith(".Pick") + "/" + explicitFirstPick()
+                + "/" + explicitFirstPick.Method.DeclaringType.Name + "/" + explicitFirstPick.Method.Name.EndsWith(".Pick"));
+            IBaseDefault derivedDefaultReceiver = new DerivedDefault();
+            Func<string> derivedDefaultPick = derivedDefaultReceiver.Pick;
+            Console.WriteLine("delegate-method-derived-default=" + derivedDefaultPick() + "/" + derivedDefaultPick.Method.DeclaringType.Name
+                + "/" + derivedDefaultPick.Method.Name.EndsWith(".Pick"));
         }
     }
 }

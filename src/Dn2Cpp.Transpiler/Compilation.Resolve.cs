@@ -815,9 +815,9 @@ internal sealed partial class Compilation
         // template both decode (in the empty context) to the same `!0&,…,!!0` key — the
         // struct closes the interface's element type with its own first type parameter —
         // so the interface template's open parameter signature finds the struct body.
-        // The interface's simple name rides along so an explicit implementation's dotted
-        // metadata name ("Ns.IItf<T>.Name") matches too, like the interface-GVM lookup
-        // (suppressed for an intrinsic-mapped TSelf, per the note above).
+        // The interface's simple name also matches a static explicit body's dotted
+        // metadata name ("Ns.IItf<T>.Name"). Intrinsic-mapped TSelf suppresses that
+        // lookup, as described above.
         var openParams = callee.Module.Reader.GetMethodDefinition(callee.Handle)
             .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
         string wantKey = string.Join(",", openParams.Select(p => p.ToString()));
@@ -846,19 +846,16 @@ internal sealed partial class Compilation
     /// name="wantKey"/> (the wanted parameter signature, decoded with an empty
     /// context) breaks the tie so overloads differing only by a delegate
     /// parameter's arity — e.g. Select(Func&lt;T,R&gt;) vs Select(Func&lt;T,int,R&gt;)
-    /// — bind to the right one instead of the first defined.</summary>
+    /// — bind to the right one instead of the first defined. For static virtual
+    /// interface members, <paramref name="explicitItfName"/> includes dotted
+    /// explicit bodies in this name-based lookup.</summary>
     private MethodDefinitionHandle? FindGenericMethodTemplate(
         Module mod, TypeDefinitionHandle classDef, string name, int genArity, int paramCount,
         string? wantKey = null, string? explicitItfName = null)
     {
-        // Name-indexed: a full walk of the declaring TypeDef's method rows per call
-        // would be ~1k rows for Enumerable, and the GVM reachers call this once
-        // per allocated type per used GVM. The lazy per-TypeDef index narrows the
-        // walk to the same-name rows; candidate order is metadata row order — the
-        // index's per-name lists keep it, and the explicit-impl merge below restores
-        // it across the two lists — so `first` and the wantKey tie-break pick exactly
-        // the row the full walk picked, and the same candidates decode in the same
-        // order.
+        // The lazy per-TypeDef index limits signature decoding to matching names.
+        // For static explicit bodies, merge the dotted names in metadata row order
+        // so the fallback and wantKey tie-break preserve the full-walk choice.
         var reader = mod.Reader;
         var idx = TypeDefMethodNames(mod, classDef);
         idx.ByName.TryGetValue(name, out var exact);
@@ -869,12 +866,10 @@ internal sealed partial class Compilation
         }
         else
         {
-            // With explicitItfName set (interface-GVM implementation lookup), an
-            // explicit interface implementation matches too: its metadata name is
-            // the dotted "Ns.IItf<T>.Name" form, so require the ".Name" suffix and
-            // the interface's simple name in the qualifier. (mname != name keeps a
-            // dotted `name` from matching twice — its exact hit is already in
-            // `exact`.)
+            // A static explicit interface body has the dotted
+            // "Ns.IItf<T>.Name" metadata name. Require the ".Name" suffix and
+            // the interface's simple name in its qualifier. The exact-name list
+            // already includes a dotted name that equals name.
             List<MethodDefinitionHandle>? dotted = null;
             foreach (var (mname, mh) in idx.Dotted)
                 if (mname != name
@@ -903,12 +898,82 @@ internal sealed partial class Compilation
         return first;
     }
 
+    /// <summary>Finds the body a MethodImpl row binds to an instantiated interface
+    /// generic method. The declaration identifies the slot independently of the
+    /// body's metadata name or its position among plainly named methods.</summary>
+    private MethodDefinitionHandle? FindInterfaceGenericMethodImpl(ClassInfo owner, MethodInfo slot)
+    {
+        var reader = owner.Module.Reader;
+        foreach (var mih in reader.GetTypeDefinition(owner.Handle).GetMethodImplementations())
+        {
+            var impl = reader.GetMethodImplementation(mih);
+            if (impl.MethodBody.Kind != HandleKind.MethodDefinition)
+                continue;
+            bool matches = false;
+            if (impl.MethodDeclaration.Kind == HandleKind.MethodDefinition)
+            {
+                matches = owner.Module == slot.Module
+                    && (MethodDefinitionHandle)impl.MethodDeclaration == slot.Handle;
+            }
+            else if (impl.MethodDeclaration.Kind == HandleKind.MemberReference)
+            {
+                var mr = reader.GetMemberReference((MemberReferenceHandle)impl.MethodDeclaration);
+                if (reader.GetString(mr.Name) != slot.Name)
+                    continue;
+                ClassInfo? decl = mr.Parent.Kind switch
+                {
+                    HandleKind.TypeDefinition => GetClass(owner.Module, (TypeDefinitionHandle)mr.Parent),
+                    HandleKind.TypeReference => ResolveTypeRef(owner.Module, (TypeReferenceHandle)mr.Parent)?.Class,
+                    HandleKind.TypeSpecification => reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
+                        .DecodeSignature(SigProvider, owner.Context).Class,
+                    _ => null,
+                };
+                if (decl == slot.DeclaringClass)
+                {
+                    var sig = mr.DecodeMethodSignature(SigProvider,
+                        new GenericContext(decl.Context.TypeArgs, slot.Context.MethodArgs));
+                    var target = slot.Signature;
+                    if (sig.GenericParameterCount == slot.Context.MethodArgs.Length
+                        && sig.ParameterTypes.Length == target.ParameterTypes.Length
+                        && SameTypeArg(sig.ReturnType, target.ReturnType))
+                    {
+                        matches = true;
+                        for (int i = 0; i < sig.ParameterTypes.Length; i++)
+                            if (!SameTypeArg(sig.ParameterTypes[i], target.ParameterTypes[i]))
+                            {
+                                matches = false;
+                                break;
+                            }
+                    }
+                }
+            }
+            if (!matches)
+                continue;
+            var body = (MethodDefinitionHandle)impl.MethodBody;
+            var md = reader.GetMethodDefinition(body);
+            if (md.GetDeclaringType() == owner.Handle
+                && md.GetGenericParameters().Count == slot.Context.MethodArgs.Length)
+                return body;
+        }
+        return null;
+    }
+
+    /// <summary>MethodImpl binds an interface generic slot before ordinary
+    /// name-and-signature matching, regardless of MethodDef row order.</summary>
+    private MethodDefinitionHandle? FindInterfaceGenericMethodTemplate(
+        ClassInfo owner, MethodInfo slot, string wantKey, int paramCount)
+    {
+        return FindInterfaceGenericMethodImpl(owner, slot)
+            ?? FindGenericMethodTemplate(owner.Module, owner.Handle, slot.Name,
+                slot.Context.MethodArgs.Length, paramCount, wantKey);
+    }
+
     /// <summary>Per-TypeDef method-name index for <see cref="FindGenericMethodTemplate"/>.
     /// Built lazily on the first template lookup against a TypeDef, from one
     /// pass over its method rows reading only their metadata names — decode-free, and
     /// never stale because TypeDef metadata is immutable. Per-name lists are in metadata
-    /// row order; <see cref="Dotted"/> carries the dotted names (explicit interface
-    /// implementations, .ctor/.cctor) in row order for the explicit-impl suffix match.</summary>
+    /// row order; <see cref="Dotted"/> carries dotted names in row order for the
+    /// static explicit-implementation suffix match.</summary>
     private sealed class TypeDefMethodNameIndexEntry
     {
         public readonly Dictionary<string, List<MethodDefinitionHandle>> ByName = new();
@@ -939,8 +1004,8 @@ internal sealed partial class Compilation
 
     /// <summary>Merges two row-ascending handle lists into metadata row order — how
     /// <see cref="FindGenericMethodTemplate"/> restores the full-walk visit order across
-    /// the exact-name hits and the explicit-impl (dotted-name) hits. Either side may be
-    /// null (absent); the inputs are never mutated (the exact list is the shared index's).</summary>
+    /// the exact-name hits and static explicit bodies. Either side may be null;
+    /// the inputs are never mutated (the exact list is the shared index's).</summary>
     private static List<MethodDefinitionHandle>? MergeByRow(
         List<MethodDefinitionHandle>? exact, List<MethodDefinitionHandle>? dotted)
     {
