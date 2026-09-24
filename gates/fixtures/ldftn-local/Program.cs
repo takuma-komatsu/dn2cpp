@@ -5,8 +5,10 @@ using Mono.Cecil.Cil;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
 
-if (args.Length != 1)
-    throw new ArgumentException("expected ReflectInvoke.dll");
+if (args.Length is < 1 or > 2 || (args.Length == 2 && args[1] != "--byref-overwrite"))
+    throw new ArgumentException("expected ReflectInvoke.dll [--byref-overwrite]");
+
+bool byRefOverwrite = args.Length == 2;
 
 string path = Path.GetFullPath(args[0]);
 using var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { InMemory = true });
@@ -52,6 +54,12 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
     il.Emit(OpCodes.Ldnull);
     il.Emit(OpCodes.Ldftn, add);
     il.Emit(OpCodes.Stloc_0);
+    if (byRefOverwrite)
+    {
+        il.Emit(OpCodes.Ldloca_S, stored.Body.Variables[0]);
+        il.Emit(OpCodes.Ldftn, subtract);
+        il.Emit(OpCodes.Stind_I);
+    }
     il.Emit(OpCodes.Ldloc_0);
     il.Emit(OpCodes.Newobj, DelegateCtor(stored));
     il.Emit(OpCodes.Ret);

@@ -2115,6 +2115,10 @@ internal sealed partial class MethodCompiler : IEvalStack
             case ILOpCode.Ldloca_s: case ILOpCode.Ldloca:
             {
                 var v = _locals[(int)insn.Operand];
+                if (_ftnOrigins.Count > 0
+                    && (v.CppType is "intptr_t" or "uintptr_t" || v.Type is { Kind: TypeKind.Pointer }))
+                    throw new NotSupportedException(
+                        $"{_method.DeclaringClass.FullName}.{_method.Name}: address-taken function pointer local {v.Name} cannot preserve delegate identity");
                 Push(StackKind.Ptr, v.CppType + "*", $"&{v.Name}");
                 // Mark the entry as a direct local/arg slot address: the byref
                 // sub-word out-arg fixup (NoteByRefSlotFixup) must only rewrite a

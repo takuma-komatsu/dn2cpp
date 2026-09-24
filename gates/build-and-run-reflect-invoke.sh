@@ -87,7 +87,8 @@
 # select two targets through one local or a stack join, snapshot a loaded pointer
 # before overwriting its local, and call a stored raw pointer through calli. The
 # delegate address and method identity follow the selected pointer; calli keeps
-# the raw address.
+# the raw address. An address-taken function pointer local is refused before a
+# byref write can leave its delegate identity stale.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -284,6 +285,34 @@ expect_policy_rejection conflicting 'Duplicate --reflection-metadata selector' \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed'
 expect_policy_rejection runtime-owned "cannot select packed metadata for runtime-owned type 'System.String'" \
     --reflection-metadata 'System.String=packed'
+
+byref_dir="$invalid_out/byref-app"
+mkdir -p "$byref_dir"
+byref_app="$byref_dir/ReflectInvoke.dll"
+cp "$_CG_APP" "$byref_app"
+cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/ReflectInvoke.runtimeconfig.json"
+cp "${_CG_APP%.dll}.deps.json" "$byref_dir/ReflectInvoke.deps.json"
+cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/Dn2Cpp.Runtime.dll"
+dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    "$byref_app" --byref-overwrite
+run_bounded dotnet "$byref_app" > "$invalid_out/byref-dotnet.stdout"
+grep -Fxq 'ldftn-local-direct=2/Subtract' "$invalid_out/byref-dotnet.stdout"
+DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded dotnet "$_CG_APP" \
+    > "$invalid_out/byref-prefix.stdout"
+sed '/^ldftn-local-begin/,$d' "$invalid_out/byref-dotnet.stdout" \
+    > "$invalid_out/byref-actual-prefix.stdout"
+diff -u "$invalid_out/byref-prefix.stdout" "$invalid_out/byref-actual-prefix.stdout"
+byref_status=0
+run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
+    -o "$invalid_out/byref-pointer-local" > "$invalid_out/byref-pointer-local.log" 2>&1 \
+    || byref_status=$?
+if [ "$byref_status" -eq 0 ] \
+    || ! grep -Fq 'address-taken function pointer local loc0 cannot preserve delegate identity' \
+        "$invalid_out/byref-pointer-local.log"; then
+    cat "$invalid_out/byref-pointer-local.log" >&2
+    echo 'error: address-taken function pointer local was not rejected' >&2
+    exit 1
+fi
 
 # Exercise representation boundaries that C# metadata cannot express, using
 # the production decoder and the same CMake/Ninja path as the parity binary.
