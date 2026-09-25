@@ -113,13 +113,10 @@
 # carried blobs, and build-and-run-manifest-resources.sh diffs that
 # surface against real .NET.
 #
-# The indexer-edge section (ReflectIndexerEdgeSubset) freezes the indexed-
-# property error paths: an index-count mismatch surfaces as the accessor
-# invoker's ArgumentException (real .NET: TargetParameterCountException, not
-# modeled — the MethodInfo.Invoke posture), and reading a set-only / writing a
-# get-only property as the null accessor's InvalidOperationException (real
-# .NET: ArgumentException). The happy paths live in the reflect-invoke live
-# diff (ReflectActivatorSubset).
+# The indexer-edge section (ReflectIndexerEdgeSubset) freezes reading a
+# set-only / writing a get-only property as the null accessor's
+# InvalidOperationException (real .NET: ArgumentException). The parity paths
+# live in the reflect-invoke live diff.
 #
 # The generic-method section (ReflectGenericMethodSubset) freezes the AOT
 # boundary of the per-closed-instantiation methtab model (no open generic
@@ -245,14 +242,14 @@
 # ResourceManager, WaitHandle, each row with its FieldType, DeclaringType, flag triple,
 # raw attributes word and VALUE — all match real .NET, and pin values that nothing else
 # in the tree states twice (DateTime.UnixEpoch's tick count and Utc kind,
-# Decimal.MaxValue's 96-bit mantissa, TimeSpan's tick constants). Its five
-# "DIVERGES" lines are the ticket's DECLINED half, asserted so the decision is visible
+# Decimal.MaxValue's 96-bit mantissa, TimeSpan's tick constants). Its
+# "DIVERGES" lines are the DECLINED half, asserted so the decision is visible
 # rather than silent: Type/Module carry no field table (their values are MemberFilter/
-# TypeFilter delegates and Missing.Value), no owned handle carries a method or property
-# table (its members are intrinsic — lowered at the call site, with no C++ body an
-# invoker could name), and enumeration of an owned handle's interfaces stays empty while
-# the well-known-interface pair-gate beside it answers exactly like .NET. Delete the
-# DIVERGES lines and the boundary becomes a silence again.
+# TypeFilter delegates and Missing.Value), and no owned handle carries a method or
+# property table (its members are intrinsic — lowered at the call site, with no C++ body
+# an invoker could name). Its interface lines ask named membership, which matches .NET:
+# an owned handle enumerates the interfaces of its CLR type that the image defines.
+# Delete the DIVERGES lines and the boundary becomes a silence again.
 #
 # That section's TAIL has a fourth subject again — an SZArray's interface ENUMERATION —
 # and its last line (r-late) is about neither reflection nor owned handles but TIMING:

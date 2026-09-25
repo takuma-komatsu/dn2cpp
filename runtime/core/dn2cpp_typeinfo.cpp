@@ -148,11 +148,15 @@ void dn2cpp_string_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t c
 // The same wiring for the intrinsic types that model a disposable CLR type: one setter
 // over an explicit type-info handle instead of one named setter per type.
 // The handles live with their own runtime helpers (dn2cpp_threading.cpp and the
-// System.Threading / concurrent intrinsics); each is non-const for this reason alone.
+// System.Threading / concurrent intrinsics); each is non-const so the prologue can write it.
 void dn2cpp_intrinsic_set_interfaces(Dn2CppTypeInfo* type, const Dn2CppInterfaceEntry* entries, int32_t count)
 {
     type->interfaces = entries;
     type->interfaceCount = count;
+}
+void dn2cpp_intrinsic_set_base(Dn2CppTypeInfo* type, const Dn2CppTypeInfo* base)
+{
+    type->base = base;
 }
 // The array type-infos carry DN2CPP_TF_ARRAY so Type.IsArray answers true via the
 // flag path (all other hand-written type-infos leave flags 0). The middle slots
@@ -595,15 +599,15 @@ void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t cou
     dn2cpp_enum_type.interfaceCount = count;
 }
 // Runtime-raised exception type-infos: externally visible so the emitted code
-// can name the SAME handle the trap helpers stamp. Each is base-chained to
-// dn2cpp_exception_type (forward-referenceable — declared in the header), keeping the
-// commonly-tested ArgumentException / IOException intermediates so e.g. a runtime-
-// trapped ArgumentNullException is caught by `catch (ArgumentException)`. The
-// SystemException intermediate is collapsed (no runtime handle for it) — an
-// intentional carve-out (`is SystemException` on a trapped exception reports false).
+// can name the SAME handle the trap helpers stamp. Each is based on its nearest CLR
+// ancestor that has a handle (forward-referenceable — declared in the header), so e.g.
+// a runtime-trapped ArgumentNullException is caught by `catch (ArgumentException)`. An
+// ancestor without one — SystemException, ExternalException, MissingMemberException —
+// is an emitted type-info only the image can name; the init prologue splices it in
+// (dn2cpp_intrinsic_set_base) when the image defines it.
 extern const Dn2CppType dn2cpp_overflow_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_overflow_exception_type =
-    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_overflow_exception_type_obj);
+    dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_overflow_exception_type_obj);
 const Dn2CppType dn2cpp_overflow_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_overflow_exception_type };
 extern const Dn2CppType dn2cpp_index_out_of_range_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_index_out_of_range_exception_type =
@@ -729,10 +733,16 @@ const Dn2CppType dn2cpp_application_exception_type_obj = { { &dn2cpp_type_type }
 Dn2CppTypeInfo dn2cpp_target_invocation_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.TargetInvocationException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_invocation_exception_type_obj);
 const Dn2CppType dn2cpp_target_invocation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_invocation_exception_type };
+extern const Dn2CppType dn2cpp_target_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_target_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_exception_type_obj);
+const Dn2CppType dn2cpp_target_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_exception_type };
+extern const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_target_parameter_count_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Reflection.TargetParameterCountException", &dn2cpp_application_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_target_parameter_count_exception_type_obj);
+const Dn2CppType dn2cpp_target_parameter_count_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_target_parameter_count_exception_type };
 // Activator/ConstructorInfo constructor resolution with no matching ctor,
-// matching .NET's MissingMethodException. Direct System.Exception base (the
-// MissingMemberException/MemberAccessException intermediates are not modeled,
-// the same posture as AmbiguousMatchException's missing SystemException).
+// matching .NET's MissingMethodException.
 extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
     dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
@@ -743,16 +753,14 @@ Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
 const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_manifest_resource_exception_type };
 // A runtime entry point's null managed receiver (a null FieldInfo's GetValue),
 // matching .NET's NullReferenceException for the instance call it stands in
-// for. Direct System.Exception base (the SystemException intermediate is not
-// modeled, the same posture as AmbiguousMatchException).
+// for.
 extern const Dn2CppType dn2cpp_null_reference_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_null_reference_exception_type =
     dn2cpp_ti_with_typeobject({ "System.NullReferenceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_null_reference_exception_type_obj);
 const Dn2CppType dn2cpp_null_reference_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_null_reference_exception_type };
 
 // System.DivideByZeroException — raised by the emitted div/rem guards, the
-// interpreter's binary arms and decimal's. Unlike its siblings it does NOT chain
-// straight to System.Exception: .NET derives it from ArithmeticException, and
+// interpreter's binary arms and decimal's. Based on ArithmeticException, as in .NET:
 // `catch (ArithmeticException)` around numeric parsing is a shape real code writes.
 extern const Dn2CppType dn2cpp_divide_by_zero_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_divide_by_zero_exception_type =
@@ -769,8 +777,7 @@ Dn2CppTypeInfo dn2cpp_lock_recursion_exception_type =
 const Dn2CppType dn2cpp_lock_recursion_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_lock_recursion_exception_type };
 // System.Threading.SynchronizationLockException — raised by ReaderWriterLockSlim's
 // Exit* paths when the calling thread does not hold the lock being released
-// matching real .NET. Direct System.Exception base (the SystemException intermediate
-// stays unmodeled, as everywhere).
+// matching real .NET.
 extern const Dn2CppType dn2cpp_synchronization_lock_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_synchronization_lock_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.SynchronizationLockException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_synchronization_lock_exception_type_obj);

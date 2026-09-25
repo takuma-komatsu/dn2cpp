@@ -689,7 +689,7 @@ extern const Dn2CppType dn2cpp_semaphore_type_obj;
 // a std::mutex + std::condition_variable (same for the event/countdown/barrier/rwlock
 // handles below). See the flag's definition in dn2cpp_core.h for why the bit and not
 // a missing extent.
-const Dn2CppTypeInfo dn2cpp_semaphore_type =
+Dn2CppTypeInfo dn2cpp_semaphore_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.SemaphoreSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_semaphore_type_obj);
 const Dn2CppType dn2cpp_semaphore_type_obj = { { &dn2cpp_type_type }, &dn2cpp_semaphore_type };
 // The event family is FOUR CLR types over one Dn2CppEvent, and — unlike the Task and
@@ -712,7 +712,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_waithandle,
 );
 extern const Dn2CppType dn2cpp_waithandle_type_obj;
 DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_waithandle_type_reflection, dn2cpp_ownflds_waithandle, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-const Dn2CppTypeInfo dn2cpp_waithandle_type =
+Dn2CppTypeInfo dn2cpp_waithandle_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_waithandle_type_reflection }, &dn2cpp_waithandle_type_obj);
 const Dn2CppType dn2cpp_waithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_waithandle_type };
 extern const Dn2CppType dn2cpp_event_type_obj;
@@ -731,7 +731,7 @@ const Dn2CppType dn2cpp_autoresetevent_type_obj = { { &dn2cpp_type_type }, &dn2c
 // non-WaitHandle type in real .NET, and stamping it under the event chain is exactly the
 // over-accept this arrangement exists to avoid.
 extern const Dn2CppType dn2cpp_manualreseteventslim_type_obj;
-const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
+Dn2CppTypeInfo dn2cpp_manualreseteventslim_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.ManualResetEventSlim", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_manualreseteventslim_type_obj);
 const Dn2CppType dn2cpp_manualreseteventslim_type_obj = { { &dn2cpp_type_type }, &dn2cpp_manualreseteventslim_type };
 extern const Dn2CppType dn2cpp_safewaithandle_type_obj;

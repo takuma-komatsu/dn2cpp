@@ -368,6 +368,16 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
     return out;
 }
 
+Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
+{
+    std::string text[2];
+    if (argc > 2)
+        dn2cpp_throw_invalid_operation();
+    for (int32_t i = 0; i < argc; i++)
+        text[i] = dn2cpp_sr_arg(args[i]);
+    return dn2cpp_sr_format(key, text, argc);
+}
+
 // The message real .NET's parameterless ctor of this exception type gives — the SR text
 // folded in by the emitter. Only the handles this runtime raises are mapped; a generated
 // type-info reads null and keeps Exception.Message's type-name fallback, which is what
@@ -398,6 +408,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_divide_by_zero_exception_type) return DN2CPP_SR_DIVIDE_BY_ZERO;
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
     if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
+    if (ti == &dn2cpp_target_parameter_count_exception_type) return DN2CPP_SR_TARGET_PARAMETER_COUNT;
     return nullptr;
 }
 

@@ -2094,12 +2094,11 @@ internal sealed partial class MethodCompiler
 
         // `using (CancellationTokenSource ...)` / `using (Task ...)` disposal
         // arrives as `callvirt IDisposable::Dispose` on a receiver that is
-        // statically an intrinsic type. The intrinsic runtime object's type-info
-        // carries no interface table, so dynamic interface dispatch would abort
-        // at run time — devirtualize to whatever the direct call to that type's
-        // Dispose already lowers to (see the direct-call intrinsics) instead of
-        // emitting an unresolvable interface dispatch. Task's is a no-op (the object
-        // is GC-managed); the source's disarms its pending CancelAfter timer, and
+        // statically an intrinsic type. Devirtualize to whatever the direct call to
+        // that type's Dispose already lowers to (see the direct-call intrinsics): Task's
+        // handle has no IDisposable map, and the source's map thunk
+        // (Compilation.IntrinsicInterfaceRows) is this same call. Task's is a no-op (the
+        // object is GC-managed); the source's disarms its pending CancelAfter timer, and
         // this — not the direct-call arm — is the path a `using` takes, which is how
         // a CancellationTokenSource is normally scoped.
         if (isCallvirt && callee.Name == "Dispose"

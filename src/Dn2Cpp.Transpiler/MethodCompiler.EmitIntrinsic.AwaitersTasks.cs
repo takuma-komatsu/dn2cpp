@@ -513,8 +513,9 @@ internal sealed partial class MethodCompiler
             // Dispose(): the source is GC-managed, so nothing is released — except the
             // pending CancelAfter, which real .NET's Dispose stops. Most disposals do NOT
             // arrive here: `using (var cts = ...)` lowers to `callvirt IDisposable::Dispose`
-            // and is devirtualized in MethodCompiler.TranslateCall, which must stay in step
-            // with this arm.
+            // and is devirtualized in MethodCompiler.TranslateCall, and an IDisposable-typed
+            // receiver reaches the IDisposable map's thunk; both must stay in step with this
+            // arm.
             case ("System.Threading.CancellationTokenSource", "Dispose"):
             {
                 var d = Pop(); // this
@@ -527,6 +528,7 @@ internal sealed partial class MethodCompiler
             // loud transpile failure the first time some BCL path takes it.
             case ("System.Threading.CancellationTokenSource", "CreateLinkedTokenSource"):
             {
+                _c.NoteIntrinsicInterfaces("System.Threading.CancellationTokenSource"); // IDisposable row
                 // The array overload (params CancellationToken[]) vs the 1-/2-token ones.
                 if (sig.ParameterTypes is [{ Kind: TypeKind.SZArray }])
                 {

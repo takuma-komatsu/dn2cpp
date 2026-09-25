@@ -1043,6 +1043,7 @@ internal sealed partial class MethodCompiler
                 ctsNew = $"dn2cpp_cts_new_after({ctorMs})";
             }
             EmitCanceledExcRegistration();
+            _c.NoteIntrinsicInterfaces("System.Threading.CancellationTokenSource"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppCancelSource*", ctsNew);
             return;
         }
@@ -1086,6 +1087,7 @@ internal sealed partial class MethodCompiler
             if (ssigParams.Length == 2)
                 max = Pop().Expr;
             var initial = Pop();
+            _c.NoteIntrinsicInterfaces("System.Threading.SemaphoreSlim"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_semaphore_new({initial.Expr}, {max})");
             return;
         }
@@ -1112,9 +1114,10 @@ internal sealed partial class MethodCompiler
             for (int i = 0; i < pc - 1; i++)
                 Pop(); // spinCount (ignored)
             string init = pc >= 1 ? Pop().Expr : "0"; // parameterless Slim defaults to false
-            string eti = NewobjTypeName(handle) == "System.Threading.ManualResetEventSlim"
-                ? "&dn2cpp_manualreseteventslim_type"
-                : "&dn2cpp_manualresetevent_type";
+            bool slim = NewobjTypeName(handle) == "System.Threading.ManualResetEventSlim";
+            string eti = slim ? "&dn2cpp_manualreseteventslim_type" : "&dn2cpp_manualresetevent_type";
+            // IDisposable row: ManualResetEvent's is WaitHandle's, which its chain reaches.
+            _c.NoteIntrinsicInterfaces(slim ? "System.Threading.ManualResetEventSlim" : "System.Threading.WaitHandle");
             Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_event_new({init}, 1, {eti})");
             return;
         }
@@ -1123,6 +1126,7 @@ internal sealed partial class MethodCompiler
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var arg = Pop(); // bool initialState
+            _c.NoteIntrinsicInterfaces("System.Threading.WaitHandle"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_event_new({arg.Expr}, 0, &dn2cpp_autoresetevent_type)");
             return;
@@ -1142,6 +1146,7 @@ internal sealed partial class MethodCompiler
         {
             var mode = Pop();     // EventResetMode
             var ewhInit = Pop();  // bool initialState
+            _c.NoteIntrinsicInterfaces("System.Threading.WaitHandle"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_event_new({ewhInit.Expr}, {mode.Expr}, &dn2cpp_event_type)");
             return;
@@ -2047,10 +2052,69 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            bool identityEmitted = false;
+            if (!fnPtr.DelegateAddressReady && fnPtr.DelegateTag is { } tag)
+            {
+                if (tag == UntrackedDelegateTag)
+                    throw new NotSupportedException(
+                        $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target loaded from an address-taken local cannot preserve delegate identity");
+                // A literal names the one load that reaches here; a variable holds it
+                // at run time, where a copy of an address-taken local reads -1.
+                bool literal = tag.All(char.IsAsciiDigit);
+                if (!literal)
+                    Emit($"if ({tag} < 0) dn2cpp_throw_not_supported_msg(\"a delegate target loaded from an address-taken local cannot preserve delegate identity\");");
+                var invoke = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
+                foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
+                {
+                    if (literal && origin.Key.ToString() != tag)
+                        continue;
+                    var (method, isVirtual, fromVirtFtn) = origin.Value;
+                    if (invoke is not null)
+                    {
+                        int invokeArity = invoke.Signature.ParameterTypes.Length;
+                        int targetArity = method.Signature.ParameterTypes.Length;
+                        if (invokeArity != targetArity
+                            && (!method.IsStatic || invokeArity != targetArity - 1
+                                || CppTypes.KindOf(method.Signature.ParameterTypes[0]) != StackKind.Ref))
+                            continue;
+                    }
+                    NoteFtnTarget(method, fromVirtFtn);
+                    string? adapterExpr = null;
+                    if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
+                        adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (_c.IsDynamicCodegenMember(method.DeclaringClass, method.Name))
+                        adapterExpr = DynamicCodegenFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (_c.IsAbsentNetworkPalMember(method.DeclaringClass, method.Name))
+                        adapterExpr = AbsentNetworkPalFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
+                    else if (!fromVirtFtn && (method.IsStatic || NeedsNfiErasedAdapter(method.Emittable)))
+                    {
+                        var impl = method.Emittable;
+                        var adapter = new DelegateAdapter(impl,
+                            method.IsStatic && IsClosedStaticDelegate(cls, impl),
+                            NeedsNfiErasedAdapter(impl));
+                        if (!_c.DelegateAdapters.Contains(adapter))
+                            _c.DelegateAdapters.Add(adapter);
+                        NoteFtnTargetBody(impl);
+                        _c.NoteNamedBodySymbol(_method, impl);
+                        adapterExpr = $"(void*)&{adapter.CppName}";
+                    }
+                    Emit(literal ? "{" : $"if ({tag} == {origin.Key}) {{");
+                    if (adapterExpr is not null)
+                        Emit($"    {dg}->f_method = {adapterExpr};");
+                    if (!method.Handle.IsNil)
+                    {
+                        foreach (var arg in method.Context.MethodArgs)
+                            _c.NoteTypeIdentityClosure(arg, keepSeed: false);
+                        Emit($"    {dg}->f_identity = &{_c.NoteDelegateIdentity(method, isVirtual)};");
+                        identityEmitted = literal;
+                    }
+                    Emit("}");
+                }
+            }
             // The identity is emitted with the method rows, spelled as they spell the
             // declaring type and arguments; the arguments only need type-infos. A
             // canonical target has already tainted at its ldftn/ldvirtftn.
-            if (fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
+            if (!identityEmitted && fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
             {
                 foreach (var arg in delegateMethod.Context.MethodArgs)
                     _c.NoteTypeIdentityClosure(arg, keepSeed: false);

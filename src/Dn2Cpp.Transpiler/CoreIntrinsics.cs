@@ -1214,7 +1214,9 @@ internal static partial class CoreIntrinsics
         // Raised by an invoked interface slot with no most specific default body.
         ["System.Runtime.AmbiguousImplementationException"] =
             "&dn2cpp_ambiguous_implementation_exception_type",
+        ["System.Reflection.TargetException"] = "&dn2cpp_target_exception_type",
         ["System.Reflection.TargetInvocationException"] = "&dn2cpp_target_invocation_exception_type",
+        ["System.Reflection.TargetParameterCountException"] = "&dn2cpp_target_parameter_count_exception_type",
         ["System.ApplicationException"] = "&dn2cpp_application_exception_type",
         // Raised by the array block-move helpers on a rank mismatch, so a
         // `catch (RankException)` in the same program must bind THIS handle.

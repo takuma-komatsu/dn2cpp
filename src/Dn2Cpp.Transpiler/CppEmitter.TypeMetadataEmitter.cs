@@ -309,7 +309,7 @@ internal sealed partial class CppEmitter
                     ? _e.TypeInfoRef(b, "generic-definition nearest invariant base")
                     : "&dn2cpp_object_type";
             var rows = itfs
-                .Where(i => _e.TypeInfoSymbolDefined(i.CppTypeInfoName))
+                .Where(i => _e.RelationRowDefined(i))
                 .Select(i => $"{{ {_e.TypeInfoRef(i, "generic-definition relation row")}, nullptr }}")
                 .ToList();
             if (rows.Count == 0)
@@ -994,6 +994,8 @@ internal sealed partial class CppEmitter
             _e.EmitStringInterfaceMap(_sb);
             _e.EmitEnumInterfaceMap(_sb);
             _e.EmitIntrinsicInterfaceMaps(_sb);
+            _e.EmitRelationRows(_sb);
+            _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
             EmitDelegateIdentities();
 
@@ -1265,8 +1267,18 @@ internal sealed partial class CppEmitter
             // interfaces silently answers False. The slot-resolving walkers skip
             // nullptr-slot rows, so a relation row on an abstract base can never shadow a
             // concrete ancestor's real slot table.
-            if (cls.IsEnum || _e.SkipsCanonicalMetadata(cls) || _e.IsIntrinsicShaped(cls))
+            if (cls.IsEnum || _e.SkipsCanonicalMetadata(cls))
                 return;
+            // An intrinsic-shaped class's members are intrinsic-dispatched, so its own table
+            // could carry no slot. One whose emitted ti_ is its only type-info states its CLR
+            // relations through the side table instead, where a dispatch they admit but no
+            // map serves is catchable (CppEmitter.EmitRelationRows).
+            if (_e.IsIntrinsicShaped(cls))
+            {
+                if (CoreIntrinsics.RuntimeTypeInfoSymbol(cls) is null)
+                    _e._intrinsicShellRelations.Add(cls);
+                return;
+            }
             // Three kinds get a relation-only table rather than none, each otherwise a
             // silent False out of IsAssignableFrom / an empty GetInterfaces():
             //

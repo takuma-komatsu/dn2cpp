@@ -49,8 +49,19 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_COLD_ACTIVATOR") == "1")
                 return;
             ReflectActivatorGenericSubset.ColdGenericFactory.Run();
-            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD") != "1")
-                ReflectDelegateIdentitySubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD") == "1")
+                return;
+            if (!ReflectDelegateIdentitySubset.Program.Run())
+                return;
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_LDFTN_LOCAL") == "1")
+                return;
+            LdftnLocalSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INVOKE_VALIDATION") == "1")
+                return;
+            ReflectInvokeValidationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS") == "1")
+                return;
+            RuntimeHandleRelationSubset.Program.Run();
         }
     }
 }

@@ -2981,7 +2981,7 @@ internal sealed partial class Compilation
         return mask;
     }
 
-    private static bool DerivesFromOrIs(ClassInfo c, ClassInfo baseCls)
+    internal static bool DerivesFromOrIs(ClassInfo c, ClassInfo baseCls)
     {
         for (var b = c; b is not null; b = b.BaseClass)
             if (b == baseCls)

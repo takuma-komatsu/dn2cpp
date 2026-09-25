@@ -359,13 +359,16 @@ static inline bool dn2cpp_itf_row_is_canonical_alias(const Dn2CppInterfaceEntry&
 // The interface rows a type EXPOSES as CLR types: its own table, plus — for an array —
 // the shared relation-only rows for the six non-generic interfaces every CLR array
 // implements, which no per-type table can carry (see
-// dn2cpp_array_set_nongeneric_interfaces in dn2cpp_core.h). All three enumerating
-// readers below go through this one iterator, so they cannot disagree about what the
-// interface list IS.
+// dn2cpp_array_set_nongeneric_interfaces in dn2cpp_core.h), plus the relation rows of a
+// type-info whose own table cannot carry them (dn2cpp_set_relation_rows). All three
+// enumerating readers below go through this one iterator, so they cannot disagree about
+// what the interface list IS.
 //
 // Two exclusions: a canonical ALIAS row is a dispatch handle, not a CLR type, so it
-// never reaches a managed Type; and a shared array row is dropped when the type's own
-// table already carries it (an SZArray map carries IEnumerable/ICollection/IList).
+// never reaches a managed Type; and a relation or shared array row is dropped when an
+// earlier source already carries it (an SZArray map carries IEnumerable/ICollection/
+// IList, String's dispatch map its dispatched interfaces, System.Array's relation rows
+// all six shared array rows).
 // Hence the count is derived by COUNTING rather than read off interfaceCount — alias
 // rows interleave with the real ones in the string and SZArray dispatch maps, so "the
 // real rows are a prefix" does not hold.
@@ -376,10 +379,14 @@ struct Dn2CppEffectiveItfs
     const Dn2CppTypeInfo* ti;
     const Dn2CppInterfaceEntry* extra;
     int32_t extraCount;
+    const Dn2CppInterfaceEntry* rel;
+    int32_t relCount;
 
-    explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type) : ti(type), extra(nullptr), extraCount(0)
+    explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type)
+        : ti(type), extra(nullptr), extraCount(0), rel(nullptr), relCount(0)
     {
         extra = dn2cpp_array_nongeneric_interfaces(type, &extraCount);
+        rel = dn2cpp_relation_interfaces(type, &relCount);
     }
 
     bool OwnRowCarries(const Dn2CppTypeInfo* itf) const
@@ -390,14 +397,27 @@ struct Dn2CppEffectiveItfs
         return false;
     }
 
-    // Calls fn(itf) once per reported interface, in table order then extra order.
+    bool RelationRowCarries(const Dn2CppTypeInfo* itf) const
+    {
+        for (int32_t i = 0; i < relCount; i++)
+            if (rel[i].itf == itf)
+                return true;
+        return false;
+    }
+
+    // Calls fn(itf) once per reported interface: table order, then relation order (the
+    // CLR type's own metadata order), then extra order.
     template <typename F> void ForEach(F fn) const
     {
         for (int32_t i = 0; i < ti->interfaceCount; i++)
             if (!dn2cpp_itf_row_is_canonical_alias(ti->interfaces[i]) && ti->interfaces[i].itf != nullptr)
                 fn(ti->interfaces[i].itf);
+        for (int32_t i = 0; i < relCount; i++)
+            if (rel[i].itf != nullptr && !OwnRowCarries(rel[i].itf))
+                fn(rel[i].itf);
         for (int32_t i = 0; i < extraCount; i++)
-            if (extra[i].itf != nullptr && !OwnRowCarries(extra[i].itf))
+            if (extra[i].itf != nullptr && !OwnRowCarries(extra[i].itf)
+                && !RelationRowCarries(extra[i].itf))
                 fn(extra[i].itf);
     }
 
@@ -413,7 +433,8 @@ struct Dn2CppEffectiveItfs
 // Type.GetInterfaces(): the interfaces recorded in the type's interface table, wrapped as
 // Type[]. The table holds the transitive set built at emit time — for interfaces, abstract
 // classes and never-boxed value types it is a relation-only table (nullptr slots), emitted
-// precisely so this and IsAssignableFrom answer — plus the shared array rows above.
+// precisely so this and IsAssignableFrom answer — plus the relation rows and the shared
+// array rows above.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
@@ -1909,8 +1930,6 @@ static Dn2CppObject* dn2cpp_meta_object_memberwise_clone(const Dn2CppTypeInfo* c
                                                          Dn2CppObject* receiver)
 {
     (void)args; // non-generic
-    // A null receiver is a catchable NullReferenceException from the helper itself,
-    // which is what an instance Invoke(null, …) raises on both runtimes.
     return dn2cpp_object_memberwise_clone(receiver);
 }
 
@@ -2206,9 +2225,205 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
     dn2cpp_throw(wrapper);
 }
 
-// Shared method dispatch: validate, adjust the receiver for a value-type
-// instance method (pass the unboxed payload at obj+1), and call through the per-shape
-// invoker thunk (which unboxes/casts the args, calls fnPtr, and boxes the result).
+// The caller faults reflection raises before the target runs, with the message and
+// HResult real .NET gives each. None is wrapped in TargetInvocationException.
+[[noreturn]] static void dn2cpp_throw_reflection_fault(const Dn2CppTypeInfo* ti,
+    Dn2CppString* message, uint32_t hresult)
+{
+    Dn2CppObject* e = dn2cpp_exception_new(ti,
+        message != nullptr ? message : dn2cpp_default_message(ti), nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(hresult);
+    dn2cpp_throw(e);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_target(const Dn2CppObject* obj,
+    const Dn2CppTypeInfo* declaring)
+{
+    Dn2CppString* message;
+    if (obj == nullptr)
+        message = dn2cpp_sr_message(DN2CPP_SR_TARGET_REQUIRED, nullptr, 0);
+    else
+    {
+        Dn2CppString* names[2] = { dn2cpp_type_tostring(declaring), dn2cpp_type_tostring(obj->type) };
+        message = dn2cpp_sr_message(DN2CPP_SR_TARGET_MISMATCH, names, 2);
+    }
+    dn2cpp_throw_reflection_fault(&dn2cpp_target_exception_type, message, 0x80131603u);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_parameter_count()
+{
+    dn2cpp_throw_reflection_fault(&dn2cpp_target_parameter_count_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_PARAMETER_COUNT, nullptr, 0), 0x8002000Eu);
+}
+
+[[noreturn]] static void dn2cpp_throw_invoke_argument(const Dn2CppTypeInfo* from,
+    const Dn2CppTypeInfo* to)
+{
+    Dn2CppString* names[2] = { dn2cpp_type_tostring(from), dn2cpp_type_tostring(to) };
+    dn2cpp_throw_reflection_fault(&dn2cpp_argument_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_OBJECT_CONVERSION, names, 2), 0x80070057u);
+}
+
+static bool dn2cpp_prim_widens(int32_t src, int32_t dst);
+static const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo* ti);
+static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeInfo* p);
+
+static const Dn2CppTypeInfo* dn2cpp_enum_underlying_or_self(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->flags & DN2CPP_TF_ENUM) == 0)
+        return ti;
+    return ti->enumUnderlying != nullptr ? ti->enumUnderlying : &dn2cpp_int32_type;
+}
+
+// A parameter the invoker thunk receives headerless: CultureInfo, NumberFormatInfo,
+// TextInfo and IFormatProvider as the culture pointer, Assembly and Module as the
+// name. The thunk unwraps a wrapper and passes anything else through as the raw
+// handle an erased path can leave in the argument array, whose first word is no
+// type-info.
+static bool dn2cpp_invoke_headerless_param(const Dn2CppTypeInfo* p)
+{
+    const char* n = p->name;
+    return n != nullptr
+        && (std::strcmp(n, "System.Globalization.CultureInfo") == 0
+            || std::strcmp(n, "System.Globalization.NumberFormatInfo") == 0
+            || std::strcmp(n, "System.Globalization.TextInfo") == 0
+            || std::strcmp(n, "System.IFormatProvider") == 0
+            || std::strcmp(n, "System.Reflection.Assembly") == 0
+            || std::strcmp(n, "System.Reflection.Module") == 0);
+}
+
+// RuntimeType.CheckValue for one non-null argument: the value to pass, or the
+// conversion ArgumentException. Besides an argument the parameter admits, .NET
+// takes a boxed U for Nullable<U>, and an enum or primitive for an enum or
+// primitive parameter whose underlying type CanPrimitiveWiden reaches from the
+// argument's. Those re-box in the representation the invoker thunk reads.
+static Dn2CppObject* dn2cpp_invoke_check_arg(Dn2CppObject* arg, const Dn2CppTypeInfo* expected)
+{
+    if (dn2cpp_invoke_headerless_param(expected))
+        return arg;
+    if (dn2cpp_typeinfo_assignable(arg->type, expected) != 0)
+        return arg;
+    if ((expected->flags & DN2CPP_TF_VALUETYPE) != 0)
+    {
+        if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(expected))
+        {
+            if (arg->type == u)
+                return dn2cpp_binder_adapt_arg(arg, expected);
+        }
+        else
+        {
+            int32_t to = dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(expected));
+            int32_t from = dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(arg->type));
+            if (to >= 0 && from >= 0 && dn2cpp_prim_widens(from, to))
+                return from == to ? arg : dn2cpp_binder_adapt_arg(arg, expected);
+        }
+    }
+    dn2cpp_throw_invoke_argument(arg->type, expected);
+}
+
+// The argument list the invoker thunk receives: `args` itself unless an argument
+// converts, then a copy, since a by-value conversion never writes the caller's
+// array. The caller has already matched argc against the row's parameter count.
+static Dn2CppObject** dn2cpp_invoke_check_args(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
+    Dn2CppObject** args, int32_t argc)
+{
+    if (argc == 0)
+        return args;
+    const auto parameters = mi->parameters;
+    Dn2CppArrayRef* copy = nullptr;
+    for (int32_t i = 0; i < argc; i++)
+    {
+        if (args[i] == nullptr)
+            continue;
+        Dn2CppObject* arg = dn2cpp_invoke_check_arg(args[i], parameters[i]->paramType);
+        if (arg == args[i])
+            continue;
+        if (copy == nullptr)
+        {
+            copy = dn2cpp_newarr_ref(argc);
+            for (int32_t k = 0; k < argc; k++)
+                dn2cpp_gc_store_ref(&copy->data[k], args[k]);
+        }
+        dn2cpp_gc_store_ref(&copy->data[i], arg);
+    }
+    return copy != nullptr ? copy->data : args;
+}
+
+// The type an instance row runs on. A MakeGenericType clone's method and
+// constructor rows name the clone, but its property accessors are its template's
+// rows, and no clone's base chain reaches a template: such a row runs on the level
+// of the reflected type that instantiates the template's definition.
+static const Dn2CppTypeInfo* dn2cpp_invoke_declaring(const Dn2CppTypeInfo* declaring,
+    const Dn2CppTypeInfo* reflected)
+{
+    if ((declaring->flags & DN2CPP_TF_RUNTIME_TEMPLATE) == 0)
+        return declaring;
+    const Dn2CppRuntimeTemplate* level = dn2cpp_runtime_template_by_ti(declaring);
+    if (level == nullptr)
+        return declaring;
+    for (const Dn2CppTypeInfo* t = reflected; t != nullptr; t = t->base)
+        if (t->genericDef == level->def && (t->flags & DN2CPP_TF_RUNTIME_TEMPLATE) == 0)
+            return t;
+    return declaring;
+}
+
+// Whether `objType` is an instance of the row's declaring type. A template row
+// reached through no instantiation of it is matched by generic definition.
+static bool dn2cpp_invoke_target_matches(const Dn2CppTypeInfo* objType,
+    const Dn2CppTypeInfo* declaring)
+{
+    if (dn2cpp_typeinfo_assignable(objType, declaring) != 0)
+        return true;
+    if ((declaring->flags & DN2CPP_TF_RUNTIME_TEMPLATE) == 0)
+        return false;
+    const Dn2CppRuntimeTemplate* level = dn2cpp_runtime_template_by_ti(declaring);
+    if (level == nullptr)
+        return false;
+    for (const Dn2CppTypeInfo* t = objType; t != nullptr; t = t->base)
+        if ((t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0 && t->genericDef == level->def)
+            return true;
+    return false;
+}
+
+// ValidateInvokeTarget: the receiver an instance row runs on. Boxing a
+// Nullable<U> yields a boxed U, which .NET accepts for a Nullable<U> method, so
+// that receiver re-boxes in the Nullable layout the method's `this` reads.
+template<class Method>
+static Dn2CppObject* dn2cpp_invoke_receiver(const Method& row, Dn2CppObject* obj,
+    const Dn2CppTypeInfo* reflected)
+{
+    if ((row.attrs & DN2CPP_MTHA_STATIC) != 0)
+        return obj;
+    const Dn2CppTypeInfo* declaring = dn2cpp_invoke_declaring(row.declaringType, reflected);
+    if (obj == nullptr)
+        dn2cpp_throw_invoke_target(obj, declaring);
+    if (dn2cpp_invoke_target_matches(obj->type, declaring))
+        return obj;
+    const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(declaring);
+    if (u == nullptr || obj->type != u)
+        dn2cpp_throw_invoke_target(obj, declaring);
+    return dn2cpp_binder_adapt_arg(obj, declaring);
+}
+
+// The invoker thunk boxes a Nullable<T> result as its raw struct; .NET hands back
+// null or a boxed T.
+static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, Dn2CppObject* result)
+{
+    if (result == nullptr || result->type != returnType
+        || dn2cpp_nullable_underlying_ti(returnType) == nullptr)
+        return result;
+    return dn2cpp_array_box_element(returnType, result + 1, returnType->instanceSize, false);
+}
+
+// How a reflective call enters a row. Invoke covers MethodInfo.Invoke and the
+// PropertyInfo accessors: .NET checks the receiver and the arguments first and
+// returns a Nullable<T> as null or a boxed T. A CreateDelegate trampoline enters
+// Bound: its typed call already matches the row, and it reads the raw result box.
+enum class Dn2CppInvokeMode { Invoke, Bound };
+
+// Calls through the per-shape invoker thunk (which unboxes/casts the args, calls
+// fnPtr, and boxes the result), wrapping what the target throws unless the
+// caller asked for DoNotWrapExceptions.
 static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* self,
     Dn2CppObject** args, const Dn2CppTypeInfo* returnType, bool wrapExceptions)
 {
@@ -2231,8 +2446,10 @@ static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* s
 
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
+    const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
+    Dn2CppInvokeMode mode, const Dn2CppTypeInfo* reflected)
 {
+    bool invoke = mode == Dn2CppInvokeMode::Invoke;
     // A metadata-answerable row carries no body at all: it answers from its own type
     // arguments and receiver. A non-generic row is always closed; a generic one is
     // closed only once MakeGenericMethod has filled genericArgs, and an OPEN
@@ -2241,13 +2458,15 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0
         && (row.genericParamCount == 0 || row.genericArgs != nullptr))
     {
-        if (argc != row.paramCount)
-            dn2cpp_throw_argument();
         const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
         if (d != nullptr)
         {
-            if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && obj == nullptr)
-                dn2cpp_throw_null_reference();
+            if (invoke)
+            {
+                obj = dn2cpp_invoke_receiver(row, obj, reflected);
+                if (argc != row.paramCount)
+                    dn2cpp_throw_invoke_parameter_count();
+            }
             try
             {
                 return d->answer(row.genericArgs, obj);
@@ -2267,29 +2486,31 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();
     void* fn = row.fnPtr;
+    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
+    if (invoke)
+    {
+        obj = dn2cpp_invoke_receiver(row, obj, reflected);
+        if (argc != row.paramCount)
+            dn2cpp_throw_invoke_parameter_count();
+        args = dn2cpp_invoke_check_args(mi, args, argc);
+    }
     // Late-bound call on an interface-declared row: the row is signature-only (an
     // interface method has no body, so fnPtr is null), but its invoker thunk was
     // emitted, and the receiver's implementation is what a callvirt would resolve —
     // same walk, same slot index, same ABI. The thunk passes the receiver unadjusted,
     // since the value-type adjustment below keys on the DECLARING type and an
     // interface is never a value type. A miss in the walk stays the walk's own loud
-    // abort; a receiverless call falls through to the InvalidOperationException below.
+    // abort.
     if (fn == nullptr && obj != nullptr && row.vtableSlot >= 0
         && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
         fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, row.declaringType)[row.vtableSlot]);
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
-    bool isStatic = (row.attrs & DN2CPP_MTHA_STATIC) != 0;
-    // A missing receiver is the caller's fault, raised before the target runs, so
-    // it is never wrapped.
-    if (!isStatic && obj == nullptr)
-        dn2cpp_throw_null_reference();
-    if (argc != row.paramCount)
-        dn2cpp_throw_argument();
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (row.declaringType->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    return dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
+    Dn2CppObject* result = dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
+    return invoke ? dn2cpp_invoke_box_result(row.returnType, result) : result;
 }
 
 struct Dn2CppInvokePlan
@@ -2306,7 +2527,8 @@ struct Dn2CppInvokePlan
 };
 
 static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
+    Dn2CppInvokeMode mode, const Dn2CppTypeInfo* reflected)
 {
     struct Entry
     {
@@ -2325,7 +2547,7 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
         if (entry->identity == mi.identity())
         {
             const Dn2CppInvokePlan plan = entry->plan;
-            return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
+            return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions, mode, reflected);
         }
     }
     Dn2CppMethodInfo row;
@@ -2339,26 +2561,34 @@ static Dn2CppObject* dn2cpp_invoke_encoded(Dn2CppMetadataHandle<Dn2CppMethodInfo
             row.vtableSlot, row.genericParamCount };
         entry->plan = plan;
         entry->identity = mi.identity();
-        return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions);
+        return dn2cpp_invoke_row(mi, plan, obj, args, argc, wrapExceptions, mode, reflected);
     }
-    return dn2cpp_invoke_row(mi, row, obj, args, argc, wrapExceptions);
+    return dn2cpp_invoke_row(mi, row, obj, args, argc, wrapExceptions, mode, reflected);
 }
 
+// `reflected` is the type the member was obtained through, which places a template
+// row on the instantiation it runs on.
 static Dn2CppObject* dn2cpp_invoke_mi(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
-    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions)
+    Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
+    const Dn2CppTypeInfo* reflected, Dn2CppInvokeMode mode = Dn2CppInvokeMode::Invoke)
 {
     if (mi == nullptr)
         dn2cpp_throw_invalid_operation();
     if (const Dn2CppMethodInfo* row = mi.native())
-        return dn2cpp_invoke_row(mi, *row, obj, args, argc, wrapExceptions);
-    return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions);
+        return dn2cpp_invoke_row(mi, *row, obj, args, argc, wrapExceptions, mode, reflected);
+    return dn2cpp_invoke_encoded(mi, obj, args, argc, wrapExceptions, mode, reflected);
 }
 
-// MethodInfo.Invoke.
+// MethodInfo.Invoke. A definition view runs its representative closed row, so it
+// is refused before the row's receiver and argument checks, as .NET refuses it.
 Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2CppArrayRef* args, bool wrapExceptions)
 {
-    return dn2cpp_invoke_mi(dn2cpp_methodref_require(m), obj, (args == nullptr) ? nullptr : args->data,
-                            (args == nullptr) ? 0 : args->length, wrapExceptions);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
+    if (m->isGenericDefView != 0)
+        dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type,
+            dn2cpp_sr_message(DN2CPP_SR_UNBOUND_GENERIC, nullptr, 0), 0x80131509u);
+    return dn2cpp_invoke_mi(mi, obj, (args == nullptr) ? nullptr : args->data,
+                            (args == nullptr) ? 0 : args->length, wrapExceptions, m->reflectedType);
 }
 
 // ---- reflection: CreateDelegate (the reflection -> delegate bridge) ----
@@ -2367,15 +2597,16 @@ Dn2CppObject* dn2cpp_methodref_invoke(Dn2CppMethodRef* m, Dn2CppObject* obj, Dn2
 const Dn2CppTypeInfo dn2cpp_reflbind_type = { "<ReflectionDelegateBind>", nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, (int32_t)sizeof(Dn2CppReflBind), 0, 0, 0, 0, 0, nullptr };
 
 // The boxed-invoker dispatch behind a dgrefl_* trampoline: same value-type
-// receiver adjustment + invoker-thunk call as MethodInfo.Invoke. A null
-// receiver on an instance binding (the null-bound closed delegate real .NET
-// admits from the explicit-firstArgument overloads) fails loud.
+// receiver adjustment + invoker-thunk call as MethodInfo.Invoke, without its
+// checks, since the bind proved the shapes and the trampoline boxes each argument
+// exactly. A null receiver on an instance binding (the null-bound closed delegate
+// real .NET admits from the explicit-firstArgument overloads) fails loud.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
     if ((mi->attrs & DN2CPP_MTHA_STATIC) == 0 && self == nullptr)
         dn2cpp_throw_null_reference();
-    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false);
+    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false, nullptr, Dn2CppInvokeMode::Bound);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
@@ -2978,7 +3209,8 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     if (mi->invoker == nullptr || mi->fnPtr == nullptr)
         dn2cpp_throw_invalid_operation();
     if (argc != mi->paramCount)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_invoke_parameter_count();
+    args = dn2cpp_invoke_check_args(mi, args, argc);
     const Dn2CppTypeInfo* ti = mi->declaringType;
     bool isValue = (ti->flags & DN2CPP_TF_VALUETYPE) != 0;
     size_t sz = isValue ? sizeof(Dn2CppObject) + static_cast<size_t>(ti->instanceSize)
@@ -3328,13 +3560,13 @@ Dn2CppMethodRef* dn2cpp_propref_accessor(Dn2CppPropRef* p, int32_t setter, int32
 
 Dn2CppObject* dn2cpp_propref_get_value(Dn2CppPropRef* p, Dn2CppObject* obj)
 {
-    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0, true);
+    return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj, nullptr, 0, true, p->reflectedType);
 }
 
 void dn2cpp_propref_set_value(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value)
 {
     Dn2CppObject* args[1] = { value };
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1, true);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, 1, true, p->reflectedType);
 }
 
 // PropertyInfo.GetIndexParameters(): the indexer parameters, read off the
@@ -3365,11 +3597,10 @@ Dn2CppArrayRef* dn2cpp_propref_get_index_parameters(Dn2CppPropRef* p)
 // PropertyInfo.GetValue(obj, object[] index) / SetValue(obj, value, object[]
 // index): the indexed forms, routed through the accessor rows' boxed invokers.
 // A null/empty index behaves like the plain forms; an index-count mismatch
-// surfaces as the invoker's argument-count ArgumentException (a documented
-// divergence from .NET's TargetParameterCountException, same posture as
-// MethodInfo.Invoke). The BindingFlags/Binder/CultureInfo forms route here too
-// (a non-null Binder is the AOT PlatformNotSupportedException; culture is a
-// no-op like real .NET's default binder on the non-parse path).
+// raises TargetParameterCountException. The BindingFlags/Binder/CultureInfo
+// forms route here too (a non-null Binder is the AOT
+// PlatformNotSupportedException; culture is a no-op like real .NET's default
+// binder on the non-parse path).
 Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj,
                                                Dn2CppArrayRef* index, Dn2CppObject* binder,
                                                bool wrapExceptions)
@@ -3377,7 +3608,7 @@ Dn2CppObject* dn2cpp_propref_get_value_indexed(Dn2CppPropRef* p, Dn2CppObject* o
     dn2cpp_reflection_check_binder(binder);
     return dn2cpp_invoke_mi(dn2cpp_propref_require(p)->getter, obj,
                             (index == nullptr) ? nullptr : index->data,
-                            (index == nullptr) ? 0 : index->length, wrapExceptions);
+                            (index == nullptr) ? 0 : index->length, wrapExceptions, p->reflectedType);
 }
 
 void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2CppObject* value,
@@ -3389,12 +3620,12 @@ void dn2cpp_propref_set_value_indexed(Dn2CppPropRef* p, Dn2CppObject* obj, Dn2Cp
     // The setter's signature is (indices..., value): cap indexer arity at a
     // generous fixed bound rather than allocating (real indexers are tiny).
     if (n > 30)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_invoke_parameter_count();
     Dn2CppObject* args[31];
     for (int32_t i = 0; i < n; i++)
         args[i] = index->data[i];
     args[n] = value;
-    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1, wrapExceptions);
+    dn2cpp_invoke_mi(dn2cpp_propref_require(p)->setter, obj, args, n + 1, wrapExceptions, p->reflectedType);
 }
 
 // ---- reflection: mixed member lookup (GetMember/GetMembers/GetDefaultMembers) ----
@@ -4643,7 +4874,7 @@ Dn2CppArrayRef* dn2cpp_type_find_interfaces(Dn2CppType* t, Dn2CppObject* filter,
 }
 
 // Type.ImplementInterface (internal BCL helper behind TypeInfo.IsAssignableFrom):
-// interface-set membership over the base chain's dispatch tables.
+// interface-set membership over the base chain's own tables and relation rows.
 int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
 {
     dn2cpp_type_require(t);
@@ -4651,9 +4882,16 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
         return 0;
     const Dn2CppTypeInfo* target = itf->typeInfo;
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
+    {
         for (int32_t i = 0; i < ti->interfaceCount; i++)
             if (ti->interfaces[i].itf == target)
                 return 1;
+        int32_t n;
+        const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(ti, &n);
+        for (int32_t i = 0; i < n; i++)
+            if (rel[i].itf == target)
+                return 1;
+    }
     return 0;
 }
 
@@ -5232,21 +5470,31 @@ static const Dn2CppTypeInfo* dn2cpp_nullable_underlying_ti(const Dn2CppTypeInfo*
 }
 
 // The transpiled Nullable<U> struct layout is { hasValue; U value; } with the
-// value field at U's natural alignment. Supported for a primitive or enum U
-// (alignment == storage width there); a struct U's alignment is not modeled.
-// Returns false when unsupported.
-static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* u, int32_t* valueOffset, int32_t* width, int32_t* uCode)
+// value field at U's natural alignment. A primitive or enum U reports its code and
+// storage width (alignment == width there). Any other U reports DN2CPP_PC_NONE and
+// sits at the Nullable's extent less its own, since a struct's size is a multiple of
+// its alignment. Returns false when an extent is unknown.
+static bool dn2cpp_nullable_layout(const Dn2CppTypeInfo* nullable, const Dn2CppTypeInfo* u,
+    int32_t* valueOffset, int32_t* width, int32_t* uCode)
 {
     const Dn2CppTypeInfo* eff = u;
     if ((u->flags & DN2CPP_TF_ENUM) != 0)
         eff = u->enumUnderlying != nullptr ? u->enumUnderlying : &dn2cpp_int32_type;
     int32_t c = dn2cpp_prim_code(eff);
-    if (c < 0)
+    if (c >= 0)
+    {
+        int32_t w = dn2cpp_prim_storage_width(c);
+        *valueOffset = w; // hasValue byte, padded to the value's alignment
+        *width = w;
+        *uCode = c;
+        return true;
+    }
+    if (((nullable->flags | u->flags) & DN2CPP_TF_LAYOUT_UNKNOWN) != 0
+        || u->instanceSize <= 0 || nullable->instanceSize <= u->instanceSize)
         return false;
-    int32_t w = dn2cpp_prim_storage_width(c);
-    *valueOffset = w; // hasValue byte, padded to the value's alignment
-    *width = w;
-    *uCode = c;
+    *valueOffset = nullable->instanceSize - u->instanceSize;
+    *width = u->instanceSize;
+    *uCode = DN2CPP_PC_NONE;
     return true;
 }
 
@@ -5294,16 +5542,23 @@ void dn2cpp_array_store_boxed(Dn2CppObject* v, const Dn2CppTypeInfo* elem,
         if (v->type != u)
             dn2cpp_throw_array_store_mismatch();
         int32_t off, w, uc;
-        if (!dn2cpp_nullable_layout(u, &off, &w, &uc))
+        if (!dn2cpp_nullable_layout(elem, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
-                "Array.SetValue into a Nullable<T> element of a non-primitive T is not supported");
+                "Array.SetValue into a Nullable<T> element whose T has no known layout is not supported");
         std::memset(dst, 0, static_cast<size_t>(elemSize));
         *static_cast<uint8_t*>(dst) = 1;
-        int32_t sc;
-        int64_t i;
-        double r;
-        dn2cpp_read_boxed_num(v, &sc, &i, &r);
-        dn2cpp_write_prim(static_cast<char*>(dst) + off, uc, sc, i, r);
+        if (uc < 0)
+        {
+            std::memcpy(static_cast<char*>(dst) + off, v + 1, static_cast<size_t>(w));
+        }
+        else
+        {
+            int32_t sc;
+            int64_t i;
+            double r;
+            dn2cpp_read_boxed_num(v, &sc, &i, &r);
+            dn2cpp_write_prim(static_cast<char*>(dst) + off, uc, sc, i, r);
+        }
         dn2cpp_gc_write_barrier_if_heap(dst);
         return;
     }
@@ -5361,9 +5616,9 @@ Dn2CppObject* dn2cpp_array_box_element(const Dn2CppTypeInfo* elem, const void* s
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(elem))
     {
         int32_t off, w, uc;
-        if (!dn2cpp_nullable_layout(u, &off, &w, &uc))
+        if (!dn2cpp_nullable_layout(elem, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
-                "Array.GetValue from a Nullable<T> element of a non-primitive T is not supported");
+                "Boxing a Nullable<T> whose T has no known layout is not supported");
         if (*static_cast<const uint8_t*>(src) == 0)
             return nullptr;
         return dn2cpp_array_box_element(u, static_cast<const char*>(src) + off, w, false);
@@ -5745,20 +6000,28 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
     if (const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(p))
     {
         int32_t off, w, uc;
-        if (!dn2cpp_nullable_layout(u, &off, &w, &uc))
+        if (!dn2cpp_nullable_layout(p, u, &off, &w, &uc))
             dn2cpp_throw_platform_not_supported(
-                "Activator: binding a Nullable<T> parameter of a non-primitive T is not supported");
+                "Reflection: binding a Nullable<T> argument whose T has no known layout is not supported");
         int32_t sz = p->instanceSize > 0 ? p->instanceSize : off + w;
         auto* box = static_cast<Dn2CppObject*>(dn2cpp_alloc(sizeof(Dn2CppObject) + static_cast<size_t>(sz)));
         box->type = p;
         if (a != nullptr)
         {
+            char* value = reinterpret_cast<char*>(box + 1) + off;
             *reinterpret_cast<uint8_t*>(box + 1) = 1;
-            int32_t sc;
-            int64_t i;
-            double r;
-            dn2cpp_read_boxed_num(a, &sc, &i, &r);
-            dn2cpp_write_prim(reinterpret_cast<char*>(box + 1) + off, uc, sc, i, r);
+            if (uc < 0)
+            {
+                dn2cpp_gc_memmove_refs(value, a + 1, static_cast<size_t>(w));
+            }
+            else
+            {
+                int32_t sc;
+                int64_t i;
+                double r;
+                dn2cpp_read_boxed_num(a, &sc, &i, &r);
+                dn2cpp_write_prim(value, uc, sc, i, r);
+            }
         }
         return box;
     }
@@ -5784,18 +6047,10 @@ static Dn2CppObject* dn2cpp_binder_adapt_arg(Dn2CppObject* a, const Dn2CppTypeIn
     // Write at the BOX payload width (>= 4), not the packed storage width.
     switch (pc)
     {
-        case DN2CPP_PC_R4:
-        {
-            float f = (sc == DN2CPP_PC_R4 || sc == DN2CPP_PC_R8) ? static_cast<float>(r) : static_cast<float>(i);
-            std::memcpy(box + 1, &f, 4);
+        case DN2CPP_PC_R4: case DN2CPP_PC_R8:
+            // A UInt64 source converts as unsigned, like every other unsigned one.
+            dn2cpp_write_prim(box + 1, pc, sc, i, r);
             break;
-        }
-        case DN2CPP_PC_R8:
-        {
-            double d = (sc == DN2CPP_PC_R4 || sc == DN2CPP_PC_R8) ? r : static_cast<double>(i);
-            std::memcpy(box + 1, &d, 8);
-            break;
-        }
         case DN2CPP_PC_I8: case DN2CPP_PC_U8:
             std::memcpy(box + 1, &i, 8);
             break;

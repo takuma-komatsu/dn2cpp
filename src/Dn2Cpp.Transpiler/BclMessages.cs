@@ -45,7 +45,14 @@ internal static class BclMessages
         "Arg_DivideByZero",
         "Arg_SynchronizationLockException",
         "Arg_TargetInvocationException",
+        "Arg_TargetParameterCountException",
+        // Sentences a runtime throw site raises in place of its type's default.
+        "RFLCT_Targ_StatMethReqTarg",
+        "Arg_ParmCnt",
+        "Arg_UnboundGenParam",
         // Composite formats a runtime throw site fills from what it already holds.
+        "RFLCT_Targ_ITargMismatch_WithType",
+        "Arg_ObjObjEx",
         "Format_InvalidStringWithValue",
         "Format_BadDateTime",
         "Format_BadDateOnly",

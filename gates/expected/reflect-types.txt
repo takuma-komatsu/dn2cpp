@@ -754,10 +754,6 @@ notes=List`1 item=NoteLine wrapped=3 bound count=3
 dictwrap=DictionaryWrapper`2 ctor(IDictionary`2) count=2 a=1 contains-b=True
 wrap<Unlisted>: NotSupportedException: MakeGenericType: the program contains no AOT-generated instantiation Newtonsoft.Json.Utilities.CollectionWrapper`1[ReflectSerializerWrapperSeedSubset.Unlisted]. dn2cpp, like IL2CPP, cannot construct a generic type at run time; the closed instantiation must be visible to the transpiler's static closure (e.g. declare a field, property or local of it).
 == indexer error edges ==
-indexed get, no index: ArgumentException
-indexed get, null index: ArgumentException
-indexed get, extra index: ArgumentException
-plain get, stray index: ArgumentException
 set-only get: InvalidOperationException
 get-only set: InvalidOperationException
 Lambda
@@ -1364,9 +1360,9 @@ r-bindflags TimeSpan public|static = 25 instance = 0
 r-DIVERGES Type.GetFields = 0 Module.GetFields = 0
 r-DIVERGES methods int=0 decimal=0 string=0 StringBuilder=0
 r-DIVERGES props string=0 decimal=0 TimeSpan=0 DateTime=0
-r-DIVERGES itfs int=0 decimal=0 DateTime=0 StringBuilder=0
+r-ok itfs int:IConvertible=True decimal:IComparable=True DateTime:IFormattable=True StringBuilder:ISerializable=True
 r-ok assignable IConvertible<-int = True IComparable<-decimal = True IFormattable<-DateTime = True
-r-DIVERGES GetInterface IConvertible on int = null
+r-ok GetInterface IConvertible on int = IConvertible
 r-ok Marker[] itfs = 11 IList`1 = IList`1
 r-ok assignable IList<Marker><-Marker[] = True IEnumerable<-Marker[] = True
 r-closed TimeSpan[] itfs = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]

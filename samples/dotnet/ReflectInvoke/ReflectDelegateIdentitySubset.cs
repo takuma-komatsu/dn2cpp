@@ -397,7 +397,9 @@ namespace ReflectDelegateIdentitySubset
         static Func<T, T> Factory<T>() => IdentityOwner<T>.Echo;
         static Action ActionFactory<T>() => IdentityOwner<T>.Empty;
 
-        public static void Run()
+        // False when a DN2CPP_BEFORE_* stop ends the run here; the caller must stop
+        // too, so the stopped output stays a prefix of the full run.
+        public static bool Run()
         {
             Console.WriteLine("delegate-method-begin");
             Func<int, int> direct = Add;
@@ -473,15 +475,16 @@ namespace ReflectDelegateIdentitySubset
                 + "/" + covariantTag().GetType().Name);
             Console.WriteLine("delegate-method-end");
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_SELECTION") == "1")
-                return;
+                return false;
             RunInterfaceMethod();
             RunInterfaceGenericDispatch();
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_REDECLARATION") == "1")
-                return;
+                return false;
             RunInterfaceRedeclaration();
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_LEVEL_GVM") == "1")
-                return;
+                return false;
             RunRuntimeLevelGenericVirtual();
+            return true;
         }
 
         // Delegate.Method for the body an interface binding selects: explicit over

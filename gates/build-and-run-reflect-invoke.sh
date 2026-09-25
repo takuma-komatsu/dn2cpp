@@ -2,7 +2,14 @@
 # Consolidated reflection-invocation gate. Merges the former reflect dynamic-use
 # subset gates into one multi-section program, transpiled once against the
 # tree-shaken real CoreLib and diffed exactly against real .NET. Covers:
-#   MethodInfo.Invoke (instance/static, args, return boxing, void, private),
+#   MethodInfo.Invoke (instance/static, args, return boxing, void, private,
+#   and target exception wrapping), the receiver, arity and argument checks
+#   MethodInfo/ConstructorInfo/PropertyInfo run before the target with .NET's
+#   messages and the by-value argument conversions they accept
+#   (ReflectInvokeValidationSubset, which also pins that a CreateDelegate-bound
+#   delegate skips those checks, that a Nullable<T> result boxes as .NET's, and
+#   that a boxed built-in or a string passes the argument check for every CLR
+#   interface its type implements and fails it for one it does not),
 #   delegate/interface dynamic dispatch via reflection, FieldInfo.GetValue/SetValue
 #   (instance/static/value-type/unbox), and a reflection-driven serializer
 #   (attribute-named members + enum names).
@@ -82,9 +89,32 @@
 # instantiation), and an interface implementation, beside a plain virtual and
 # an interface method of the same instantiations and a delegate created from
 # the plain virtual's reflected method row.
+# LdftnLocalSubset uses hand-authored IL (gates/fixtures/ldftn-local/Program.cs
+# rewrites the built sample) to store method pointers before delegate
+# construction, separate ldftn from newobj with a nop or native-int conversion,
+# select two targets through one local or a stack join, snapshot a loaded pointer
+# before overwriting its local, store ldvirtftn, instance and int64-converted
+# pointers, leave an unresolvable ldftn in code that never runs, and call a
+# stored raw pointer through calli. The delegate address and method identity
+# follow the selected pointer; calli keeps the raw address. Only those bodies
+# carry delegate tags. A local whose address is taken keeps no delegate identity,
+# because a byref write would leave it stale: a delegate built from it is refused
+# when transpiled, from a native-int or int64 local alike, and one built from a
+# copy of it throws NotSupportedException when constructed. Address-taken locals
+# beside a delegate in plain C# still transpile.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
+# RuntimeHandleRelationSubset asserts the CLR relations of objects whose type-info
+# the runtime writes by hand — the reflection objects, Assembly and Module,
+# StringBuilder, Exception and the exceptions the runtime raises from real faults,
+# the synchronization handles, Thread, Task, the culture wrappers — and of
+# System.Array: the type test, IsAssignableFrom, BaseType chains, named interface
+# membership and the invoke argument checks, then `using`, an IDisposable-typed
+# Dispose and a reflected IDisposable.Dispose over the synchronization handles. Its
+# greps pin the init-prologue installs those answers come from: the relation rows,
+# SystemException spliced under the runtime NullReferenceException's handle, and
+# SemaphoreSlim's IDisposable map.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -198,6 +228,65 @@ gate_extra_asserts() {
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \
         <(strip_cr_win_file "$out/delegate-method-prefix.stdout")
+    grep -Fxq 'ldftn-local-direct=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-nop=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-conv=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-snapshot=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-selected=12/Add/2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-closed=C:x/Decorate' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-calli=14' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-dead-origin=2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-virtual=15/VirtualDerived.Scale' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-instance=15/Offset' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
+    # Windows host. Delegate tags belong to the rewritten bodies alone, since C#
+    # never builds a delegate from a stored or joined address.
+    local tag_owners stray_owners
+    tag_owners=$(LC_ALL=C awk '{ sub(/\r$/, "") } /^\/\/ .*::/ { owner = substr($0, 4) }
+        /int32_t [A-Za-z0-9_]+_delegate_tag/ { print owner }' "$out"/generated*.cpp | LC_ALL=C sort -u)
+    grep -Fxq 'LdftnLocalSubset.Program::Selected' <<<"$tag_owners"
+    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored)$' <<<"$tag_owners" || true)
+    if [ -n "$stray_owners" ]; then
+        printf 'error: delegate tags outside the rewritten bodies:\n%s\n' "$stray_owners" >&2
+        return 1
+    fi
+    DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ldftn-local.stdout"
+    sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
+        <(strip_cr_win_file "$out/ldftn-local-prefix.stdout")
+    grep -Fxq '== reflection invoke validation ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'target calls: 2' "$out/metadata-layout.stdout"
+    grep -Fxq 'plain get, stray index: TargetParameterCountException' "$out/metadata-layout.stdout"
+    grep -Fxq 'bound ValueType delegate: boxed:5' "$out/metadata-layout.stdout"
+    grep -Fxq 'nullable result without value: null' "$out/metadata-layout.stdout"
+    grep -Fxq 'current number format: separator:.' "$out/metadata-layout.stdout"
+    grep -Fxq 'number from int: number:7' "$out/metadata-layout.stdout"
+    grep -Fxq 'number from long: ArgumentException' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
+    sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
+        <(strip_cr_win_file "$out/invoke-validation-prefix.stdout")
+    grep -Fxq '== runtime handle relations ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' "$out/metadata-layout.stdout"
+    grep -Fxq 'ManualResetEvent after IDisposable: ObjectDisposedException' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime handle relations end' "$out/metadata-layout.stdout"
+    local install
+    for install in 'dn2cpp_set_relation_rows(rel_itf_sets, ' \
+            'dn2cpp_intrinsic_set_base(&dn2cpp_null_reference_exception_type, &ti_System_SystemException);' \
+            'dn2cpp_intrinsic_set_interfaces(&dn2cpp_semaphore_type, '; do
+        if ! grep -Fq "$install" "$out"/generated*.cpp; then
+            printf 'error: the init prologue lacks %s\n' "$install" >&2
+            return 1
+        fi
+    done
+    DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-handle-relations.stdout"
+    sed '/^== runtime handle relations ==/,$d' "$out/metadata-layout.stdout" > "$out/runtime-handle-relations-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
+        <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
@@ -265,6 +354,60 @@ expect_policy_rejection conflicting 'Duplicate --reflection-metadata selector' \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed'
 expect_policy_rejection runtime-owned "cannot select packed metadata for runtime-owned type 'System.String'" \
     --reflection-metadata 'System.String=packed'
+
+# Each mode rewrites Stored to overwrite its local's Add with Subtract through
+# the local's address. .NET binds Subtract; dn2cpp must refuse, never bind Add.
+byref_diagnostic='a delegate target loaded from an address-taken local cannot preserve delegate identity'
+DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded dotnet "$_CG_APP" \
+    > "$invalid_out/byref-prefix.stdout"
+for byref_mode in overwrite overwrite-int64 copy; do
+    byref_dir="$invalid_out/byref-$byref_mode"
+    byref_app="$byref_dir/app/ReflectInvoke.dll"
+    mkdir -p "$byref_dir/app"
+    cp "$_CG_APP" "$byref_app"
+    cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/app/ReflectInvoke.runtimeconfig.json"
+    cp "${_CG_APP%.dll}.deps.json" "$byref_dir/app/ReflectInvoke.deps.json"
+    cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/app/Dn2Cpp.Runtime.dll"
+    run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+        "$byref_app" "--byref-$byref_mode"
+    run_bounded dotnet "$byref_app" > "$byref_dir/dotnet.stdout"
+    grep -Fxq 'ldftn-local-direct=2/Subtract' "$byref_dir/dotnet.stdout"
+    sed '/^ldftn-local-begin/,$d' "$byref_dir/dotnet.stdout" > "$byref_dir/dotnet-prefix.stdout"
+    diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
+        <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
+    byref_status=0
+    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
+        -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
+    if [ "$byref_mode" = copy ]; then
+        if [ "$byref_status" -ne 0 ]; then
+            cat "$byref_dir/transpile.log" >&2
+            echo 'error: a copied address-taken delegate target did not transpile' >&2
+            exit 1
+        fi
+    elif [ "$byref_status" -ne 2 ] \
+        || ! grep -Fq "LdftnLocalSubset.Program.Stored: $byref_diagnostic" "$byref_dir/transpile.log"; then
+        cat "$byref_dir/transpile.log" >&2
+        echo "error: byref-$byref_mode delegate target was not rejected" >&2
+        exit 1
+    fi
+done
+
+# The copy carries its origin only at run time, so construction must throw.
+byref_copy="$invalid_out/byref-copy"
+compile_console "$byref_copy/out" ReflectInvoke
+byref_status=0
+run_bounded "$byref_copy/out/ReflectInvoke$EXE_EXT" > "$byref_copy/native.stdout" \
+    2> "$byref_copy/native.stderr" || byref_status=$?
+if [ "$byref_status" -eq 0 ] \
+    || ! grep -Fq "System.NotSupportedException: $byref_diagnostic" "$byref_copy/native.stderr" \
+    || grep -q '^ldftn-local-direct=' "$byref_copy/native.stdout"; then
+    cat "$byref_copy/native.stderr" >&2
+    echo 'error: a copied address-taken delegate target was not refused at construction' >&2
+    exit 1
+fi
+sed '/^ldftn-local-begin/,$d' "$byref_copy/native.stdout" > "$byref_copy/native-prefix.stdout"
+diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
+    <(strip_cr_win_file "$byref_copy/native-prefix.stdout")
 
 # Exercise representation boundaries that C# metadata cannot express, using
 # the production decoder and the same CMake/Ninja path as the parity binary.

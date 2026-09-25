@@ -157,16 +157,15 @@ static class Program
         object bareClone = mwc.Invoke(bare, null)!;
         Console.WriteLine(bareClone.GetType().FullName + " " + ReferenceEquals(bare, bareClone));
 
-        // A null receiver throws unwrapped on both runtimes (TargetException in .NET,
-        // NullReferenceException here); only the fact that it threw is diffed.
+        // A null receiver is the caller's fault: TargetException, unwrapped.
         try
         {
             mwc.Invoke(null, null);
             Console.WriteLine("no-throw");
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            Console.WriteLine("null receiver threw");
+            Console.WriteLine("null receiver: " + e.GetType().Name);
         }
 
         // 5. INTRINSIC-REPRESENTED reference types: hand-written C++ structs rather

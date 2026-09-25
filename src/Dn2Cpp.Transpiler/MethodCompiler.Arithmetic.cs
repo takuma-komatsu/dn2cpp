@@ -318,6 +318,8 @@ internal sealed partial class MethodCompiler
         string narrow = a.Kind == StackKind.I4 ? (unsigned ? "(uint32_t)" : "(int32_t)") : "";
         string mid = unsigned ? "(uint64_t)" : "(int64_t)";
         Push(StackKind.I8, "int64_t", $"(int64_t)({mid}({narrow}({a.Expr})))");
+        if (a.Kind is (StackKind.Ptr or StackKind.I8) && a.DelegateTag is not null)
+            _stack[^1] = _stack[^1] with { DelegateTag = a.DelegateTag };
     }
 
     // ---- arrays ----
@@ -1893,6 +1895,44 @@ internal sealed partial class MethodCompiler
             if (IsHeaderlessWrapCpp(CppTypes.Of(p)))
                 return true;
         return false;
+    }
+
+    /// <summary>What taking <paramref name="m"/>'s address requires before any
+    /// symbol is named. The ldftn/ldvirtftn arms ask it, and so does a delegate
+    /// constructor choosing among a body's loads, since the load it names may be one
+    /// the main loop never translates.</summary>
+    private void NoteFtnTarget(MethodInfo m, bool virtFtn)
+    {
+        // A shared body taking the address of a canonical-world method
+        // would bake an owner-group function identity into delegate/
+        // function-pointer state observable per instantiation.
+        if (SharedTrial && Compilation.IsCanonicalMethod(m))
+            ThrowSharedTaint("ldftn", m.DeclaringClass.FullName + "." + m.Name);
+        if (virtFtn)
+        {
+            if (SharedTrial && Compilation.IsGvmCall(m))
+                ThrowSharedTaint("gvm", m.DeclaringClass.FullName + "." + m.Name);
+            return;
+        }
+        // A bodyless P/Invoke whose call sites lower to a direct native call (a
+        // delegate method group over the [DllImport] itself): taking the address
+        // needs a function, and no real body ever exists. Note it so the emitter
+        // synthesizes a forwarder from the same P/Invoke lowering a call site gets
+        // (CompilePInvokeWrapper); the delegate adapter or raw function pointer
+        // then wraps/names that symbol.
+        //
+        // NOT when the import is BOUNDED. This note is a route, not a record: it
+        // adds the method to Reachable, makes CppEmitter synthesize a forwarder that
+        // names the native symbol, and puts the import's module into
+        // pinvoke-libs.txt — while reachability has just deleted the edge to it and
+        // the bounded stub is the substitute. So a `--cut` P/Invoke taken as a method
+        // group would transpile green and fail at link, asking for exactly the
+        // module the cut exists to remove: AGENTS.md's `cut ⟹ route` in its
+        // NATIVE-symbol dimension, which AssertCalledBodiesEmitted cannot see (it
+        // diffs managed symbols, and a P/Invoke has no emitted body).
+        if (!_c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name)
+            && m.Emittable is { Rva: 0, PInvoke: not null } impl && _c.LowersToPInvoke(impl))
+            _c.NotePInvokeFtnTarget(impl);
     }
 
     /// <summary>Every ldftn / ldvirtftn arm that names a target's own symbol — the

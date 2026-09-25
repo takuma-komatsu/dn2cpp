@@ -20,6 +20,12 @@ namespace Dn2Cpp;
 // <c>NonNull</c>, and like it a pure optimization: losing it
 // (Push spills, and a block boundary re-spills) can only cost back a run-time null
 // test, never an answer.
+// <c>DelegateTag</c> names the ldftn/ldvirtftn a method address came from, for a
+// delegate constructor that does not directly follow the load: a decimal literal
+// (the load's IL offset + 1), the C++ variable holding that number at run time (0
+// for none), or <c>-1</c> for an address-taken local, whose tag a write through its
+// address would leave stale. <c>DelegateAddressReady</c> marks an address already
+// in the delegate-call ABI.
 /// <summary>One evaluation-stack slot. <c>Expr</c> is the C++ text that reads it —
 /// almost always a single-assignment temp, since <see cref="MethodCompiler.Push"/>
 /// materializes one for every push, so the ORIGIN of a value is not recoverable
@@ -27,7 +33,7 @@ namespace Dn2Cpp;
 /// <c>ArgSlot</c> is that for <c>ldarga</c>: the IL argument number whose address
 /// this entry holds (null for every other entry, including a <c>ldloca</c> one,
 /// which sets <c>SlotAddr</c> alone).</summary>
-internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false);
+internal sealed record StackEntry(string Expr, StackKind Kind, string CppType, TypeDesc? TypeToken = null, TypeDesc? StaticType = null, int? BlobLen = null, string? StrLiteral = null, bool NonNull = false, bool SlotAddr = false, bool KnownNull = false, int? ArgSlot = null, MethodInfo? DelegateMethod = null, bool DelegateVirtual = false, string? DelegateTag = null, bool DelegateAddressReady = false);
 
 /// <summary>
 /// Translates one IL method body into a C++ function. The evaluation stack is
@@ -78,6 +84,15 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// raw address; they share the opcode, so the consumer disambiguates. See the
     /// classification pass in <c>Compile</c>.</summary>
     private readonly Dictionary<int, ClassInfo?> _ftnDelegateUse = new();
+    /// <summary>Each live ldftn/ldvirtftn keyed by its <see cref="StackEntry.DelegateTag"/>
+    /// number: the target, whether a delegate over it binds virtually, and whether
+    /// ldvirtftn loaded it. Empty unless a delegate constructor in the body can read an
+    /// address other than the load directly before it.</summary>
+    private readonly Dictionary<int, (MethodInfo Method, bool Virtual, bool VirtFtn)> _ftnOrigins = new();
+    /// <summary>Locals whose address is taken. A write through that address bypasses
+    /// the local's tag, so these carry <see cref="UntrackedDelegateTag"/> instead of one.</summary>
+    private readonly HashSet<int> _addressTakenLocals = new();
+    private const string UntrackedDelegateTag = "-1";
 
     private List<StackEntry> _stack = new();
     private List<(string Name, string CppType, StackKind Kind, TypeDesc? Type)> _args = new();
@@ -729,6 +744,36 @@ internal sealed partial class MethodCompiler : IEvalStack
                 && NewobjTargetIsDelegate(insns[i + 1], out var dgClass))
                 _ftnDelegateUse[insns[i].Offset] = dgClass;
 
+        // A pointer may be stored or selected by a branch before a delegate
+        // constructor consumes it. Give each address load a stable runtime tag;
+        // the constructor uses it to choose the adapter and reflected identity.
+        if (HasFlowingDelegateTarget(insns))
+            foreach (var insn in insns)
+            {
+                if (_liveness is not null && !_liveness.LiveAt(insn.Offset))
+                    continue;
+                if (insn.OpCode is ILOpCode.Ldloca or ILOpCode.Ldloca_s)
+                    _addressTakenLocals.Add((int)insn.Operand);
+                if (insn.OpCode is not (ILOpCode.Ldftn or ILOpCode.Ldvirtftn))
+                    continue;
+                bool virtFtn = insn.OpCode == ILOpCode.Ldvirtftn;
+                MethodInfo target;
+                try
+                {
+                    target = ResolveMethodHandle(SRME.EntityHandle(insn.Token), virtFtn ? "ldvirtftn" : "ldftn");
+                }
+                catch (Exception e) when (!Compilation.IsMustEscape(e))
+                {
+                    // A load the main loop never reaches (after an unconditional
+                    // transfer, or behind an elided edge) may name what the reference
+                    // set cannot resolve; a load it translates reports the failure.
+                    continue;
+                }
+                if (!virtFtn && _c.TrimLdftnRedirect(target) is { } redirect)
+                    target = redirect;
+                _ftnOrigins.Add(insn.Offset + 1, (target, virtFtn && target.IsVirtual, virtFtn));
+            }
+
         foreach (var insn in insns)
         {
             // 1. Close catch blocks ending here (innermost first).
@@ -956,6 +1001,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 sb.AppendLine($"    {elemSt}* __restrict {localName} = ({elemSt}*){argName}.f__reference;");
         foreach (var l in _locals)
             sb.AppendLine($"    {l.CppType} {l.Name} = {CppTypes.ZeroInit(l.CppType)};");
+        if (_ftnOrigins.Count > 0)
+            for (int li = 0; li < _locals.Count; li++)
+                if (CanHoldMethodAddress(_locals[li].Kind) && !_addressTakenLocals.Contains(li))
+                    sb.AppendLine($"    int32_t {_locals[li].Name}_delegate_tag = 0;");
         foreach (var d in _decls)
             sb.AppendLine($"    [[maybe_unused]] {d.Type} {d.Name};");
         sb.Append(_body);
@@ -1532,6 +1581,77 @@ internal sealed partial class MethodCompiler : IEvalStack
     // of its own or is carrying metadata Push's four parameters cannot express.
     public void PushEntry(StackEntry entry) => _stack.Add(entry);
 
+    /// <summary>Whether a live delegate constructor may read an address other than the
+    /// ldftn/ldvirtftn directly before it: it follows no such load, or a branch reaches
+    /// it. C# emits neither shape.</summary>
+    private bool HasFlowingDelegateTarget(List<Instruction> insns)
+    {
+        for (int i = 0; i < insns.Count; i++)
+        {
+            var insn = insns[i];
+            if (insn.OpCode != ILOpCode.Newobj
+                || (_liveness is not null && !_liveness.LiveAt(insn.Offset)))
+                continue;
+            bool afterLoad = i > 0
+                && insns[i - 1].OpCode is ILOpCode.Ldftn or ILOpCode.Ldvirtftn
+                && !_labels.Contains(insn.Offset);
+            if (!afterLoad && HasDelegateCtorShape(insn))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Delegate constructors are <c>instance void .ctor(object, native int)</c>.
+    /// Read from the signature blob, so a constructor of another type that shares the
+    /// shape only costs tags, and no member is decoded.</summary>
+    private bool HasDelegateCtorShape(Instruction newobj)
+    {
+        var handle = SRME.EntityHandle(newobj.Token);
+        BlobHandle signature = handle.Kind switch
+        {
+            HandleKind.MethodDefinition => _reader.GetMethodDefinition((MethodDefinitionHandle)handle).Signature,
+            HandleKind.MemberReference => _reader.GetMemberReference((MemberReferenceHandle)handle).Signature,
+            _ => default,
+        };
+        if (signature.IsNil)
+            return false;
+        var blob = _reader.GetBlobReader(signature);
+        var header = blob.ReadSignatureHeader();
+        if (!header.IsInstance || header.IsGeneric || blob.ReadCompressedInteger() != 2)
+            return false;
+        return blob.ReadSignatureTypeCode() == SignatureTypeCode.Void
+            && blob.ReadSignatureTypeCode() == SignatureTypeCode.Object
+            && blob.ReadSignatureTypeCode() == SignatureTypeCode.IntPtr;
+    }
+
+    /// <summary>Only a native-int or 64-bit slot can hold a method address.</summary>
+    private static bool CanHoldMethodAddress(StackKind kind) => kind is StackKind.Ptr or StackKind.I8;
+
+    private void PushLocal(int index)
+    {
+        var local = _locals[index];
+        PushVar(local);
+        if (_ftnOrigins.Count > 0 && CanHoldMethodAddress(local.Kind))
+        {
+            string tag = UntrackedDelegateTag;
+            if (!_addressTakenLocals.Contains(index))
+            {
+                tag = NewTemp("int32_t");
+                Emit($"{tag} = {local.Name}_delegate_tag;");
+            }
+            _stack[^1] = _stack[^1] with { DelegateTag = tag };
+        }
+    }
+
+    private void StoreLocal(int index)
+    {
+        var local = _locals[index];
+        var value = Pop();
+        Emit($"{local.Name} = {CoerceTo(value, local.Type, local.CppType)};");
+        if (_ftnOrigins.Count > 0 && CanHoldMethodAddress(local.Kind) && !_addressTakenLocals.Contains(index))
+            Emit($"{local.Name}_delegate_tag = {value.DelegateTag ?? "0"};");
+    }
+
     /// <summary><c>ldc.i4 v</c> — Push, plus a note of which temp now holds the constant, so
     /// an intercept can read the LITERAL back (a ThrowHelper sink's ExceptionResource
     /// is an operand, and Push has already spilled it into a temp by the time the intercept
@@ -1653,6 +1773,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// record/verify the entry stack of the given target block.</summary>
     private void BranchTo(int targetOffset, bool emitGoto, string? condition = null)
     {
+        _entryStacks.TryGetValue(targetOffset, out var recorded);
         var canonical = new List<StackEntry>();
         for (int i = 0; i < _stack.Count; i++)
         {
@@ -1666,15 +1787,29 @@ internal sealed partial class MethodCompiler : IEvalStack
                 _decls.Add((type, name));
             if (e.Expr != name)
                 Emit($"{name} = {Cast(e, type)};");
+            string? delegateTag = null;
+            // Every edge into a target that reads a tag at this depth writes it,
+            // whatever this edge's kind, so no edge leaves another's value behind.
+            if (_ftnOrigins.Count > 0
+                && (CanHoldMethodAddress(e.Kind)
+                    || (recorded is not null && i < recorded.Count && recorded[i].DelegateTag is not null)))
+            {
+                delegateTag = $"bs{i}_delegate_tag";
+                if (_declared.Add(delegateTag))
+                    _decls.Add(("int32_t", delegateTag));
+                if (e.DelegateTag != delegateTag)
+                    Emit($"{delegateTag} = {e.DelegateTag ?? "0"};");
+            }
             // Carry the operand's declared CLR type across the spill so a use after a
             // branch (e.g. `arr.Where(lambda)` — the cached-lambda null check always
             // spills the array first) can still recognise it as `T[]`. The
             // canonical slot's C++ type may be widened, but StaticType still describes
             // the value.
-            canonical.Add(new StackEntry(name, e.Kind, type, StaticType: e.StaticType));
+            canonical.Add(new StackEntry(name, e.Kind, type, StaticType: e.StaticType,
+                DelegateTag: delegateTag));
         }
 
-        if (_entryStacks.TryGetValue(targetOffset, out var existing))
+        if (recorded is { } existing)
         {
             if (existing.Count != canonical.Count)
             {
@@ -2057,10 +2192,10 @@ internal sealed partial class MethodCompiler : IEvalStack
                 break;
             }
             case ILOpCode.Ldloc_0: case ILOpCode.Ldloc_1: case ILOpCode.Ldloc_2: case ILOpCode.Ldloc_3:
-                PushVar(_locals[(int)op - (int)ILOpCode.Ldloc_0]);
+                PushLocal((int)op - (int)ILOpCode.Ldloc_0);
                 break;
             case ILOpCode.Ldloc_s: case ILOpCode.Ldloc:
-                PushVar(_locals[(int)insn.Operand]);
+                PushLocal((int)insn.Operand);
                 break;
             case ILOpCode.Ldloca_s: case ILOpCode.Ldloca:
             {
@@ -2087,17 +2222,11 @@ internal sealed partial class MethodCompiler : IEvalStack
                 break;
             }
             case ILOpCode.Stloc_0: case ILOpCode.Stloc_1: case ILOpCode.Stloc_2: case ILOpCode.Stloc_3:
-            {
-                var dst = _locals[(int)op - (int)ILOpCode.Stloc_0];
-                Emit($"{dst.Name} = {CoerceTo(Pop(), dst.Type, dst.CppType)};");
+                StoreLocal((int)op - (int)ILOpCode.Stloc_0);
                 break;
-            }
             case ILOpCode.Stloc_s: case ILOpCode.Stloc:
-            {
-                var dst = _locals[(int)insn.Operand];
-                Emit($"{dst.Name} = {CoerceTo(Pop(), dst.Type, dst.CppType)};");
+                StoreLocal((int)insn.Operand);
                 break;
-            }
 
             case ILOpCode.Dup:
             {
@@ -3288,31 +3417,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // (Compilation.TrimLdftnRedirect; table frozen before emission).
                 if (_c.TrimLdftnRedirect(m) is { } trimRedirect)
                     m = trimRedirect;
-                // A shared body taking the address of a canonical-world method
-                // would bake an owner-group function identity into delegate/
-                // function-pointer state observable per instantiation.
-                if (SharedTrial && Compilation.IsCanonicalMethod(m))
-                    ThrowSharedTaint("ldftn", m.DeclaringClass.FullName + "." + m.Name);
+                NoteFtnTarget(m, virtFtn: false);
                 bool ftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
-                // A bodyless P/Invoke whose call sites lower to a direct native call (a
-                // delegate method group over the [DllImport] itself): taking the address
-                // needs a function, and no real body ever exists. Note it so the emitter
-                // synthesizes a forwarder from the same P/Invoke lowering a call site gets
-                // (CompilePInvokeWrapper); the delegate adapter or raw function pointer
-                // below then wraps/names that symbol.
-                //
-                // NOT when the import is BOUNDED. This note is a route, not a record: it
-                // adds the method to Reachable, makes CppEmitter synthesize a forwarder that
-                // names the native symbol, and puts the import's module into
-                // pinvoke-libs.txt — while reachability has just deleted the edge to it and
-                // the stub below is the substitute. So a `--cut` P/Invoke taken as a method
-                // group would transpile green and fail at link, asking for exactly the
-                // module the cut exists to remove: AGENTS.md's `cut ⟹ route` in its
-                // NATIVE-symbol dimension, which AssertCalledBodiesEmitted cannot see (it
-                // diffs managed symbols, and a P/Invoke has no emitted body).
-                if (!ftnBounded && m.Emittable is { Rva: 0, PInvoke: not null } fimpl
-                    && _c.LowersToPInvoke(fimpl))
-                    _c.NotePInvokeFtnTarget(fimpl);
                 string expr;
                 if (ftnBounded)
                 {
@@ -3387,7 +3493,9 @@ internal sealed partial class MethodCompiler : IEvalStack
                     expr = $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
-                _stack[^1] = _stack[^1] with { DelegateMethod = m };
+                _stack[^1] = _stack[^1] with { DelegateMethod = m,
+                    DelegateTag = (insn.Offset + 1).ToString(),
+                    DelegateAddressReady = _ftnDelegateUse.ContainsKey(insn.Offset) };
                 break;
             }
             case ILOpCode.Ldvirtftn:
@@ -3398,10 +3506,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // delegate (e.g. the EnumerableSorter<T> comparison helpers) resolves to
                 // its vtable slot, rather than only a plain MethodDefinition.
                 var m = ResolveMethodHandle(SRME.EntityHandle(insn.Token), "ldvirtftn");
-                if (SharedTrial && Compilation.IsCanonicalMethod(m))
-                    ThrowSharedTaint("ldftn", m.DeclaringClass.FullName + "." + m.Name);
-                if (SharedTrial && Compilation.IsGvmCall(m))
-                    ThrowSharedTaint("gvm", m.DeclaringClass.FullName + "." + m.Name);
+                NoteFtnTarget(m, virtFtn: true);
                 var obj = Pop();
                 var virtualTarget = PrimitiveObjectEqualsVirtualTarget(m, obj);
                 // An INTERFACE method has no vtable slot; its implementation is found in
@@ -3489,7 +3594,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                         : $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
-                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual };
+                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual,
+                    DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = true };
                 break;
             }
 
@@ -3626,7 +3732,7 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// reference-to-reference in both directions, which renders to a pointer on either side
     /// and to the same wasm type.</param>
     private (string Params, string RetArrow, bool ReturnsVoid) FtnStubShape(
-        MethodInfo m, int ilOffset, bool receiverSlot)
+        MethodInfo m, int ilOffset, bool receiverSlot, ClassInfo? delegateClass = null)
     {
         // Whatever shape the stub takes below, it SPELLS OUT its parameter and return
         // types, so a by-value struct among them names a `t_<T>` the cut behind this stub
@@ -3643,9 +3749,9 @@ internal sealed partial class MethodCompiler : IEvalStack
             return ("Dn2CppObject*" + string.Concat(m.Signature.ParameterTypes.Select(p => ", " + CppTypes.Of(p))),
                 rr.IsVoid ? "" : $" -> {CppTypes.Of(rr)}", rr.IsVoid);
         }
-        if (_ftnDelegateUse.TryGetValue(ilOffset, out var dgClass))
+        if (delegateClass is not null || _ftnDelegateUse.TryGetValue(ilOffset, out delegateClass))
         {
-            var invoke = dgClass?.Methods.FirstOrDefault(x => x.Name == "Invoke");
+            var invoke = delegateClass?.Methods.FirstOrDefault(x => x.Name == "Invoke");
             var dgPs = invoke is not null ? invoke.Signature.ParameterTypes : m.Signature.ParameterTypes;
             var dgRet = invoke is not null ? invoke.Signature.ReturnType : m.Signature.ReturnType;
             string dgParams = "Dn2CppObject*" + string.Concat(dgPs.Select(p => ", " + CppTypes.Of(p)));
@@ -3677,12 +3783,13 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// <see cref="Compilation.TryBoundedImport"/> cannot answer true there. It is still ASKED
     /// — the invariant is asked at every mouth, not assumed, which is what makes this one
     /// builder rather than two.</para></summary>
-    private string BoundedFtnStub(MethodInfo m, int ilOffset, bool receiverSlot)
+    private string BoundedFtnStub(MethodInfo m, int ilOffset, bool receiverSlot,
+        ClassInfo? delegateClass = null)
     {
         // The second mouth of the bound's report, so a bounded import reached ONLY
         // as a delegate method group is named too.
         _c.NoteBoundedImport(m);
-        var shape = FtnStubShape(m, ilOffset, receiverSlot);
+        var shape = FtnStubShape(m, ilOffset, receiverSlot, delegateClass);
         if (_c.TryBoundedImport(m, out var bimp) && bimp.Verdict == BoundedVerdict.Loud)
         {
             return $"(void*)+[]({shape.Params}){shape.RetArrow} "
@@ -3698,9 +3805,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// shape-preserving stub <see cref="BoundedFtnStub"/> builds, whose body is the same
     /// catchable PlatformNotSupportedException the call-site lowering throws. One builder for
     /// both mouths, for the reason stated there.</summary>
-    private string DynamicCodegenFtnStub(MethodInfo m, int ilOffset, bool receiverSlot)
+    private string DynamicCodegenFtnStub(MethodInfo m, int ilOffset, bool receiverSlot,
+        ClassInfo? delegateClass = null)
     {
-        var shape = FtnStubShape(m, ilOffset, receiverSlot);
+        var shape = FtnStubShape(m, ilOffset, receiverSlot, delegateClass);
         return $"(void*)+[]({shape.Params}){shape.RetArrow} "
             + "{ dn2cpp_throw_platform_not_supported("
             + $"\"{_c.GenericDefFullName(m.DeclaringClass)}.{m.Name} requires dynamic code generation\"); }}";
@@ -3712,9 +3820,10 @@ internal sealed partial class MethodCompiler : IEvalStack
     /// mouths need it: a socket method reached only as a method group (a
     /// <c>ConnectCallback</c>, a completion callback) has no body either, and a stub that
     /// returned a default there would put the cut back on the silent side.</summary>
-    private string AbsentNetworkPalFtnStub(MethodInfo m, int ilOffset, bool receiverSlot)
+    private string AbsentNetworkPalFtnStub(MethodInfo m, int ilOffset, bool receiverSlot,
+        ClassInfo? delegateClass = null)
     {
-        var shape = FtnStubShape(m, ilOffset, receiverSlot);
+        var shape = FtnStubShape(m, ilOffset, receiverSlot, delegateClass);
         return $"(void*)+[]({shape.Params}){shape.RetArrow} "
             + "{ dn2cpp_throw_platform_not_supported(\""
             + Compilation.AbsentNetworkPalThrowMessage(
