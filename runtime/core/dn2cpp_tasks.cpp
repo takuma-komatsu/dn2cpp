@@ -2238,7 +2238,7 @@ extern const Dn2CppType dn2cpp_thread_type_obj;
 // NO_SHALLOW_CLONE: Dn2CppThread's `handle` is a `new std::thread` and `sync` a
 // native-heap Dn2CppThreadSync; a bitwise copy would be a second joiner and a second
 // deleter of one OS thread.
-const Dn2CppTypeInfo dn2cpp_thread_type =
+Dn2CppTypeInfo dn2cpp_thread_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.Thread", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, nullptr }, &dn2cpp_thread_type_obj);
 const Dn2CppType dn2cpp_thread_type_obj = { { &dn2cpp_type_type }, &dn2cpp_thread_type };
 

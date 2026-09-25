@@ -2803,6 +2803,9 @@ internal sealed partial class CppEmitter
         // cache must never hold an answer from before.
         if (_relationRowSets is { } rrs)
             sb.AppendLine($"    dn2cpp_set_relation_rows({rrs.Sym}, {rrs.Count});");
+        // The corrected bases the same way: every chain walk must see one chain.
+        foreach (var (handle, baseRef) in _runtimeHandleBases)
+            sb.AppendLine($"    dn2cpp_intrinsic_set_base({handle}, {baseRef});");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3327,10 +3330,11 @@ internal sealed partial class CppEmitter
     /// lands in, like the intrinsic maps.</summary>
     private (string Sym, int Count)? _relationRowSets;
 
-    /// <summary>Whether a relation-only row may name <paramref name="itf"/>: only when this
-    /// emission defines its type-info. Rows are filtered by it, never force-emitted, so a
-    /// relation answer is a subset of .NET's and no row names an undefined symbol.</summary>
-    private bool RelationRowDefined(ClassInfo itf) => TypeInfoSymbolDefined(itf.CppTypeInfoName);
+    /// <summary>Whether a relation the image states — an interface row or a corrected
+    /// base — may name <paramref name="c"/>: only when this emission defines its
+    /// type-info. Relations are filtered by it, never force-emitted, so an answer is a
+    /// subset of .NET's and nothing names an undefined symbol.</summary>
+    private bool RelationRowDefined(ClassInfo c) => TypeInfoSymbolDefined(c.CppTypeInfoName);
 
     /// <summary>The intrinsic-shaped classes whose emitted ti_ is their only type-info, in
     /// class-loop order. Their own tables stay empty, so
@@ -3353,15 +3357,6 @@ internal sealed partial class CppEmitter
     /// in.</summary>
     private void EmitRelationRows(StringBuilder sb)
     {
-        var namesByHandle = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var (name, handle) in CoreIntrinsics.RuntimeTypeInfoRows())
-        {
-            if (!namesByHandle.TryGetValue(handle, out var names))
-                namesByHandle[handle] = names = new List<string>();
-            names.Add(name);
-        }
-        var handles = new List<string>(namesByHandle.Keys);
-        handles.Sort(StringComparer.Ordinal);
         var sets = new List<string>();
         // Byte-identical row tables are one table: every unbound exception stub states
         // the same relations.
@@ -3379,12 +3374,8 @@ internal sealed partial class CppEmitter
             }
             sets.Add($"{{ {type}, {sym}, {rows.Count} }}");
         }
-        foreach (string handle in handles)
+        foreach (var (handle, cls) in UnboundRuntimeHandles())
         {
-            if (RelationRepresentative(namesByHandle[handle]) is not { } cls
-                || cls.IsInterface || cls.GenericArity > 0 || _typeBinds.Contains(cls)
-                || cls.FullName is "System.Object" or "System.Enum")
-                continue;
             _runtimeMapItfs.TryGetValue(handle, out var mapped);
             var rows = new List<string>();
             foreach (var itf in ClrInterfaceClosure(cls))
@@ -3406,6 +3397,60 @@ internal sealed partial class CppEmitter
             return;
         sb.AppendLine($"static const Dn2CppRelationRows rel_itf_sets[] = {{ {string.Join(", ", sets)} }};");
         _relationRowSets = ("rel_itf_sets", sets.Count);
+    }
+
+    /// <summary>The runtime-held handles whose CLR facts the image states, each with its
+    /// <see cref="RelationRepresentative"/>, in ordinal handle order. Object, Enum,
+    /// interfaces and generic types take none, nor does a handle bound in this image: its
+    /// bind copies the emitted metadata, rows and base included, into the handle.</summary>
+    private List<(string Handle, ClassInfo Cls)> UnboundRuntimeHandles()
+    {
+        var namesByHandle = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var (name, handle) in CoreIntrinsics.RuntimeTypeInfoRows())
+        {
+            if (!namesByHandle.TryGetValue(handle, out var names))
+                namesByHandle[handle] = names = new List<string>();
+            names.Add(name);
+        }
+        var handles = new List<string>(namesByHandle.Keys);
+        handles.Sort(StringComparer.Ordinal);
+        var admitted = new List<(string Handle, ClassInfo Cls)>();
+        foreach (string handle in handles)
+            if (RelationRepresentative(namesByHandle[handle]) is { } cls
+                && !cls.IsInterface && cls.GenericArity == 0 && !_typeBinds.Contains(cls)
+                && cls.FullName is not ("System.Object" or "System.Enum"))
+                admitted.Add((handle, cls));
+        return admitted;
+    }
+
+    /// <summary>The base corrections of runtime-held handles, as (handle, ancestor
+    /// type-info reference), in <see cref="UnboundRuntimeHandles"/> order. Installed by
+    /// <see cref="EmitInitCalls"/> (<c>dn2cpp_intrinsic_set_base</c>).</summary>
+    private readonly List<(string Handle, string BaseRef)> _runtimeHandleBases = [];
+
+    /// <summary>Records the base of each unbound reference-type runtime handle whose
+    /// hand-written chain skips a CLR ancestor this image materializes: the nearest one
+    /// before the next ancestor that has a runtime handle. The hand-written base names that
+    /// next ancestor, so the spliced one keeps the chain; a handle whose skipped ancestors
+    /// the image never defines keeps its chain, and nothing can test against an undefined
+    /// type-info.</summary>
+    private void NoteRuntimeHandleBases()
+    {
+        foreach (var (handle, cls) in UnboundRuntimeHandles())
+        {
+            if (cls.IsValueType)
+                continue;
+            for (var a = cls.BaseClass; a is not null; a = a.BaseClass)
+            {
+                if (CoreIntrinsics.RuntimeTypeInfoSymbol(a) is not null)
+                    break;
+                if (RelationRowDefined(a))
+                {
+                    _runtimeHandleBases.Add((handle, TypeInfoRef(a, "runtime-held type-info base")));
+                    break;
+                }
+            }
+        }
     }
 
     /// <summary>The class a runtime handle states relations for: among the CLR names it

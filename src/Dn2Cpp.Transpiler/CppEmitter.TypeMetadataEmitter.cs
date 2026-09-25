@@ -995,6 +995,7 @@ internal sealed partial class CppEmitter
             _e.EmitEnumInterfaceMap(_sb);
             _e.EmitIntrinsicInterfaceMaps(_sb);
             _e.EmitRelationRows(_sb);
+            _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
             EmitDelegateIdentities();
 

@@ -712,7 +712,7 @@ DN2CPP_NATIVE_FIELDS(dn2cpp_ownflds_waithandle,
 );
 extern const Dn2CppType dn2cpp_waithandle_type_obj;
 DN2CPP_NATIVE_TYPE_REFLECTION(dn2cpp_waithandle_type_reflection, dn2cpp_ownflds_waithandle, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-const Dn2CppTypeInfo dn2cpp_waithandle_type =
+Dn2CppTypeInfo dn2cpp_waithandle_type =
     dn2cpp_ti_with_typeobject({ "System.Threading.WaitHandle", nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, sizeof(Dn2CppWaitHandle), 0, DN2CPP_TF_NO_SHALLOW_CLONE, 0, 0, 0, dn2cpp_waithandle_type_reflection }, &dn2cpp_waithandle_type_obj);
 const Dn2CppType dn2cpp_waithandle_type_obj = { { &dn2cpp_type_type }, &dn2cpp_waithandle_type };
 extern const Dn2CppType dn2cpp_event_type_obj;

@@ -2107,10 +2107,17 @@ const Dn2CppInterfaceEntry* dn2cpp_relation_interfaces(const Dn2CppTypeInfo* typ
 // interface method's EXACT signature: an int32_t-returning helper entered through a
 // void fnptr is a wasm signature trap.
 void dn2cpp_intrinsic_set_interfaces(Dn2CppTypeInfo* type, const Dn2CppInterfaceEntry* entries, int32_t count);
+// Rewrites a runtime-held handle's base to the nearest CLR ancestor the image
+// materializes when its hand-written chain skips one (SystemException under a trap
+// exception, MarshalByRefObject under WaitHandle and Timer, CriticalFinalizerObject under
+// Thread). Only the image can name that ancestor's emitted type-info, so the generated
+// init prologue calls this before any managed code runs; every chain walk then sees one
+// chain. A handle it corrects must be non-const.
+void dn2cpp_intrinsic_set_base(Dn2CppTypeInfo* type, const Dn2CppTypeInfo* base);
 // The mapped intrinsics' type-info handles, named by the generated init prologue. Each
 // is defined beside its own runtime helpers (dn2cpp_threading.cpp and the System.Threading
-// / System.Collections.Concurrent intrinsic units) and is non-const for this reason
-// alone. The transpiler-side table
+// / System.Collections.Concurrent intrinsic units) and is non-const so the prologue can
+// write it. The transpiler-side table
 // that pairs them with an interface and a slot thunk is Compilation.IntrinsicInterfaceRows.
 extern Dn2CppTypeInfo dn2cpp_timer_type;
 extern Dn2CppTypeInfo dn2cpp_timeprovider_timer_type;
@@ -2124,8 +2131,9 @@ extern Dn2CppTypeInfo dn2cpp_blockingcollection_type;
 // a `ti_System_Threading_SemaphoreSlim` emitted beside one would be a second type-info
 // for one CLR type — and a reflected member typed at one (a Stream's
 // `_asyncActiveSemaphore` field row) is exactly where the emitter has to spell it.
-// Kept const: nothing binds emitted metadata into them.
-extern const Dn2CppTypeInfo dn2cpp_thread_type;
+// Const unless the init prologue rewrites the base: Thread's CriticalFinalizerObject is
+// an emitted type-info only the image can name (dn2cpp_intrinsic_set_base).
+extern Dn2CppTypeInfo dn2cpp_thread_type;
 extern const Dn2CppTypeInfo dn2cpp_semaphore_type;
 extern const Dn2CppTypeInfo dn2cpp_cancel_source_type;
 extern const Dn2CppTypeInfo dn2cpp_parallel_loop_state_type;
@@ -2134,8 +2142,9 @@ extern const Dn2CppTypeInfo dn2cpp_parallel_options_type;
 // ManualResetEvent and AutoResetEvent are sealed siblings under EventWaitHandle,
 // EventWaitHandle is under WaitHandle, and ManualResetEventSlim is not a WaitHandle at
 // all. The newobj lowering picks one and dn2cpp_event_new stamps it, so each answers
-// exactly rather than sharing one over-accepting handle.
-extern const Dn2CppTypeInfo dn2cpp_waithandle_type;
+// exactly rather than sharing one over-accepting handle. WaitHandle is mutable: the init
+// prologue sets its base to the image's MarshalByRefObject (dn2cpp_intrinsic_set_base).
+extern Dn2CppTypeInfo dn2cpp_waithandle_type;
 extern const Dn2CppTypeInfo dn2cpp_event_type;
 extern const Dn2CppTypeInfo dn2cpp_manualresetevent_type;
 extern const Dn2CppTypeInfo dn2cpp_autoresetevent_type;
@@ -2173,9 +2182,11 @@ extern const Dn2CppTypeInfo dn2cpp_parallel_loop_result_type;
 extern const Dn2CppTypeInfo dn2cpp_type_type;
 extern const Dn2CppTypeInfo dn2cpp_exception_type;
 // The fixed set of exception types the runtime *itself* raises (the trap helpers
-// below + the File I/O / cast paths). Each carries a stable handle (base-chained to
-// dn2cpp_exception_type, with the common intermediate ArgumentException/IOException
-// preserved) so the EMITTED code can reference the SAME symbol the runtime stamps —
+// below + the File I/O / cast paths). Each carries a stable handle, based on its nearest
+// CLR ancestor that has one (Exception, or an intermediate such as ArgumentException or
+// IOException; an ancestor without one, SystemException above all, is spliced in by the
+// init prologue when the image defines it — dn2cpp_intrinsic_set_base), so the EMITTED
+// code can reference the SAME symbol the runtime stamps —
 // a typed `catch`/`is` against one of these resolves to its handle here and matches
 // both a runtime-trapped object and a managed `new` of the type (the two
 // sources must share one type-info, else `is`/catch only match one of them). User
@@ -2249,9 +2260,6 @@ extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
 // the `<BaseName>.resources` set it was asked for is embedded in no loaded assembly.
-// Based on Exception rather than SystemException, like every other runtime-raised type
-// here (dn2cpp does not model SystemException); the divergence is that a `catch
-// (SystemException)` does not catch it, as with NotSupportedException.
 extern Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type;
 // System.NullReferenceException: raised by runtime entry points handed a null
 // managed receiver they would otherwise dereference (a null FieldInfo's
