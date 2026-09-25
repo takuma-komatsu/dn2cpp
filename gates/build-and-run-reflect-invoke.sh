@@ -85,12 +85,15 @@
 # instantiation), and an interface implementation, beside a plain virtual and
 # an interface method of the same instantiations and a delegate created from
 # the plain virtual's reflected method row.
-# LdftnLocalSubset uses hand-authored IL to store method pointers before delegate
+# LdftnLocalSubset uses hand-authored IL (gates/fixtures/ldftn-local/Program.cs
+# rewrites the built sample) to store method pointers before delegate
 # construction, separate ldftn from newobj with a nop or native-int conversion,
 # select two targets through one local or a stack join, snapshot a loaded pointer
-# before overwriting its local, and call a stored raw pointer through calli. The
-# delegate address and method identity follow the selected pointer; calli keeps
-# the raw address. A local whose address is taken keeps no delegate identity,
+# before overwriting its local, store ldvirtftn, instance and int64-converted
+# pointers, leave an unresolvable ldftn in code that never runs, and call a
+# stored raw pointer through calli. The delegate address and method identity
+# follow the selected pointer; calli keeps the raw address. Only those bodies
+# carry delegate tags. A local whose address is taken keeps no delegate identity,
 # because a byref write would leave it stale: a delegate built from it is refused
 # when transpiled, from a native-int or int64 local alike, and one built from a
 # copy of it throws NotSupportedException when constructed. Address-taken locals
@@ -219,8 +222,24 @@ gate_extra_asserts() {
     grep -Fxq 'ldftn-local-stack-join=12/Add/2/Subtract' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-closed=C:x/Decorate' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-calli=14' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-dead-origin=2/Subtract' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-virtual=15/VirtualDerived.Scale' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-instance=15/Offset' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
+    # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
+    # Windows host. Delegate tags belong to the rewritten bodies alone, since C#
+    # never builds a delegate from a stored or joined address.
+    local tag_owners stray_owners
+    tag_owners=$(LC_ALL=C awk '{ sub(/\r$/, "") } /^\/\/ .*::/ { owner = substr($0, 4) }
+        /int32_t [A-Za-z0-9_]+_delegate_tag/ { print owner }' "$out"/generated*.cpp | LC_ALL=C sort -u)
+    grep -Fxq 'LdftnLocalSubset.Program::Selected' <<<"$tag_owners"
+    stray_owners=$(grep -Ev '^LdftnLocalSubset\.Program::(Stored|NopSeparated|NativeConvert|SnapshotBeforeOverwrite|Selected|StackJoin|ClosedStored|RawCalli|DeadOrigins|VirtualStored|InstanceStored|Int64Stored)$' <<<"$tag_owners" || true)
+    if [ -n "$stray_owners" ]; then
+        printf 'error: delegate tags outside the rewritten bodies:\n%s\n' "$stray_owners" >&2
+        return 1
+    fi
     DN2CPP_BEFORE_LDFTN_LOCAL=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ldftn-local.stdout"
     sed '/^ldftn-local-begin/,$d' "$out/metadata-layout.stdout" > "$out/ldftn-local-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-ldftn-local.stdout") \
@@ -313,7 +332,7 @@ for byref_mode in overwrite overwrite-int64 copy; do
     cp "${_CG_APP%.dll}.runtimeconfig.json" "$byref_dir/app/ReflectInvoke.runtimeconfig.json"
     cp "${_CG_APP%.dll}.deps.json" "$byref_dir/app/ReflectInvoke.deps.json"
     cp "$(dirname "$_CG_APP")/Dn2Cpp.Runtime.dll" "$byref_dir/app/Dn2Cpp.Runtime.dll"
-    dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
+    run_bounded dotnet exec "gates/fixtures/ldftn-local/bin/$CONFIG/$TFM/LdftnLocalFixture.dll" \
         "$byref_app" "--byref-$byref_mode"
     run_bounded dotnet "$byref_app" > "$byref_dir/dotnet.stdout"
     grep -Fxq 'ldftn-local-direct=2/Subtract' "$byref_dir/dotnet.stdout"
@@ -329,7 +348,8 @@ for byref_mode in overwrite overwrite-int64 copy; do
             echo 'error: a copied address-taken delegate target did not transpile' >&2
             exit 1
         fi
-    elif [ "$byref_status" -ne 2 ] || ! grep -Fq "$byref_diagnostic" "$byref_dir/transpile.log"; then
+    elif [ "$byref_status" -ne 2 ] \
+        || ! grep -Fq "LdftnLocalSubset.Program.Stored: $byref_diagnostic" "$byref_dir/transpile.log"; then
         cat "$byref_dir/transpile.log" >&2
         echo "error: byref-$byref_mode delegate target was not rejected" >&2
         exit 1

@@ -2047,18 +2047,23 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            bool identityEmitted = false;
             if (!fnPtr.DelegateAddressReady && fnPtr.DelegateTag is { } tag)
             {
                 if (tag == UntrackedDelegateTag)
                     throw new NotSupportedException(
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target loaded from an address-taken local cannot preserve delegate identity");
-                // A copy of an address-taken local reaches here only at run time.
-                if (!tag.All(char.IsAsciiDigit))
+                // A literal names the one load that reaches here; a variable holds it
+                // at run time, where a copy of an address-taken local reads -1.
+                bool literal = tag.All(char.IsAsciiDigit);
+                if (!literal)
                     Emit($"if ({tag} < 0) dn2cpp_throw_not_supported_msg(\"a delegate target loaded from an address-taken local cannot preserve delegate identity\");");
+                var invoke = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
                 foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
                 {
+                    if (literal && origin.Key.ToString() != tag)
+                        continue;
                     var (method, isVirtual, fromVirtFtn) = origin.Value;
-                    var invoke = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
                     if (invoke is not null)
                     {
                         int invokeArity = invoke.Signature.ParameterTypes.Length;
@@ -2068,6 +2073,7 @@ internal sealed partial class MethodCompiler
                                 || CppTypes.KindOf(method.Signature.ParameterTypes[0]) != StackKind.Ref))
                             continue;
                     }
+                    NoteFtnTarget(method, fromVirtFtn);
                     string? adapterExpr = null;
                     if (_c.IsBoundedMethod(method.DeclaringClass.FullName, method.Name))
                         adapterExpr = BoundedFtnStub(method, origin.Key - 1, receiverSlot: fromVirtFtn, delegateClass: cls);
@@ -2087,7 +2093,7 @@ internal sealed partial class MethodCompiler
                         _c.NoteNamedBodySymbol(_method, impl);
                         adapterExpr = $"(void*)&{adapter.CppName}";
                     }
-                    Emit($"if ({tag} == {origin.Key}) {{");
+                    Emit(literal ? "{" : $"if ({tag} == {origin.Key}) {{");
                     if (adapterExpr is not null)
                         Emit($"    {dg}->f_method = {adapterExpr};");
                     if (!method.Handle.IsNil)
@@ -2095,6 +2101,7 @@ internal sealed partial class MethodCompiler
                         foreach (var arg in method.Context.MethodArgs)
                             _c.NoteTypeIdentityClosure(arg, keepSeed: false);
                         Emit($"    {dg}->f_identity = &{_c.NoteDelegateIdentity(method, isVirtual)};");
+                        identityEmitted = literal;
                     }
                     Emit("}");
                 }
@@ -2102,7 +2109,7 @@ internal sealed partial class MethodCompiler
             // The identity is emitted with the method rows, spelled as they spell the
             // declaring type and arguments; the arguments only need type-infos. A
             // canonical target has already tainted at its ldftn/ldvirtftn.
-            if (fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
+            if (!identityEmitted && fnPtr.DelegateMethod is { } delegateMethod && !delegateMethod.Handle.IsNil)
             {
                 foreach (var arg in delegateMethod.Context.MethodArgs)
                     _c.NoteTypeIdentityClosure(arg, keepSeed: false);

@@ -18,6 +18,10 @@ var owner = module.GetType("LdftnLocalSubset.Program")
     ?? throw new InvalidOperationException("missing IL fixture owner");
 
 MethodDefinition Find(string name) => owner.Methods.Single(m => m.Name == name);
+MethodDefinition FindOn(string type, string name) =>
+    (module.GetType("LdftnLocalSubset." + type)
+        ?? throw new InvalidOperationException("missing IL fixture type " + type))
+    .Methods.Single(m => m.Name == name);
 var add = Find("Add");
 var subtract = Find("Subtract");
 var decorate = Find("Decorate");
@@ -29,6 +33,12 @@ var selected = Find("Selected");
 var stackJoin = Find("StackJoin");
 var closedStored = Find("ClosedStored");
 var rawCalli = Find("RawCalli");
+var deadOrigins = Find("DeadOrigins");
+var virtualStored = Find("VirtualStored");
+var instanceStored = Find("InstanceStored");
+var int64Stored = Find("Int64Stored");
+var scale = FindOn("VirtualBase", "Scale");
+var offset = FindOn("InstanceHolder", "Offset");
 
 MethodReference DelegateCtor(MethodDefinition method)
 {
@@ -165,6 +175,58 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
     il.Emit(OpCodes.Ldc_I4_7);
     il.Emit(OpCodes.Ldloc_0);
     il.Emit(OpCodes.Calli, callSite);
+    il.Emit(OpCodes.Ret);
+}
+
+{
+    // The load after the branch never runs and names a member nothing resolves.
+    var missing = new MethodReference("LdftnLocalMissing", module.TypeSystem.Int32, module.TypeSystem.Object);
+    missing.Parameters.Add(new ParameterDefinition(module.TypeSystem.Int32));
+    var il = Body(deadOrigins, pointerLocal: true).GetILProcessor();
+    var join = Instruction.Create(OpCodes.Ldnull);
+    il.Emit(OpCodes.Ldftn, subtract);
+    il.Emit(OpCodes.Stloc_0);
+    il.Emit(OpCodes.Br, join);
+    il.Emit(OpCodes.Ldftn, missing);
+    il.Emit(OpCodes.Pop);
+    il.Append(join);
+    il.Emit(OpCodes.Ldloc_0);
+    il.Emit(OpCodes.Newobj, DelegateCtor(deadOrigins));
+    il.Emit(OpCodes.Ret);
+}
+
+{
+    var il = Body(virtualStored, pointerLocal: true).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Dup);
+    il.Emit(OpCodes.Ldvirtftn, scale);
+    il.Emit(OpCodes.Stloc_0);
+    il.Emit(OpCodes.Ldloc_0);
+    il.Emit(OpCodes.Newobj, DelegateCtor(virtualStored));
+    il.Emit(OpCodes.Ret);
+}
+
+{
+    var il = Body(instanceStored, pointerLocal: true).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Ldftn, offset);
+    il.Emit(OpCodes.Stloc_0);
+    il.Emit(OpCodes.Ldloc_0);
+    il.Emit(OpCodes.Newobj, DelegateCtor(instanceStored));
+    il.Emit(OpCodes.Ret);
+}
+
+{
+    var body = Body(int64Stored, pointerLocal: false);
+    body.Variables.Add(new VariableDefinition(module.TypeSystem.Int64));
+    var il = body.GetILProcessor();
+    il.Emit(OpCodes.Ldnull);
+    il.Emit(OpCodes.Ldftn, add);
+    il.Emit(OpCodes.Conv_U8);
+    il.Emit(OpCodes.Stloc_0);
+    il.Emit(OpCodes.Ldloc_0);
+    il.Emit(OpCodes.Conv_U);
+    il.Emit(OpCodes.Newobj, DelegateCtor(int64Stored));
     il.Emit(OpCodes.Ret);
 }
 

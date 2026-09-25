@@ -14,9 +14,11 @@
 
   <ItemGroup>
     <ProjectReference Include="../../../src/Dn2Cpp.Runtime/Dn2Cpp.Runtime.csproj" />
-    <ProjectReference Include="../../../gates/fixtures/ldftn-local/LdftnLocalFixture.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../../gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
+  <!-- Gives LdftnLocalSubset's stubs the IL bodies C# cannot express. -->
   <Target Name="RewriteLdftnLocalFixture" AfterTargets="Build">
     <Exec Command="dotnet exec &quot;$(MSBuildProjectDirectory)/../../../gates/fixtures/ldftn-local/bin/$(Configuration)/$(TargetFramework)/LdftnLocalFixture.dll&quot; &quot;$(TargetPath)&quot;" />
   </Target>
