@@ -162,6 +162,17 @@ const Dn2CppInterfaceEntry* dn2cpp_relation_interfaces(const Dn2CppTypeInfo* typ
     return nullptr;
 }
 
+// Whether `t`'s relation rows, not its own table and not a base, state `itf`.
+static bool dn2cpp_relation_carries(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
+{
+    int32_t n;
+    const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(t, &n);
+    for (int32_t i = 0; i < n; i++)
+        if (rel[i].itf == itf)
+            return true;
+    return false;
+}
+
 // Whether `t` itself, not a base, states `itf`: its own table first, then its relation
 // rows.
 static bool dn2cpp_rows_carry(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
@@ -169,12 +180,7 @@ static bool dn2cpp_rows_carry(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf
     for (int32_t i = 0; i < t->interfaceCount; i++)
         if (t->interfaces[i].itf == itf)
             return true;
-    int32_t n;
-    const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(t, &n);
-    for (int32_t i = 0; i < n; i++)
-        if (rel[i].itf == itf)
-            return true;
-    return false;
+    return dn2cpp_relation_carries(t, itf);
 }
 
 // Is `itf` a closed generic whose definition declares a variant (`in`/`out`) type
@@ -348,7 +354,8 @@ Dn2CppTypePairCache<uintptr_t> g_isinst_cache;
 // The hand-written primitive / Decimal / date-time type-infos are const, so no init
 // prologue can wire a map onto them the way dn2cpp_enum_set_interfaces does for enums.
 // The DISPATCH set is therefore keyed off the same predicate pair the type TEST uses
-// (dn2cpp_wellknown_itf_mask / _bit, below), so the two cannot drift.
+// (dn2cpp_wellknown_itf_mask / _bit, below), so the two cannot drift; IUtf8SpanFormattable's
+// is keyed off the relation rows the type test reads.
 static int32_t dn2cpp_wellknown_itf_bit(const Dn2CppTypeInfo* ti);
 static int32_t dn2cpp_wellknown_itf_mask(const Dn2CppTypeInfo* st);
 static int32_t dn2cpp_wellknown_self_generic_itf(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo* ti);
@@ -436,6 +443,20 @@ static int32_t dn2cpp_bbi_try_format(Dn2CppObject* box, Dn2CppItfCharSpan dest, 
 {
     Dn2CppString* spec = fmt.length > 0 ? dn2cpp_string_from_chars(fmt.ptr, fmt.length) : nullptr;
     return dn2cpp_string_try_copy_to_span(dn2cpp_bbi_format(box, spec, nfi),
+        dest.ptr, dest.length, written);
+}
+
+// The Span<byte> an emitted IUtf8SpanFormattable.TryFormat call site passes BY VALUE:
+// the layout of its t_System_Span__CnByte, as Dn2CppItfCharSpan is its char spans'.
+struct Dn2CppItfByteSpan { uint8_t* ptr; int32_t length; };
+
+// IUtf8SpanFormattable.TryFormat(Span<byte>, out int, ReadOnlySpan<char>, IFormatProvider):
+// the text of the UTF-16 twin above, under the same fits / does-not-fit contract.
+static int32_t dn2cpp_bbi_try_format_utf8(Dn2CppObject* box, Dn2CppItfByteSpan dest, int32_t* written,
+                                          Dn2CppItfCharSpan fmt, const Dn2CppNumberFormatInfo* nfi)
+{
+    Dn2CppString* spec = fmt.length > 0 ? dn2cpp_string_from_chars(fmt.ptr, fmt.length) : nullptr;
+    return dn2cpp_string_try_copy_to_utf8_span(dn2cpp_bbi_format(box, spec, nfi),
         dest.ptr, dest.length, written);
 }
 
@@ -580,6 +601,7 @@ const Dn2CppBbiRow kBbiRows[] = {
     { "System.IFormattable", "ToString", reinterpret_cast<const void*>(&dn2cpp_bbi_format) },
     { "System.IComparable", "CompareTo", reinterpret_cast<const void*>(&dn2cpp_bbi_compareto) },
     { "System.ISpanFormattable", "TryFormat", reinterpret_cast<const void*>(&dn2cpp_bbi_try_format) },
+    { "System.IUtf8SpanFormattable", "TryFormat", reinterpret_cast<const void*>(&dn2cpp_bbi_try_format_utf8) },
     { "System.IConvertible", "GetTypeCode", reinterpret_cast<const void*>(&dn2cpp_bbi_conv_typecode) },
     { "System.IConvertible", "ToBoolean", reinterpret_cast<const void*>(&dn2cpp_bbi_conv_bool) },
     { "System.IConvertible", "ToChar", reinterpret_cast<const void*>(&dn2cpp_bbi_conv_char) },
@@ -814,6 +836,13 @@ static const void** dn2cpp_resolve_interface_walk(const Dn2CppTypeInfo* t, const
     // SAME set. Last arm: a real map always wins.
     if ((dn2cpp_wellknown_itf_mask(t) & dn2cpp_wellknown_itf_bit(itf)) != 0)
         return dn2cpp_bbi_slots(itf, 0, nullptr);
+    // IUtf8SpanFormattable on a boxed built-in, served exactly where its CLR type
+    // implements it. Relation rows never supply a slot: this arm reads them only as
+    // CoreLib's implements answer, and the slots are the boxed-built-in thunks.
+    if ((t->flags & DN2CPP_TF_VALUETYPE) != 0 && itf->name != nullptr
+        && std::strcmp(itf->name, "System.IUtf8SpanFormattable") == 0
+        && dn2cpp_relation_carries(t, itf))
+        return dn2cpp_bbi_slots(itf, 0, nullptr);
     // The self-instantiated generic pair, in both the concrete and the canonical form.
     // Its thunks are chosen by the ARGUMENT, which the canonical form does not carry —
     // hence the receiver, and hence a slot table keyed by the pair rather than by the
@@ -968,20 +997,15 @@ const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeI
     // carry slots for it, and no map serves them: unsupported input, so catchable.
     // Every other miss is a reachability hole.
     for (const Dn2CppTypeInfo* c = t; c != nullptr && itf != nullptr; c = c->base)
-    {
-        int32_t n;
-        const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(c, &n);
-        for (int32_t i = 0; i < n; i++)
-            if (rel[i].itf == itf)
-            {
-                char msg[512];
-                std::snprintf(msg, sizeof msg,
-                    "'%s' implements '%s', but dn2cpp cannot call that interface's members on "
-                    "its runtime representation.", t->name != nullptr ? t->name : "?",
-                    itf->name != nullptr ? itf->name : "?");
-                dn2cpp_throw_not_supported_msg(msg);
-            }
-    }
+        if (dn2cpp_relation_carries(c, itf))
+        {
+            char msg[512];
+            std::snprintf(msg, sizeof msg,
+                "'%s' implements '%s', but dn2cpp cannot call that interface's members on "
+                "its runtime representation.", t->name != nullptr ? t->name : "?",
+                itf->name != nullptr ? itf->name : "?");
+            dn2cpp_throw_not_supported_msg(msg);
+        }
     // Fatal anyway — name the failing pair so the miss is diagnosable from the
     // crash line alone (the abort backtrace rarely survives release builds).
     std::fprintf(stderr, "dn2cpp fatal: interface dispatch: %s has no map for %s\n",

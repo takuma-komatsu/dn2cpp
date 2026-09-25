@@ -1043,6 +1043,7 @@ internal sealed partial class MethodCompiler
                 ctsNew = $"dn2cpp_cts_new_after({ctorMs})";
             }
             EmitCanceledExcRegistration();
+            _c.NoteIntrinsicInterfaces("System.Threading.CancellationTokenSource"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppCancelSource*", ctsNew);
             return;
         }
@@ -1086,6 +1087,7 @@ internal sealed partial class MethodCompiler
             if (ssigParams.Length == 2)
                 max = Pop().Expr;
             var initial = Pop();
+            _c.NoteIntrinsicInterfaces("System.Threading.SemaphoreSlim"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_semaphore_new({initial.Expr}, {max})");
             return;
         }
@@ -1112,9 +1114,10 @@ internal sealed partial class MethodCompiler
             for (int i = 0; i < pc - 1; i++)
                 Pop(); // spinCount (ignored)
             string init = pc >= 1 ? Pop().Expr : "0"; // parameterless Slim defaults to false
-            string eti = NewobjTypeName(handle) == "System.Threading.ManualResetEventSlim"
-                ? "&dn2cpp_manualreseteventslim_type"
-                : "&dn2cpp_manualresetevent_type";
+            bool slim = NewobjTypeName(handle) == "System.Threading.ManualResetEventSlim";
+            string eti = slim ? "&dn2cpp_manualreseteventslim_type" : "&dn2cpp_manualresetevent_type";
+            // IDisposable row: ManualResetEvent's is WaitHandle's, which its chain reaches.
+            _c.NoteIntrinsicInterfaces(slim ? "System.Threading.ManualResetEventSlim" : "System.Threading.WaitHandle");
             Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_event_new({init}, 1, {eti})");
             return;
         }
@@ -1123,6 +1126,7 @@ internal sealed partial class MethodCompiler
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
             var arg = Pop(); // bool initialState
+            _c.NoteIntrinsicInterfaces("System.Threading.WaitHandle"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_event_new({arg.Expr}, 0, &dn2cpp_autoresetevent_type)");
             return;
@@ -1142,6 +1146,7 @@ internal sealed partial class MethodCompiler
         {
             var mode = Pop();     // EventResetMode
             var ewhInit = Pop();  // bool initialState
+            _c.NoteIntrinsicInterfaces("System.Threading.WaitHandle"); // IDisposable row
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_event_new({ewhInit.Expr}, {mode.Expr}, &dn2cpp_event_type)");
             return;

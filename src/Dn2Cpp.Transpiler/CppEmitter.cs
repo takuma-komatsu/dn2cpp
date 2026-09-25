@@ -3285,6 +3285,12 @@ internal sealed partial class CppEmitter
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_mmap_view_object_dispose((Dn2CppMappedViewObject*)o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.NoopDispose =>
                         $"static void {row.ThunkSym}(Dn2CppObject* o) {{ (void)o; }}",
+                    // The direct Dispose lowerings of the same types, so the two mouths
+                    // cannot disagree.
+                    Compilation.IntrinsicInterfaceThunkKind.CtsDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_cts_dispose((Dn2CppCancelSource*)o); }}",
+                    Compilation.IntrinsicInterfaceThunkKind.WaitHandleDispose =>
+                        $"static void {row.ThunkSym}(Dn2CppObject* o) {{ dn2cpp_waithandle_close(o); }}",
                     Compilation.IntrinsicInterfaceThunkKind.TimerChange =>
                         $"static int32_t {row.ThunkSym}(Dn2CppObject* o, Dn2CppTimeSpan due, Dn2CppTimeSpan period) " +
                         "{ return dn2cpp_timer_change(o, due.ticks / 10000LL, period.ticks / 10000LL); }",

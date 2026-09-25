@@ -3049,6 +3049,8 @@ internal sealed partial class Compilation
         NoopDispose,
         TimerChange,
         TimerDisposeAsync,
+        CtsDispose,
+        WaitHandleDispose,
     }
 
     internal sealed record IntrinsicInterfaceRow(
@@ -3095,6 +3097,16 @@ internal sealed partial class Compilation
         new("System.Collections.Concurrent.BlockingCollection`1", "dn2cpp_blockingcollection_type",
             "itfthunk_blockingcoll_dispose", "System", "IDisposable", "Dispose", 0,
             IntrinsicInterfaceThunkKind.NoopDispose),
+        new("System.Threading.CancellationTokenSource", "dn2cpp_cancel_source_type", "itfthunk_cts_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.CtsDispose),
+        new("System.Threading.SemaphoreSlim", "dn2cpp_semaphore_type", "itfthunk_semaphore_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
+        new("System.Threading.ManualResetEventSlim", "dn2cpp_manualreseteventslim_type", "itfthunk_mres_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.NoopDispose),
+        // One row serves EventWaitHandle, ManualResetEvent and AutoResetEvent: their
+        // handles carry no table of their own, so the resolve walk climbs to this one.
+        new("System.Threading.WaitHandle", "dn2cpp_waithandle_type", "itfthunk_waithandle_dispose",
+            "System", "IDisposable", "Dispose", 0, IntrinsicInterfaceThunkKind.WaitHandleDispose),
     ];
 
     /// <summary>A row whose intrinsic is instantiated by the program and whose interface
@@ -3168,7 +3180,8 @@ internal sealed partial class Compilation
             {
                 IntrinsicInterfaceThunkKind.TimerDispose or IntrinsicInterfaceThunkKind.MappedFileDispose
                     or IntrinsicInterfaceThunkKind.MappedViewDispose
-                    or IntrinsicInterfaceThunkKind.NoopDispose => decl.Signature.ReturnType.IsVoid
+                    or IntrinsicInterfaceThunkKind.NoopDispose or IntrinsicInterfaceThunkKind.CtsDispose
+                    or IntrinsicInterfaceThunkKind.WaitHandleDispose => decl.Signature.ReturnType.IsVoid
                     && decl.Signature.ParameterTypes.Length == 0,
                 IntrinsicInterfaceThunkKind.TimerChange =>
                     decl.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }

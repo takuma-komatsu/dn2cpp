@@ -2126,29 +2126,32 @@ extern Dn2CppTypeInfo dn2cpp_barrier_type;
 extern Dn2CppTypeInfo dn2cpp_rwlock_type;
 extern Dn2CppTypeInfo dn2cpp_threadlocal_type;
 extern Dn2CppTypeInfo dn2cpp_blockingcollection_type;
-// The rest of the runtime-allocated threading objects' handles. They need no interface
-// wiring, but the emitter must be able to NAME them: an instance carries the handle, so
+// The rest of the runtime-allocated threading objects' handles. The emitter must be able
+// to NAME them: an instance carries the handle, so
 // a `ti_System_Threading_SemaphoreSlim` emitted beside one would be a second type-info
 // for one CLR type — and a reflected member typed at one (a Stream's
 // `_asyncActiveSemaphore` field row) is exactly where the emitter has to spell it.
-// Const unless the init prologue rewrites the base: Thread's CriticalFinalizerObject is
-// an emitted type-info only the image can name (dn2cpp_intrinsic_set_base).
+// Const unless the init prologue writes the handle: Thread's base is its image's
+// CriticalFinalizerObject (dn2cpp_intrinsic_set_base), and SemaphoreSlim and
+// CancellationTokenSource get an IDisposable map (dn2cpp_intrinsic_set_interfaces).
 extern Dn2CppTypeInfo dn2cpp_thread_type;
-extern const Dn2CppTypeInfo dn2cpp_semaphore_type;
-extern const Dn2CppTypeInfo dn2cpp_cancel_source_type;
+extern Dn2CppTypeInfo dn2cpp_semaphore_type;
+extern Dn2CppTypeInfo dn2cpp_cancel_source_type;
 extern const Dn2CppTypeInfo dn2cpp_parallel_loop_state_type;
 extern const Dn2CppTypeInfo dn2cpp_parallel_options_type;
 // The event family: four CLR types over one Dn2CppEvent, on their REAL base chain —
 // ManualResetEvent and AutoResetEvent are sealed siblings under EventWaitHandle,
 // EventWaitHandle is under WaitHandle, and ManualResetEventSlim is not a WaitHandle at
 // all. The newobj lowering picks one and dn2cpp_event_new stamps it, so each answers
-// exactly rather than sharing one over-accepting handle. WaitHandle is mutable: the init
-// prologue sets its base to the image's MarshalByRefObject (dn2cpp_intrinsic_set_base).
+// exactly rather than sharing one over-accepting handle. WaitHandle and
+// ManualResetEventSlim are mutable: the init prologue installs their IDisposable maps,
+// WaitHandle's serving its three subclasses through the base walk, and sets WaitHandle's
+// base to the image's MarshalByRefObject (dn2cpp_intrinsic_set_base).
 extern Dn2CppTypeInfo dn2cpp_waithandle_type;
 extern const Dn2CppTypeInfo dn2cpp_event_type;
 extern const Dn2CppTypeInfo dn2cpp_manualresetevent_type;
 extern const Dn2CppTypeInfo dn2cpp_autoresetevent_type;
-extern const Dn2CppTypeInfo dn2cpp_manualreseteventslim_type;
+extern Dn2CppTypeInfo dn2cpp_manualreseteventslim_type;
 extern const Dn2CppTypeInfo dn2cpp_safewaithandle_type;
 extern const Dn2CppTypeInfo dn2cpp_array_i4_type;
 extern const Dn2CppTypeInfo dn2cpp_array_ref_type;
