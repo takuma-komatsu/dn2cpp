@@ -1151,6 +1151,12 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
     // System.Object special case in dn2cpp_isinst.
     if ((st->flags & DN2CPP_TF_ARRAY) != 0 && (ti->flags & DN2CPP_TF_SYSTEM_ARRAY) != 0)
         return 1;
+    // Every value type derives from System.ValueType, which no value type-info's
+    // base chain names: a struct or primitive carries no base, and an enum's chain
+    // stops at System.Enum.
+    if ((st->flags & DN2CPP_TF_VALUETYPE) != 0 && (ti->flags & DN2CPP_TF_VALUETYPE) == 0
+        && ti->name != nullptr && std::strcmp(ti->name, "System.ValueType") == 0)
+        return 1;
     for (const Dn2CppTypeInfo* t = st; t != nullptr; t = t->base)
     {
         if (t == ti)

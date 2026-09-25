@@ -5,7 +5,9 @@
 #   MethodInfo.Invoke (instance/static, args, return boxing, void, private,
 #   and target exception wrapping), the receiver, arity and argument checks
 #   MethodInfo/ConstructorInfo/PropertyInfo run before the target with .NET's
-#   messages, and the by-value argument conversions they accept,
+#   messages and the by-value argument conversions they accept
+#   (ReflectInvokeValidationSubset, which also pins that a CreateDelegate-bound
+#   delegate skips those checks and that a Nullable<T> result boxes as .NET's),
 #   delegate/interface dynamic dispatch via reflection, FieldInfo.GetValue/SetValue
 #   (instance/static/value-type/unbox), and a reflection-driven serializer
 #   (attribute-named members + enum names).
@@ -247,6 +249,9 @@ gate_extra_asserts() {
     grep -Fxq '== reflection invoke validation ==' "$out/metadata-layout.stdout"
     grep -Fxq 'target calls: 2' "$out/metadata-layout.stdout"
     grep -Fxq 'plain get, stray index: TargetParameterCountException' "$out/metadata-layout.stdout"
+    grep -Fxq 'bound ValueType delegate: boxed:5' "$out/metadata-layout.stdout"
+    grep -Fxq 'nullable result without value: null' "$out/metadata-layout.stdout"
+    grep -Fxq 'current number format: separator:.' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
     sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
