@@ -83,6 +83,7 @@ namespace ReflectTypes
             MemberHandleSubset.Program.Run();
             TaskRuntimeIdentitySubset.Program.Run();
             ReflectShallowCloneRefusalSubset.Program.RunUnwrappedProbe();
+            AttributeTypePropertySubset.Program.Run();
         }
     }
 }

@@ -299,6 +299,10 @@
 # (intrinsic levels are shape-ineligible), so the transpile completes and the
 # mint throws the catchable NotSupportedException where real .NET constructs.
 #
+# AttributeTypePropertySubset is a C++ compile test as much as a reflection one:
+# an attribute factory hands a Type-valued named property to its setter, whose
+# parameter is the managed System.Type pointer, not the runtime's Type handle.
+#
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"

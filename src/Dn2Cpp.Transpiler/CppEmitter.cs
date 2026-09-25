@@ -4433,7 +4433,11 @@ internal sealed partial class CppEmitter
         if (setter is null || !_c.Reachable.Contains(setter)
             || _backend.ShouldSkipMethodBody(setter.DeclaringClass, setter))
             return null;
-        return $"{setter.Emittable.CppName}(o, {val});";
+        // A pointer-typed value takes the same cast as a positional argument.
+        string paramT = CppTypes.Of(setter.Signature.ParameterTypes[0]);
+        return paramT.EndsWith("*")
+            ? $"{setter.Emittable.CppName}(o, ({paramT})({val}));"
+            : $"{setter.Emittable.CppName}(o, {val});";
     }
 
     /// <summary>An attribute argument value (positional or named) as an unboxed C++
