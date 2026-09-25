@@ -4832,9 +4832,11 @@ internal sealed partial class Compilation
             if (!m.IsVirtual)
                 continue;
             int slot = ExplicitBaseSlot(spec, m, classOverrides, owners.Count);
+            // A new-slot hider shadows the base slot it shares a signature with,
+            // so an override binds the most derived match.
             if (slot < 0 && !m.IsNewSlot)
             {
-                for (int i = 0; i < owners.Count; i++)
+                for (int i = owners.Count - 1; i >= 0; i--)
                 {
                     if (owners[i].Name == m.Name && owners[i].SigKey == m.SigKey)
                     {
