@@ -1360,9 +1360,9 @@ r-bindflags TimeSpan public|static = 25 instance = 0
 r-DIVERGES Type.GetFields = 0 Module.GetFields = 0
 r-DIVERGES methods int=0 decimal=0 string=0 StringBuilder=0
 r-DIVERGES props string=0 decimal=0 TimeSpan=0 DateTime=0
-r-DIVERGES itfs int=0 decimal=0 DateTime=0 StringBuilder=0
+r-ok itfs int:IConvertible=True decimal:IComparable=True DateTime:IFormattable=True StringBuilder:ISerializable=True
 r-ok assignable IConvertible<-int = True IComparable<-decimal = True IFormattable<-DateTime = True
-r-DIVERGES GetInterface IConvertible on int = null
+r-ok GetInterface IConvertible on int = IConvertible
 r-ok Marker[] itfs = 11 IList`1 = IList`1
 r-ok assignable IList<Marker><-Marker[] = True IEnumerable<-Marker[] = True
 r-closed TimeSpan[] itfs = 11 [ICloneable,ICollection,ICollection`1,IEnumerable,IEnumerable`1,IList,IList`1,IReadOnlyCollection`1,IReadOnlyList`1,IStructuralComparable,IStructuralEquatable]

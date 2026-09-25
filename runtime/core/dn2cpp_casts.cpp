@@ -107,6 +107,76 @@ const Dn2CppInterfaceEntry* dn2cpp_array_nongeneric_interfaces(
     return g_array_nongeneric_itfs;
 }
 
+// The relation rows, indexed by type-info: open addressing over a power-of-two table kept
+// at most half full, so every probe chain ends at an empty slot. Built once by the init
+// prologue before any managed code runs and never written again, which keeps the isinst
+// pair cache's purity argument below intact. Before the install the index is null and
+// every lookup misses.
+static const Dn2CppRelationRows* const* g_relation_index = nullptr;
+static uint32_t g_relation_index_mask = 0;
+
+static inline uint32_t dn2cpp_relation_slot(const Dn2CppTypeInfo* type, uint32_t mask)
+{
+    uint64_t h = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(type)) * UINT64_C(0x9E3779B97F4A7C15);
+    return static_cast<uint32_t>(h >> 32) & mask;
+}
+
+void dn2cpp_set_relation_rows(const Dn2CppRelationRows* sets, int32_t count)
+{
+    if (count <= 0)
+        return;
+    uint32_t size = 2;
+    while (size < 2u * static_cast<uint32_t>(count))
+        size <<= 1;
+    // Immortal: the readers hold no lock and the table is never replaced.
+    auto** index = new const Dn2CppRelationRows*[size]();
+    uint32_t mask = size - 1;
+    for (int32_t k = 0; k < count; k++)
+    {
+        uint32_t i = dn2cpp_relation_slot(sets[k].type, mask);
+        for (; index[i] != nullptr; i = (i + 1) & mask)
+            if (index[i]->type == sets[k].type)
+                dn2cpp_fail("dn2cpp_set_relation_rows: two relation row sets for one type-info");
+        index[i] = &sets[k];
+    }
+    g_relation_index_mask = mask;
+    g_relation_index = index;
+}
+
+const Dn2CppInterfaceEntry* dn2cpp_relation_interfaces(const Dn2CppTypeInfo* type, int32_t* count)
+{
+    if (g_relation_index != nullptr)
+        for (uint32_t i = dn2cpp_relation_slot(type, g_relation_index_mask);;
+             i = (i + 1) & g_relation_index_mask)
+        {
+            const Dn2CppRelationRows* r = g_relation_index[i];
+            if (r == nullptr)
+                break;
+            if (r->type == type)
+            {
+                *count = r->count;
+                return r->entries;
+            }
+        }
+    *count = 0;
+    return nullptr;
+}
+
+// Whether `t` itself, not a base, states `itf`: its own table first, then its relation
+// rows.
+static bool dn2cpp_rows_carry(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
+{
+    for (int32_t i = 0; i < t->interfaceCount; i++)
+        if (t->interfaces[i].itf == itf)
+            return true;
+    int32_t n;
+    const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(t, &n);
+    for (int32_t i = 0; i < n; i++)
+        if (rel[i].itf == itf)
+            return true;
+    return false;
+}
+
 // Is `itf` a closed generic whose definition declares a variant (`in`/`out`) type
 // parameter — i.e. can a request for it be answered by a DIFFERENT instantiation? The
 // pre-filter guarding every variant probe below, so the exact-match paths pay one flag
@@ -166,6 +236,20 @@ static int32_t dn2cpp_itf_variant_match(const Dn2CppTypeInfo* have, const Dn2Cpp
     return 1;
 }
 
+// Whether a row `t` itself states, own or relation, satisfies the variant `want`.
+static bool dn2cpp_rows_variant_match(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* want)
+{
+    for (int32_t i = 0; i < t->interfaceCount; i++)
+        if (dn2cpp_itf_variant_match(t->interfaces[i].itf, want))
+            return true;
+    int32_t n;
+    const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(t, &n);
+    for (int32_t i = 0; i < n; i++)
+        if (dn2cpp_itf_variant_match(rel[i].itf, want))
+            return true;
+    return false;
+}
+
 // (type, query-type) → answer side cache for the dispatch/cast walks below
 // (dn2cpp_try_resolve_interface, dn2cpp_isinst). Generated code resolves an
 // interface per CALL SITE (`dn2cpp_resolve_interface(recv->type, &ti_...)`), so
@@ -176,8 +260,9 @@ static int32_t dn2cpp_itf_variant_match(const Dn2CppTypeInfo* have, const Dn2Cpp
 // Soundness rests on three properties, each load-bearing:
 //  - The answer is a pure function of the (type, query) pair: a type-info's base
 //    chain and interface table never change after managed code can run. Every
-//    mutation of a published type-info, and both non-type-info walk inputs (the
-//    ref-element and MD array fallback tables), sit in the generated init prologue.
+//    mutation of a published type-info, and the non-type-info walk inputs (the
+//    ref-element and MD array fallback tables, the relation rows), sit in the
+//    generated init prologue.
 //    Runtime-constructed type-infos are fully built before publication, and patch
 //    re-loading is append-only — a new type-info is minted, never a rewrite.
 //  - Keys and values are immortal: every Dn2CppTypeInfo is a data-segment static or
@@ -879,6 +964,24 @@ const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeI
     }
     if (const void** slots = dn2cpp_resolve_interface_cached(t, itf))
         return slots;
+    // A relation row states a true CLR relation of a type-info whose own table cannot
+    // carry slots for it, and no map serves them: unsupported input, so catchable.
+    // Every other miss is a reachability hole.
+    for (const Dn2CppTypeInfo* c = t; c != nullptr && itf != nullptr; c = c->base)
+    {
+        int32_t n;
+        const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(c, &n);
+        for (int32_t i = 0; i < n; i++)
+            if (rel[i].itf == itf)
+            {
+                char msg[512];
+                std::snprintf(msg, sizeof msg,
+                    "'%s' implements '%s', but dn2cpp cannot call that interface's members on "
+                    "its runtime representation.", t->name != nullptr ? t->name : "?",
+                    itf->name != nullptr ? itf->name : "?");
+                dn2cpp_throw_not_supported_msg(msg);
+            }
+    }
     // Fatal anyway — name the failing pair so the miss is diagnosable from the
     // crash line alone (the abort backtrace rarely survives release builds).
     std::fprintf(stderr, "dn2cpp fatal: interface dispatch: %s has no map for %s\n",
@@ -906,13 +1009,8 @@ static int32_t dn2cpp_array_elem_assignable(const Dn2CppTypeInfo* se, const Dn2C
     if (de == &dn2cpp_object_type)
         return 1; // every reference element is assignable to object
     for (const Dn2CppTypeInfo* t = se; t != nullptr; t = t->base)
-    {
-        if (t == de)
+        if (t == de || dn2cpp_rows_carry(t, de))
             return 1;
-        for (int32_t i = 0; i < t->interfaceCount; i++)
-            if (t->interfaces[i].itf == de)
-                return 1;
-    }
     // Nested / interface-graph variance: when `de` is a variant interface instantiation, an
     // `se` that is not assignable to it by identity above may be by variance — either `se`
     // IS an instantiation of de's definition whose arguments sit the right way round (the
@@ -927,9 +1025,8 @@ static int32_t dn2cpp_array_elem_assignable(const Dn2CppTypeInfo* se, const Dn2C
         if (dn2cpp_itf_variant_match(se, de))
             return 1;
         for (const Dn2CppTypeInfo* t = se; t != nullptr; t = t->base)
-            for (int32_t i = 0; i < t->interfaceCount; i++)
-                if (dn2cpp_itf_variant_match(t->interfaces[i].itf, de))
-                    return 1;
+            if (dn2cpp_rows_variant_match(t, de))
+                return 1;
     }
     return 0;
 }
@@ -1158,15 +1255,8 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
         && ti->name != nullptr && std::strcmp(ti->name, "System.ValueType") == 0)
         return 1;
     for (const Dn2CppTypeInfo* t = st; t != nullptr; t = t->base)
-    {
-        if (t == ti)
+        if (t == ti || dn2cpp_rows_carry(t, ti))
             return 1;
-        for (int32_t i = 0; i < t->interfaceCount; i++)
-        {
-            if (t->interfaces[i].itf == ti)
-                return 1;
-        }
-    }
     // Variant interface cast: obj's I<Y> satisfies a variant I<X> when the arguments sit
     // the right way round — covariantly (IEnumerable<Cat> is an IEnumerable<Animal>) or
     // contravariantly (IComparer<Animal> is an IComparer<Cat>). Only entered when ti is a
@@ -1181,9 +1271,8 @@ static int32_t dn2cpp_isinst_walk(const Dn2CppTypeInfo* st, const Dn2CppTypeInfo
         if (dn2cpp_itf_variant_match(st, ti))
             return 1;
         for (const Dn2CppTypeInfo* t = st; t != nullptr; t = t->base)
-            for (int32_t i = 0; i < t->interfaceCount; i++)
-                if (dn2cpp_itf_variant_match(t->interfaces[i].itf, ti))
-                    return 1;
+            if (dn2cpp_rows_variant_match(t, ti))
+                return 1;
     }
     // A generic type DEFINITION needs no arm of its own: the walk above IS the answer.
     // Its shell carries the definition's SUBSTITUTION-INVARIANT relations — nearest

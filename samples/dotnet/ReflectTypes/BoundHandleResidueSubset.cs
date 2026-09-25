@@ -9,7 +9,7 @@ namespace BoundHandleResidueSubset
     // What a runtime-OWNED type-info answers about its own members, asked of every handle
     // BoundHandleSubset's fourteen primitives left out. Fields are closed — ten more
     // handles carry .NET's exact public field surface, and the four zeros are .NET's
-    // answer too, so inventing rows there must go red. Four declines, each asserted so it
+    // answer too, so inventing rows there must go red. The declines, each asserted so it
     // stays a stated boundary rather than a silence:
     //
     // - Type and Module. Their fields are MemberFilter/TypeFilter delegates and
@@ -19,10 +19,10 @@ namespace BoundHandleResidueSubset
     // - METHODS and PROPERTIES. Rows are not the cost: an owned handle's members are
     //   intrinsic — lowered at the call site, with no C++ body an invoker could name — so
     //   each row needs a hand-written invoker beside it, where a field row costs a constant.
-    // - INTERFACES. Enumeration stays empty for every owned handle but String and the
-    //   shared Enum, so the 0 below is structural rather than this program's reach; the
-    //   consuming question is answered without rows by dn2cpp_wellknown_itf_bit
-    //   (ConvertibleAssignabilitySubset above is its live oracle).
+    // - INTERFACES are CLOSED, not declined: an owned handle enumerates the interfaces of
+    //   its CLR type whose type-infos the image defines (the relation rows the init
+    //   prologue installs), so the lines below ask named membership, which is .NET's
+    //   answer, where a count would track what the image names.
     // - The ARRAY sibling is CLOSED, not declined: a value element's SZArray map is wired
     //   eagerly (Compilation.ExpandArrayEnumerableMaps), and the two shapes that loop must
     //   skip — an intrinsic value element, a struct with no default equality — carry the
@@ -91,6 +91,14 @@ namespace BoundHandleResidueSubset
             if (v is TimeSpan ts)
                 return ts.Ticks.ToString(CultureInfo.InvariantCulture);
             return Convert.ToString(v, CultureInfo.InvariantCulture);
+        }
+
+        private static bool Lists(Type t, Type itf)
+        {
+            foreach (Type i in t.GetInterfaces())
+                if (i == itf)
+                    return true;
+            return false;
         }
 
         private static void Fields(string label, Type t)
@@ -165,22 +173,20 @@ namespace BoundHandleResidueSubset
                 + " decimal=" + typeof(decimal).GetProperties().Length
                 + " TimeSpan=" + typeof(TimeSpan).GetProperties().Length
                 + " DateTime=" + typeof(DateTime).GetProperties().Length);
-            // DIVERGES from real .NET (32 / 31 / 10 / 1 interfaces). typeof(string) is
-            // deliberately not counted here — its rows ARE this program's dispatch map,
-            // where these four are structurally row-less.
-            Console.WriteLine("r-DIVERGES itfs int=" + typeof(int).GetInterfaces().Length
-                + " decimal=" + typeof(decimal).GetInterfaces().Length
-                + " DateTime=" + typeof(DateTime).GetInterfaces().Length
-                + " StringBuilder=" + typeof(StringBuilder).GetInterfaces().Length);
-            // The half that is NOT declined, beside it: enumeration lags, the pair-gate
-            // a real consumer asks does not.
+            // Membership, not a count: the list is the subset of .NET's the image names.
+            Console.WriteLine("r-ok itfs int:IConvertible=" + Lists(typeof(int), typeof(IConvertible))
+                + " decimal:IComparable=" + Lists(typeof(decimal), typeof(IComparable))
+                + " DateTime:IFormattable=" + Lists(typeof(DateTime), typeof(IFormattable))
+                + " StringBuilder:ISerializable="
+                + Lists(typeof(StringBuilder), typeof(System.Runtime.Serialization.ISerializable)));
+            // The pair-gate a real consumer asks agrees with the enumeration.
             Console.WriteLine("r-ok assignable IConvertible<-int = "
                 + typeof(IConvertible).IsAssignableFrom(typeof(int))
                 + " IComparable<-decimal = "
                 + typeof(IComparable).IsAssignableFrom(typeof(decimal))
                 + " IFormattable<-DateTime = "
                 + typeof(IFormattable).IsAssignableFrom(typeof(DateTime)));
-            Console.WriteLine("r-DIVERGES GetInterface IConvertible on int = "
+            Console.WriteLine("r-ok GetInterface IConvertible on int = "
                 + (typeof(int).GetInterface("IConvertible")?.Name ?? "null"));
             // The array half's POSITIVE control (header's fourth decline): a struct
             // element nothing casts still enumerates like .NET, so a change that stopped

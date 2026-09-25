@@ -2078,6 +2078,25 @@ void dn2cpp_array_set_nongeneric_interfaces(const Dn2CppInterfaceEntry* entries,
 // caller may ask about any type; *count receives the row count (0 when null).
 const Dn2CppInterfaceEntry* dn2cpp_array_nongeneric_interfaces(
     const Dn2CppTypeInfo* ti, int32_t* count);
+// The CLR interface relations of a type-info whose own table cannot carry dispatch slots
+// for them: a runtime-held handle, or the emitted ti_ of an intrinsic-shaped class with no
+// runtime handle. Each row is an interface of its CLR type, over the base chain and
+// interface bases, whose type-info the image defines; every row's slots are nullptr.
+struct Dn2CppRelationRows
+{
+    const Dn2CppTypeInfo* type;
+    const Dn2CppInterfaceEntry* entries;
+    int32_t count;
+};
+// Installs the image's relation rows, one set per type-info. Called once from the
+// generated init prologue before any managed code runs, and read-only afterwards. Only
+// the type tests and the interface enumerators read them. Dispatch never resolves a slot
+// through one: a call a relation admits but no map serves is a catchable
+// NotSupportedException (dn2cpp_resolve_interface).
+void dn2cpp_set_relation_rows(const Dn2CppRelationRows* sets, int32_t count);
+// The relation rows installed for exactly `type` (not its bases), or nullptr with
+// *count 0.
+const Dn2CppInterfaceEntry* dn2cpp_relation_interfaces(const Dn2CppTypeInfo* type, int32_t* count);
 // Installs an interface-dispatch map onto an INTRINSIC type's runtime-owned type-info.
 // An intrinsic type has no per-class emitted type-info to carry a map, so without this
 // every interface mouth — `using (…)`, an interface-typed local, an isinst/castclass —

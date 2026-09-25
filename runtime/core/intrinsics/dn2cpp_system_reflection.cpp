@@ -359,13 +359,16 @@ static inline bool dn2cpp_itf_row_is_canonical_alias(const Dn2CppInterfaceEntry&
 // The interface rows a type EXPOSES as CLR types: its own table, plus — for an array —
 // the shared relation-only rows for the six non-generic interfaces every CLR array
 // implements, which no per-type table can carry (see
-// dn2cpp_array_set_nongeneric_interfaces in dn2cpp_core.h). All three enumerating
-// readers below go through this one iterator, so they cannot disagree about what the
-// interface list IS.
+// dn2cpp_array_set_nongeneric_interfaces in dn2cpp_core.h), plus the relation rows of a
+// type-info whose own table cannot carry them (dn2cpp_set_relation_rows). All three
+// enumerating readers below go through this one iterator, so they cannot disagree about
+// what the interface list IS.
 //
 // Two exclusions: a canonical ALIAS row is a dispatch handle, not a CLR type, so it
-// never reaches a managed Type; and a shared array row is dropped when the type's own
-// table already carries it (an SZArray map carries IEnumerable/ICollection/IList).
+// never reaches a managed Type; and a relation or shared array row is dropped when an
+// earlier source already carries it (an SZArray map carries IEnumerable/ICollection/
+// IList, String's dispatch map its dispatched interfaces, System.Array's relation rows
+// all six shared array rows).
 // Hence the count is derived by COUNTING rather than read off interfaceCount — alias
 // rows interleave with the real ones in the string and SZArray dispatch maps, so "the
 // real rows are a prefix" does not hold.
@@ -376,10 +379,14 @@ struct Dn2CppEffectiveItfs
     const Dn2CppTypeInfo* ti;
     const Dn2CppInterfaceEntry* extra;
     int32_t extraCount;
+    const Dn2CppInterfaceEntry* rel;
+    int32_t relCount;
 
-    explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type) : ti(type), extra(nullptr), extraCount(0)
+    explicit Dn2CppEffectiveItfs(const Dn2CppTypeInfo* type)
+        : ti(type), extra(nullptr), extraCount(0), rel(nullptr), relCount(0)
     {
         extra = dn2cpp_array_nongeneric_interfaces(type, &extraCount);
+        rel = dn2cpp_relation_interfaces(type, &relCount);
     }
 
     bool OwnRowCarries(const Dn2CppTypeInfo* itf) const
@@ -390,14 +397,27 @@ struct Dn2CppEffectiveItfs
         return false;
     }
 
-    // Calls fn(itf) once per reported interface, in table order then extra order.
+    bool RelationRowCarries(const Dn2CppTypeInfo* itf) const
+    {
+        for (int32_t i = 0; i < relCount; i++)
+            if (rel[i].itf == itf)
+                return true;
+        return false;
+    }
+
+    // Calls fn(itf) once per reported interface: table order, then relation order (the
+    // CLR type's own metadata order), then extra order.
     template <typename F> void ForEach(F fn) const
     {
         for (int32_t i = 0; i < ti->interfaceCount; i++)
             if (!dn2cpp_itf_row_is_canonical_alias(ti->interfaces[i]) && ti->interfaces[i].itf != nullptr)
                 fn(ti->interfaces[i].itf);
+        for (int32_t i = 0; i < relCount; i++)
+            if (rel[i].itf != nullptr && !OwnRowCarries(rel[i].itf))
+                fn(rel[i].itf);
         for (int32_t i = 0; i < extraCount; i++)
-            if (extra[i].itf != nullptr && !OwnRowCarries(extra[i].itf))
+            if (extra[i].itf != nullptr && !OwnRowCarries(extra[i].itf)
+                && !RelationRowCarries(extra[i].itf))
                 fn(extra[i].itf);
     }
 
@@ -413,7 +433,8 @@ struct Dn2CppEffectiveItfs
 // Type.GetInterfaces(): the interfaces recorded in the type's interface table, wrapped as
 // Type[]. The table holds the transitive set built at emit time — for interfaces, abstract
 // classes and never-boxed value types it is a relation-only table (nullptr slots), emitted
-// precisely so this and IsAssignableFrom answer — plus the shared array rows above.
+// precisely so this and IsAssignableFrom answer — plus the relation rows and the shared
+// array rows above.
 Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
 {
     const Dn2CppTypeInfo* ti = dn2cpp_type_require(t);
@@ -4853,7 +4874,7 @@ Dn2CppArrayRef* dn2cpp_type_find_interfaces(Dn2CppType* t, Dn2CppObject* filter,
 }
 
 // Type.ImplementInterface (internal BCL helper behind TypeInfo.IsAssignableFrom):
-// interface-set membership over the base chain's dispatch tables.
+// interface-set membership over the base chain's own tables and relation rows.
 int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
 {
     dn2cpp_type_require(t);
@@ -4861,9 +4882,16 @@ int32_t dn2cpp_type_implement_interface(Dn2CppType* t, Dn2CppType* itf)
         return 0;
     const Dn2CppTypeInfo* target = itf->typeInfo;
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
+    {
         for (int32_t i = 0; i < ti->interfaceCount; i++)
             if (ti->interfaces[i].itf == target)
                 return 1;
+        int32_t n;
+        const Dn2CppInterfaceEntry* rel = dn2cpp_relation_interfaces(ti, &n);
+        for (int32_t i = 0; i < n; i++)
+            if (rel[i].itf == target)
+                return 1;
+    }
     return 0;
 }
 

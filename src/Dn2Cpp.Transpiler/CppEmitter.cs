@@ -2799,6 +2799,10 @@ internal sealed partial class CppEmitter
         // code can `using`-dispose one through the interface.
         foreach (var (tiSym, sym, count) in _intrinsicItfMaps)
             sb.AppendLine($"    dn2cpp_intrinsic_set_interfaces(&{tiSym}, {sym}, {count});");
+        // The relation rows before any managed code can run a type test: the isinst pair
+        // cache must never hold an answer from before.
+        if (_relationRowSets is { } rrs)
+            sb.AppendLine($"    dn2cpp_set_relation_rows({rrs.Sym}, {rrs.Count});");
         // The shared reference-element SZArray fallback table goes in before any managed
         // code too: a cctor can already dispatch a collection interface on an array it
         // reached through `object` (or on a runtime-built attribute array).
@@ -3111,6 +3115,7 @@ internal sealed partial class CppEmitter
             }
             sb.AppendLine($"static const void* str_itf_{i}[] = {{ {string.Join(", ", slots)} }};");
             entries.Add($"{{ {TypeInfoRef(disp.Itf, "String interface-dispatch map")}, str_itf_{i} }}");
+            NoteRuntimeMapInterface(CoreIntrinsics.RuntimeTypeInfoSymbol("System.String")!, disp.Itf);
             if (_c.SharedGenericsEnabled && _c.CanonicalInterfaceOf(disp.Itf) is { } citf)
                 entries.Add($"{{ {TypeInfoRef(citf, "String interface-dispatch map (canonical alias row)")}, str_itf_{i} }}");
             i++;
@@ -3294,6 +3299,7 @@ internal sealed partial class CppEmitter
                 slots[slot] = $"(const void*)&{row.ThunkSym}";
                 sb.AppendLine($"static const void* intr_itf_{thunk}[] = {{ {string.Join(", ", slots)} }};");
                 entries.Add($"{{ {TypeInfoRef(info.Itf, "intrinsic-type interface-dispatch map")}, intr_itf_{thunk} }}");
+                NoteRuntimeMapInterface("&" + typeInfoSym, info.Itf);
                 thunk++;
                 end++;
             }
@@ -3302,6 +3308,143 @@ internal sealed partial class CppEmitter
             _intrinsicItfMaps.Add((typeInfoSym, mapSym, entries.Count));
             begin = end;
         }
+    }
+
+    /// <summary>The interfaces the String and intrinsic dispatch maps carry, by the handle
+    /// each map is installed onto, so a relation row never repeats a map row.</summary>
+    private readonly Dictionary<string, HashSet<ClassInfo>> _runtimeMapItfs = new(StringComparer.Ordinal);
+
+    private void NoteRuntimeMapInterface(string handle, ClassInfo itf)
+    {
+        if (!_runtimeMapItfs.TryGetValue(handle, out var itfs))
+            _runtimeMapItfs[handle] = itfs = new HashSet<ClassInfo>();
+        itfs.Add(itf);
+    }
+
+    /// <summary>The relation row set array + its set count, or null when no type-info
+    /// without a dispatch table has a relation this image can name. Installed by
+    /// <see cref="EmitInitCalls"/>; file-local to the primary Data TU the init prologue
+    /// lands in, like the intrinsic maps.</summary>
+    private (string Sym, int Count)? _relationRowSets;
+
+    /// <summary>Whether a relation-only row may name <paramref name="itf"/>: only when this
+    /// emission defines its type-info. Rows are filtered by it, never force-emitted, so a
+    /// relation answer is a subset of .NET's and no row names an undefined symbol.</summary>
+    private bool RelationRowDefined(ClassInfo itf) => TypeInfoSymbolDefined(itf.CppTypeInfoName);
+
+    /// <summary>The intrinsic-shaped classes whose emitted ti_ is their only type-info, in
+    /// class-loop order. Their own tables stay empty, so
+    /// <see cref="EmitRelationRows"/> states their relations.</summary>
+    private readonly List<ClassInfo> _intrinsicShellRelations = [];
+
+    /// <summary>Whether an intrinsic shell's relation row may name <paramref name="itf"/>:
+    /// a defined type-info not lowered as the headerless NumberFormatInfo handle.
+    /// <c>dn2cpp_nfi_isinst</c> hands back an object that passes that type test
+    /// reinterpreted as the handle, and a shell's instance is no NFI box.</summary>
+    private bool IntrinsicShellRelation(ClassInfo itf) =>
+        RelationRowDefined(itf) && !MethodCompiler.IsNfiCppType(CppTypes.Of(TypeDesc.MakeClass(itf)));
+
+    /// <summary>Emits, as relation-only rows the init prologue installs, the CLR interface
+    /// relations of the type-infos whose own tables cannot carry dispatch slots for them:
+    /// the runtime-held handles, then the intrinsic shells. A handle answers for its
+    /// representative class: that class's interface closure, filtered by
+    /// <see cref="RelationRowDefined"/>, minus what the handle's own dispatch map carries.
+    /// A handle bound in this image takes none, since its bind copies the emitted rows
+    /// in.</summary>
+    private void EmitRelationRows(StringBuilder sb)
+    {
+        var namesByHandle = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var (name, handle) in CoreIntrinsics.RuntimeTypeInfoRows())
+        {
+            if (!namesByHandle.TryGetValue(handle, out var names))
+                namesByHandle[handle] = names = new List<string>();
+            names.Add(name);
+        }
+        var handles = new List<string>(namesByHandle.Keys);
+        handles.Sort(StringComparer.Ordinal);
+        var sets = new List<string>();
+        // Byte-identical row tables are one table: every unbound exception stub states
+        // the same relations.
+        var tables = new Dictionary<string, string>(StringComparer.Ordinal);
+        void AddSet(string type, List<string> rows)
+        {
+            if (sets.Count == 0)
+                sb.AppendLine("// ---- relation rows of type-infos without dispatch tables (installed at init) ----");
+            string init = string.Join(", ", rows);
+            if (!tables.TryGetValue(init, out var sym))
+            {
+                sym = $"rel_itfs_{tables.Count}";
+                sb.AppendLine($"static const Dn2CppInterfaceEntry {sym}[] = {{ {init} }};");
+                tables[init] = sym;
+            }
+            sets.Add($"{{ {type}, {sym}, {rows.Count} }}");
+        }
+        foreach (string handle in handles)
+        {
+            if (RelationRepresentative(namesByHandle[handle]) is not { } cls
+                || cls.IsInterface || cls.GenericArity > 0 || _typeBinds.Contains(cls)
+                || cls.FullName is "System.Object" or "System.Enum")
+                continue;
+            _runtimeMapItfs.TryGetValue(handle, out var mapped);
+            var rows = new List<string>();
+            foreach (var itf in ClrInterfaceClosure(cls))
+                if (RelationRowDefined(itf) && (mapped is null || !mapped.Contains(itf)))
+                    rows.Add($"{{ {TypeInfoRef(itf, "runtime-held type-info relation row")}, nullptr }}");
+            if (rows.Count > 0)
+                AddSet(handle, rows);
+        }
+        foreach (var shell in _intrinsicShellRelations)
+        {
+            var rows = new List<string>();
+            foreach (var itf in ClrInterfaceClosure(shell))
+                if (IntrinsicShellRelation(itf))
+                    rows.Add($"{{ {TypeInfoRef(itf, "intrinsic shell relation row")}, nullptr }}");
+            if (rows.Count > 0)
+                AddSet(TypeInfoRef(shell, "intrinsic shell relation row set"), rows);
+        }
+        if (sets.Count == 0)
+            return;
+        sb.AppendLine($"static const Dn2CppRelationRows rel_itf_sets[] = {{ {string.Join(", ", sets)} }};");
+        _relationRowSets = ("rel_itf_sets", sets.Count);
+    }
+
+    /// <summary>The class a runtime handle states relations for: among the CLR names it
+    /// models that load, the one each of the others derives from, whose relations hold for
+    /// all of them (System.Type for Type, RuntimeType and TypeInfo). Null when none
+    /// is.</summary>
+    private ClassInfo? RelationRepresentative(List<string> names)
+    {
+        var loaded = new List<ClassInfo>();
+        foreach (string name in names)
+            if (_c.FindClassByFullName(name) is { } c)
+                loaded.Add(c);
+        foreach (var candidate in loaded)
+        {
+            bool root = true;
+            foreach (var other in loaded)
+                if (!Compilation.DerivesFromOrIs(other, candidate))
+                    root = false;
+            if (root)
+                return candidate;
+        }
+        return null;
+    }
+
+    /// <summary>Every CLR interface <paramref name="cls"/> implements: the lists of its base
+    /// chain in metadata order, then each interface's own bases, deduplicated.</summary>
+    private static List<ClassInfo> ClrInterfaceClosure(ClassInfo cls)
+    {
+        var closure = new List<ClassInfo>();
+        var seen = new HashSet<ClassInfo>();
+        for (var c = cls; c is not null; c = c.BaseClass)
+            foreach (var itf in c.Interfaces)
+                if (seen.Add(itf))
+                    closure.Add(itf);
+        for (int i = 0; i < closure.Count; i++)
+            foreach (var sup in closure[i].Interfaces)
+                if (seen.Add(sup))
+                    closure.Add(sup);
+        return closure;
     }
 
     /// <summary>Per-element array type-infos: one <c>ti_arr_&lt;T&gt;</c> per
