@@ -308,7 +308,8 @@ for byref_mode in overwrite overwrite-int64 copy; do
     run_bounded dotnet "$byref_app" > "$byref_dir/dotnet.stdout"
     grep -Fxq 'ldftn-local-direct=2/Subtract' "$byref_dir/dotnet.stdout"
     sed '/^ldftn-local-begin/,$d' "$byref_dir/dotnet.stdout" > "$byref_dir/dotnet-prefix.stdout"
-    diff -u "$invalid_out/byref-prefix.stdout" "$byref_dir/dotnet-prefix.stdout"
+    diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
+        <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
     byref_status=0
     run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
         -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
