@@ -7,7 +7,9 @@
 #   MethodInfo/ConstructorInfo/PropertyInfo run before the target with .NET's
 #   messages and the by-value argument conversions they accept
 #   (ReflectInvokeValidationSubset, which also pins that a CreateDelegate-bound
-#   delegate skips those checks and that a Nullable<T> result boxes as .NET's),
+#   delegate skips those checks, that a Nullable<T> result boxes as .NET's, and
+#   that a boxed built-in or a string passes the argument check for every CLR
+#   interface its type implements and fails it for one it does not),
 #   delegate/interface dynamic dispatch via reflection, FieldInfo.GetValue/SetValue
 #   (instance/static/value-type/unbox), and a reflection-driven serializer
 #   (attribute-named members + enum names).
@@ -103,6 +105,16 @@
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
+# RuntimeHandleRelationSubset asserts the CLR relations of objects whose type-info
+# the runtime writes by hand — the reflection objects, Assembly and Module,
+# StringBuilder, Exception and the exceptions the runtime raises from real faults,
+# the synchronization handles, Thread, Task, the culture wrappers — and of
+# System.Array: the type test, IsAssignableFrom, BaseType chains, named interface
+# membership and the invoke argument checks, then `using`, an IDisposable-typed
+# Dispose and a reflected IDisposable.Dispose over the synchronization handles. Its
+# greps pin the init-prologue installs those answers come from: the relation rows,
+# SystemException spliced under the runtime NullReferenceException's handle, and
+# SemaphoreSlim's IDisposable map.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -252,10 +264,29 @@ gate_extra_asserts() {
     grep -Fxq 'bound ValueType delegate: boxed:5' "$out/metadata-layout.stdout"
     grep -Fxq 'nullable result without value: null' "$out/metadata-layout.stdout"
     grep -Fxq 'current number format: separator:.' "$out/metadata-layout.stdout"
+    grep -Fxq 'number from int: number:7' "$out/metadata-layout.stdout"
+    grep -Fxq 'number from long: ArgumentException' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_INVOKE_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-invoke-validation.stdout"
     sed '/^== reflection invoke validation ==/,$d' "$out/metadata-layout.stdout" > "$out/invoke-validation-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-invoke-validation.stdout") \
         <(strip_cr_win_file "$out/invoke-validation-prefix.stdout")
+    grep -Fxq '== runtime handle relations ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime NullReferenceException chain: NullReferenceException > SystemException > Exception > Object' "$out/metadata-layout.stdout"
+    grep -Fxq 'ManualResetEvent after IDisposable: ObjectDisposedException' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime handle relations end' "$out/metadata-layout.stdout"
+    local install
+    for install in 'dn2cpp_set_relation_rows(rel_itf_sets, ' \
+            'dn2cpp_intrinsic_set_base(&dn2cpp_null_reference_exception_type, &ti_System_SystemException);' \
+            'dn2cpp_intrinsic_set_interfaces(&dn2cpp_semaphore_type, '; do
+        if ! grep -Fq "$install" "$out"/generated*.cpp; then
+            printf 'error: the init prologue lacks %s\n' "$install" >&2
+            return 1
+        fi
+    done
+    DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-handle-relations.stdout"
+    sed '/^== runtime handle relations ==/,$d' "$out/metadata-layout.stdout" > "$out/runtime-handle-relations-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
+        <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

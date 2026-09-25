@@ -1,7 +1,10 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using System.Reflection;
+using System.Runtime.Serialization;
 
 namespace ReflectInvokeValidationSubset;
 
@@ -75,6 +78,14 @@ static class Coerce
     public static Point? MaybeAt(bool has) => has ? new Point { X = 1, Y = 2 } : null;
     public static string Culture(CultureInfo culture) => "culture:[" + culture.Name + "]";
     public static string Separator(NumberFormatInfo info) => "separator:" + info.NumberDecimalSeparator;
+    public static string Utf8(IUtf8SpanFormattable value) => "utf8:" + value;
+    public static string Serial(ISerializable value) => "serializable:" + value;
+    public static string Number(INumber<int> value) => "number:" + value;
+    public static string Bounded(IMinMaxValue<long> value) => "bounded:" + value;
+    public static string Chars(IEnumerable<char> value) => "chars:" + value;
+    public static string Ordered(IComparable<string> value) => "ordered:" + value;
+    public static string Copyable(ICloneable value) => "cloneable:" + value;
+    public static string Parsable(ISpanParsable<string> value) => "parsable:" + value;
 }
 
 class Holder
@@ -285,5 +296,31 @@ static class Program
             () => typeof(Coerce).GetMethod("Culture")!.Invoke(null, new object[] { culture }));
         Try("current number format",
             () => typeof(Coerce).GetMethod("Separator")!.Invoke(null, new object[] { NumberFormatInfo.CurrentInfo }));
+
+        // A boxed built-in or a string passes for every CLR interface its type
+        // implements, beyond the ones a dispatch table serves, and fails for one it
+        // does not implement.
+        MethodInfo utf8 = typeof(Coerce).GetMethod("Utf8")!;
+        MethodInfo serial = typeof(Coerce).GetMethod("Serial")!;
+        MethodInfo number = typeof(Coerce).GetMethod("Number")!;
+        MethodInfo bounded = typeof(Coerce).GetMethod("Bounded")!;
+        Try("utf8 from int", () => utf8.Invoke(null, new object[] { 5 }));
+        Try("utf8 from decimal", () => utf8.Invoke(null, new object[] { 2.5m }));
+        Try("utf8 from TimeSpan", () => utf8.Invoke(null, new object[] { TimeSpan.FromSeconds(3) }));
+        Try("utf8 from DateOnly", () => utf8.Invoke(null, new object[] { new DateOnly(2020, 1, 2) }));
+        Try("utf8 from bool", () => utf8.Invoke(null, new object[] { true }));
+        Try("utf8 from string", () => utf8.Invoke(null, new object[] { "s" }));
+        Try("serializable from decimal", () => serial.Invoke(null, new object[] { 2.5m }));
+        Try("serializable from DateTime", () => serial.Invoke(null, new object[] { new DateTime(2020, 1, 2) }));
+        Try("serializable from IntPtr", () => serial.Invoke(null, new object[] { (nint)7 }));
+        Try("serializable from TimeSpan", () => serial.Invoke(null, new object[] { TimeSpan.FromSeconds(3) }));
+        Try("number from int", () => number.Invoke(null, new object[] { 7 }));
+        Try("number from long", () => number.Invoke(null, new object[] { 7L }));
+        Try("bounded from long", () => bounded.Invoke(null, new object[] { 7L }));
+        Try("bounded from int", () => bounded.Invoke(null, new object[] { 7 }));
+        Try("chars from string", () => typeof(Coerce).GetMethod("Chars")!.Invoke(null, new object[] { "abc" }));
+        Try("ordered from string", () => typeof(Coerce).GetMethod("Ordered")!.Invoke(null, new object[] { "abc" }));
+        Try("cloneable from string", () => typeof(Coerce).GetMethod("Copyable")!.Invoke(null, new object[] { "abc" }));
+        Try("parsable from string", () => typeof(Coerce).GetMethod("Parsable")!.Invoke(null, new object[] { "abc" }));
     }
 }

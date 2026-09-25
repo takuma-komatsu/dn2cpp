@@ -44,6 +44,11 @@ namespace BoxingPrimitives
     //     family's format specifier through all four of its mouths (interpolation
     //     hole, string.Format hole, IFormattable, ISpanFormattable). It is also the
     //     only coverage of the runtime's 64-bit enum member table.
+    //   * BoxedClrRelationSubset asks the CLR interfaces a boxed built-in implements
+    //     beyond its dispatch arm — generic math, parsing, UTF-8 formatting and
+    //     serialization — through the type test and IsAssignableFrom, String's through
+    //     reflection alone, and calls IUtf8SpanFormattable.TryFormat through the
+    //     interface.
     internal static class Program
     {
         private static void Main()
@@ -64,6 +69,9 @@ namespace BoxingPrimitives
             ConstrainedObjectEqualsSubset.Program.Run();
             PrimitiveObjectCompareSubset.Program.Run();
             PrimitiveEqualsObjectSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_BOXED_CLR_RELATIONS") == "1")
+                return;
+            BoxedClrRelationSubset.Program.Run();
         }
     }
 }

@@ -52,6 +52,15 @@
 #   * PrimitiveEqualsObjectSubset — Equals(object) over every non-floating primitive
 #     value type: same-type payload, sub-word/pointer edge cases, wrapper structs, and
 #     virtual method groups over boxed byte/int/nint receivers.
+#   * BoxedClrRelationSubset — the CLR interfaces a boxed primitive, decimal or date
+#     type implements beyond its dispatch arm (INumber<T>, IBinaryInteger<T>,
+#     IAdditionOperators, IMinMaxValue<T>, IParsable<T>/ISpanParsable<T>,
+#     IUtf8SpanFormattable, ISerializable, IDeserializationCallback), asked through the
+#     type test and IsAssignableFrom with negatives beside them; String's asked through
+#     reflection alone; and IUtf8SpanFormattable.TryFormat called through the
+#     interface into a fitting and a too-small buffer. Its extra asserts pin that
+#     Int32's answers come from the relation rows the init prologue installs, and that
+#     the output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -77,6 +86,27 @@ gate_extra_asserts() {
         fi
     done
     echo "sub-word and pointer Equals(object) real bodies are absent: OK"
+
+    run_bounded "$out/BoxingPrimitives$EXE_EXT" > "$out/native.stdout"
+    grep -Fxq '== boxed CLR relations ==' "$out/native.stdout"
+    grep -Fxq 'int INumber<int>: is=True assignable=True' "$out/native.stdout"
+    grep -Fxq 'int INumber<long>: is=False assignable=False' "$out/native.stdout"
+    grep -Fxq 'utf8 int X4: True:4:30304646' "$out/native.stdout"
+    DN2CPP_BEFORE_BOXED_CLR_RELATIONS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
+        > "$out/before-boxed-clr-relations.stdout"
+    sed '/^== boxed CLR relations ==/,$d' "$out/native.stdout" > "$out/boxed-clr-relations-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-boxed-clr-relations.stdout") \
+        <(strip_cr_win_file "$out/boxed-clr-relations-prefix.stdout")
+    # Int32's row set in the init prologue's relation table names INumber<int>.
+    local int_rows
+    int_rows=$(grep -ho '{ &dn2cpp_int32_type, rel_itfs_[0-9]*,' "$out"/generated*.cpp \
+        | grep -o 'rel_itfs_[0-9]*' || true)
+    if [ -z "$int_rows" ] || ! grep -Eq "^static const Dn2CppInterfaceEntry $int_rows\[\] = .*\{ &ti_System_Numerics_INumber_Int32, nullptr \}" \
+            "$out"/generated*.cpp; then
+        echo "FAIL: Int32's relation rows do not name INumber<int>" >&2
+        return 1
+    fi
+    echo "boxed CLR relations answered from the relation rows: OK"
 }
 
 corelib_diff_gate BoxingPrimitives
