@@ -62,6 +62,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS") == "1")
                 return;
             RuntimeHandleRelationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_VIRTUAL_INVOKE") == "1")
+                return;
+            ReflectVirtualInvokeSubset.Program.Run();
         }
     }
 }

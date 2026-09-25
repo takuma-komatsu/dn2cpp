@@ -888,7 +888,8 @@ struct Dn2CppMethodInfo
     void* fnPtr;
     // Signature-deduplicated invoker thunk: unboxes/casts the boxed args,
     // calls fnPtr with the right C++ signature, and boxes the result. null when the
-    // method body was not reached/emitted (Invoke then throws). Shape:
+    // method body was not reached/emitted (Invoke then throws), except on a bodiless
+    // virtual row: Invoke hands its thunk the receiver's slot. Shape:
     //   Dn2CppObject* (*)(void* fn, Dn2CppObject* self, Dn2CppObject** args,
     //                     const Dn2CppTypeInfo* retType)
     void* invoker;
@@ -2540,6 +2541,10 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+// Whether `fn` is a vtable dispatch trap — the shared symbol or one of the registered
+// per-signature thunks — for probes that must not CALL a trapped slot to find out
+// (the trap aborts). A struct-returning slot's per-slot stub is not recognised.
+bool dn2cpp_is_vcall_trap(const void* fn);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();

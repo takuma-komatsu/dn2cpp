@@ -3504,6 +3504,63 @@ internal sealed partial class Compilation
         return added;
     }
 
+    /// <summary>MethodBase.Invoke, PropertyInfo.GetValue/SetValue and a CreateDelegate
+    /// binding run a class virtual row, or an interface row with a default body,
+    /// through the receiver's slot, as a callvirt would (dn2cpp_invoke_row), so each
+    /// such invocable row is a used slot with no call site. Reachability must be at
+    /// least as generous as that dispatch, or the receiver's slot holds a trap. A
+    /// class row is invocable once reached, or when abstract (its thunk is
+    /// signature-only), and runs only on receivers derived from its class, so a used
+    /// declaration of the slot on that class or a base already covers it. Only a
+    /// user module's rows are marked: marking a framework row reaches every allocated
+    /// framework override of its slot, which need not transpile, so a framework row's
+    /// receiver whose override is missing throws at the call instead. Driven each
+    /// round, like the array maps above: the flags, the reached set and the decoded
+    /// classes all grow while bodies compile.</summary>
+    public void ReachReflectedVirtualSlots()
+    {
+        if (!_reflectionInvokeUsed && !NeedsReflectionDelegateBind)
+            return;
+        bool marked = false;
+        // Snapshot: a reached body's signature decode can append classes.
+        foreach (var cls in Classes.ToList())
+        {
+            // A value type's row is sealed; an intrinsic type carries no rows.
+            if (!cls.MembersReady || !IsUserModule(cls.Module) || cls.IsValueType || cls.IsDelegate
+                || cls.IntrinsicCppName is not null || CoreIntrinsics.IsIntrinsicType(cls.FullName))
+                continue;
+            var methods = cls.Methods;
+            for (int i = 0; i < methods.Count; i++)
+            {
+                var m = methods[i];
+                if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0 || _usedVirtualDecls.Contains(m))
+                    continue;
+                // A library's default body has a row only once reached. Marking
+                // bodiless interface rows would reach every implementer's whole
+                // interface surface.
+                if (cls.IsInterface
+                    ? m.Rva == 0 || (cls.Module != AppModule && !Reachable.Contains(m))
+                    : !m.IsAbstract && !Reachable.Contains(m))
+                    continue;
+                if (!cls.IsInterface && ClassSlotUsedAtOrAbove(m))
+                    continue;
+                ReachUsedVirtual(m);
+                marked = true;
+            }
+        }
+        if (marked)
+            DrainReachability();
+    }
+
+    private bool ClassSlotUsedAtOrAbove(MethodInfo m)
+    {
+        int slot = m.VtableSlot;
+        for (var b = m.DeclaringClass; b is not null && slot < b.SlotOwners.Count; b = b.BaseClass)
+            if (_usedVirtualDecls.Contains(b.SlotOwners[slot]))
+                return true;
+        return false;
+    }
+
     /// <summary>Wires the <c>object</c>-element SZArray map once any REFERENCE-element
     /// array is noted — the shared fallback dispatch table. A collection-
     /// interface call on an array reached through an <c>object</c>-typed variable (or on

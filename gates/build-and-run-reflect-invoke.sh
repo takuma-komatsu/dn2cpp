@@ -115,6 +115,16 @@
 # greps pin the init-prologue installs those answers come from: the relation rows,
 # SystemException spliced under the runtime NullReferenceException's handle, and
 # SemaphoreSlim's IDisposable map.
+# ReflectVirtualInvokeSubset asserts that MethodInfo.Invoke,
+# PropertyInfo.GetValue/SetValue and a CreateDelegate binding entered through a
+# virtual row run the receiver's most derived body in that row's slot, as a callvirt
+# does: base and middle rows over overrides, abstract rows (which check the receiver
+# and arguments first), new-slot hiders and their overrides, sealed and setter-only
+# overrides, generic bases over shared and value arguments, a MakeGenericType
+# receiver, a boxed enum, compiled framework overrides of abstract rows, and
+# interface rows whose declaration has a default body, beside a non-virtual
+# interface member that runs its own body. A closed binding reports the body it runs
+# as its Method.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -287,6 +297,23 @@ gate_extra_asserts() {
     sed '/^== runtime handle relations ==/,$d' "$out/metadata-layout.stdout" > "$out/runtime-handle-relations-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-runtime-handle-relations.stdout") \
         <(strip_cr_win_file "$out/runtime-handle-relations-prefix.stdout")
+    grep -Fxq '== virtual invoke ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'base row, leaf: leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'abstract row: square' "$out/metadata-layout.stdout"
+    grep -Fxq 'abstract row, null receiver: TargetException 0x80131603 Non-static method requires a target.' "$out/metadata-layout.stdout"
+    grep -Fxq 'animal row, loud puppy: dog' "$out/metadata-layout.stdout"
+    grep -Fxq 'puppy row, loud puppy: loud-puppy' "$out/metadata-layout.stdout"
+    grep -Fxq 'generic base, shared override: wrapper<String>:b' "$out/metadata-layout.stdout"
+    grep -Fxq 'minted receiver, abstract row: hello:Int64' "$out/metadata-layout.stdout"
+    grep -Fxq 'framework abstract property: True' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate method: Leaf.Who' "$out/metadata-layout.stdout"
+    grep -Fxq 'default row, class body: custom-hello' "$out/metadata-layout.stdout"
+    grep -Fxq 'sealed interface row, class: CUSTOM-HELLO' "$out/metadata-layout.stdout"
+    grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
+    sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-virtual-invoke.stdout") \
+        <(strip_cr_win_file "$out/virtual-invoke-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

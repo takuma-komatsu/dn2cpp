@@ -1856,17 +1856,18 @@ internal sealed partial class CppEmitter
                         ? InvokerMissStub(cls, m, blocked)
                         : _e.EmitInvokerThunk(_sb, m, _invokerThunks));
                 }
-                // An interface method carries no body (fnPtr stays null), but two consumers
-                // dispatch it late-bound by resolving the receiver's slot to a concrete fn
-                // and calling that through the interface method's invoker thunk — the ABI
-                // matches, because generated callvirts call slot functions through exactly
-                // the interface shape the thunk spells. So emit that thunk (signature-only)
-                // when its ABI is bridgeable: for every instance row, serving
-                // MethodBase.Invoke / PropertyInfo.GetValue on an interface-declared member;
-                // and for static rows too under --hotupdate-base, whose interpreter binds by
-                // walking these tables. A static row's thunk is useless to Invoke (no
-                // receiver to resolve), so normal builds skip it.
-                else if (cls.IsInterface && (!m.IsStatic || _e._hotUpdateBase))
+                // An unreached interface method or an abstract class method carries no
+                // body (fnPtr stays null), but reflection dispatches a virtual one
+                // late-bound by resolving the receiver's slot to a concrete fn and
+                // calling that through the row's invoker thunk — the ABI matches, because
+                // generated callvirts call slot functions through exactly the declared
+                // shape the thunk spells. So emit that thunk (signature-only) when its ABI
+                // is bridgeable: for every virtual instance row, serving
+                // MethodBase.Invoke / PropertyInfo.GetValue and CreateDelegate; and for
+                // every interface row under --hotupdate-base, whose interpreter binds by
+                // walking these tables. A static or non-virtual row has no slot to
+                // resolve, so normal builds skip it.
+                else if (cls.IsInterface ? (_e._hotUpdateBase || (!m.IsStatic && m.IsVirtual)) : m.IsAbstract)
                 {
                     try
                     {
