@@ -932,6 +932,9 @@ it does not come back as a ticket.
   template (a definition whose bodies never give a type argument value
   semantics — asserted by `gates/build-and-run-reflect-types.sh`, section
   `ReflectRuntimeInstantiationSubset`); everything else stays the boundary.
+  Generic virtual overrides on the definition and its generic bases are
+  included; a body that instantiates a generic method over the definition's
+  own type parameter is not.
 - **`__arglist` / `TypedReference`**, and varargs or HasThis function-pointer
   signatures. IL2CPP does not support them either.
 - **`res://` / `user://` translation inside `System.IO` (Godot lane).**

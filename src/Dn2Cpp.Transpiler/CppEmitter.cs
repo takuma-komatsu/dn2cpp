@@ -325,9 +325,9 @@ internal sealed partial class CppEmitter
     /// <c>Compilation.JudgeRuntimeTemplates</c>): the one canonical-world class
     /// kind that emits full metadata — ti_, vtable, member tables, flagged
     /// SHARED_CANON|RUNTIME_TEMPLATE — because a runtime MakeGenericType clones
-    /// it. It still stays out of the static type registry, the hot-update ABI
-    /// manifests and the GVM dispatchers: what runtime code observes is a
-    /// synthesized clone, never the template itself. Empty until
+    /// it. It still stays out of the static type registry and the hot-update ABI
+    /// manifests: what runtime code observes is a synthesized clone, never the
+    /// template itself. A GVM dispatcher keys the clones' case on it. Empty until
     /// FinalizeSharedGenerics runs, which is before any metadata renders.</summary>
     private bool IsRuntimeTemplateLevel(ClassInfo c) =>
         _c.EligibleRuntimeTemplateLevels.Count > 0 && _c.EligibleRuntimeTemplateLevels.Contains(c);
@@ -3009,11 +3009,12 @@ internal sealed partial class CppEmitter
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!stubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!stubs.TryGetValue(key, out var name))
             {
                 name = $"mdarrslotmiss_{stubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                stubs[desc] = name;
+                stubs[key] = name;
             }
             return name;
         }
@@ -3155,11 +3156,12 @@ internal sealed partial class CppEmitter
         var stubs = new Dictionary<string, string>(System.StringComparer.Ordinal);
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!stubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!stubs.TryGetValue(key, out var name))
             {
                 name = $"enumslotmiss_{stubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                stubs[desc] = name;
+                stubs[key] = name;
             }
             return name;
         }
@@ -3425,11 +3427,12 @@ internal sealed partial class CppEmitter
         // these tables all live in the one metadata section that calls this.
         string SlotMissStub(string desc, MethodInfo decl)
         {
-            if (!arrSlotStubs.TryGetValue(desc, out var name))
+            string key = SlotStubKey(desc, decl);
+            if (!arrSlotStubs.TryGetValue(key, out var name))
             {
                 name = $"arrslotmiss_{arrSlotStubs.Count}";
                 sb.AppendLine(NamedSlotMissStubDef(name, "dn2cpp_itf_slot_missing_named", desc, decl));
-                arrSlotStubs[desc] = name;
+                arrSlotStubs[key] = name;
             }
             return name;
         }
@@ -5641,6 +5644,8 @@ internal sealed partial class CppEmitter
                 $"{Compilation.GvmDispatchName(gvm)}, reach {_c.ReachChain(gvm)}";
             // One branch per concrete type whose override differs from the base default;
             // types that don't override fall through to the shared base case.
+            var branches = new List<string>();
+            bool templateCase = false;
             foreach (var (type, impl) in disp.Cases
                          .Where(kv => kv.Value != gvm && _c.Reachable.Contains(kv.Value))
                          .OrderBy(kv => kv.Key.CppName, StringComparer.Ordinal))
@@ -5648,10 +5653,37 @@ internal sealed partial class CppEmitter
                 // A canonical group owner is allocated but has no type-info and can never
                 // BE a receiver's type-info (see this method's doc): drop the dead branch
                 // rather than name a symbol nothing defines.
-                if (SkipsCanonicalMetadata(type) || IsRuntimeTemplateLevel(type))
+                if (SkipsCanonicalMetadata(type))
                     continue;
-                o.Data.AppendLine($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
+                if (IsRuntimeTemplateLevel(type))
+                {
+                    if (Compilation.ContainsCanonPlaceholder(impl.DeclaringClass)
+                        && !_c.RuntimeTemplateBodies.Contains(impl))
+                        throw new InvalidOperationException(
+                            $"runtime template {type.FullName}: {name} selects {impl.CppName}, "
+                            + "a placeholder-level body the eligibility verdict did not admit");
+                    templateCase = true;
+                }
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher case", caseDetail)}) {{ {Stmt(impl)} }}");
             }
+            // An ambiguous interface override throws .NET's exception, as the
+            // matching interface-table slot does, instead of running the base default.
+            foreach (var type in disp.Ambiguous.OrderBy(t => t.CppName, StringComparer.Ordinal))
+            {
+                if (SkipsCanonicalMetadata(type))
+                    continue;
+                bool template = IsRuntimeTemplateLevel(type);
+                templateCase |= template;
+                // __t names a clone's template; the message names the clone.
+                string thrown = AmbiguousImplementationThrow(type, disp.Decl, gvm, template ? "a0" : null);
+                branches.Add($"    if (__t == {TypeInfoRef(type, "generic-virtual dispatcher ambiguous case", caseDetail)}) {thrown}");
+            }
+            // A runtime-synthesized clone takes its template level's case. The
+            // verdict keeps that case independent of the clone's arguments.
+            if (templateCase)
+                o.Data.AppendLine("    if ((__t->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0) __t = dn2cpp_runtime_template_of(__t);");
+            foreach (var branch in branches)
+                o.Data.AppendLine(branch);
             // Base default: the GVM's own (declaring-type) implementation. When it has no
             // body (an abstract generic virtual), every concrete type must have overridden
             // it, so the fallback is unreachable — trap rather than link a missing symbol.
@@ -5817,10 +5849,46 @@ internal sealed partial class CppEmitter
     internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
     {
         string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        string sig = SlotTrapShape(decl) is { } s
-            ? $"{s.Ret} {name}({string.Join(", ", s.ParamTypes)})"
-            : $"void {name}()";
-        return $"[[maybe_unused]] static {sig} {{ {reporter}(\"{lit}\"); }}";
+        return SlotStubDef(name, $"{reporter}(\"{lit}\");", decl);
+    }
+
+    /// <summary>The statement raising .NET's AmbiguousImplementationException
+    /// for <paramref name="receiver"/>. A non-null <paramref name="self"/> is
+    /// the C++ receiver expression, whose type the runtime names in the
+    /// message: a MakeGenericType instantiation shares the dispatch of the
+    /// runtime template it was cloned from. Every other receiver's name is
+    /// exact at compile time.</summary>
+    private static string AmbiguousImplementationThrow(ClassInfo receiver, ClassInfo itf, MethodInfo slot, string? self)
+    {
+        if (self is null)
+            return $"dn2cpp_throw_ambiguous_implementation({CppUtf8Literal(AmbiguousImplementationMessage(receiver, itf, slot))});";
+        var (head, tail) = AmbiguousImplementationMessageParts(receiver, itf, slot);
+        return $"dn2cpp_throw_ambiguous_implementation_for({self}, {CppUtf8Literal(head)}, {CppUtf8Literal(tail)});";
+    }
+
+    /// <summary>A slot stub's pool key. Slots whose stub texts match can still
+    /// differ in signature, and a stub entered through another signature traps
+    /// under wasm's call_indirect check.</summary>
+    private string SlotStubKey(string text, MethodInfo decl) =>
+        text + "\0" + SlotTrapShape(decl)?.Key;
+
+    /// <summary>A non-null <paramref name="self"/> names the receiver parameter
+    /// for <paramref name="body"/>, so the slot's signature must render.</summary>
+    private string SlotStubDef(string name, string body, MethodInfo decl, string? self = null)
+    {
+        string sig;
+        if (SlotTrapShape(decl) is { } s)
+        {
+            var ps = s.ParamTypes;
+            if (self is not null)
+                ps[0] = "void* " + self;
+            sig = $"{s.Ret} {name}({string.Join(", ", ps)})";
+        }
+        else if (self is null)
+            sig = $"void {name}()";
+        else
+            throw new InvalidOperationException($"{name}: a receiver-reading stub needs the slot's signature");
+        return $"[[maybe_unused]] static {sig} {{ {body} }}";
     }
 
     private static void EmitUnboxingThunk(StringBuilder sb, string thunk, ClassInfo cls, MethodInfo im, MethodInfo impl)
@@ -5838,8 +5906,12 @@ internal sealed partial class CppEmitter
         // slot stays populated (index alignment is preserved) but the boxed receiver
         // `o` is ignored, which is correct: a static member never reads the instance.
         var callArgs = new List<string>();
+        // An interface default body receives the box; a value-type body receives
+        // the payload after its object header.
         if (!impl.Emittable.IsStatic)
-            callArgs.Add($"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
+            callArgs.Add(impl.DeclaringClass.IsInterface
+                ? $"({impl.DeclaringClass.CppStructName}*)o"
+                : $"({cls.CppStructName}*)((Dn2CppObject*)o + 1)");
         for (int k = 0; k < ps.Length; k++)
             callArgs.Add(NfiSlotArg(implPs[k], $"a{k}"));
         string body = $"{impl.Emittable.CppName}({string.Join(", ", callArgs)})";

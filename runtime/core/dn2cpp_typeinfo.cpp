@@ -714,6 +714,12 @@ extern const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Reflection.AmbiguousMatchException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_ambiguous_match_exception_type_obj);
 const Dn2CppType dn2cpp_ambiguous_match_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ambiguous_match_exception_type };
+// An invoked interface slot with no most specific implementation, matching
+// .NET's AmbiguousImplementationException, which derives from Exception.
+extern const Dn2CppType dn2cpp_ambiguous_implementation_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.Runtime.AmbiguousImplementationException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_ambiguous_implementation_exception_type_obj);
+const Dn2CppType dn2cpp_ambiguous_implementation_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_ambiguous_implementation_exception_type };
 
 extern const Dn2CppType dn2cpp_target_invocation_exception_type_obj;
 extern const Dn2CppType dn2cpp_application_exception_type_obj;

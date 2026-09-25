@@ -53,10 +53,35 @@
 # very instance GetParameters was called on.
 # ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
 # class and generic virtual overrides (new-slot hiders and covariant returns
-# included), interface
-# bindings over class, struct, explicit, default and generic implementations,
-# array generic arguments, and runtime-owned declaring types, which may answer
-# null but never a wrong method.
+# included), interface bindings over class, struct, explicit, default and
+# generic implementations, array generic arguments, and runtime-owned declaring
+# types, which may answer null but never a wrong method. Its interface section
+# pins the selected method for competing plain and explicit generic bodies in
+# either metadata order, and for a derived interface's override of a default
+# over class, struct, inherited, typed, generic, identical-body and
+# MakeGenericType receivers, and the generic virtual body a MakeGenericType
+# receiver runs and reports: a derived interface's generic override and an
+# inherited class generic override. Its interface generic dispatch section pins
+# which body a call binds: explicit overloads through a plain and a closed generic
+# interface, a plain overload beside an explicit sibling, and explicit bodies
+# for an interface whose name extends the called one's or differs in arity.
+# Its interface redeclaration section pins which class level supplies an
+# interface body, plain and generic, for the call and Delegate.Method: a level
+# listing the interface again prefers its own public method to a base's
+# explicit body, a level that does not list it neither displaces the inherited
+# body with a same-name method or hider nor hides a default, a subclass
+# override takes the class slot the mapping chose (abstract bases included),
+# and a base without the interface fills a listing level's empty slot, over
+# closed generic interfaces, shared generic classes and MakeGenericType receivers.
+# Its runtime-level section pins the generic virtual body a MakeGenericType
+# receiver runs when one of the instantiation's own generic levels declares it,
+# and the method Delegate.Method reports on that level: an override of a generic
+# base's method with a base call, over a constructed and an unconstructed base,
+# a two-parameter level, overrides of a non-generic base's method on the leaf and
+# on a middle level (minted, or the image's own abstract type without that
+# instantiation), and an interface implementation, beside a plain virtual and
+# an interface method of the same instantiations and a delegate created from
+# the plain virtual's reflected method row.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -110,6 +135,65 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-interface-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-default=derived/IDerivedDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-generic=derived/IDerivedGenericDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-struct=derived/IDerivedDefault' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-inherited=derived/IDerivedDefault' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-typed=derived/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-same=same/IDerivedSame' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-runtime-type=derived/IRuntimeDerivedDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-derived-generic-runtime-type=derived/derived/IRuntimeGenericDerivedDefault/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-inherited-generic-runtime-type=mid/mid/RuntimeGvmMid' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-interface-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-dispatch-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-explicit-overloads=generic/integer' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-explicit-overloads-generic-interface=generic/integer' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-plain-and-explicit-overload=plain/int-explicit/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-qualifier-prefix=plain/longer/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-qualifier-arity=plain/explicit-generic/Pick/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-gvm-dispatch-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-plain=derived-plain/derived-plain/RedeclaredDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-unlisted=base-explicit/base-explicit/RedeclaredBase/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-hider=implicit/implicit/ImplicitRedeclared/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-abstract=abstract-leaf/abstract-leaf/AbstractLeaf/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-generic-class=shared-box-String/shared-box-String/SharedRedeclaredBox`1/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-fill=fill-source/fill-source/FillSource/plain/fill-override/fill-override/FillOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-explicit-mid=explicit-mid/explicit-mid/ExplicitMidRedeclared/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-default=default/default/IRedeclaredDefault/plain/default-mid/default-mid/DefaultRedeclared/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-closed-generic=of-derived-plain/of-derived-plain/RedeclaredOfDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-runtime-type=runtime-box/runtime-box/Tag' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-plain=pick-derived-plain/pick-derived-plain/PickDerived/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-unlisted=pick-base-explicit/pick-base-explicit/PickBase/explicit' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-hider=pick-implicit/pick-implicit/PickImplicit/plain/pick-virtual/pick-virtual/PickVirtual/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-override=pick-override/pick-override/PickOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-pick-fill=pick-source/pick-source/PickSource/plain/pick-target-override/pick-target-override/PickTargetOverride/plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface-redeclaration-end' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-begin' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-generic-base=root:Int32/String|leaf:Int32/String+root:Int32/String|leaf:Int32/String+root:Int32/String|Tag|True|True|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-unconstructed-base=leaf:String/Int32+root:String/Int32|leaf:String/Int32+root:String/Int32|True|Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-two-arguments=pair:Int32,String/String|pair:Int32,Boolean/String|pair:Int32,Boolean/String|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-plain-base=own:Decimal/String|own:Decimal/String|True|own:Decimal|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-method-row=True|own:Decimal|True|Who' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-chain=chain:String+mid:String/Int32|chain:String+mid:String/Int32|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-inherited=mid:Boolean/Int32|mid:Boolean/Int32|True|Boolean' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-image-level=abstract-mid:Int32/Int32|True|True|True' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-interface=picker:Int32/String|picker:Int32/String|True|picker:Int32|True|Name' "$out/metadata-layout.stdout"
+    grep -Fxq 'runtime-level-gvm-end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_RUNTIME_LEVEL_GVM=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-runtime-level-gvm.stdout"
+    sed '/^runtime-level-gvm-begin/,$d' "$out/metadata-layout.stdout" > "$out/runtime-level-gvm-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-runtime-level-gvm.stdout") \
+        <(strip_cr_win_file "$out/runtime-level-gvm-prefix.stdout")
+    DN2CPP_BEFORE_INTERFACE_REDECLARATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-redeclaration.stdout"
+    sed '/^interface-redeclaration-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-redeclaration-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-interface-redeclaration.stdout") \
+        <(strip_cr_win_file "$out/interface-redeclaration-prefix.stdout")
+    DN2CPP_BEFORE_INTERFACE_SELECTION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-interface-selection.stdout"
+    sed '/^delegate-method-interface-begin/,$d' "$out/metadata-layout.stdout" > "$out/interface-selection-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-interface-selection.stdout") \
+        <(strip_cr_win_file "$out/interface-selection-prefix.stdout")
     DN2CPP_BEFORE_DELEGATE_METHOD=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-delegate-method.stdout"
     sed '/^delegate-method-begin/,$d' "$out/metadata-layout.stdout" > "$out/delegate-method-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-delegate-method.stdout") \

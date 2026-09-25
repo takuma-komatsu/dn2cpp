@@ -87,6 +87,13 @@ static const Dn2CppRuntimeTemplate* dn2cpp_runtime_template_by_ti(const Dn2CppTy
     return nullptr;
 }
 
+// One row per definition, so the clone's genericDef names the row it was copied from.
+const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone)
+{
+    const Dn2CppRuntimeTemplate* row = dn2cpp_runtime_template_by_def(clone->genericDef);
+    return row != nullptr ? row->templateTi : clone;
+}
+
 // Synthesized instantiations intern on (def, args): one managed type is exactly
 // one Dn2CppTypeInfo* (the invariant every pointer-comparing walk rests on), so a
 // second MakeGenericType with the same arguments must return the first pointer.
@@ -203,6 +210,18 @@ static const Dn2CppTypeInfo* dn2cpp_synthesize_instantiation(
             ctors[i].declaringType = ti;
         }
         synthesized->reflection.ctors = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(ctors);
+    }
+    // Method rows name the clone as their declaring type, so every binding
+    // resolved against the clone's rows reports the clone, as .NET does.
+    if (ti->reflection().methodCount > 0)
+    {
+        auto* methods = new Dn2CppMethodDelta[ti->reflection().methodCount];
+        for (int32_t i = 0; i < ti->reflection().methodCount; i++)
+        {
+            methods[i].original = row->templateTi->reflection().methods[i];
+            methods[i].declaringType = ti;
+        }
+        synthesized->reflection.methods = Dn2CppMetadataTable<Dn2CppMethodInfo>::from_raw(methods);
     }
     if (ti->base != nullptr && (ti->base->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
     {
@@ -2586,8 +2605,9 @@ static bool dn2cpp_names_member(const char* name, const char* member, size_t mem
     return true;
 }
 
-// Whether an explicit implementation's qualifier names `itf`: its simple definition
-// name, namespace, nesting and arity suffix stripped — the transpiler's own test.
+// Whether an explicit implementation's qualifier ("Ns.Outer<A>.IItf<B, C>") names
+// `itf`: its last segment has the definition's simple name and as many top-level
+// type arguments as the definition's own arity — the transpiler's own test.
 static bool dn2cpp_qualifier_names(const char* qualifier, size_t qualifierLength,
                                    const Dn2CppTypeInfo* itf)
 {
@@ -2598,13 +2618,48 @@ static bool dn2cpp_qualifier_names(const char* qualifier, size_t qualifierLength
     for (const char* c = full; *c != '\0'; c++)
         if (*c == '.' || *c == '+')
             simple = c + 1;
-    size_t simpleLength = std::strcspn(simple, "`[");
-    if (simpleLength == 0 || simpleLength > qualifierLength)
+    const size_t simpleLength = std::strcspn(simple, "`[");
+    int32_t arity = 0;
+    if (simple[simpleLength] == '`')
+        for (const char* c = simple + simpleLength + 1; *c >= '0' && *c <= '9'; c++)
+            arity = arity * 10 + (*c - '0');
+    size_t segment = 0;
+    int32_t depth = 0;
+    for (size_t i = 0; i < qualifierLength; i++)
+    {
+        const char ch = qualifier[i];
+        if (ch == '<' || ch == '(' || ch == '[')
+            depth++;
+        else if (ch == '>' || ch == ')' || ch == ']')
+            depth--;
+        else if (ch == '.' && depth == 0)
+            segment = i + 1;
+    }
+    const char* last = qualifier + segment;
+    const size_t lastLength = qualifierLength - segment;
+    size_t nameLength = 0;
+    while (nameLength < lastLength && last[nameLength] != '<')
+        nameLength++;
+    if (simpleLength == 0 || nameLength != simpleLength
+        || std::memcmp(last, simple, simpleLength) != 0)
         return false;
-    for (size_t i = 0; i + simpleLength <= qualifierLength; i++)
-        if (std::memcmp(qualifier + i, simple, simpleLength) == 0)
-            return true;
-    return false;
+    int32_t args = 0;
+    if (nameLength < lastLength)
+    {
+        args = 1;
+        depth = 0;
+        for (size_t i = nameLength + 1; i < lastLength; i++)
+        {
+            const char ch = last[i];
+            if (ch == '<' || ch == '(' || ch == '[')
+                depth++;
+            else if (ch == '>' || ch == ')' || ch == ']')
+                depth--;
+            else if (ch == ',' && depth == 0)
+                args++;
+        }
+    }
+    return args == arity;
 }
 
 // The class override of vtable slot `slot` bound for `receiver`, searched below
@@ -2634,30 +2689,139 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_class_virtual_targ
     return {};
 }
 
-// Use the emitter's GVM dispatch decision: a new-slot row may explicitly bind an
-// inherited slot, so its attributes alone cannot identify the bound method. A
-// stripped level could hide a different binding and must still throw.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_gvm_target(
+// A template level's method row as the receiver's own level of that definition
+// declares it: the clone's row, the image's row for an interned level, or an
+// interned delta when the image's level has no such instantiation.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_clone_level_method(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* level,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> row, int32_t argc, const Dn2CppTypeInfo* const* args)
+{
+    const Dn2CppTypeInfo* own = receiver;
+    while (own != nullptr && own->genericDef != level->genericDef)
+        own = own->base;
+    if (own == nullptr || !row)
+        return row;
+    dn2cpp_require_metadata(own);
+    if (const auto hit = dn2cpp_find_method_instantiation(own->reflection(), row->metadataToken,
+            argc, [args](int32_t arg) { return args[arg]; }))
+        return hit;
+    struct LevelRow
+    {
+        Dn2CppMethodDelta delta;
+        LevelRow* next;
+    };
+    static LevelRow* rows = nullptr;
+    std::lock_guard<std::mutex> lock(g_synth_mtx);
+    for (LevelRow* r = rows; r != nullptr; r = r->next)
+        if (r->delta.original.identity() == row.identity() && r->delta.declaringType == own)
+            return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&r->delta);
+    auto* r = new LevelRow{};
+    r->delta.original = row;
+    r->delta.declaringType = own;
+    r->next = rows;
+    rows = r;
+    return Dn2CppMetadataHandle<Dn2CppMethodInfo>::from_raw(&r->delta);
+}
+
+// Use the emitter's selected method for an interface or GVM binding. An
+// unrecorded class GVM still needs metadata for each receiver level. A clone's
+// case is recorded on its template level, as its dispatcher branches.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_recorded_target(
     const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
     const Dn2CppDelegateMethodIdentity* identity)
 {
-    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
-        dn2cpp_require_metadata(ti);
-    for (int32_t i = 0; i < identity->gvmTargetCount; i++)
+    const Dn2CppTypeInfo* recorded = (receiver->flags & DN2CPP_TF_RUNTIME_SYNTH) != 0
+        ? dn2cpp_runtime_template_of(receiver)
+        : receiver;
+    for (int32_t i = 0; i < identity->targetCount; i++)
     {
-        const auto& target = identity->gvmTargets[i];
-        if (target.receiverType != receiver)
+        const auto& target = identity->targets[i];
+        if (target.receiverType != recorded)
             continue;
         dn2cpp_require_metadata(target.declaringType);
-        return dn2cpp_find_method_instantiation(target.declaringType->reflection(),
+        const auto hit = dn2cpp_find_method_instantiation(target.declaringType->reflection(),
             target.metadataToken, identity->genericArgCount,
             [identity](int32_t arg) { return identity->genericArgs[arg]; });
+        if ((target.declaringType->flags & DN2CPP_TF_RUNTIME_TEMPLATE) != 0)
+            return dn2cpp_clone_level_method(receiver, target.declaringType, hit,
+                identity->genericArgCount, identity->genericArgs);
+        return hit;
     }
+    if ((owner->flags & DN2CPP_TF_INTERFACE) == 0)
+        for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr && ti != owner; ti = ti->base)
+            dn2cpp_require_metadata(ti);
     return {};
 }
 
-// The implementation an interface binding reached, or {} to answer the declaration
-// (Invoke re-dispatches an interface row through the receiver's table).
+static bool dn2cpp_interface_rows_contain(const Dn2CppTypeInfo* type, const Dn2CppTypeInfo* itf)
+{
+    for (int32_t i = 0; i < type->interfaceCount; i++)
+        if (type->interfaces[i].itf == itf)
+            return true;
+    return false;
+}
+
+// A derived interface's MethodImpl whose body a reference receiver's slot holds.
+// Interface rows are transitive, so one flat pass over the receiver's rows finds
+// every interface deriving from `owner`; only those need metadata. The answer is
+// the candidate no other candidate's interface derives from.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_derived_interface_target(
+    const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
+    const Dn2CppMethodInfo& decl, void* bound)
+{
+    struct Candidate
+    {
+        const Dn2CppTypeInfo* itf;
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
+    };
+    std::vector<Candidate> candidates;
+    const size_t nameLength = std::strlen(decl.name);
+    size_t qualifierLength = 0;
+    for (int32_t i = 0; i < receiver->interfaceCount; i++)
+    {
+        const Dn2CppTypeInfo* derived = receiver->interfaces[i].itf;
+        if (derived == nullptr || derived == owner || (derived->flags & DN2CPP_TF_SHARED_CANON) != 0
+            || !dn2cpp_interface_rows_contain(derived, owner))
+            continue;
+        dn2cpp_require_metadata(derived);
+        const auto reflection = derived->reflection();
+        for (int32_t j = 0; j < reflection.methodCount; j++)
+        {
+            const auto handle = reflection.methods[j];
+            const auto row = handle.operator->();
+            if (row->fnPtr == bound
+                && dn2cpp_names_member(row->name, decl.name, nameLength, &qualifierLength)
+                && qualifierLength != 0
+                && dn2cpp_qualifier_names(row->name, qualifierLength, owner)
+                && dn2cpp_row_params_equal(*row.operator->(), decl))
+            {
+                candidates.push_back({derived, handle});
+                break;
+            }
+        }
+    }
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> selected{};
+    for (const auto& candidate : candidates)
+    {
+        bool shadowed = false;
+        for (const auto& other : candidates)
+            if (other.itf != candidate.itf && dn2cpp_interface_rows_contain(other.itf, candidate.itf))
+            {
+                shadowed = true;
+                break;
+            }
+        if (shadowed)
+            continue;
+        if (selected)
+            return {};
+        selected = candidate.method;
+    }
+    return selected;
+}
+
+// The implementation an interface binding reached for a receiver without a
+// recorded case, or {} to answer the declaration (Invoke re-dispatches an
+// interface row through the receiver's table).
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     const Dn2CppTypeInfo* receiver, const Dn2CppTypeInfo* owner,
     const Dn2CppMethodInfo& decl, const Dn2CppDelegateMethodIdentity* identity, void* bound)
@@ -2668,8 +2832,10 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     size_t qualifierLength = 0;
     // A reference receiver's slot holds the implementation's own symbol. The name
     // guard keeps a folded identical body (MSVC /OPT:ICF) from answering; parameter
-    // types may differ from the declaration's under variance.
+    // types may differ from the declaration's under variance. Class bodies precede
+    // interface overrides, which precede the declaration's own default body.
     if (!gvm && (receiver->flags & DN2CPP_TF_VALUETYPE) == 0)
+    {
         for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
@@ -2684,12 +2850,17 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
                     return handle;
             }
         }
-    // A default interface method binds the declaration's own body.
+        if (const auto derived = dn2cpp_delegate_derived_interface_target(receiver, owner, decl, bound))
+            return derived;
+    }
     if (decl.fnPtr != nullptr && decl.fnPtr == bound)
         return {};
     // Value-type unboxing thunks, NFI-erasing thunks and generic-virtual dispatchers
-    // hide the implementation's address: resolve by name as the transpiler bound it.
-    // Plain matches (1) need a body; explicit ones (2) must name the owner.
+    // hide the implementation's address: resolve by name. Interface rows are
+    // transitive, so which class level lists the interface is invisible here; the
+    // orders below are exact for one implementing level, and the emitter records
+    // the selected body for the class receivers it allocates. Plain matches (1)
+    // need a body; explicit ones (2) must name the owner.
     const auto kindOf = [&](const Dn2CppMethodInfo& row) -> int {
         if ((row.attrs & DN2CPP_MTHA_STATIC) != 0
             || !dn2cpp_names_member(row.name, decl.name, nameLength, &qualifierLength)
@@ -2727,7 +2898,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
     if (gvm)
     {
-        // The dispatcher's order: the first level with any implementation wins.
+        // The first level with any implementation wins.
         for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
         {
             dn2cpp_require_metadata(ti);
@@ -2738,8 +2909,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
         }
         return {};
     }
-    // The interface-table order: an explicit implementation anywhere in the chain
-    // beats a plain one.
+    // An explicit implementation anywhere in the chain beats a plain one.
     for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
@@ -2787,9 +2957,13 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     const Dn2CppMethodInfo decl = *declared;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
     if (decl.genericParamCount != 0 && decl.vtableSlot < 0)
-        hit = dn2cpp_delegate_gvm_target(t->type, owner, identity);
+        hit = dn2cpp_delegate_recorded_target(t->type, owner, identity);
     else if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
-        hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
+    {
+        hit = dn2cpp_delegate_recorded_target(t->type, owner, identity);
+        if (!hit)
+            hit = dn2cpp_delegate_interface_target(t->type, owner, decl, identity, dg->method);
+    }
     else if (decl.vtableSlot >= 0)
         hit = dn2cpp_delegate_class_virtual_target(t->type, owner, decl.vtableSlot);
     return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit ? hit : declared, nullptr));

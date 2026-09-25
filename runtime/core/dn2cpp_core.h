@@ -1062,8 +1062,8 @@ struct Dn2CppMDArray : Dn2CppObject
     char* data;
 };
 
-// Exact receiver-to-method cases selected by the generic virtual dispatcher.
-struct Dn2CppDelegateGvmTarget
+// Exact receiver-to-method cases selected during emission.
+struct Dn2CppDelegateMethodTarget
 {
     const Dn2CppTypeInfo* receiverType;
     const Dn2CppTypeInfo* declaringType;
@@ -1077,8 +1077,8 @@ struct Dn2CppDelegateMethodIdentity
     int32_t genericArgCount;
     const Dn2CppTypeInfo* const* genericArgs;
     bool virtualBinding;
-    int32_t gvmTargetCount;
-    const Dn2CppDelegateGvmTarget* gvmTargets;
+    int32_t targetCount;
+    const Dn2CppDelegateMethodTarget* targets;
 };
 
 // Uniform layout of all generated delegate types; the identity is static metadata.
@@ -1366,8 +1366,9 @@ Dn2CppType* dn2cpp_type_get_by_name(Dn2CppString* name, int32_t throwOnError);
 // `def`. One row per eligible template chain level (the emitter proves the
 // definition's bodies never give a type argument value semantics — typeof-only):
 // the clone copies `templateTi`, stamps genericDef/genericArgs/name, clears the
-// two template bits, synthesizes its base the same way when the template's base
-// is itself a row (looked up by templateTi), and fills a fresh rgctx table with
+// two template bits, gives its method and constructor rows itself as declaring
+// type, synthesizes its base the same way when the template's base is itself a
+// row (looked up by templateTi), and fills a fresh rgctx table with
 // rgctx[i] = args[rgctxDesc[i]]'s type-info. Synthesized instantiations intern
 // on (def, args) — same arguments, same pointer — and register their closed
 // name on the registry's dynamic side-chain.
@@ -1381,6 +1382,11 @@ struct Dn2CppRuntimeTemplate
 };
 extern const Dn2CppRuntimeTemplate* const dn2cpp_runtime_templates;
 extern const int32_t dn2cpp_runtime_template_count;
+// The template type-info a DN2CPP_TF_RUNTIME_SYNTH clone was copied from (its
+// definition's row). Generic-virtual dispatchers and Delegate.Method key a
+// clone's case on it; the emitter keeps that case independent of the clone's
+// type arguments.
+const Dn2CppTypeInfo* dn2cpp_runtime_template_of(const Dn2CppTypeInfo* clone);
 
 // Startup type-info binds: the generated metadata for a type whose HANDLE the runtime
 // owns (the runtime-raised exception types further down) — `target` is that handle,
@@ -2197,6 +2203,9 @@ extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
 // helpers (GetMethod/GetProperty with several undecidable matches), matching
 // real .NET's reflection contract.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
+// System.Runtime.AmbiguousImplementationException: raised by an invoked
+// interface slot whose derived interfaces give it no most specific body.
+extern Dn2CppTypeInfo dn2cpp_ambiguous_implementation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_target_invocation_exception_type;
 extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
@@ -2580,6 +2589,13 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
 [[noreturn]] void dn2cpp_throw_missing_method(const char* message);
+// An invoked interface slot or generic-virtual case with no most specific
+// default body. The emitter bakes .NET's message into the call; the exception
+// carries .NET's HResult.
+[[noreturn]] void dn2cpp_throw_ambiguous_implementation(const char* message);
+// The same exception for a receiver whose type the emitter cannot name (a
+// MakeGenericType instantiation): its Type.ToString() between head and tail.
+[[noreturn]] void dn2cpp_throw_ambiguous_implementation_for(const void* receiver, const char* head, const char* tail);
 // A runtime entry point's null managed receiver (matching real .NET's
 // NullReferenceException for the instance call it stands in for) — catchable,
 // where the dereference it replaces was a SIGSEGV.

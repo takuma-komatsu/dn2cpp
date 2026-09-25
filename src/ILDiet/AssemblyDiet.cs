@@ -38,6 +38,9 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly HashSet<TypeDefinition> _interfaceHierarchies = new();
     private readonly HashSet<TypeDefinition> _reflectionDataTypes = new();
     private readonly HashSet<GenericParameter> _genericParameters = new();
+    private readonly List<TypeDefinition> _typeTokenTypes = new();
+    private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
+    private bool _constructsFromRuntimeType;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
     private bool _cutsValidated = true;
 
@@ -219,6 +222,11 @@ internal sealed partial class AssemblyDiet : IDisposable
                 }
             }
         }
+        // ILDiet does not scan every copied body, so any constructing member reference
+        // in a copied assembly arms.
+        foreach (var assembly in _assemblies)
+            if (assembly.Copy && ReferencesRuntimeTypeConstruction(assembly.PE.GetMetadataReader()))
+                ArmRuntimeTypeConstruction();
         // A copied assembly can still have static references into a stripped library.
         var stripped = _assemblies.Where(a => !a.Copy).Select(a => a.Assembly.Name.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var assembly in _assemblies.Where(a => a.Copy))
@@ -423,6 +431,47 @@ internal sealed partial class AssemblyDiet : IDisposable
         if (Resolve(reference) is { } type) KeepReflectionData(type);
     }
 
+    private static bool ReferencesRuntimeTypeConstruction(MetadataReader reader)
+    {
+        foreach (var handle in reader.MemberReferences)
+        {
+            var member = reader.GetMemberReference(handle);
+            if (member.Parent.Kind != HandleKind.TypeReference) continue;
+            var parent = reader.GetTypeReference((TypeReferenceHandle)member.Parent);
+            string ns = reader.GetString(parent.Namespace), name = reader.GetString(parent.Name);
+            // A generic method definition is called through a MethodSpec, which never arms.
+            if (PreservationReader.ConstructsFromRuntimeType(ns.Length == 0 ? name : ns + "." + name,
+                    reader.GetString(member.Name))
+                && !reader.GetBlobReader(member.Signature).ReadSignatureHeader().IsGeneric) return true;
+        }
+        return false;
+    }
+
+    private void ArmRuntimeTypeConstruction()
+    {
+        if (_constructsFromRuntimeType) return;
+        _constructsFromRuntimeType = true;
+        foreach (var type in _typeTokenTypes) KeepInstanceConstructors(type);
+    }
+
+    // Activator.CreateInstance(Type) and ConstructorInfo.Invoke can construct any
+    // application type a type token names, including an open generic definition
+    // closed later through MakeGenericType.
+    private void NoteTypeToken(TypeReference reference)
+    {
+        var element = reference.GetElementType();
+        if (element is FunctionPointerType || Resolve(element) is not { } type
+            || type.Module != _assemblies[0].Assembly.MainModule || !_typeTokenSeen.Add(type)) return;
+        _typeTokenTypes.Add(type);
+        if (_constructsFromRuntimeType) KeepInstanceConstructors(type);
+    }
+
+    private void KeepInstanceConstructors(TypeDefinition type)
+    {
+        foreach (var method in type.Methods)
+            if (method.IsConstructor && !method.IsStatic) MarkMethod(method);
+    }
+
     private void KeepAll(TypeDefinition type)
     {
         MarkType(type);
@@ -602,9 +651,16 @@ internal sealed partial class AssemblyDiet : IDisposable
             {
                 case MethodReference target:
                     if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
+                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt
+                        && target.MetadataToken.TokenType == TokenType.MemberRef
+                        && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
+                        ArmRuntimeTypeConstruction();
                     break;
                 case FieldReference field: MarkField(field); break;
-                case TypeReference type: MarkType(type); break;
+                case TypeReference type:
+                    MarkType(type);
+                    if (instruction.OpCode.Code == Code.Ldtoken) NoteTypeToken(type);
+                    break;
                 case CallSite signature:
                     MarkType(signature.ReturnType);
                     foreach (var parameter in signature.Parameters) MarkType(parameter.ParameterType);

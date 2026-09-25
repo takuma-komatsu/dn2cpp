@@ -22,7 +22,10 @@ using System;
 // boundary: a
 // definition with a T-typed field is shape-ineligible, so real .NET constructs
 // Holder<int> while dn2cpp throws the catchable NotSupportedException naming the
-// missing instantiation — the frozen snapshot asserts that message.
+// missing instantiation — the frozen snapshot asserts that message. So does a
+// definition whose generic virtual override instantiates a generic method over
+// the definition's own type parameter: a clone would need that instantiation
+// minted per type argument.
 
 namespace ReflectRuntimeInstantiationSubset
 {
@@ -74,6 +77,19 @@ namespace ReflectRuntimeInstantiationSubset
 
     class Twig<T> : Anchor<T>
     {
+    }
+
+    // Ineligible: the override runs Helper<T>, whose method argument is the
+    // clone's own type argument.
+    class GvmHelperRoot<T>
+    {
+        public virtual string Tag<U>() => "root";
+    }
+
+    class GvmHelperLeaf<T> : GvmHelperRoot<T>
+    {
+        public override string Tag<U>() => Helper<T>();
+        private string Helper<V>() => typeof(V).Name;
     }
 
     // Shape-ineligible: a T-typed field means a per-argument layout no runtime
@@ -135,6 +151,18 @@ namespace ReflectRuntimeInstantiationSubset
                 + " assignable=" + typeof(Anchor<int>).IsAssignableFrom(twig)
                 + " isinst=" + (tw is Anchor<int>)
                 + " aot=" + anchored.Who());
+
+            GvmHelperRoot<int> root = new GvmHelperRoot<int>();
+            try
+            {
+                GvmHelperRoot<int> leaf = (GvmHelperRoot<int>)Activator.CreateInstance(
+                    typeof(GvmHelperLeaf<>).MakeGenericType(typeof(int)));
+                Console.WriteLine("gvm-placeholder-helper<int>: " + root.Tag<string>() + "/" + leaf.Tag<string>());
+            }
+            catch (NotSupportedException e)
+            {
+                Console.WriteLine("gvm-placeholder-helper<int>: NotSupportedException: " + e.Message);
+            }
         }
     }
 }

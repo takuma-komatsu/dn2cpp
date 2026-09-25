@@ -205,11 +205,24 @@ else
     gate_cache_commit
 fi
 
-echo "== IL dispatch, initialization and layout retain .NET behavior after stripping =="
+echo "== IL dispatch, initialization, layout and type-token reflection construction retain .NET behavior after stripping =="
 DIET_LIB="samples/dotnet/ILDietControlLib/bin/$CONFIG/$TFM/ILDietControlLib.dll"
 corelib_diff_gate ILDietControl -r "$DIET_LIB"
 DIET_OUT="$_CG_OUT"
 DIET_APP="$_CG_APP"
+original_diet_app=$(dotnet exec "$PROBE" "$DIET_APP")
+stripped_diet_app=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControl.dll")
+for row in 'method ILDietControl.Loose::.ctor' 'method ILDietControl.Box`1::.ctor' \
+        'method ILDietControl.Seeded::.ctor'; do
+    kept=$(grep -Fxc "$row" <<<"$stripped_diet_app" || true)
+    [ "$kept" -gt 0 ] && [ "$kept" = "$(grep -Fxc "$row" <<<"$original_diet_app")" ] \
+        || { echo "FAIL: ILDiet removed a type-token-selected constructor: $row" >&2; exit 1; }
+done
+grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
+    || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }
+if grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$stripped_diet_app"; then
+    echo "FAIL: a constructor no type token selects survived stripping" >&2; exit 1
+fi
 diet_metadata=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControlLib.dll")
 for row in 'method ILDietControlLib.Base::Foo' \
         'method ILDietControlLib.Callbacks::NativeCallback' \

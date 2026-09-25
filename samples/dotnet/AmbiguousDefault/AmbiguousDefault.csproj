@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <!-- Compile against the first library version, then run against the next:
+       the output directory must end every build holding the next version. -->
+  <ItemGroup>
+    <ProjectReference Include="../AmbiguousDefaultLib/AmbiguousDefaultLib.csproj" />
+    <ProjectReference Include="../AmbiguousDefaultLibNext/AmbiguousDefaultLibNext.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CopyNextLibraryVersion" AfterTargets="CopyFilesToOutputDirectory">
+    <Copy SourceFiles="../AmbiguousDefaultLibNext/bin/$(Configuration)/$(TargetFramework)/AmbiguousDefaultLib.dll"
+          DestinationFiles="$(OutDir)AmbiguousDefaultLib.dll" />
+  </Target>
+
+</Project>

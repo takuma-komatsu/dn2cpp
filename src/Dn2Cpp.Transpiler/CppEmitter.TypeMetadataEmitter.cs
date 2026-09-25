@@ -90,10 +90,10 @@ internal sealed partial class CppEmitter
         // by-value struct cannot read its receiver out of argument 0 (an indirect return
         // spends that register on the caller's hidden result buffer), so the shared
         // receiver-reading traps would report "(unknown)"; the slot's descriptor is baked
-        // into a stub instead. Deduplicated per chunk on (reporter, descriptor) text —
-        // the file-local statics reset on a chunk roll like the pools above — while the
-        // sequence counter stays monotonic across the emission so names are unique and
-        // deterministic.
+        // into a stub instead. The ambiguous-slot stubs (slotambig_) share the map.
+        // Deduplicated per chunk on (reporter, descriptor) text — the file-local statics
+        // reset on a chunk roll like the pools above — while the sequence counter stays
+        // monotonic across the emission so names are unique and deterministic.
         private readonly Dictionary<string, string> _slotStubs = new(System.StringComparer.Ordinal);
         private int _slotStubSeq;
         // Per-row invoker trap stubs (invmiss_), the reflection-invoker sibling of the
@@ -1034,10 +1034,11 @@ internal sealed partial class CppEmitter
                 int targetCount = 0;
                 if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
                 {
+                    // The dispatcher's branches, template levels included: the
+                    // runtime looks a clone up by its template level.
                     var targets = disp.Cases
                         .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
                             && !_e.SkipsCanonicalMetadata(kv.Key)
-                            && !_e.IsRuntimeTemplateLevel(kv.Key)
                             && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
                         .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
                         .ToList();
@@ -1045,11 +1046,47 @@ internal sealed partial class CppEmitter
                     {
                         targetsExpr = sym + "_gvm_targets";
                         targetCount = targets.Count;
-                        _sb.AppendLine($"static const Dn2CppDelegateGvmTarget {targetsExpr}[] = {{");
+                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
                         foreach (var (receiver, target) in targets)
                         {
                             string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
                             string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
+                            int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+                            _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
+                        }
+                        _sb.AppendLine("};");
+                    }
+                }
+                else if (isVirtual && owner.IsInterface)
+                {
+                    // A declaration's own default body is recorded too, so the
+                    // runtime can tell an emitted receiver from one it must
+                    // resolve without this table. A clone resolves without it:
+                    // its interface slots hold the bodies its own rows name.
+                    var targets = new List<(ClassInfo Receiver, MethodInfo Target)>();
+                    foreach (var receiver in _c.AllocatedRefTypes.ToList())
+                    {
+                        if (receiver.IsInterface || !_c.ImplementsInterface(receiver, owner)
+                            || _e.SkipsCanonicalMetadata(receiver)
+                            || _e.IsRuntimeTemplateLevel(receiver)
+                            || !_e.TypeInfoSymbolDefined(receiver.CppTypeInfoName))
+                            continue;
+                        var target = _c.ResolveItfImplOrNull(receiver, m);
+                        if (target is not null
+                            && _c.Reachable.Contains(target)
+                            && _e.TypeInfoSymbolDefined(target.DeclaringClass.CppTypeInfoName))
+                            targets.Add((receiver, target));
+                    }
+                    if (targets.Count > 0)
+                    {
+                        targetsExpr = sym + "_interface_targets";
+                        targetCount = targets.Count;
+                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
+                        foreach (var (receiver, target) in targets.OrderBy(t => t.Receiver.CppName,
+                            System.StringComparer.Ordinal))
+                        {
+                            string receiverExpr = _e.TypeInfoRef(receiver, "delegate interface receiver");
+                            string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate interface target");
                             int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
                             _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
                         }
@@ -1124,13 +1161,29 @@ internal sealed partial class CppEmitter
         // (CppEmitter.NamedSlotMissStubDef): a wasm call_indirect checks the callee's
         // type immediate, so the historical void() form dies there as an anonymous
         // signature-mismatch trap before the named abort can run.
-        private string SlotMissStub(string reporter, string desc, MethodInfo decl)
+        private string SlotMissStub(string reporter, string desc, MethodInfo decl) =>
+            PooledSlotStub("slotmiss_", reporter + "\0" + desc, decl,
+                name => _e.NamedSlotMissStubDef(name, reporter, desc, decl));
+
+        // A slot whose sibling interface overrides leave no most specific body:
+        // the stub throws .NET's AmbiguousImplementationException with its message.
+        // A MakeGenericType instantiation copies its runtime template's table, so
+        // a template's stub reads the receiver's type name where it has a receiver.
+        private string AmbiguousSlotStub(ClassInfo cls, ClassInfo itf, MethodInfo decl)
         {
-            string key = reporter + "\0" + desc;
+            string? self = _e.IsRuntimeTemplateLevel(cls) && _e.SlotTrapShape(decl) is not null ? "self" : null;
+            string body = AmbiguousImplementationThrow(cls, itf, decl, self);
+            return PooledSlotStub("slotambig_", body, decl,
+                name => _e.SlotStubDef(name, body, decl, self));
+        }
+
+        private string PooledSlotStub(string prefix, string text, MethodInfo decl, Func<string, string> define)
+        {
+            string key = _e.SlotStubKey(text, decl);
             if (!_slotStubs.TryGetValue(key, out var name))
             {
-                name = $"slotmiss_{_slotStubSeq++}";
-                _sb.AppendLine(_e.NamedSlotMissStubDef(name, reporter, desc, decl));
+                name = prefix + _slotStubSeq++;
+                _sb.AppendLine(define(name));
                 _slotStubs[key] = name;
             }
             return name;
@@ -1274,7 +1327,12 @@ internal sealed partial class CppEmitter
                     // Null when the class has no implementation for the interface method —
                     // e.g. a boxed primitive's corlib ClassInfo gets a full interface table
                     // but IntPtr has no concrete IBinaryInteger.DivRem.
-                    var impl = Compilation.ResolveItfImplOrNull(cls, im);
+                    var impl = _c.ResolveItfImplOrNull(cls, im, out bool ambiguous);
+                    if (ambiguous)
+                    {
+                        slots.Add($"(const void*)&{AmbiguousSlotStub(cls, itf, im)}");
+                        continue;
+                    }
                     // A slot with no resolvable impl, or whose impl is unreachable, is never
                     // dispatched through — degrade it to a TRAP, not a null pointer.
                     // "Never dispatched" is a claim about the reachability closure, and when
@@ -1306,12 +1364,10 @@ internal sealed partial class CppEmitter
                             : $"(const void*)&{SlotMissStub("dn2cpp_itf_slot_missing_named", $"{cls.FullName}::{itf.FullName}.{im.Name}", im)}");
                         continue;
                     }
-                    // A reference-type impl receives the object pointer directly as
-                    // `this`. A boxed value-type impl, however, expects the unboxed
-                    // payload (`obj + 1`), so its interface slot points to an
-                    // unboxing thunk that offsets past the box header before calling
-                    // the impl — the dispatch site is type-agnostic and just calls
-                    // through the slot with the object pointer.
+                    // A reference-type impl receives the object pointer directly.
+                    // A value-type body needs the unboxed payload; an interface
+                    // default body still receives the box. The slot thunk chooses
+                    // the receiver representation for the selected body.
                     if (!cls.IsValueType)
                     {
                         // Usually the implementation symbol goes straight into the

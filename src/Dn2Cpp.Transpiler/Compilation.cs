@@ -5257,6 +5257,8 @@ internal sealed partial class Compilation
     /// via direct constrained calls.</summary>
     public bool IsAllocated(ClassInfo c) => _allocatedRefTypes.Contains(c);
 
+    internal IEnumerable<ClassInfo> AllocatedRefTypes => _allocatedRefTypes;
+
     /// <summary>The recorded reachability path to <paramref name="m"/> (newest
     /// first), for actionable diagnostics when a reached method cannot be
     /// emitted. Empty for roots.</summary>
@@ -6200,10 +6202,10 @@ internal sealed partial class Compilation
                     continue;
                 // A generic method's .override row (e.g. a static abstract
                 // Serialize<TBufferWriter> on a generic interface): open templates are
-                // not modeled as MethodInfo, so the row cannot key this map — and needs
-                // to reach nobody: ReachGvmImpl and ResolveStaticVirtualImpl's generic
-                // arm resolve the implementation by template lookup, dotted explicit
-                // names included (FindGenericMethodTemplate). Skip, don't resolve.
+                // not modeled as MethodInfo, so the row cannot key this map.
+                // Interface GVM dispatch reads the MethodImpl row when binding
+                // the template; static virtual dispatch resolves its template
+                // by name. Skip this row rather than trying to resolve it here.
                 bool declIsGenericMethod = mi.MethodDeclaration.Kind switch
                 {
                     HandleKind.MemberReference => reader.GetBlobReader(
@@ -6227,8 +6229,8 @@ internal sealed partial class Compilation
             // instantiated in the placeholder world (generic virtual methods are
             // a per-instantiation fallback under sharing) — skip such rows there
             // too; every real instantiation still resolves its rows strictly.
-            catch (NotSupportedException) when (cls.Module != AppModule
-                || ContainsCanonPlaceholder(cls))
+            catch (NotSupportedException e) when (!IsMustEscape(e)
+                && (cls.Module != AppModule || ContainsCanonPlaceholder(cls)))
             {
             }
         }

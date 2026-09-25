@@ -31,10 +31,32 @@
 # StaticAbstractGenericMethod covers a static abstract GENERIC method on a generic
 # interface (IPackable<TSelf>.Pack<TSink>) dispatched through a constrained call:
 # the explicit implementation's .override row names an open generic MemberRef, and
-# the impl is template-matched and instantiated at the caller's method args.
+# the impl is template-matched and instantiated at the caller's method args. Its
+# static implementation selection section pins that a static explicit body beats
+# a plain one, that overloads closing to one signature keep their own bodies, and
+# that a class's own static body beats a derived-interface static default, and
+# that without a class body the most specific derived interface's explicit body
+# binds a generic or plain member, abstract or carrying a default.
 # InterfaceStaticImpl covers an INTERFACE as the constrained type argument: the
 # interface's own explicit static impls resolve the static abstract members, and
 # an unimplemented static-virtual default still binds the default body.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1"
+    run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection.stdout"
+    grep -Fxq '== Static interface implementation selection ==' "$out/static-selection.stdout"
+    grep -Fxq 'static explicit explicit' "$out/static-selection.stdout"
+    grep -Fxq 'static class class' "$out/static-selection.stdout"
+    grep -Fxq 'static overload plain/explicit-int' "$out/static-selection.stdout"
+    grep -Fxq 'static inherited class derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
+    grep -Fxq 'static inherited struct derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
+    grep -Fxq 'static inherited generic derived:Int32/derived:String/derived/derived/derived' "$out/static-selection.stdout"
+    grep -Fxq 'static inherited most most:Int32/most:String/derived/derived/most' "$out/static-selection.stdout"
+    DN2CPP_BEFORE_STATIC_IMPL_SELECTION=1 run_bounded "$out/GenericMathOpsSubset$EXE_EXT" > "$out/static-selection-prefix.stdout"
+    # Native stdout uses CRLF on Windows; normalize both sides before diffing.
+    diff -u <(tr -d '\r' < "$out/static-selection-prefix.stdout") \
+        <(sed '/^== Static interface implementation selection ==/,$d' "$out/static-selection.stdout" | tr -d '\r')
+}
 
 corelib_diff_gate GenericMathOpsSubset System.Runtime

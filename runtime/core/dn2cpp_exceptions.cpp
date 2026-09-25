@@ -585,6 +585,30 @@ void dn2cpp_throw_missing_method(const char* message)
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr));
 }
 
+// No constructor body runs for a runtime-raised exception, so the HResult the
+// managed constructor would set (COR_E_AMBIGUOUSIMPLEMENTATION) is stamped here.
+[[noreturn]] static void dn2cpp_throw_ambiguous_implementation_string(Dn2CppString* message)
+{
+    auto* ex = reinterpret_cast<Dn2CppExceptionObject*>(dn2cpp_exception_new(
+        &dn2cpp_ambiguous_implementation_exception_type, message, nullptr));
+    ex->hresult = static_cast<int32_t>(0x8013106Au);
+    dn2cpp_throw(ex);
+}
+
+void dn2cpp_throw_ambiguous_implementation(const char* message)
+{
+    dn2cpp_throw_ambiguous_implementation_string(
+        dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))));
+}
+
+void dn2cpp_throw_ambiguous_implementation_for(const void* receiver, const char* head, const char* tail)
+{
+    dn2cpp_throw_ambiguous_implementation_string(dn2cpp_string_concat3(
+        dn2cpp_string_from_utf8(head, static_cast<int32_t>(std::strlen(head))),
+        dn2cpp_type_tostring(static_cast<const Dn2CppObject*>(receiver)->type),
+        dn2cpp_string_from_utf8(tail, static_cast<int32_t>(std::strlen(tail)))));
+}
+
 [[noreturn]] void dn2cpp_throw_dll_not_found(const char* moduleName)
 {
     std::string message = "Unable to load shared library '";
