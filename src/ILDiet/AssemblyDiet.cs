@@ -455,8 +455,8 @@ internal sealed partial class AssemblyDiet : IDisposable
     }
 
     // Activator.CreateInstance(Type) and ConstructorInfo.Invoke can construct any
-    // application type a type token names, including an open generic definition
-    // closed later through MakeGenericType.
+    // application type a type token or a custom-attribute Type argument names,
+    // including an open generic definition closed later through MakeGenericType.
     private void NoteTypeToken(TypeReference reference)
     {
         var element = reference.GetElementType();
@@ -591,6 +591,8 @@ internal sealed partial class AssemblyDiet : IDisposable
             try
             {
                 bool registration = IsRegistrationAttribute(attribute, provider);
+                // A registration list is filtered to types retained elsewhere, so its
+                // entries neither mark types nor select constructors.
                 foreach (var argument in attribute.ConstructorArguments)
                     if (registration && IsTypeArray(argument)) MarkType(argument.Type);
                     else MarkArgument(argument);
@@ -618,7 +620,11 @@ internal sealed partial class AssemblyDiet : IDisposable
     private void MarkArgument(CustomAttributeArgument argument)
     {
         MarkType(argument.Type);
-        if (argument.Value is TypeReference type) MarkType(type);
+        if (argument.Value is TypeReference type)
+        {
+            MarkType(type);
+            NoteTypeToken(type);
+        }
         else if (argument.Value is CustomAttributeArgument nested) MarkArgument(nested);
         else if (argument.Value is CustomAttributeArgument[] values)
             foreach (var value in values) MarkArgument(value);

@@ -221,8 +221,8 @@ internal sealed class PreservationReader
     /// <summary>Whether a call through a MemberRef to
     /// <paramref name="parent"/>::<paramref name="member"/> constructs a type chosen at
     /// run time. The transpiler then reaches every application instance constructor,
-    /// and ILDiet keeps the ones a type token can select; both arm on this
-    /// predicate.</summary>
+    /// and ILDiet keeps the ones a type token or a custom-attribute Type argument can
+    /// select; both arm on this predicate.</summary>
     internal static bool ConstructsFromRuntimeType(string? parent, string member) =>
         member == "CreateInstance" && parent == "System.Activator"
         || member == "Invoke" && parent == "System.Reflection.ConstructorInfo";
