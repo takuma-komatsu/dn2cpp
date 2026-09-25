@@ -1670,11 +1670,14 @@ internal sealed partial class CppEmitter
                         : isRef
                         ? $"return (Dn2CppObject*)({access});"
                         : $"{cppT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({cppT}));");
+                    // A null value stores the default. The dispatcher converts null
+                    // through the row's field type, which reads Object for an enum the
+                    // image emits no type-info for.
                     string setBody = ensure + (isHeaderless
                         ? $"{access} = {MethodCompiler.HeaderlessUnwrapExpr("val", memberT)};"
                         : isRef
                         ? $"{access} = ({memberT})val;"
-                        : $"{access} = *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
+                        : $"{access} = val == nullptr ? {cppT}{{}} : *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
                     if (f.Type.ContainsGcReferences())
                     {
                         if (f.IsStatic)

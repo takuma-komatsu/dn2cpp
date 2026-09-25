@@ -1445,6 +1445,8 @@ inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocation
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
@@ -1466,7 +1468,7 @@ inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_Actual
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
 const char* dn2cpp_sr_text(const char* key);
-// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 2), or null
+// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 3), or null
 // when the text is absent.
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc);
 // Dynamic side-chain of the type-name registry: type-infos constructed at run

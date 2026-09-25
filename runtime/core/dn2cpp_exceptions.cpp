@@ -333,7 +333,7 @@ const char* dn2cpp_sr_text(const char* key)
 }
 
 // The composite-format substitution SR.Format performs, over a template this runtime
-// already holds: `{0}`/`{1}` only, no alignment or format specifier, because these are
+// already holds: `{0}` to `{2}` only, no alignment or format specifier, because these are
 // exception-message resources and nothing else may reach it. An unresolved template
 // (null) yields null, which every caller reads as "no message".
 static Dn2CppString* dn2cpp_sr_format(const char* key, const std::string* args, int32_t argc)
@@ -368,8 +368,8 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
 
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
 {
-    std::string text[2];
-    if (argc > 2)
+    std::string text[3];
+    if (argc > 3)
         dn2cpp_throw_invalid_operation();
     for (int32_t i = 0; i < argc; i++)
         text[i] = dn2cpp_sr_arg(args[i]);

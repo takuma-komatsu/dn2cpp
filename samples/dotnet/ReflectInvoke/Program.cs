@@ -65,6 +65,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_VIRTUAL_INVOKE") == "1")
                 return;
             ReflectVirtualInvokeSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_FIELD_VALIDATION") == "1")
+                return;
+            ReflectFieldValidationSubset.Program.Run();
         }
     }
 }

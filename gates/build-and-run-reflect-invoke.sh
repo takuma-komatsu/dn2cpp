@@ -125,6 +125,12 @@
 # interface rows whose declaration has a default body, beside a non-virtual
 # interface member that runs its own body. A closed binding reports the body it runs
 # as its Method.
+# ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
+# receiver, then the value, with .NET's exceptions, HResults and messages: an
+# instance field refuses a null or foreign receiver and takes a derived instance, a
+# boxed struct and a MakeGenericType instantiation's own instance, a static field
+# ignores its receiver, a value converts as a reflected argument does, and null
+# stores the default of a value-type field.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -314,6 +320,20 @@ gate_extra_asserts() {
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-virtual-invoke.stdout") \
         <(strip_cr_win_file "$out/virtual-invoke-prefix.stdout")
+    grep -Fxq '== field validation ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'null receiver, get int: TargetException 0x80131603 Non-static field requires a target.' "$out/metadata-layout.stdout"
+    grep -Fxq "stranger receiver, set: ArgumentException 0x80070057 Field 'Number' defined on type 'ReflectFieldValidationSubset.Target' is not a field on the target object which is of type 'ReflectFieldValidationSubset.Stranger'." "$out/metadata-layout.stdout"
+    grep -Fxq 'boxed struct, set: Int32:8' "$out/metadata-layout.stdout"
+    grep -Fxq 'null into struct: Spot:(0,null)' "$out/metadata-layout.stdout"
+    grep -Fxq "string into int: ArgumentException 0x80070057 Object of type 'System.String' cannot be converted to type 'System.Int32'." "$out/metadata-layout.stdout"
+    grep -Fxq 'int into nullable: Int32:5' "$out/metadata-layout.stdout"
+    grep -Fxq 'null receiver, wrong value: TargetException 0x80131603 Non-static field requires a target.' "$out/metadata-layout.stdout"
+    grep -Fxq 'null into unnamed enum: String:stored' "$out/metadata-layout.stdout"
+    grep -Fxq 'field validation end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_FIELD_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-field-validation.stdout"
+    sed '/^== field validation ==/,$d' "$out/metadata-layout.stdout" > "$out/field-validation-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-field-validation.stdout") \
+        <(strip_cr_win_file "$out/field-validation-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
