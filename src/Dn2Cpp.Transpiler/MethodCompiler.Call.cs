@@ -4133,12 +4133,26 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({boxed}, {Cast(other, "Dn2CppObject*")})");
                 return true;
             }
-            // IComparable<T>.CompareTo(T) on a primitive or string key (the LINQ
-            // OrderBy / generic sort path). Devirtualize to a typed three-way
-            // compare — string uses ordinal (the project's string-ordering model);
-            // numeric uses </> (NaN sorts as 0, consistent with the primitive
-            // Equals model). The unconstrained (IComparable<T>)box.CompareTo cast
-            // form is still unsupported — callers should constrain TKey.
+            // CompareTo(object) on a primitive, string or enum receiver: Enum.CompareTo
+            // (what `e.CompareTo(x)` compiles to) or IComparable.CompareTo under a generic.
+            // The IL boxes only the argument. The typed-interface test runs first because
+            // the typed CompareTo(!0)'s signature must not be decoded against the caller's
+            // generic context.
+            case "CompareTo" when ((c.Kind == TypeKind.Primitive && !c.IsObject)
+                                   || c is { Kind: TypeKind.Class, Class.IsEnum: true })
+                && !IsTypedItfConstrained(handle, "System.IComparable")
+                && ConstrainedCalleeSig(handle).ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var receiver = Pop(); // managed pointer to the constrained value
+                Push(StackKind.I4, "int32_t", c.Kind == TypeKind.Primitive
+                    ? EmitPrimitiveCompareToObject(c, ConstrainedReceiverValue(c, receiver.Expr), other)
+                    : $"dn2cpp_enum_compareto({BoxedConstrainedReceiver(c, receiver)}, {Cast(other, "Dn2CppObject*")})");
+                return true;
+            }
+            // IComparable<T>.CompareTo(T) on a primitive, string or enum key (the LINQ
+            // OrderBy / generic sort path): the typed three-way compare of
+            // TryCompareLValue, whose string order is ordinal.
             case "CompareTo" when c.Kind == TypeKind.Primitive || c is { Kind: TypeKind.Class, Class.IsEnum: true }:
             {
                 var arg = Pop();      // the other value (y)

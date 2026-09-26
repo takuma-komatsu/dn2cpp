@@ -464,6 +464,49 @@ void dn2cpp_overflow()
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
 }
 
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1)
+{
+    std::string args[2] = { dn2cpp_sr_arg(a0), dn2cpp_sr_arg(a1) };
+    Dn2CppString* msg = dn2cpp_sr_format(key, args, 2);
+    dn2cpp_throw(dn2cpp_exception_new(ti,
+        msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
+}
+
+// Keyed by the handle a box carries, which is the one handle each of these types has.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self)
+{
+    struct Row { const Dn2CppTypeInfo* ti; const char* key; };
+    static const Row rows[] = {
+        { &dn2cpp_bool_type, DN2CPP_SR_MUST_BE_BOOLEAN },
+        { &dn2cpp_char_type, DN2CPP_SR_MUST_BE_CHAR },
+        { &dn2cpp_sbyte_type, DN2CPP_SR_MUST_BE_SBYTE },
+        { &dn2cpp_byte_type, DN2CPP_SR_MUST_BE_BYTE },
+        { &dn2cpp_int16_type, DN2CPP_SR_MUST_BE_INT16 },
+        { &dn2cpp_uint16_type, DN2CPP_SR_MUST_BE_UINT16 },
+        { &dn2cpp_int32_type, DN2CPP_SR_MUST_BE_INT32 },
+        { &dn2cpp_uint32_type, DN2CPP_SR_MUST_BE_UINT32 },
+        { &dn2cpp_int64_type, DN2CPP_SR_MUST_BE_INT64 },
+        { &dn2cpp_uint64_type, DN2CPP_SR_MUST_BE_UINT64 },
+        { &dn2cpp_single_type, DN2CPP_SR_MUST_BE_SINGLE },
+        { &dn2cpp_double_type, DN2CPP_SR_MUST_BE_DOUBLE },
+        { &dn2cpp_intptr_type, DN2CPP_SR_MUST_BE_INTPTR },
+        { &dn2cpp_uintptr_type, DN2CPP_SR_MUST_BE_UINTPTR },
+        { &dn2cpp_decimal_type, DN2CPP_SR_MUST_BE_DECIMAL },
+        { &dn2cpp_datetime_type, DN2CPP_SR_MUST_BE_DATETIME },
+        { &dn2cpp_timespan_type, DN2CPP_SR_MUST_BE_TIMESPAN },
+        { &dn2cpp_datetimeoffset_type, DN2CPP_SR_MUST_BE_DATETIMEOFFSET },
+        { &dn2cpp_dateonly_type, DN2CPP_SR_MUST_BE_DATEONLY },
+        { &dn2cpp_timeonly_type, DN2CPP_SR_MUST_BE_TIMEONLY },
+        { &dn2cpp_string_type, DN2CPP_SR_MUST_BE_STRING },
+    };
+    for (const Row& r : rows)
+        if (r.ti == self)
+            if (const char* text = dn2cpp_sr_text(r.key))
+                dn2cpp_throw_argument_msg(text);
+    dn2cpp_throw_argument();
+}
+
 // ArgumentOutOfRangeException as real .NET assembles it: the resource's own sentence,
 // then the " (Parameter 'x')" ArgumentException.Message appends, then the newline +
 // "Actual value was v." ArgumentOutOfRangeException.Message appends. A runtime-raised

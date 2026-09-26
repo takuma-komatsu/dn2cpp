@@ -1503,6 +1503,28 @@ inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "Argumen
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BOOLEAN = "Arg_MustBeBoolean";
+inline constexpr const char* DN2CPP_SR_MUST_BE_CHAR = "Arg_MustBeChar";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SBYTE = "Arg_MustBeSByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BYTE = "Arg_MustBeByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT16 = "Arg_MustBeInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT16 = "Arg_MustBeUInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT32 = "Arg_MustBeInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT32 = "Arg_MustBeUInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT64 = "Arg_MustBeInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT64 = "Arg_MustBeUInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SINGLE = "Arg_MustBeSingle";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DOUBLE = "Arg_MustBeDouble";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INTPTR = "Arg_MustBeIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINTPTR = "Arg_MustBeUIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DECIMAL = "Arg_MustBeDecimal";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIME = "Arg_MustBeDateTime";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMESPAN = "Arg_MustBeTimeSpan";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIMEOFFSET = "Arg_MustBeDateTimeOffset";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATEONLY = "Arg_MustBeDateOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMEONLY = "Arg_MustBeTimeOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_STRING = "Arg_MustBeString";
+inline constexpr const char* DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE = "Arg_EnumAndObjectMustBeSameType";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
 const char* dn2cpp_sr_text(const char* key);
@@ -2749,6 +2771,12 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // holding the operand .NET's own sentence names (the string that failed to parse, the
 // duplicate dictionary key). Falls back to `ti`'s default text if the key is absent.
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0);
+// The same over a two-argument format.
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1);
+// The ArgumentException a built-in's CompareTo(object) raises for a box of another type.
+// .NET's message names the RECEIVER's type `self`; a type without one keeps the default.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self);
 // ArgumentOutOfRangeException with the paramName/actual-value tail real .NET's Message
 // overrides append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
@@ -5164,9 +5192,10 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
 // culture-sensitive Comparer<string>.Default the generic sort/search path already makes.
 int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppTypeInfo* icomparable_ti);
 
-// System.Enum::CompareTo(object): the synthesized enum value body (BrEnumInstanceFormat) calls
-// this. Null target sorts first (this > null -> 1), a cross-enum-type target is an
-// ArgumentException, and same type delegates to dn2cpp_object_compare's boxed-enum width ladder.
+// System.Enum::CompareTo(object) for the synthesized enum value body (BrEnumInstanceFormat) and a
+// constrained call on an enum value. Null target sorts first (this > null -> 1), a target of any
+// other type is .NET's ArgumentException naming both types, and same type delegates to
+// dn2cpp_object_compare's boxed-enum width ladder.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b);
 
 // Double/Single value semantics, shared by the two callers that must agree: the

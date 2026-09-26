@@ -54,6 +54,9 @@ namespace BoxingPrimitives
     //     into the override, and the identity hash is one function. It also formats
     //     boxed structs away from any formatting call and calls Object's virtuals
     //     through method groups.
+    //   * ConstrainedObjectCompareSubset is a MOUTH-AGREEMENT test for CompareTo(object):
+    //     the constrained call under a generic, the boxed IComparable receiver and the
+    //     direct overload answer the same order, null and foreign-box message.
     internal static class Program
     {
         private static void Main()
@@ -80,6 +83,9 @@ namespace BoxingPrimitives
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OBJECT_VIRTUALS") == "1")
                 return;
             ObjectVirtualDispatchSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_CONSTRAINED_OBJECT_COMPARE") == "1")
+                return;
+            ConstrainedObjectCompareSubset.Program.Run();
         }
     }
 }

@@ -771,16 +771,18 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
 }
 
 // System.Enum::CompareTo(object) — the synthesized value body (CoreIntrinsics.BrEnumInstanceFormat)
-// calls this. Enum.CompareTo orders by the underlying value and returns the -1/0/1 sign: a null
-// target sorts first (this > null -> 1), a different enum type is an ArgumentException, and same
-// type delegates to dn2cpp_object_compare's boxed-enum arm so the width+signedness ladder (byte..
-// ulong) lives in exactly one place. The receiver `a` is `this`, never null for an instance call.
+// and a constrained call on an enum value call this. Enum.CompareTo orders by the underlying value
+// and returns the -1/0/1 sign: a null target sorts first (this > null -> 1), a box of any other type
+// is the ArgumentException .NET raises naming both types, and same type delegates to
+// dn2cpp_object_compare's boxed-enum arm so the width+signedness ladder (byte..ulong) lives in
+// exactly one place. The receiver `a` is `this`, never null for an instance call.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (b == nullptr)
         return 1;
-    if (a == nullptr || a->type != b->type)
-        dn2cpp_throw_argument();
+    if (a->type != b->type)
+        dn2cpp_throw_sr2(&dn2cpp_argument_exception_type, DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE,
+            dn2cpp_type_tostring(b->type), dn2cpp_type_tostring(a->type));
     return dn2cpp_object_compare(a, b, nullptr);
 }
 

@@ -166,8 +166,8 @@ namespace EnumBoxedValueSubset
             // The two NON-ordering arms of the same interface slot, neither reachable through
             // the direct System.Enum.CompareTo(object) form the Probe sections use: a null
             // target sorts first (this > null -> 1), and a DIFFERENT enum type is an
-            // ArgumentException rather than an order. Only the exception's TYPE is printed —
-            // dn2cpp's runtime-raised ArgumentException carries no message.
+            // ArgumentException rather than an order. Only the exception's TYPE is printed
+            // here; EnumCompareToSubset diffs its message.
             string mismatch;
             try
             {
