@@ -144,7 +144,9 @@
 # default, derived-interface and struct bodies; a closed binding reports the body it
 # runs. Its direct calls include a struct's generic interface method through its box
 # and a delegate. An open binding of a generic virtual row is refused with .NET's
-# NotSupportedException.
+# NotSupportedException. An override hides the generic virtual method it overrides
+# from GetMethod and GetMethods while a new slot or a new method stays a second
+# method, and GetBaseDefinition answers the definition that introduces the chain.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -421,6 +423,10 @@ gate_extra_asserts() {
     grep -Fxq 'closed delegate, minted receiver: minted:Int64/Int32/True' "$out/metadata-layout.stdout"
     grep -Fxq 'closed delegate, derived interface default: fancy-fallback:Int32/IGvmFancyPick.ReflectVirtualInvokeSubset.IGvmPick.Fallback' "$out/metadata-layout.stdout"
     grep -Fxq 'open delegate, sealed override row: NotSupportedException 0x80131515 Specified method is not supported.' "$out/metadata-layout.stdout"
+    grep -Fxq 'GetMethod, override: GvmLeaf.Pair' "$out/metadata-layout.stdout"
+    grep -Fxq 'GetMethod, new slot: AmbiguousMatchException' "$out/metadata-layout.stdout"
+    grep -Fxq 'GetMethods, hider chain: GvmHiderLeaf.Tag,GvmMid.Tag' "$out/metadata-layout.stdout"
+    grep -Fxq 'base definition, hider chain: GvmHider.Tag/True/GvmHider' "$out/metadata-layout.stdout"
     grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"

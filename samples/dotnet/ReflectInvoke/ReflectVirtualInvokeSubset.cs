@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -23,7 +24,9 @@ using System.Reflection;
 // abstract, generic-class, base-call-only and MakeGenericType rows, and interface
 // rows over plain, explicit, default, derived-interface and struct bodies. Its
 // direct calls include a struct's generic interface method through its box and a
-// delegate. An open binding of a generic virtual row is refused.
+// delegate. An open binding of a generic virtual row is refused. An override
+// hides the generic virtual method it overrides from GetMethod and GetMethods, and
+// GetBaseDefinition answers the definition that introduces the chain.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -388,6 +391,18 @@ class GvmFancyPick : IGvmFancyPick
     public string Pick<T>() => "fancy:" + typeof(T).Name;
 }
 
+// A new slot and a new non-virtual method over a generic virtual method whose
+// parameter spells its type parameter: each is a second method of that name.
+class GvmPairHider : GvmLeaf
+{
+    public new virtual string Pair<T>(T value) => "pair-hider:" + value;
+}
+
+class GvmPairShadow : GvmRoot
+{
+    public new string Pair<T>(T value) => "pair-shadow:" + value;
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -738,6 +753,19 @@ static class Program
     private static MethodInfo Generic(Type type, string name, Type argument) =>
         type.GetMethod(name)!.MakeGenericMethod(argument);
 
+    private static string Definition(MethodInfo method) =>
+        Describe(method) + "/" + method.IsGenericMethodDefinition + "/" + method.ReflectedType!.Name;
+
+    // The declaring types GetMethods reports a method on, once each.
+    private static string Declarers(Type type, string name)
+    {
+        var declarers = new List<string>();
+        foreach (var method in type.GetMethods())
+            if (method.Name == name && !declarers.Contains(Describe(method)))
+                declarers.Add(Describe(method));
+        return string.Join(",", declarers);
+    }
+
     private static string Bound(object receiver, MethodInfo row)
     {
         var bound = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), receiver, row);
@@ -833,6 +861,25 @@ static class Program
         Fault("open delegate, abstract row", () => Delegate.CreateDelegate(typeof(Func<GvmShape, int, string>), kind));
         Fault("open delegate, interface row", () => Delegate.CreateDelegate(typeof(Func<IGvmPick, string>), pick));
         Fault("open delegate, receiver mismatch", () => Delegate.CreateDelegate(typeof(Func<object, string>), rootTag));
+
+        // An override hides the generic virtual method it overrides; a new slot or a
+        // new method does not. The base definition is the method the chain
+        // introduces.
+        Try("direct hiding calls", () => new GvmPairHider().Pair(1) + "|" + new GvmPairShadow().Pair(2));
+        Try("GetMethod, override", () => Describe(typeof(GvmLeaf).GetMethod("Pair")!));
+        Try("GetMethod, inherited override", () => Describe(typeof(GvmTail).GetMethod("Pair")!));
+        Try("GetMethod, new slot", () => Describe(typeof(GvmPairHider).GetMethod("Pair")!));
+        Try("GetMethod, new method", () => Describe(typeof(GvmPairShadow).GetMethod("Pair")!));
+        Try("GetMethods, override", () => Declarers(typeof(GvmLeaf), "Pair"));
+        Try("GetMethods, hider chain", () => Declarers(typeof(GvmHiderLeaf), "Tag"));
+        Try("GetMethods, new slot", () => Declarers(typeof(GvmPairHider), "Pair"));
+        Try("base definition, override", () => Definition(Generic(typeof(GvmLeaf), "Tag", typeof(int)).GetBaseDefinition()));
+        Try("base definition, argument override", () => Definition(typeof(GvmLeaf).GetMethod("Pair")!.GetBaseDefinition()));
+        Try("base definition, own row", () => Definition(rootTag.GetBaseDefinition()));
+        Try("base definition, hider chain", () => Definition(Generic(typeof(GvmHiderLeaf), "Tag", typeof(int)).GetBaseDefinition()));
+        Try("base definition, covariant override", () => Definition(Generic(typeof(GvmCovariantLeaf), "Make", typeof(int))
+            .GetBaseDefinition()));
+        Try("base definition, abstract row", () => Definition(Generic(typeof(GvmSquare), "Kind", typeof(int)).GetBaseDefinition()));
 
         Console.WriteLine("generic virtual invoke end");
     }

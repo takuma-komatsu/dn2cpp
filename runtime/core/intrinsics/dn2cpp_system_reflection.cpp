@@ -1720,11 +1720,128 @@ static Dn2CppMethodRef* dn2cpp_make_methodref_defview(Dn2CppMetadataHandle<Dn2Cp
     return slot;
 }
 
+// ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
+#define DN2CPP_MA_FINAL    0x20
+#define DN2CPP_MA_VIRTUAL  0x40
+#define DN2CPP_MA_NEWSLOT  0x100
+#define DN2CPP_MA_ABSTRACT 0x400
+
+// A closed instance row of a class's generic virtual method. It has no slot, so
+// the override relation is its definition's.
+static bool dn2cpp_is_gvm_row(const Dn2CppMethodInfo& row)
+{
+    return row.genericParamCount != 0 && row.genericArgs != nullptr
+        && (row.attrs & DN2CPP_MTHA_STATIC) == 0 && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0;
+}
+
+// An override: virtual without a new slot.
+static bool dn2cpp_is_gvm_override(const Dn2CppMethodInfo& row)
+{
+    return dn2cpp_is_gvm_row(row) && (row.ilAttrs & DN2CPP_MA_NEWSLOT) == 0;
+}
+
+// Whether `a` in row `ra` and `b` in row `rb` can spell one definition-level type:
+// identical, the same method type parameter position in both instantiations, or one
+// constructed shape over such parts.
+static bool dn2cpp_gvm_types_unify(const Dn2CppTypeInfo* a, const Dn2CppMethodInfo& ra,
+                                   const Dn2CppTypeInfo* b, const Dn2CppMethodInfo& rb, int32_t depth)
+{
+    if (a == b)
+        return true;
+    for (int32_t i = 0; i < ra.genericParamCount; i++)
+        if (ra.genericArgs[i] == a && rb.genericArgs[i] == b)
+            return true;
+    if (a == nullptr || b == nullptr || depth == 0)
+        return false;
+    if (a->genericDef != nullptr)
+    {
+        if (a->genericDef != b->genericDef || a->genericArgCount != b->genericArgCount
+            || a->genericArgs == nullptr || b->genericArgs == nullptr)
+            return false;
+        for (int32_t i = 0; i < a->genericArgCount; i++)
+            if (!dn2cpp_gvm_types_unify(a->genericArgs[i], ra, b->genericArgs[i], rb, depth - 1))
+                return false;
+        return true;
+    }
+    return a->elementType != nullptr && b->elementType != nullptr && a->arrayRank == b->arrayRank
+        && ((a->flags ^ b->flags) & DN2CPP_TF_ARRAY) == 0
+        && dn2cpp_gvm_types_unify(a->elementType, ra, b->elementType, rb, depth - 1);
+}
+
+// Whether two generic virtual rows close definitions of one name, generic arity and
+// signature, method type parameters matched by position: the relation by which an
+// override replaces the base method it overrides.
+static bool dn2cpp_gvm_same_signature(const Dn2CppMethodInfo& a, const Dn2CppMethodInfo& b)
+{
+    if (a.genericParamCount != b.genericParamCount || a.paramCount != b.paramCount
+        || std::strcmp(a.name, b.name) != 0
+        || !dn2cpp_gvm_types_unify(a.returnType, a, b.returnType, b, 8))
+        return false;
+    for (int32_t p = 0; p < a.paramCount; p++)
+        if (!dn2cpp_gvm_types_unify(a.parameters[p]->paramType, a, b.parameters[p]->paramType, b, 8))
+            return false;
+    return true;
+}
+
+// Slot hiding for generic virtual rows, walking derived→base: a base row is hidden
+// when a more derived override has its signature. The override goes on hiding
+// through an overriding base row and stops at the introducing one. A type's own
+// overrides start hiding with its base, so the rows of one definition never hide
+// each other.
+struct Dn2CppGvmHiding
+{
+    struct Hider
+    {
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> row;
+        const Dn2CppTypeInfo* declaringType;
+        int32_t metadataToken;
+        bool ends;
+    };
+    static constexpr int32_t capacity = 32;
+    Hider hiders[capacity];
+    int32_t count = 0;
+    int32_t active = 0;
+
+    bool hides(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi, const Dn2CppMethodInfo& row)
+    {
+        if (!dn2cpp_is_gvm_row(row))
+            return false;
+        for (int32_t h = 0; h < active; h++)
+        {
+            if (!dn2cpp_gvm_same_signature(*hiders[h].row, row))
+                continue;
+            if ((row.ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
+                hiders[h].ends = true;
+            return true;
+        }
+        if (!dn2cpp_is_gvm_override(row))
+            return false;
+        for (int32_t h = active; h < count; h++)
+            if (hiders[h].metadataToken == row.metadataToken && hiders[h].declaringType == row.declaringType)
+                return false;
+        if (count < capacity)
+            hiders[count++] = { mi, row.declaringType, row.metadataToken, false };
+        return false;
+    }
+
+    // Moves the walk to the next base type.
+    void next_type()
+    {
+        int32_t kept = 0;
+        for (int32_t h = 0; h < count; h++)
+            if (!hiders[h].ends)
+                hiders[kept++] = hiders[h];
+        count = kept;
+        active = kept;
+    }
+};
+
 // Walk the type and its base chain (stopping at DeclaredOnly), collecting matching
 // methods. A virtual method (vtableSlot >= 0) is reported only at its most-derived
 // override: once a slot is seen walking derived→base, the inherited definition at the
-// same slot is skipped. Non-virtual methods (slot -1, includes `new` hiding and
-// overloads) are all kept. With out==nullptr only counts; otherwise fills out[].
+// same slot is skipped, and a generic virtual row is hidden by Dn2CppGvmHiding.
+// Non-virtual methods (slot -1, includes `new` hiding and overloads) are all kept.
+// With out==nullptr only counts; otherwise fills out[].
 static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags, Dn2CppObject** out)
 {
     int32_t n = 0;
@@ -1732,6 +1849,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
     // method counts per type are tiny).
     int32_t seen[256];
     int32_t seenCount = 0;
+    Dn2CppGvmHiding gvm;
     for (const Dn2CppTypeInfo* ti = type; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
@@ -1753,6 +1871,8 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
                 if (seenCount < 256)
                     seen[seenCount++] = row->vtableSlot;
             }
+            else if (gvm.hides(mi, *row.operator->()))
+                continue;
             if (out != nullptr)
                 dn2cpp_gc_store_ref(&out[n],
                     reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(mi, type)));
@@ -1760,6 +1880,7 @@ static int32_t dn2cpp_collect_methods(const Dn2CppTypeInfo* type, int32_t flags,
         }
         if (flags & DN2CPP_BF_DECLAREDONLY)
             break;
+        gvm.next_type();
     }
     return n;
 }
@@ -1803,6 +1924,43 @@ static bool dn2cpp_params_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> a, Dn2Cpp
     return true;
 }
 
+// Whether `t` is one of `row`'s method type arguments or is built over one.
+static bool dn2cpp_mentions_method_arg(const Dn2CppTypeInfo* t, const Dn2CppMethodInfo& row, int32_t depth)
+{
+    if (t == nullptr || row.genericArgs == nullptr)
+        return false;
+    for (int32_t i = 0; i < row.genericParamCount; i++)
+        if (row.genericArgs[i] == t)
+            return true;
+    if (depth == 0)
+        return false;
+    if (t->genericArgs != nullptr)
+        for (int32_t i = 0; i < t->genericArgCount; i++)
+            if (dn2cpp_mentions_method_arg(t->genericArgs[i], row, depth - 1))
+                return true;
+    return dn2cpp_mentions_method_arg(t->elementType, row, depth - 1);
+}
+
+// .NET compares the definitions' parameter types, and each generic method's type
+// parameters are types of its own: rows of two definitions differ wherever a
+// parameter spells one of their method type arguments.
+static bool dn2cpp_candidates_sig_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> a, Dn2CppMetadataHandle<Dn2CppMethodInfo> b)
+{
+    if (!dn2cpp_params_equal(a, b))
+        return false;
+    const Dn2CppMethodInfo ra = *a;
+    const Dn2CppMethodInfo rb = *b;
+    if (ra.metadataToken != 0 && ra.metadataToken == rb.metadataToken && ra.declaringType == rb.declaringType)
+        return true;
+    for (int32_t j = 0; j < ra.paramCount; j++)
+    {
+        const Dn2CppTypeInfo* type = ra.parameters[j]->paramType;
+        if (dn2cpp_mentions_method_arg(type, ra, 8) || dn2cpp_mentions_method_arg(type, rb, 8))
+            return false;
+    }
+    return true;
+}
+
 // Resolves a GetMethod candidate set the way real .NET's GetMethodImpl does:
 // one candidate wins outright; sig-equal candidates (a `new`-hiding chain)
 // resolve to the most derived one (candidates are collected derived-first);
@@ -1817,7 +1975,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(D
         return c[0];
     bool allEqual = true;
     for (int32_t i = 1; i < n && allEqual; i++)
-        allEqual = dn2cpp_params_equal(c[0], c[i]);
+        allEqual = dn2cpp_candidates_sig_equal(c[0], c[i]);
     if (allEqual)
         return c[0];
     for (int32_t i = 1; i < n; i++)
@@ -2093,6 +2251,7 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
     int32_t n = 0;
     int32_t seen[256];
     int32_t seenCount = 0;
+    Dn2CppGvmHiding gvm;
     for (const Dn2CppTypeInfo* ti = t->typeInfo; ti != nullptr; ti = ti->base)
     {
         dn2cpp_require_metadata(ti);
@@ -2114,6 +2273,8 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
             }
             if (hidden || !dn2cpp_ascii_str_eq(row->name, name))
                 continue;
+            if (row->vtableSlot < 0 && gvm.hides(mi, *row.operator->()))
+                continue;
             if (genericParamCount >= 0 && row->genericParamCount != genericParamCount)
                 continue;
             if (paramTypes != nullptr && !dn2cpp_params_match_types(mi, paramTypes))
@@ -2123,6 +2284,7 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
         }
         if (bindingFlags & DN2CPP_BF_DECLAREDONLY)
             break;
+        gvm.next_type();
     }
     if (n == 0)
         return dn2cpp_meta_lookup(t->typeInfo, name, genericParamCount, paramTypes, bindingFlags);
@@ -2531,11 +2693,6 @@ Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f)
         return row->getter(nullptr);
     return dn2cpp_field_literal_as(row.operator->(), dn2cpp_enum_underlying_or_self(row->fieldType));
 }
-
-// ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
-#define DN2CPP_MA_FINAL    0x20
-#define DN2CPP_MA_VIRTUAL  0x40
-#define DN2CPP_MA_ABSTRACT 0x400
 
 // How a reflective call enters a row. Invoke covers MethodInfo.Invoke and the
 // PropertyInfo accessors: .NET checks the receiver and the arguments first and
@@ -5288,11 +5445,6 @@ const char* dn2cpp_memberinfo_module(Dn2CppObject* m)
     return nm != nullptr ? nm : "System.Private.CoreLib";
 }
 
-// ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
-#define DN2CPP_MA_FINAL    0x20
-#define DN2CPP_MA_VIRTUAL  0x40
-#define DN2CPP_MA_ABSTRACT 0x400
-
 int32_t dn2cpp_methodref_attributes(Dn2CppMethodRef* m)
 {
     return dn2cpp_methodref_require(m)->ilAttrs;
@@ -5442,14 +5594,38 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
 // a derived vtable extends its base, an override keeps the base's slot, and a
 // `new` redeclaration gets a fresh slot — so slot equality is definition
 // identity; the name check guards the interface-row slot numbering). A
-// non-virtual method (slot -1) is its own base definition. A base whose member
+// non-virtual method (slot -1) is its own base definition. A class's generic
+// virtual row has no slot: its base definition is the generic method definition
+// that introduces its override chain, as a definition view. A base whose member
 // table was trimmed (unreached non-app-module rows) yields the deepest
 // surviving declaration — best-effort, like the rest of the AOT surface.
 Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = dn2cpp_methodref_require(m);
     if (mi->vtableSlot < 0)
-        return m;
+    {
+        Dn2CppMethodInfo row = *mi;
+        if (!dn2cpp_is_gvm_row(row) || (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+            return m;
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> root = mi;
+        for (const Dn2CppTypeInfo* ti = row.declaringType->base;
+             ti != nullptr && dn2cpp_is_gvm_override(row); ti = ti->base)
+        {
+            dn2cpp_require_metadata(ti);
+            const auto reflection = ti->reflection();
+            for (int32_t i = 0; i < reflection.methodCount; i++)
+            {
+                const Dn2CppMethodInfo base = *reflection.methods[i];
+                if (base.vtableSlot < 0 && dn2cpp_is_gvm_row(base) && dn2cpp_gvm_same_signature(row, base))
+                {
+                    root = reflection.methods[i];
+                    row = base;
+                    break;
+                }
+            }
+        }
+        return dn2cpp_make_methodref_defview(root, nullptr);
+    }
     Dn2CppMetadataHandle<Dn2CppMethodInfo> best = mi;
     for (const Dn2CppTypeInfo* ti = mi->declaringType->base; ti != nullptr; ti = ti->base)
     {
