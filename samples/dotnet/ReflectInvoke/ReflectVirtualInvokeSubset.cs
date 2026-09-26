@@ -12,8 +12,10 @@ using System.Reflection;
 // MakeGenericType receiver, a boxed enum through a System.Enum row, compiled
 // framework overrides of abstract rows, and interface rows whose declaration
 // has a default body. An abstract row checks its receiver and arguments first,
-// and a closed CreateDelegate binding reports the body it runs. RunStripped
-// (dn2cpp only) reaches bodies the image stripped through each trap shape.
+// and a closed CreateDelegate binding reports the body it runs. An application
+// interface's static, non-virtual and private members that nothing calls run as
+// themselves. RunStripped (dn2cpp only) reaches bodies the image stripped
+// through each trap shape.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -183,6 +185,22 @@ class FancyGreeting : IFancyGreeting
     public string Tag() => "fancy-tag";
 }
 
+// Declares members only reflection runs: a static method and property, and a
+// non-virtual and a private instance member.
+interface IToolbox
+{
+    static string Make() => "made";
+    static string Label => "toolbox";
+    sealed string Stamp() => "stamp:" + Id();
+    private string Secret() => "secret:" + Id();
+    string Id();
+}
+
+class Toolbox : IToolbox
+{
+    public string Id() => "box";
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -348,6 +366,26 @@ static class Program
         Try("closed delegate, inherited default", () => toDefault() + "/" + Describe(toDefault.Method));
         var toTag = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new ExplicitGreeting(), tag);
         Try("closed delegate, interface row", () => toTag() + "/" + Describe(toTag.Method));
+
+        MethodInfo stamp = typeof(IToolbox).GetMethod("Stamp")!;
+        MethodInfo make = typeof(IToolbox).GetMethod("Make")!;
+        Try("interface static row", () => make.Invoke(null, null));
+        Try("interface static row, ignored receiver", () => make.Invoke(new Toolbox(), null));
+        Try("interface static property", () => typeof(IToolbox).GetProperty("Label")!.GetValue(null));
+        Try("interface non-virtual row", () => stamp.Invoke(new Toolbox(), null));
+        Try("interface private row", () => typeof(IToolbox).GetMethod("Secret", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(new Toolbox(), null));
+        Try("interface static delegate", () =>
+        {
+            var toMake = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), make);
+            return toMake() + "/" + Describe(toMake.Method);
+        });
+        Try("interface non-virtual delegate", () =>
+        {
+            var toStamp = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new Toolbox(), stamp);
+            return toStamp() + "/" + Describe(toStamp.Method);
+        });
+        Fault("interface non-virtual row, null receiver", () => stamp.Invoke(null, null));
 
         Console.WriteLine("virtual invoke end");
     }

@@ -2647,18 +2647,19 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // since the adjustment below keys on the declaring type. A value type's row is
     // sealed, and a receiver without a vtable (a boxed value, a runtime-owned
     // handle) runs the row's own body: System.Object and System.ValueType carry no
-    // rows and an enum declares no methods. A non-virtual interface member has no
-    // slot. Reachability cannot fill every framework row's slots, so the receiver's
-    // slot may hold a trap for a body the image stripped, which reports itself
-    // through the entered slot (dn2cpp_reflective_slot_check); an interface map miss
-    // stays its own loud abort.
+    // rows and an enum declares no methods. A static or non-virtual interface member
+    // runs its own body: its row carries a map index no receiver's map fills for it.
+    // Reachability cannot fill every framework row's slots, so the receiver's slot
+    // may hold a trap for a body the image stripped, which reports itself through
+    // the entered slot (dn2cpp_reflective_slot_check); an interface map miss stays
+    // its own loud abort.
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
     if (obj != nullptr && row.vtableSlot >= 0)
     {
         if ((declaring->flags & DN2CPP_TF_INTERFACE) != 0)
         {
-            if (fn == nullptr || (!isStatic && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0))
+            if (!isStatic && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
                 fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, declaring)[row.vtableSlot]);
         }
         else if ((declaring->flags & DN2CPP_TF_VALUETYPE) == 0 && obj->type->vtable != nullptr)

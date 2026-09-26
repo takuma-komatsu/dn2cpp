@@ -4138,7 +4138,7 @@ internal sealed partial class Compilation
         {
             foreach (var cls in Classes.ToList())
             {
-                if (cls.Module != AppModule || cls.IsInterface)
+                if (cls.Module != AppModule)
                     continue;
                 // Unlike the seeding loops above, this one runs after the discovery drain:
                 // reflection genuinely can invoke a closed generic's methods, so ask for
@@ -4146,6 +4146,11 @@ internal sealed partial class Compilation
                 foreach (var m in cls.EnsureMembers().Methods)
                 {
                     if (m.Rva == 0 || m.Name == ".cctor")
+                        continue;
+                    // An interface's virtual body runs through the receiver's slot, which
+                    // ReachReflectedVirtualSlots fills; its static and non-virtual bodies
+                    // run as themselves.
+                    if (cls.IsInterface && m.IsVirtual && !m.IsStatic)
                         continue;
                     // A body the backend replaces wholesale (e.g. the source-generated
                     // GodotPlugins.Game.Main bootstrap the .NET-module backend emits in
