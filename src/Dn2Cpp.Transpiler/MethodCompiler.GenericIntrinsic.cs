@@ -2310,10 +2310,11 @@ internal sealed partial class MethodCompiler
             ? Cast(sep, "Dn2CppString*")
             : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
         string arrExpr, countArg, suffix;
+        string? listCount = null;
         if (arr.CppType.StartsWith("Dn2CppArray"))
             (arrExpr, countArg, suffix) = (arr.Expr, "", "");
         else if (TryListBacking(arr) is { } lb)
-            (arrExpr, countArg, suffix) = (lb.Items, $", {lb.Count}", "_n");
+            (arrExpr, countArg, suffix, listCount) = (lb.Items, $", {lb.Count}", "_n", lb.Count);
         // A concrete IEnumerable<T> collection (SortedSet, Sorted*.Keys/.Values)
         // that is neither a Dn2CppArray nor a List<T> backing: enumerate it via
         // its interface. Pushes the result itself, so return early.
@@ -2327,6 +2328,22 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join is only " +
                 "supported over arrays, List<T>, or an IEnumerable<T> collection yet");
+        // An enum element joins by name, not by its underlying integer.
+        if (t is { Kind: TypeKind.Class, Class.IsEnum: true })
+        {
+            string eti = TypeInfoExpr(t)
+                ?? throw new NotSupportedException(
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join<{t}> has no emitted type-info");
+            string arrCt = ArrayCppPtr(t);
+            string arrT = NewTemp(arrCt);
+            Emit($"{arrT} = ({arrCt})({arrExpr});");
+            var (data, stride) = ArrayDataStride(t, arrT);
+            string count = listCount ?? $"{arrT}->length";
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"dn2cpp_string_join_enum_n({sepStr}, {arrT} == nullptr ? nullptr : {data}, "
+                + $"{arrT} == nullptr ? 0 : {stride}, {arrT} == nullptr ? 0 : {count}, {eti})");
+            return;
+        }
         string call = RepOf(t) switch
         {
             // Unsigned 32/64-bit elements format unsigned — the signed

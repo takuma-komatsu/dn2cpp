@@ -1747,6 +1747,42 @@ Dn2CppString* dn2cpp_string_join_ref(Dn2CppString* sep, Dn2CppArrayRef* a)
     return dn2cpp_string_join_ref_n(sep, a, a->length);
 }
 
+Dn2CppString* dn2cpp_string_join_enum_n(Dn2CppString* sep, const void* data, int32_t stride, int32_t n,
+                                        const Dn2CppTypeInfo* eti)
+{
+    if (data == nullptr || n < 0) n = 0;
+    const Dn2CppTypeInfo* u = eti->enumUnderlying;
+    auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
+    for (int32_t i = 0; i < n; i++)
+    {
+        const unsigned char* p = static_cast<const unsigned char*>(data) + static_cast<size_t>(i) * stride;
+        Dn2CppObject* box;
+        if (stride == 8)
+        {
+            int64_t v;
+            std::memcpy(&v, p, sizeof v);
+            box = dn2cpp_box(eti, &v, sizeof v);
+        }
+        else
+        {
+            int32_t v;
+            if (stride == 4)
+                std::memcpy(&v, p, sizeof v);
+            else if (stride == 2)
+            {
+                uint16_t w;
+                std::memcpy(&w, p, sizeof w);
+                v = u == &dn2cpp_int16_type ? static_cast<int16_t>(w) : static_cast<int32_t>(w);
+            }
+            else
+                v = u == &dn2cpp_sbyte_type ? static_cast<int8_t>(*p) : static_cast<int32_t>(*p);
+            box = dn2cpp_box(eti, &v, sizeof v);
+        }
+        dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(box));
+    }
+    return dn2cpp_join_strings(sep, e, n);
+}
+
 // Join/Concat over a span's data pointer + length — the params
 // ReadOnlySpan<object|string> overloads (a string element is an object whose
 // ToString is itself, so one helper serves both element types). Null elements

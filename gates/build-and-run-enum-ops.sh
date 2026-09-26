@@ -25,6 +25,8 @@
 # type rejected with .NET's message naming both types — then the raw difference a
 # sub-word underlying type answers through those mouths and the default comparers,
 # the unsigned order of a uint/ulong enum, and the sorts and searches ordered by it.
+# EnumJoinSubset: string.Join<T> and StringBuilder.AppendJoin<T> over enum elements
+# from an array and a List<T> — each element by name, at every underlying width.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"

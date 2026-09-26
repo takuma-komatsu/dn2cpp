@@ -5233,6 +5233,12 @@ Dn2CppString* dn2cpp_string_join_u4_n(Dn2CppString* sep, Dn2CppArrayI4* a, int32
 Dn2CppString* dn2cpp_string_join_u8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
 Dn2CppString* dn2cpp_string_join_r8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
 Dn2CppString* dn2cpp_string_join_ref_n(Dn2CppString* sep, Dn2CppArrayRef* a, int32_t n);
+// Join over the first `n` elements of an enum array's storage (`stride` bytes each, the
+// underlying's width): each element is boxed under the enum's own type-info `eti` — the
+// storage sign-extended per the underlying into the box's model payload — so it formats by
+// name, as Enum.ToString does, never as its underlying integer.
+Dn2CppString* dn2cpp_string_join_enum_n(Dn2CppString* sep, const void* data, int32_t stride, int32_t n,
+                                        const Dn2CppTypeInfo* eti);
 // Join(separator, string[], startIndex, count) — the 4-arg slice form (null
 // array ANE, bad slice catchable AOORE, both like .NET).
 Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,

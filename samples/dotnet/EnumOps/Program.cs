@@ -30,6 +30,7 @@ namespace EnumOps
             // APPENDED LAST: the preceding output remains an unchanged prefix.
             EnumParseSpanSubset.Program.__GateEntry();
             EnumCompareToSubset.Program.__GateEntry();
+            EnumJoinSubset.Program.__GateEntry();
         }
     }
 }
