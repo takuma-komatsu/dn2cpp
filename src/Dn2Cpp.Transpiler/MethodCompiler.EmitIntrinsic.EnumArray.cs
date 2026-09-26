@@ -1009,10 +1009,11 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>Array.Initialize over <paramref name="arr"/>. Only a value-type element that
-    /// declares a parameterless constructor has one to run, and which element that is comes
-    /// from the receiver's static type: an I4 or reference rep holds no struct, while any
-    /// other receiver must state its element type — the constructor to run cannot be a
-    /// run-time lookup, so a receiver that states none is refused.</summary>
+    /// declares a parameterless constructor has one to run. A receiver whose static type
+    /// states the element calls that constructor directly, and an I4 or reference rep holds
+    /// no struct. Any other receiver leaves the element to the array's run-time type:
+    /// <c>dn2cpp_array_initialize</c> invokes that type's constructor row, whose body
+    /// <see cref="Compilation.NoteRuntimeArrayInitialize"/> reaches.</summary>
     private void EmitArrayInitialize(StackEntry arr)
     {
         TypeDesc? elem = arr.StaticType is { Kind: TypeKind.SZArray or TypeKind.MDArray } at ? at.Element : null;
@@ -1024,9 +1025,11 @@ internal sealed partial class MethodCompiler
             return;
         }
         if (elem is null)
-            throw new NotSupportedException(
-                $"{Method.DeclaringClass.FullName}.{Method.Name}: Array.Initialize on a receiver whose "
-                + "element type is not statically known (the element constructor to run would be a run-time lookup)");
+        {
+            Comp.NoteRuntimeArrayInitialize();
+            Emit($"dn2cpp_array_initialize({Cast(arr, "Dn2CppObject*")});");
+            return;
+        }
         TaintIfCanonical(elem, "array-initialize");
         var ctor = elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls }
             ? Comp.ReachManagedMethod(cls, ".ctor", static ps => ps.Length == 0)

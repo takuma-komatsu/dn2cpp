@@ -1770,6 +1770,9 @@ Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* ar
                                                                   Dn2CppArrayI4* lengths,
                                                                   Dn2CppArrayI4* lowerBounds,
                                                                   int32_t hasBounds);
+// Array.Initialize when only the array object states its element type: runs that
+// type's parameterless constructor row over every element.
+void dn2cpp_array_initialize(Dn2CppObject* a);
 const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank);
 // The registry's SZ-array type-info over `elem`, or null when the image never
 // statically instantiated T[] (defined in the reflection unit's registry-scan

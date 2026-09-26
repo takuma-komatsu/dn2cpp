@@ -2124,6 +2124,9 @@ internal sealed partial class CppEmitter
             // Reflection's virtual rows dispatch through the receiver's slot; reach what
             // those slots hold for the rows the bodies just compiled made invocable.
             _c.ReachReflectedVirtualSlots();
+            // Array.Initialize's run-time lowering names each element constructor through
+            // its row; reach the ones the classes just minted declare.
+            _c.ReachRuntimeArrayInitializeCtors();
             // Shared-generics planning: instantiations discovered by the bodies
             // just compiled are linked to canonical owners and their grouped
             // methods' owner counterparts reached, so the next batch trial-

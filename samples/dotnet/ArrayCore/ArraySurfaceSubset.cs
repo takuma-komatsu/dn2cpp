@@ -27,6 +27,42 @@ namespace ArraySurfaceSubset
 
         private enum Small : byte { A, B }
 
+        private struct Seq
+        {
+            public static int Next;
+            public int N;
+            public Seq() { N = ++Next; }
+        }
+
+        private struct Named
+        {
+            public string S;
+            public Named() { S = new string('n', 3); }
+        }
+
+        private struct Thrower
+        {
+            public Thrower() { throw new InvalidOperationException("ctor ran"); }
+        }
+
+        private struct Gen<TVal>
+        {
+            public TVal V;
+            public int K;
+            public Gen() { V = default; K = 9; }
+        }
+
+        private sealed class Ref
+        {
+            public int X = 4;
+        }
+
+        private static Array Init(Array a)
+        {
+            a.Initialize();
+            return a;
+        }
+
         private static string Show(Array a)
         {
             var sb = new StringBuilder("[");
@@ -190,6 +226,63 @@ namespace ArraySurfaceSubset
             setValue2(80, 1L, 0L);
             Console.WriteLine("group-getvalue-long: " + getValue(1L) + " " + md[1, 0] + " "
                 + copyGroup(ia, new int[4], 2L));
+
+            // A System.Array receiver or a method group states no element type, so the
+            // constructor to run is found from the array's run-time element type.
+            var dynSz = new WithCtor[3];
+            dynSz[1].X = 1;
+            Init(dynSz);
+            Console.WriteLine("initialize-dyn-sz: " + dynSz[0].X + dynSz[1].X + dynSz[2].X);
+            var dynPlain = new[] { new Plain { X = 3 } };
+            var dynRefs = new Ref[] { null, new Ref() };
+            var dynInts = new[] { 5 };
+            var dynSmall = new[] { Small.B };
+            var dynStrs = new[] { "s" };
+            var dynNullable = new WithCtor?[2];
+            var dynJagged = new WithCtor[2][];
+            Init(dynPlain);
+            Init(dynRefs);
+            Init(dynInts);
+            Init(dynSmall);
+            Init(dynStrs);
+            Init(dynNullable);
+            Init(dynJagged);
+            Console.WriteLine("initialize-dyn-noop: " + dynPlain[0].X + " " + (dynRefs[0] is null) + " "
+                + dynRefs[1].X + " " + dynInts[0] + " " + dynSmall[0] + " " + dynStrs[0] + " "
+                + dynNullable[0].HasValue + " " + (dynJagged[1] is null));
+            var dynMd = new WithCtor[2, 3];
+            Init(dynMd);
+            Console.WriteLine("initialize-dyn-md: " + dynMd[0, 0].X + dynMd[1, 2].X);
+            Console.WriteLine("initialize-dyn-empty: " + Init(new WithCtor[0]).Length + " "
+                + Init(new WithCtor[0, 4]).Length + " " + Init(new Thrower[0]).Length);
+            Seq.Next = 0;
+            var dynSeq = new Seq[4];
+            Init(dynSeq);
+            Console.WriteLine("initialize-dyn-order: " + dynSeq[0].N + dynSeq[1].N + dynSeq[2].N + dynSeq[3].N
+                + " calls " + Seq.Next);
+            var dynNamed = new Named[2];
+            Init(dynNamed);
+            GC.Collect();
+            Console.WriteLine("initialize-dyn-refs: " + dynNamed[0].S + " " + dynNamed[1].S);
+            E("initialize-dyn-throw", () => Init(new Thrower[2]).Length);
+            var dynGenInt = new Gen<int>[2];
+            var dynGenStr = new Gen<string>[2];
+            Init(dynGenInt);
+            Init(dynGenStr);
+            Console.WriteLine("initialize-dyn-generic: " + dynGenInt[1].K + " " + dynGenStr[0].K + " "
+                + (dynGenStr[1].V is null));
+            Array dynCreated = Array.CreateInstance(typeof(WithCtor), 2);
+            Init(dynCreated);
+            Console.WriteLine("initialize-dyn-created: " + ((WithCtor[])dynCreated)[1].X);
+            Seq.Next = 0;
+            var dynCreatedMd = (Seq[,])Init(Array.CreateInstance(typeof(Seq), 2, 2));
+            Console.WriteLine("initialize-dyn-created-md: " + dynCreatedMd[0, 0].N + dynCreatedMd[0, 1].N
+                + dynCreatedMd[1, 0].N + dynCreatedMd[1, 1].N);
+            T("initialize-dyn-null", () => Init(null));
+            Array dynGroupTarget = new WithCtor[1];
+            Action dynGroup = dynGroupTarget.Initialize;
+            dynGroup();
+            Console.WriteLine("initialize-dyn-group: " + ((WithCtor[])dynGroupTarget)[0].X);
         }
     }
 }

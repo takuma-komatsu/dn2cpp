@@ -4125,6 +4125,56 @@ static Dn2CppObject* dn2cpp_ctor_invoke_argv(Dn2CppMetadataHandle<Dn2CppMethodIn
     return obj;
 }
 
+// Array.Initialize over a receiver whose element type only the object states. The
+// element type's parameterless constructor row runs in place on every element, in
+// storage order (row-major for an MD array), and what it throws propagates unwrapped.
+// An element type without such a row leaves the array unchanged. A row without a body
+// is a constructor this image did not compile, never one that does not exist.
+void dn2cpp_array_initialize(Dn2CppObject* a)
+{
+    if (a == nullptr)
+        dn2cpp_throw_null_reference();
+    const Dn2CppTypeInfo* el = a->type != nullptr ? a->type->elementType : nullptr;
+    if (el == nullptr || (el->flags & DN2CPP_TF_VALUETYPE) == 0)
+        return;
+    const auto reflection = el->reflection();
+    for (int32_t i = 0; i < reflection.ctorCount; i++)
+    {
+        const auto row = reflection.ctors[i].operator->();
+        if (row->paramCount != 0)
+            continue;
+        if (row->invoker == nullptr || row->fnPtr == nullptr)
+        {
+            char buf[512];
+            std::snprintf(buf, sizeof(buf),
+                "Array.Initialize: the parameterless constructor of '%s' is not in this image.",
+                el->name != nullptr ? el->name : "?");
+            dn2cpp_throw_not_supported_msg(buf);
+        }
+        char* data;
+        int32_t size, count;
+        if (dn2cpp_array_rank_of(a) > 1)
+        {
+            auto* md = static_cast<Dn2CppMDArray*>(a);
+            data = md->data;
+            size = md->elemSize;
+            count = dn2cpp_md_total_length(md);
+        }
+        else
+        {
+            auto* sz = static_cast<Dn2CppArrayN*>(a);
+            data = sz->data;
+            size = sz->elemSize;
+            count = sz->length;
+        }
+        for (int32_t j = 0; j < count; j++)
+            dn2cpp_invoke_target(row->invoker, row->fnPtr,
+                reinterpret_cast<Dn2CppObject*>(data + static_cast<size_t>(j) * static_cast<size_t>(size)),
+                nullptr, nullptr, false);
+        return;
+    }
+}
+
 // Collects a type's own constructors (no base walk — ctors are never inherited,
 // so the queried type IS the declaring type and the reflected-type stamp below
 // is the same pointer normalization would pick; passed for query-path uniformity).

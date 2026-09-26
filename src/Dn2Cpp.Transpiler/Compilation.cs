@@ -3878,6 +3878,86 @@ internal sealed partial class Compilation
         return false;
     }
 
+    /// <summary>Set once a compiled body lowers Array.Initialize to
+    /// <c>dn2cpp_array_initialize</c>, which runs the element's parameterless constructor
+    /// through the element type's constructor row.</summary>
+    private bool _runtimeArrayInitialize;
+
+    /// <summary>How much of <see cref="Classes"/>, which only grows,
+    /// <see cref="ReachRuntimeArrayInitializeCtors"/> has visited.</summary>
+    private int _runtimeArrayInitializeCursor;
+
+    /// <summary>Arms <see cref="ReachRuntimeArrayInitializeCtors"/>: an Array.Initialize
+    /// receiver that states no element type can hold any value type at run time.</summary>
+    internal void NoteRuntimeArrayInitialize()
+    {
+        if (_runtimeArrayInitialize)
+            return;
+        _runtimeArrayInitialize = true;
+        ReachRuntimeArrayInitializeCtors();
+    }
+
+    /// <summary>Once <see cref="NoteRuntimeArrayInitialize"/> armed it, reaches the
+    /// parameterless constructor of every user-module value type that declares one, so the
+    /// constructor row <c>dn2cpp_array_initialize</c> invokes carries a body. No framework
+    /// value type a program can name declares one. Driven each round, like
+    /// <see cref="ReachReflectedVirtualSlots"/>: a compiled body can mint a closed generic
+    /// value type.</summary>
+    public void ReachRuntimeArrayInitializeCtors()
+    {
+        if (!_runtimeArrayInitialize)
+            return;
+        bool reached = false;
+        while (_runtimeArrayInitializeCursor < Classes.Count)
+        {
+            var cls = Classes[_runtimeArrayInitializeCursor];
+            // A specialization minted by this walk is still pending, and only its shape
+            // says whether it is a value type.
+            if (!cls.ShapeReady)
+                CompletePendingSpecializations();
+            if (!cls.ShapeReady)
+                throw new InvalidOperationException($"{cls.FullName} is in Classes but was never queued for its shape");
+            _runtimeArrayInitializeCursor++;
+            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null
+                || !IsUserModule(cls.Module) || !DeclaresParameterlessCtor(cls))
+                continue;
+            EnsureCompleted(cls);
+            foreach (var m in cls.Methods)
+            {
+                if (m.Name != ".ctor" || m.IsStatic || m.Rva == 0 || Reachable.Contains(m)
+                    || m.Signature.ParameterTypes.Length != 0 || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                    continue;
+                Reach(m);
+                reached = true;
+            }
+        }
+        if (reached)
+            DrainReachability();
+    }
+
+    /// <summary>Whether <paramref name="cls"/>'s definition declares a parameterless instance
+    /// constructor with a body. Read from metadata, so a specialization's members are
+    /// decoded only when it does.</summary>
+    private static bool DeclaresParameterlessCtor(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(handle);
+            if ((md.Attributes & MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
+                || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                continue;
+            var blob = reader.GetBlobReader(md.Signature);
+            if (blob.ReadSignatureHeader().IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 0)
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
     /// at once by a string literal, as <c>GetMethod("Name")</c>,
     /// <c>GetProperty("Name")</c> or a helper taking both spell it. In first-named order

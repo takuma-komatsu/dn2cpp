@@ -129,7 +129,9 @@
 # a statically SZ or MD receiver check null and the dimension. ConstrainedCopy moves
 # only pairs that need no per-element conversion, CreateInstanceFromArrayType's
 # lengths forms check the type's rank, and Initialize runs a struct's explicit
-# parameterless constructor, which ILDiet must keep although no IL names it.
+# parameterless constructor, which ILDiet must keep although no IL names it. A
+# System.Array receiver or a method group finds that constructor from the array's
+# run-time element type.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore
