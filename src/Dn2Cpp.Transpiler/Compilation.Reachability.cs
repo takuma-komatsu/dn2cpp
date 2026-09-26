@@ -3482,7 +3482,7 @@ internal sealed partial class Compilation
         if (td.GetGenericParameters().Count > 1)
             return null;
 
-        if (ResolveSerializedTypeName(builderName) is not { } b)
+        if (ResolveSerializedTypeDefinition(builderName) is not { } b)
             return null; // the builder's assembly is not loaded: nothing to adopt it to
         var btd = b.Module.Reader.GetTypeDefinition(b.Handle);
         // The builder is embedded BY VALUE in the state machine (Dn2CppAsyncBuilder), and
@@ -3823,7 +3823,7 @@ internal sealed partial class Compilation
     /// TheAssembly, Version=..."</c> — names, or null when it is not a loaded type.
     /// <see cref="TypeIndex"/> is keyed on the RAW name (arity backtick included), which is
     /// exactly what an open generic builder serializes as.</summary>
-    private (Module Module, TypeDefinitionHandle Handle)? ResolveSerializedTypeName(string serialized)
+    private (Module Module, TypeDefinitionHandle Handle)? ResolveSerializedTypeDefinition(string serialized)
     {
         int comma = serialized.IndexOf(',');
         string full = (comma >= 0 ? serialized[..comma] : serialized).Trim();

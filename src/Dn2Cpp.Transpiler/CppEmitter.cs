@@ -4332,7 +4332,7 @@ internal sealed partial class CppEmitter
         }
         if (IsTypeTarget(type))
             return value is TypeDesc td
-                ? "typeof(" + ReflectionSignatureType(td, true) + ")"
+                ? "typeof(" + AttrTypeFullName(td) + ")"
                 : "null";
         if (type.IsString)
             return "\"" + value + "\"";
@@ -4343,6 +4343,34 @@ internal sealed partial class CppEmitter
             : System.Convert.ToString(value, AttrCI) ?? "null";
         return cast ? "(" + AttrTypeName(type) + ")" + rendered : rendered;
     }
+
+    /// <summary>Type.FullName of a Type-valued attribute argument, which
+    /// CustomAttributeData spells inside typeof(…): a closed generic lists each argument
+    /// with its assembly's display name.</summary>
+    private string AttrTypeFullName(TypeDesc t)
+    {
+        if (t.Kind == TypeKind.SZArray)
+            return AttrTypeFullName(t.Element!) + "[]";
+        if (t.Kind == TypeKind.MDArray)
+            return AttrTypeFullName(t.Element!) + "[" + new string(',', t.Rank - 1) + "]";
+        if (t is not { Kind: TypeKind.Class, Class: { Context.TypeArgs.Length: > 0 } cls })
+            return ReflectionSignatureType(t, true);
+        var args = cls.Context.TypeArgs.Select(
+            a => "[" + AttrTypeFullName(a) + ", " + AttrTypeAssembly(a) + "]");
+        return RawSignatureProvider.TypeDefinitionName(cls.Module.Reader, cls.Handle)
+            + "[" + string.Join(",", args) + "]";
+    }
+
+    /// <summary>The display name of the assembly defining a generic argument; a
+    /// primitive's is CoreLib's.</summary>
+    private string AttrTypeAssembly(TypeDesc t) => t.Kind switch
+    {
+        TypeKind.SZArray or TypeKind.MDArray => AttrTypeAssembly(t.Element!),
+        TypeKind.Class => AssemblyDisplayName(t.Class!.Module),
+        _ => _c.FindClassByFullName(ReflectionSignatureType(t, true)) is { } c
+            ? AssemblyDisplayName(c.Module)
+            : "System.Private.CoreLib",
+    };
 
     /// <summary>Type.Name of an attribute argument's encoded type, which
     /// CustomAttributeData casts every non-enum value by.</summary>
@@ -4557,37 +4585,22 @@ internal sealed partial class CppEmitter
         {
             if (value is null)
                 return "(Dn2CppType*)nullptr";
-            if (value is TypeDesc td)
-            {
-                // A closed, emitted type: its own reflectable ti_ handle.
-                if (td.Kind == TypeKind.Class && _emit.Contains(td.Class!))
-                    return $"dn2cpp_get_type_from_handle({TypeInfoRef(td.Class!, "custom-attribute Type argument")})";
-                // An OPEN generic definition — typeof(Foo<>) — decodes to an External
-                // TypeDesc carrying the CLR backtick name (no ClassInfo is minted for an
-                // open definition, so GetTypeFromSerializedName falls back to MakeExternal).
-                // It is never emitted as a bare ti_, so the _emit test above cannot see it
-                // and the whole attribute would drop (the array build short-circuits on the
-                // first null element) — which is how Godot's [AssemblyHasScripts] over
-                // abstract generic Node bases reached zero registered scripts. Route it to
-                // the shared open-definition handle (DN2CPP_TF_GENERICDEF), emitted by
-                // EmitTypeInfos for every definition with at least one emitted close;
-                // EmitTypeInfos precedes both attribute passes, so _genericDefSyms is
-                // complete here.
-                if (td.Kind == TypeKind.External
-                    && _genericDefSyms.TryGetValue(td.ExternalName!, out var defSym))
-                    return $"dn2cpp_get_type_from_handle(&{defSym})";
-                // An open definition with no emitted instantiation has no handle, so it
-                // stays unrenderable — and dropping it drops the WHOLE attribute. Keep
-                // that all-or-nothing contract (packing a shorter Type[] would silently
-                // change what a consumer like LookupScriptsInAssembly iterates), but make
-                // the drop visible rather than repeat the original silent failure. Scoped
-                // to backtick (generic) names so an ordinary tree-shaken typeof stays the
-                // quiet IL2CPP-strip it has always been.
-                if (td.Kind == TypeKind.External && td.ExternalName!.Contains('`'))
-                    Console.Error.WriteLine(
-                        $"warning: dropping a custom attribute whose typeof({td.ExternalName}) argument " +
-                        "names an open generic definition with no emitted instantiation (no reflectable type handle)");
-            }
+            if (value is not TypeDesc td)
+                return null;
+            if (AttrTypeHandle(td) is { } handle)
+                return $"dn2cpp_get_type_from_handle({handle})";
+            // An open definition with no emitted instantiation has no handle, so it
+            // stays unrenderable — and dropping it drops the WHOLE attribute. Keep
+            // that all-or-nothing contract (packing a shorter Type[] would silently
+            // change what a consumer like LookupScriptsInAssembly iterates), but make
+            // the drop visible. Scoped to open definition names (a backtick, no
+            // argument list) so an ordinary tree-shaken typeof stays a quiet
+            // IL2CPP-style strip.
+            if (td.Kind == TypeKind.External && td.ExternalName!.Contains('`')
+                && !td.ExternalName.Contains('['))
+                Console.Error.WriteLine(
+                    $"warning: dropping a custom attribute whose typeof({td.ExternalName}) argument " +
+                    "names an open generic definition with no emitted instantiation (no reflectable type handle)");
             return null;
         }
         if (target.IsString)
@@ -4598,6 +4611,47 @@ internal sealed partial class CppEmitter
                 : null;
         if (target.Kind == TypeKind.Primitive)
             return RenderPrimitiveAttrLiteral(target.Primitive, value);
+        return null;
+    }
+
+    /// <summary>The type-info handle a Type-valued attribute argument names, or null when
+    /// this emission defines none. Compilation.NoteAttrArg notes the identity closure of
+    /// every reached argument, which is what declares an array's precise handle and keeps
+    /// a class's own.</summary>
+    private string? AttrTypeHandle(TypeDesc td)
+    {
+        switch (td.Kind)
+        {
+            case TypeKind.Primitive:
+                return MethodCompiler.TypeInfoExprOf(td);
+            case TypeKind.Class:
+                // An emitted type: its own reflectable ti_ handle. A closed generic's is
+                // defined only where its instantiation's type-info is emitted.
+                var cls = td.Class!;
+                return _emit.Contains(cls)
+                    && (cls.Context.TypeArgs.Length == 0 || TypeInfoSymbolDefined(cls.CppTypeInfoName))
+                    ? TypeInfoRef(cls, "custom-attribute Type argument")
+                    : null;
+            case TypeKind.SZArray:
+                return ArrayTypeInfoDeclared(td.Element!, "custom-attribute Type argument (array)")
+                    ? MethodCompiler.PreciseArrayTypeInfoExprOf(td.Element!)
+                    : null;
+            case TypeKind.MDArray:
+                string md = "ti_md_" + Compilation.ArrayElemMangle(td);
+                return TypeInfoSymbolDefined(md) ? "&" + md : null;
+            case TypeKind.External:
+                // An OPEN generic definition — typeof(Foo<>) — decodes to an External
+                // TypeDesc carrying the CLR backtick name (no ClassInfo is minted for an
+                // open definition, so Compilation.ResolveSerializedTypeName answers
+                // External). It is never emitted as a bare ti_, and dropping it drops the
+                // whole attribute (the array build short-circuits on the first null
+                // element): Godot's [AssemblyHasScripts] over abstract generic Node bases
+                // would register no scripts. Route it to the shared open-definition handle
+                // (DN2CPP_TF_GENERICDEF), emitted by EmitTypeInfos for every definition
+                // with at least one emitted close; EmitTypeInfos precedes both attribute
+                // passes, so _genericDefSyms is complete here.
+                return _genericDefSyms.TryGetValue(td.ExternalName!, out var defSym) ? "&" + defSym : null;
+        }
         return null;
     }
 

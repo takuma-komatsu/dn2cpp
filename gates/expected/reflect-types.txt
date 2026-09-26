@@ -1572,3 +1572,32 @@ Typed: 2 defined=False
   Typed X Max r null Off 0
   data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 'q', typeof(ReflectAttrBoxedSubset.Outer), Order = 2)]
   data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 'r', (Type)null)]
+Types: 10 defined=True
+  Boxed Type:Box`1(def) named=null field=null array=null
+  Boxed Type:Box`1<Inner> named=null field=null array=null
+  Boxed Type:Box`1<Int32> named=null field=null array=null
+  Boxed Type:Box`1<String> named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer+Inner named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer[] named=null field=null array=null
+  Boxed Type:System.Int32 named=null field=null array=null
+  Boxed Type:System.Int32[,] named=null field=null array=null
+  Boxed Type:System.Int32[] named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[ReflectAttrBoxedSubset.Outer+Inner, ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer+Inner))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer[]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32[,]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32[]))]
+Nested: 3 defined=True
+  Boxed Int32:4 named=Mode:On field=null array=Object[]{Mode:Off,Type:Box`1<Int32>}
+  Boxed Mode:On named=null field=null array=null
+  Typed X Max s Type:ReflectAttrBoxedSubset.Outer+Inner On 3
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)4, Named = (ReflectAttrBoxedSubset.Outer+Mode)200, NamedArray = new Object[2] { (ReflectAttrBoxedSubset.Outer+Mode)0, typeof(ReflectAttrBoxedSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]) })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Outer+Mode)200)]
+  data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 's', typeof(ReflectAttrBoxedSubset.Outer+Inner), Order = 3, Mode = 200)]
+Type identity: 10 of 10

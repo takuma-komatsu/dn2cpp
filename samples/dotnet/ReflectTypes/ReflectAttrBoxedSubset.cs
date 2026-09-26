@@ -9,7 +9,10 @@ using System.Reflection;
 // type, positional and named alike; a named argument stores at its member's
 // declared type, and a 64-bit enum keeps its high bits. CustomAttributeData.ToString
 // spells a boxed value with its encoded type and lists named arguments fields
-// first, then properties.
+// first, then properties. A Type argument or an enum's type may name a nested
+// type, an array or a closed generic, which decodes to the same type identity
+// typeof names; CustomAttributeData.ToString spells a closed generic's type
+// arguments assembly-qualified.
 namespace ReflectAttrBoxedSubset
 {
     public enum Tone { Low = 1, High = 7 }
@@ -20,7 +23,10 @@ namespace ReflectAttrBoxedSubset
     public class Outer
     {
         public enum Mode : byte { Off, On = 200 }
+        public class Inner { }
     }
+
+    public class Box<T> { }
 
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
     public sealed class BoxedAttribute : Attribute
@@ -98,6 +104,16 @@ namespace ReflectAttrBoxedSubset
     [Typed(Big.X, UBig.Max, 'q', typeof(Outer), Order = 2)] [Typed(Big.X, UBig.Max, 'r', null)]
     public sealed class Typed { }
 
+    [Boxed(typeof(Outer))] [Boxed(typeof(Outer.Inner))] [Boxed(typeof(int))] [Boxed(typeof(int[]))]
+    [Boxed(typeof(Outer[]))] [Boxed(typeof(Box<int>))] [Boxed(typeof(Box<string>))] [Boxed(typeof(Box<>))]
+    [Boxed(typeof(Box<Outer.Inner>))] [Boxed(typeof(int[,]))]
+    public sealed class Types { }
+
+    [Boxed(Outer.Mode.On)]
+    [Boxed(4, Named = Outer.Mode.On, NamedArray = new object[] { Outer.Mode.Off, typeof(Box<int>) })]
+    [Typed(Big.X, UBig.Max, 's', typeof(Outer.Inner), Mode = Outer.Mode.On, Order = 3)]
+    public sealed class Nested { }
+
     internal static class Program
     {
         private static string Describe(object value)
@@ -154,6 +170,18 @@ namespace ReflectAttrBoxedSubset
             Dump(typeof(ObjectArrays), true);
             Dump(typeof(Named), true);
             Dump(typeof(Typed), true);
+            Dump(typeof(Types), true);
+            Dump(typeof(Nested), true);
+            var expected = new List<Type>
+            {
+                typeof(Outer), typeof(Outer.Inner), typeof(int), typeof(int[]), typeof(Outer[]),
+                typeof(Box<int>), typeof(Box<string>), typeof(Box<>), typeof(Box<Outer.Inner>), typeof(int[,]),
+            };
+            int same = 0;
+            foreach (BoxedAttribute boxed in typeof(Types).GetCustomAttributes(typeof(BoxedAttribute), false))
+                if (boxed.Value is Type type && expected.Contains(type))
+                    same++;
+            Console.WriteLine("Type identity: " + same + " of " + expected.Count);
         }
     }
 }

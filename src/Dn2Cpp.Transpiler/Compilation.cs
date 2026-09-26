@@ -1541,6 +1541,174 @@ internal sealed partial class Compilation
         _ => (null, default),
     };
 
+    /// <summary>The type a custom-attribute blob names by its serialized name (ECMA-335
+    /// II.23.3): <c>Ns.Outer+Inner`1[[Arg, Asm],[Arg, Asm]][]</c>, optionally followed by
+    /// <c>, Assembly, Version=…</c>. A CoreLib primitive, at any depth, is the primitive a
+    /// signature decodes, so a closed generic keys the same instantiation a body names.
+    /// An open generic definition, and anything unresolved, answers the External type-name
+    /// prefix: for the definition that is the backtick name its open-definition handle is
+    /// keyed on, otherwise a type no attribute can render. Only Discovery mints a closed
+    /// generic; a later decode finds the instantiations that exist.</summary>
+    internal TypeDesc ResolveSerializedTypeName(string name)
+    {
+        try
+        {
+            int pos = 0;
+            if (ParseSerializedType(name, ref pos) is { } type && (pos == name.Length || name[pos] == ','))
+                return type;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // An undecodable name falls back like an unresolved one.
+        }
+        return TypeDesc.MakeExternal(SerializedTypeNamePrefix(name));
+    }
+
+    /// <summary>A serialized type name without its assembly part: everything before the
+    /// first comma outside brackets.</summary>
+    private static string SerializedTypeNamePrefix(string name)
+    {
+        int depth = 0;
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (name[i] == '[')
+                depth++;
+            else if (name[i] == ']')
+                depth--;
+            else if (name[i] == ',' && depth == 0)
+                return name[..i].Trim();
+        }
+        return name.Trim();
+    }
+
+    /// <summary>The serialized type name at <paramref name="pos"/>, without an assembly
+    /// part: the '+' chain, an optional generic argument list (each argument bare or
+    /// bracketed with its assembly), then array suffixes. Leaves <paramref name="pos"/>
+    /// after the name; null when the name does not resolve.</summary>
+    private TypeDesc? ParseSerializedType(string s, ref int pos)
+    {
+        while (pos < s.Length && s[pos] == ' ')
+            pos++;
+        int start = pos;
+        while (pos < s.Length && s[pos] is not ('[' or ']' or ','))
+        {
+            // Escaped names, pointers and byrefs are not attribute-value shapes.
+            if (s[pos] is '\\' or '*' or '&')
+                return null;
+            pos++;
+        }
+        string chain = s[start..pos].TrimEnd();
+        TypeDesc[]? args = null;
+        if (pos + 1 < s.Length && s[pos] == '[' && s[pos + 1] is not (']' or ',' or '*'))
+        {
+            var list = new List<TypeDesc>();
+            do
+            {
+                pos++;
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+                bool qualified = pos < s.Length && s[pos] == '[';
+                if (qualified)
+                    pos++;
+                if (ParseSerializedType(s, ref pos) is not { } arg)
+                    return null;
+                if (qualified)
+                {
+                    // An assembly name carries no brackets.
+                    while (pos < s.Length && s[pos] != ']')
+                        pos++;
+                    if (pos == s.Length)
+                        return null;
+                    pos++;
+                }
+                list.Add(arg);
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+            }
+            while (pos < s.Length && s[pos] == ',');
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            args = list.ToArray();
+        }
+        if (ResolveSerializedChain(chain, args) is not { } type)
+            return null;
+        while (pos < s.Length && s[pos] == '[')
+        {
+            int rank = 1;
+            pos++;
+            while (pos < s.Length && s[pos] == ',')
+            {
+                rank++;
+                pos++;
+            }
+            // "[*]" and bounded shapes are not attribute-value shapes.
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            type = rank == 1 ? TypeDesc.MakeSZArray(type) : TypeDesc.MakeMDArray(type, rank);
+        }
+        return type;
+    }
+
+    /// <summary>The type a '+'-separated chain names, closed over <paramref name="args"/>
+    /// when it is generic; null for an open definition and for anything unresolved. Each
+    /// nested link is looked up among its declaring type's nested types, since the type
+    /// index keys every nested type under an empty namespace.</summary>
+    private TypeDesc? ResolveSerializedChain(string chain, TypeDesc[]? args)
+    {
+        if (args is null && WellKnownPrimitive(chain) is { } primitive)
+            return primitive;
+        int plus = chain.IndexOf('+');
+        string head = plus < 0 ? chain : chain[..plus];
+        int dot = head.LastIndexOf('.');
+        var key = dot < 0 ? ("", head) : (head[..dot], head[(dot + 1)..]);
+        if (!TypeIndex().TryGetValue(key, out var candidates))
+            return null;
+        foreach (var (module, top) in candidates)
+        {
+            var reader = module.Reader;
+            if (!reader.GetTypeDefinition(top).GetDeclaringType().IsNil)
+                continue;
+            TypeDefinitionHandle? handle = top;
+            for (int link = plus; link >= 0 && handle is { } declaring;)
+            {
+                int next = chain.IndexOf('+', link + 1);
+                string name = next < 0 ? chain[(link + 1)..] : chain[(link + 1)..next];
+                handle = null;
+                foreach (var nested in reader.GetTypeDefinition(declaring).GetNestedTypes())
+                    if (reader.StringComparer.Equals(reader.GetTypeDefinition(nested).Name, name))
+                    {
+                        handle = nested;
+                        break;
+                    }
+                link = next;
+            }
+            if (handle is { } resolved)
+                return SerializedTypeDesc(module, resolved, args);
+        }
+        return null;
+    }
+
+    /// <summary>The TypeDesc of a resolved serialized TypeDef: the class itself, or its
+    /// instantiation over <paramref name="args"/>. Only Discovery instantiates, since the
+    /// emit set closes after it; a later phase answers only an instantiation that
+    /// exists.</summary>
+    private TypeDesc? SerializedTypeDesc(Module module, TypeDefinitionHandle handle, TypeDesc[]? args)
+    {
+        if (module.ClassMap.TryGetValue(handle, out var cls))
+            return args is null ? TypeDesc.MakeClass(cls) : null;
+        if (args is null || !module.GenericTemplates.Contains(handle)
+            || module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count != args.Length)
+            return null;
+        if (Phase == EmitPhase.Discovery)
+            return TypeDesc.MakeClass(Instantiate(module, handle, args));
+        return _instances.TryGetValue((module.Index, SRME.GetToken(handle)), out var byArgs)
+            && byArgs.TryGetValue(args, out var existing)
+                ? TypeDesc.MakeClass(existing)
+                : null;
+    }
+
     /// <summary>The CLR qualified name (<c>Ns.Outer+Mid+Leaf</c>) of a TypeDef whose
     /// outermost declaring type lives under <c>System.Runtime.Intrinsics.</c>; null for
     /// every other type, so the ISA table is consulted only for that namespace. A

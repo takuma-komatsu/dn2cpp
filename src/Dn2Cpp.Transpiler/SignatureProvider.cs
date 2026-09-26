@@ -132,14 +132,9 @@ internal sealed class CustomAttributeTypeProvider : ICustomAttributeTypeProvider
         // A null Type argument arrives as a null name and decodes to a null value.
         if (name is null)
             return null!;
-        // The blob carries an assembly-qualified name ("Ns.Type, Assembly, …"); only the
-        // type-name prefix matters. Resolve it to an emitted ClassInfo when possible, else
-        // an External placeholder (CppEmitter then treats the attribute as unsupported).
-        int comma = name.IndexOf(',');
-        string full = (comma >= 0 ? name[..comma] : name).Trim();
-        return _compilation.FindClassByFullName(full) is { } cls
-            ? TypeDesc.MakeClass(cls)
-            : TypeDesc.MakeExternal(full);
+        // An unresolved name decodes to an External placeholder, which CppEmitter treats as
+        // unsupported; an enum of that type decodes at an assumed Int32 width.
+        return _compilation.ResolveSerializedTypeName(name);
     }
 
     public PrimitiveTypeCode GetUnderlyingEnumType(TypeDesc type) =>
