@@ -130,7 +130,10 @@
 # instance field refuses a null or foreign receiver and takes a derived instance, a
 # boxed struct and a MakeGenericType instantiation's own instance, a static field
 # ignores its receiver, a value converts as a reflected argument does, and null
-# stores the default of a value-type field.
+# stores the default of a value-type field. A constant answers from metadata, boxed
+# at its encoded type, and SetValue refuses it before any check; SetValue refuses a
+# static read-only field once the value checks, naming the declaring TypeDef; a
+# Nullable<T> field reads back as null or a boxed T.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -329,6 +332,12 @@ gate_extra_asserts() {
     grep -Fxq 'int into nullable: Int32:5' "$out/metadata-layout.stdout"
     grep -Fxq 'null receiver, wrong value: TargetException 0x80131603 Non-static field requires a target.' "$out/metadata-layout.stdout"
     grep -Fxq 'null into unnamed enum: String:stored' "$out/metadata-layout.stdout"
+    grep -Fxq 'const Native IntPtr literal=True initonly=False: Int32:7' "$out/metadata-layout.stdout"
+    grep -Fxq 'const bits: String:FFC00000/8000000000000000' "$out/metadata-layout.stdout"
+    grep -Fxq 'const set, wrong value: FieldAccessException 0x80131507 Cannot set a constant field.' "$out/metadata-layout.stdout"
+    grep -Fxq "readonly static set: FieldAccessException 0x80131507 Cannot set initonly static field 'Count' after type 'ReflectFieldValidationSubset.ReadOnlyStatics' is initialized." "$out/metadata-layout.stdout"
+    grep -Fxq "nested readonly set: FieldAccessException 0x80131507 Cannot set initonly static field 'Value' after type 'Nested' is initialized." "$out/metadata-layout.stdout"
+    grep -Fxq 'nullable get, no value: null' "$out/metadata-layout.stdout"
     grep -Fxq 'field validation end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_FIELD_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-field-validation.stdout"
     sed '/^== field validation ==/,$d' "$out/metadata-layout.stdout" > "$out/field-validation-prefix.stdout"

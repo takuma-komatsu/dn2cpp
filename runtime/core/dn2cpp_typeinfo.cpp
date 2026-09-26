@@ -192,22 +192,16 @@ const Dn2CppType dn2cpp_array_n_type_obj = { { &dn2cpp_type_type }, &dn2cpp_arra
 // references them and mints no rival ti_, so without these rows
 // `typeof(short).GetField("MaxValue")` answers null and the natural next line,
 // `.FieldType`, is an NRE in a shipped game. Hand-written rather than bound from
-// emitted metadata for two reasons:
-//
-//   - Eight of the fourteen are intrinsic types the emitter deliberately gives no
-//     metadata, so a bind would fill exactly half the set — one primitive answering
-//     while another does not is worse than neither.
-//   - Every row is a LITERAL (or a static readonly), which has no storage to
-//     thunk-read: the emitter renders no getter, so even the bindable half would
-//     answer InvalidOperationException from GetValue rather than a value.
+// emitted metadata: eight of the fourteen are intrinsic types the emitter
+// deliberately gives no metadata, so a bind would fill exactly half the set — one
+// primitive answering while another does not is worse than neither.
 //
 // Hand-writing also makes the answer a fact about the CLR rather than about the
 // program — these tables do not move with the load set or with tree-shaking, so a gate
 // may diff them against real .NET. Values are boxed at dn2cpp's model width
 // (char/byte/sbyte/short/ushort as int32_t), which every boxed-primitive reader
-// assumes. The setter stays null on every row: SetValue then raises
-// InvalidOperationException (real .NET raises FieldAccessException — a declared
-// divergence, not a silence, since the call still fails).
+// assumes. The setter stays null on every row: SetValue refuses a literal or a static
+// read-only field whatever its setter, with .NET's FieldAccessException.
 static Dn2CppObject* dn2cpp_primfld_bool_FalseString(Dn2CppObject*)
 { return reinterpret_cast<Dn2CppObject*>(dn2cpp_string_literal(u"False", 5)); }
 static Dn2CppObject* dn2cpp_primfld_bool_TrueString(Dn2CppObject*)
@@ -747,6 +741,12 @@ extern const Dn2CppType dn2cpp_missing_method_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_method_exception_type =
     dn2cpp_ti_with_typeobject({ "System.MissingMethodException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_method_exception_type_obj);
 const Dn2CppType dn2cpp_missing_method_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_missing_method_exception_type };
+// FieldInfo.SetValue on a constant or a static read-only field, matching .NET's
+// FieldAccessException.
+extern const Dn2CppType dn2cpp_field_access_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_field_access_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.FieldAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_field_access_exception_type_obj);
+const Dn2CppType dn2cpp_field_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_field_access_exception_type };
 extern const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_manifest_resource_exception_type_obj);

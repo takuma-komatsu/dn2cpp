@@ -1517,19 +1517,7 @@ internal sealed partial class CppEmitter
                         if (!ch.IsNil)
                         {
                             var constant = reader.GetConstant(ch);
-                            var blob = reader.GetBlobReader(constant.Value);
-                            lv = constant.TypeCode switch
-                            {
-                                ConstantTypeCode.SByte => blob.ReadSByte(),
-                                ConstantTypeCode.Byte => blob.ReadByte(),
-                                ConstantTypeCode.Int16 => blob.ReadInt16(),
-                                ConstantTypeCode.UInt16 => blob.ReadUInt16(),
-                                ConstantTypeCode.Int32 => blob.ReadInt32(),
-                                ConstantTypeCode.UInt32 => blob.ReadUInt32(),
-                                ConstantTypeCode.Int64 => blob.ReadInt64(),
-                                ConstantTypeCode.UInt64 => unchecked((long)blob.ReadUInt64()),
-                                _ => 0,
-                            };
+                            lv = ReadConstantBits(constant.TypeCode, reader.GetBlobReader(constant.Value));
                         }
                     }
                     else if (!isStatic)
@@ -1583,6 +1571,84 @@ internal sealed partial class CppEmitter
             return ($"fldtab_{en.CppName}", rows.Count);
         }
 
+        // A constant's bits: integers sign- or zero-extended, a float's or double's IEEE
+        // bits, so NaN payloads and -0 survive.
+        private static long ReadConstantBits(ConstantTypeCode code, BlobReader blob) => code switch
+        {
+            ConstantTypeCode.Boolean => blob.ReadBoolean() ? 1 : 0,
+            ConstantTypeCode.Char => blob.ReadChar(),
+            ConstantTypeCode.SByte => blob.ReadSByte(),
+            ConstantTypeCode.Byte => blob.ReadByte(),
+            ConstantTypeCode.Int16 => blob.ReadInt16(),
+            ConstantTypeCode.UInt16 => blob.ReadUInt16(),
+            ConstantTypeCode.Int32 or ConstantTypeCode.Single => blob.ReadInt32(),
+            ConstantTypeCode.UInt32 => blob.ReadUInt32(),
+            ConstantTypeCode.Int64 or ConstantTypeCode.Double => blob.ReadInt64(),
+            ConstantTypeCode.UInt64 => unchecked((long)blob.ReadUInt64()),
+            _ => 0,
+        };
+
+        private static PrimitiveTypeCode? ConstantPrimitive(ConstantTypeCode code) => code switch
+        {
+            ConstantTypeCode.Boolean => PrimitiveTypeCode.Boolean,
+            ConstantTypeCode.Char => PrimitiveTypeCode.Char,
+            ConstantTypeCode.SByte => PrimitiveTypeCode.SByte,
+            ConstantTypeCode.Byte => PrimitiveTypeCode.Byte,
+            ConstantTypeCode.Int16 => PrimitiveTypeCode.Int16,
+            ConstantTypeCode.UInt16 => PrimitiveTypeCode.UInt16,
+            ConstantTypeCode.Int32 => PrimitiveTypeCode.Int32,
+            ConstantTypeCode.UInt32 => PrimitiveTypeCode.UInt32,
+            ConstantTypeCode.Int64 => PrimitiveTypeCode.Int64,
+            ConstantTypeCode.UInt64 => PrimitiveTypeCode.UInt64,
+            ConstantTypeCode.Single => PrimitiveTypeCode.Single,
+            ConstantTypeCode.Double => PrimitiveTypeCode.Double,
+            _ => null,
+        };
+
+        // A literal row answers GetValue from its constant. A constant encoded at the
+        // field's own primitive or enum type rides in literalValue as bits the runtime
+        // boxes at the field type, and a null constant leaves the row empty. A string,
+        // or a constant encoded at another type (C# stores an nint constant as an int),
+        // boxes in a getter thunk instead.
+        private (string Get, long Bits) RenderLiteral(ClassInfo cls, FieldInfo f,
+            FieldDefinitionHandle handle, string fieldTypeInfo)
+        {
+            var reader = cls.Module.Reader;
+            var constantHandle = reader.GetFieldDefinition(handle).GetDefaultValue();
+            if (constantHandle.IsNil)
+                return ("nullptr", 0);
+            var constant = reader.GetConstant(constantHandle);
+            var blob = reader.GetBlobReader(constant.Value);
+            string body;
+            if (constant.TypeCode == ConstantTypeCode.String)
+            {
+                body = $"return (Dn2CppObject*){_e._literals.GetOrAdd(blob.ReadUTF16(blob.Length))};";
+            }
+            else if (ConstantPrimitive(constant.TypeCode) is { } primitive)
+            {
+                long bits = ReadConstantBits(constant.TypeCode, blob);
+                bool enumField = f.Type is { Kind: TypeKind.Class, Class.IsEnum: true }
+                    && fieldTypeInfo != "&dn2cpp_object_type"
+                    && primitive is not (PrimitiveTypeCode.Single or PrimitiveTypeCode.Double);
+                if (enumField || (f.Type.Kind == TypeKind.Primitive && f.Type.Primitive == primitive))
+                    return ("nullptr", bits);
+                bool wide = primitive is PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64
+                    or PrimitiveTypeCode.Double;
+                string value = wide
+                    ? $"int64_t v = (int64_t)0x{unchecked((ulong)bits):x}ULL;"
+                    : $"int32_t v = (int32_t)0x{unchecked((uint)bits):x}u;";
+                string boxType = MethodCompiler.TypeInfoExprOf(TypeDesc.MakePrimitive(primitive))!;
+                body = $"{value} return dn2cpp_box({boxType}, &v, sizeof(v));";
+            }
+            else
+            {
+                return ("nullptr", 0);
+            }
+            string name = $"fldget_{cls.CppName}_{f.CppName}";
+            _sb.AppendLine($"static Dn2CppObject* {name}(Dn2CppObject*) {{ {body} }}");
+            return ($"&{name}", 0);
+        }
+
         // Per-type reflection field tables: one Dn2CppFieldInfo[] per type that
         // declares fields, referenced by the type-info's fields/fieldCount below. Emitted
         // before the type-info definition so the initializer can name it. Each entry
@@ -1625,7 +1691,13 @@ internal sealed partial class CppEmitter
                 // An [InlineArray] struct lays its single field out as a C array
                 // (f_name[N]), which is neither copyable nor assignable — skip its thunks.
                 (string get, string set) = ("nullptr", "nullptr");
-                if (!f.IsLiteral && !_e.IsOpaque(cls) && !cls.IsDelegate
+                long literalBits = 0;
+                if (f.IsLiteral)
+                {
+                    if (fieldHandles.TryGetValue(f.Name, out var literalHandle))
+                        (get, literalBits) = RenderLiteral(cls, f, literalHandle, ftInfo);
+                }
+                else if (!_e.IsOpaque(cls) && !cls.IsDelegate
                     && cls.IntrinsicCppName is null && cls.InlineArrayLength <= 0)
                 {
                     string cppT = CppTypes.Of(f.Type);
@@ -1706,7 +1778,7 @@ internal sealed partial class CppEmitter
                 rows.Add(new MetadataRow(new[] {
                     MetadataValue.Text(f.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "field row's declaring type")), MetadataValue.Ref(ftInfo),
                     MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set), MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count),
-                    MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(0),
+                    MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(literalBits),
                     MetadataValue.Display(_e.ReflectionSignatureType(f.Type) + " " + f.Name),
                 }));
             }

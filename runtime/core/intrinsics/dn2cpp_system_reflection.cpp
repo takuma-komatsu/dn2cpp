@@ -1537,48 +1537,45 @@ int32_t dn2cpp_fieldref_is_literal(Dn2CppFieldRef* f)
 static void dn2cpp_field_check_target(const Dn2CppFieldRef* f, const Dn2CppFieldInfo* row,
     Dn2CppObject* obj);
 static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2CppObject* value);
+static Dn2CppObject* dn2cpp_field_literal(const Dn2CppFieldInfo* row);
+[[noreturn]] static void dn2cpp_field_refuse_constant();
+[[noreturn]] static void dn2cpp_field_refuse_initonly(const Dn2CppFieldRef* f,
+    const Dn2CppFieldInfo* row);
+static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, Dn2CppObject* result);
 
 // FieldInfo.GetValue / SetValue: dispatch to the emitter-generated typed
 // thunk, which boxes/unboxes value-type fields and passes reference fields through.
 // The thunk reads and writes through the receiver and the value unchecked, so both
-// pass .NET's checks first, the receiver before the value.
-// A field with no reflectable storage (literal/const, opaque declaring type) has a
-// null thunk -> InvalidOperationException — except an enum's literal member row,
-// which carries its constant in literalValue and answers the boxed enum value
-// like real .NET (the Newtonsoft EnumUtils name -> field -> value path).
+// pass .NET's checks first, the receiver before the value. A literal answers from
+// its row whatever the receiver; a field with no reflectable storage (an opaque
+// declaring type) has null thunks -> InvalidOperationException.
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj)
 {
     const auto row = dn2cpp_fieldref_require(f).operator->();
     if (row->getter == nullptr)
     {
-        if ((row->attrs & DN2CPP_FLDA_LITERAL) != 0 && row->declaringType != nullptr
-            && (row->declaringType->flags & DN2CPP_TF_ENUM) != 0)
-        {
-            // Box at the model width every other enum box uses (int32; int64
-            // for a 64-bit-underlying enum), stamped with the declaring enum's
-            // own type-info — the same shape dn2cpp_enum_parse_type_core emits.
-            const Dn2CppTypeInfo* uti = row->declaringType->enumUnderlying;
-            if (uti == &dn2cpp_int64_type || uti == &dn2cpp_uint64_type)
-            {
-                int64_t v = row->literalValue;
-                return dn2cpp_box(row->declaringType, &v, sizeof(v));
-            }
-            int32_t v = static_cast<int32_t>(row->literalValue);
-            return dn2cpp_box(row->declaringType, &v, sizeof(v));
-        }
+        if ((row->attrs & DN2CPP_FLDA_LITERAL) != 0)
+            return dn2cpp_field_literal(row.operator->());
         dn2cpp_throw_invalid_operation();
     }
     dn2cpp_field_check_target(f, row.operator->(), obj);
-    return row->getter(obj);
+    return dn2cpp_invoke_box_result(row->fieldType, row->getter(obj));
 }
 
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value)
 {
     const auto row = dn2cpp_fieldref_require(f).operator->();
-    if (row->setter == nullptr)
+    if ((row->attrs & DN2CPP_FLDA_LITERAL) != 0)
+        dn2cpp_field_refuse_constant();
+    const int32_t staticInitOnly = DN2CPP_FLDA_STATIC | DN2CPP_FLDA_INITONLY;
+    bool initOnly = (row->attrs & staticInitOnly) == staticInitOnly;
+    if (row->setter == nullptr && !initOnly)
         dn2cpp_throw_invalid_operation();
     dn2cpp_field_check_target(f, row.operator->(), obj);
-    row->setter(obj, dn2cpp_field_check_value(row.operator->(), value));
+    Dn2CppObject* stored = dn2cpp_field_check_value(row.operator->(), value);
+    if (initOnly)
+        dn2cpp_field_refuse_initonly(f, row.operator->());
+    row->setter(obj, stored);
 }
 
 // MemberInfo.Name / DeclaringType: shared by FieldInfo and Type, so dispatch on the
@@ -2453,14 +2450,65 @@ static Dn2CppObject* dn2cpp_field_check_value(const Dn2CppFieldInfo* row, Dn2Cpp
     return dn2cpp_invoke_check_arg(value, row->fieldType);
 }
 
-// The invoker thunk boxes a Nullable<T> result as its raw struct; .NET hands back
-// null or a boxed T.
+// An invoker or field-getter thunk boxes a Nullable<T> as its raw struct; .NET
+// hands back null or a boxed T.
 static Dn2CppObject* dn2cpp_invoke_box_result(const Dn2CppTypeInfo* returnType, Dn2CppObject* result)
 {
     if (result == nullptr || result->type != returnType
         || dn2cpp_nullable_underlying_ti(returnType) == nullptr)
         return result;
     return dn2cpp_array_box_element(returnType, result + 1, returnType->instanceSize, false);
+}
+
+// A literal row without a getter: its constant's bits boxed at `type`, a primitive
+// or enum at the model width, or a reference type's null.
+static Dn2CppObject* dn2cpp_field_literal_as(const Dn2CppFieldInfo* row, const Dn2CppTypeInfo* type)
+{
+    int32_t code = dn2cpp_prim_code(dn2cpp_enum_underlying_or_self(type));
+    if ((type->flags & DN2CPP_TF_VALUETYPE) == 0 || code < 0)
+        return nullptr;
+    if (dn2cpp_prim_storage_width(code) == static_cast<int32_t>(sizeof(int64_t)))
+    {
+        int64_t v = row->literalValue;
+        return dn2cpp_box(type, &v, sizeof(v));
+    }
+    int32_t v = static_cast<int32_t>(row->literalValue);
+    return dn2cpp_box(type, &v, sizeof(v));
+}
+
+static Dn2CppObject* dn2cpp_field_literal(const Dn2CppFieldInfo* row)
+{
+    return dn2cpp_field_literal_as(row, row->fieldType);
+}
+
+// MdFieldInfo.SetValue refuses a constant before it looks at the receiver or the value.
+[[noreturn]] static void dn2cpp_field_refuse_constant()
+{
+    dn2cpp_throw_reflection_fault(&dn2cpp_field_access_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_FIELD_CONSTANT, nullptr, 0), 0x80131507u);
+}
+
+// A static read-only field refuses SetValue once its type is initialized, and the
+// call initializes the type first — which the static getter thunk does here — so
+// the refusal is unconditional. The message names the declaring TypeDef, whose
+// namespace a nested type does not carry.
+[[noreturn]] static void dn2cpp_field_refuse_initonly(const Dn2CppFieldRef* f,
+    const Dn2CppFieldInfo* row)
+{
+    if (row->getter != nullptr)
+        row->getter(nullptr);
+    const Dn2CppTypeInfo* owner = dn2cpp_invoke_declaring(row->declaringType, f->reflectedType);
+    if (owner->genericArgCount > 0 && owner->genericDef != nullptr)
+        owner = owner->genericDef;
+    const char* type = owner->name != nullptr ? owner->name : "";
+    if (const char* nested = std::strrchr(type, '+'))
+        type = nested + 1;
+    const char* name = row->name != nullptr ? row->name : "";
+    Dn2CppString* args[2] = {
+        dn2cpp_string_from_utf8(name, static_cast<int32_t>(std::strlen(name))),
+        dn2cpp_string_from_utf8(type, static_cast<int32_t>(std::strlen(type))) };
+    dn2cpp_throw_reflection_fault(&dn2cpp_field_access_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_FIELD_INITONLY_STATIC, args, 2), 0x80131507u);
 }
 
 // ECMA-335 MethodAttributes bits consumed below (II.23.1.10).

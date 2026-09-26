@@ -8,7 +8,10 @@ using System.Reflection;
 // boxed struct and a MakeGenericType instantiation's own instance pass) and a
 // static field ignores its receiver. A value converts as a reflected method
 // argument does, widening primitives and enums and taking a boxed U for
-// Nullable<U>; null stores the field type's default.
+// Nullable<U>; null stores the field type's default. A constant answers from
+// metadata whatever the receiver and refuses SetValue before any check; a static
+// read-only field refuses SetValue once the value checks; a Nullable<T> field
+// reads back as null or a boxed T.
 namespace ReflectFieldValidationSubset;
 
 enum Level { Low, Mid, High }
@@ -74,6 +77,70 @@ class Holder<T>
 {
     public string? Label = "holder";
     public int Count;
+}
+
+// A constant answers from metadata; only its encoded type decides the box, so
+// C#'s nint constant, stored as an int, reads back as one.
+class Constants
+{
+    public const int Answer = 42;
+    public const string Word = "word";
+    public const string? Nothing = null;
+    public const object? NoObject = null;
+    public const string EmptyWord = "";
+    public const char Letter = 'Z';
+    public const bool Flag = true;
+    public const float Half = 0.5f;
+    public const float FloatNaN = float.NaN;
+    public const double NegativeZero = -0.0;
+    public const double Infinite = double.PositiveInfinity;
+    public const long Min = long.MinValue;
+    public const ulong Max = ulong.MaxValue;
+    public const byte Small = 200;
+    public const sbyte Signed = -100;
+    public const short Short = -3;
+    public const ushort UShort = 65535;
+    public const uint Large = 4000000000;
+    public const Level Grade = Level.High;
+    public const Wide Span = Wide.Big;
+    public const nint Native = 7;
+    public const decimal Money = 1.25m;
+    private const int Hidden = 5;
+}
+
+class ReadOnlyStatics
+{
+    public static readonly int Count = 3;
+    public static readonly string? Name = "name";
+    public static readonly Spot Place = new Spot { X = 1, Tag = "p" };
+    public readonly int Own = 4;
+}
+
+class NoInitializer
+{
+    public static readonly int Value;
+}
+
+class Outer
+{
+    public class Nested
+    {
+        public static readonly int Value = 1;
+    }
+}
+
+class Generic<T>
+{
+    public static readonly int Value = 1;
+}
+
+class Optional
+{
+    public int? Some = 4;
+    public int? None;
+    public Level? Grade = Level.High;
+    public Spot? Place = new Spot { X = 9, Tag = "o" };
+    public static double? Shared;
 }
 
 static class Program
@@ -201,6 +268,61 @@ static class Program
 
         FieldInfo mode = Field(typeof(Quiet), "Mode");
         Show("null into unnamed enum", () => { mode.SetValue(new Quiet(), null); return "stored"; });
+
+        foreach (string name in new[] { "Answer", "Word", "Nothing", "NoObject", "EmptyWord", "Letter", "Flag",
+            "Half", "FloatNaN", "NegativeZero", "Infinite", "Min", "Max", "Small", "Signed", "Short", "UShort",
+            "Large", "Grade", "Span", "Native", "Money" })
+        {
+            FieldInfo constant = Field(typeof(Constants), name);
+            Show($"const {name} {constant.FieldType.Name} literal={constant.IsLiteral} initonly={constant.IsInitOnly}",
+                () => constant.GetValue(null));
+        }
+        FieldInfo answer = Field(typeof(Constants), "Answer");
+        Show("const bits", () =>
+            BitConverter.SingleToInt32Bits((float)Field(typeof(Constants), "FloatNaN").GetValue(null)!).ToString("X8") + "/"
+            + BitConverter.DoubleToInt64Bits((double)Field(typeof(Constants), "NegativeZero").GetValue(null)!).ToString("X16"));
+        Show("private const", () =>
+            typeof(Constants).GetField("Hidden", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null));
+        Show("const, stranger receiver", () => answer.GetValue(stranger));
+        Show("const set", () => { answer.SetValue(null, 43); return null; });
+        Show("const set, stranger receiver", () => { answer.SetValue(stranger, 43); return null; });
+        Show("const set, wrong value", () => { answer.SetValue(null, "x"); return null; });
+        Show("const string set", () => { Field(typeof(Constants), "Word").SetValue(null, "other"); return null; });
+        Show("enum member set", () => { Field(typeof(Level), "High").SetValue(null, Level.Low); return null; });
+        Show("primitive const set", () => { Field(typeof(int), "MaxValue").SetValue(null, 1); return null; });
+        Show("decimal const set", () => { Field(typeof(Constants), "Money").SetValue(null, 2m); return Constants.Money; });
+
+        // The first SetValue on a field checks the value before refusing it.
+        FieldInfo readOnlyCount = Field(typeof(ReadOnlyStatics), "Count");
+        Show("readonly static set, wrong value", () => { readOnlyCount.SetValue(null, "x"); return null; });
+        Show("readonly static set", () => { readOnlyCount.SetValue(null, 4); return null; });
+        Show("readonly static set, stranger receiver", () => { readOnlyCount.SetValue(stranger, 4); return null; });
+        Show("readonly static set, null value", () => { readOnlyCount.SetValue(null, null); return null; });
+        Show("readonly static get", () => readOnlyCount.GetValue(null));
+        Show("readonly static string set", () => { Field(typeof(ReadOnlyStatics), "Name").SetValue(null, "other"); return null; });
+        Show("readonly static struct set", () => { Field(typeof(ReadOnlyStatics), "Place").SetValue(null, new Spot()); return null; });
+        Show("readonly statics after refusals", () =>
+            ReadOnlyStatics.Count + "/" + ReadOnlyStatics.Name + "/" + ReadOnlyStatics.Place);
+        var readOnly = new ReadOnlyStatics();
+        Show("readonly instance set", () => { Field(typeof(ReadOnlyStatics), "Own").SetValue(readOnly, 9); return readOnly.Own; });
+        Show("uninitialized readonly set", () => { Field(typeof(NoInitializer), "Value").SetValue(null, 1); return null; });
+        Show("nested readonly set", () => { Field(typeof(Outer.Nested), "Value").SetValue(null, 2); return null; });
+        Show("generic readonly set", () => { Field(typeof(Generic<string>), "Value").SetValue(null, 2); return null; });
+        Show("String.Empty set", () => { Field(typeof(string), "Empty").SetValue(null, "x"); return null; });
+        Show("Boolean.TrueString set", () => { Field(typeof(bool), "TrueString").SetValue(null, "x"); return null; });
+
+        var optional = new Optional();
+        FieldInfo some = Field(typeof(Optional), "Some");
+        FieldInfo optionalShared = Field(typeof(Optional), "Shared");
+        Show("nullable get", () => some.GetValue(optional));
+        Show("nullable get, no value", () => Field(typeof(Optional), "None").GetValue(optional));
+        Show("nullable enum get", () => Field(typeof(Optional), "Grade").GetValue(optional));
+        Show("nullable struct get", () => Field(typeof(Optional), "Place").GetValue(optional));
+        Show("static nullable get", () => optionalShared.GetValue(null));
+        Show("nullable set, get", () => { some.SetValue(optional, 8); return some.GetValue(optional); });
+        Show("nullable set null, get", () => { some.SetValue(optional, null); return some.GetValue(optional); });
+        Show("static nullable set, get", () => { optionalShared.SetValue(null, 2.5); return optionalShared.GetValue(null); });
+        Show("nullable set short", () => { some.SetValue(optional, (short)3); return null; });
 
         Console.WriteLine("field validation end");
     }

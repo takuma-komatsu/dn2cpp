@@ -778,8 +778,9 @@ struct Dn2CppType : Dn2CppObject
 // Reflection field metadata. One entry per declared field in a type's
 // Dn2CppTypeInfo::fields table. getter/setter are CppEmitter-generated thunks that
 // do the typed access + box/unbox; null when the field has no reflectable
-// storage (a literal/const, or an opaque declaring type), in which case
-// GetValue/SetValue raise InvalidOperationException.
+// storage (an opaque declaring type), in which case GetValue/SetValue raise
+// InvalidOperationException. A literal has no setter, and a getter only when
+// literalValue cannot carry its constant.
 struct Dn2CppFieldInfo
 {
     const char* name;
@@ -795,13 +796,11 @@ struct Dn2CppFieldInfo
     // field's metadata token. 0-fill trailing convention (0 when unrecorded).
     int32_t ilAttrs;
     int32_t metadataToken;
-    // The constant of a LITERAL row that has no storage to thunk-read, widened
-    // to int64 (an enum member's value — the rows CppEmitter emits for enum
-    // type-infos). getter/setter stay null; dn2cpp_fieldref_get_value boxes
-    // this as the declaring enum instead of throwing, so GetField(name)
-    // .GetValue(null) answers like real .NET (the Newtonsoft EnumUtils path).
-    // Same trailing 0-fill convention — non-enum rows leave it 0 and keep the
-    // null-thunk InvalidOperationException behavior.
+    // The bits of a LITERAL row's constant when it is encoded at the field's own
+    // primitive or enum type: sign- or zero-extended integers, a float's or
+    // double's IEEE bits. dn2cpp_fieldref_get_value boxes them at fieldType, and a
+    // reference-typed row without a getter is a null constant. Same trailing
+    // 0-fill convention.
     int64_t literalValue;
     // FieldInfo.ToString display, pre-rendered while the full metadata signature
     // (including byref/generic spelling) is still available. Trailing for source
@@ -812,7 +811,7 @@ struct Dn2CppFieldInfo
 // Dn2CppFieldInfo::attrs bits. PUBLIC/PRIVATE mirror the CLR field
 // accessibility (internal/protected set neither bit); STATIC marks a static
 // field; INITONLY a C# readonly field (FieldAttributes.InitOnly); LITERAL a
-// const (FieldAttributes.Literal — no storage, GetValue/SetValue thunks null).
+// const (FieldAttributes.Literal — no storage; see literalValue).
 #define DN2CPP_FLDA_STATIC   0x1
 #define DN2CPP_FLDA_PUBLIC   0x2
 #define DN2CPP_FLDA_PRIVATE  0x4
@@ -1447,6 +1446,8 @@ inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReq
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
+inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
+inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetInitonlyStaticField";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
@@ -2262,6 +2263,9 @@ extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+// System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
+// static read-only field.
+extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
 extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
