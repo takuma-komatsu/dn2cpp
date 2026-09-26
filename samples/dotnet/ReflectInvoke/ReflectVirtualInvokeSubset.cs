@@ -23,7 +23,7 @@ using System.Reflection;
 // abstract, generic-class, base-call-only and MakeGenericType rows, and interface
 // rows over plain, explicit, default, derived-interface and struct bodies. Its
 // direct calls include a struct's generic interface method through its box and a
-// delegate.
+// delegate. An open binding of a generic virtual row is refused.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -824,6 +824,15 @@ static class Program
         Try("closed delegate, interface row override", () => Bound(new GvmOverridePick(), pick));
         Try("closed delegate, default row", () => Bound(new GvmPlainPick(), fallback));
         Try("closed delegate, derived interface default", () => Bound(new GvmFancyPick(), fallback));
+
+        // .NET refuses an open binding of a generic virtual method once its shape
+        // binds, even a final one and under throwOnBindFailure: false.
+        Fault("open delegate, root row", () => Delegate.CreateDelegate(typeof(Func<GvmRoot, string>), rootTag, false));
+        Fault("open delegate, sealed override row", () => Generic(typeof(GvmSealed), "Tag", typeof(int))
+            .CreateDelegate(typeof(Func<GvmSealed, string>)));
+        Fault("open delegate, abstract row", () => Delegate.CreateDelegate(typeof(Func<GvmShape, int, string>), kind));
+        Fault("open delegate, interface row", () => Delegate.CreateDelegate(typeof(Func<IGvmPick, string>), pick));
+        Fault("open delegate, receiver mismatch", () => Delegate.CreateDelegate(typeof(Func<object, string>), rootTag));
 
         Console.WriteLine("generic virtual invoke end");
     }

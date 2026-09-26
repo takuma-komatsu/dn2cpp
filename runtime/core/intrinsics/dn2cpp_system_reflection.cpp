@@ -2996,6 +2996,10 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         && (declTi->flags & DN2CPP_TF_INTERFACE) != 0;
     if (staticVirtual && mode == DN2CPP_DGBIND_CLOSED_STATIC)
         dn2cpp_throw_static_virtual_entry_point();
+    // .NET refuses an open binding of a generic virtual method once its shape binds,
+    // even a final one and under throwOnBindFailure: false.
+    if (mode == DN2CPP_DGBIND_OPEN_INSTANCE && mi->genericParamCount != 0 && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
+        dn2cpp_throw_reflection_fault(&dn2cpp_not_supported_exception_type, nullptr, 0x80131515u);
     // The shape binds; only now can the image refuse. A bodiless virtual row
     // (abstract or interface) binds the receiver's slot at each call, as
     // MethodInfo.Invoke does, and a generic virtual row its dispatcher. A boxed
