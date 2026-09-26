@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
@@ -22,7 +23,8 @@ using System.Reflection;
 // each trap shape. RunGenericVirtual asserts the same for a closed generic virtual
 // row, which has no slot and runs the override a call through it binds: class,
 // abstract, generic-class, base-call-only and MakeGenericType rows, and interface
-// rows over plain, explicit, default, derived-interface and struct bodies. Its
+// rows over plain, explicit, default, derived-interface and struct bodies, and a
+// base-call-only framework row that typeof names. Its
 // direct calls include a struct's generic interface method through its box and a
 // delegate. An open binding of a generic virtual row is refused. An override
 // hides the generic virtual method it overrides from GetMethod and GetMethods, and
@@ -408,6 +410,21 @@ class GvmPairHider : GvmLeaf
 class GvmPairShadow : GvmRoot
 {
     public new string Pair<T>(T value) => "pair-shadow:" + value;
+}
+
+// Only a base call names the framework method's instantiation, so no callvirt
+// dispatches it.
+class GvmProvider : TypeDescriptionProvider
+{
+    public string Registered = "unregistered";
+
+    public override void RegisterType<T>() => Registered = "provider:" + typeof(T).Name;
+
+    public string Base()
+    {
+        base.RegisterType<GvmRoot>();
+        return Registered;
+    }
 }
 
 class NullHost
@@ -1141,6 +1158,18 @@ static class Program
             ((Func<NullHost, string>)Delegate.CreateDelegate(typeof(Func<NullHost, string>), Method(typeof(NullHost), "Plain")))(null!));
         Try("open delegate, null receiver, virtual row", () =>
             ((Func<Base, string>)Delegate.CreateDelegate(typeof(Func<Base, string>), Method(typeof(Base), "Who")))(null!));
+
+        // typeof names the framework row, so it runs the receiver's override.
+        var provider = new GvmProvider();
+        MethodInfo register = Generic(typeof(TypeDescriptionProvider), "RegisterType", typeof(GvmRoot));
+        Try("framework row, base call", () => provider.Base());
+        Try("framework row, override", () => register.Invoke(provider, null) ?? provider.Registered);
+        Try("closed delegate, framework row", () =>
+        {
+            var bound = (Action)Delegate.CreateDelegate(typeof(Action), new GvmProvider(), register);
+            bound();
+            return ((GvmProvider)bound.Target!).Registered + "/" + Describe(bound.Method);
+        });
 
         Console.WriteLine("generic virtual invoke end");
     }

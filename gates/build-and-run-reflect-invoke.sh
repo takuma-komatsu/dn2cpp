@@ -141,7 +141,8 @@
 # which has no slot and runs the override a call through it binds: class rows over
 # inherited overrides, new-slot hiders, sealed and covariant overrides, abstract
 # rows (which check the receiver and arguments first), a row only a base call
-# names, generic-class rows over shared and value arguments, a MakeGenericType
+# names (on an application class, or on a framework class a string literal after
+# typeof names), generic-class rows over shared and value arguments, a MakeGenericType
 # receiver, and interface rows over plain, explicit, class-override, abstract-level,
 # default, derived-interface and struct bodies; a closed binding reports the body it
 # runs. Its direct calls include a struct's generic interface method through its box
@@ -477,6 +478,8 @@ gate_extra_asserts() {
     grep -Fxq 'null-bound delegate, generic virtual override row: leaf:Int32' "$out/metadata-layout.stdout"
     grep -Fxq 'null-bound delegate, abstract generic virtual row: BadImageFormatException 0x8007000B' "$out/metadata-layout.stdout"
     grep -Fxq 'open delegate, null receiver, non-virtual row: plain' "$out/metadata-layout.stdout"
+    grep -Fxq 'framework row, override: provider:GvmRoot' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, framework row: provider:GvmRoot/GvmProvider.RegisterType' "$out/metadata-layout.stdout"
     grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"
@@ -506,13 +509,15 @@ gate_extra_asserts() {
 
 # This gate measures C++ member inference from the original assembly metadata.
 # Managed preservation is covered by build-and-run-preserve-control.sh.
+# RunGenericVirtual derives from TypeDescriptionProvider, which CoreLib lacks.
 reflection_layout_axis=default
 DN2CPP_STRICT_COMPLETION=1 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|strict-completion" \
-    corelib_diff_gate ReflectInvoke --no-ildiet
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter
+typeconverter="$(dirname "$_CG_CORELIB")/System.ComponentModel.TypeConverter.dll"
 
 reflection_layout_axis=overrides
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
-    corelib_diff_gate ReflectInvoke --no-ildiet \
+    corelib_diff_gate ReflectInvoke --no-ildiet System.ComponentModel.TypeConverter \
         --reflection-metadata 'ReflectInvoke::ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.PackedBase=native' \
         --reflection-metadata 'ReflectMetadataLayoutSubset.Generic`1[System.String]=packed' \
@@ -524,14 +529,14 @@ DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-overrides" \
 
 reflection_layout_axis=uncompressed
 DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-metadata-uncompressed" \
-    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression \
+    corelib_diff_gate ReflectInvoke --no-ildiet --no-metadata-compression System.ComponentModel.TypeConverter \
         --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
         --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
         --reflection-metadata 'System.String=packed'
 
 # A global opt-out dominates packed selectors in either argument order.
 uncompressed_reverse=artifacts/reflection-metadata-uncompressed-reverse
-run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
+run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
     --reflection-metadata 'ReflectMetadataLayoutSubset.NativeBase=packed' \
     --reflection-metadata 'ReflectMetadataCompressionSubset.Direct=packed' \
     --reflection-metadata 'System.String=packed' --no-metadata-compression \
@@ -543,7 +548,7 @@ mkdir -p "$invalid_out"
 expect_policy_rejection() {
     local name="$1" diagnostic="$2" status=0
     shift 2
-    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" --no-ildiet \
+    run_bounded invoke_cli "$_CG_APP" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
         -o "$invalid_out/$name" "$@" > "$invalid_out/$name.log" 2>&1 || status=$?
     if [ "$status" -ne 2 ] || ! grep -Fq -- "$diagnostic" "$invalid_out/$name.log"; then
         cat "$invalid_out/$name.log" >&2
@@ -580,7 +585,7 @@ for byref_mode in overwrite overwrite-int64 copy; do
     diff -u <(strip_cr_win_file "$invalid_out/byref-prefix.stdout") \
         <(strip_cr_win_file "$byref_dir/dotnet-prefix.stdout")
     byref_status=0
-    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" --no-ildiet \
+    run_bounded invoke_cli "$byref_app" -r "$_CG_CORELIB" -r "$typeconverter" --no-ildiet \
         -o "$byref_dir/out" > "$byref_dir/transpile.log" 2>&1 || byref_status=$?
     if [ "$byref_mode" = copy ]; then
         if [ "$byref_status" -ne 0 ]; then

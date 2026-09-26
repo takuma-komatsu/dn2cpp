@@ -3769,7 +3769,9 @@ internal sealed partial class Compilation
     /// marked only when a user body names its member on a type token
     /// (<see cref="_typeofNamedMembers"/>), which bounds that to one member's
     /// overrides; any other framework row's receiver may hold a trap, which the runtime
-    /// reports as the stripped body it is. Driven each round, like the array maps
+    /// reports as the stripped body it is. A closed generic virtual row has no slot and
+    /// gets its dispatcher (<see cref="ReachReflectedGvm"/>) by the same rule; without
+    /// one it runs its own body. Driven each round, like the array maps
     /// above: the flags, the reached set, the named members and the decoded classes
     /// all grow while bodies compile.</summary>
     public void ReachReflectedVirtualSlots()
@@ -3849,7 +3851,9 @@ internal sealed partial class Compilation
         bool marked = false;
         if (cls.MethodsNamed(name) is { } methods)
             for (int i = 0; i < methods.Count; i++)
-                marked |= MarkReflectedSlot(methods[i], named: true);
+                marked |= IsGvmCall(methods[i])
+                    ? ReachReflectedGvm(cls, methods[i])
+                    : MarkReflectedSlot(methods[i], named: true);
         return marked;
     }
 
