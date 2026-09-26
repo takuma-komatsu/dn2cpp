@@ -303,6 +303,13 @@
 # an attribute factory hands a Type-valued named property to its setter, whose
 # parameter is the managed System.Type pointer, not the runtime's Type handle.
 #
+# ReflectAttrBoxedSubset covers attribute arguments typed object or object[]: the
+# factory boxes each value at the type its blob encodes (primitive, string, enum,
+# Type, array, null), stores a named argument at its member's declared type, and
+# keeps a 64-bit enum's high bits; CustomAttributeData.ToString spells each value
+# with its encoded type and lists fields before properties. Every line of the
+# section matches real .NET.
+#
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"

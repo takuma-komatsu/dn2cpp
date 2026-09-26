@@ -39,6 +39,8 @@ internal static class Program
         Console.WriteLine("attribute-property=" + Construct(selection.Property!));
         Type[] listed = typeof(Holder).GetCustomAttribute<SelectAllAttribute>()!.Types;
         Console.WriteLine("attribute-array=" + Construct(listed[0]) + ":" + Construct(listed[1]));
+        Console.WriteLine("attribute-object="
+            + Construct((Type)typeof(Holder).GetCustomAttribute<BoxedAttribute>()!.Value));
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
@@ -108,9 +110,7 @@ internal sealed class BoxedAttribute : Attribute
     public object Value { get; }
 }
 
-// Only Holder's attribute arguments name the Labeled subclasses. dn2cpp
-// materializes no attribute with an object argument, so Boxed is never read; the
-// gate checks ByObject's constructor in the stripped metadata instead.
+// Only Holder's attribute arguments name the Labeled subclasses.
 [Select(typeof(ByArgument), Field = typeof(ByField), Property = typeof(ByProperty))]
 [SelectAll(typeof(ByArrayFirst), typeof(ByArraySecond))]
 [Boxed(typeof(ByObject))]

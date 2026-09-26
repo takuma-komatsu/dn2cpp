@@ -5358,9 +5358,9 @@ internal sealed partial class Compilation
     internal bool IsUserModule(Module m) => !IsFrameworkAssemblyName(m.AssemblyName);
 
     /// <summary>Reaches an attribute's ctor, named-property setters, and allocated type
-    /// for every reflectable custom attribute in the collection, and notes every
-    /// typeof()-valued argument's class (single or array element) as a referenced type so
-    /// its type-info is emitted and the argument stays renderable.</summary>
+    /// for every reflectable custom attribute in the collection, and notes what each
+    /// argument's factory names (<see cref="NoteAttrArg"/>) so the argument stays
+    /// renderable.</summary>
     private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles)
     {
         foreach (var da in DecodeCustomAttributes(module, handles))
@@ -5376,57 +5376,62 @@ internal sealed partial class Compilation
             NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
             if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
                 ReachAllocatedType(da.AttrClass);
-            foreach (var fa in da.Fixed)
-            {
-                NoteAttrArgTypes(fa.Value);
-                NoteAttrArgArrayType(fa.Type);
-            }
+            var ps = da.Ctor.Signature.ParameterTypes;
+            for (int i = 0; i < da.Fixed.Length; i++)
+                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject);
             foreach (var na in da.Named)
             {
-                NoteAttrArgTypes(na.Value);
-                NoteAttrArgArrayType(na.Type);
-                // The setter may be declared on an attribute BASE class — walk the
-                // chain, paired with the emit-side
-                // lookup in CppEmitter.RenderNamedArg: a setter emit finds but
-                // reach never reached fails its Reachable test and silently drops the
-                // whole attribute row. Field-kind named args need no reach pairing —
-                // their storage rides the struct layout.
+                // The member may be declared on an attribute BASE class — walk the
+                // chain, paired with the emit-side lookup in CppEmitter.RenderNamedArg: a
+                // setter emit finds but reach never reached fails its Reachable test and
+                // silently drops the whole attribute row, and an object-typed member boxes
+                // its value there.
+                bool boxed = false;
                 if (na.Kind == CustomAttributeNamedArgumentKind.Property && na.Name is { } pn
                     && da.AttrClass.InstanceMethodOnBaseChain("set_" + pn) is { } sm)
+                {
                     Reach(sm);
+                    boxed = sm.Signature.ParameterTypes.Length > 0 && sm.Signature.ParameterTypes[0].IsObject;
+                }
+                else if (na.Kind == CustomAttributeNamedArgumentKind.Field && na.Name is { } fn
+                    && da.AttrClass.InstanceFieldOnBaseChain(fn) is { } f)
+                    boxed = f.Type.IsObject;
+                NoteAttrArg(na.Type, na.Value, boxed);
             }
         }
     }
 
-    /// <summary>Notes the element type of an SZArray-typed attribute ARGUMENT so its
-    /// precise <c>ti_arr_&lt;elem&gt;</c> handle is emitted (and header-declared — the
-    /// declaration loop CppEmitter.ArrayTypeInfoDeclared answers from runs before any
-    /// attribute table renders).
-    /// The emit-side pairing is CppEmitter.RenderAttrArray, whose typed allocation
-    /// names that handle: an attribute-built array left on the shared object[] handle
-    /// has no interface-dispatch map, so the first LINQ over it inside the attribute
-    /// ctor (e.g. <c>inputNames.Count(...)</c>) aborts loudly.
-    /// An enum element also needs its own referenced ti_, exactly as
-    /// TypeMetadataEmitter.NoteReflectedType notes for member types.</summary>
-    private void NoteAttrArgArrayType(TypeDesc t)
+    /// <summary>Notes what the factory of one attribute value names, from its
+    /// <paramref name="encoded"/> type; <paramref name="boxed"/> when it fills an
+    /// object-typed slot or object[] element, which boxes it at that type. The emit-side
+    /// pairing is CppEmitter.RenderAttrValue, and every note is emitted and
+    /// header-declared before any attribute table renders:
+    /// <list type="bullet">
+    /// <item>an SZArray's element, at every nesting level, so the array allocates with its
+    /// precise <c>ti_arr_&lt;elem&gt;</c> handle — one left on the shared object[] handle
+    /// has no interface-dispatch map, so the first LINQ over it inside the attribute ctor
+    /// (e.g. <c>inputNames.Count(...)</c>) aborts loudly — plus an enum element's own ti_,
+    /// exactly as TypeMetadataEmitter.NoteReflectedType notes for member types;</item>
+    /// <item>a boxed enum's ti_, which the box carries;</item>
+    /// <item>a Type value's identity closure, so its handle survives tree-shaking.</item>
+    /// </list></summary>
+    private void NoteAttrArg(TypeDesc encoded, object? value, bool boxed)
     {
-        if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray } el })
+        if (encoded.Kind == TypeKind.SZArray)
+        {
+            var el = encoded.Element!;
+            NoteArrayElementType(el);
+            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
+                NoteReferencedType(ec);
+            if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
+                foreach (var item in items)
+                    NoteAttrArg(item.Type, item.Value, el.IsObject);
             return;
-        NoteArrayElementType(el);
-        if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-            NoteReferencedType(ec);
-    }
-
-    /// <summary>Notes the class behind a typeof()-valued attribute argument (a decoded
-    /// <see cref="TypeDesc"/>, or an array of typed arguments carrying them) so the
-    /// type-info survives tree-shaking for the attribute factory to reference.</summary>
-    private void NoteAttrArgTypes(object? value)
-    {
-        if (value is TypeDesc { Kind: TypeKind.Class, Class: { } cls })
-            NoteReferencedType(cls);
-        else if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
-            foreach (var item in items)
-                NoteAttrArgTypes(item.Value);
+        }
+        if (value is TypeDesc type)
+            NoteTypeIdentityClosure(type);
+        else if (boxed && value is not null && encoded is { Kind: TypeKind.Class, Class: { IsEnum: true } boxedEnum })
+            NoteReferencedType(boxedEnum);
     }
 
     /// <summary>Drives the reachability/discovery fixpoint to quiescence: complete
