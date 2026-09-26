@@ -79,7 +79,7 @@ internal sealed class Module
     /// reason <see cref="TemplateDescs"/> is, and per module because System.ThrowHelper,
     /// its enums and its SR are all per-assembly polyfills.</summary>
     public TypeDefinitionHandle? ThrowHelperType;
-    public Dictionary<(string, int), (ThrowHelperResources.Source? Res, ThrowHelperResources.Source? Arg)>? ThrowHelperSinks;
+    public Dictionary<(string, int), ThrowHelperResources.Sink>? ThrowHelperSinks;
     public Dictionary<string, Dictionary<int, string>>? ExceptionEnums;
 }
 
