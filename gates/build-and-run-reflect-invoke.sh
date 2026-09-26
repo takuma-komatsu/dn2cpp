@@ -188,8 +188,9 @@
 # names.
 # ReflectGroupOnly binds each reflection trigger only as a method group:
 # Activator.CreateInstance, ConstructorInfo.Invoke, MethodInfo.Invoke, the
-# PropertyInfo accessors and Delegate.CreateDelegate. The binding alone must open
-# the route a call opens.
+# PropertyInfo accessors, both CreateDelegate forms, MakeGenericType and
+# GetCustomAttributes. The binding alone must open the route a call opens, and a
+# virtual member binds through the runtime-owned reflection object it is read from.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.

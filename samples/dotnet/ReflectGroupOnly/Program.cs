@@ -4,11 +4,13 @@ using System.Reflection;
 
 // SUBJECT: reflection members a program names only as method groups. Nothing here
 // calls Activator.CreateInstance, a ConstructorInfo, MethodInfo.Invoke, a
-// PropertyInfo accessor or CreateDelegate; each is bound to a delegate and run
-// through it, so the binding must open the route a call opens, with ILDiet on or
-// off: the constructors of types only a type token names, and the bodies a
-// reflected member runs. Every reflected method is a virtual member of a
-// constructed type, which ILDiet keeps without a call.
+// PropertyInfo accessor, CreateDelegate, MakeGenericType or GetCustomAttributes;
+// each is bound to a delegate and run through it, so the binding must open the
+// route a call opens, with ILDiet on or off: the constructors of types only a type
+// token names, and the bodies a reflected member runs. Every reflected method is a
+// virtual member of a constructed type, which ILDiet keeps without a call.
+// CreateDelegate, MakeGenericType and GetCustomAttributes are virtual, so their
+// groups bind through a reflection object the runtime owns.
 namespace ReflectGroupOnly;
 
 sealed class Made
@@ -25,6 +27,11 @@ sealed class Built
     public override string ToString() => _tag;
 }
 
+sealed class Box<T>
+{
+    public override string ToString() => "box:" + typeof(T).Name;
+}
+
 class Greeter
 {
     private string _mood = "calm";
@@ -38,6 +45,15 @@ class Greeter
         get => _mood;
         set => _mood = value;
     }
+}
+
+sealed class TagAttribute : Attribute
+{
+}
+
+[Tag]
+sealed class Tagged
+{
 }
 
 static class Program
@@ -77,6 +93,21 @@ static class Program
         {
             Func<Type, object?, MethodInfo, Delegate> bind = Delegate.CreateDelegate;
             return ((Func<string, string>)bind(typeof(Func<string, string>), greeter, greet))("static");
+        });
+        Run("create delegate", () =>
+        {
+            Func<Type, object?, Delegate> bind = greet.CreateDelegate;
+            return ((Func<string, string>)bind(typeof(Func<string, string>), greeter))("bind");
+        });
+        Run("make generic", () =>
+        {
+            Func<Type[], Type> close = typeof(Box<>).MakeGenericType;
+            return create(close(new[] { typeof(string) }))!.ToString()!;
+        });
+        Run("attributes", () =>
+        {
+            Func<bool, object[]> attributes = typeof(Tagged).GetCustomAttributes;
+            return attributes(false)[0].GetType().Name;
         });
     }
 

@@ -3522,6 +3522,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // `call_indirect` type-immediate trap naming nothing).
                 //
                 bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
+                bool bindsLowering = false;
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);
@@ -3561,6 +3562,19 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // helper (dn2cpp_object_dispatch_member).
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
                 }
+                else if (m.IsVirtual && !m.DeclaringClass.IsInterface
+                         && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                         && CoreIntrinsics.RuntimeOwnsTypeInfo(m.DeclaringClass))
+                {
+                    // A runtime-owned receiver (a reflection handle) has no transpiled
+                    // vtable to read, and a callvirt of an intrinsic type's member lowers
+                    // inline whatever the receiver, so the group binds that lowering as
+                    // the member's own body, exactly as ldftn does.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
+                }
                 else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
                     if (m.DeclaringClass.IntrinsicCppName is null)
@@ -3591,7 +3605,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         : $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
-                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual,
+                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual && !bindsLowering,
                     DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = true };
                 break;
             }
