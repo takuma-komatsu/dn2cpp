@@ -3932,6 +3932,14 @@ internal sealed partial class MethodCompiler
             var csig = handle.Kind == HandleKind.MemberReference
                 ? _reader.GetMemberReference((MemberReferenceHandle)handle).DecodeMethodSignature(_c.SigProvider, _method.Context)
                 : _reader.GetMethodDefinition((MethodDefinitionHandle)handle).DecodeSignature(_c.SigProvider, _method.Context);
+            // The typed IComparable<T>.CompareTo(!0) / IEquatable<T>.Equals(!0) name their
+            // argument by the interface's own parameter, which the caller's context leaves
+            // unbound; the intrinsic table matches on the closed argument type.
+            if (csig.ParameterTypes is [{ Kind: TypeKind.GenericVar }]
+                && (TypedItfConstrainedArg(handle, "System.IComparable")
+                    ?? TypedItfConstrainedArg(handle, "System.IEquatable")) is { } selfArg)
+                csig = new MethodSignature<TypeDesc>(csig.Header, csig.ReturnType, csig.RequiredParameterCount,
+                    csig.GenericParameterCount, System.Collections.Immutable.ImmutableArray.Create(selfArg));
             // ValueType.ToString on an intrinsic with no override is still observable:
             // it returns the exact CLR type name. These values may be ref structs or
             // pointer-represented handles, so boxing is neither legal nor necessary.
@@ -4464,18 +4472,25 @@ internal sealed partial class MethodCompiler
     /// i.e. the typed <c>Equals(!0)</c>/<c>CompareTo(!0)</c> whose IL argument is the
     /// unboxed T. The non-generic <c>System.IComparable</c> resolves through a TypeRef
     /// (no TypeSpec) and never matches.</summary>
-    private bool IsTypedItfConstrained(EntityHandle handle, string itfName)
+    private bool IsTypedItfConstrained(EntityHandle handle, string itfName) =>
+        TypedItfConstrainedArg(handle, itfName) is not null;
+
+    /// <summary>The closed type argument of the interface <see cref="IsTypedItfConstrained"/>
+    /// recognises, or null when <paramref name="handle"/> is not such a member.</summary>
+    private TypeDesc? TypedItfConstrainedArg(EntityHandle handle, string itfName)
     {
         if (handle.Kind != HandleKind.MemberReference)
-            return false;
+            return null;
         var mr = _reader.GetMemberReference((MemberReferenceHandle)handle);
         if (mr.Parent.Kind != HandleKind.TypeSpecification)
-            return false;
+            return null;
         var parent = _reader.GetTypeSpecification((TypeSpecificationHandle)mr.Parent)
             .DecodeSignature(_c.SigProvider, _method.Context);
         return parent is { Kind: TypeKind.Class, Class: { IsInterface: true } pi }
             && pi.Context.TypeArgs.Length == 1
-            && _c.GenericDefFullName(pi) == itfName;
+            && _c.GenericDefFullName(pi) == itfName
+            ? pi.Context.TypeArgs[0]
+            : null;
     }
 
     /// <summary>Constant-folds a direct call whose callee body is exactly

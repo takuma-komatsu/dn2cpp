@@ -525,16 +525,6 @@ internal sealed partial class MethodCompiler
     private static bool IsTimeSpan(TypeDesc t) =>
         t is { Kind: TypeKind.Class, Class.FullName: "System.TimeSpan" };
 
-    // A constrained IComparable<TimeSpan>/IEquatable<TimeSpan> callvirt reaches
-    // TryEmitTimeSpanIntrinsic with the interface's OWN generic parameter (!0) as the argument
-    // type: the callee signature is decoded under the caller's GenericContext, which binds the
-    // method's !!T but not IComparable<T>'s !0, so it stays a GenericVar. Dispatch is already
-    // keyed to declType "System.TimeSpan", and TimeSpan's only single-generic-arg interface
-    // methods are CompareTo/Equals over TimeSpan itself, so a GenericVar argument here IS
-    // TimeSpan.
-    private static bool IsTimeSpanOrConstrainedSelf(TypeDesc t) =>
-        IsTimeSpan(t) || t.Kind == TypeKind.GenericVar;
-
     /// <summary>True for a blocking-call timeout parameter — an <c>int</c> milliseconds
     /// count or a <c>TimeSpan</c> (the two shapes accepted by Wait/WaitOne/TryEnter/Join
     /// timeout overloads).</summary>
@@ -883,9 +873,9 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_neg({TSVal(a)})"); return true; }
             case "Duration" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_duration({TSVal(a)})"); return true; }
-            case "CompareTo" when ps.Length == 1 && IsTimeSpanOrConstrainedSelf(ps[0]):
+            case "CompareTo" when ps.Length == 1 && IsTimeSpan(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_timespan_cmp({TSVal(a)}, {TSVal(b)})"); return true; }
-            case "Equals" when ps.Length == 1 && IsTimeSpanOrConstrainedSelf(ps[0]):
+            case "Equals" when ps.Length == 1 && IsTimeSpan(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.I4, "int32_t", $"(dn2cpp_timespan_cmp({TSVal(a)}, {TSVal(b)}) == 0 ? 1 : 0)"); return true; }
             case "GetHashCode" when ps.Length == 0:
             { var a = Pop(); Push(StackKind.I4, "int32_t", $"dn2cpp_timespan_hash({TSVal(a)})"); return true; }

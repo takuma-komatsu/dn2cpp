@@ -76,7 +76,10 @@
 #     primitive, string, decimal and date/time type through a `constrained. !T` call,
 #     a boxed receiver and the direct overload: the order, a null argument, and a box
 #     of another type rejected with .NET's "Object must be of type X." message. Its
-#     extra asserts pin that the output before the section is unchanged.
+#     typed rows ask IComparable<T>.CompareTo constrained and through a box, and the
+#     three default comparers, for the raw difference of the sub-word integers and
+#     Char and the unsigned order of nuint. Its extra asserts pin that the output
+#     before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -140,6 +143,7 @@ gate_extra_asserts() {
 
     grep -Fxq '== constrained CompareTo(object) ==' "$out/native.stdout"
     grep -Fxq 'ccmp byte: 197 -197 1 | ArgumentException: Object must be of type Byte. | ArgumentException: Object must be of type Byte.' "$out/native.stdout"
+    grep -Fxq 'tcmp byte: 197 -197 197 197 197 197' "$out/native.stdout"
     DN2CPP_BEFORE_CONSTRAINED_OBJECT_COMPARE=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
         > "$out/before-constrained-object-compare.stdout"
     sed '/^== constrained CompareTo(object) ==/,$d' "$out/native.stdout" > "$out/constrained-object-compare-prefix.stdout"
