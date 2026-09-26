@@ -1487,14 +1487,12 @@ internal sealed partial class CppEmitter
         // decode), so alias members — two names, one value, deduped out of enummembers_ —
         // keep their own rows like real .NET.
         //
-        // --trim-reflection interplay: every enum reaching here is in ReferencedTypes,
-        // which is a keep-set seed, so it is always kept and never needs
-        // DN2CPP_TF_METADATA_STRIPPED. The KeepsReflectionMetadata gate below states that
-        // dependency; if the keep rules narrow past it, a stripped enum must start carrying
-        // the bit (see dn2cpp_require_metadata).
+        // --trim-reflection keeps these rows for every enum emitted: they are an enum's
+        // whole member surface, and an enum first noted by a reflected member row is noted
+        // after the keep set is final, where stripping would answer an empty GetFields.
         private (string Expr, int Count) RenderEnumFieldTable(ClassInfo en)
         {
-            if (en.Handle.IsNil || !_c.KeepsReflectionMetadata(en))
+            if (en.Handle.IsNil)
                 return ("nullptr", 0);
             var rows = new List<MetadataRow>();
             try
