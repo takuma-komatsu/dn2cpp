@@ -134,7 +134,8 @@
 # at its encoded type, and SetValue refuses it before any check; SetValue refuses a
 # static read-only field once the value checks, naming the declaring TypeDef; a
 # Nullable<T> field reads back as null or a boxed T; an enum that only a reflected
-# member row or a closed generic argument names reports its own type.
+# member row or a closed generic argument names reports its own type; SetValue on a
+# boxed enum's value__ writes the box.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -342,6 +343,7 @@ gate_extra_asserts() {
     grep -Fxq 'unnamed field type: String:ReflectFieldValidationSubset.Unnamed' "$out/metadata-layout.stdout"
     grep -Fxq 'unnamed return invoke: UnnamedRet:R1' "$out/metadata-layout.stdout"
     grep -Fxq 'unnamed generic argument: String:ReflectFieldValidationSubset.Marker`1[ReflectFieldValidationSubset.UnnamedArg]' "$out/metadata-layout.stdout"
+    grep -Fxq 'enum value__ set: Level:High' "$out/metadata-layout.stdout"
     grep -Fxq 'field validation end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_FIELD_VALIDATION=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-field-validation.stdout"
     sed '/^== field validation ==/,$d' "$out/metadata-layout.stdout" > "$out/field-validation-prefix.stdout"

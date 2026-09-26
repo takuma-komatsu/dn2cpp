@@ -12,7 +12,8 @@ using System.Reflection;
 // metadata whatever the receiver and refuses SetValue before any check; a static
 // read-only field refuses SetValue once the value checks; a Nullable<T> field
 // reads back as null or a boxed T. An enum that only a reflected member row or a
-// closed generic argument names reports its own type.
+// closed generic argument names reports its own type, and SetValue on a boxed
+// enum's value__ writes the box.
 namespace ReflectFieldValidationSubset;
 
 enum Level { Low, Mid, High }
@@ -367,6 +368,11 @@ static class Program
         Show("unnamed return type", () => give.ReturnType.FullName);
         Show("unnamed return invoke", () => give.Invoke(null, null));
         Show("unnamed generic argument", () => new Marker<UnnamedArg>().GetType().ToString());
+
+        object boxedLevel = Level.Low;
+        FieldInfo levelValue = Field(typeof(Level), "value__");
+        Show("enum value__ set", () => { levelValue.SetValue(boxedLevel, 2); return boxedLevel; });
+        Show("enum value__ set, wrong value", () => { levelValue.SetValue(boxedLevel, 2L); return null; });
 
         Console.WriteLine("field validation end");
     }

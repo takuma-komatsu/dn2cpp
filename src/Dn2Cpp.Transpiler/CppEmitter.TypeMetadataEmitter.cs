@@ -1516,6 +1516,7 @@ internal sealed partial class CppEmitter
                     // here — the runtime boxes at the enum's own model width.
                     long lv = 0;
                     string get = "nullptr";
+                    string set = "nullptr";
                     string ftInfo;
                     if (literal)
                     {
@@ -1543,6 +1544,12 @@ internal sealed partial class CppEmitter
                             + $"{underT} v = ({underT})*({readT}*)((Dn2CppObject*)o + 1); "
                             + $"return dn2cpp_box({ftInfo}, &v, sizeof({underT})); }}");
                         get = $"&{gname}";
+                        // SetValue stores into the boxed receiver; the dispatcher has
+                        // already converted the value to a box of the underlying type.
+                        string sname = $"fldset_{en.CppName}_{fname}";
+                        _sb.AppendLine($"static void {sname}(Dn2CppObject* o, Dn2CppObject* val) {{ "
+                            + $"*({readT}*)((Dn2CppObject*)o + 1) = ({readT})*({underT}*)((char*)val + sizeof(Dn2CppObject)); }}");
+                        set = $"&{sname}";
                     }
                     else
                     {
@@ -1561,7 +1568,7 @@ internal sealed partial class CppEmitter
                         : _e.ReflectionSignatureType(TypeDesc.MakePrimitive(en.EnumUnderlying));
                     rows.Add(new MetadataRow(new[] {
                         MetadataValue.Text(fname), MetadataValue.Ref(_e.TypeInfoRef(en, "enum field row's declaring type")), MetadataValue.Ref(ftInfo),
-                        MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(null),
+                        MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set),
                         MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count), MetadataValue.Signed((int)fd.Attributes), MetadataValue.Signed(fldToken),
                         MetadataValue.Signed(lv), MetadataValue.Display(fieldDisplayType + " " + fname),
                     }));
