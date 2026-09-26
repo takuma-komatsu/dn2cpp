@@ -2086,6 +2086,17 @@ internal sealed partial class Compilation
             && MethodSpecMethodName(module, ms) == "CreateInstance";
     }
 
+    /// <summary>Whether a MethodSpec calls the generic MethodInfo.CreateDelegate. The
+    /// name is compared in place, so the parent is read only for that name.</summary>
+    private bool IsCreateDelegateSpec(Module module, MethodSpecificationHandle msh)
+    {
+        var reader = module.Reader;
+        var ms = reader.GetMethodSpecification(msh);
+        return ms.Method.Kind == HandleKind.MemberReference
+            && reader.StringComparer.Equals(reader.GetMemberReference((MemberReferenceHandle)ms.Method).Name, "CreateDelegate")
+            && MethodSpecParentTypeName(module, ms) == "System.Reflection.MethodInfo";
+    }
+
     /// <summary>The closed <c>GenericComparer&lt;T&gt;</c> backing
     /// <c>Comparer&lt;T&gt;.Default</c> for a comparable element type — instantiated and
     /// completed so its ctor/Compare are available — or null if GenericComparer`1 is not
@@ -5065,6 +5076,13 @@ internal sealed partial class Compilation
                             // (which include property get_/set_ accessors).
                             else if (mrName is "GetValue" or "SetValue" && mrParent == "System.Reflection.PropertyInfo")
                                 _reflectionInvokeUsed = true;
+                            // CreateDelegate called from a user body binds a reflected
+                            // method, whose body runs the same way. Bounded to user call
+                            // sites: a framework library binding its own members must not
+                            // reach every app body.
+                            else if (mrName == "CreateDelegate" && IsUserModule(module)
+                                && mrParent is "System.Delegate" or "System.Reflection.MethodInfo")
+                                _reflectionInvokeUsed = true;
                             // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type)
                             // -> reach app-module ctors so a reflected ctor is invokable.
                             // ILDiet keeps typeof-named ctors on the same predicate.
@@ -5123,6 +5141,12 @@ internal sealed partial class Compilation
                                 continue;
                             }
                         }
+                        // The same CreateDelegate mark, generic mouth: MethodInfo.CreateDelegate<T>
+                        // is a MethodSpec over an intrinsic parent, which resolves to no target.
+                        else if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
+                            && handle.Kind == HandleKind.MethodSpecification && IsUserModule(module)
+                            && IsCreateDelegateSpec(module, (MethodSpecificationHandle)handle))
+                            _reflectionInvokeUsed = true;
                         // The same mark, for the shape the block above cannot see: a body of
                         // the loaded CoreLib calling Object::Equals/GetHashCode names them
                         // with a MethodDef token (same module), not a MemberRef. Read behind

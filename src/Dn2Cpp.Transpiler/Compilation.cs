@@ -3958,8 +3958,9 @@ internal sealed partial class Compilation
 
     private readonly HashSet<MethodInfo> _scanned = new();
 
-    // Set when a reached body calls MethodInfo/MethodBase.Invoke. Triggers the
-    // reflection-invoke reachability route after the initial discovery drain.
+    // Set when a reached body calls MethodInfo/MethodBase.Invoke or a PropertyInfo
+    // accessor, or a user body calls CreateDelegate. Triggers the reflection-invoke
+    // reachability route after the initial discovery drain.
     private bool _reflectionInvokeUsed;
 
     // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
@@ -4214,8 +4215,9 @@ internal sealed partial class Compilation
 
         DrainReachability();
         // Reflection-invoke reachability route: if the program calls
-        // MethodInfo.Invoke, make every app-module (non-ctor) method body invokable by
-        // reaching it — its invoker thunk + arg/return box/unbox then emit. Bounded to
+        // MethodInfo.Invoke, a PropertyInfo accessor or CreateDelegate, make every
+        // app-module (non-ctor) method body invokable by reaching it — its invoker
+        // thunk + arg/return box/unbox then emit. Bounded to
         // the app module so a real CoreLib pulled in with -r is not force-reached (which
         // would drag untranspilable BCL bodies into the tree). A reflection-only method
         // of a non-app type stays stripped (IL2CPP-with-managed-stripping semantics).

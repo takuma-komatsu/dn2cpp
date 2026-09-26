@@ -2217,6 +2217,10 @@ internal sealed partial class MethodCompiler
             && methodArgs.Length == 1)
         {
             var dT = methodArgs[0];
+            // T may be named nowhere else, and the binder finds its trampoline among
+            // the emitted delegate classes.
+            if (dT is { Kind: TypeKind.Class, Class: { IsDelegate: true } dCls })
+                NoteReferencedType(dCls);
             string tiExpr = TypeInfoExpr(dT)
                 ?? throw new NotSupportedException("CreateDelegate<T>: T has no runtime type-info");
             Comp.NeedsReflectionDelegateBind = true;

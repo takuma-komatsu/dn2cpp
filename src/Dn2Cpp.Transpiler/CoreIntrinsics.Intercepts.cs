@@ -1522,8 +1522,8 @@ internal static partial class CoreIntrinsics
     /// (<see cref="ScEnumHasFlag"/>), get_CompareInfo
     /// (<see cref="ScCultureCompareInfo"/>); plus</para>
     /// <para>(b) the hand-written residue: the names that drive the REFLECTION-USAGE
-    /// marks — Invoke, GetValue, SetValue, CreateInstance, GetCustomAttributes,
-    /// GetCustomAttribute, IsDefined, MakeGenericType. Those set
+    /// marks — Invoke, GetValue, SetValue, CreateDelegate, CreateInstance,
+    /// GetCustomAttributes, GetCustomAttribute, IsDefined, MakeGenericType. Those set
     /// <c>_reflectionInvokeUsed</c> / <c>_reflectionCtorUsed</c> /
     /// <c>_reflectionAttrUsed</c> / <c>_makeGenericTypeUsed</c>, which are not intercepts
     /// at all — they do not cut an edge or route a call, they OPEN a reachability route
@@ -1546,7 +1546,7 @@ internal static partial class CoreIntrinsics
         // (a) ScanIntercepts row names.
         "Equals" or "GetHashCode" or "HasFlag" or "get_CompareInfo"
         // (b) the reflection-usage marks — NOT intercepts, never registry rows.
-        or "Invoke" or "GetValue" or "SetValue" or "CreateInstance"
+        or "Invoke" or "GetValue" or "SetValue" or "CreateDelegate" or "CreateInstance"
         or "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
         or "MakeGenericType"
         // (c) the MemberRef mouth of the RunClassConstructor reach effect.

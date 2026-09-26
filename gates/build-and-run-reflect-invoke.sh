@@ -147,6 +147,11 @@
 # member row or a closed generic argument names reports its own type; SetValue on a
 # boxed enum's value__ writes the box; GetRawConstantValue answers a constant at its
 # encoded type, an enum's underlying primitive, and refuses any other field.
+# ReflectBindOnly, a program whose only reflection call is CreateDelegate, asserts
+# that the binding alone reaches the uncalled application bodies it binds: static
+# (also through the generic MethodInfo.CreateDelegate over a delegate type nothing
+# else names), instance, an override through its base row and an interface's static
+# member.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -517,3 +522,9 @@ cp gates/fixtures/reflection-metadata-codec.cpp "$codec_out/generated.cpp"
 printf '#pragma once\n' > "$codec_out/generated.h"
 compile_console "$codec_out" MetadataCodec
 assert_output "$("$codec_out/MetadataCodec$EXE_EXT")" "metadata codec boundaries OK"
+
+# ReflectBindOnly calls CreateDelegate and no other reflection member, so the
+# binding alone must reach the application bodies it binds. Its checks are the
+# diff; the ReflectInvoke asserts above do not apply to it.
+unset -f gate_extra_asserts
+corelib_diff_gate ReflectBindOnly --no-ildiet
