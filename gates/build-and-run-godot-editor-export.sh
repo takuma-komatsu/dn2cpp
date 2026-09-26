@@ -245,6 +245,10 @@ echo "== 3/14 Staging the sample project =="
 # a prior gate run cannot supply stale CMake state; the exports within this run
 # keep the persistent build tree and exercise incremental re-export.
 PROJ="$OUT/project"
+if [ "$DN2CPP_OS" = windows ] && [ -d "$PROJ" ]; then
+    # Godot's Android device poller can leave an ADB server holding this directory.
+    (android_ensure_adb && adb kill-server >/dev/null 2>&1) || true
+fi
 rm -rf "$PROJ"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
