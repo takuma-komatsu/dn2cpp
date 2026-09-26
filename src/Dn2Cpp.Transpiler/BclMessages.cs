@@ -57,6 +57,8 @@ internal static class BclMessages
         "BadImageFormat_BadILFormat",
         // Composite formats a runtime throw site fills from what it already holds.
         "RFLCT_Targ_ITargMismatch_WithType",
+        "Arg_AmbiguousMatchException_MemberInfo",
+        "Arg_AmbiguousMatchException_Attribute",
         "Arg_FieldDeclTarget",
         "RFLCT_CannotSetInitonlyStaticField",
         "Arg_ObjObjEx",

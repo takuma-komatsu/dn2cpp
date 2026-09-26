@@ -541,7 +541,6 @@ void dn2cpp_throw_out_of_memory() { dn2cpp_throw_of(&dn2cpp_out_of_memory_except
 void dn2cpp_throw_type_load() { dn2cpp_throw_of(&dn2cpp_type_load_exception_type); }
 void dn2cpp_throw_not_supported() { dn2cpp_throw_of(&dn2cpp_not_supported_exception_type); }
 void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_exception_type); }
-void dn2cpp_throw_ambiguous_match() { dn2cpp_throw_of(&dn2cpp_ambiguous_match_exception_type); }
 void dn2cpp_throw_rank() { dn2cpp_throw_of(&dn2cpp_rank_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
 void dn2cpp_throw_divide_by_zero() { dn2cpp_throw_of(&dn2cpp_divide_by_zero_exception_type); }

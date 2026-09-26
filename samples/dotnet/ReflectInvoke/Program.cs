@@ -76,6 +76,9 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE") == "1")
                 return;
             ReflectVirtualInvokeSubset.Program.RunGenericVirtual();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_AMBIGUOUS_MESSAGES") == "1")
+                return;
+            AmbiguousMatchMessageSubset.Program.Run();
         }
     }
 }

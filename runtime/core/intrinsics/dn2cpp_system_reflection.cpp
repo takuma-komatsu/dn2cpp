@@ -448,6 +448,36 @@ Dn2CppArrayRef* dn2cpp_type_get_interfaces(Dn2CppType* t)
     return arr;
 }
 
+// AmbiguousMatchException as .NET's reflection lookups raise it, with its HResult
+// (COR_E_AMBIGUOUSMATCH). A null text (no CoreLib resources) keeps the default message.
+[[noreturn]] static void dn2cpp_throw_ambiguous_text(Dn2CppString* message)
+{
+    Dn2CppObject* e = dn2cpp_exception_new(&dn2cpp_ambiguous_match_exception_type,
+        message != nullptr ? message : dn2cpp_default_message(&dn2cpp_ambiguous_match_exception_type),
+        nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(e)->hresult = static_cast<int32_t>(0x8000211Du);
+    dn2cpp_throw(e);
+}
+
+// A member lookup names its first match after that member's DeclaringType, both as
+// the reflection surface answers them (a Type's DeclaringType is null, so an
+// interface reads as "' Ns.IFoo'").
+[[noreturn]] static void dn2cpp_throw_ambiguous_member(Dn2CppObject* member)
+{
+    Dn2CppType* declaring = dn2cpp_memberinfo_declaring_type(member);
+    Dn2CppString* names[2] = {
+        declaring != nullptr ? dn2cpp_type_tostring(declaring->typeInfo) : nullptr,
+        dn2cpp_object_tostring_virtual(member) };
+    dn2cpp_throw_ambiguous_text(dn2cpp_sr_message(DN2CPP_SR_AMBIGUOUS_MATCH_MEMBER, names, 2));
+}
+
+// A single-attribute getter names the first matching attribute by its ToString.
+[[noreturn]] static void dn2cpp_throw_ambiguous_attribute(Dn2CppObject* attribute)
+{
+    Dn2CppString* name = dn2cpp_object_tostring_virtual(attribute);
+    dn2cpp_throw_ambiguous_text(dn2cpp_sr_message(DN2CPP_SR_AMBIGUOUS_MATCH_ATTRIBUTE, &name, 1));
+}
+
 // Type.GetInterface(name[, ignoreCase]): the lone interface-table row whose name
 // matches, over exactly the row set GetInterfaces reports (the canonical alias rows
 // are skipped, and ambiguity is counted post-exclusion). Matching pins real .NET:
@@ -511,7 +541,7 @@ Dn2CppType* dn2cpp_type_get_interface(Dn2CppType* t, Dn2CppString* name, int32_t
                 return;
         }
         if (found != nullptr)
-            dn2cpp_throw_ambiguous_match();
+            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(found)));
         found = itf;
     });
     return (found != nullptr) ? dn2cpp_get_type_from_handle(found) : nullptr;
@@ -1968,8 +1998,10 @@ static bool dn2cpp_candidates_sig_equal(Dn2CppMetadataHandle<Dn2CppMethodInfo> a
 // rows share the definition's metadata token) resolve to the first row — the
 // definition itself is not materialized in an AOT image, so the caller gets a
 // representative closed instantiation (IsGenericMethod == true). Anything else
-// is genuinely ambiguous and throws AmbiguousMatchException.
-static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(Dn2CppMetadataHandle<Dn2CppMethodInfo> const* c, int32_t n)
+// is genuinely ambiguous and throws AmbiguousMatchException naming the first
+// candidate, reflected through `reflected`.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(Dn2CppMetadataHandle<Dn2CppMethodInfo> const* c, int32_t n,
+    const Dn2CppTypeInfo* reflected)
 {
     if (n == 1)
         return c[0];
@@ -1981,7 +2013,7 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(D
     for (int32_t i = 1; i < n; i++)
         if (c[i]->metadataToken == 0 || c[i]->metadataToken != c[0]->metadataToken
             || c[i]->declaringType != c[0]->declaringType)
-            dn2cpp_throw_ambiguous_match();
+            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(c[0], reflected)));
     return c[0];
 }
 
@@ -2544,7 +2576,7 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
     dn2cpp_meta_lookup(t->typeInfo, name, genericParamCount, paramTypes, bindingFlags, cands, &n, 64);
     if (n == 0)
         return nullptr;
-    const Dn2CppMetadataHandle<Dn2CppMethodInfo> hit = dn2cpp_resolve_method_candidates(cands, n);
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo> hit = dn2cpp_resolve_method_candidates(cands, n, t->typeInfo);
     // A generic metadata-answered member answers its definition view, as .NET's
     // GetMethod("SizeOf") gives the open definition MakeGenericMethod closes.
     if ((hit->attrs & DN2CPP_MTHA_METAANSWER) != 0 && hit->genericParamCount > 0)
@@ -4379,7 +4411,7 @@ Dn2CppPropRef* dn2cpp_type_get_property_full(Dn2CppType* t, Dn2CppString* name, 
         return nullptr;
     for (int32_t i = 1; i < n; i++)
         if (!dn2cpp_props_sig_equal(cands[0], cands[i]))
-            dn2cpp_throw_ambiguous_match();
+            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_propref(cands[0], t->typeInfo)));
     return dn2cpp_make_propref(cands[0], t->typeInfo);
 }
 
@@ -4902,7 +4934,7 @@ Dn2CppObject* dn2cpp_get_custom_attribute(Dn2CppObject* member, Dn2CppType* attr
         if (dn2cpp_type_is_a(tab[i]->attrType, filter))
         {
             if (found != nullptr)
-                dn2cpp_throw_ambiguous_match();
+                dn2cpp_throw_ambiguous_attribute(found->create());
             found = tab[i];
         }
     return (found != nullptr) ? found->create() : nullptr;
@@ -4969,7 +5001,7 @@ Dn2CppObject* dn2cpp_assembly_get_custom_attribute(const char* name, Dn2CppType*
         if (dn2cpp_type_is_a(tab[i]->attrType, filter))
         {
             if (found != nullptr)
-                dn2cpp_throw_ambiguous_match();
+                dn2cpp_throw_ambiguous_attribute(found->create());
             found = tab[i];
         }
     return (found != nullptr) ? found->create() : nullptr;
@@ -6936,6 +6968,24 @@ static bool dn2cpp_binder_param_at_least_as_specific(const Dn2CppTypeInfo* a, co
     return false;
 }
 
+// Whether candidate `x`'s whole parameter list is at least as specific as `y`'s and
+// strictly more specific somewhere.
+static bool dn2cpp_binder_dominates(Dn2CppMetadataHandle<Dn2CppMethodInfo> x,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> y, int32_t argc)
+{
+    bool gtAny = false;
+    for (int32_t j = 0; j < argc; j++)
+    {
+        const Dn2CppTypeInfo* px = x->parameters[j]->paramType;
+        const Dn2CppTypeInfo* py = y->parameters[j]->paramType;
+        if (!dn2cpp_binder_param_at_least_as_specific(px, py))
+            return false;
+        if (px != py)
+            gtAny = true;
+    }
+    return gtAny;
+}
+
 // Adapt one bound argument to the invoker thunk's parameter representation: a
 // widened primitive re-boxes under the parameter's type at the box-payload
 // convention; null against a value type materializes default(T); a Nullable<U>
@@ -7059,35 +7109,26 @@ Dn2CppObject* dn2cpp_activator_create_instance_args(Dn2CppType* t, Dn2CppArrayRe
         best = cands[0];
     else
     {
-        // The unique candidate whose whole parameter list is at least as
-        // specific as every rival's, strictly better somewhere.
+        // The unique candidate that dominates every rival.
         for (int32_t x = 0; x < n && best == nullptr; x++)
         {
             bool dominates = true;
             for (int32_t y = 0; y < n && dominates; y++)
-            {
-                if (x == y)
-                    continue;
-                bool geAll = true, gtAny = false;
-                for (int32_t j = 0; j < argc; j++)
-                {
-                    const Dn2CppTypeInfo* px = cands[x]->parameters[j]->paramType;
-                    const Dn2CppTypeInfo* py = cands[y]->parameters[j]->paramType;
-                    if (!dn2cpp_binder_param_at_least_as_specific(px, py))
-                    {
-                        geAll = false;
-                        break;
-                    }
-                    if (px != py)
-                        gtAny = true;
-                }
-                dominates = geAll && gtAny;
-            }
+                if (x != y)
+                    dominates = dn2cpp_binder_dominates(cands[x], cands[y], argc);
             if (dominates)
                 best = cands[x];
         }
+        // The message names the candidate .NET's pairwise walk ends on: the first,
+        // replaced by each later one that dominates it.
         if (best == nullptr)
-            dn2cpp_throw_ambiguous_match();
+        {
+            int32_t named = 0;
+            for (int32_t y = 1; y < n; y++)
+                if (dn2cpp_binder_dominates(cands[y], cands[named], argc))
+                    named = y;
+            dn2cpp_throw_ambiguous_member(reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(cands[named], ti)));
+        }
     }
     Dn2CppObject* adapted[30];
     for (int32_t j = 0; j < argc; j++)

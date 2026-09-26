@@ -1477,6 +1477,8 @@ inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParam
 inline constexpr const char* DN2CPP_SR_ENTRY_POINT_NOT_FOUND = "Arg_EntryPointNotFoundException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_MEMBER = "Arg_AmbiguousMatchException_MemberInfo";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_ATTRIBUTE = "Arg_AmbiguousMatchException_Attribute";
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
 inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
@@ -2293,9 +2295,9 @@ extern Dn2CppTypeInfo dn2cpp_rank_exception_type;
 // the two operands' element types satisfy no arm of the CLR's Array.Copy
 // compatibility verdict (which lives at dn2cpp_array_copy_checked).
 extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
-// System.Reflection.AmbiguousMatchException: raised by the member-lookup
-// helpers (GetMethod/GetProperty with several undecidable matches), matching
-// real .NET's reflection contract.
+// System.Reflection.AmbiguousMatchException: raised by the reflection lookups
+// with several undecidable matches (members, interfaces, constructor binding,
+// single-attribute getters), with real .NET's message and HResult.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // System.Runtime.AmbiguousImplementationException: raised by an invoked
 // interface slot whose derived interfaces give it no most specific body.
@@ -2689,9 +2691,6 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // A typed `catch (KeyNotFoundException)` needs the matching type, so it has its
 // own handle + trap (rather than falling through to the InvalidOperation trap).
 [[noreturn]] void dn2cpp_throw_key_not_found();
-// Reflection member lookup with several undecidable matches (Type.GetMethod /
-// GetProperty), matching .NET's AmbiguousMatchException.
-[[noreturn]] void dn2cpp_throw_ambiguous_match();
 // An array block move whose two operands disagree on rank.
 [[noreturn]] void dn2cpp_throw_rank();
 // Constructor resolution with no invokable match (Activator.CreateInstance and

@@ -168,6 +168,12 @@
 # member row or a closed generic argument names reports its own type; SetValue on a
 # boxed enum's value__ writes the box; GetRawConstantValue answers a constant at its
 # encoded type, an enum's underlying primitive, and refuses any other field.
+# AmbiguousMatchMessageSubset asserts .NET's AmbiguousMatchException message and
+# HResult for each ambiguous lookup: GetMethod over overloads, beside the
+# System.Object Equals row and over Object's own rows, GetProperty over indexers,
+# GetInterface and Activator.CreateInstance's constructor binding name the first
+# match after its DeclaringType, and a single-attribute getter names the first
+# attribute's type.
 # ReflectBindOnly, a program whose only reflection call is CreateDelegate, asserts
 # that the binding alone reaches the uncalled application bodies it binds: static
 # (also through the generic MethodInfo.CreateDelegate over a delegate type nothing
@@ -457,6 +463,15 @@ gate_extra_asserts() {
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-generic-virtual-invoke.stdout") \
         <(strip_cr_win_file "$out/generic-virtual-invoke-prefix.stdout")
+    grep -Fxq '== ambiguous match messages ==' "$out/metadata-layout.stdout"
+    grep -Fxq "GetMethod overloads: 8000211D Ambiguous match found for 'AmbiguousMatchMessageSubset.Overloads Void M(Int32)'." \
+        "$out/metadata-layout.stdout"
+    grep -Fxq "member attribute: 8000211D Multiple custom attributes of the same type 'GetInterfaceSubset.BaseAttr' found." \
+        "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_AMBIGUOUS_MESSAGES=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-ambiguous-messages.stdout"
+    sed '/^== ambiguous match messages ==/,$d' "$out/metadata-layout.stdout" > "$out/ambiguous-messages-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-ambiguous-messages.stdout") \
+        <(strip_cr_win_file "$out/ambiguous-messages-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.
