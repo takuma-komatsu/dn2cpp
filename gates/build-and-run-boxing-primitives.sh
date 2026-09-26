@@ -61,6 +61,11 @@
 #     interface into a fitting and a too-small buffer. Its extra asserts pin that
 #     Int32's answers come from the relation rows the init prologue installs, and that
 #     the output before the section is unchanged.
+#   * ObjectVirtualDispatchSubset — base calls to the Object virtuals inside an
+#     override (`call`, not `callvirt`): the type name, reference equality and the
+#     identity hash, never a dispatch back into the override; and
+#     RuntimeHelpers.GetHashCode agreeing with the default Object.GetHashCode. Its
+#     extra asserts pin that the output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -107,6 +112,15 @@ gate_extra_asserts() {
         return 1
     fi
     echo "boxed CLR relations answered from the relation rows: OK"
+
+    grep -Fxq '== object virtual dispatch ==' "$out/native.stdout"
+    grep -Fxq 'class base ToString: base-calls:ObjectVirtualDispatchSubset.BaseCalls' "$out/native.stdout"
+    grep -Fxq 'identity hash: True/True/True' "$out/native.stdout"
+    DN2CPP_BEFORE_OBJECT_VIRTUALS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
+        > "$out/before-object-virtuals.stdout"
+    sed '/^== object virtual dispatch ==/,$d' "$out/native.stdout" > "$out/object-virtuals-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-object-virtuals.stdout") \
+        <(strip_cr_win_file "$out/object-virtuals-prefix.stdout")
 }
 
 corelib_diff_gate BoxingPrimitives

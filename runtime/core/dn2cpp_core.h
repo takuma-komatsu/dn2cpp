@@ -5130,6 +5130,13 @@ int32_t dn2cpp_search_values_index_of_any_str(const char16_t* span, int32_t n, c
 // two-caller invariant is written out at the definition.
 Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj);
 Dn2CppString* dn2cpp_object_tostring_virtual(Dn2CppObject* obj);
+// Object.ToString's own body for a non-virtual call (a base.ToString() inside an
+// override): the type name, never the type's tostring slot. Null throws.
+Dn2CppString* dn2cpp_object_tostring_nonvirtual(Dn2CppObject* obj);
+// The identity hash behind RuntimeHelpers.GetHashCode, a non-virtual
+// Object.GetHashCode and dn2cpp_object_gethashcode's default: non-negative, 0 for
+// null.
+int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 // Object.GetHashCode / Object.Equals(object) virtual dispatch. If the
 // runtime type wires a `gethashcode`/`equals` override, call it; otherwise fall
 // back to .NET's defaults — an identity hash derived from the object pointer, and
@@ -5205,7 +5212,6 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
 Dn2CppString* dn2cpp_string_join_objs(Dn2CppString* sep, Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_concat_objs(Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_join_ch_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
-int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 
 Dn2CppArrayI4* dn2cpp_newarr_i4(int32_t length);
 Dn2CppArrayRef* dn2cpp_newarr_ref(int32_t length);

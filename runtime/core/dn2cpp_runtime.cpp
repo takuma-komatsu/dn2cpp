@@ -127,6 +127,14 @@ int32_t dn2cpp_str_is_null_or_whitespace(Dn2CppString* s)
 // The interpreter's string-concat route reaches the folding entry point below through
 // the dn2cpp_string_concat* helpers, which is the correct side.
 
+// Object.ToString's own body: GetType().ToString().
+static Dn2CppString* dn2cpp_object_type_display(const Dn2CppTypeInfo* t)
+{
+    if (t == nullptr || t->name == nullptr)
+        return dn2cpp_string_from_utf8("System.Object", 13);
+    return dn2cpp_type_tostring(t);
+}
+
 Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
 {
     if (obj == nullptr)
@@ -213,10 +221,7 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
     }
     if (t != nullptr && t->reflection().eventSourceName != nullptr)
         return dn2cpp_eventsource_tostring(obj);
-    // Default Object.ToString: GetType().ToString().
-    if (t == nullptr || t->name == nullptr)
-        return dn2cpp_string_from_utf8("System.Object", 13);
-    return dn2cpp_type_tostring(t);
+    return dn2cpp_object_type_display(t);
 }
 
 // The virtual-dispatch half of the invariant above: an explicit `x.ToString()`.
@@ -227,6 +232,15 @@ Dn2CppString* dn2cpp_object_tostring_virtual(Dn2CppObject* obj)
     if (obj == nullptr)
         dn2cpp_throw_null_reference();
     return dn2cpp_object_tostring(obj);
+}
+
+// A non-virtual call (the base.ToString() inside an override) runs Object's own body
+// and never the type's tostring slot, which may hold that very override.
+Dn2CppString* dn2cpp_object_tostring_nonvirtual(Dn2CppObject* obj)
+{
+    if (obj == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_object_type_display(obj->type);
 }
 
 // Object.MemberwiseClone — shallow copy: same runtime type, bit-copied payload
@@ -405,6 +419,19 @@ int32_t dn2cpp_single_hash(float v)
     return bits;
 }
 
+// The one identity hash: Object.GetHashCode's default and RuntimeHelpers.GetHashCode
+// both answer it, so they agree for every object. Non-negative and stable per
+// instance, as in .NET; objects never move, so the address is a stable key. The low
+// bits are alignment and carry nothing.
+int32_t dn2cpp_object_hashcode(Dn2CppObject* obj)
+{
+    if (obj == nullptr)
+        return 0;
+    // Widened to 64 bits first: a 32-bit `uintptr_t >> 32` is undefined (wasm32).
+    uint64_t p = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(obj));
+    return static_cast<int32_t>(((p >> 4) ^ (p >> 32)) & 0x7fffffff);
+}
+
 int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj)
 {
     if (obj == nullptr)
@@ -512,13 +539,7 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj)
         uint64_t bits = static_cast<uint64_t>(*reinterpret_cast<const uintptr_t*>(obj + 1));
         return static_cast<int32_t>((bits ^ (bits >> 32)) & 0x7fffffff);
     }
-    // Default Object.GetHashCode: an identity hash from the object's address.
-    // Fold the pointer's halves into 31 bits (matches .NET's "always non-negative,
-    // stable per instance" contract closely enough for collection bucketing).
-    // Widened to 64 bits first: a 32-bit `uintptr_t >> 32` is undefined (wasm32),
-    // and the widened fold is bit-identical on 64-bit.
-    uint64_t p = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(obj));
-    return static_cast<int32_t>((p ^ (p >> 32)) & 0x7fffffff);
+    return dn2cpp_object_hashcode(obj);
 }
 
 int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b)

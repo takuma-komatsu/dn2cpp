@@ -1786,19 +1786,6 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
     return dn2cpp_join_strings(sep, e, count);
 }
 
-// RuntimeHelpers.GetHashCode: the runtime identity hash. The real BCL body uses
-// object-header internals (sizeof/Unsafe) we don't model, so this stands in as
-// an intrinsic. Stable for a given object within a run (pointer-derived).
-int32_t dn2cpp_object_hashcode(Dn2CppObject* obj)
-{
-    if (obj == nullptr)
-        return 0;
-    // Widen to 64 bits before the fold: a 32-bit `uintptr_t >> 32` is
-    // undefined (wasm32), and the widened fold is bit-identical on 64-bit.
-    uint64_t p = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(obj));
-    return static_cast<int32_t>((p >> 4) ^ (p >> 32));
-}
-
 // Typed array allocation: set the array header to a precise per-element
 // type-info (ti_arr_<T>) so arr.GetType() reports the exact array type — backing
 // Type.GetElementType()/GetArrayRank() and precise array covariance. The untyped

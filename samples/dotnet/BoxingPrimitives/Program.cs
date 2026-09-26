@@ -49,6 +49,9 @@ namespace BoxingPrimitives
     //     serialization — through the type test and IsAssignableFrom, String's through
     //     reflection alone, and calls IUtf8SpanFormattable.TryFormat through the
     //     interface.
+    //   * ObjectVirtualDispatchSubset is a NON-VIRTUAL CALL test: base calls to the
+    //     Object virtuals run Object's body rather than dispatching back into the
+    //     override, and the identity hash is one function.
     internal static class Program
     {
         private static void Main()
@@ -72,6 +75,9 @@ namespace BoxingPrimitives
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_BOXED_CLR_RELATIONS") == "1")
                 return;
             BoxedClrRelationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_OBJECT_VIRTUALS") == "1")
+                return;
+            ObjectVirtualDispatchSubset.Program.Run();
         }
     }
 }
