@@ -5849,6 +5849,10 @@ internal sealed partial class CppEmitter
             o.Data.AppendLine(sig);
             o.Data.AppendLine("{");
             o.Data.AppendLine("    const Dn2CppTypeInfo* __t = ((Dn2CppObject*)a0)->type;");
+            // A hot-update patch type overrides no generic virtual method, so it takes
+            // its nearest AOT ancestor's case.
+            if (_hotUpdateBase)
+                o.Data.AppendLine("    while ((__t->flags & DN2CPP_TF_PATCH) != 0) __t = __t->base;");
             // The dispatcher's identity and reach chain — the half of a TypeInfoRef diagnosis
             // the case type cannot carry. A thunk, built once per dispatcher and evaluated
             // only if a case ever names an undefined handle.

@@ -25,8 +25,9 @@
 #   - patch-deriving-patch types, SZArrays over eight element kinds (incl.
 #     catchable bounds/size faults and array covariance), interfaces, delegates,
 #     base-image generics (type, delegate and method instantiations bound by
-#     sigShape, which a method's type arguments lead), String.Concat lowering,
-#     and exception handling
+#     sigShape, which a method's type arguments lead, and generic virtual
+#     methods dispatched on the receiver, a patch receiver as its AOT
+#     ancestor), String.Concat lowering, and exception handling
 #   - an external-base exception whose base is the never-loaded External BCL
 #     System.SystemException, driven from AOT and from a patch whose interpreted
 #     `base(message, quota)` runs the real emitted ctor body
@@ -414,6 +415,12 @@ gen
 20
 7
 gen2
+glass:3
+shelf:5
+glass Int32
+glass String
+glass:6
+sorted:4
 System.Int32
 System.String
 

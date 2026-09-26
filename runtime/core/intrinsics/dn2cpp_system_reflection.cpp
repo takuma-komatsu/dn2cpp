@@ -2781,14 +2781,17 @@ void dn2cpp_reflective_slot_check(const void* slotFn)
     dn2cpp_throw_invoker_missing(message);
 }
 
-// The dispatcher a closed generic virtual row runs through, or null when the row
-// runs its own body: a static, non-virtual or final row, or one no dispatcher serves.
+bool dn2cpp_gvm_row_dispatched(const Dn2CppMethodInfo& row)
+{
+    return dn2cpp_is_gvm_row(row) && (row.ilAttrs & DN2CPP_MA_FINAL) == 0
+        && (row.declaringType->flags & DN2CPP_TF_SEALED) == 0;
+}
+
 // The table is sorted by token. A decoded row's argument vector is a copy, so the
 // arguments compare element-wise.
-static const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row)
+const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row)
 {
-    if (row.genericParamCount == 0 || row.genericArgs == nullptr || (row.attrs & DN2CPP_MTHA_STATIC) != 0
-        || (row.ilAttrs & DN2CPP_MA_VIRTUAL) == 0 || (row.ilAttrs & DN2CPP_MA_FINAL) != 0)
+    if (!dn2cpp_gvm_row_dispatched(row))
         return nullptr;
     int32_t lo = 0;
     int32_t hi = dn2cpp_gvm_row_dispatch_count;

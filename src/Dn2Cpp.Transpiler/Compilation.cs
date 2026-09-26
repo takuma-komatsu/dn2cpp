@@ -2352,7 +2352,14 @@ internal sealed partial class Compilation
             if (cls.Module.Reader.GetString(md.Name) != methodName
                 || md.GetGenericParameters().Count != methodArgs.Length)
                 continue;
-            Reach(InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs));
+            var inst = InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs);
+            Reach(inst);
+            // A patch callvirt of a generic virtual instantiation enters the
+            // dispatcher an AOT callvirt would, so the root registers it with the
+            // allocated types' overrides. A final method's or a sealed class's
+            // body is every receiver's.
+            if (IsGvmCall(inst) && !cls.IsSealed && (inst.Attributes & MethodAttributes.Final) == 0)
+                ReachUsedGvm(inst, callSite: false);
             any = true;
         }
         if (!any)

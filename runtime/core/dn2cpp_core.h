@@ -499,6 +499,10 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // the non-generic comparer dispatch asks "is this the default comparer?" once per
 // element; nothing but that mint stamps it.
 #define DN2CPP_TF_DEFAULT_EQ_COMPARER 0x4000000
+// A type-info the hot-update loader built for a patch type. A patch type overrides
+// no generic virtual method, so a generic virtual dispatcher, which selects on
+// exact AOT type-infos, runs such a receiver as its nearest AOT ancestor.
+#define DN2CPP_TF_PATCH 0x8000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -1093,6 +1097,13 @@ struct Dn2CppGvmRowDispatch
 };
 extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
 extern const int32_t dn2cpp_gvm_row_dispatch_count;
+// Whether a callvirt of the row selects the receiver's override through a
+// dispatcher: false when the row's own body is every receiver's, a static,
+// non-virtual or final row or one on a sealed class.
+bool dn2cpp_gvm_row_dispatched(const Dn2CppMethodInfo& row);
+// That dispatcher's entry, or null when the row is not dispatched or no
+// dispatcher serves it.
+const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row);
 
 // Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).

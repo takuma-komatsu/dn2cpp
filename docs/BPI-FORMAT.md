@@ -977,6 +977,18 @@ declaring type must be non-generic; a generic method **on** a generic type,
 nested/value-type method-type arguments, and generic **patch** methods are not
 supported.
 
+**Generic virtual methods.** A closed generic virtual instantiation has no
+vtable or interface slot, so an AOT `callvirt` of it enters a per-instantiation
+dispatcher that selects the receiver's override. A `--hotupdate-base` build
+lists each dispatcher beside its row (`dn2cpp_gvm_row_dispatch`), and a
+generic-method root of such an instantiation registers its dispatcher with the
+overrides of every allocated type. The loader binds a generic virtual row to
+that dispatcher, which a `callvirt` enters (as does every call of an interface
+row), and refuses a row that needs one the base image lacks; a final method's
+or a sealed class's row runs its own body. A patch type overrides none (a
+generic method has no patch body), so a dispatcher runs a patch receiver
+(`DN2CPP_TF_PATCH`) as its nearest AOT ancestor.
+
 ## N2M trampolines (interpreted virtual overrides)
 
 An AOT `callvirt` site loads `receiver->type->vtable[slot]` as a raw function
@@ -1159,7 +1171,8 @@ i.e. `+=`/`-=`) is a conversion-time rejection.
      `sigShape` (§Generic methods). A same-`(name, arity, staticness)` set with
      no `sigShape` match is unresolved, never a silent bind onto a sibling;
      two rows carrying the import's `sigShape`, or several legacy unshaped
-     rows, are ambiguous. The `aux1`
+     rows, are ambiguous. A generic virtual row, class or interface, also binds
+     its dispatcher (§Generic methods). The `aux1`
      signature run is decoded into per-value marshal descriptors (scalars
      box/unbox across the invoker-thunk boundary; references pass through).
 

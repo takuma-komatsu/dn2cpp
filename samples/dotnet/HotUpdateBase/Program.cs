@@ -316,6 +316,50 @@ public sealed class Holder<T>
 // through the interpreter.
 public delegate T Mapper<T>(T x);
 
+// Generic virtual methods a patch calls. A closed instantiation has no vtable or
+// interface slot, so a callvirt of one runs the receiver's override only through
+// the dispatcher an AOT callvirt of the same instantiation enters. The
+// instantiations come in through hotupdate-refs.txt roots; Kind<T> never names T
+// in its signature.
+public class Shelf
+{
+    public virtual string Label<T>(T item)
+    {
+        return "shelf:" + item;
+    }
+
+    public virtual string Kind<T>()
+    {
+        return "shelf kind";
+    }
+}
+
+public class GlassShelf : Shelf
+{
+    public override string Label<T>(T item)
+    {
+        return "glass:" + item;
+    }
+
+    public override string Kind<T>()
+    {
+        return "glass " + typeof(T).Name;
+    }
+}
+
+public interface ISorter
+{
+    string Sort<T>(T item);
+}
+
+public sealed class Sorter : ISorter
+{
+    public string Sort<T>(T item)
+    {
+        return "sorted:" + item;
+    }
+}
+
 // A base-image exception whose base is an External BCL exception the
 // corelib-less build never loads (System.SystemException). Both ctor shapes and
 // Describe are exercised by the base Main below so their bodies + invokers are
@@ -539,6 +583,13 @@ internal static class Program
         Counter.SeedQuota = new QuotaEx("seed", 1);
         // The delegate fixtures' surface, emitted after the seed it reads. Silent.
         Counter.EmitDelegateFixtureSurface();
+        // The generic virtual receivers the patch constructs, allocated here so
+        // each override is a case of its instantiation's dispatcher. Silent.
+        Shelf plainShelf = new Shelf();
+        Shelf glassShelf = new GlassShelf();
+        ISorter sorter = new Sorter();
+        if (plainShelf == glassShelf || sorter == null)
+            Console.WriteLine("unreachable");
         try
         {
             HotUpdate.Run(args[0]);
