@@ -1315,6 +1315,26 @@ if [ "$DN2CPP_OS" = windows ]; then
              echo "      distinguish a machine with no Visual Studio from one whose install the" >&2
              echo "      search did not reach" >&2
              cat "$NOCXX_LOG" >&2; exit 1; }
+
+    # A cl.exe found without vcvars is still unusable: the linker needs LIB and
+    # the compiler needs INCLUDE. CMake would select this cl before clang++.
+    BARE_CL_DIR="$(cygpath -u "$NOCXX_DIR/bare-cl")"
+    BARE_CL_LOG="$OUT/export-bare-cl.log"
+    mkdir -p "$BARE_CL_DIR"
+    : > "$BARE_CL_DIR/cl.exe"
+    MSYS2_ARG_CONV_EXCL='*' env PATH="$BARE_CL_DIR:$NOCXX_PATH" \
+        cmd.exe /d /c 'where cl.exe' | tr -d '\r' \
+        | grep -qxF "$(cygpath -w "$BARE_CL_DIR/cl.exe")" \
+        || { echo "FAIL: the editor's native PATH cannot reach the bare cl.exe fixture" >&2
+             exit 1; }
+    bare_cl_rc=0
+    run_with_watchdog 600 env "${NOCXX_ENV[@]}" PATH="$BARE_CL_DIR:$NOCXX_PATH" \
+        "$FORK_EDITOR" --headless --path "$PWD/$PROJ" --export-release "$PRESET" \
+        "$NOCXX_DIR/bare-cl-$(basename "$EXPORT_TARGET")" >"$BARE_CL_LOG" 2>&1 || bare_cl_rc=$?
+    godot_export_refused "$bare_cl_rc" "$BARE_CL_LOG" "a cl.exe without INCLUDE or LIB"
+    grep -qF "missing tools it cannot build without" "$BARE_CL_LOG" \
+        || { echo "FAIL: a bare cl.exe passed the compiler preflight" >&2
+             cat "$BARE_CL_LOG" >&2; exit 1; }
 fi
 
 echo "== 13/14 Refusing a cross-target export against a bundle with no POSIX framework =="
