@@ -32,14 +32,14 @@ measurements, and unverified counts. Keep comments short.
 ```bash
 dotnet build src/Dn2Cpp.Cli -c Release
 dotnet run --project src/Dn2Cpp.Cli -- <assembly.dll> [-r <ref.dll>] [-o <dir>] [--gdextension]
-./gates/run-all-gates.sh
-SKIP_GODOT=1 ./gates/run-all-gates.sh
-CONFIG=Debug ./gates/run-all-gates.sh
 ```
 
-- Run the relevant build and gates before committing. CMake with Ninja is the
-  only native build path; use the gate wrappers.
-- A human must run `./gates/pre-merge.sh` before merge. Coding agents must not.
+- Coding agents run only the individual gates relevant to the change. They must
+  not run full-suite wrappers such as `./gates/run-all-gates.sh` or
+  `./gates/pre-merge.sh`, regardless of configuration or skip flags. A human
+  must run `./gates/pre-merge.sh` before merge.
+- Run the relevant build before committing. CMake with Ninja is the only native
+  build path; use the individual gate wrappers.
 - `gate_skip` is the only prerequisite opt-out; a skip is not a pass.
   `gate_expected_partial` is only for a permanent structural limit and must name
   the gate that covers the omitted surface. See `gates/_common.sh`.
