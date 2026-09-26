@@ -182,7 +182,10 @@
 # that the binding alone reaches the uncalled application bodies it binds: static
 # (also through the generic MethodInfo.CreateDelegate over a delegate type nothing
 # else names), instance, an override through its base row and an interface's static
-# member.
+# member; and that a bound delegate's invoker compiles whatever its Invoke names: a
+# Version nothing else names, bound contravariantly, a Type returned through the
+# generic form closed over an instance, and an OperatingSystem only a variance view
+# names.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.

@@ -229,6 +229,19 @@ internal sealed partial class Compilation
     /// unused invoker — bloat, never a link error.</summary>
     public HashSet<ClassInfo> DelegateInvokerUses { get; } = new();
 
+    /// <summary>The <see cref="DelegateInvokerUses"/> the shipped pass records. A shipped
+    /// body calls each one's invoker, so every struct that invoker's prototype spells has to
+    /// be declared even for a delegate type nothing constructs.</summary>
+    public HashSet<ClassInfo> ShippedDelegateInvokerUses { get; } = new();
+
+    /// <summary>Records a mouth that spells <c>dginvoke_&lt;CppName&gt;</c>.</summary>
+    internal void NoteDelegateInvokerUse(ClassInfo cls)
+    {
+        DelegateInvokerUses.Add(cls);
+        if (Phase == EmitPhase.Emission)
+            ShippedDelegateInvokerUses.Add(cls);
+    }
+
     /// <summary>Canonical shared generics (opt-in via <c>--shared-generics</c>):
     /// group generic instantiations whose C++ layout coincides under a canonical
     /// owner instantiation (see <see cref="CanonicalGenerics"/>). In this stage

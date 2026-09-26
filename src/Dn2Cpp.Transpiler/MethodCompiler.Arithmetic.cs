@@ -900,7 +900,7 @@ internal sealed partial class MethodCompiler
         {
             // Names dginvoke_<CppName> — record it like the Invoke call site does
             // (Compilation.DelegateInvokerUses).
-            _c.DelegateInvokerUses.Add(ccls);
+            _c.NoteDelegateInvokerUse(ccls);
             return $"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ {load} "
                  + $"return dginvoke_{ccls.CppName}(({ccls.CppStructName}*)_ctx, _a, _b); }}";
         }

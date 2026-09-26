@@ -3042,7 +3042,7 @@ internal sealed partial class MethodCompiler
         // emitter's union walk (Compilation.DelegateInvokerUses): a delegate
         // type reached only as a variance view is not in the emit set, and without
         // the record its invoker was never defined.
-        _c.DelegateInvokerUses.Add(cls);
+        _c.NoteDelegateInvokerUse(cls);
         var ps = invoke.Signature.ParameterTypes;
         var callArgs = new string[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--)
