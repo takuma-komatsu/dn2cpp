@@ -12,7 +12,8 @@ using System.Reflection;
 // first, then properties. A Type argument or an enum's type may name a nested
 // type, an array or a closed generic, which decodes to the same type identity
 // typeof names; CustomAttributeData.ToString spells a closed generic's type
-// arguments assembly-qualified.
+// arguments assembly-qualified. An enum nested in a generic type keeps its own
+// width, in the blob and in memory.
 namespace ReflectAttrBoxedSubset
 {
     public enum Tone { Low = 1, High = 7 }
@@ -26,7 +27,10 @@ namespace ReflectAttrBoxedSubset
         public class Inner { }
     }
 
-    public class Box<T> { }
+    public class Box<T>
+    {
+        public enum Kind : byte { A = 3, B = 200 }
+    }
 
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
     public sealed class BoxedAttribute : Attribute
@@ -114,6 +118,10 @@ namespace ReflectAttrBoxedSubset
     [Typed(Big.X, UBig.Max, 's', typeof(Outer.Inner), Mode = Outer.Mode.On, Order = 3)]
     public sealed class Nested { }
 
+    [Boxed(Box<int>.Kind.B)]
+    [Boxed(6, Named = Box<int>.Kind.A, NamedArray = new object[] { Box<string>.Kind.B, new Box<int>.Kind[] { Box<int>.Kind.A } })]
+    public sealed class GenericEnum { }
+
     internal static class Program
     {
         private static string Describe(object value)
@@ -132,6 +140,20 @@ namespace ReflectAttrBoxedSubset
                 return value.GetType().Name + "{" + string.Join(",", parts) + "}";
             }
             return value.GetType().Name + ":" + Convert.ToString(value, CultureInfo.InvariantCulture);
+        }
+
+        private static string Name(object value)
+        {
+            if (value is null)
+                return "null";
+            if (value is Array array)
+            {
+                var parts = new List<string>();
+                foreach (object item in array)
+                    parts.Add(Name(item));
+                return "{" + string.Join(",", parts) + "}";
+            }
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
         private static string Describe(Attribute attribute) => attribute switch
@@ -182,6 +204,16 @@ namespace ReflectAttrBoxedSubset
                 if (boxed.Value is Type type && expected.Contains(type))
                     same++;
             Console.WriteLine("Type identity: " + same + " of " + expected.Count);
+            var generic = new List<string>();
+            foreach (BoxedAttribute boxed in typeof(GenericEnum).GetCustomAttributes(typeof(BoxedAttribute), false))
+                generic.Add("  generic " + Name(boxed.Value) + " named=" + Name(boxed.Named) + " array=" + Name(boxed.NamedArray));
+            foreach (CustomAttributeData data in typeof(GenericEnum).GetCustomAttributesData())
+                generic.Add("  data " + data);
+            generic.Sort(StringComparer.Ordinal);
+            Console.WriteLine("GenericEnum: " + Enum.GetUnderlyingType(typeof(Box<int>.Kind)).Name + " "
+                + Buffer.ByteLength(new Box<int>.Kind[2]));
+            foreach (string line in generic)
+                Console.WriteLine(line);
         }
     }
 }

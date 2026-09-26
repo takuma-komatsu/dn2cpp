@@ -1601,3 +1601,8 @@ Nested: 3 defined=True
   data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Outer+Mode)200)]
   data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 's', typeof(ReflectAttrBoxedSubset.Outer+Inner), Order = 3, Mode = 200)]
 Type identity: 10 of 10
+GenericEnum: Byte 2
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)6, Named = (ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])3, NamedArray = new Object[2] { (ReflectAttrBoxedSubset.Box`1+Kind[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])200, new ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]][1] { 3 } })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])200)]
+  generic 6 named=A array={B,{A}}
+  generic B named=null array=null

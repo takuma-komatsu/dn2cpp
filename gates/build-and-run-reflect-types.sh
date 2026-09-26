@@ -309,7 +309,8 @@
 # keeps a 64-bit enum's high bits; CustomAttributeData.ToString spells each value
 # with its encoded type and lists fields before properties. A serialized Type or
 # enum type name may name a nested type, an array or a closed generic, and decodes
-# to the identity typeof names. Every line of the section matches real .NET.
+# to the identity typeof names; an enum nested in a generic type keeps its own
+# width. Every line of the section matches real .NET.
 #
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).

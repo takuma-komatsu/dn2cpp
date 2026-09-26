@@ -138,7 +138,5 @@ internal sealed class CustomAttributeTypeProvider : ICustomAttributeTypeProvider
     }
 
     public PrimitiveTypeCode GetUnderlyingEnumType(TypeDesc type) =>
-        type.Kind == TypeKind.Class && type.Class!.IsEnum
-            ? type.Class!.EnumUnderlying
-            : PrimitiveTypeCode.Int32;
+        _compilation.SerializedEnumUnderlying(type);
 }

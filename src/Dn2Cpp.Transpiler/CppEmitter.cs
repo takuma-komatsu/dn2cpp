@@ -4314,7 +4314,7 @@ internal sealed partial class CppEmitter
         {
             // The raw underlying value: a ulong enum's may exceed long.MaxValue.
             string raw = System.Convert.ToString(value, AttrCI) ?? "";
-            return cast ? "(" + ReflectionSignatureType(type) + ")" + raw : raw;
+            return cast ? "(" + AttrTypeFullName(type) + ")" + raw : raw;
         }
         if (value is null)
             return cast ? "(" + AttrTypeName(type) + ")null" : "null";
@@ -4324,7 +4324,7 @@ internal sealed partial class CppEmitter
                 return "null";
             var element = type.Element!;
             string elem = element.Kind == TypeKind.Class && element.Class!.IsEnum
-                ? ReflectionSignatureType(element)
+                ? AttrTypeFullName(element)
                 : AttrTypeName(element);
             string values = string.Join(", ", items.Select(
                 x => RenderAttrDisplayValue(x.Type, x.Value, element.IsObject)));
@@ -4344,9 +4344,9 @@ internal sealed partial class CppEmitter
         return cast ? "(" + AttrTypeName(type) + ")" + rendered : rendered;
     }
 
-    /// <summary>Type.FullName of a Type-valued attribute argument, which
-    /// CustomAttributeData spells inside typeof(…): a closed generic lists each argument
-    /// with its assembly's display name.</summary>
+    /// <summary>Type.FullName, which CustomAttributeData spells for a Type value inside
+    /// typeof(…) and for an enum's type: a closed generic lists each argument with its
+    /// assembly's display name.</summary>
     private string AttrTypeFullName(TypeDesc t)
     {
         if (t.Kind == TypeKind.SZArray)

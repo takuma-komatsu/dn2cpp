@@ -1709,6 +1709,20 @@ internal sealed partial class Compilation
                 : null;
     }
 
+    /// <summary>The width a custom-attribute blob encodes a value of enum type
+    /// <paramref name="type"/> at; Int32 for a type that is not a resolved enum. A closed
+    /// generic learns it is an enum with its shape, which Discovery completes here so the
+    /// reach-time decode reads the width the emit-time decode reads.</summary>
+    internal PrimitiveTypeCode SerializedEnumUnderlying(TypeDesc type)
+    {
+        if (type.Kind != TypeKind.Class)
+            return PrimitiveTypeCode.Int32;
+        var cls = type.Class!;
+        if (cls.GenericArity > 0 && Phase == EmitPhase.Discovery)
+            CompleteShape(cls);
+        return cls.IsEnum ? cls.EnumUnderlying : PrimitiveTypeCode.Int32;
+    }
+
     /// <summary>The CLR qualified name (<c>Ns.Outer+Mid+Leaf</c>) of a TypeDef whose
     /// outermost declaring type lives under <c>System.Runtime.Intrinsics.</c>; null for
     /// every other type, so the ISA table is consulted only for that namespace. A

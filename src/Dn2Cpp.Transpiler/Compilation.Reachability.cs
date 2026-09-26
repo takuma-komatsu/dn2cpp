@@ -4841,6 +4841,11 @@ internal sealed partial class Compilation
             if (it.Kind == TypeKind.Class)
                 spec.Interfaces.Add(it.Class!);
         }
+        // An enum's underlying integer type, read as Pass 2 reads a non-generic enum's: its
+        // instance field's type, a primitive, so this one decode mints nothing.
+        if (spec.IsEnum
+            && spec.Fields.FirstOrDefault(f => !f.IsStatic && !f.IsLiteral) is { Type.Kind: TypeKind.Primitive } vf)
+            spec.EnumUnderlying = vf.Type.Primitive;
         ApplyPreservationAfterShape(spec);
     }
 
