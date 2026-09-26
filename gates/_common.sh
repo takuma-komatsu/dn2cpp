@@ -1292,18 +1292,40 @@ _ios_toolchain_args() {
 # dir and configures cold — `cmake -D` cannot un-set a cached value. The stamp
 # holds the absolute -B path, so a moved repository rebuilds too.
 #
-# A front-end that picks the toolchain file itself (emcmake) is invisible in that
-# command, so which SDK configured the dir is not recoverable from it. Such an
-# arm passes that identity as STAMP_EXTRA; without it a dir configured by another
-# Emscripten reads as current and keeps its cached CMAKE_TOOLCHAIN_FILE forever.
+# Toolchain identities not spelled by the configure command belong in
+# STAMP_EXTRA. emcmake selects its toolchain file outside that command, and an
+# iOS sysroot name resolves to the active SDK path. Without those identities a
+# warm dir can keep a cached toolchain or sysroot from another SDK.
 _CMAKE_CONFIGURE_STAMP=.dn2cpp-configure-stamp
 
-# _cmake_stamp_extra — the stamp term for the active build axis. WASM only: the
-# identity is the gate cache's own emsdk term, so bundle-vs-pinned and a tree
-# re-unpacked at one path both read as different (a path compare would not).
+# _ios_sdk_identity SDK — the path and version selected by Xcode.
+_ios_sdk_identity() {
+    local sdk="$1" path version
+    path="$(xcrun --sdk "$sdk" --show-sdk-path)" || return 1
+    version="$(xcrun --sdk "$sdk" --show-sdk-version)" || return 1
+    printf 'ios-sdk-path %s\nios-sdk-version %s\n' "$path" "$version"
+}
+
+# _cmake_stamp_extra — the toolchain identity for the active build axis. WASM
+# uses the gate cache's emsdk term, distinguishing bundle-vs-pinned and a tree
+# re-unpacked at one path. iOS uses the SDK path and version selected by Xcode;
+# both matter because an SDK can be replaced in place.
 _cmake_stamp_extra() {
-    [ -n "${WASM:-}" ] && printf 'emsdk %s\n' "${_GATE_EMSDK_CTX:-}"
-    return 0
+    if [ -n "${WASM:-}" ]; then
+        printf 'emsdk %s\n' "${_GATE_EMSDK_CTX:-}"
+        return 0
+    fi
+
+    local sdk=""
+    if [ -n "${IOS_DEV:-}" ]; then
+        sdk=iphoneos
+    elif [ -n "${IOS_SIM:-}" ]; then
+        sdk=iphonesimulator
+    else
+        return 0
+    fi
+
+    _ios_sdk_identity "$sdk"
 }
 
 # _cmake_configure MODE STAMP_EXTRA DIR LOG WHAT CMD... — configure DIR by
@@ -1470,7 +1492,9 @@ ensure_cmake_runtime() {
         args+=(-UCMAKE_C_COMPILER_LAUNCHER -UCMAKE_CXX_COMPILER_LAUNCHER)
     fi
     local cmd=("${configure[@]}" "${args[@]}" -B "$dir")
-    _cmake_configure once "$(_cmake_stamp_extra)" "$dir" "$dir/dn2cpp-configure.log" \
+    local stamp_extra
+    stamp_extra="$(_cmake_stamp_extra)" || return 1
+    _cmake_configure once "$stamp_extra" "$dir" "$dir/dn2cpp-configure.log" \
         "configuring the runtime build ($dir)" "${cmd[@]}" || return 1
     # Check the build: ninja leaves the previously linked libdn2cpp_runtime.a,
     # so without this the app links the STALE archive and passes. `set -e` misses
@@ -1557,9 +1581,11 @@ cmake_build_app() {
     # globbed. The stamp still matters — a configure cannot un-set an option the
     # previous one passed (the three conditional args above), and a build dir
     # carried along by a moved repository cannot be reconfigured in place.
-    # The stamp term matters here despite MODE=always: reconfiguring a warm dir
-    # keeps the CMAKE_TOOLCHAIN_FILE the other SDK's emcmake put in it.
-    _cmake_configure always "$(_cmake_stamp_extra)" "$builddir" "$builddir/dn2cpp-configure.log" \
+    # The stamp term matters here despite MODE=always: a warm configure keeps
+    # toolchain state selected outside its arguments by emcmake or Xcode.
+    local stamp_extra
+    stamp_extra="$(_cmake_stamp_extra)" || return 1
+    _cmake_configure always "$stamp_extra" "$builddir" "$builddir/dn2cpp-configure.log" \
         "configuring the app build ($name)" "${configure[@]}" "${args[@]}" || return 1
     _cmake_step "$builddir/dn2cpp-build.log" "building the app ($name)" \
         "$CMAKE" --build "$builddir" || return 1
@@ -2358,16 +2384,22 @@ _gate_surface_lines() {
     return 0
 }
 
-# gate_cache_check OUT CONTEXT [FILE_OR_DIR...] — key the gate step that just
-# transpiled into OUT and compare against the recorded last-green key. Returns 0
-# on a hit (caller prints gate_cache_hit_msg); on a miss leaves the key in
-# _GATE_CACHE_{FILE,HASH} for gate_cache_commit. CONTEXT is a free-form
+# gate_cache_check [--ios-sdks] OUT CONTEXT [FILE_OR_DIR...] — key the gate
+# step that just transpiled into OUT against the recorded last-green key.
+# --ios-sdks keys both SDKs for gates that build both without an iOS axis set.
+# Returns 0 on a hit (caller prints gate_cache_hit_msg); on a miss leaves
+# the key in _GATE_CACHE_{FILE,HASH} for gate_cache_commit. CONTEXT is a free-form
 # discriminator (helper name, argv, corelib path, inline expected text, engine
 # version); extra args are content inputs — a directory goes through
 # _gate_paths_hash, an absent path is keyed as absent, not an error.
 # Call right after the transpile, and put the native link BELOW the check: that
 # is exactly the work a warm hit exists to skip.
 gate_cache_check() {
+    local ios_sdk_pair=0
+    if [ "${1:-}" = --ios-sdks ]; then
+        ios_sdk_pair=1
+        shift
+    fi
     _GATE_CACHE_FILE=""
     _GATE_CACHE_HASH=""
     _GATE_CACHE_HIT_PARTIAL=""
@@ -2393,6 +2425,25 @@ gate_cache_check() {
     if ! helpers=$(_gate_helpers_hash); then
         gate_warn "gate cache off for this step: gate helper set (gates/_*.sh) unreadable; running live, recording no key"
         return 1
+    fi
+    # Resolve before hashing so an unavailable SDK cannot match a green key.
+    local ios_sdk_identity=""
+    if [ "$ios_sdk_pair" = 1 ]; then
+        local device_sdk simulator_sdk
+        if ! device_sdk="$(_ios_sdk_identity iphoneos)" ||
+                ! simulator_sdk="$(_ios_sdk_identity iphonesimulator)"; then
+            gate_warn "gate cache off for this step: iOS SDK identity unavailable; running live, recording no key"
+            return 1
+        fi
+        ios_sdk_identity="iphoneos
+$device_sdk
+iphonesimulator
+$simulator_sdk"
+    elif [ -z "${WASM:-}" ] && [ -n "${IOS_SIM:-}${IOS_DEV:-}" ]; then
+        if ! ios_sdk_identity="$(_cmake_stamp_extra)"; then
+            gate_warn "gate cache off for this step: iOS SDK identity unavailable; running live, recording no key"
+            return 1
+        fi
     fi
     local f key
     key=$(
@@ -2428,8 +2479,8 @@ gate_cache_check() {
             if [ -n "${_GATE_EMSDK_CTX:-}" ]; then
                 printf 'emsdk:%s\n' "$_GATE_EMSDK_CTX"
             fi
-            if [ -n "${IOS_SIM:-}" ] || [ -n "${IOS_DEV:-}" ]; then
-                printf 'ios-sdk:%s\n' "$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)"
+            if [ -n "$ios_sdk_identity" ]; then
+                printf 'ios-sdk:%s\n' "$ios_sdk_identity"
             fi
             printf 'runtime-tree:%s\n' "$(_gate_runtime_hash)"
             printf 'dotnet-runtimes:%s\n' "$(_gate_dotnet_hash)"

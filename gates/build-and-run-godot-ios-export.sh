@@ -53,12 +53,12 @@ invoke_cli \
     -o "$OUT" --gdextension --direct-pinvoke '*'
 
 # Cache: beyond the generated output + inputs, the exported Xcode project also
-# depends on the Xcode toolchain, the iOS SDK, and the Godot iOS export
-# template — so those identities ride in the context. The template is keyed by
+# depends on the Xcode toolchain, both iOS SDKs, and the Godot iOS export
+# template — so those identities ride in the key. The template is keyed by
 # stat (size + mtime), not content: the zip is huge and versioned per Godot
 # release, so a content hash would cost more than it protects.
-if gate_cache_check "$OUT" \
-        "godot-ios-export|godot=$(or_none "$(first_line "$("$GODOT" --version 2>/dev/null)")")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")|iossdk=$(or_none "$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)")|tmpl=$(file_sig "$_ios_zip")" \
+if gate_cache_check --ios-sdks "$OUT" \
+        "godot-ios-export|godot=$(or_none "$(first_line "$("$GODOT" --version 2>/dev/null)")")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")|tmpl=$(file_sig "$_ios_zip")" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSample.dll" \
         "samples/godot/GodotSample/bin/$CONFIG/$TFM/GodotSharp.dll" \
         "$PROJECT"; then
