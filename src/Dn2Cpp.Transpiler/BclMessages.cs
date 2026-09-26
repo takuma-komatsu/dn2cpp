@@ -52,6 +52,7 @@ internal static class BclMessages
         "Arg_ParmCnt",
         "Arg_UnboundGenParam",
         "Acc_ReadOnly",
+        "Arg_DlgtTargMeth",
         // Composite formats a runtime throw site fills from what it already holds.
         "RFLCT_Targ_ITargMismatch_WithType",
         "Arg_FieldDeclTarget",

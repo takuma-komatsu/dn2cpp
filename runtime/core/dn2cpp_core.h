@@ -1453,6 +1453,7 @@ inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
 inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetInitonlyStaticField";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
+inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";

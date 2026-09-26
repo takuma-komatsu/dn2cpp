@@ -517,6 +517,10 @@ static class Program
         Try("closed delegate equality, other body", () => Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, hello)
             .Equals(Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, tag)));
 
+        Fault("boxed struct delegate, unrelated row, throwing", () => Delegate.CreateDelegate(typeof(Func<string>), tally, kind));
+        Fault("closed delegate, unrelated receiver", () => Delegate.CreateDelegate(typeof(Func<string>), new Leaf(), kind));
+        Fault("open delegate, unrelated receiver type", () => Delegate.CreateDelegate(typeof(Func<object, int>), counterGet));
+
         Console.WriteLine("virtual invoke end");
     }
 }

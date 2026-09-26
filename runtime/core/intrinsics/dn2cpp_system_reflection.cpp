@@ -2823,11 +2823,12 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
 {
     if (dt == nullptr || m == nullptr)
         dn2cpp_throw_argument_null();
-    // A bind failure is ArgumentException ("Cannot bind to the target method"),
-    // or null under the throwOnBindFailure: false overloads — matching .NET.
+    // A bind failure is .NET's ArgumentException, or null under the
+    // throwOnBindFailure: false overloads.
     auto fail = [&]() -> Dn2CppObject* {
         if (throwOnFailure != 0)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_reflection_fault(&dn2cpp_argument_exception_type,
+                dn2cpp_sr_message(DN2CPP_SR_DELEGATE_BIND, nullptr, 0), 0x80070057u);
         return nullptr;
     };
     const Dn2CppTypeInfo* dti = dt->typeInfo;
