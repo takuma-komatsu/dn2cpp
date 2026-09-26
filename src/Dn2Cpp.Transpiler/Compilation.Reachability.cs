@@ -2200,6 +2200,54 @@ internal sealed partial class Compilation
             && MethodSpecParentTypeName(module, ms) == "System.Reflection.MethodInfo";
     }
 
+    /// <summary>The reflection-usage marks a MemberReference token names (clause (b) of
+    /// <see cref="CoreIntrinsics.ScanNeedsParentTypeName"/>). Each opens a reachability route
+    /// instead of cutting an edge, and a delegate bound to the trigger runs it as a call
+    /// would, so a call and a method group over the member mark alike.</summary>
+    private void NoteReflectionUsage(Module module, string? parent, string name)
+    {
+        // A reflected Object or ValueType row answers Equals and GetHashCode through the
+        // same helpers, so the invoke and CreateDelegate marks are object-equality
+        // dispatches too.
+        if (name == "Invoke" && parent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
+        {
+            _reflectionInvokeUsed = true;
+            NoteObjectEqualityDispatch();
+        }
+        // PropertyInfo.GetValue/SetValue run the accessors, which are app-module methods.
+        else if (name is "GetValue" or "SetValue" && parent == "System.Reflection.PropertyInfo")
+            _reflectionInvokeUsed = true;
+        // CreateDelegate in a user body binds a reflected method, whose body runs the same
+        // way. Bounded to user bodies: a framework library binding its own members must
+        // not reach every app body.
+        else if (name == "CreateDelegate" && IsUserModule(module)
+            && parent is "System.Delegate" or "System.Reflection.MethodInfo")
+        {
+            _reflectionInvokeUsed = true;
+            NoteObjectEqualityDispatch();
+        }
+        // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type) construct a
+        // runtime-chosen type; ILDiet keeps typeof-named ctors on the same predicate.
+        else if (PreservationReader.ConstructsFromRuntimeType(parent, name))
+            _reflectionCtorUsed = true;
+        // Type.MakeGenericType arms the runtime-instantiation template pass, paired with
+        // the scan's typeof(D<>) record.
+        else if (name == "MakeGenericType" && parent == "System.Type")
+            _makeGenericTypeUsed = true;
+        // GetCustomAttributes / IsDefined and the CustomAttributeData views render the
+        // attribute factories: reach attribute ctors and named setters.
+        else if (name is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
+                or "GetCustomAttributesData" or "get_CustomAttributes"
+            && parent is "System.Reflection.MemberInfo"
+                or "System.Reflection.ParameterInfo" or "System.Attribute"
+                or "System.Reflection.CustomAttributeExtensions"
+                or "System.Reflection.CustomAttributeData"
+                or "System.Type" or "System.Reflection.MethodInfo"
+                or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
+                or "System.Reflection.Assembly")
+            _reflectionAttrUsed = true;
+    }
+
     /// <summary>The closed <c>GenericComparer&lt;T&gt;</c> backing
     /// <c>Comparer&lt;T&gt;.Default</c> for a comparable element type — instantiated and
     /// completed so its ctor/Compare are available — or null if GenericComparer`1 is not
@@ -5169,12 +5217,17 @@ internal sealed partial class Compilation
                         // order) is unchanged. Hoisted to this scope so the
                         // get_CompareInfo site below reuses them instead of recomputing.
                         string? mrName = null, mrParent = null;
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && handle.Kind == HandleKind.MemberReference)
+                        if (handle.Kind == HandleKind.MemberReference)
                         {
                             mrName = module.Reader.GetString(module.Reader.GetMemberReference((MemberReferenceHandle)handle).Name);
                             if (CoreIntrinsics.ScanNeedsParentTypeName(mrName))
                                 mrParent = MemberRefParentTypeName(module, (MemberReferenceHandle)handle);
+                            // A method group over a reflection trigger runs it through the
+                            // delegate, so ldftn/ldvirtftn open the same routes a call does.
+                            NoteReflectionUsage(module, mrParent, mrName);
+                        }
+                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt && mrName is not null)
+                        {
                             // Object-rooted equality on an object-typed receiver — the emit
                             // lowers it to dn2cpp_object_equals / _gethashcode, which answer
                             // from the type-info slots. This is the only "used slot" mark
@@ -5188,53 +5241,6 @@ internal sealed partial class Compilation
                                 if (insn.OpCode == ILOpCode.Call && mrParent == "System.ValueType")
                                     ReachBaseValueCall(m.DeclaringClass, mrName!);
                             }
-                            // A reflected Object or ValueType row answers Equals and
-                            // GetHashCode through the same helpers, so the invoke and
-                            // CreateDelegate marks are object-equality dispatches too.
-                            if (mrName == "Invoke" && mrParent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
-                            {
-                                _reflectionInvokeUsed = true;
-                                NoteObjectEqualityDispatch();
-                            }
-                            // PropertyInfo.GetValue/SetValue invoke the accessor methods,
-                            // so treat them like Invoke usage — reach app-module methods
-                            // (which include property get_/set_ accessors).
-                            else if (mrName is "GetValue" or "SetValue" && mrParent == "System.Reflection.PropertyInfo")
-                                _reflectionInvokeUsed = true;
-                            // CreateDelegate called from a user body binds a reflected
-                            // method, whose body runs the same way. Bounded to user call
-                            // sites: a framework library binding its own members must not
-                            // reach every app body.
-                            else if (mrName == "CreateDelegate" && IsUserModule(module)
-                                && mrParent is "System.Delegate" or "System.Reflection.MethodInfo")
-                            {
-                                _reflectionInvokeUsed = true;
-                                NoteObjectEqualityDispatch();
-                            }
-                            // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type)
-                            // -> reach app-module ctors so a reflected ctor is invokable.
-                            // ILDiet keeps typeof-named ctors on the same predicate.
-                            else if (PreservationReader.ConstructsFromRuntimeType(mrParent, mrName))
-                                _reflectionCtorUsed = true;
-                            // Type.MakeGenericType -> arm the runtime-instantiation
-                            // template pass (paired with the typeof(D<>) record in
-                            // the Ldtoken case above).
-                            else if (mrName == "MakeGenericType" && mrParent == "System.Type")
-                                _makeGenericTypeUsed = true;
-                            // MemberInfo/ParameterInfo/Assembly.GetCustomAttributes /
-                            // IsDefined, and the CustomAttributeData views, whose rows
-                            // render the same factories -> reach attribute ctors + named
-                            // setters.
-                            else if (mrName is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
-                                    or "GetCustomAttributesData" or "get_CustomAttributes"
-                                && mrParent is "System.Reflection.MemberInfo"
-                                    or "System.Reflection.ParameterInfo" or "System.Attribute"
-                                    or "System.Reflection.CustomAttributeExtensions"
-                                    or "System.Reflection.CustomAttributeData"
-                                    or "System.Type" or "System.Reflection.MethodInfo"
-                                    or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
-                                    or "System.Reflection.Assembly")
-                                _reflectionAttrUsed = true;
                             // A callvirt to Enum.HasFlag is emitted inline as a bit test,
                             // so don't reach the real body — it pulls in GetMethodTable/
                             // InternalCall. (Checked here to reuse the name/parent reads;
@@ -5275,8 +5281,8 @@ internal sealed partial class Compilation
                         }
                         // The same CreateDelegate mark, generic mouth: MethodInfo.CreateDelegate<T>
                         // is a MethodSpec over an intrinsic parent, which resolves to no target.
-                        else if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && handle.Kind == HandleKind.MethodSpecification && IsUserModule(module)
+                        // A method group over it marks like a call, as NoteReflectionUsage does.
+                        else if (handle.Kind == HandleKind.MethodSpecification && IsUserModule(module)
                             && IsCreateDelegateSpec(module, (MethodSpecificationHandle)handle))
                         {
                             _reflectionInvokeUsed = true;
@@ -5373,9 +5379,8 @@ internal sealed partial class Compilation
                         // this, a program whose only attribute read is the generic
                         // extension emits no attribute tables at all and silently
                         // answers "no attributes" (MarkThenResolve; the name gates
-                        // the FullName read).
-                        if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
-                            && handle.Kind == HandleKind.MethodSpecification
+                        // the FullName read). A method group marks like a call.
+                        if (handle.Kind == HandleKind.MethodSpecification
                             && t is { Name: "GetCustomAttributes" or "GetCustomAttribute" }
                             && t.DeclaringClass.FullName == "System.Reflection.CustomAttributeExtensions")
                             _reflectionAttrUsed = true;

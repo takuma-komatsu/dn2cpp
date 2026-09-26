@@ -1522,9 +1522,10 @@ internal static partial class CoreIntrinsics
     /// (<see cref="ScEnumHasFlag"/>), get_CompareInfo
     /// (<see cref="ScCultureCompareInfo"/>); plus</para>
     /// <para>(b) the hand-written residue: the names that drive the REFLECTION-USAGE
-    /// marks — Invoke, GetValue, SetValue, CreateDelegate, CreateInstance,
-    /// GetCustomAttributes, GetCustomAttribute, IsDefined, GetCustomAttributesData,
-    /// get_CustomAttributes, MakeGenericType. Those set
+    /// marks (<c>Compilation.NoteReflectionUsage</c>, asked for a method group over the
+    /// member exactly as for a call) — Invoke, GetValue, SetValue, CreateDelegate,
+    /// CreateInstance, GetCustomAttributes, GetCustomAttribute, IsDefined,
+    /// GetCustomAttributesData, get_CustomAttributes, MakeGenericType. Those set
     /// <c>_reflectionInvokeUsed</c> / <c>_reflectionCtorUsed</c> /
     /// <c>_reflectionAttrUsed</c> / <c>_makeGenericTypeUsed</c>, which are not intercepts
     /// at all — they do not cut an edge or route a call, they OPEN a reachability route

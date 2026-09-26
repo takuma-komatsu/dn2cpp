@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
-# while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
+# while PreserveAttribute and merged Unity-format link.xml keep selected bodies. A
+# reflection trigger bound only as a method group keeps what a call to it keeps.
 source "$(dirname "$0")/_common.sh"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
@@ -245,6 +246,10 @@ for row in 'method ILDietControlLib.Base::UnusedPrivate' \
 done
 [ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$DIET_OUT/ildiet/ILDietControlLib.pdb" ] \
     || { echo "FAIL: rewritten DLL retained stale debug symbols" >&2; exit 1; }
+
+echo "== Reflection triggers bound only as method groups keep the constructors a call keeps =="
+# build-and-run-reflect-invoke.sh diffs the same program without ILDiet.
+DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-ildiet" corelib_diff_gate ReflectGroupOnly
 
 echo "== Failed stripping preserves the last complete output and unrelated directories =="
 TRANSACTION="$STALE_ROOT/transaction"

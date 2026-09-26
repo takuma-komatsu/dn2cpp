@@ -186,6 +186,10 @@
 # Version nothing else names, bound contravariantly, a Type returned through the
 # generic form closed over an instance, and an OperatingSystem only a variance view
 # names.
+# ReflectGroupOnly binds each reflection trigger only as a method group:
+# Activator.CreateInstance, ConstructorInfo.Invoke, MethodInfo.Invoke, the
+# PropertyInfo accessors and Delegate.CreateDelegate. The binding alone must open
+# the route a call opens.
 # Mixed native/packed metadata preserves inherited members, closed generics,
 # parameter identity, and interface receiver dispatch across cache eviction.
 # Disabling compression forces native metadata even for explicit packed selectors.
@@ -622,3 +626,7 @@ assert_output "$("$codec_out/MetadataCodec$EXE_EXT")" "metadata codec boundaries
 # diff; the ReflectInvoke asserts above do not apply to it.
 unset -f gate_extra_asserts
 corelib_diff_gate ReflectBindOnly --no-ildiet
+
+# ReflectGroupOnly names each reflection trigger only as a method group; its checks
+# are the diff. build-and-run-preserve-control.sh diffs it after ILDiet.
+corelib_diff_gate ReflectGroupOnly --no-ildiet

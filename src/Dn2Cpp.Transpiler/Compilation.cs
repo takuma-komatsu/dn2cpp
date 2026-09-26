@@ -4327,13 +4327,13 @@ internal sealed partial class Compilation
 
     private readonly HashSet<MethodInfo> _scanned = new();
 
-    // Set when a reached body calls MethodInfo/MethodBase.Invoke or a PropertyInfo
-    // accessor, or a user body calls CreateDelegate. Triggers the reflection-invoke
-    // reachability route after the initial discovery drain.
+    // Set when a reached body calls or binds MethodInfo/MethodBase.Invoke or a
+    // PropertyInfo accessor, or a user body calls or binds CreateDelegate. Triggers the
+    // reflection-invoke reachability route after the initial discovery drain.
     private bool _reflectionInvokeUsed;
     internal bool ReflectionInvokeUsed => _reflectionInvokeUsed;
 
-    // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
+    // Set when a reached body calls or binds ConstructorInfo.Invoke or the non-generic
     // Activator.CreateInstance(Type). Triggers the reflection-ctor route.
     private bool _reflectionCtorUsed;
 
