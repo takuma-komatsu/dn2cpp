@@ -1092,6 +1092,59 @@ internal sealed partial class Compilation
     internal MethodInfo? ReachedSynthesizedValueHash(ClassInfo c) =>
         _synthValueHash.TryGetValue(c, out var m) && m is not null && Reachable.Contains(m) ? m : null;
 
+    private readonly Dictionary<ClassInfo, MethodInfo?> _baseValueEquals = new();
+    private readonly Dictionary<ClassInfo, MethodInfo?> _baseValueHash = new();
+
+    /// <summary>The field walk a non-virtual <c>ValueType::Equals(object)</c> or
+    /// <c>GetHashCode()</c> call in one of <paramref name="c"/>'s own methods runs — the
+    /// <c>base.Equals(o)</c> of an override, which must not dispatch back into it. The
+    /// same walk <see cref="SynthesizedValueEquals"/> / <see cref="SynthesizedValueHash"/>
+    /// mint for a struct that does not override the member; one that does gets its own
+    /// body under a distinct suffix, kept out of the type-info slots and the key paths the
+    /// override owns. Null when a field carves the walk out. Reach-phase only, like the
+    /// mint it may run.</summary>
+    private MethodInfo? BaseValueBody(ClassInfo c, bool hash)
+    {
+        var cache = hash ? _baseValueHash : _baseValueEquals;
+        if (cache.TryGetValue(c, out var cached))
+            return cached;
+        MethodInfo? m;
+        if ((hash ? EffectiveGetHashCode(c) : EffectiveEquals(c)) is null)
+            m = hash ? SynthesizedValueHash(c) : SynthesizedValueEquals(c);
+        else if (!CanSynthesizeValueEquality(c, hash, new HashSet<ClassInfo>()))
+            m = null;
+        else if (hash)
+            m = MintValueBody(c, "GetHashCode", "__vtbasehash",
+                TypeDesc.MakePrimitive(PrimitiveTypeCode.Int32), ImmutableArray<TypeDesc>.Empty);
+        else
+            m = MintValueBody(c, "Equals", "__vtbaseeq",
+                TypeDesc.MakePrimitive(PrimitiveTypeCode.Boolean), ImmutableArray.Create(TypeDesc.MakeClass(c)));
+        cache[c] = m;
+        return m;
+    }
+
+    /// <summary>The reached body of <see cref="BaseValueBody"/>, as a pure lookup — what
+    /// the emit of the non-virtual call asks.</summary>
+    internal MethodInfo? ReachedBaseValueBody(ClassInfo c, bool hash) =>
+        (hash ? _baseValueHash : _baseValueEquals).TryGetValue(c, out var m)
+            && m is not null && Reachable.Contains(m) ? m : null;
+
+    /// <summary>Reaches <see cref="BaseValueBody"/> and what its field walk calls, for a
+    /// non-virtual <c>ValueType::<paramref name="name"/></c> call in a body of
+    /// <paramref name="c"/>. A value type's own method is the only place C# emits one: its
+    /// base call boxes <c>this</c>.</summary>
+    private void ReachBaseValueCall(ClassInfo c, string name)
+    {
+        if (name is not ("Equals" or "GetHashCode")
+            || c is not { IsValueType: true, IsEnum: false }
+            || CoreIntrinsics.IsIntrinsicType(c.FullName) || c.IntrinsicCppName is not null)
+            return;
+        bool hash = name == "GetHashCode";
+        if (BaseValueBody(c, hash) is { } b && Reachable.Add(b))
+            foreach (var f in StructuralFields(c))
+                ReachStructuralField(f.Type, hash);
+    }
+
     private MethodInfo MintValueBody(ClassInfo c, string name, string suffix,
         TypeDesc returnType, ImmutableArray<TypeDesc> parameterTypes)
     {
@@ -5087,7 +5140,11 @@ internal sealed partial class Compilation
                             // the parent are already read.) MarkThenResolve: the token goes
                             // on to ResolveCallTarget below exactly as it would have.
                             if (CoreIntrinsics.ScObjectEqualityDispatch.Matches(mrParent, mrName))
+                            {
                                 NoteObjectEqualityDispatch();
+                                if (insn.OpCode == ILOpCode.Call && mrParent == "System.ValueType")
+                                    ReachBaseValueCall(m.DeclaringClass, mrName!);
+                            }
                             // A reflected Object or ValueType row answers Equals and
                             // GetHashCode through the same helpers, so the invoke and
                             // CreateDelegate marks are object-equality dispatches too.
@@ -5187,8 +5244,10 @@ internal sealed partial class Compilation
                         // the loaded CoreLib calling Object::Equals/GetHashCode names them
                         // with a MethodDef token (same module), not a MemberRef. Read behind
                         // the flag, so this costs one type-name read per call site only until
-                        // the first such site — and nothing at all after it.
-                        else if (!_objectEqualityDispatched
+                        // the first such site — and after it only at a value type's `call`,
+                        // which may be the base call whose field walk must be reached.
+                        else if ((!_objectEqualityDispatched
+                                || insn.OpCode == ILOpCode.Call && m.DeclaringClass.IsValueType)
                             && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && handle.Kind == HandleKind.MethodDefinition)
                         {
@@ -5198,10 +5257,16 @@ internal sealed partial class Compilation
                             // shared predicate is why this is the same member set as the
                             // row's, not a copy of it.
                             string oname = module.Reader.GetString(omd.Name);
-                            if (CoreIntrinsics.IsObjectEqualityMemberName(oname)
-                                && CoreIntrinsics.ScObjectEqualityDispatch.Matches(
-                                    MethodDefParentTypeName(module, (MethodDefinitionHandle)handle), oname))
-                                NoteObjectEqualityDispatch();
+                            if (CoreIntrinsics.IsObjectEqualityMemberName(oname))
+                            {
+                                string? oparent = MethodDefParentTypeName(module, (MethodDefinitionHandle)handle);
+                                if (CoreIntrinsics.ScObjectEqualityDispatch.Matches(oparent, oname))
+                                {
+                                    NoteObjectEqualityDispatch();
+                                    if (insn.OpCode == ILOpCode.Call && oparent == "System.ValueType")
+                                        ReachBaseValueCall(m.DeclaringClass, oname);
+                                }
+                            }
                         }
                         // CultureInfo.CompareInfo -> a synthesized zero-initialized
                         // CompareInfo (see the MethodCompiler intrinsic in

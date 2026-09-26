@@ -1629,6 +1629,54 @@ internal sealed partial class MethodCompiler
                     : $"(({Cast(o, "Dn2CppObject*")}) == ({Cast(other, "Dn2CppObject*")}) ? 1 : 0)");
                 return true;
             }
+            // System.ValueType's three overrides. A callvirt dispatches as Object's
+            // does. A non-virtual call is the base call inside a struct's own override,
+            // on the box C# makes of `this`, and runs ValueType's body instead of
+            // re-entering the override: the type name, or the calling struct's field
+            // walk (Equals behind .NET's null and exact-type checks).
+            case ("System.ValueType", "ToString") when sig.ParameterTypes.Length == 0:
+            {
+                var o = Pop();
+                Push(StackKind.Ref, "Dn2CppString*", CallIsVirtual
+                    ? $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})"
+                    : $"dn2cpp_object_tostring_nonvirtual({Cast(o, "Dn2CppObject*")})");
+                return true;
+            }
+            case ("System.ValueType", "GetHashCode") when sig.ParameterTypes.Length == 0:
+            {
+                var o = Pop();
+                if (CallIsVirtual)
+                {
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({Cast(o, "Dn2CppObject*")})");
+                    return true;
+                }
+                var sc = BaseValueCallOwner(name);
+                var walk = BaseValueWalk(sc, hash: true);
+                string payload = $"({sc.CppStructName}*)(dn2cpp_null_check({Cast(o, "Dn2CppObject*")}) + 1)";
+                Push(StackKind.I4, "int32_t", $"{DirectCallSym(walk)}({ArgsWithRgctx(payload, walk)})");
+                return true;
+            }
+            case ("System.ValueType", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var o = Pop();
+                if (CallIsVirtual)
+                {
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({Cast(o, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+                    return true;
+                }
+                var sc = BaseValueCallOwner(name);
+                var walk = BaseValueWalk(sc, hash: false);
+                string ct = sc.CppStructName;
+                string self = NewTemp("Dn2CppObject*");
+                Emit($"{self} = dn2cpp_null_check({Cast(o, "Dn2CppObject*")});");
+                string that = NewTemp("Dn2CppObject*");
+                Emit($"{that} = {Cast(other, "Dn2CppObject*")};");
+                string walkCall = $"{DirectCallSym(walk)}({ArgsWithRgctx($"({ct}*)({self} + 1), *({ct}*)({that} + 1)", walk)})";
+                Push(StackKind.I4, "int32_t",
+                    $"(({that}) != nullptr && ({that})->type == ({self})->type && {walkCall} ? 1 : 0)");
+                return true;
+            }
             // Static Object.Equals(objA, objB): no receiver, two boxed args. The
             // runtime helper already implements the exact static semantics — reference/both-
             // null equal, exactly-one-null unequal, else the runtime type's virtual Equals.

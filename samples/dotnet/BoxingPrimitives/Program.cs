@@ -50,8 +50,8 @@ namespace BoxingPrimitives
     //     reflection alone, and calls IUtf8SpanFormattable.TryFormat through the
     //     interface.
     //   * ObjectVirtualDispatchSubset is a NON-VIRTUAL CALL test: base calls to the
-    //     Object virtuals run Object's body rather than dispatching back into the
-    //     override, and the identity hash is one function.
+    //     Object and ValueType virtuals run the base body rather than dispatching back
+    //     into the override, and the identity hash is one function.
     internal static class Program
     {
         private static void Main()

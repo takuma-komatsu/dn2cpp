@@ -61,11 +61,12 @@
 #     interface into a fitting and a too-small buffer. Its extra asserts pin that
 #     Int32's answers come from the relation rows the init prologue installs, and that
 #     the output before the section is unchanged.
-#   * ObjectVirtualDispatchSubset — base calls to the Object virtuals inside an
-#     override (`call`, not `callvirt`): the type name, reference equality and the
-#     identity hash, never a dispatch back into the override; and
-#     RuntimeHelpers.GetHashCode agreeing with the default Object.GetHashCode. Its
-#     extra asserts pin that the output before the section is unchanged.
+#   * ObjectVirtualDispatchSubset — base calls to the Object and ValueType virtuals
+#     inside an override (`call`, not `callvirt`): Object's type name, reference
+#     equality and identity hash, ValueType's type name and field-by-field equality
+#     and hash, never a dispatch back into the override; and RuntimeHelpers.GetHashCode
+#     agreeing with the default Object.GetHashCode. Its extra asserts pin that the
+#     output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -116,6 +117,7 @@ gate_extra_asserts() {
     grep -Fxq '== object virtual dispatch ==' "$out/native.stdout"
     grep -Fxq 'class base ToString: base-calls:ObjectVirtualDispatchSubset.BaseCalls' "$out/native.stdout"
     grep -Fxq 'identity hash: True/True/True' "$out/native.stdout"
+    grep -Fxq 'struct base Equals: True/False/False/False' "$out/native.stdout"
     DN2CPP_BEFORE_OBJECT_VIRTUALS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
         > "$out/before-object-virtuals.stdout"
     sed '/^== object virtual dispatch ==/,$d' "$out/native.stdout" > "$out/object-virtuals-prefix.stdout"
