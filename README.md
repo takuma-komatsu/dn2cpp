@@ -187,6 +187,14 @@ property, field, event, or delegate, or define your own attribute whose type or
 base type has the exact simple name `PreserveAttribute`. The latter avoids a
 managed dependency and is recognized regardless of namespace or assembly.
 
+Reflection runs a virtual member through the receiver's own override. A
+framework or library override that only reflection reaches is compiled when
+user code names the member with a string literal right after `typeof(T)`, as in
+`typeof(Stream).GetMethod("Flush")` or `GetProperty("Position")`. Reached any
+other way — enumerated, named by a computed string, or looked up on
+`obj.GetType()` — it stays stripped, and the call throws `NotSupportedException`
+naming the receiver's type and member; preserve the override with a rule.
+
 The built-in attribute is in `Dn2Cpp.Runtime.dll`. Reference the copy produced
 by this checkout under `src/Dn2Cpp.Runtime/bin/<configuration>/<framework>/`,
 or the copy under `bin/` in a dn2cpp toolchain or editor bundle. There is no

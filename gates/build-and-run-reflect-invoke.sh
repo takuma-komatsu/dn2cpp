@@ -121,7 +121,8 @@
 # does: base and middle rows over overrides, abstract rows (which check the receiver
 # and arguments first), new-slot hiders and their overrides, sealed and setter-only
 # overrides, generic bases over shared and value arguments, a MakeGenericType
-# receiver, a boxed enum, compiled framework overrides of abstract rows, and
+# receiver, a boxed enum, compiled framework overrides of abstract rows, framework
+# overrides only reflection reaches, which a string literal after typeof names, and
 # interface rows whose declaration has a default body, beside a non-virtual
 # interface member that runs its own body, and an application interface's static,
 # non-virtual and private members that only reflection calls. A closed binding
@@ -327,6 +328,9 @@ gate_extra_asserts() {
     grep -Fxq 'interface static row: made' "$out/metadata-layout.stdout"
     grep -Fxq 'interface non-virtual row: stamp:box' "$out/metadata-layout.stdout"
     grep -Fxq 'interface private row: secret:box' "$out/metadata-layout.stdout"
+    grep -Fxq 'reflection-only framework setter: 1/1' "$out/metadata-layout.stdout"
+    grep -Fxq 'reflection-only struct-returning override: 2020-2-29' "$out/metadata-layout.stdout"
+    grep -Fxq 'reflection-only framework interface impl: 1.2' "$out/metadata-layout.stdout"
     grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"

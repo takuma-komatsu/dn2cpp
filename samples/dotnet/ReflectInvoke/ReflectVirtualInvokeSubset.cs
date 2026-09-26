@@ -10,8 +10,9 @@ using System.Reflection;
 // and middle rows, abstract rows, new-slot hiders, sealed overrides, setter-only
 // overrides, generic bases over reference and value arguments, a
 // MakeGenericType receiver, a boxed enum through a System.Enum row, compiled
-// framework overrides of abstract rows, and interface rows whose declaration
-// has a default body. An abstract row checks its receiver and arguments first,
+// framework overrides of abstract rows, framework overrides only reflection
+// reaches, which a string literal after typeof names, and interface rows whose
+// declaration has a default body. An abstract row checks its receiver and arguments first,
 // and a closed CreateDelegate binding reports the body it runs. An application
 // interface's static, non-virtual and private members that nothing calls run as
 // themselves. RunStripped (dn2cpp only) reaches bodies the image stripped
@@ -236,6 +237,12 @@ static class Program
     private static MethodInfo Method(Type type, string name) =>
         type.GetMethod(name, Type.EmptyTypes) ?? throw new MissingMethodException(type.Name, name);
 
+    private static string Ymd(object? value)
+    {
+        var date = (DateTime)value!;
+        return date.Year + "-" + date.Month + "-" + date.Day;
+    }
+
     private static MethodInfo Named(Type type, string name)
     {
         foreach (var method in type.GetMethods())
@@ -386,6 +393,31 @@ static class Program
             return toStamp() + "/" + Describe(toStamp.Method);
         });
         Fault("interface non-virtual row, null receiver", () => stamp.Invoke(null, null));
+
+        // typeof names each framework row below, so the receiver's override is
+        // compiled although only reflection reaches it.
+        var buffer = new MemoryStream();
+        var buffered = new BufferedStream(buffer);
+        buffered.WriteByte(1);
+        Try("reflection-only framework override", () => typeof(Stream).GetMethod("Flush")!.Invoke(buffered, null)
+            ?? "flushed:" + buffer.Length);
+        buffered.WriteByte(2);
+        Try("reflection-only framework override, delegate", () =>
+        {
+            var flushBuffered = (Action)Delegate.CreateDelegate(typeof(Action), buffered, typeof(Stream).GetMethod("Flush")!);
+            flushBuffered();
+            return buffer.Length + "/" + Describe(flushBuffered.Method);
+        });
+        PropertyInfo position = typeof(Stream).GetProperty("Position")!;
+        Try("reflection-only framework getter", () => position.GetValue(buffered));
+        Try("reflection-only framework setter", () =>
+        {
+            position.SetValue(buffered, 1L);
+            return position.GetValue(buffered) + "/" + buffer.Position;
+        });
+        Try("reflection-only struct-returning override", () => Ymd(typeof(Calendar).GetMethod("AddMonths")!
+            .Invoke(new GregorianCalendar(), new object[] { new DateTime(2020, 1, 31), 1 })));
+        Try("reflection-only framework interface impl", () => typeof(ICloneable).GetMethod("Clone")!.Invoke(new Version(1, 2), null));
 
         Console.WriteLine("virtual invoke end");
     }

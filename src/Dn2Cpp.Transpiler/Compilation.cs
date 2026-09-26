@@ -3511,12 +3511,15 @@ internal sealed partial class Compilation
     /// least as generous as that dispatch, or the receiver's slot holds a trap. A
     /// class row is invocable once reached, or when abstract (its thunk is
     /// signature-only), and runs only on receivers derived from its class, so a used
-    /// declaration of the slot on that class or a base already covers it. Only a
-    /// user module's rows are marked: marking a framework row reaches every allocated
-    /// framework override of its slot, which need not transpile, so a framework row's
-    /// receiver whose override is missing throws at the call instead. Driven each
-    /// round, like the array maps above: the flags, the reached set and the decoded
-    /// classes all grow while bodies compile.</summary>
+    /// declaration of the slot on that class or a base already covers it. A user
+    /// module's rows are all marked. Marking a framework row reaches every allocated
+    /// framework override of its slot, which need not transpile, so a framework row is
+    /// marked only when a user body names its member on a type token
+    /// (<see cref="_typeofNamedMembers"/>), which bounds that to one member's
+    /// overrides; any other framework row's receiver may hold a trap, which the runtime
+    /// reports as the stripped body it is. Driven each round, like the array maps
+    /// above: the flags, the reached set, the named members and the decoded classes
+    /// all grow while bodies compile.</summary>
     public void ReachReflectedVirtualSlots()
     {
         if (!_reflectionInvokeUsed && !NeedsReflectionDelegateBind)
@@ -3525,31 +3528,122 @@ internal sealed partial class Compilation
         // Snapshot: a reached body's signature decode can append classes.
         foreach (var cls in Classes.ToList())
         {
-            // A value type's row is sealed; an intrinsic type carries no rows.
-            if (!cls.MembersReady || !IsUserModule(cls.Module) || cls.IsValueType || cls.IsDelegate
-                || cls.IntrinsicCppName is not null || CoreIntrinsics.IsIntrinsicType(cls.FullName))
+            if (!cls.MembersReady || !IsUserModule(cls.Module) || !CarriesReflectedSlots(cls))
                 continue;
             var methods = cls.Methods;
             for (int i = 0; i < methods.Count; i++)
+                marked |= MarkReflectedSlot(methods[i], named: false);
+        }
+        // Type.GetMethod searches the base classes too; an interface only itself.
+        for (int i = 0; i < _typeofNamedMembers.Count; i++)
+        {
+            var (named, member) = _typeofNamedMembers[i];
+            for (var cls = named; cls is not null && CarriesReflectedSlots(cls);
+                 cls = cls.IsInterface ? null : cls.BaseClass)
             {
-                var m = methods[i];
-                if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0 || _usedVirtualDecls.Contains(m))
+                if (!DeclaresMemberNamed(cls, member))
                     continue;
-                // A library's default body has a row only once reached. Marking
-                // bodiless interface rows would reach every implementer's whole
-                // interface surface.
-                if (cls.IsInterface
-                    ? m.Rva == 0 || (cls.Module != AppModule && !Reachable.Contains(m))
-                    : !m.IsAbstract && !Reachable.Contains(m))
-                    continue;
-                if (!cls.IsInterface && ClassSlotUsedAtOrAbove(m))
-                    continue;
-                ReachUsedVirtual(m);
-                marked = true;
+                EnsureCompleted(cls);
+                marked |= MarkNamedSlots(cls, member);
+                marked |= MarkNamedSlots(cls, "get_" + member);
+                marked |= MarkNamedSlots(cls, "set_" + member);
             }
         }
         if (marked)
             DrainReachability();
+    }
+
+    // A value type's row is sealed; an intrinsic type carries no rows.
+    private static bool CarriesReflectedSlots(ClassInfo cls) =>
+        !cls.IsValueType && !cls.IsDelegate && cls.IntrinsicCppName is null
+        && !CoreIntrinsics.IsIntrinsicType(cls.FullName);
+
+    private bool MarkNamedSlots(ClassInfo cls, string name)
+    {
+        bool marked = false;
+        if (cls.MethodsNamed(name) is { } methods)
+            for (int i = 0; i < methods.Count; i++)
+                marked |= MarkReflectedSlot(methods[i], named: true);
+        return marked;
+    }
+
+    /// <summary>Marks the slot of a row reflection can enter when no used declaration
+    /// covers it yet. A library's default body has a row only once reached. A
+    /// bodiless interface row is marked only when a type token names it: marking every
+    /// one would reach each implementer's whole interface surface.</summary>
+    private bool MarkReflectedSlot(MethodInfo m, bool named)
+    {
+        if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0 || _usedVirtualDecls.Contains(m))
+            return false;
+        var cls = m.DeclaringClass;
+        if (cls.IsInterface
+            ? (m.Rva == 0 ? !named : cls.Module != AppModule && !Reachable.Contains(m))
+            : !m.IsAbstract && !Reachable.Contains(m))
+            return false;
+        if (!cls.IsInterface && ClassSlotUsedAtOrAbove(m))
+            return false;
+        ReachUsedVirtual(m);
+        return true;
+    }
+
+    /// <summary>Whether the definition of <paramref name="cls"/> declares a method named
+    /// <paramref name="member"/> or an accessor of such a property. Read off the raw
+    /// metadata, so a class named with an unrelated string is never completed.</summary>
+    private static bool DeclaresMemberNamed(ClassInfo cls, string member)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        string getter = "get_" + member, setter = "set_" + member;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var name = reader.GetMethodDefinition(handle).Name;
+            if (reader.StringComparer.Equals(name, member) || reader.StringComparer.Equals(name, getter)
+                || reader.StringComparer.Equals(name, setter))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
+    /// at once by a string literal, as <c>GetMethod("Name")</c>,
+    /// <c>GetProperty("Name")</c> or a helper taking both spell it. In first-named order
+    /// (list + set: the consumer's reach order is emit-relevant). Recorded
+    /// unconditionally, like <see cref="_typeofNamedLibraryClasses"/>, so the set does not
+    /// depend on which body the invoke flags were set in.</summary>
+    private readonly List<(ClassInfo Class, string Member)> _typeofNamedMembers = new();
+    private readonly HashSet<(ClassInfo, string)> _typeofNamedMembersSeen = new();
+
+    private void NoteTypeofNamedMembers(MethodInfo method, List<Instruction> instructions,
+        BranchLiveness? liveness)
+    {
+        for (int i = 0; i < instructions.Count; i++)
+        {
+            var token = instructions[i];
+            if (token.OpCode != ILOpCode.Ldtoken || liveness is not null && !liveness.LiveAt(token.Offset))
+                continue;
+            int call = NextNonNop(instructions, i + 1);
+            int literal = call < 0 ? -1 : NextNonNop(instructions, call + 1);
+            if (literal < 0 || instructions[call].OpCode != ILOpCode.Call
+                || instructions[literal].OpCode != ILOpCode.Ldstr
+                || ClassifyTypeIdentityCall(method.Module, instructions[call].Token) != TypeIdentityCall.GetTypeFromHandle)
+                continue;
+            var handle = SRME.EntityHandle(token.Token);
+            if (handle.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference or HandleKind.TypeSpecification)
+                || ResolveTypeTokenForScan(method.Module, handle, method.Context) is not { Kind: TypeKind.Class, Class: { } cls } type
+                || ContainsGenericVar(type) || ContainsCanonPlaceholder(type))
+                continue;
+            string member = method.Module.Reader.GetUserString(SRME.UserStringHandle(instructions[literal].Token & 0xFFFFFF));
+            if (_typeofNamedMembersSeen.Add((cls, member)))
+                _typeofNamedMembers.Add((cls, member));
+        }
+    }
+
+    private static int NextNonNop(List<Instruction> instructions, int start)
+    {
+        while (start < instructions.Count && instructions[start].OpCode == ILOpCode.Nop)
+            start++;
+        return start < instructions.Count ? start : -1;
     }
 
     private bool ClassSlotUsedAtOrAbove(MethodInfo m)
