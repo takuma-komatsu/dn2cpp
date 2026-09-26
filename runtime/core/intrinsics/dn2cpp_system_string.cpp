@@ -2055,8 +2055,10 @@ static int dn2cpp_array_rep_dyn(Dn2CppObject* o, const char* who)
 //
 // A null operand is ArgumentNullException, not NullReferenceException: Array.Copy is
 // STATIC, so .NET faults on the argument rather than on a receiver.
-void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
-                           Dn2CppObject* dst, int32_t dstIdx, int32_t len)
+//
+// ConstrainedCopy shares every check; only a mixed pair's verdict differs.
+static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
+                                       Dn2CppObject* dst, int32_t dstIdx, int32_t len, bool reliable)
 {
     if (src == nullptr || dst == nullptr)
         dn2cpp_throw_argument_null();
@@ -2069,7 +2071,7 @@ void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
                             dn2cpp_array_total_length(dst), dstIdx, len);
     if (src->type != dst->type || src->type == nullptr)
     {
-        dn2cpp_array_copy_checked(src, srcIdx, dst, dstIdx, len);
+        dn2cpp_array_copy_checked(src, srcIdx, dst, dstIdx, len, reliable);
         return;
     }
     // The MD layout first, for the same header-vs-length reason as the clone
@@ -2107,6 +2109,18 @@ void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
             return;
         }
     }
+}
+
+void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
+                           Dn2CppObject* dst, int32_t dstIdx, int32_t len)
+{
+    dn2cpp_array_copy_dyn_impl(src, srcIdx, dst, dstIdx, len, false);
+}
+
+void dn2cpp_array_constrained_copy_dyn(Dn2CppObject* src, int32_t srcIdx,
+                                       Dn2CppObject* dst, int32_t dstIdx, int32_t len)
+{
+    dn2cpp_array_copy_dyn_impl(src, srcIdx, dst, dstIdx, len, true);
 }
 
 // Array.Clear's sibling of dn2cpp_array_copy_dyn: zero `len` elements from

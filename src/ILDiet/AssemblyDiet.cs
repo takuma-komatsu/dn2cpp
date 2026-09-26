@@ -41,6 +41,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly List<TypeDefinition> _typeTokenTypes = new();
     private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
     private bool _constructsFromRuntimeType;
+    private bool _initializesArrays;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
     private bool _cutsValidated = true;
 
@@ -454,6 +455,23 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var type in _typeTokenTypes) KeepInstanceConstructors(type);
     }
 
+    // Array.Initialize runs a value-type element's parameterless constructor, which no
+    // IL names, so once the program calls it every stripped value type keeps its own.
+    private void ArmArrayInitialize()
+    {
+        if (_initializesArrays) return;
+        _initializesArrays = true;
+        foreach (var assembly in _assemblies)
+        {
+            if (assembly.Copy) continue;
+            foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
+                if (type.IsValueType)
+                    foreach (var method in type.Methods)
+                        if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0)
+                            MarkMethod(method);
+        }
+    }
+
     // Activator.CreateInstance(Type) and ConstructorInfo.Invoke can construct any
     // application type a type token or a custom-attribute Type argument names,
     // including an open generic definition closed later through MakeGenericType.
@@ -661,6 +679,10 @@ internal sealed partial class AssemblyDiet : IDisposable
                         && target.MetadataToken.TokenType == TokenType.MemberRef
                         && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
                         ArmRuntimeTypeConstruction();
+                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt
+                        && target.Name == "Initialize" && target.Parameters.Count == 0
+                        && target.DeclaringType.FullName == "System.Array")
+                        ArmArrayInitialize();
                     break;
                 case FieldReference field: MarkField(field); break;
                 case TypeReference type:

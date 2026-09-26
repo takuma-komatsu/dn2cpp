@@ -623,12 +623,15 @@ internal sealed partial class MethodCompiler
     /// refuse with ArrayTypeMismatchException. The inline ref-element arm keeps
     /// the raw memmove for statically-equal elements even though a COVARIANT
     /// receiver could demand per-element checks (Base[] holding a Der[]) — the
-    /// same documented carve-out as the stelem helpers.</summary>
+    /// same documented carve-out as the stelem helpers. <paramref name="reliable"/> is
+    /// Array.ConstrainedCopy: a proven pair is a plain move either way, and the runtime
+    /// verdict refuses every pair that would convert or cast per element.</summary>
     private void EmitArrayCopy(StackEntry src, string srcIdx, StackEntry dst, string dstIdx, string len,
                                ArrayOperandKind srcKind = ArrayOperandKind.Argument,
                                ArrayOperandKind dstKind = ArrayOperandKind.CopyDest,
                                bool sameElementByConstruction = false,
-                               TypeDesc? elementType = null)
+                               TypeDesc? elementType = null,
+                               bool reliable = false)
     {
         ArrRep? rep = ArrayRepOfCppTypeOrNull(src.CppType);
         ArrRep? dstRep = ArrayRepOfCppTypeOrNull(dst.CppType);
@@ -639,7 +642,8 @@ internal sealed partial class MethodCompiler
             || (rep == ArrRep.I4 && dstRep == ArrRep.I4);
         if (rep is null || !proven)
         {
-            Emit($"dn2cpp_array_copy_dyn({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
+            string helper = reliable ? "dn2cpp_array_constrained_copy_dyn" : "dn2cpp_array_copy_dyn";
+            Emit($"{helper}({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
                  $"{Cast(dst, "Dn2CppObject*")}, (int32_t)({dstIdx}), (int32_t)({len}));");
             return;
         }

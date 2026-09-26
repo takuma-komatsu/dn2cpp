@@ -786,16 +786,55 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
     return dn2cpp_array_create_instance(t, lengths->data, lengths->length);
 }
 
-// Array.CreateInstanceFromArrayType(Type arrayType, length(s)): the element
+// The element type of array type `arrayType` when it has `rank` dimensions, else
+// ArgumentException (a non-array type, or a rank the lengths do not state). An SZ
+// identity reports arrayRank 1, or 0 for the shared reference-element identity.
+static Dn2CppType* dn2cpp_array_type_element_of_rank(Dn2CppType* arrayType, int32_t rank)
+{
+    const Dn2CppTypeInfo* ti = arrayType->typeInfo;
+    if ((ti->flags & DN2CPP_TF_ARRAY) == 0 || ti->elementType == nullptr
+        || (ti->arrayRank > 1 ? ti->arrayRank : 1) != rank)
+        dn2cpp_throw_argument();
+    return dn2cpp_get_type_from_handle(ti->elementType);
+}
+
+// Array.CreateInstanceFromArrayType(Type arrayType, int length): the element
 // comes off the ARRAY type's own identity (GetElementType), then the plain
-// path applies. A non-array type throws ArgumentException like real .NET.
+// path applies. .NET screens the length before the type.
 Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
                                                           const int32_t* lengths, int32_t rank)
 {
     if (arrayType == nullptr)
         dn2cpp_throw_argument_null();
-    const Dn2CppTypeInfo* ti = arrayType->typeInfo;
-    if ((ti->flags & DN2CPP_TF_ARRAY) == 0 || ti->elementType == nullptr)
+    for (int32_t i = 0; i < rank; i++)
+        if (lengths[i] < 0)
+            dn2cpp_throw_argument_out_of_range();
+    return dn2cpp_array_create_instance(dn2cpp_array_type_element_of_rank(arrayType, rank), lengths, rank);
+}
+
+// The (Type, int[] lengths[, int[] lowerBounds]) forms, in .NET's check order: the
+// nulls, the bounds count, the type and its rank, an SZ type's zero bound, then the
+// lengths. Non-zero MD lower bounds are not modeled, as in CreateInstance.
+Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* arrayType,
+                                                                  Dn2CppArrayI4* lengths,
+                                                                  Dn2CppArrayI4* lowerBounds,
+                                                                  int32_t hasBounds)
+{
+    if (arrayType == nullptr || lengths == nullptr || (hasBounds != 0 && lowerBounds == nullptr))
+        dn2cpp_throw_argument_null();
+    if (lowerBounds != nullptr && lowerBounds->length != lengths->length)
         dn2cpp_throw_argument();
-    return dn2cpp_array_create_instance(dn2cpp_get_type_from_handle(ti->elementType), lengths, rank);
+    Dn2CppType* elem = dn2cpp_array_type_element_of_rank(arrayType, lengths->length);
+    bool sz = arrayType->typeInfo->arrayRank <= 1;
+    if (sz && lowerBounds != nullptr && lowerBounds->data[0] != 0)
+        dn2cpp_throw_argument();
+    for (int32_t i = 0; i < lengths->length; i++)
+        if (lengths->data[i] < 0)
+            dn2cpp_throw_argument_out_of_range();
+    if (lowerBounds != nullptr)
+        for (int32_t i = 0; i < lowerBounds->length; i++)
+            if (lowerBounds->data[i] != 0)
+                dn2cpp_throw_platform_not_supported(
+                    "Array.CreateInstanceFromArrayType with non-zero lower bounds is not supported");
+    return dn2cpp_array_create_instance(elem, lengths->data, lengths->length);
 }

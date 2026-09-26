@@ -1711,6 +1711,12 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
                                                    Dn2CppArrayI4* lowerBounds);
 Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
                                                           const int32_t* lengths, int32_t rank);
+// The (Type, int[] lengths[, int[] lowerBounds]) forms; hasBounds tells the second
+// form's null lowerBounds (ArgumentNullException) from the first form's absent one.
+Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* arrayType,
+                                                                  Dn2CppArrayI4* lengths,
+                                                                  Dn2CppArrayI4* lowerBounds,
+                                                                  int32_t hasBounds);
 const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank);
 // The registry's SZ-array type-info over `elem`, or null when the image never
 // statically instantiated T[] (defined in the reflection unit's registry-scan
@@ -5226,12 +5232,18 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src); // rep from runtime typ
 // CLR's full compatibility verdict (dn2cpp_array_copy_checked). Clear
 // takes one array, so no type question arises on it.
 void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
+// Array.ConstrainedCopy: the same checks, then only a pair that moves without a
+// per-element conversion; any other pair throws ArrayTypeMismatchException before
+// an element moves.
+void dn2cpp_array_constrained_copy_dyn(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
 void dn2cpp_array_clear_dyn(Dn2CppObject* arr, int32_t idx, int32_t len);
 // The mixed-identity half of dn2cpp_array_copy_dyn (defined beside the
 // CanPrimitiveWiden matrix in dn2cpp_system_reflection.cpp): .NET's Array.Copy
 // type-compatibility verdict and its per-element widen/box/unbox/cast arms.
-// Callers have already validated null, rank equality and both ranges.
-void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
+// Callers have already validated null, rank equality and both ranges. reliable is
+// ConstrainedCopy's verdict: only the raw-move arms are taken.
+void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len,
+                               bool reliable = false);
 
 // RuntimeHelpers.GetSubArray<T>(T[], Range) = array[range]. The Range's
 // two Index ._value fields are resolved against the source length into (offset, length)
@@ -5803,6 +5815,70 @@ inline int32_t dn2cpp_md_total_length(Dn2CppMDArray* arr)
     for (int32_t i = 0; i < arr->rank; i++)
         total *= arr->lengths[i];
     return total;
+}
+
+// Rank / GetLength / GetLowerBound / GetUpperBound on a receiver statically known to
+// be SZ or MD: a null receiver is NullReferenceException and a dimension outside
+// [0, rank) IndexOutOfRangeException, as on .NET.
+inline int32_t dn2cpp_sz_rank(Dn2CppArray* arr)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    return 1;
+}
+
+inline int32_t dn2cpp_sz_get_length(Dn2CppArray* arr, int32_t dim)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (dim != 0)
+        dn2cpp_throw_index_out_of_range();
+    return arr->length;
+}
+
+inline int32_t dn2cpp_sz_get_lower_bound(Dn2CppArray* arr, int32_t dim)
+{
+    dn2cpp_sz_get_length(arr, dim);
+    return 0;
+}
+
+inline int32_t dn2cpp_sz_get_upper_bound(Dn2CppArray* arr, int32_t dim)
+{
+    return dn2cpp_sz_get_length(arr, dim) - 1;
+}
+
+inline int32_t dn2cpp_md_rank(Dn2CppMDArray* arr)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    return arr->rank;
+}
+
+inline int32_t dn2cpp_md_dim(Dn2CppMDArray* arr, int32_t dim)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (static_cast<uint32_t>(dim) >= static_cast<uint32_t>(arr->rank))
+        dn2cpp_throw_index_out_of_range();
+    return dim;
+}
+
+inline int32_t dn2cpp_md_get_length(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lengths[d];
+}
+
+inline int32_t dn2cpp_md_get_lower_bound(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lowerBounds[d];
+}
+
+inline int32_t dn2cpp_md_get_upper_bound(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lowerBounds[d] + arr->lengths[d] - 1;
 }
 
 // ── The SHAPE questions the block-move lowerings ask of an operand whose static

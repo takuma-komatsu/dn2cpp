@@ -48,6 +48,7 @@ namespace ArrayCore
             InterfaceElementArraySubset.Program.Run();
             NonArrayOperandSubset.Program.Run();
             ArrayPredicateSubset.Program.Run();
+            ArraySurfaceSubset.Program.Run();
         }
     }
 }
