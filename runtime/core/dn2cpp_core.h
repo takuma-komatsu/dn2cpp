@@ -2534,9 +2534,13 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 //
 // _named answers the first: for a struct-returning virtual the emitter bakes the
 // (class, method) descriptor into a per-slot stub, so the abort names the slot without
-// reading `self`. The receiver-scanning form stays the default, being more precise.
+// reading `self`; `slotFn` is the stub's own address. The receiver-scanning form stays
+// the default, being more precise.
+//
+// Every trap first asks dn2cpp_reflective_slot_check with the function it was entered
+// through, so a slot reflection enters directly reports its stripped body instead.
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self);
-[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc, const void* slotFn);
 // The receiver-scanning form entered through a per-signature trap thunk. The emitter
 // gives each trapped slot a thunk carrying the slot's exact C++ signature — a wasm
 // call_indirect checks the callee's type immediate, so the shared symbol above dies
@@ -2550,10 +2554,12 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
-// Whether `fn` is a vtable dispatch trap — the shared symbol or one of the registered
-// per-signature thunks — for probes that must not CALL a trapped slot to find out
-// (the trap aborts). A struct-returning slot's per-slot stub is not recognised.
-bool dn2cpp_is_vcall_trap(const void* fn);
+// A dispatch trap entered as `slotFn` throws the catchable NotSupportedException
+// MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose body the
+// image stripped, when `slotFn` is the slot the innermost such reflective call is
+// entering (dn2cpp_invoke_row). Returns otherwise: a trap reached from compiled code
+// is a reachability defect and still aborts.
+void dn2cpp_reflective_slot_check(const void* slotFn);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
@@ -3589,13 +3595,15 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // receiver out of argument 0 and names its type — the emitter enters it through a
 // per-signature thunk carrying the slot's exact C++ signature (a wasm call_indirect
 // checks the callee's type immediate, and with the signature exact `self` really is the
-// receiver at the C++ level). For an indirect struct return the emitter prefers a tiny
-// per-slot stub that calls _named with the (class, interface, method) descriptor baked
-// in — exact even on a metadata-stripped image. _anon is kept for the rare slot the
-// emitter has neither a signature nor a descriptor for.
+// receiver at the C++ level), which passes its own address to _at. For an indirect
+// struct return the emitter prefers a tiny per-slot stub that calls _named with the
+// (class, interface, method) descriptor and its own address baked in — exact even on
+// a metadata-stripped image. _anon is kept for the rare slot the emitter has neither a
+// signature nor a descriptor for. Each asks dn2cpp_reflective_slot_check first.
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self);
+[[noreturn]] void dn2cpp_itf_slot_missing_at(void* self, const void* slotFn);
 [[noreturn]] void dn2cpp_itf_slot_missing_anon();
-[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc, const void* slotFn);
 Dn2CppObject* dn2cpp_isinst(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The pure (source type-info, target type-info) decision behind dn2cpp_isinst,
 // cached per pair: base chain + interface rows, generic variance, and the array

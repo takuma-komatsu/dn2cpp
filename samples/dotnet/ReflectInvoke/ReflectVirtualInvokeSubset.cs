@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 
@@ -11,7 +12,8 @@ using System.Reflection;
 // MakeGenericType receiver, a boxed enum through a System.Enum row, compiled
 // framework overrides of abstract rows, and interface rows whose declaration
 // has a default body. An abstract row checks its receiver and arguments first,
-// and a closed CreateDelegate binding reports the body it runs.
+// and a closed CreateDelegate binding reports the body it runs. RunStripped
+// (dn2cpp only) reaches bodies the image stripped through each trap shape.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -215,6 +217,34 @@ static class Program
 
     private static MethodInfo Method(Type type, string name) =>
         type.GetMethod(name, Type.EmptyTypes) ?? throw new MissingMethodException(type.Name, name);
+
+    private static MethodInfo Named(Type type, string name)
+    {
+        foreach (var method in type.GetMethods())
+            if (method.Name == name)
+                return method;
+        throw new MissingMethodException(type.Name, name);
+    }
+
+    // dn2cpp only: GetMethods names no member, so these overrides are compiled for
+    // no other reason and stay stripped. Each slot shape reports that as a
+    // catchable NotSupportedException; .NET runs the bodies.
+    internal static void RunStripped()
+    {
+        Type calendarType = typeof(Calendar);
+        Type convertibleType = typeof(IConvertible);
+        var calendar = new GregorianCalendar();
+        var leap = new DateTime(2020, 2, 29);
+        Fault("stripped struct-returning slot", () => Named(calendarType, "AddYears").Invoke(calendar, new object[] { leap, 1 }));
+        Fault("stripped slot", () => Named(calendarType, "GetDayOfMonth").Invoke(calendar, new object[] { leap }));
+        Fault("stripped interface struct-returning slot", () => Named(convertibleType, "ToDateTime")
+            .Invoke(DBNull.Value, new object?[] { null }));
+        Fault("stripped interface slot", () => Named(convertibleType, "ToInt32").Invoke(DBNull.Value, new object?[] { null }));
+        var day = (Func<DateTime, int>)Delegate.CreateDelegate(typeof(Func<DateTime, int>), calendar,
+            Named(calendarType, "GetDayOfMonth"));
+        Fault("stripped slot, delegate", () => day(leap));
+        Console.WriteLine("stripped end");
+    }
 
     internal static void Run()
     {

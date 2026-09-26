@@ -2255,16 +2255,6 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
     dn2cpp_throw_reflection_fault(&dn2cpp_target_exception_type, message, 0x80131603u);
 }
 
-[[noreturn]] static void dn2cpp_throw_invoke_override_missing(const Dn2CppTypeInfo* receiver,
-    Dn2CppMetadataHandle<Dn2CppMethodInfo> mi)
-{
-    char message[512];
-    std::snprintf(message, sizeof message,
-        "%s.%s: no reflection invoker in this image (the receiver's override was never compiled)",
-        receiver->name != nullptr ? receiver->name : "?", mi->name != nullptr ? mi->name : "?");
-    dn2cpp_throw_not_supported_msg(message);
-}
-
 [[noreturn]] static void dn2cpp_throw_invoke_parameter_count()
 {
     dn2cpp_throw_reflection_fault(&dn2cpp_target_parameter_count_exception_type,
@@ -2557,6 +2547,51 @@ static Dn2CppObject* dn2cpp_invoke_target(void* thunk, void* fn, Dn2CppObject* s
     }
 }
 
+// The dispatch slot the innermost reflective call is entering. A trap entered as
+// that slot is a body the image stripped, which the caller may catch; a trap that a
+// compiled body reaches instead stays a reachability abort.
+struct Dn2CppReflectiveSlot
+{
+    const void* fn;
+    const Dn2CppTypeInfo* receiver;
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> method;
+    const Dn2CppReflectiveSlot* outer;
+};
+
+static thread_local const Dn2CppReflectiveSlot* t_reflective_slot = nullptr;
+
+namespace {
+struct Dn2CppReflectiveSlotScope
+{
+    Dn2CppReflectiveSlot slot;
+
+    Dn2CppReflectiveSlotScope(const void* fn, const Dn2CppTypeInfo* receiver,
+        Dn2CppMetadataHandle<Dn2CppMethodInfo> method)
+        : slot{ fn, receiver, method, t_reflective_slot }
+    {
+        t_reflective_slot = &slot;
+    }
+    ~Dn2CppReflectiveSlotScope() { t_reflective_slot = slot.outer; }
+    Dn2CppReflectiveSlotScope(const Dn2CppReflectiveSlotScope&) = delete;
+    Dn2CppReflectiveSlotScope& operator=(const Dn2CppReflectiveSlotScope&) = delete;
+};
+}
+
+void dn2cpp_reflective_slot_check(const void* slotFn)
+{
+    const Dn2CppReflectiveSlot* entered = t_reflective_slot;
+    if (entered == nullptr || entered->fn != slotFn)
+        return;
+    const Dn2CppMethodInfo row = *entered->method;
+    char message[512];
+    std::snprintf(message, sizeof message,
+        "%s.%s: the receiver's body was stripped from this image; preserve it with a link.xml "
+        "descriptor to reach it through reflection",
+        entered->receiver != nullptr && entered->receiver->name != nullptr ? entered->receiver->name : "?",
+        row.name != nullptr ? row.name : "?");
+    dn2cpp_throw_invoker_missing(message);
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
@@ -2613,9 +2648,10 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // sealed, and a receiver without a vtable (a boxed value, a runtime-owned
     // handle) runs the row's own body: System.Object and System.ValueType carry no
     // rows and an enum declares no methods. A non-virtual interface member has no
-    // slot. Reachability fills only user-module rows' slots, so a framework row's
-    // receiver can hold a trap for an override the image lacks; an interface map
-    // miss stays its own loud abort.
+    // slot. Reachability cannot fill every framework row's slots, so the receiver's
+    // slot may hold a trap for a body the image stripped, which reports itself
+    // through the entered slot (dn2cpp_reflective_slot_check); an interface map miss
+    // stays its own loud abort.
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
     if (obj != nullptr && row.vtableSlot >= 0)
@@ -2626,18 +2662,18 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
                 fn = const_cast<void*>(dn2cpp_resolve_interface(obj->type, declaring)[row.vtableSlot]);
         }
         else if ((declaring->flags & DN2CPP_TF_VALUETYPE) == 0 && obj->type->vtable != nullptr)
-        {
             fn = const_cast<void*>(obj->type->vtable[row.vtableSlot]);
-            if (dn2cpp_is_vcall_trap(fn))
-                dn2cpp_throw_invoke_override_missing(obj->type, mi);
-        }
     }
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
     Dn2CppObject* self = obj;
     if (!isStatic && obj != nullptr && (declaring->flags & DN2CPP_TF_VALUETYPE) != 0)
         self = reinterpret_cast<Dn2CppObject*>(reinterpret_cast<char*>(obj) + sizeof(Dn2CppObject));
-    Dn2CppObject* result = dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
+    Dn2CppObject* result;
+    {
+        Dn2CppReflectiveSlotScope entered(fn, obj != nullptr ? obj->type : nullptr, mi);
+        result = dn2cpp_invoke_target(row.invoker, fn, self, args, row.returnType, wrapExceptions);
+    }
     return invoke ? dn2cpp_invoke_box_result(row.returnType, result) : result;
 }
 

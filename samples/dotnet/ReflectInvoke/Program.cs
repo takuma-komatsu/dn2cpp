@@ -18,6 +18,11 @@ namespace ReflectInvoke
                 ReflectMetadataMeasureSubset.Program.Run();
                 return;
             }
+            if (Environment.GetEnvironmentVariable("DN2CPP_STRIPPED_OVERRIDES") == "1")
+            {
+                ReflectVirtualInvokeSubset.Program.RunStripped();
+                return;
+            }
 
             ReflectInvokeSubset.Program.Run();
             ReflectDispatchSubset.Program.Run();

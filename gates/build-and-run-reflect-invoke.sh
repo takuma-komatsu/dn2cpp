@@ -124,7 +124,9 @@
 # receiver, a boxed enum, compiled framework overrides of abstract rows, and
 # interface rows whose declaration has a default body, beside a non-virtual
 # interface member that runs its own body. A closed binding reports the body it runs
-# as its Method.
+# as its Method. With DN2CPP_STRIPPED_OVERRIDES=1 it asserts dn2cpp alone: a
+# receiver's body the image stripped raises a catchable NotSupportedException naming
+# the member and the remedy, for every trap shape a vtable or interface slot holds.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -326,6 +328,16 @@ gate_extra_asserts() {
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-virtual-invoke.stdout") \
         <(strip_cr_win_file "$out/virtual-invoke-prefix.stdout")
+    # .NET runs these bodies; this image stripped them, and each slot shape reports
+    # that as a catchable NotSupportedException rather than aborting in its trap.
+    DN2CPP_STRIPPED_OVERRIDES=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/stripped-overrides.stdout"
+    local stripped_body="the receiver's body was stripped from this image; preserve it with a link.xml descriptor to reach it through reflection"
+    grep -Fxq "stripped struct-returning slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.AddYears: $stripped_body" "$out/stripped-overrides.stdout"
+    grep -Fxq "stripped slot: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $stripped_body" "$out/stripped-overrides.stdout"
+    grep -Fxq "stripped interface struct-returning slot: NotSupportedException 0x80131515 System.DBNull.ToDateTime: $stripped_body" "$out/stripped-overrides.stdout"
+    grep -Fxq "stripped interface slot: NotSupportedException 0x80131515 System.DBNull.ToInt32: $stripped_body" "$out/stripped-overrides.stdout"
+    grep -Fxq "stripped slot, delegate: NotSupportedException 0x80131515 System.Globalization.GregorianCalendar.GetDayOfMonth: $stripped_body" "$out/stripped-overrides.stdout"
+    grep -Fxq 'stripped end' "$out/stripped-overrides.stdout"
     grep -Fxq '== field validation ==' "$out/metadata-layout.stdout"
     grep -Fxq 'null receiver, get int: TargetException 0x80131603 Non-static field requires a target.' "$out/metadata-layout.stdout"
     grep -Fxq "stranger receiver, set: ArgumentException 0x80070057 Field 'Number' defined on type 'ReflectFieldValidationSubset.Target' is not a field on the target object which is of type 'ReflectFieldValidationSubset.Stranger'." "$out/metadata-layout.stdout"

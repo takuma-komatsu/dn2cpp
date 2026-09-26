@@ -937,6 +937,14 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self)
 {
+    dn2cpp_reflective_slot_check(reinterpret_cast<const void*>(&dn2cpp_itf_slot_missing));
+    dn2cpp_slot_missing_report("interface", self);
+}
+
+// Entered through a per-signature trap thunk, which hands over its own address.
+[[noreturn]] void dn2cpp_itf_slot_missing_at(void* self, const void* slotFn)
+{
+    dn2cpp_reflective_slot_check(slotFn);
     dn2cpp_slot_missing_report("interface", self);
 }
 
@@ -945,6 +953,7 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // read safely. It loses the name; it does not lose the abort.
 [[noreturn]] void dn2cpp_itf_slot_missing_anon()
 {
+    dn2cpp_reflective_slot_check(reinterpret_cast<const void*>(&dn2cpp_itf_slot_missing_anon));
     dn2cpp_slot_missing_report("interface", nullptr);
 }
 
@@ -953,9 +962,12 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // buffer may sit there), so it BAKES the slot's (class, member) descriptor into a tiny
 // per-slot stub that calls this with the text ready-made. No receiver is touched; the
 // name comes from the compile, not the crash. See CppEmitter.RenderItfTables /
-// RenderVtable and CppEmitter.ReceiverIsFirstArg. `kind` is "interface" or "virtual".
-[[noreturn]] static void dn2cpp_slot_missing_report_named(const char* kind, const char* slotDesc)
+// RenderVtable and CppEmitter.ReceiverIsFirstArg. `kind` is "interface" or "virtual";
+// `slotFn` is the stub's own address.
+[[noreturn]] static void dn2cpp_slot_missing_report_named(const char* kind, const char* slotDesc,
+    const void* slotFn)
 {
+    dn2cpp_reflective_slot_check(slotFn);
     std::fprintf(stderr,
         "dn2cpp fatal: %s dispatch: no implementation reached for slot %s\n"
         "  (the slot was emitted as a trap: the transpiler's reachability closure never\n"
@@ -964,18 +976,18 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
     dn2cpp_fail("EntryPointNotFoundException (unimplemented dispatch slot)");
 }
 
-[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc)
+[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc, const void* slotFn)
 {
-    dn2cpp_slot_missing_report_named("interface", slotDesc);
+    dn2cpp_slot_missing_report_named("interface", slotDesc, slotFn);
 }
 
 // The vtable analogue. dn2cpp_vcall_unimplemented recovers the receiver's type and the
 // candidate methods from the method table, but a struct-returning virtual leaves it with
 // the hidden result buffer in `self` and nothing to read (":581-582 — receiver
 // unreadable"). For those slots the emitter bakes the descriptor here, the same way.
-[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc)
+[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc, const void* slotFn)
 {
-    dn2cpp_slot_missing_report_named("virtual", slotDesc);
+    dn2cpp_slot_missing_report_named("virtual", slotDesc, slotFn);
 }
 
 const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)

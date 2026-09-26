@@ -6028,7 +6028,9 @@ internal sealed partial class CppEmitter
     /// <paramref name="decl"/> declares — <c>itftrap_*</c> for an interface slot,
     /// <c>vtrap_*</c> for a vtable slot — or null when the shape cannot be rendered
     /// (see <see cref="SlotTrapShape"/>). The thunk body never returns: the reporter
-    /// aborts, so a non-void return type needs no value.</summary>
+    /// aborts or throws, so a non-void return type needs no value. Each thunk passes
+    /// its own address, which tells a slot reflection entered directly apart from one
+    /// compiled code reached.</summary>
     internal string? SlotTrapThunk(MethodInfo decl, bool vcall)
     {
         if (SlotTrapShape(decl) is not { } shape)
@@ -6040,7 +6042,7 @@ internal sealed partial class CppEmitter
             ps.AddRange(shape.ParamTypes.Skip(1));
             string body = vcall
                 ? $"dn2cpp_vcall_unimplemented_at((Dn2CppObject*)self, (const void*)&{name});"
-                : "dn2cpp_itf_slot_missing(self);";
+                : $"dn2cpp_itf_slot_missing_at(self, (const void*)&{name});";
             _trapThunkHeader!.AppendLine($"inline {shape.Ret} {name}({string.Join(", ", ps)}) {{ {body} }}");
             if (vcall)
                 _vcallTrapThunks.Add(name);
@@ -6052,11 +6054,12 @@ internal sealed partial class CppEmitter
     /// for an unreached dispatch slot: <paramref name="reporter"/> (a <c>*_named</c>
     /// runtime abort) with <paramref name="desc"/> baked in. Carries the slot's exact
     /// C++ signature when it renders — the wasm type-immediate rule above — and
-    /// degrades to the historical <c>void()</c> form when it cannot.</summary>
+    /// degrades to the historical <c>void()</c> form when it cannot. The stub passes
+    /// its own address, as <see cref="SlotTrapThunk"/>'s thunks do.</summary>
     internal string NamedSlotMissStubDef(string name, string reporter, string desc, MethodInfo decl)
     {
         string lit = desc.Replace("\\", "\\\\").Replace("\"", "\\\"");
-        return SlotStubDef(name, $"{reporter}(\"{lit}\");", decl);
+        return SlotStubDef(name, $"{reporter}(\"{lit}\", (const void*)&{name});", decl);
     }
 
     /// <summary>The statement raising .NET's AmbiguousImplementationException
