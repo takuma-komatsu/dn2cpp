@@ -1436,6 +1436,9 @@ internal sealed partial class Compilation
         public required TypeDesc[] MethodArgs;   // the method's type arguments (closed)
         public required string WantKey;          // open parameter signature, for override template matching
         public int ParamCount;
+        // A callvirt or ldvirtftn names the instantiation; otherwise only reflection
+        // enters the dispatcher, through the row's invoker.
+        public bool CallSite;
         // concrete allocated type -> its override impl (or Gvm itself for the base default).
         public readonly Dictionary<ClassInfo, MethodInfo> Cases = new();
         // Interface GVM receivers whose derived-interface overrides have no most
@@ -1465,11 +1468,15 @@ internal sealed partial class Compilation
     internal static string GvmDispatchName(MethodInfo gvm) => "dn2cpp_gvm_" + gvm.CppName;
 
     /// <summary>Registers a used GVM instantiation and reaches each allocated type's
-    /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).</summary>
-    private void ReachUsedGvm(MethodInfo gvm)
+    /// override at its method args (mirrors <see cref="ReachUsedVirtual"/>).
+    /// <paramref name="callSite"/> is false for a row only reflection enters.</summary>
+    private void ReachUsedGvm(MethodInfo gvm, bool callSite = true)
     {
-        if (_usedGvms.ContainsKey(gvm.CppName))
+        if (_usedGvms.TryGetValue(gvm.CppName, out var known))
+        {
+            known.CallSite |= callSite;
             return;
+        }
         var openParams = gvm.Module.Reader.GetMethodDefinition(gvm.Handle)
             .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
         var disp = new GvmDispatch
@@ -1479,6 +1486,7 @@ internal sealed partial class Compilation
             MethodArgs = gvm.Context.MethodArgs,
             WantKey = string.Join(",", openParams.Select(p => p.ToString())),
             ParamCount = gvm.Signature.ParameterTypes.Length,
+            CallSite = callSite,
         };
         _usedGvms.Add(gvm.CppName, disp);
         foreach (var c in _allocatedRefTypes.ToList())

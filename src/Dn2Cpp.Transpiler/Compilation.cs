@@ -3582,7 +3582,15 @@ internal sealed partial class Compilation
                 continue;
             var methods = cls.Methods;
             for (int i = 0; i < methods.Count; i++)
-                marked |= MarkReflectedSlot(methods[i], named: false);
+            {
+                var m = methods[i];
+                if (IsGvmCall(m))
+                {
+                    marked |= ReachReflectedGvm(cls, m);
+                    continue;
+                }
+                marked |= MarkReflectedSlot(m, named: false);
+            }
         }
         // Type.GetMethod searches the base classes too; an interface only itself.
         for (int i = 0; i < _typeofNamedMembers.Count; i++)
@@ -3601,6 +3609,32 @@ internal sealed partial class Compilation
         }
         if (marked)
             DrainReachability();
+    }
+
+    /// <summary>Registers the dispatcher a closed generic virtual row runs through: the
+    /// row has no slot, so reflection calls the dispatcher a callvirt of the same
+    /// instantiation would. A row on a sealed class or a final row runs its own body,
+    /// and a row a call already dispatches has its dispatcher. The dispatcher falls
+    /// back to the row's own body, so an application row's body is reached; a
+    /// library row with an unreached body has no invoker to enter it.</summary>
+    private bool ReachReflectedGvm(ClassInfo cls, MethodInfo m)
+    {
+        if (cls.IsSealed || (m.Attributes & MethodAttributes.Final) != 0
+            || _usedGvms.ContainsKey(m.CppName)
+            || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || _backend?.ShouldSkipMethodBody(cls, m) == true)
+            return false;
+        foreach (var arg in m.Context.MethodArgs)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return false;
+        if (m.Rva != 0 && !Reachable.Contains(m))
+        {
+            if (cls.Module != AppModule)
+                return false;
+            Reach(m);
+        }
+        ReachUsedGvm(m, callSite: false);
+        return true;
     }
 
     // A value type's row is sealed; an intrinsic type carries no rows.
@@ -4012,6 +4046,7 @@ internal sealed partial class Compilation
     // accessor, or a user body calls CreateDelegate. Triggers the reflection-invoke
     // reachability route after the initial discovery drain.
     private bool _reflectionInvokeUsed;
+    internal bool ReflectionInvokeUsed => _reflectionInvokeUsed;
 
     // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
     // Activator.CreateInstance(Type). Triggers the reflection-ctor route.

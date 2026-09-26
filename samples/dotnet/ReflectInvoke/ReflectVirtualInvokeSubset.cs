@@ -18,8 +18,12 @@ using System.Reflection;
 // application interface's static, non-virtual and private members that nothing
 // calls run as themselves, and its static virtual and abstract members answer as
 // .NET's do. RunStripped (dn2cpp only) reaches bodies the image stripped through
-// each trap shape. RunGenericVirtual calls generic virtual methods directly, a
-// struct's generic interface method through its box and a delegate included.
+// each trap shape. RunGenericVirtual asserts the same for a closed generic virtual
+// row, which has no slot and runs the override a call through it binds: class,
+// abstract, generic-class, base-call-only and MakeGenericType rows, and interface
+// rows over plain, explicit, default, derived-interface and struct bodies. Its
+// direct calls include a struct's generic interface method through its box and a
+// delegate.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -256,6 +260,8 @@ class GvmLeaf : GvmMid
     public override string Pair<T>(T value) => "leaf-pair:" + typeof(T).Name + "=" + value;
 }
 
+class GvmTail : GvmMid { }
+
 // A new slot: GvmRoot's method keeps the root slot, whose most derived body for
 // a GvmHiderLeaf is GvmMid's; GvmHider's method runs the hider chain.
 class GvmHider : GvmMid
@@ -267,6 +273,13 @@ class GvmHiderLeaf : GvmHider
 {
     public override string Tag<T>() => "hider-leaf:" + typeof(T).Name;
 }
+
+class GvmSealed : GvmRoot
+{
+    public sealed override string Tag<T>() => "sealed:" + typeof(T).Name;
+}
+
+class GvmSealedTail : GvmSealed { }
 
 class GvmCovariantBase
 {
@@ -290,6 +303,18 @@ sealed class GvmSquare : GvmShape
     public override string Kind<T>(T value) => "square<" + typeof(T).Name + ">:" + value;
 }
 
+// Only a base call names the root instantiation, so no callvirt dispatches it.
+class GvmQuiet
+{
+    public virtual string Quiet<T>() => "quiet:" + typeof(T).Name;
+}
+
+class GvmLoud : GvmQuiet
+{
+    public override string Quiet<T>() => "loud:" + typeof(T).Name;
+    public string Base() => base.Quiet<long>();
+}
+
 class GvmBox<T>
 {
     public virtual string Show<U>(T first, U second) => "box:" + first + "/" + second;
@@ -302,10 +327,37 @@ class GvmWrapper<T> : GvmBox<T>
         "wrapper<" + typeof(T).Name + "," + typeof(U).Name + ">:" + first + "/" + second;
 }
 
+// Only typeof names this definition, so MakeGenericType mints the instance.
+class GvmMinted<T> : GvmRoot
+{
+    public override string Tag<U>() => "minted:" + typeof(T).Name + "/" + typeof(U).Name;
+}
+
 interface IGvmPick
 {
     string Pick<T>();
     string Fallback<T>() => "fallback:" + typeof(T).Name;
+}
+
+class GvmPlainPick : IGvmPick
+{
+    public string Pick<T>() => "plain:" + typeof(T).Name;
+}
+
+class GvmExplicitPick : IGvmPick
+{
+    string IGvmPick.Pick<T>() => "explicit:" + typeof(T).Name;
+    string IGvmPick.Fallback<T>() => "explicit-fallback:" + typeof(T).Name;
+}
+
+class GvmVirtualPick : IGvmPick
+{
+    public virtual string Pick<T>() => "virtual:" + typeof(T).Name;
+}
+
+class GvmOverridePick : GvmVirtualPick
+{
+    public override string Pick<T>() => "override:" + typeof(T).Name;
 }
 
 // The interface maps to this abstract level's method, which no call names.
@@ -324,6 +376,16 @@ struct GvmStructPick : IGvmPick
     public int Id;
 
     public string Pick<T>() => "struct:" + Id + ":" + typeof(T).Name;
+}
+
+interface IGvmFancyPick : IGvmPick
+{
+    string IGvmPick.Fallback<T>() => "fancy-fallback:" + typeof(T).Name;
+}
+
+class GvmFancyPick : IGvmFancyPick
+{
+    public string Pick<T>() => "fancy:" + typeof(T).Name;
 }
 
 static class Program
@@ -673,6 +735,15 @@ static class Program
         Console.WriteLine("virtual invoke end");
     }
 
+    private static MethodInfo Generic(Type type, string name, Type argument) =>
+        type.GetMethod(name)!.MakeGenericMethod(argument);
+
+    private static string Bound(object receiver, MethodInfo row)
+    {
+        var bound = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), receiver, row);
+        return bound() + "/" + Describe(bound.Method);
+    }
+
     internal static void RunGenericVirtual()
     {
         Console.WriteLine("== generic virtual invoke ==");
@@ -691,6 +762,68 @@ static class Program
             + "|" + ((IGvmPick)new GvmConcretePick()).Pick<int>());
         Func<string> boxedPick = boxed.Pick<int>;
         Try("interface delegate, struct", () => boxedPick() + "/" + Describe(boxedPick.Method));
+
+        MethodInfo rootTag = Generic(typeof(GvmRoot), "Tag", typeof(int));
+        Try("root row, leaf", () => rootTag.Invoke(new GvmLeaf(), null));
+        Try("root row, leaf, reference argument", () => Generic(typeof(GvmRoot), "Tag", typeof(string)).Invoke(new GvmLeaf(), null));
+        Try("root row, inherited override", () => rootTag.Invoke(new GvmTail(), null));
+        Try("root row, own body", () => rootTag.Invoke(new GvmRoot(), null));
+        Try("mid row, leaf", () => Generic(typeof(GvmMid), "Tag", typeof(int)).Invoke(new GvmLeaf(), null));
+        Try("root row, argument", () => Generic(typeof(GvmRoot), "Pair", typeof(int)).Invoke(new GvmLeaf(), new object[] { 5 }));
+        Try("root row, reference argument value", () => Generic(typeof(GvmRoot), "Pair", typeof(string)).Invoke(new GvmLeaf(), new object[] { "s" }));
+        Try("root row, hider leaf", () => rootTag.Invoke(new GvmHiderLeaf(), null));
+        Try("hider row, hider leaf", () => Generic(typeof(GvmHider), "Tag", typeof(int)).Invoke(new GvmHiderLeaf(), null));
+        Try("root row, sealed tail", () => rootTag.Invoke(new GvmSealedTail(), null));
+        Try("covariant row, leaf", () => Generic(typeof(GvmCovariantBase), "Make", typeof(int)).Invoke(new GvmCovariantLeaf(), null));
+
+        MethodInfo kind = Generic(typeof(GvmShape), "Kind", typeof(int));
+        Try("abstract row", () => kind.Invoke(new GvmSquare(), new object[] { 3 }));
+        Try("abstract row, reference argument", () => Generic(typeof(GvmShape), "Kind", typeof(string)).Invoke(new GvmSquare(), new object[] { "x" }));
+        Fault("abstract row, null receiver", () => kind.Invoke(null, new object[] { 3 }));
+        Fault("abstract row, wrong receiver", () => kind.Invoke(new GvmLeaf(), new object[] { 3 }));
+        Fault("abstract row, wrong argument", () => kind.Invoke(new GvmSquare(), new object[] { "3" }));
+
+        var loud = new GvmLoud();
+        Try("base call", () => loud.Base());
+        Try("base-call row, override", () => Generic(typeof(GvmQuiet), "Quiet", typeof(long)).Invoke(loud, null));
+
+        Try("generic class row, reference class argument", () => Generic(typeof(GvmBox<string>), "Show", typeof(int))
+            .Invoke(new GvmWrapper<string>(), new object[] { "a", 1 }));
+        Try("generic class row, value class argument", () => Generic(typeof(GvmBox<int>), "Show", typeof(string))
+            .Invoke(new GvmWrapper<int>(), new object[] { 2, "b" }));
+        Try("generic class row, own body", () => Generic(typeof(GvmBox<int>), "Show", typeof(string))
+            .Invoke(new GvmBox<int>(), new object[] { 3, "c" }));
+
+        object minted = Activator.CreateInstance(typeof(GvmMinted<>).MakeGenericType(typeof(long)))!;
+        Try("minted receiver", () => rootTag.Invoke(minted, null));
+
+        MethodInfo pick = Generic(typeof(IGvmPick), "Pick", typeof(int));
+        MethodInfo fallback = Generic(typeof(IGvmPick), "Fallback", typeof(int));
+        Try("interface row, plain", () => pick.Invoke(new GvmPlainPick(), null));
+        Try("interface row, explicit", () => pick.Invoke(new GvmExplicitPick(), null));
+        Try("interface row, class override", () => pick.Invoke(new GvmOverridePick(), null));
+        Try("interface row, struct", () => pick.Invoke(new GvmStructPick { Id = 4 }, null));
+        Try("interface row, reference argument", () => Generic(typeof(IGvmPick), "Pick", typeof(string)).Invoke(new GvmExplicitPick(), null));
+        Try("abstract implementation row", () => Generic(typeof(GvmAbstractPick), "Pick", typeof(int)).Invoke(new GvmConcretePick(), null));
+        Try("default row, inherited default", () => fallback.Invoke(new GvmPlainPick(), null));
+        Try("default row, explicit body", () => fallback.Invoke(new GvmExplicitPick(), null));
+        Try("default row, derived interface body", () => fallback.Invoke(new GvmFancyPick(), null));
+        Try("default row, struct", () => fallback.Invoke(new GvmStructPick { Id = 5 }, null));
+        Fault("interface row, wrong receiver", () => pick.Invoke(new GvmLeaf(), null));
+
+        Try("closed delegate, root row", () => Bound(new GvmLeaf(), rootTag));
+        Try("closed delegate, inherited override", () => Bound(new GvmTail(), rootTag));
+        Try("closed delegate, own body", () => Bound(new GvmRoot(), rootTag));
+        Try("closed delegate, hider leaf", () => Bound(new GvmHiderLeaf(), rootTag));
+        Try("closed delegate, base-call row", () => Bound(new GvmLoud(), Generic(typeof(GvmQuiet), "Quiet", typeof(long))));
+        var toKind = (Func<int, string>)Delegate.CreateDelegate(typeof(Func<int, string>), new GvmSquare(), kind);
+        Try("closed delegate, abstract row", () => toKind(6) + "/" + Describe(toKind.Method));
+        var toMinted = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), minted, rootTag);
+        Try("closed delegate, minted receiver", () => toMinted() + "/" + (toMinted.Method.DeclaringType == minted.GetType()));
+        Try("closed delegate, interface row", () => Bound(new GvmExplicitPick(), pick));
+        Try("closed delegate, interface row override", () => Bound(new GvmOverridePick(), pick));
+        Try("closed delegate, default row", () => Bound(new GvmPlainPick(), fallback));
+        Try("closed delegate, derived interface default", () => Bound(new GvmFancyPick(), fallback));
 
         Console.WriteLine("generic virtual invoke end");
     }

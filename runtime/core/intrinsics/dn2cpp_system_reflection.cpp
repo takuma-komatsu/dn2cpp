@@ -2611,6 +2611,40 @@ void dn2cpp_reflective_slot_check(const void* slotFn)
     dn2cpp_throw_invoker_missing(message);
 }
 
+// The dispatcher a closed generic virtual row runs through, or null when the row
+// runs its own body: a static, non-virtual or final row, or one no dispatcher serves.
+// The table is sorted by token. A decoded row's argument vector is a copy, so the
+// arguments compare element-wise.
+static const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row)
+{
+    if (row.genericParamCount == 0 || row.genericArgs == nullptr || (row.attrs & DN2CPP_MTHA_STATIC) != 0
+        || (row.ilAttrs & DN2CPP_MA_VIRTUAL) == 0 || (row.ilAttrs & DN2CPP_MA_FINAL) != 0)
+        return nullptr;
+    int32_t lo = 0;
+    int32_t hi = dn2cpp_gvm_row_dispatch_count;
+    while (lo < hi)
+    {
+        const int32_t mid = lo + (hi - lo) / 2;
+        if (dn2cpp_gvm_row_dispatch[mid].identity.metadataToken < row.metadataToken)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    for (int32_t i = lo; i < dn2cpp_gvm_row_dispatch_count
+         && dn2cpp_gvm_row_dispatch[i].identity.metadataToken == row.metadataToken; i++)
+    {
+        const Dn2CppDelegateMethodIdentity& identity = dn2cpp_gvm_row_dispatch[i].identity;
+        if (identity.declaringType != row.declaringType || identity.genericArgCount != row.genericParamCount)
+            continue;
+        int32_t arg = 0;
+        while (arg < row.genericParamCount && identity.genericArgs[arg] == row.genericArgs[arg])
+            arg++;
+        if (arg == row.genericParamCount)
+            return &dn2cpp_gvm_row_dispatch[i];
+    }
+    return nullptr;
+}
+
 template<class Method>
 static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi,
     const Method& row, Dn2CppObject* obj, Dn2CppObject** args, int32_t argc, bool wrapExceptions,
@@ -2671,10 +2705,13 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // handle) runs the row's own body: System.Object and System.ValueType carry no
     // rows and an enum declares no methods. A static or non-virtual interface member
     // runs its own body: its row carries a map index no receiver's map fills for it.
-    // Reachability cannot fill every framework row's slots, so the receiver's slot
-    // may hold a trap for a body the image stripped, which reports itself through
-    // the entered slot (dn2cpp_reflective_slot_check); an interface map miss stays
-    // its own loud abort.
+    // A closed generic virtual row has no slot; it runs through the dispatcher a
+    // callvirt of the same instantiation calls, which takes the row's signature and
+    // selects on the receiver's type, boxes included. Reachability cannot fill every
+    // framework row's slots, so the receiver's slot or the dispatcher may hold a
+    // trap for a body the image stripped, which reports itself through the entered
+    // slot (dn2cpp_reflective_slot_check); an interface map miss stays its own loud
+    // abort.
     void* fn = row.fnPtr;
     const Dn2CppTypeInfo* declaring = row.declaringType;
     if (obj != nullptr && row.vtableSlot >= 0)
@@ -2686,6 +2723,11 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         }
         else if ((declaring->flags & DN2CPP_TF_VALUETYPE) == 0 && obj->type->vtable != nullptr)
             fn = const_cast<void*>(obj->type->vtable[row.vtableSlot]);
+    }
+    else if (obj != nullptr && row.genericParamCount != 0 && !isStatic)
+    {
+        if (const Dn2CppGvmRowDispatch* dispatch = dn2cpp_gvm_row_dispatch_of(*mi))
+            fn = dispatch->dispatcher;
     }
     if (fn == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2956,12 +2998,14 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         dn2cpp_throw_static_virtual_entry_point();
     // The shape binds; only now can the image refuse. A bodiless virtual row
     // (abstract or interface) binds the receiver's slot at each call, as
-    // MethodInfo.Invoke does. A boxed value has no vtable, so a class row bound to
-    // one runs its own body.
+    // MethodInfo.Invoke does, and a generic virtual row its dispatcher. A boxed
+    // value has no vtable, so a class row bound to one runs its own body.
     bool slotBound = !mStatic && mi->vtableSlot >= 0 && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
         && ((declTi->flags & DN2CPP_TF_INTERFACE) != 0
             || ((declTi->flags & DN2CPP_TF_VALUETYPE) == 0
                 && (target == nullptr || target->type->vtable != nullptr)));
+    if (!slotBound && !mStatic && mi->genericParamCount != 0)
+        slotBound = dn2cpp_gvm_row_dispatch_of(*mi) != nullptr;
     if (!staticVirtual && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the target method's body was not compiled into this image");
@@ -3383,10 +3427,20 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_reflbind_method(const Dn2Cp
     if (bind->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || bind->target == nullptr)
         return mi;
     const Dn2CppMethodInfo decl = *mi;
-    if (decl.vtableSlot < 0 || decl.genericParamCount != 0)
-        return mi;
     const Dn2CppTypeInfo* owner = decl.declaringType;
     const Dn2CppTypeInfo* receiver = bind->target->type;
+    // A generic virtual row names the body its dispatcher selects for the receiver;
+    // a receiver without a recorded case runs the row's own body.
+    if (decl.genericParamCount != 0)
+    {
+        const Dn2CppGvmRowDispatch* dispatch = dn2cpp_gvm_row_dispatch_of(decl);
+        if (dispatch == nullptr)
+            return mi;
+        const auto hit = dn2cpp_delegate_recorded_target(receiver, owner, &dispatch->identity);
+        return hit ? hit : mi;
+    }
+    if (decl.vtableSlot < 0)
+        return mi;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> hit{};
     if ((owner->flags & DN2CPP_TF_INTERFACE) != 0)
     {

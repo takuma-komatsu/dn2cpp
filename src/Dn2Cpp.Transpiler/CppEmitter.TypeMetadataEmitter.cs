@@ -1007,6 +1007,7 @@ internal sealed partial class CppEmitter
             _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
             EmitDelegateIdentities();
+            EmitGvmRowDispatch();
 
             // Last statement of the emission, and it has to be: this object is unreferenced
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
@@ -1045,28 +1046,9 @@ internal sealed partial class CppEmitter
                 int targetCount = 0;
                 if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
                 {
-                    // The dispatcher's branches, template levels included: the
-                    // runtime looks a clone up by its template level.
-                    var targets = disp.Cases
-                        .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
-                            && !_e.SkipsCanonicalMetadata(kv.Key)
-                            && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
-                        .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
-                        .ToList();
-                    if (targets.Count > 0)
-                    {
+                    targetCount = EmitGvmTargets(disp, sym + "_gvm_targets");
+                    if (targetCount > 0)
                         targetsExpr = sym + "_gvm_targets";
-                        targetCount = targets.Count;
-                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
-                        foreach (var (receiver, target) in targets)
-                        {
-                            string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
-                            string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
-                            int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
-                            _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
-                        }
-                        _sb.AppendLine("};");
-                    }
                 }
                 else if (isVirtual && owner.IsInterface)
                 {
@@ -1109,6 +1091,79 @@ internal sealed partial class CppEmitter
                     + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")}, "
                     + $"{targetCount}, {targetsExpr} }};");
             }
+            _sb.AppendLine();
+        }
+
+        /// <summary>Emits a dispatcher's branches as the delegate method targets
+        /// <paramref name="symbol"/> names, template levels included: the runtime looks a
+        /// clone up by its template level. Returns how many; none emits no array.</summary>
+        private int EmitGvmTargets(Compilation.GvmDispatch disp, string symbol)
+        {
+            var targets = disp.Cases
+                .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
+                    && !_e.SkipsCanonicalMetadata(kv.Key)
+                    && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
+                .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
+                .ToList();
+            if (targets.Count == 0)
+                return 0;
+            _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {symbol}[] = {{");
+            foreach (var (receiver, target) in targets)
+            {
+                string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
+                string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
+                int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+                _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
+            }
+            _sb.AppendLine("};");
+            return targets.Count;
+        }
+
+        /// <summary>The dispatcher a generic virtual method row runs through when
+        /// reflection enters it (<c>dn2cpp_gvm_row_dispatch</c>), keyed by the row's
+        /// declaring type, token and generic arguments, spelled as the row spells them,
+        /// with the targets <c>Delegate.Method</c> reports. Sorted by token, then owner and
+        /// method, so the runtime bisects on the token. A final row or a sealed class's
+        /// row runs its own body. The symbols always link; entries emit only when
+        /// reflection can enter a row.</summary>
+        private void EmitGvmRowDispatch()
+        {
+            var rows = new List<Compilation.GvmDispatch>();
+            if (_c.ReflectionInvokeUsed || _c.NeedsReflectionDelegateBind || _e._hotUpdateBase)
+                foreach (var disp in _c.UsedGvms)
+                {
+                    var gvm = disp.Gvm;
+                    if (_memberAddr.ContainsKey(gvm) && (gvm.Attributes & System.Reflection.MethodAttributes.Final) == 0
+                        && !gvm.DeclaringClass.IsSealed && _e.EmitsGvmDispatcher(disp))
+                        rows.Add(disp);
+                }
+            var entries = new List<string>(rows.Count);
+            foreach (var disp in rows
+                         .OrderBy(d => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(d.Gvm.Handle))
+                         .ThenBy(d => d.Gvm.DeclaringClass.CppName, System.StringComparer.Ordinal)
+                         .ThenBy(d => d.Gvm.CppName, System.StringComparer.Ordinal))
+            {
+                var gvm = disp.Gvm;
+                string name = Compilation.GvmDispatchName(gvm);
+                string targetsExpr = "gvmrow_targets_" + entries.Count;
+                int targetCount = EmitGvmTargets(disp, targetsExpr);
+                var gargs = new List<string>(gvm.Context.MethodArgs.Length);
+                foreach (var ga in gvm.Context.MethodArgs)
+                    gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
+                int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(gvm.Handle);
+                entries.Add($"    {{ {{ {_e.TypeInfoRef(gvm.DeclaringClass, "generic virtual row dispatch owner")}, "
+                    + $"{token}, {gargs.Count}, {TypeArgumentVector(string.Join(", ", gargs))}, true, "
+                    + $"{targetCount}, {(targetCount > 0 ? targetsExpr : "nullptr")} }}, (void*)&{name} }},");
+                _e._reflectedGvmDispatchers.Add(name);
+            }
+            if (entries.Count == 0)
+                entries.Add("    { { nullptr, 0, 0, nullptr, false, 0, nullptr }, nullptr },");
+            _sb.AppendLine("// ---- generic virtual row dispatch ----");
+            _sb.AppendLine("extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[] = {");
+            foreach (var entry in entries)
+                _sb.AppendLine(entry);
+            _sb.AppendLine("};");
+            _sb.AppendLine($"extern const int32_t dn2cpp_gvm_row_dispatch_count = {rows.Count};");
             _sb.AppendLine();
         }
 

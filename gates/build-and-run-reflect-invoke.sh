@@ -135,8 +135,15 @@
 # only open and finds no entry point when called. With DN2CPP_STRIPPED_OVERRIDES=1 it asserts dn2cpp alone: a
 # receiver's body the image stripped raises a catchable NotSupportedException naming
 # the member and the remedy, for every trap shape a vtable or interface slot holds.
-# Its generic virtual section calls generic virtual methods directly, a struct's
-# generic interface method through its box and a delegate included.
+# Its generic virtual section asserts the same for a closed generic virtual row,
+# which has no slot and runs the override a call through it binds: class rows over
+# inherited overrides, new-slot hiders, sealed and covariant overrides, abstract
+# rows (which check the receiver and arguments first), a row only a base call
+# names, generic-class rows over shared and value arguments, a MakeGenericType
+# receiver, and interface rows over plain, explicit, class-override, abstract-level,
+# default, derived-interface and struct bodies; a closed binding reports the body it
+# runs. Its direct calls include a struct's generic interface method through its box
+# and a delegate.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -397,6 +404,21 @@ gate_extra_asserts() {
     grep -Fxq '== generic virtual invoke ==' "$out/metadata-layout.stdout"
     grep -Fxq 'direct interface calls: struct:9:Int32|struct:9:String|fallback:Int32|concrete:Int32' "$out/metadata-layout.stdout"
     grep -Fxq 'interface delegate, struct: struct:9:Int32/GvmStructPick.Pick' "$out/metadata-layout.stdout"
+    grep -Fxq 'root row, leaf: leaf:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'mid row, leaf: leaf:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'root row, hider leaf: mid:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'hider row, hider leaf: hider-leaf:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'abstract row, reference argument: square<String>:x' "$out/metadata-layout.stdout"
+    grep -Fxq 'base-call row, override: loud:Int64' "$out/metadata-layout.stdout"
+    grep -Fxq 'generic class row, value class argument: wrapper<Int32,String>:2/b' "$out/metadata-layout.stdout"
+    grep -Fxq 'minted receiver: minted:Int64/Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface row, struct: struct:4:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'abstract implementation row: concrete:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'default row, derived interface body: fancy-fallback:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, root row: leaf:Int32/GvmLeaf.Tag' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, abstract row: square<Int32>:6/GvmSquare.Kind' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, minted receiver: minted:Int64/Int32/True' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, derived interface default: fancy-fallback:Int32/IGvmFancyPick.ReflectVirtualInvokeSubset.IGvmPick.Fallback' "$out/metadata-layout.stdout"
     grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"

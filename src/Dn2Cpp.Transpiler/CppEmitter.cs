@@ -5793,7 +5793,7 @@ internal sealed partial class CppEmitter
     /// at run time is a real member, and a real member that can exist is allocated.</summary>
     private void EmitGvmDispatchers(CppOutput o)
     {
-        var dispatchers = _c.UsedGvms.ToList();
+        var dispatchers = _c.UsedGvms.Where(EmitsGvmDispatcher).ToList();
         if (dispatchers.Count == 0)
             return;
         o.Header.AppendLine("// ---- generic virtual method dispatchers ----");
@@ -5903,6 +5903,10 @@ internal sealed partial class CppEmitter
                 o.Data.AppendLine($"    {Stmt(gvm)}");
             else
             {
+                // Entered through its row, a receiver without a case is a body the
+                // image stripped, which reflection reports as catchable.
+                if (_reflectedGvmDispatchers.Contains(name))
+                    o.Data.AppendLine($"    dn2cpp_reflective_slot_check((const void*)&{name});");
                 o.Data.AppendLine("    __builtin_trap();");
                 if (ret != "void")
                     // A by-value struct return cannot take a C-style cast from 0
@@ -5918,6 +5922,36 @@ internal sealed partial class CppEmitter
         }
         o.Header.AppendLine();
         o.Data.AppendLine();
+    }
+
+    /// <summary>The dispatchers the reflection row table names, which a row's invoker
+    /// enters. Filled by the type metadata, which is emitted first.</summary>
+    private readonly HashSet<string> _reflectedGvmDispatchers = new(StringComparer.Ordinal);
+
+    /// <summary>Whether <see cref="EmitGvmDispatchers"/> emits the dispatcher. A call
+    /// site names it; a dispatcher only reflection enters must compile over its row's
+    /// signature, which a reached row's body already names and a bodiless row's may
+    /// not.</summary>
+    internal bool EmitsGvmDispatcher(Compilation.GvmDispatch disp)
+    {
+        if (disp.CallSite || _c.Reachable.Contains(disp.Gvm))
+            return true;
+        var sig = disp.Gvm.Signature;
+        try
+        {
+            if (!StructDeclared(disp.Decl.CppStructName, DeclaredStructNames)
+                || !sig.ReturnType.IsVoid && !StructDeclared(CppTypes.Of(sig.ReturnType), DeclaredStructNames))
+                return false;
+            foreach (var p in sig.ParameterTypes)
+                if (!StructDeclared(CppTypes.Of(p), DeclaredStructNames))
+                    return false;
+            return true;
+        }
+        // InstantiationBoundException IS a NotSupportedException.
+        catch (NotSupportedException e) when (!Compilation.IsMustEscape(e))
+        {
+            return false;
+        }
     }
 
     /// <summary>The C++ return types that are handed back in registers, so the emitted

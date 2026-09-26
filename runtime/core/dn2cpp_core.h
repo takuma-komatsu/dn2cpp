@@ -1081,6 +1081,18 @@ struct Dn2CppDelegateMethodIdentity
     const Dn2CppDelegateMethodTarget* targets;
 };
 
+// A generic virtual method row has no slot: reflection enters it through the
+// dispatcher a callvirt of the same instantiation calls, whose C++ signature is the
+// row's. Sorted by metadata token; the identity carries the targets the dispatcher
+// selects. A single null row when reflection enters none, so the symbols link.
+struct Dn2CppGvmRowDispatch
+{
+    Dn2CppDelegateMethodIdentity identity;
+    void* dispatcher;
+};
+extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
+extern const int32_t dn2cpp_gvm_row_dispatch_count;
+
 // Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).
 struct Dn2CppDelegate : Dn2CppObject
