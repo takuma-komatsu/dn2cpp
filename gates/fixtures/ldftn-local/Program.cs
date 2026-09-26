@@ -37,8 +37,13 @@ var deadOrigins = Find("DeadOrigins");
 var virtualStored = Find("VirtualStored");
 var instanceStored = Find("InstanceStored");
 var int64Stored = Find("Int64Stored");
+var sealedInterface = Find("SealedInterface");
+var sealedGenericInterface = Find("SealedGenericInterface");
 var scale = FindOn("VirtualBase", "Scale");
 var offset = FindOn("InstanceHolder", "Offset");
+var sealedScale = FindOn("ISealedScale", "Scale");
+var sealedShift = new GenericInstanceMethod(FindOn("ISealedScale", "Shift"));
+sealedShift.GenericArguments.Add(module.TypeSystem.Int32);
 
 MethodReference DelegateCtor(MethodDefinition method)
 {
@@ -227,6 +232,19 @@ MethodBody Body(MethodDefinition method, bool pointerLocal)
     il.Emit(OpCodes.Ldloc_0);
     il.Emit(OpCodes.Conv_U);
     il.Emit(OpCodes.Newobj, DelegateCtor(int64Stored));
+    il.Emit(OpCodes.Ret);
+}
+
+// C# loads a sealed interface member with ldftn; ldvirtftn of one binds its own
+// body as well, whatever virtual of its signature the receiver's class declares.
+foreach (var (stub, target) in new[] { (sealedInterface, (MethodReference)sealedScale),
+    (sealedGenericInterface, sealedShift) })
+{
+    var il = Body(stub, pointerLocal: false).GetILProcessor();
+    il.Emit(OpCodes.Ldarg_0);
+    il.Emit(OpCodes.Dup);
+    il.Emit(OpCodes.Ldvirtftn, target);
+    il.Emit(OpCodes.Newobj, DelegateCtor(stub));
     il.Emit(OpCodes.Ret);
 }
 

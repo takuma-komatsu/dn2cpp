@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
-# while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
+# while PreserveAttribute and merged Unity-format link.xml keep selected bodies. A
+# reflection trigger bound only as a method group keeps what a call to it keeps.
 source "$(dirname "$0")/_common.sh"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 
@@ -205,7 +206,7 @@ else
     gate_cache_commit
 fi
 
-echo "== IL dispatch, initialization, layout and type-token reflection construction retain .NET behavior after stripping =="
+echo "== IL dispatch, initialization, layout and reflection construction through type tokens and attribute Type arguments retain .NET behavior after stripping =="
 DIET_LIB="samples/dotnet/ILDietControlLib/bin/$CONFIG/$TFM/ILDietControlLib.dll"
 corelib_diff_gate ILDietControl -r "$DIET_LIB"
 DIET_OUT="$_CG_OUT"
@@ -213,10 +214,13 @@ DIET_APP="$_CG_APP"
 original_diet_app=$(dotnet exec "$PROBE" "$DIET_APP")
 stripped_diet_app=$(dotnet exec "$PROBE" "$DIET_OUT/ildiet/ILDietControl.dll")
 for row in 'method ILDietControl.Loose::.ctor' 'method ILDietControl.Box`1::.ctor' \
-        'method ILDietControl.Seeded::.ctor'; do
+        'method ILDietControl.Seeded::.ctor' 'method ILDietControl.ByArgument::.ctor' \
+        'method ILDietControl.ByField::.ctor' 'method ILDietControl.ByProperty::.ctor' \
+        'method ILDietControl.ByArrayFirst::.ctor' 'method ILDietControl.ByArraySecond::.ctor' \
+        'method ILDietControl.ByObject::.ctor'; do
     kept=$(grep -Fxc "$row" <<<"$stripped_diet_app" || true)
     [ "$kept" -gt 0 ] && [ "$kept" = "$(grep -Fxc "$row" <<<"$original_diet_app")" ] \
-        || { echo "FAIL: ILDiet removed a type-token-selected constructor: $row" >&2; exit 1; }
+        || { echo "FAIL: ILDiet removed a constructor reflection can select: $row" >&2; exit 1; }
 done
 grep -Fxq 'method ILDietControl.CalledOnly::.ctor' <<<"$original_diet_app" \
     || { echo "FAIL: original fixture is missing CalledOnly's constructor" >&2; exit 1; }
@@ -242,6 +246,10 @@ for row in 'method ILDietControlLib.Base::UnusedPrivate' \
 done
 [ -f "${DIET_LIB%.dll}.pdb" ] && [ ! -e "$DIET_OUT/ildiet/ILDietControlLib.pdb" ] \
     || { echo "FAIL: rewritten DLL retained stale debug symbols" >&2; exit 1; }
+
+echo "== Reflection triggers bound only as method groups keep the constructors a call keeps =="
+# build-and-run-reflect-invoke.sh diffs the same program without ILDiet.
+DN2CPP_OUT_SUFFIX="${DN2CPP_OUT_SUFFIX:-}-ildiet" corelib_diff_gate ReflectGroupOnly
 
 echo "== Failed stripping preserves the last complete output and unrelated directories =="
 TRANSACTION="$STALE_ROOT/transaction"

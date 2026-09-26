@@ -257,6 +257,39 @@ internal sealed partial class MethodCompiler
                 return true;
             }
 
+            // The 64-bit overloads, GetLongLength and the constant ICollection/IList
+            // properties are plain managed code over the members lowered below: call the
+            // real body. Ahead of every Array arm, since the Copy/GetValue/SetValue arms
+            // would otherwise also take the Int64 shapes.
+            case ("System.Array", _) when CoreIntrinsics.IsArrayRealBodyMember(declType, name, sig):
+            {
+                if (Comp.ReachArrayMethod(name, sig) is not { } body)
+                    return false;
+                // A direct call even for the interface-implementing properties (virtual
+                // final in IL): an array's type-info carries no vtable to dispatch
+                // through. A callvirt still owes the receiver's null check, emitted on
+                // its own because a constant body folds its receiver away.
+                if (!body.IsStatic && CallIsVirtual)
+                {
+                    var receiver = _stack[_stack.Count - 1 - body.Signature.ParameterTypes.Length];
+                    Emit($"dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")});");
+                }
+                EmitManagedCall(body, isCallvirt: false);
+                return true;
+            }
+            // Array.ConstrainedCopy: Array.Copy's checks, then only a copy that needs no
+            // per-element boxing, unboxing, widening or cast — anything else is refused
+            // before an element moves.
+            case ("System.Array", "ConstrainedCopy") when sig.ParameterTypes.Length == 5:
+            {
+                var len = Pop();
+                var dstIdx = Pop();
+                var dst = Pop();
+                var srcIdx = Pop();
+                var src = Pop();
+                EmitArrayCopy(src, srcIdx.Expr, dst, dstIdx.Expr, len.Expr, reliable: true);
+                return true;
+            }
             // Array.Copy: the real body checks array covariance via MethodTable
             // internals we don't model. Element repr is tracked statically (an
             // element-sized array reuses the ref type-info at runtime), so emit a
@@ -518,64 +551,63 @@ internal sealed partial class MethodCompiler
             // per-dimension lengths/lowerBounds + rank. A 1-D array receiver
             // (Dn2CppArray, no lengths[]) routes to the vector form — GetLength(0)
             // is its length, lower bound 0, rank 1.
-            case ("System.Array", "GetLength") when sig.ParameterTypes.Length == 1:
+            // Every form checks a null receiver (NullReferenceException) and the
+            // dimension against the rank (IndexOutOfRangeException), as .NET does.
+            case ("System.Array", "GetLength" or "GetLowerBound" or "GetUpperBound")
+                when sig.ParameterTypes.Length == 1:
             {
                 var dim = Pop();
                 var arr = Pop();
                 // A receiver whose static type degraded to System.Array/object
                 // (reflection-produced arrays) dispatches on the runtime
                 // type-info — it may be an MD array under the hood.
+                string query = name switch
+                {
+                    "GetLength" => "length",
+                    "GetLowerBound" => "lower_bound",
+                    _ => "upper_bound",
+                };
+                string d = Cast(dim, "int32_t");
                 Push(StackKind.I4, "int32_t", arr.CppType == "Dn2CppMDArray*"
-                    ? $"((Dn2CppMDArray*)({arr.Expr}))->lengths[{dim.Expr}]"
+                    ? $"dn2cpp_md_get_{query}((Dn2CppMDArray*)({arr.Expr}), {d})"
                     : ArrayRepOfCppTypeOrNull(arr.CppType) is not null
-                        ? $"dn2cpp_array_length((Dn2CppArray*)({arr.Expr}))"
-                        : $"dn2cpp_array_get_length_dyn({Cast(arr, "Dn2CppObject*")}, {Cast(dim, "int32_t")})");
-                return true;
-            }
-            case ("System.Array", "GetLowerBound") when sig.ParameterTypes.Length == 1:
-            {
-                var dim = Pop();
-                var arr = Pop();
-                Push(StackKind.I4, "int32_t", arr.CppType == "Dn2CppMDArray*"
-                    ? $"((Dn2CppMDArray*)({arr.Expr}))->lowerBounds[{dim.Expr}]"
-                    : ArrayRepOfCppTypeOrNull(arr.CppType) is not null
-                        ? "0"
-                        : $"dn2cpp_array_get_lower_bound_dyn({Cast(arr, "Dn2CppObject*")}, {Cast(dim, "int32_t")})");
-                return true;
-            }
-            case ("System.Array", "GetUpperBound") when sig.ParameterTypes.Length == 1:
-            {
-                var dim = Pop();
-                var arr = Pop();
-                string md = $"((Dn2CppMDArray*)({arr.Expr}))";
-                Push(StackKind.I4, "int32_t", arr.CppType == "Dn2CppMDArray*"
-                    ? $"({md}->lowerBounds[{dim.Expr}] + {md}->lengths[{dim.Expr}] - 1)"
-                    : ArrayRepOfCppTypeOrNull(arr.CppType) is not null
-                        ? $"(dn2cpp_array_length((Dn2CppArray*)({arr.Expr})) - 1)"
-                        : $"dn2cpp_array_get_upper_bound_dyn({Cast(arr, "Dn2CppObject*")}, {Cast(dim, "int32_t")})");
+                        ? $"dn2cpp_sz_get_{query}((Dn2CppArray*)({arr.Expr}), {d})"
+                        : $"dn2cpp_array_get_{query}_dyn({Cast(arr, "Dn2CppObject*")}, {d})");
                 return true;
             }
             case ("System.Array", "get_Rank"):
             {
                 var arr = Pop();
                 Push(StackKind.I4, "int32_t", arr.CppType == "Dn2CppMDArray*"
-                    ? $"((Dn2CppMDArray*)({arr.Expr}))->rank"
+                    ? $"dn2cpp_md_rank((Dn2CppMDArray*)({arr.Expr}))"
                     : ArrayRepOfCppTypeOrNull(arr.CppType) is not null
-                        ? "1"
+                        ? $"dn2cpp_sz_rank((Dn2CppArray*)({arr.Expr}))"
                         : $"dn2cpp_array_rank_dyn({Cast(arr, "Dn2CppObject*")})");
                 return true;
             }
-            case ("System.Array", "get_Length"):
+            case ("System.Array", "get_Length" or "get_LongLength"):
             {
                 var arr = Pop();
                 // The SZArray arm reads the length field, which is itself the
                 // dereference — dn2cpp_array_length carries the null check an inline
                 // read has no room for, like the ldlen lowering.
-                Push(StackKind.I4, "int32_t", arr.CppType == "Dn2CppMDArray*"
+                string len = arr.CppType == "Dn2CppMDArray*"
                     ? $"dn2cpp_md_total_length((Dn2CppMDArray*)({arr.Expr}))"
                     : ArrayRepOfCppTypeOrNull(arr.CppType) is not null
                         ? $"dn2cpp_array_length((Dn2CppArray*)({arr.Expr}))"
-                        : $"dn2cpp_array_length_dyn({Cast(arr, "Dn2CppObject*")})");
+                        : $"dn2cpp_array_length_dyn({Cast(arr, "Dn2CppObject*")})";
+                if (name == "get_Length")
+                    Push(StackKind.I4, "int32_t", len);
+                else
+                    Push(StackKind.I8, "int64_t", $"(int64_t)({len})");
+                return true;
+            }
+            // Array.Initialize: runs the element type's explicit parameterless constructor
+            // over every element of a value-type array; any other element type is a no-op
+            // beyond the receiver's null check.
+            case ("System.Array", "Initialize") when sig.ParameterTypes.Length == 0:
+            {
+                EmitArrayInitialize(Pop());
                 return true;
             }
             // Non-generic Array.GetValue/SetValue — the reflection element accessors. The
@@ -678,6 +710,16 @@ internal sealed partial class MethodCompiler
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_array_create_instance_from_arraytype({Cast(t, "Dn2CppType*")}, dn2cpp_i32s({Cast(len, "int32_t")}).v, 1)");
+                return true;
+            }
+            case ("System.Array", "CreateInstanceFromArrayType") when sig.ParameterTypes.Length is 2 or 3
+                && sig.ParameterTypes.Skip(1).All(p => p is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } }):
+            {
+                string bounds = sig.ParameterTypes.Length == 3 ? Cast(Pop(), "Dn2CppArrayI4*") : "nullptr";
+                var lengths = Pop();
+                var t = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*",
+                    $"dn2cpp_array_create_instance_from_arraytype_lengths({Cast(t, "Dn2CppType*")}, {Cast(lengths, "Dn2CppArrayI4*")}, {bounds}, {(sig.ParameterTypes.Length == 3 ? 1 : 0)})");
                 return true;
             }
             case ("System.Array", "CreateInstance") when sig.ParameterTypes.Length == 2
@@ -964,6 +1006,47 @@ internal sealed partial class MethodCompiler
         // Co-locate the emit guarantee with the site that NAMES the symbol (see summary).
         Comp.NoteReferencedType(ic);
         return ic.CppTypeInfoName;
+    }
+
+    /// <summary>Array.Initialize over <paramref name="arr"/>. Only a value-type element that
+    /// declares a parameterless constructor has one to run. A receiver whose static type
+    /// states the element calls that constructor directly, and an I4 or reference rep holds
+    /// no struct. Any other receiver leaves the element to the array's run-time type:
+    /// <c>dn2cpp_array_initialize</c> invokes that type's constructor row, whose body
+    /// <see cref="Compilation.NoteRuntimeArrayInitialize"/> reaches.</summary>
+    private void EmitArrayInitialize(StackEntry arr)
+    {
+        TypeDesc? elem = arr.StaticType is { Kind: TypeKind.SZArray or TypeKind.MDArray } at ? at.Element : null;
+        ArrRep? rep = ArrayRepOfCppTypeOrNull(arr.CppType);
+        bool md = arr.CppType == "Dn2CppMDArray*";
+        if (arr.KnownNull || (elem is null && !md && rep is ArrRep.I4 or ArrRep.Ref))
+        {
+            Emit($"dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
+            return;
+        }
+        if (elem is null)
+        {
+            Comp.NoteRuntimeArrayInitialize();
+            Emit($"dn2cpp_array_initialize({Cast(arr, "Dn2CppObject*")});");
+            return;
+        }
+        TaintIfCanonical(elem, "array-initialize");
+        var ctor = elem is { Kind: TypeKind.Class, Class: { IsValueType: true, IsEnum: false } cls }
+            ? Comp.ReachManagedMethod(cls, ".ctor", static ps => ps.Length == 0)
+            : null;
+        if (ctor is null)
+        {
+            Emit($"dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
+            return;
+        }
+        string cpp = md ? "Dn2CppMDArray*" : "Dn2CppArrayN*";
+        string a = NewTemp(cpp);
+        Emit($"{a} = ({cpp})dn2cpp_null_check({Cast(arr, "Dn2CppObject*")});");
+        string n = NewTemp("int32_t"), i = NewTemp("int32_t");
+        Emit($"{n} = {(md ? $"dn2cpp_md_total_length({a})" : $"{a}->length")};");
+        string self = $"({ctor.DeclaringClass.CppStructName}*)({a}->data + (size_t){i} * {a}->elemSize)";
+        Emit($"for ({i} = 0; {i} < {n}; {i}++)");
+        Emit($"    {DirectCall(ctor, new List<string> { self })};");
     }
 
     /// <summary>The non-generic <c>System.Collections.IComparer</c>'s <c>ti_</c> and its

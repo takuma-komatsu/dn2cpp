@@ -29,6 +29,30 @@ internal sealed partial class MethodCompiler
     /// in reach order (AGENTS.md, self-host shapes).</summary>
     private const string HashMultiplier = "2773833001u";
 
+    /// <summary>The struct whose own method holds a non-virtual <c>ValueType</c> call —
+    /// the only place C# emits one, as a base call on the box it makes of <c>this</c>.
+    /// Taints a shared trial for the reason <see cref="SynthesizedValueHash"/> does.
+    /// </summary>
+    private ClassInfo BaseValueCallOwner(string name)
+    {
+        var sc = _method.DeclaringClass;
+        if (sc is not { IsValueType: true, IsEnum: false })
+            throw new NotSupportedException(
+                $"{sc.FullName}.{_method.Name}: a non-virtual call to System.ValueType::{name} "
+                + "outside a value type's own method");
+        TaintIfCanonical(sc, "valuetype-equality");
+        return sc;
+    }
+
+    /// <summary>The field walk a base <c>Equals</c>/<c>GetHashCode</c> of
+    /// <paramref name="sc"/> runs (Compilation.BaseValueBody), which the scan reached at
+    /// the same call.</summary>
+    private MethodInfo BaseValueWalk(ClassInfo sc, bool hash) =>
+        _c.ReachedBaseValueBody(sc, hash) ?? throw new NotSupportedException(
+            $"{sc.FullName}.{_method.Name}: base.{(hash ? "GetHashCode" : "Equals")} compares "
+            + $"field by field, and a field of {sc.FullName} has no structural "
+            + (hash ? "hash" : "comparison"));
+
     /// <summary>Compiles the minted body — the field walk for the equality or the hash,
     /// told apart by the name the mint gave it (Compilation.MintValueBody).</summary>
     internal string CompileSynthesizedValueBody() =>

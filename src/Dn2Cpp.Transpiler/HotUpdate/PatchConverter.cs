@@ -481,6 +481,16 @@ internal static class PatchConverter
                 throw new NotSupportedException($"emit-patch: patch type {c.FullName} — overriding {m.Name} is not supported yet (it dispatches through a dedicated type-info entry, not a vtable slot)");
             }
         }
+        // The model lists no generic method definition, so a generic virtual one
+        // would bake nothing and its receivers would run the base image's body.
+        var reader = c.Module.Reader;
+        foreach (var mh in reader.GetTypeDefinition(c.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(mh);
+            if (md.GetGenericParameters().Count > 0
+                && (md.Attributes & System.Reflection.MethodAttributes.Virtual) != 0)
+                throw new NotSupportedException($"emit-patch: patch type {c.FullName} must not declare generic virtual methods yet ({reader.GetString(md.Name)} — a generic method has no patch body)");
+        }
         foreach (var f in c.Fields)
         {
             if (f.IsLiteral)
@@ -648,8 +658,9 @@ internal static class PatchConverter
         string? baseName = AotAncestorName(c);
         if (baseName is null || !baseVtables.TryGetValue(baseName, out var slots))
             throw new NotSupportedException($"emit-patch: {c.FullName}.{m.Name} overrides a virtual method, but base type {baseName ?? "System.Object"} has no vtable in the base-image ABI manifest (is the base built with --hotupdate-base?)");
+        // The most derived match, as the base image's vtable builder binds it.
         int slot = -1;
-        for (int i = 0; i < slots.Count; i++)
+        for (int i = slots.Count - 1; i >= 0; i--)
         {
             if (slots[i] == m.SigKey)
             {
@@ -2580,9 +2591,10 @@ internal static class PatchConverter
         // A generic-method call: DecodeMemberRef captured the closed method type
         // arguments into declCtx.MethodArgs and the signature above was decoded
         // under them, so sig.ParameterTypes/ReturnType are the instantiation's
-        // concrete types and the baked sigShape/param EntityRefs are the
-        // instantiation's — the loader binds the import to that one instantiation
-        // among the several the base emits under this name. The instantiation must
+        // concrete types and the baked sigShape (led by those type arguments) and
+        // param EntityRefs are the instantiation's — the loader binds the import to
+        // that one instantiation among the several the base emits under this name,
+        // even when its signature never names a type argument. The instantiation must
         // be AOT-present: the --hotupdate-base build must have emitted this closed
         // method (a hotupdate-refs.txt method root force-emits one the base program
         // never calls), else the loader's method-import bind fails as unresolved —
@@ -2622,7 +2634,7 @@ internal static class PatchConverter
         }
 
         uint typeImport = TypeImportOf(w, typeImports, typeName);
-        string shape = SigShape(sig);
+        string shape = AbiContract.ImportShape(sig, declCtx.MethodArgs);
         string key = typeName + "::" + methodName + (isInstance ? "#i" : "#s") + shape;
         if (!methodImports.TryGetValue(key, out uint methodImport))
         {

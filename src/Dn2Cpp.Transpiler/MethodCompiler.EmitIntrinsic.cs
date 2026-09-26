@@ -143,9 +143,11 @@ internal sealed partial class MethodCompiler
         (["Dn2Cpp.Runtime.HotUpdate"], static (mc, _, n, sig) => mc.TryEmitHotUpdateIntrinsic(n, sig)),
         // Console.Error stderr-write surface.
         (["Dn2Cpp.Runtime.ConsoleRuntime"], static (mc, _, n, sig) => mc.TryEmitConsoleRuntimeIntrinsic(n, sig)),
-        // The Object-virtual Equals(object) of the intrinsic value-type family — one arm
-        // for all six. MUST precede their per-type tables below.
-        (s_boxedIntrinsicValueTypes, static (mc, dt, n, sig) => mc.TryEmitBoxedIntrinsicValueEquals(dt, n, sig)),
+        // The Object-virtual Equals(object) and IComparable.CompareTo(object) of the
+        // intrinsic value-type family — one arm each for all six. MUST precede their
+        // per-type tables below.
+        (s_boxedIntrinsicValueTypes, static (mc, dt, n, sig) =>
+            mc.TryEmitBoxedIntrinsicValueEquals(dt, n, sig) || mc.TryEmitBoxedIntrinsicValueCompareTo(dt, n, sig)),
         // System.Decimal is an intrinsic value type (Dn2CppDecimal); its ctors,
         // operators, conversions, ToString and rounding statics lower to runtime helpers.
         (["System.Decimal"], static (mc, _, n, sig) => mc.TryEmitDecimalIntrinsic(n, sig)),
@@ -412,6 +414,32 @@ internal sealed partial class MethodCompiler
         Push(StackKind.I4, "int32_t",
             $"(({ob}) != nullptr && ({ob})->type == &{fn}_type"
             + $" ? ({fn}_cmp({self}, *({ct}*)(({ob}) + 1)) == 0 ? 1 : 0) : 0)");
+        return true;
+    }
+
+    /// <summary>The IComparable.CompareTo(object) sibling of the arm above, for the same
+    /// six and by the same sibling rule: null sorts first, a box of any other type throws
+    /// .NET's ArgumentException, and a box of this one orders by the three-way its typed
+    /// sibling uses.</summary>
+    private bool TryEmitBoxedIntrinsicValueCompareTo(string declType, string name, MethodSignature<TypeDesc> sig)
+    {
+        if (name != "CompareTo" || sig.ParameterTypes is not [{ IsObject: true }])
+            return false;
+        string bare = declType["System.".Length..];
+        string ct = "Dn2Cpp" + bare;
+        string fn = "dn2cpp_" + bare.ToLowerInvariant();
+        string ob = NewTemp("Dn2CppObject*");
+        Emit($"{ob} = {Cast(Pop(), "Dn2CppObject*")};");   // the argument, then the receiver
+        var recv = Pop();
+        string self = NewTemp(ct);
+        Emit($"{self} = {(recv.Kind == StackKind.Ptr ? $"(*({ct}*)({recv.Expr}))" : recv.Expr)};");
+        string result = NewTemp("int32_t");
+        Emit($"{result} = 1;");
+        Emit($"if ({ob} != nullptr) {{");
+        Emit($"    if ({ob}->type != &{fn}_type) dn2cpp_throw_compareto_type_mismatch(&{fn}_type);");
+        Emit($"    {result} = {fn}_cmp({self}, *({ct}*)(({ob}) + 1));");
+        Emit("}");
+        Push(StackKind.I4, "int32_t", result);
         return true;
     }
 

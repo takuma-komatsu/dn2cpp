@@ -20,6 +20,19 @@ sealed class InstanceHolder
     public int Offset(int value) => value + Delta;
 }
 
+interface ISealedScale
+{
+    sealed int Scale(int value) => value + 100;
+    sealed int Shift<T>(int value) => value + 200;
+}
+
+// Virtuals of the sealed members' signatures, which a call through the interface never runs.
+class SealedScaleHolder : ISealedScale
+{
+    public virtual int Scale(int value) => value * 3;
+    public virtual int Shift<T>(int value) => value * 4;
+}
+
 // After Build, gates/fixtures/ldftn-local/Program.cs replaces each throwing stub's
 // body with IL that C# cannot express.
 static class Program
@@ -64,6 +77,12 @@ static class Program
     [MethodImpl(MethodImplOptions.NoInlining)]
     static Func<int, int> Int64Stored() => throw new InvalidOperationException();
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> SealedInterface(ISealedScale receiver) => throw new InvalidOperationException();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    static Func<int, int> SealedGenericInterface(ISealedScale receiver) => throw new InvalidOperationException();
+
     // Roslyn takes these locals' addresses in a body that also creates a delegate.
     [MethodImpl(MethodImplOptions.NoInlining)]
     static string AddressTakenBesideDelegate()
@@ -106,6 +125,12 @@ static class Program
         var wide = Int64Stored();
         Console.WriteLine("ldftn-local-int64=" + wide(5) + "/" + wide.Method.Name);
         Console.WriteLine("ldftn-local-address-taken=" + AddressTakenBesideDelegate());
+        var sealedHolder = new SealedScaleHolder();
+        var sealedPlain = SealedInterface(sealedHolder);
+        var sealedGeneric = SealedGenericInterface(sealedHolder);
+        Console.WriteLine("ldftn-local-sealed-interface=" + sealedPlain(5) + "/"
+            + sealedPlain.Method.DeclaringType.Name + "." + sealedPlain.Method.Name + "/" + sealedGeneric(5) + "/"
+            + sealedGeneric.Method.DeclaringType.Name + "." + sealedGeneric.Method.Name);
         Console.WriteLine("ldftn-local-end");
     }
 }

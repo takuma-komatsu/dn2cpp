@@ -413,25 +413,15 @@ static Dn2CppString* dn2cpp_bbi_format(Dn2CppObject* box, Dn2CppString* fmt,
 }
 
 // IComparable.CompareTo(object) — the shape every built-in's real body has: null sorts
-// last, a foreign runtime type is an ArgumentException, and the same type orders
-// through the ONE ladder. That ladder is asked with a null IComparable ti, so its own
-// interface probe is skipped and it cannot re-enter this thunk.
+// first, a foreign runtime type is the ArgumentException naming the receiver's type, and
+// the same type orders through the ONE ladder. That ladder is asked with a null
+// IComparable ti, so its own interface probe is skipped and it cannot re-enter this thunk.
 static int32_t dn2cpp_bbi_compareto(Dn2CppObject* box, Dn2CppObject* other)
 {
     if (other == nullptr)
         return 1;
     if (other->type != box->type)
-        dn2cpp_throw_argument_msg("Object must be of the same type as the value being compared.");
-    // Sub-word integer and Char CompareTo preserve the widened value difference rather
-    // than clamping it to -1/0/1. The payload is four-byte stack form, so this one read
-    // serves their signed and unsigned storage widths after the exact type check above.
-    if (box->type == &dn2cpp_byte_type || box->type == &dn2cpp_sbyte_type
-        || box->type == &dn2cpp_int16_type || box->type == &dn2cpp_uint16_type)
-        return *reinterpret_cast<const int32_t*>(box + 1)
-             - *reinterpret_cast<const int32_t*>(other + 1);
-    if (box->type == &dn2cpp_char_type)
-        return static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(box + 1))
-             - static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(other + 1));
+        dn2cpp_throw_compareto_type_mismatch(box->type);
     return dn2cpp_object_compare(box, other, nullptr);
 }
 
@@ -937,6 +927,14 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self)
 {
+    dn2cpp_reflective_slot_check(reinterpret_cast<const void*>(&dn2cpp_itf_slot_missing));
+    dn2cpp_slot_missing_report("interface", self);
+}
+
+// Entered through a per-signature trap thunk, which hands over its own address.
+[[noreturn]] void dn2cpp_itf_slot_missing_at(void* self, const void* slotFn)
+{
+    dn2cpp_reflective_slot_check(slotFn);
     dn2cpp_slot_missing_report("interface", self);
 }
 
@@ -945,6 +943,7 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // read safely. It loses the name; it does not lose the abort.
 [[noreturn]] void dn2cpp_itf_slot_missing_anon()
 {
+    dn2cpp_reflective_slot_check(reinterpret_cast<const void*>(&dn2cpp_itf_slot_missing_anon));
     dn2cpp_slot_missing_report("interface", nullptr);
 }
 
@@ -953,9 +952,12 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // buffer may sit there), so it BAKES the slot's (class, member) descriptor into a tiny
 // per-slot stub that calls this with the text ready-made. No receiver is touched; the
 // name comes from the compile, not the crash. See CppEmitter.RenderItfTables /
-// RenderVtable and CppEmitter.ReceiverIsFirstArg. `kind` is "interface" or "virtual".
-[[noreturn]] static void dn2cpp_slot_missing_report_named(const char* kind, const char* slotDesc)
+// RenderVtable and CppEmitter.ReceiverIsFirstArg. `kind` is "interface" or "virtual";
+// `slotFn` is the stub's own address.
+[[noreturn]] static void dn2cpp_slot_missing_report_named(const char* kind, const char* slotDesc,
+    const void* slotFn)
 {
+    dn2cpp_reflective_slot_check(slotFn);
     std::fprintf(stderr,
         "dn2cpp fatal: %s dispatch: no implementation reached for slot %s\n"
         "  (the slot was emitted as a trap: the transpiler's reachability closure never\n"
@@ -964,18 +966,18 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
     dn2cpp_fail("EntryPointNotFoundException (unimplemented dispatch slot)");
 }
 
-[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc)
+[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc, const void* slotFn)
 {
-    dn2cpp_slot_missing_report_named("interface", slotDesc);
+    dn2cpp_slot_missing_report_named("interface", slotDesc, slotFn);
 }
 
 // The vtable analogue. dn2cpp_vcall_unimplemented recovers the receiver's type and the
 // candidate methods from the method table, but a struct-returning virtual leaves it with
 // the hidden result buffer in `self` and nothing to read (":581-582 — receiver
 // unreadable"). For those slots the emitter bakes the descriptor here, the same way.
-[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc)
+[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc, const void* slotFn)
 {
-    dn2cpp_slot_missing_report_named("virtual", slotDesc);
+    dn2cpp_slot_missing_report_named("virtual", slotDesc, slotFn);
 }
 
 const void** dn2cpp_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppTypeInfo* itf)
@@ -1561,8 +1563,9 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
 }
 
 // Target-slot identity, with reflection-bind nodes (CreateDelegate) compared by
-// content: two separately created bindings of the same (method row, target,
-// mode) are equal delegates, matching .NET.
+// content: two separately created bindings of the same target and mode are equal
+// delegates when they bind one row or, over one receiver, run one body — matching
+// .NET.
 static bool dn2cpp_delegate_target_equal(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == b)
@@ -1572,7 +1575,9 @@ static bool dn2cpp_delegate_target_equal(Dn2CppObject* a, Dn2CppObject* b)
         return false;
     auto* ra = reinterpret_cast<Dn2CppReflBind*>(a);
     auto* rb = reinterpret_cast<Dn2CppReflBind*>(b);
-    return ra->method == rb->method && ra->target == rb->target && ra->mode == rb->mode;
+    if (ra->target != rb->target || ra->mode != rb->mode)
+        return false;
+    return ra->method == rb->method || dn2cpp_reflbind_same_body(ra, rb);
 }
 
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b)
@@ -1615,11 +1620,14 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
     {
         // A reflection-bind node hashes by content (method row + bound target),
         // so the separately created equal bindings agree with the equality above.
+        // A closed binding over a receiver leaves the row out: bindings through
+        // different rows that run one body are equal.
         Dn2CppObject* t = n->target;
         if (t != nullptr && t->type == &dn2cpp_reflbind_type)
         {
             auto* rb = reinterpret_cast<Dn2CppReflBind*>(t);
-            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity()))) * 1099511628211ull;
+            if (rb->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || rb->target == nullptr)
+                h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity()))) * 1099511628211ull;
             h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->target))) * 1099511628211ull;
         }
         else

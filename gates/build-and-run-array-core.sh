@@ -111,6 +111,27 @@
 # struct — so nothing a user writes reaches the abort. Its second half runs the same
 # members on real arrays through the same System.Array-typed route, so a regression
 # that turned the check into a blanket refusal is red too.
+#
+# ArrayPredicateSubset is Array's delegate-driven generics (Find, FindLast, FindAll,
+# the FindIndex and FindLastIndex overloads, Exists, TrueForAll, ConvertAll, ForEach,
+# AsReadOnly). Their call sites are intercepted with the rest of the intrinsic type
+# and call the members' real CoreLib bodies, so its fault rows are the argument order
+# and messages those bodies raise through ThrowHelper — including the paramName an
+# argument-only sink appends. Its generic callers put a reference-type instantiation
+# behind a shared body, which must fall back to per-instantiation bodies because only
+# a closed instantiation of an intrinsic type's member is ever reached.
+#
+# ArraySurfaceSubset is the rest of Array's public non-generic surface. The 64-bit
+# index and length overloads, GetLongLength and the constant ICollection/IList
+# properties call their real bodies, so a huge index is .NET's
+# ArgumentOutOfRangeException rather than a truncated one, and a null receiver still
+# faults although a constant body folds it away. Rank and the dimension queries on
+# a statically SZ or MD receiver check null and the dimension. ConstrainedCopy moves
+# only pairs that need no per-element conversion, CreateInstanceFromArrayType's
+# lengths forms check the type's rank, and Initialize runs a struct's explicit
+# parameterless constructor, which ILDiet must keep although no IL names it. A
+# System.Array receiver or a method group finds that constructor from the array's
+# run-time element type.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore

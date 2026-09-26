@@ -79,7 +79,7 @@ internal sealed class Module
     /// reason <see cref="TemplateDescs"/> is, and per module because System.ThrowHelper,
     /// its enums and its SR are all per-assembly polyfills.</summary>
     public TypeDefinitionHandle? ThrowHelperType;
-    public Dictionary<(string, int), (ThrowHelperResources.Source? Res, ThrowHelperResources.Source? Arg)>? ThrowHelperSinks;
+    public Dictionary<(string, int), ThrowHelperResources.Sink>? ThrowHelperSinks;
     public Dictionary<string, Dictionary<int, string>>? ExceptionEnums;
 }
 
@@ -228,6 +228,19 @@ internal sealed partial class Compilation
     /// the miss. A planning-pass note whose final body never spells the name costs one
     /// unused invoker — bloat, never a link error.</summary>
     public HashSet<ClassInfo> DelegateInvokerUses { get; } = new();
+
+    /// <summary>The <see cref="DelegateInvokerUses"/> the shipped pass records. A shipped
+    /// body calls each one's invoker, so every struct that invoker's prototype spells has to
+    /// be declared even for a delegate type nothing constructs.</summary>
+    public HashSet<ClassInfo> ShippedDelegateInvokerUses { get; } = new();
+
+    /// <summary>Records a mouth that spells <c>dginvoke_&lt;CppName&gt;</c>.</summary>
+    internal void NoteDelegateInvokerUse(ClassInfo cls)
+    {
+        DelegateInvokerUses.Add(cls);
+        if (Phase == EmitPhase.Emission)
+            ShippedDelegateInvokerUses.Add(cls);
+    }
 
     /// <summary>Canonical shared generics (opt-in via <c>--shared-generics</c>):
     /// group generic instantiations whose C++ layout coincides under a canonical
@@ -1002,7 +1015,7 @@ internal sealed partial class Compilation
     /// <summary>Whether <paramref name="m"/>'s method row must survive the unreached-row
     /// trim: <c>Delegate.Method</c> answers a delegate's declaration from it even when
     /// every receiver overrides the body.</summary>
-    internal bool KeepsDelegateTargetRow(MethodInfo m) =>
+    private bool KeepsDelegateTargetRow(MethodInfo m) =>
         _delegateMethodRead && _delegateIdentityTargets.Contains(m.CppName);
 
     /// <summary>The recorded identities in symbol order; no body may name one
@@ -1540,6 +1553,188 @@ internal sealed partial class Compilation
         { Kind: TypeKind.Template, TemplateModule: { } m } => (m, t.TemplateHandle),
         _ => (null, default),
     };
+
+    /// <summary>The type a custom-attribute blob names by its serialized name (ECMA-335
+    /// II.23.3): <c>Ns.Outer+Inner`1[[Arg, Asm],[Arg, Asm]][]</c>, optionally followed by
+    /// <c>, Assembly, Version=…</c>. A CoreLib primitive, at any depth, is the primitive a
+    /// signature decodes, so a closed generic keys the same instantiation a body names.
+    /// An open generic definition, and anything unresolved, answers the External type-name
+    /// prefix: for the definition that is the backtick name its open-definition handle is
+    /// keyed on, otherwise a type no attribute can render. Only Discovery mints a closed
+    /// generic; a later decode finds the instantiations that exist.</summary>
+    internal TypeDesc ResolveSerializedTypeName(string name)
+    {
+        try
+        {
+            int pos = 0;
+            if (ParseSerializedType(name, ref pos) is { } type && (pos == name.Length || name[pos] == ','))
+                return type;
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // An undecodable name falls back like an unresolved one.
+        }
+        return TypeDesc.MakeExternal(SerializedTypeNamePrefix(name));
+    }
+
+    /// <summary>A serialized type name without its assembly part: everything before the
+    /// first comma outside brackets.</summary>
+    private static string SerializedTypeNamePrefix(string name)
+    {
+        int depth = 0;
+        for (int i = 0; i < name.Length; i++)
+        {
+            if (name[i] == '[')
+                depth++;
+            else if (name[i] == ']')
+                depth--;
+            else if (name[i] == ',' && depth == 0)
+                return name[..i].Trim();
+        }
+        return name.Trim();
+    }
+
+    /// <summary>The serialized type name at <paramref name="pos"/>, without an assembly
+    /// part: the '+' chain, an optional generic argument list (each argument bare or
+    /// bracketed with its assembly), then array suffixes. Leaves <paramref name="pos"/>
+    /// after the name; null when the name does not resolve.</summary>
+    private TypeDesc? ParseSerializedType(string s, ref int pos)
+    {
+        while (pos < s.Length && s[pos] == ' ')
+            pos++;
+        int start = pos;
+        while (pos < s.Length && s[pos] is not ('[' or ']' or ','))
+        {
+            // Escaped names, pointers and byrefs are not attribute-value shapes.
+            if (s[pos] is '\\' or '*' or '&')
+                return null;
+            pos++;
+        }
+        string chain = s[start..pos].TrimEnd();
+        TypeDesc[]? args = null;
+        if (pos + 1 < s.Length && s[pos] == '[' && s[pos + 1] is not (']' or ',' or '*'))
+        {
+            var list = new List<TypeDesc>();
+            do
+            {
+                pos++;
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+                bool qualified = pos < s.Length && s[pos] == '[';
+                if (qualified)
+                    pos++;
+                if (ParseSerializedType(s, ref pos) is not { } arg)
+                    return null;
+                if (qualified)
+                {
+                    // An assembly name carries no brackets.
+                    while (pos < s.Length && s[pos] != ']')
+                        pos++;
+                    if (pos == s.Length)
+                        return null;
+                    pos++;
+                }
+                list.Add(arg);
+                while (pos < s.Length && s[pos] == ' ')
+                    pos++;
+            }
+            while (pos < s.Length && s[pos] == ',');
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            args = list.ToArray();
+        }
+        if (ResolveSerializedChain(chain, args) is not { } type)
+            return null;
+        while (pos < s.Length && s[pos] == '[')
+        {
+            int rank = 1;
+            pos++;
+            while (pos < s.Length && s[pos] == ',')
+            {
+                rank++;
+                pos++;
+            }
+            // "[*]" and bounded shapes are not attribute-value shapes.
+            if (pos == s.Length || s[pos] != ']')
+                return null;
+            pos++;
+            type = rank == 1 ? TypeDesc.MakeSZArray(type) : TypeDesc.MakeMDArray(type, rank);
+        }
+        return type;
+    }
+
+    /// <summary>The type a '+'-separated chain names, closed over <paramref name="args"/>
+    /// when it is generic; null for an open definition and for anything unresolved. Each
+    /// nested link is looked up among its declaring type's nested types, since the type
+    /// index keys every nested type under an empty namespace.</summary>
+    private TypeDesc? ResolveSerializedChain(string chain, TypeDesc[]? args)
+    {
+        if (args is null && WellKnownPrimitive(chain) is { } primitive)
+            return primitive;
+        int plus = chain.IndexOf('+');
+        string head = plus < 0 ? chain : chain[..plus];
+        int dot = head.LastIndexOf('.');
+        var key = dot < 0 ? ("", head) : (head[..dot], head[(dot + 1)..]);
+        if (!TypeIndex().TryGetValue(key, out var candidates))
+            return null;
+        foreach (var (module, top) in candidates)
+        {
+            var reader = module.Reader;
+            if (!reader.GetTypeDefinition(top).GetDeclaringType().IsNil)
+                continue;
+            TypeDefinitionHandle? handle = top;
+            for (int link = plus; link >= 0 && handle is { } declaring;)
+            {
+                int next = chain.IndexOf('+', link + 1);
+                string name = next < 0 ? chain[(link + 1)..] : chain[(link + 1)..next];
+                handle = null;
+                foreach (var nested in reader.GetTypeDefinition(declaring).GetNestedTypes())
+                    if (reader.StringComparer.Equals(reader.GetTypeDefinition(nested).Name, name))
+                    {
+                        handle = nested;
+                        break;
+                    }
+                link = next;
+            }
+            if (handle is { } resolved)
+                return SerializedTypeDesc(module, resolved, args);
+        }
+        return null;
+    }
+
+    /// <summary>The TypeDesc of a resolved serialized TypeDef: the class itself, or its
+    /// instantiation over <paramref name="args"/>. Only Discovery instantiates, since the
+    /// emit set closes after it; a later phase answers only an instantiation that
+    /// exists.</summary>
+    private TypeDesc? SerializedTypeDesc(Module module, TypeDefinitionHandle handle, TypeDesc[]? args)
+    {
+        if (module.ClassMap.TryGetValue(handle, out var cls))
+            return args is null ? TypeDesc.MakeClass(cls) : null;
+        if (args is null || !module.GenericTemplates.Contains(handle)
+            || module.Reader.GetTypeDefinition(handle).GetGenericParameters().Count != args.Length)
+            return null;
+        if (Phase == EmitPhase.Discovery)
+            return TypeDesc.MakeClass(Instantiate(module, handle, args));
+        return _instances.TryGetValue((module.Index, SRME.GetToken(handle)), out var byArgs)
+            && byArgs.TryGetValue(args, out var existing)
+                ? TypeDesc.MakeClass(existing)
+                : null;
+    }
+
+    /// <summary>The width a custom-attribute blob encodes a value of enum type
+    /// <paramref name="type"/> at; Int32 for a type that is not a resolved enum. A closed
+    /// generic learns it is an enum with its shape, which Discovery completes here so the
+    /// reach-time decode reads the width the emit-time decode reads.</summary>
+    internal PrimitiveTypeCode SerializedEnumUnderlying(TypeDesc type)
+    {
+        if (type.Kind != TypeKind.Class)
+            return PrimitiveTypeCode.Int32;
+        var cls = type.Class!;
+        if (cls.GenericArity > 0 && Phase == EmitPhase.Discovery)
+            CompleteShape(cls);
+        return cls.IsEnum ? cls.EnumUnderlying : PrimitiveTypeCode.Int32;
+    }
 
     /// <summary>The CLR qualified name (<c>Ns.Outer+Mid+Leaf</c>) of a TypeDef whose
     /// outermost declaring type lives under <c>System.Runtime.Intrinsics.</c>; null for
@@ -2352,7 +2547,14 @@ internal sealed partial class Compilation
             if (cls.Module.Reader.GetString(md.Name) != methodName
                 || md.GetGenericParameters().Count != methodArgs.Length)
                 continue;
-            Reach(InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs));
+            var inst = InstantiateMethodOnClass(cls, cls.Module, mh, methodArgs);
+            Reach(inst);
+            // A patch callvirt of a generic virtual instantiation enters the
+            // dispatcher an AOT callvirt would, so the root registers it with the
+            // allocated types' overrides. A final method's or a sealed class's
+            // body is every receiver's.
+            if (IsGvmCall(inst) && !cls.IsSealed && (inst.Attributes & MethodAttributes.Final) == 0)
+                ReachUsedGvm(inst, callSite: false);
             any = true;
         }
         if (!any)
@@ -2607,7 +2809,7 @@ internal sealed partial class Compilation
 
     /// <summary>See <see cref="MdArrayTypes"/>. Recurses like NoteArrayElementType so
     /// the whole GetElementType chain stays linkable, notes a referenced enum element's
-    /// own ti_ (the NoteReflectedArrayType precedent), and keys the shared rank&gt;=2
+    /// own ti_ (the NoteReflectedType precedent), and keys the shared rank&gt;=2
     /// dispatch map — the MD identity can flow through an SZ array or constructed
     /// generic metadata without a statically visible MD token.</summary>
     internal void NoteMdArrayType(TypeDesc md)
@@ -2789,7 +2991,7 @@ internal sealed partial class Compilation
     /// <summary>Plants those rows on every noted element whose array still has no dispatch
     /// map, once the noted set is final. The eager loop above runs at NOTING time and so
     /// cannot see an element first noted AFTER the emit fixpoint — the reflection tables'
-    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>) is
+    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>) is
     /// exactly that, and its arrays enumerated six interfaces where .NET reports eleven.
     /// This sweep is the confirmation point, so the answer stops depending on WHEN
     /// an element was noted; a dispatch map cannot be wired here (its thunks need bodies the
@@ -3243,6 +3445,48 @@ internal sealed partial class Compilation
         return m;
     }
 
+    /// <summary>The generic counterpart of <see cref="ReachStringStaticMethod"/>: resolves
+    /// the closed instantiation a MethodSpec names on an intrinsic-mapped type
+    /// (<see cref="CoreIntrinsics.IsArrayRealBodyGeneric"/>) and reaches its real body for
+    /// the intercepted call site to call.</summary>
+    internal MethodInfo ReachIntrinsicTypeMethodSpec(Module module, MethodSpecificationHandle msh, GenericContext ctx)
+    {
+        var m = ResolveMethodSpec(module, msh, ctx);
+        ReachIntrinsicTypeMethod(m);
+        DrainReachability();
+        return m;
+    }
+
+    /// <summary>The non-generic counterpart of <see cref="ReachIntrinsicTypeMethodSpec"/>:
+    /// System.Array's own CoreLib method <paramref name="name"/> with exactly
+    /// <paramref name="sig"/>'s parameter types
+    /// (<see cref="CoreIntrinsics.IsArrayRealBodyMember"/>), reached for the intercepted
+    /// call site to call. Null without a CoreLib. Only same-named overloads have their
+    /// signatures decoded.</summary>
+    internal MethodInfo? ReachArrayMethod(string name, MethodSignature<TypeDesc> sig)
+    {
+        if (FindClassByFullName("System.Array") is not { } arr)
+            return null;
+        var want = sig.ParameterTypes;
+        foreach (var m in arr.EnsureMembers().Methods)
+        {
+            if (m.Name != name || m.Rva == 0 || m.IsStatic == sig.Header.IsInstance)
+                continue;
+            var have = m.Signature.ParameterTypes;
+            if (have.Length != want.Length)
+                continue;
+            bool same = true;
+            for (int i = 0; i < have.Length && same; i++)
+                same = have[i].ToString() == want[i].ToString();
+            if (!same)
+                continue;
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return m;
+        }
+        return null;
+    }
+
     /// <summary>Resolves and reaches an ordinary (non-intrinsic-mapped) loaded
     /// class's instance method or ctor so an intrinsic call site can allocate the
     /// object and delegate to the real transpiled body — the bridge from a
@@ -3338,6 +3582,14 @@ internal sealed partial class Compilation
     {
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
+        // Its calls already delegate to the real body, which serves the address too.
+        if (CoreIntrinsics.IsArrayRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+            || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
+        {
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return;
+        }
         if (IntrinsicFtnTargets.Add(m))
             Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
     }
@@ -3502,6 +3754,355 @@ internal sealed partial class Compilation
                 }
         }
         return added;
+    }
+
+    /// <summary>MethodBase.Invoke, PropertyInfo.GetValue/SetValue and a CreateDelegate
+    /// binding run a class virtual row, or an interface row with a default body,
+    /// through the receiver's slot, as a callvirt would (dn2cpp_invoke_row), so each
+    /// such invocable row is a used slot with no call site. Reachability must be at
+    /// least as generous as that dispatch, or the receiver's slot holds a trap. A
+    /// class row is invocable once reached, or when abstract (its thunk is
+    /// signature-only), and runs only on receivers derived from its class, so a used
+    /// declaration of the slot on that class or a base already covers it. A user
+    /// module's rows are all marked. Marking a framework row reaches every allocated
+    /// framework override of its slot, which need not transpile, so a framework row is
+    /// marked only when a user body names its member on a type token
+    /// (<see cref="_typeofNamedMembers"/>), which bounds that to one member's
+    /// overrides; any other framework row's receiver may hold a trap, which the runtime
+    /// reports as the stripped body it is. A closed generic virtual row has no slot and
+    /// gets its dispatcher (<see cref="ReachReflectedGvm"/>) by the same rule; without
+    /// one it runs its own body. Driven each round, like the array maps
+    /// above: the flags, the reached set, the named members and the decoded classes
+    /// all grow while bodies compile.</summary>
+    public void ReachReflectedVirtualSlots()
+    {
+        if (!_reflectionInvokeUsed && !NeedsReflectionDelegateBind)
+            return;
+        bool marked = false;
+        // Snapshot: a reached body's signature decode can append classes.
+        foreach (var cls in Classes.ToList())
+        {
+            if (!cls.MembersReady || !IsUserModule(cls.Module) || !CarriesReflectedSlots(cls))
+                continue;
+            var methods = cls.Methods;
+            for (int i = 0; i < methods.Count; i++)
+            {
+                var m = methods[i];
+                if (IsGvmCall(m))
+                {
+                    marked |= ReachReflectedGvm(cls, m);
+                    continue;
+                }
+                marked |= MarkReflectedSlot(m, named: false);
+            }
+        }
+        // Type.GetMethod searches the base classes too; an interface only itself.
+        for (int i = 0; i < _typeofNamedMembers.Count; i++)
+        {
+            var (named, member) = _typeofNamedMembers[i];
+            for (var cls = named; cls is not null && CarriesReflectedSlots(cls);
+                 cls = cls.IsInterface ? null : cls.BaseClass)
+            {
+                if (!DeclaresMemberNamed(cls, member))
+                    continue;
+                EnsureCompleted(cls);
+                marked |= MarkNamedSlots(cls, member);
+                marked |= MarkNamedSlots(cls, "get_" + member);
+                marked |= MarkNamedSlots(cls, "set_" + member);
+            }
+        }
+        if (marked)
+            DrainReachability();
+    }
+
+    /// <summary>Registers the dispatcher a closed generic virtual row runs through: the
+    /// row has no slot, so reflection calls the dispatcher a callvirt of the same
+    /// instantiation would. A row on a sealed class or a final row runs its own body,
+    /// and a row a call already dispatches has its dispatcher. The dispatcher falls
+    /// back to the row's own body, so an application row's body is reached; a
+    /// library row with an unreached body has no invoker to enter it.</summary>
+    private bool ReachReflectedGvm(ClassInfo cls, MethodInfo m)
+    {
+        if (cls.IsSealed || (m.Attributes & MethodAttributes.Final) != 0
+            || _usedGvms.ContainsKey(m.CppName)
+            || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls)
+            || _backend?.ShouldSkipMethodBody(cls, m) == true)
+            return false;
+        foreach (var arg in m.Context.MethodArgs)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return false;
+        if (m.Rva != 0 && !Reachable.Contains(m))
+        {
+            if (cls.Module != AppModule)
+                return false;
+            Reach(m);
+        }
+        ReachUsedGvm(m, callSite: false);
+        return true;
+    }
+
+    /// <summary>How much of <see cref="_methodInstanceOrder"/>
+    /// <see cref="InstantiateGvmChainRoots"/> has visited.</summary>
+    private int _gvmChainRootCursor;
+
+    /// <summary>Each instantiation <see cref="InstantiateGvmChainRoots"/> made of a method
+    /// that introduces a class generic virtual override chain, with the overrides it
+    /// roots.</summary>
+    private readonly Dictionary<MethodInfo, List<MethodInfo>> _gvmChainRoots = new();
+
+    /// <summary>A closed class generic virtual row has no slot, so the runtime reads an
+    /// override's chain off the same-signature rows of its base types: hiding ends, and
+    /// GetBaseDefinition answers, at the row of the method that introduces the chain.
+    /// Instantiates that method at each override's type arguments, so its row exists
+    /// wherever the override's does. Driven each round: bodies keep minting
+    /// instantiations.</summary>
+    public void InstantiateGvmChainRoots()
+    {
+        while (_gvmChainRootCursor < _methodInstanceOrder.Count)
+        {
+            var m = _methodInstanceOrder[_gvmChainRootCursor++];
+            if (GvmChainRootOrNull(m) is not { } root)
+                continue;
+            if (!_gvmChainRoots.TryGetValue(root, out var overrides))
+                _gvmChainRoots.Add(root, overrides = new List<MethodInfo>());
+            overrides.Add(m);
+        }
+    }
+
+    /// <summary>The instantiation at <paramref name="m"/>'s type arguments of the first
+    /// new slot up <paramref name="m"/>'s base types with its name, generic arity and
+    /// closed signature, the relation the runtime matches rows by, when
+    /// <paramref name="m"/> overrides a class generic virtual method; otherwise null.</summary>
+    private MethodInfo? GvmChainRootOrNull(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        var args = m.Context.MethodArgs;
+        if (!IsGvmCall(m) || (m.Attributes & MethodAttributes.NewSlot) != 0 || cls.IsInterface
+            || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+            return null;
+        foreach (var arg in args)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return null;
+        try
+        {
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+            {
+                if (b.Handle.IsNil
+                    || FindGvmClassTemplate(b, m.Name, args, m.Signature, matchReturn: true, slotOf: null)
+                        is not { } template)
+                    continue;
+                if ((b.Module.Reader.GetMethodDefinition(template).Attributes & MethodAttributes.NewSlot) != 0)
+                    return InstantiateMethodOnClass(b, b.Module, template, args);
+            }
+        }
+        // A signature no row can spell has no chain to complete.
+        catch (NotSupportedException e) when (!IsMustEscape(e))
+        {
+        }
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
+    /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), or it
+    /// introduces the chain of an override whose row the image keeps.</summary>
+    internal bool KeepsUnreachedRow(MethodInfo m)
+    {
+        if (KeepsDelegateTargetRow(m))
+            return true;
+        if (!_gvmChainRoots.TryGetValue(m, out var overrides))
+            return false;
+        foreach (var o in overrides)
+            if (o.DeclaringClass.Module == AppModule || o.Rva == 0 || Reachable.Contains(o)
+                || KeepsDelegateTargetRow(o))
+                return true;
+        return false;
+    }
+
+    // A value type's row is sealed; an intrinsic type carries no rows.
+    private static bool CarriesReflectedSlots(ClassInfo cls) =>
+        !cls.IsValueType && !cls.IsDelegate && cls.IntrinsicCppName is null
+        && !CoreIntrinsics.IsIntrinsicType(cls.FullName);
+
+    private bool MarkNamedSlots(ClassInfo cls, string name)
+    {
+        bool marked = false;
+        if (cls.MethodsNamed(name) is { } methods)
+            for (int i = 0; i < methods.Count; i++)
+                marked |= IsGvmCall(methods[i])
+                    ? ReachReflectedGvm(cls, methods[i])
+                    : MarkReflectedSlot(methods[i], named: true);
+        return marked;
+    }
+
+    /// <summary>Marks the slot of a row reflection can enter when no used declaration
+    /// covers it yet. A library's default body has a row only once reached. A
+    /// bodiless interface row is marked only when a type token names it: marking every
+    /// one would reach each implementer's whole interface surface.</summary>
+    private bool MarkReflectedSlot(MethodInfo m, bool named)
+    {
+        if (m.IsStatic || !m.IsVirtual || m.VtableSlot < 0 || _usedVirtualDecls.Contains(m))
+            return false;
+        var cls = m.DeclaringClass;
+        if (cls.IsInterface
+            ? (m.Rva == 0 ? !named : cls.Module != AppModule && !Reachable.Contains(m))
+            : !m.IsAbstract && !Reachable.Contains(m))
+            return false;
+        if (!cls.IsInterface && ClassSlotUsedAtOrAbove(m))
+            return false;
+        ReachUsedVirtual(m);
+        return true;
+    }
+
+    /// <summary>Whether the definition of <paramref name="cls"/> declares a method named
+    /// <paramref name="member"/> or an accessor of such a property. Read off the raw
+    /// metadata, so a class named with an unrelated string is never completed.</summary>
+    private static bool DeclaresMemberNamed(ClassInfo cls, string member)
+    {
+        if (cls.Handle.IsNil)
+            return false;
+        var reader = cls.Module.Reader;
+        string getter = "get_" + member, setter = "set_" + member;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var name = reader.GetMethodDefinition(handle).Name;
+            if (reader.StringComparer.Equals(name, member) || reader.StringComparer.Equals(name, getter)
+                || reader.StringComparer.Equals(name, setter))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>Set once a compiled body lowers Array.Initialize to
+    /// <c>dn2cpp_array_initialize</c>, which runs the element's parameterless constructor
+    /// through the element type's constructor row.</summary>
+    private bool _runtimeArrayInitialize;
+
+    /// <summary>How much of <see cref="Classes"/>, which only grows,
+    /// <see cref="ReachRuntimeArrayInitializeCtors"/> has visited.</summary>
+    private int _runtimeArrayInitializeCursor;
+
+    /// <summary>Arms <see cref="ReachRuntimeArrayInitializeCtors"/>: an Array.Initialize
+    /// receiver that states no element type can hold any value type at run time.</summary>
+    internal void NoteRuntimeArrayInitialize()
+    {
+        if (_runtimeArrayInitialize)
+            return;
+        _runtimeArrayInitialize = true;
+        ReachRuntimeArrayInitializeCtors();
+    }
+
+    /// <summary>Once <see cref="NoteRuntimeArrayInitialize"/> armed it, reaches the
+    /// parameterless constructor of every user-module value type that declares one, so the
+    /// constructor row <c>dn2cpp_array_initialize</c> invokes carries a body. No framework
+    /// value type a program can name declares one. Driven each round, like
+    /// <see cref="ReachReflectedVirtualSlots"/>: a compiled body can mint a closed generic
+    /// value type.</summary>
+    public void ReachRuntimeArrayInitializeCtors()
+    {
+        if (!_runtimeArrayInitialize)
+            return;
+        bool reached = false;
+        while (_runtimeArrayInitializeCursor < Classes.Count)
+        {
+            var cls = Classes[_runtimeArrayInitializeCursor];
+            // A specialization minted by this walk is still pending, and only its shape
+            // says whether it is a value type.
+            if (!cls.ShapeReady)
+                CompletePendingSpecializations();
+            if (!cls.ShapeReady)
+                throw new InvalidOperationException($"{cls.FullName} is in Classes but was never queued for its shape");
+            _runtimeArrayInitializeCursor++;
+            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null || !IsUserModule(cls.Module))
+                continue;
+            var ctor = ParameterlessCtorHandle(cls);
+            if (ctor.IsNil)
+                continue;
+            EnsureCompleted(cls);
+            foreach (var m in cls.Methods)
+            {
+                if (m.Handle != ctor || Reachable.Contains(m) || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                    continue;
+                Reach(m);
+                reached = true;
+            }
+        }
+        if (reached)
+            DrainReachability();
+    }
+
+    /// <summary>The parameterless instance constructor with a body that
+    /// <paramref name="cls"/>'s definition declares, or a nil handle. Read from metadata:
+    /// a specialization's members are completed only when it has one, and no other
+    /// constructor's signature is decoded, since one naming a deeper instantiation of its
+    /// own type would feed this walk forever.</summary>
+    private static MethodDefinitionHandle ParameterlessCtorHandle(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return default;
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(handle);
+            if ((md.Attributes & MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
+                || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                continue;
+            var blob = reader.GetBlobReader(md.Signature);
+            if (blob.ReadSignatureHeader().IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 0)
+                return handle;
+        }
+        return default;
+    }
+
+    /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
+    /// at once by a string literal, as <c>GetMethod("Name")</c>,
+    /// <c>GetProperty("Name")</c> or a helper taking both spell it. In first-named order
+    /// (list + set: the consumer's reach order is emit-relevant). Recorded
+    /// unconditionally, like <see cref="_typeofNamedLibraryClasses"/>, so the set does not
+    /// depend on which body the invoke flags were set in.</summary>
+    private readonly List<(ClassInfo Class, string Member)> _typeofNamedMembers = new();
+    private readonly HashSet<(ClassInfo, string)> _typeofNamedMembersSeen = new();
+
+    private void NoteTypeofNamedMembers(MethodInfo method, List<Instruction> instructions,
+        BranchLiveness? liveness)
+    {
+        for (int i = 0; i < instructions.Count; i++)
+        {
+            var token = instructions[i];
+            if (token.OpCode != ILOpCode.Ldtoken || liveness is not null && !liveness.LiveAt(token.Offset))
+                continue;
+            int call = NextNonNop(instructions, i + 1);
+            int literal = call < 0 ? -1 : NextNonNop(instructions, call + 1);
+            if (literal < 0 || instructions[call].OpCode != ILOpCode.Call
+                || instructions[literal].OpCode != ILOpCode.Ldstr
+                || ClassifyTypeIdentityCall(method.Module, instructions[call].Token) != TypeIdentityCall.GetTypeFromHandle)
+                continue;
+            var handle = SRME.EntityHandle(token.Token);
+            if (handle.Kind is not (HandleKind.TypeDefinition or HandleKind.TypeReference or HandleKind.TypeSpecification)
+                || ResolveTypeTokenForScan(method.Module, handle, method.Context) is not { Kind: TypeKind.Class, Class: { } cls } type
+                || ContainsGenericVar(type) || ContainsCanonPlaceholder(type))
+                continue;
+            string member = method.Module.Reader.GetUserString(SRME.UserStringHandle(instructions[literal].Token & 0xFFFFFF));
+            if (_typeofNamedMembersSeen.Add((cls, member)))
+                _typeofNamedMembers.Add((cls, member));
+        }
+    }
+
+    private static int NextNonNop(List<Instruction> instructions, int start)
+    {
+        while (start < instructions.Count && instructions[start].OpCode == ILOpCode.Nop)
+            start++;
+        return start < instructions.Count ? start : -1;
+    }
+
+    private bool ClassSlotUsedAtOrAbove(MethodInfo m)
+    {
+        int slot = m.VtableSlot;
+        for (var b = m.DeclaringClass; b is not null && slot < b.SlotOwners.Count; b = b.BaseClass)
+            if (_usedVirtualDecls.Contains(b.SlotOwners[slot]))
+                return true;
+        return false;
     }
 
     /// <summary>Wires the <c>object</c>-element SZArray map once any REFERENCE-element
@@ -3807,11 +4408,13 @@ internal sealed partial class Compilation
 
     private readonly HashSet<MethodInfo> _scanned = new();
 
-    // Set when a reached body calls MethodInfo/MethodBase.Invoke. Triggers the
+    // Set when a reached body calls or binds MethodInfo/MethodBase.Invoke or a
+    // PropertyInfo accessor, or a user body calls or binds CreateDelegate. Triggers the
     // reflection-invoke reachability route after the initial discovery drain.
     private bool _reflectionInvokeUsed;
+    internal bool ReflectionInvokeUsed => _reflectionInvokeUsed;
 
-    // Set when a reached body calls ConstructorInfo.Invoke or the non-generic
+    // Set when a reached body calls or binds ConstructorInfo.Invoke or the non-generic
     // Activator.CreateInstance(Type). Triggers the reflection-ctor route.
     private bool _reflectionCtorUsed;
 
@@ -3858,9 +4461,10 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _userReflConstructed = new();
     private readonly HashSet<ClassInfo> _userReflSurface = new();
 
-    // Set when a reached body calls GetCustomAttributes/IsDefined. Triggers the
-    // reflection-attribute route: reach each app-module attribute's ctor + named-property
-    // setters and allocate the attribute types so their instances can be materialized.
+    // Set when a reached body calls GetCustomAttributes/IsDefined or reads a
+    // CustomAttributeData view. Triggers the reflection-attribute route: reach each
+    // app-module attribute's ctor + named-property setters and allocate the attribute
+    // types so their instances can be materialized.
     private bool _reflectionAttrUsed;
 
     // The full names of FRAMEWORK-module classes a reachable USER-module body names
@@ -4063,8 +4667,9 @@ internal sealed partial class Compilation
 
         DrainReachability();
         // Reflection-invoke reachability route: if the program calls
-        // MethodInfo.Invoke, make every app-module (non-ctor) method body invokable by
-        // reaching it — its invoker thunk + arg/return box/unbox then emit. Bounded to
+        // MethodInfo.Invoke, a PropertyInfo accessor or CreateDelegate, make every
+        // app-module (non-ctor) method body invokable by reaching it — its invoker
+        // thunk + arg/return box/unbox then emit. Bounded to
         // the app module so a real CoreLib pulled in with -r is not force-reached (which
         // would drag untranspilable BCL bodies into the tree). A reflection-only method
         // of a non-app type stays stripped (IL2CPP-with-managed-stripping semantics).
@@ -4081,7 +4686,7 @@ internal sealed partial class Compilation
         {
             foreach (var cls in Classes.ToList())
             {
-                if (cls.Module != AppModule || cls.IsInterface)
+                if (cls.Module != AppModule)
                     continue;
                 // Unlike the seeding loops above, this one runs after the discovery drain:
                 // reflection genuinely can invoke a closed generic's methods, so ask for
@@ -4089,6 +4694,11 @@ internal sealed partial class Compilation
                 foreach (var m in cls.EnsureMembers().Methods)
                 {
                     if (m.Rva == 0 || m.Name == ".cctor")
+                        continue;
+                    // An interface's virtual body runs through the receiver's slot, which
+                    // ReachReflectedVirtualSlots fills; its static and non-virtual bodies
+                    // run as themselves.
+                    if (cls.IsInterface && m.IsVirtual && !m.IsStatic)
                         continue;
                     // A body the backend replaces wholesale (e.g. the source-generated
                     // GodotPlugins.Game.Main bootstrap the .NET-module backend emits in
@@ -4201,11 +4811,12 @@ internal sealed partial class Compilation
             }
         }
 
-        // Reflection-attribute reachability route: if the program calls
-        // GetCustomAttributes/IsDefined, reach every reflectable attribute's ctor + named
-        // property setters and allocate the attribute types so GetCustomAttributes can
-        // materialize fresh instances. Elements scanned are user-module (app + referenced
-        // libraries), so an attribute on a library-declared class is reachable too;
+        // Reflection-attribute reachability route: if the program reads attributes
+        // (GetCustomAttributes/IsDefined/CustomAttributeData), reach every reflectable
+        // attribute's ctor + named property setters and allocate the attribute types so
+        // GetCustomAttributes can materialize fresh instances. Elements scanned are
+        // user-module (app + referenced libraries), so an attribute on a library-declared
+        // class is reachable too;
         // attribute types are bounded to non-framework modules plus the user-typeof-named
         // framework attributes (per DecodeCustomAttributes) so a real CoreLib pulled in
         // with -r is not force-reached. Framework modules are skipped rather than merely
@@ -4240,44 +4851,10 @@ internal sealed partial class Compilation
                 {
                     if (!IsUserModule(cls.Module))
                         continue;
-                    try
-                    {
-                        var reader = cls.Module.Reader;
-                        var td = reader.GetTypeDefinition(cls.Handle);
-                        ReachAttributesOf(cls.Module, td.GetCustomAttributes());
-                        foreach (var fh in td.GetFields())
-                            ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes());
-                        foreach (var mh in td.GetMethods())
-                        {
-                            var md = reader.GetMethodDefinition(mh);
-                            ReachAttributesOf(cls.Module, md.GetCustomAttributes());
-                            foreach (var pph in md.GetParameters())
-                                ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes());
-                        }
-                        foreach (var ph in td.GetProperties())
-                            ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A class without decodable metadata (e.g. a generic instance) just
-                        // contributes no reflected attributes.
-                    }
+                    _attributeWalked.Add(cls);
+                    ReachClassAttributes(cls, reach: true);
                 }
-                // Assembly-level custom attributes: every loaded module's assembly
-                // attributes participate in the same keep-alive rules (attribute ctor +
-                // named setters + typeof-arg types), so Assembly.GetCustomAttributes can
-                // materialize them. DecodeCustomAttributes bounds this to attribute types
-                // defined in non-framework modules (plus the user-typeof-named framework
-                // ones), so a real CoreLib pulled in with -r contributes almost nothing.
-                foreach (var module in Modules)
-                    try
-                    {
-                        ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A module without an assembly definition contributes no attributes.
-                    }
+                ReachAssemblyAttributes(reach: true);
                 DrainReachability();
             }
         }
@@ -4289,6 +4866,13 @@ internal sealed partial class Compilation
         // used×allocated cross product it stands in for does.
         while (ReachBoxedValueEquality())
             DrainReachability();
+
+        // The emit side renders an attribute row whatever reached its ctor, and routes other
+        // than the walk above reach ctors (the reflection-ctor route reaches every app-module
+        // one). Note what the rows the walk did not visit name, once ctor reachability has
+        // settled; the drain completes the shapes of the instantiations they name.
+        NoteUnwalkedAttributeRows();
+        DrainReachability();
 
         // --trim-godot-classes: the allowlist may only grow while reachability can
         // still deliver the released lambdas' subtrees — freeze it here, after the
@@ -5027,7 +5611,7 @@ internal sealed partial class Compilation
     ///
     /// <para>This arm is the necessary pair of the precise reflected array member
     /// types (<c>CppEmitter.FieldTypeInfoExpr</c>'s SZArray arm +
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>): a precise
+    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>): a precise
     /// <c>T[]</c> member type is what routes the contract resolver onto the ARRAY
     /// contract — and therefore onto this temporary — where the old
     /// <c>System.Object</c> degrade fell into the untyped/Linq contract and never
@@ -5107,76 +5691,152 @@ internal sealed partial class Compilation
     /// unemitted) — accepted, as no real user assembly claims a BCL name.</summary>
     internal bool IsUserModule(Module m) => !IsFrameworkAssemblyName(m.AssemblyName);
 
-    /// <summary>Reaches an attribute's ctor, named-property setters, and allocated type
-    /// for every reflectable custom attribute in the collection, and notes every
-    /// typeof()-valued argument's class (single or array element) as a referenced type so
-    /// its type-info is emitted and the argument stays renderable.</summary>
-    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles)
+    /// <summary>The user-module classes the reflection-attribute walk visited;
+    /// <see cref="NoteUnwalkedAttributeRows"/> covers every other one.</summary>
+    private readonly HashSet<ClassInfo> _attributeWalked = new();
+
+    /// <summary>Notes what the attribute rows of every user-module class the walk did not
+    /// visit name — all of them when nothing reads attributes, else the classes minted after
+    /// it — and of every assembly, for the attributes whose ctor is reached: those rows
+    /// render, and each handle a row names must be declared.</summary>
+    private void NoteUnwalkedAttributeRows()
     {
-        foreach (var da in DecodeCustomAttributes(module, handles))
+        foreach (var cls in Classes.ToList())
+            if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
+                ReachClassAttributes(cls, reach: false);
+        ReachAssemblyAttributes(reach: false);
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over a class's own attributes and those of
+    /// its fields, methods, parameters and properties.</summary>
+    private void ReachClassAttributes(ClassInfo cls, bool reach)
+    {
+        try
         {
-            Reach(da.Ctor);
-            // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
-            // is attrType[] in .NET; the runtime helper stamps that identity via
-            // dn2cpp_find_array_ti, which only answers for elements the image emitted a
-            // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
-            // note it — note every reflectable attribute type here instead (the bounded
-            // set a filter can usefully name). The ti alone suffices: the stamped array's
-            // interface DISPATCH rides the shared reference-element fallback.
-            NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
-            if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
-                ReachAllocatedType(da.AttrClass);
-            foreach (var fa in da.Fixed)
+            var reader = cls.Module.Reader;
+            var td = reader.GetTypeDefinition(cls.Handle);
+            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach);
+            foreach (var fh in td.GetFields())
+                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach);
+            foreach (var mh in td.GetMethods())
             {
-                NoteAttrArgTypes(fa.Value);
-                NoteAttrArgArrayType(fa.Type);
+                var md = reader.GetMethodDefinition(mh);
+                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach);
+                foreach (var pph in md.GetParameters())
+                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach);
             }
+            foreach (var ph in td.GetProperties())
+                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach);
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // A class without decodable metadata (e.g. a generic instance) just
+            // contributes no reflected attributes.
+        }
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
+    /// attributes, which follow the element rules so Assembly.GetCustomAttributes can
+    /// materialize them. DecodeCustomAttributes bounds this to attribute types defined in
+    /// non-framework modules (plus the user-typeof-named framework ones), so a real CoreLib
+    /// pulled in with -r contributes almost nothing.</summary>
+    private void ReachAssemblyAttributes(bool reach)
+    {
+        foreach (var module in Modules)
+            try
+            {
+                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach);
+            }
+            catch (Exception e) when (!IsMustEscape(e))
+            {
+                // A module without an assembly definition contributes no attributes.
+            }
+    }
+
+    /// <summary>Notes what each argument's factory names (<see cref="NoteAttrArg"/>) for
+    /// every reflectable custom attribute in the collection, so the argument stays
+    /// renderable. With <paramref name="reach"/> it also reaches the attribute's ctor,
+    /// named-property setters and allocated type; without, it notes only the attributes
+    /// whose ctor something else reached, which are the rows the emit side renders.</summary>
+    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach)
+    {
+        // A row only another route rendered is read by nothing unless attributes are read.
+        bool keep = reach || _reflectionAttrUsed;
+        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach))
+        {
+            if (reach)
+            {
+                Reach(da.Ctor);
+                // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
+                // is attrType[] in .NET; the runtime helper stamps that identity via
+                // dn2cpp_find_array_ti, which only answers for elements the image emitted a
+                // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
+                // note it — note every reflectable attribute type here instead (the bounded
+                // set a filter can usefully name). The ti alone suffices: the stamped array's
+                // interface DISPATCH rides the shared reference-element fallback.
+                NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
+                if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
+                    ReachAllocatedType(da.AttrClass);
+            }
+            var ps = da.Ctor.Signature.ParameterTypes;
+            for (int i = 0; i < da.Fixed.Length; i++)
+                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keep);
             foreach (var na in da.Named)
             {
-                NoteAttrArgTypes(na.Value);
-                NoteAttrArgArrayType(na.Type);
-                // The setter may be declared on an attribute BASE class — walk the
-                // chain, paired with the emit-side
-                // lookup in CppEmitter.RenderNamedArg: a setter emit finds but
-                // reach never reached fails its Reachable test and silently drops the
-                // whole attribute row. Field-kind named args need no reach pairing —
-                // their storage rides the struct layout.
+                // The member may be declared on an attribute BASE class — walk the
+                // chain, paired with the emit-side lookup in CppEmitter.RenderNamedArg: a
+                // setter emit finds but reach never reached fails its Reachable test and
+                // silently drops the whole attribute row, and an object-typed member boxes
+                // its value there.
+                bool boxed = false;
                 if (na.Kind == CustomAttributeNamedArgumentKind.Property && na.Name is { } pn
                     && da.AttrClass.InstanceMethodOnBaseChain("set_" + pn) is { } sm)
-                    Reach(sm);
+                {
+                    if (reach)
+                        Reach(sm);
+                    boxed = sm.Signature.ParameterTypes.Length > 0 && sm.Signature.ParameterTypes[0].IsObject;
+                }
+                else if (na.Kind == CustomAttributeNamedArgumentKind.Field && na.Name is { } fn
+                    && da.AttrClass.InstanceFieldOnBaseChain(fn) is { } f)
+                    boxed = f.Type.IsObject;
+                NoteAttrArg(na.Type, na.Value, boxed, keep);
             }
         }
     }
 
-    /// <summary>Notes the element type of an SZArray-typed attribute ARGUMENT so its
-    /// precise <c>ti_arr_&lt;elem&gt;</c> handle is emitted (and header-declared — the
-    /// declaration loop CppEmitter.ArrayTypeInfoDeclared answers from runs before any
-    /// attribute table renders).
-    /// The emit-side pairing is CppEmitter.RenderAttrArray, whose typed allocation
-    /// names that handle: an attribute-built array left on the shared object[] handle
-    /// has no interface-dispatch map, so the first LINQ over it inside the attribute
-    /// ctor (e.g. <c>inputNames.Count(...)</c>) aborts loudly.
-    /// An enum element also needs its own referenced ti_, exactly as
-    /// TypeMetadataEmitter.NoteReflectedArrayType notes for member types.</summary>
-    private void NoteAttrArgArrayType(TypeDesc t)
+    /// <summary>Notes what the factory of one attribute value names, from its
+    /// <paramref name="encoded"/> type; <paramref name="boxed"/> when it fills an
+    /// object-typed slot or object[] element, which boxes it at that type. The emit-side
+    /// pairing is CppEmitter.RenderAttrValue, and every note is emitted and
+    /// header-declared before any attribute table renders:
+    /// <list type="bullet">
+    /// <item>an SZArray's element, at every nesting level, so the array allocates with its
+    /// precise <c>ti_arr_&lt;elem&gt;</c> handle — one left on the shared object[] handle
+    /// has no interface-dispatch map, so the first LINQ over it inside the attribute ctor
+    /// (e.g. <c>inputNames.Count(...)</c>) aborts loudly — plus an enum element's own ti_,
+    /// exactly as TypeMetadataEmitter.NoteReflectedType notes for member types;</item>
+    /// <item>a boxed enum's ti_, which the box carries;</item>
+    /// <item>a Type value's identity closure, so its handle survives tree-shaking.</item>
+    /// </list>
+    /// Without <paramref name="keep"/> the classes are referenced for their type-info
+    /// alone: a row the program cannot read is no sign it reflects over them.</summary>
+    private void NoteAttrArg(TypeDesc encoded, object? value, bool boxed, bool keep)
     {
-        if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray } el })
+        if (encoded.Kind == TypeKind.SZArray)
+        {
+            var el = encoded.Element!;
+            NoteArrayElementType(el);
+            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+                NoteTypeIdentityClosure(el, keep);
+            if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
+                foreach (var item in items)
+                    NoteAttrArg(item.Type, item.Value, el.IsObject, keep);
             return;
-        NoteArrayElementType(el);
-        if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-            NoteReferencedType(ec);
-    }
-
-    /// <summary>Notes the class behind a typeof()-valued attribute argument (a decoded
-    /// <see cref="TypeDesc"/>, or an array of typed arguments carrying them) so the
-    /// type-info survives tree-shaking for the attribute factory to reference.</summary>
-    private void NoteAttrArgTypes(object? value)
-    {
-        if (value is TypeDesc { Kind: TypeKind.Class, Class: { } cls })
-            NoteReferencedType(cls);
-        else if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
-            foreach (var item in items)
-                NoteAttrArgTypes(item.Value);
+        }
+        if (value is TypeDesc type)
+            NoteTypeIdentityClosure(type, keep);
+        else if (boxed && value is not null && encoded is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+            NoteTypeIdentityClosure(encoded, keep);
     }
 
     /// <summary>Drives the reachability/discovery fixpoint to quiescence: complete
@@ -6296,9 +6956,11 @@ internal sealed partial class Compilation
                 if (!m.IsVirtual)
                     continue;
                 int slot = ExplicitBaseSlot(cls, m, classOverrides, owners.Count);
+                // A new-slot hider shadows the base slot it shares a signature with,
+                // so an override binds the most derived match.
                 if (slot < 0 && !m.IsNewSlot)
                 {
-                    for (int i = 0; i < owners.Count; i++)
+                    for (int i = owners.Count - 1; i >= 0; i--)
                     {
                         if (owners[i].Name == m.Name && owners[i].SigKey == m.SigKey)
                         {

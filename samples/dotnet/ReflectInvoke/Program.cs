@@ -18,6 +18,11 @@ namespace ReflectInvoke
                 ReflectMetadataMeasureSubset.Program.Run();
                 return;
             }
+            if (Environment.GetEnvironmentVariable("DN2CPP_STRIPPED_OVERRIDES") == "1")
+            {
+                ReflectVirtualInvokeSubset.Program.RunStripped();
+                return;
+            }
 
             ReflectInvokeSubset.Program.Run();
             ReflectDispatchSubset.Program.Run();
@@ -62,6 +67,18 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS") == "1")
                 return;
             RuntimeHandleRelationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_VIRTUAL_INVOKE") == "1")
+                return;
+            ReflectVirtualInvokeSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_FIELD_VALIDATION") == "1")
+                return;
+            ReflectFieldValidationSubset.Program.Run();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE") == "1")
+                return;
+            ReflectVirtualInvokeSubset.Program.RunGenericVirtual();
+            if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_AMBIGUOUS_MESSAGES") == "1")
+                return;
+            AmbiguousMatchMessageSubset.Program.Run();
         }
     }
 }

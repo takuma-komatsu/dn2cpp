@@ -45,6 +45,9 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _methodTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
+        // The methods under an Object member name that got a method row, per class, for
+        // the class's DN2CPP_TF_OBJECT_MEMBER_ROWS decision (CarriesObjectMemberRows).
+        private readonly Dictionary<ClassInfo, HashSet<MethodDefinitionHandle>> _objectMemberRows = new();
         // A method's address within its emitted table ("&methtab_X[k]"), so a property's
         // accessor can reference its method-table entry.
         private readonly Dictionary<MethodInfo, string> _memberAddr = new();
@@ -371,38 +374,47 @@ internal sealed partial class CppEmitter
             return result.OrderBy(c => c.CppName, System.StringComparer.Ordinal).ToList();
         }
 
-        /// <summary>One SZArray member type the reflection tables will name: record its
-        /// element (<see cref="Compilation.NoteArrayElementType"/> — the same route every
-        /// <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
-        /// <c>ti_arr_&lt;elem&gt;</c> handle <see cref="CppEmitter.FieldTypeInfoExpr"/>'s
-        /// SZArray arm names is forward-declared and emitted, and — for an enum element —
-        /// note the enum referenced so its own <c>ti_</c> (the array handle's elementType,
-        /// what GetElementType answers with) is emitted by the referenced-enum loops below —
-        /// an enum only ever named as a reflected array element has no token site to have
-        /// done either. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm; a
-        /// canonical-placeholder element is refused by NoteArrayElementType itself.</summary>
-        private void NoteReflectedArrayType(TypeDesc t)
+        /// <summary>One type the reflection tables will name by its type-info: a member's
+        /// type, a closed generic argument, or an array member's element. An enum is noted
+        /// referenced so its own <c>ti_</c> is emitted by the referenced-enum loops below:
+        /// <see cref="CppEmitter.FieldTypeInfoExpr"/> degrades an enum without one to
+        /// System.Object, and an enum only a reflected row names has no token site to have
+        /// noted it. An SZArray records its element (<see cref="Compilation.NoteArrayElementType"/>
+        /// — the same route every <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
+        /// <c>ti_arr_&lt;elem&gt;</c> handle the SZArray arm names is forward-declared and
+        /// emitted. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm, a cross-assembly
+        /// name is promoted as FieldTypeInfoExpr promotes it, and a canonical-placeholder type
+        /// is refused.</summary>
+        private void NoteReflectedType(TypeDesc t)
         {
+            if (t is { Kind: TypeKind.External, ExternalName: { } xn } && _c.FindClassByFullName(xn) is { } xc)
+                t = TypeDesc.MakeClass(xc);
+            if (t is { Kind: TypeKind.Class, Class: { IsEnum: true } en })
+            {
+                if (!Compilation.ContainsCanonPlaceholder(t))
+                    _c.NoteReferencedType(en);
+                return;
+            }
             if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el })
                 return;
             _c.NoteArrayElementType(el);
-            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-                _c.NoteReferencedType(ec);
+            NoteReflectedType(el);
         }
 
-        /// <summary>Pre-notes every SZArray type the reflection tables emit as a member
-        /// type — field types (<see cref="RenderFieldTable"/>), method/ctor return,
-        /// parameter and generic-argument types (<see cref="BuildMemberTable"/> via
-        /// <see cref="RenderMemberTables"/>), property types (<see cref="BuildPropTable"/>)
-        /// and the closed generic-argument vectors (<see cref="RenderTypeInfo"/>) — by
-        /// mirroring those emitters' class/member filters, so it reads exactly the member
-        /// types they read (the trim rule is applied before any signature is touched, like
-        /// BuildMemberTable's row loop). MUST run before the forward-declaration loops in
-        /// <see cref="Emit"/>: the ti_arr_/enum-ti_ externs — and with them the
-        /// declared-handle record <see cref="CppEmitter.ArrayTypeInfoDeclared"/> answers
-        /// from — are taken there, and an element noted later can no longer be named by a
-        /// member type. Each mirrored emitter names this method at its guard.</summary>
-        private void NoteReflectedMemberArrayElements()
+        /// <summary>Pre-notes every type the reflection tables name by its type-info
+        /// (<see cref="NoteReflectedType"/>) — field types (<see cref="RenderFieldTable"/>),
+        /// method/ctor return, parameter and generic-argument types
+        /// (<see cref="BuildMemberTable"/> via <see cref="RenderMemberTables"/>), property
+        /// types (<see cref="BuildPropTable"/>) and the closed generic-argument vectors
+        /// (<see cref="RenderTypeInfo"/>) — by mirroring those emitters' class/member
+        /// filters, so it reads exactly the member types they read (the trim rule is applied
+        /// before any signature is touched, like BuildMemberTable's row loop). MUST run
+        /// before the forward-declaration loops in <see cref="Emit"/>: the ti_arr_/enum-ti_
+        /// externs — and with them the declared-handle record
+        /// <see cref="CppEmitter.ArrayTypeInfoDeclared"/> answers from — are taken there, and
+        /// a type noted later can no longer be named by a member row. Each mirrored emitter
+        /// names this method at its guard.</summary>
+        private void NoteReflectedMemberTypes()
         {
             foreach (var cls in _e.TopoOrder())
             {
@@ -411,13 +423,13 @@ internal sealed partial class CppEmitter
                 // RenderFieldTable's guard.
                 if (cls.Fields.Count > 0 && !_e.IsCanonicalWorld(cls) && _c.KeepsReflectionMetadata(cls))
                     foreach (var f in cls.Fields)
-                        NoteReflectedArrayType(f.Type);
+                        NoteReflectedType(f.Type);
                 // RenderTypeInfo's generic-argument vector gate (its _genericDefSyms
                 // lookup succeeds exactly when GenericDefInfo is non-null).
                 if (!_e.IsCanonicalWorld(cls) && !_e.SkipsCanonicalMetadata(cls)
                     && _e.GenericDefInfo(cls) is not null)
                     foreach (var a in cls.Context.TypeArgs)
-                        NoteReflectedArrayType(a);
+                        NoteReflectedType(a);
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                     continue;
@@ -437,13 +449,13 @@ internal sealed partial class CppEmitter
                     // (constructors are deliberately not stripped); methtab/proptab are not.
                     if (!(ctorRow || (methodRow && keepRefl)))
                         continue;
-                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
+                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
                         continue;
-                    NoteReflectedArrayType(m.Signature.ReturnType);
+                    NoteReflectedType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
-                        NoteReflectedArrayType(p);
+                        NoteReflectedType(p);
                     foreach (var ga in m.Context.MethodArgs)
-                        NoteReflectedArrayType(ga);
+                        NoteReflectedType(ga);
                     if (CustomModifiers(m) is { } modifiers)
                     {
                         NoteModifierTypes(modifiers.ReturnType);
@@ -466,7 +478,7 @@ internal sealed partial class CppEmitter
                         if ((acc.Getter.IsNil || !accessorRows.Contains(acc.Getter))
                             && (acc.Setter.IsNil || !accessorRows.Contains(acc.Setter)))
                             continue;
-                        NoteReflectedArrayType(
+                        NoteReflectedType(
                             reader.GetPropertyDefinition(ph).DecodeSignature(_c.SigProvider, cls.Context).ReturnType);
                     }
                 }
@@ -478,7 +490,7 @@ internal sealed partial class CppEmitter
             foreach (var cls in _e._referencedIntrinsicTis)
                 if (_e.GenericDefInfo(cls) is not null)
                     foreach (var a in cls.Context.TypeArgs)
-                        NoteReflectedArrayType(a);
+                        NoteReflectedType(a);
         }
 
         /// <summary>The pooled <c>genargpool_</c> symbol for <paramref name="cls"/>'s closed
@@ -620,10 +632,10 @@ internal sealed partial class CppEmitter
             // to it, which is why that step re-derives.
             _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
 
-            // Before anything is forward-declared: note every SZArray the reflection
-            // tables below will type a member with, so its precise ti_arr_ handle (and
-            // an enum element's ti_) is declared/emitted like a body-noted one.
-            NoteReflectedMemberArrayElements();
+            // Before anything is forward-declared: note every array and enum the
+            // reflection tables below will type a member or a generic argument with, so its
+            // precise ti_arr_ or enum ti_ is declared and emitted like a body-noted one.
+            NoteReflectedMemberTypes();
 
             // The note pass also discovers custom-modifier types. Unlike member
             // parameter types, those are erased by the main TypeDesc signature and
@@ -765,7 +777,8 @@ internal sealed partial class CppEmitter
                 // the enum metadata (enumUnderlying, enumMembers, enumMemberCount).
                 string enFlags = "(DN2CPP_TF_ENUM | DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED"
                     + (IsNestedType(en) ? " | DN2CPP_TF_NESTED" : "")
-                    + (EnumHasFlagsAttribute(en) ? " | DN2CPP_TF_FLAGS" : "") + ")";
+                    + (EnumHasFlagsAttribute(en) ? " | DN2CPP_TF_FLAGS" : "")
+                    + (CarriesObjectMemberRows(en) ? " | DN2CPP_TF_OBJECT_MEMBER_ROWS" : "") + ")";
                 var (enIlAttrs, enToken) = TypeIlMeta(en);
                 // instanceSize is the enum's MODEL width — int32, or int64 for a long/ulong
                 // underlying — not its CLR underlying width: every reader of this field
@@ -998,6 +1011,7 @@ internal sealed partial class CppEmitter
             _e.NoteRuntimeHandleBases();
             _sb.AppendLine();
             EmitDelegateIdentities();
+            EmitGvmRowDispatch();
 
             // Last statement of the emission, and it has to be: this object is unreferenced
             // the moment it returns (EmitTypeInfos keeps no field), so a census anywhere
@@ -1036,28 +1050,9 @@ internal sealed partial class CppEmitter
                 int targetCount = 0;
                 if (isVirtual && gvms.TryGetValue(m.CppName, out var disp))
                 {
-                    // The dispatcher's branches, template levels included: the
-                    // runtime looks a clone up by its template level.
-                    var targets = disp.Cases
-                        .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
-                            && !_e.SkipsCanonicalMetadata(kv.Key)
-                            && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
-                        .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
-                        .ToList();
-                    if (targets.Count > 0)
-                    {
+                    targetCount = EmitGvmTargets(disp, sym + "_gvm_targets");
+                    if (targetCount > 0)
                         targetsExpr = sym + "_gvm_targets";
-                        targetCount = targets.Count;
-                        _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {targetsExpr}[] = {{");
-                        foreach (var (receiver, target) in targets)
-                        {
-                            string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
-                            string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
-                            int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
-                            _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
-                        }
-                        _sb.AppendLine("};");
-                    }
                 }
                 else if (isVirtual && owner.IsInterface)
                 {
@@ -1100,6 +1095,79 @@ internal sealed partial class CppEmitter
                     + $"{{ {ownerExpr}, {token}, {margs.Length}, {argsExpr}, {(isVirtual ? "true" : "false")}, "
                     + $"{targetCount}, {targetsExpr} }};");
             }
+            _sb.AppendLine();
+        }
+
+        /// <summary>Emits a dispatcher's branches as the delegate method targets
+        /// <paramref name="symbol"/> names, template levels included: the runtime looks a
+        /// clone up by its template level. Returns how many; none emits no array.</summary>
+        private int EmitGvmTargets(Compilation.GvmDispatch disp, string symbol)
+        {
+            var targets = disp.Cases
+                .Where(kv => kv.Value != disp.Gvm && _c.Reachable.Contains(kv.Value)
+                    && !_e.SkipsCanonicalMetadata(kv.Key)
+                    && _e.TypeInfoSymbolDefined(kv.Value.DeclaringClass.CppTypeInfoName))
+                .OrderBy(kv => kv.Key.CppName, System.StringComparer.Ordinal)
+                .ToList();
+            if (targets.Count == 0)
+                return 0;
+            _sb.AppendLine($"static const Dn2CppDelegateMethodTarget {symbol}[] = {{");
+            foreach (var (receiver, target) in targets)
+            {
+                string receiverExpr = _e.TypeInfoRef(receiver, "delegate GVM receiver");
+                string targetExpr = _e.TypeInfoRef(target.DeclaringClass, "delegate GVM target");
+                int targetToken = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(target.Handle);
+                _sb.AppendLine($"    {{ {receiverExpr}, {targetExpr}, {targetToken} }},");
+            }
+            _sb.AppendLine("};");
+            return targets.Count;
+        }
+
+        /// <summary>The dispatcher a generic virtual method row runs through when
+        /// reflection enters it (<c>dn2cpp_gvm_row_dispatch</c>), keyed by the row's
+        /// declaring type, token and generic arguments, spelled as the row spells them,
+        /// with the targets <c>Delegate.Method</c> reports. Sorted by token, then owner and
+        /// method, so the runtime bisects on the token. A final row or a sealed class's
+        /// row runs its own body. The symbols always link; entries emit only when
+        /// reflection can enter a row.</summary>
+        private void EmitGvmRowDispatch()
+        {
+            var rows = new List<Compilation.GvmDispatch>();
+            if (_c.ReflectionInvokeUsed || _c.NeedsReflectionDelegateBind || _e._hotUpdateBase)
+                foreach (var disp in _c.UsedGvms)
+                {
+                    var gvm = disp.Gvm;
+                    if (_memberAddr.ContainsKey(gvm) && (gvm.Attributes & System.Reflection.MethodAttributes.Final) == 0
+                        && !gvm.DeclaringClass.IsSealed && _e.EmitsGvmDispatcher(disp))
+                        rows.Add(disp);
+                }
+            var entries = new List<string>(rows.Count);
+            foreach (var disp in rows
+                         .OrderBy(d => System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(d.Gvm.Handle))
+                         .ThenBy(d => d.Gvm.DeclaringClass.CppName, System.StringComparer.Ordinal)
+                         .ThenBy(d => d.Gvm.CppName, System.StringComparer.Ordinal))
+            {
+                var gvm = disp.Gvm;
+                string name = Compilation.GvmDispatchName(gvm);
+                string targetsExpr = "gvmrow_targets_" + entries.Count;
+                int targetCount = EmitGvmTargets(disp, targetsExpr);
+                var gargs = new List<string>(gvm.Context.MethodArgs.Length);
+                foreach (var ga in gvm.Context.MethodArgs)
+                    gargs.Add(_e.MemberTypeInfoExpr(ga, _emittedEnums));
+                int token = System.Reflection.Metadata.Ecma335.MetadataTokens.GetToken(gvm.Handle);
+                entries.Add($"    {{ {{ {_e.TypeInfoRef(gvm.DeclaringClass, "generic virtual row dispatch owner")}, "
+                    + $"{token}, {gargs.Count}, {TypeArgumentVector(string.Join(", ", gargs))}, true, "
+                    + $"{targetCount}, {(targetCount > 0 ? targetsExpr : "nullptr")} }}, (void*)&{name} }},");
+                _e._reflectedGvmDispatchers.Add(name);
+            }
+            if (entries.Count == 0)
+                entries.Add("    { { nullptr, 0, 0, nullptr, false, 0, nullptr }, nullptr },");
+            _sb.AppendLine("// ---- generic virtual row dispatch ----");
+            _sb.AppendLine("extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[] = {");
+            foreach (var entry in entries)
+                _sb.AppendLine(entry);
+            _sb.AppendLine("};");
+            _sb.AppendLine($"extern const int32_t dn2cpp_gvm_row_dispatch_count = {rows.Count};");
             _sb.AppendLine();
         }
 
@@ -1478,14 +1546,12 @@ internal sealed partial class CppEmitter
         // decode), so alias members — two names, one value, deduped out of enummembers_ —
         // keep their own rows like real .NET.
         //
-        // --trim-reflection interplay: every enum reaching here is in ReferencedTypes,
-        // which is a keep-set seed, so it is always kept and never needs
-        // DN2CPP_TF_METADATA_STRIPPED. The KeepsReflectionMetadata gate below states that
-        // dependency; if the keep rules narrow past it, a stripped enum must start carrying
-        // the bit (see dn2cpp_require_metadata).
+        // --trim-reflection keeps these rows for every enum emitted: they are an enum's
+        // whole member surface, and an enum first noted by a reflected member row is noted
+        // after the keep set is final, where stripping would answer an empty GetFields.
         private (string Expr, int Count) RenderEnumFieldTable(ClassInfo en)
         {
-            if (en.Handle.IsNil || !_c.KeepsReflectionMetadata(en))
+            if (en.Handle.IsNil)
                 return ("nullptr", 0);
             var rows = new List<MetadataRow>();
             try
@@ -1509,6 +1575,7 @@ internal sealed partial class CppEmitter
                     // here — the runtime boxes at the enum's own model width.
                     long lv = 0;
                     string get = "nullptr";
+                    string set = "nullptr";
                     string ftInfo;
                     if (literal)
                     {
@@ -1517,19 +1584,7 @@ internal sealed partial class CppEmitter
                         if (!ch.IsNil)
                         {
                             var constant = reader.GetConstant(ch);
-                            var blob = reader.GetBlobReader(constant.Value);
-                            lv = constant.TypeCode switch
-                            {
-                                ConstantTypeCode.SByte => blob.ReadSByte(),
-                                ConstantTypeCode.Byte => blob.ReadByte(),
-                                ConstantTypeCode.Int16 => blob.ReadInt16(),
-                                ConstantTypeCode.UInt16 => blob.ReadUInt16(),
-                                ConstantTypeCode.Int32 => blob.ReadInt32(),
-                                ConstantTypeCode.UInt32 => blob.ReadUInt32(),
-                                ConstantTypeCode.Int64 => blob.ReadInt64(),
-                                ConstantTypeCode.UInt64 => unchecked((long)blob.ReadUInt64()),
-                                _ => 0,
-                            };
+                            lv = ReadConstantBits(constant.TypeCode, reader.GetBlobReader(constant.Value));
                         }
                     }
                     else if (!isStatic)
@@ -1548,6 +1603,12 @@ internal sealed partial class CppEmitter
                             + $"{underT} v = ({underT})*({readT}*)((Dn2CppObject*)o + 1); "
                             + $"return dn2cpp_box({ftInfo}, &v, sizeof({underT})); }}");
                         get = $"&{gname}";
+                        // SetValue stores into the boxed receiver; the dispatcher has
+                        // already converted the value to a box of the underlying type.
+                        string sname = $"fldset_{en.CppName}_{fname}";
+                        _sb.AppendLine($"static void {sname}(Dn2CppObject* o, Dn2CppObject* val) {{ "
+                            + $"*({readT}*)((Dn2CppObject*)o + 1) = ({readT})*({underT}*)((char*)val + sizeof(Dn2CppObject)); }}");
+                        set = $"&{sname}";
                     }
                     else
                     {
@@ -1566,7 +1627,7 @@ internal sealed partial class CppEmitter
                         : _e.ReflectionSignatureType(TypeDesc.MakePrimitive(en.EnumUnderlying));
                     rows.Add(new MetadataRow(new[] {
                         MetadataValue.Text(fname), MetadataValue.Ref(_e.TypeInfoRef(en, "enum field row's declaring type")), MetadataValue.Ref(ftInfo),
-                        MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(null),
+                        MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set),
                         MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count), MetadataValue.Signed((int)fd.Attributes), MetadataValue.Signed(fldToken),
                         MetadataValue.Signed(lv), MetadataValue.Display(fieldDisplayType + " " + fname),
                     }));
@@ -1583,14 +1644,92 @@ internal sealed partial class CppEmitter
             return ($"fldtab_{en.CppName}", rows.Count);
         }
 
+        // A constant's bits: integers sign- or zero-extended, a float's or double's IEEE
+        // bits, so NaN payloads and -0 survive.
+        private static long ReadConstantBits(ConstantTypeCode code, BlobReader blob) => code switch
+        {
+            ConstantTypeCode.Boolean => blob.ReadBoolean() ? 1 : 0,
+            ConstantTypeCode.Char => blob.ReadChar(),
+            ConstantTypeCode.SByte => blob.ReadSByte(),
+            ConstantTypeCode.Byte => blob.ReadByte(),
+            ConstantTypeCode.Int16 => blob.ReadInt16(),
+            ConstantTypeCode.UInt16 => blob.ReadUInt16(),
+            ConstantTypeCode.Int32 or ConstantTypeCode.Single => blob.ReadInt32(),
+            ConstantTypeCode.UInt32 => blob.ReadUInt32(),
+            ConstantTypeCode.Int64 or ConstantTypeCode.Double => blob.ReadInt64(),
+            ConstantTypeCode.UInt64 => unchecked((long)blob.ReadUInt64()),
+            _ => 0,
+        };
+
+        private static PrimitiveTypeCode? ConstantPrimitive(ConstantTypeCode code) => code switch
+        {
+            ConstantTypeCode.Boolean => PrimitiveTypeCode.Boolean,
+            ConstantTypeCode.Char => PrimitiveTypeCode.Char,
+            ConstantTypeCode.SByte => PrimitiveTypeCode.SByte,
+            ConstantTypeCode.Byte => PrimitiveTypeCode.Byte,
+            ConstantTypeCode.Int16 => PrimitiveTypeCode.Int16,
+            ConstantTypeCode.UInt16 => PrimitiveTypeCode.UInt16,
+            ConstantTypeCode.Int32 => PrimitiveTypeCode.Int32,
+            ConstantTypeCode.UInt32 => PrimitiveTypeCode.UInt32,
+            ConstantTypeCode.Int64 => PrimitiveTypeCode.Int64,
+            ConstantTypeCode.UInt64 => PrimitiveTypeCode.UInt64,
+            ConstantTypeCode.Single => PrimitiveTypeCode.Single,
+            ConstantTypeCode.Double => PrimitiveTypeCode.Double,
+            _ => null,
+        };
+
+        // A literal row answers GetValue from its constant. A constant encoded at the
+        // field's own primitive or enum type rides in literalValue as bits the runtime
+        // boxes at the field type, and a null constant leaves the row empty. A string,
+        // or a constant encoded at another type (C# stores an nint constant as an int),
+        // boxes in a getter thunk instead.
+        private (string Get, long Bits) RenderLiteral(ClassInfo cls, FieldInfo f,
+            FieldDefinitionHandle handle, string fieldTypeInfo)
+        {
+            var reader = cls.Module.Reader;
+            var constantHandle = reader.GetFieldDefinition(handle).GetDefaultValue();
+            if (constantHandle.IsNil)
+                return ("nullptr", 0);
+            var constant = reader.GetConstant(constantHandle);
+            var blob = reader.GetBlobReader(constant.Value);
+            string body;
+            if (constant.TypeCode == ConstantTypeCode.String)
+            {
+                body = $"return (Dn2CppObject*){_e._literals.GetOrAdd(blob.ReadUTF16(blob.Length))};";
+            }
+            else if (ConstantPrimitive(constant.TypeCode) is { } primitive)
+            {
+                long bits = ReadConstantBits(constant.TypeCode, blob);
+                bool enumField = f.Type is { Kind: TypeKind.Class, Class.IsEnum: true }
+                    && fieldTypeInfo != "&dn2cpp_object_type"
+                    && primitive is not (PrimitiveTypeCode.Single or PrimitiveTypeCode.Double);
+                if (enumField || (f.Type.Kind == TypeKind.Primitive && f.Type.Primitive == primitive))
+                    return ("nullptr", bits);
+                bool wide = primitive is PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64
+                    or PrimitiveTypeCode.Double;
+                string value = wide
+                    ? $"int64_t v = (int64_t)0x{unchecked((ulong)bits):x}ULL;"
+                    : $"int32_t v = (int32_t)0x{unchecked((uint)bits):x}u;";
+                string boxType = MethodCompiler.TypeInfoExprOf(TypeDesc.MakePrimitive(primitive))!;
+                body = $"{value} return dn2cpp_box({boxType}, &v, sizeof(v));";
+            }
+            else
+            {
+                return ("nullptr", 0);
+            }
+            string name = $"fldget_{cls.CppName}_{f.CppName}";
+            _sb.AppendLine($"static Dn2CppObject* {name}(Dn2CppObject*) {{ {body} }}");
+            return ($"&{name}", 0);
+        }
+
         // Per-type reflection field tables: one Dn2CppFieldInfo[] per type that
         // declares fields, referenced by the type-info's fields/fieldCount below. Emitted
         // before the type-info definition so the initializer can name it. Each entry
         // carries the field's name, declaring/field type-info, and accessibility bits.
         private void RenderFieldTable(ClassInfo cls)
         {
-            // Guard mirrored by NoteReflectedMemberArrayElements (which pre-notes the
-            // SZArray field types this table names) — keep the two in step.
+            // Guard mirrored by NoteReflectedMemberTypes (which pre-notes the
+            // array and enum field types this table names) — keep the two in step.
             if (cls.IsEnum || cls.Fields.Count == 0 || _e.IsCanonicalWorld(cls)
                 || !_c.KeepsReflectionMetadata(cls))
                 return;
@@ -1625,7 +1764,13 @@ internal sealed partial class CppEmitter
                 // An [InlineArray] struct lays its single field out as a C array
                 // (f_name[N]), which is neither copyable nor assignable — skip its thunks.
                 (string get, string set) = ("nullptr", "nullptr");
-                if (!f.IsLiteral && !_e.IsOpaque(cls) && !cls.IsDelegate
+                long literalBits = 0;
+                if (f.IsLiteral)
+                {
+                    if (fieldHandles.TryGetValue(f.Name, out var literalHandle))
+                        (get, literalBits) = RenderLiteral(cls, f, literalHandle, ftInfo);
+                }
+                else if (!_e.IsOpaque(cls) && !cls.IsDelegate
                     && cls.IntrinsicCppName is null && cls.InlineArrayLength <= 0)
                 {
                     string cppT = CppTypes.Of(f.Type);
@@ -1670,11 +1815,14 @@ internal sealed partial class CppEmitter
                         : isRef
                         ? $"return (Dn2CppObject*)({access});"
                         : $"{cppT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({cppT}));");
+                    // A null value stores the default. The dispatcher converts null
+                    // through the row's field type, which reads Object for a value type
+                    // the image emits no type-info for.
                     string setBody = ensure + (isHeaderless
                         ? $"{access} = {MethodCompiler.HeaderlessUnwrapExpr("val", memberT)};"
                         : isRef
                         ? $"{access} = ({memberT})val;"
-                        : $"{access} = *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
+                        : $"{access} = val == nullptr ? {cppT}{{}} : *({cppT}*)((char*)val + sizeof(Dn2CppObject));");
                     if (f.Type.ContainsGcReferences())
                     {
                         if (f.IsStatic)
@@ -1703,7 +1851,7 @@ internal sealed partial class CppEmitter
                 rows.Add(new MetadataRow(new[] {
                     MetadataValue.Text(f.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "field row's declaring type")), MetadataValue.Ref(ftInfo),
                     MetadataValue.ExplicitSigned(attrs), MetadataValue.Ref(get), MetadataValue.Ref(set), MetadataValue.Ref(ca.Expr), MetadataValue.Signed(ca.Count),
-                    MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(0),
+                    MetadataValue.Signed((int)f.Attributes), MetadataValue.Signed(fldToken), MetadataValue.Signed(literalBits),
                     MetadataValue.Display(_e.ReflectionSignatureType(f.Type) + " " + f.Name),
                 }));
             }
@@ -1733,16 +1881,22 @@ internal sealed partial class CppEmitter
             // program that reflects-and-invokes force-reaches app-module bodies only. A
             // hot-update base keeps everything: the interpreter binds a patch's imports by
             // walking these tables.
-            // (Row filter mirrored by NoteReflectedMemberArrayElements — keep in step.)
+            // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = !appCls && !_e._hotUpdateBase;
             foreach (var m in members)
             {
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
+                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
+                if (prefix == "methtab" && !m.Handle.IsNil && CoreIntrinsics.IsObjectMemberRowName(m.Name))
+                {
+                    if (!_objectMemberRows.TryGetValue(cls, out var named))
+                        _objectMemberRows[cls] = named = new HashSet<MethodDefinitionHandle>();
+                    named.Add(m.Handle);
+                }
                 int attrs = MetadataMemberAttrs((int)m.Attributes)
                     | (((int)m.Attributes & 0x800) != 0 ? 0x20 : 0)
                     | (m.Context.MethodArgs.Length > 0 ? 0x40 : 0);
@@ -1856,17 +2010,18 @@ internal sealed partial class CppEmitter
                         ? InvokerMissStub(cls, m, blocked)
                         : _e.EmitInvokerThunk(_sb, m, _invokerThunks));
                 }
-                // An interface method carries no body (fnPtr stays null), but two consumers
-                // dispatch it late-bound by resolving the receiver's slot to a concrete fn
-                // and calling that through the interface method's invoker thunk — the ABI
-                // matches, because generated callvirts call slot functions through exactly
-                // the interface shape the thunk spells. So emit that thunk (signature-only)
-                // when its ABI is bridgeable: for every instance row, serving
-                // MethodBase.Invoke / PropertyInfo.GetValue on an interface-declared member;
-                // and for static rows too under --hotupdate-base, whose interpreter binds by
-                // walking these tables. A static row's thunk is useless to Invoke (no
-                // receiver to resolve), so normal builds skip it.
-                else if (cls.IsInterface && (!m.IsStatic || _e._hotUpdateBase))
+                // An unreached interface method or an abstract class method carries no
+                // body (fnPtr stays null), but reflection dispatches a virtual one
+                // late-bound by resolving the receiver's slot to a concrete fn and
+                // calling that through the row's invoker thunk — the ABI matches, because
+                // generated callvirts call slot functions through exactly the declared
+                // shape the thunk spells. So emit that thunk (signature-only) when its ABI
+                // is bridgeable: for every virtual instance row, serving
+                // MethodBase.Invoke / PropertyInfo.GetValue and CreateDelegate; and for
+                // every interface row under --hotupdate-base, whose interpreter binds by
+                // walking these tables. A static or non-virtual row has no slot to
+                // resolve, so normal builds skip it.
+                else if (cls.IsInterface ? (_e._hotUpdateBase || (!m.IsStatic && m.IsVirtual)) : m.IsAbstract)
                 {
                     try
                     {
@@ -1893,7 +2048,8 @@ internal sealed partial class CppEmitter
                 // a --hotupdate-base build (the hot-update loader is the sole reader;
                 // normal builds keep it null). It lets the loader tell same-(name,
                 // arity, static) methods apart — chiefly a generic method's several
-                // instantiations, all emitted under one name.
+                // instantiations, all emitted under one name, which it tells apart
+                // by type arguments (AbiContract.ImportShape).
 
                 // Trailing raw ECMA words + token: MethodAttributes, MethodImplAttributes,
                 // and the method's metadata token (MemberInfo.MetadataToken).
@@ -1921,7 +2077,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Text(m.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "method/ctor row's declaring type")),
                     MetadataValue.Ref(retInfo), MetadataValue.Ref(paramsExpr), MetadataValue.Signed(ps.Length), MetadataValue.ExplicitSigned(attrs),
                     MetadataValue.Signed(m.VtableSlot), MetadataValue.Ref(fnPtr), MetadataValue.Ref(invoker),
-                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? m.SigShape : null),
+                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
                     MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
                     MetadataValue.Signed(m.Context.MethodArgs.Length), MetadataValue.Ref(genArgsExpr),
                     MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),
@@ -1946,7 +2102,7 @@ internal sealed partial class CppEmitter
         // entry. `methods` is the type's deduped method list (whose addresses
         // are recorded in _memberAddr). Returns null when the type has no properties.
         // (Row condition + property-type decode mirrored by
-        // NoteReflectedMemberArrayElements — keep the two in step.)
+        // NoteReflectedMemberTypes — keep the two in step.)
         private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods)
         {
             var byHandle = new Dictionary<MethodDefinitionHandle, MethodInfo>();
@@ -2018,7 +2174,8 @@ internal sealed partial class CppEmitter
             // Skip opaque/intrinsic types (System.Object/ValueType/Exception/…): their
             // members are intrinsic-dispatched and their ti_ sits in user types' base
             // chains, so emitting a table here would leak Object.ToString/Equals/etc.
-            // into GetMethods — which, unlike real .NET, dn2cpp does not reflect.
+            // into GetMethods, which unlike real .NET lists no Object member; a named
+            // lookup answers those from the runtime's rows (dn2cpp_meta_lookup).
             if (cls.IsEnum || _e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                 return;
             // Dedupe by CppName: a class can list the same method twice (e.g. an
@@ -2063,6 +2220,33 @@ internal sealed partial class CppEmitter
             // table it points into.
             if (keepRefl && BuildPropTable(cls, methods) is { } pt)
                 _propTabs[cls] = pt;
+        }
+
+        /// <summary>Whether every method <paramref name="cls"/> declares under a name
+        /// <see cref="CoreIntrinsics.IsObjectMemberRowName"/> accepts got a method row, so
+        /// the runtime may answer an Object or ValueType row through this level without
+        /// passing over an override it has no row for. Reads only the raw TypeDef, so it
+        /// decodes nothing; a class whose tables are stripped never qualifies.</summary>
+        private bool CarriesObjectMemberRows(ClassInfo cls)
+        {
+            _objectMemberRows.Remove(cls, out var rows);
+            if (cls.Handle.IsNil || !_c.KeepsReflectionMetadata(cls))
+                return false;
+            try
+            {
+                var reader = cls.Module.Reader;
+                foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+                {
+                    if (CoreIntrinsics.IsObjectMemberRowName(reader.GetString(reader.GetMethodDefinition(handle).Name))
+                        && rows?.Contains(handle) != true)
+                        return false;
+                }
+                return true;
+            }
+            catch (Exception e) when (!Compilation.IsMustEscape(e))
+            {
+                return false;
+            }
         }
 
         // The class's type-info + interned Type object: the externally-visible
@@ -2249,6 +2433,8 @@ internal sealed partial class CppEmitter
             // kept, so the bit does not speak for GetConstructor/Activator.
             if (!_c.KeepsReflectionMetadata(cls))
                 flagBits.Add("DN2CPP_TF_METADATA_STRIPPED");
+            if (CarriesObjectMemberRows(cls))
+                flagBits.Add("DN2CPP_TF_OBJECT_MEMBER_ROWS");
             // Abstract System.Array base. Array type-infos (ti_arr_<T> and the runtime's
             // built-in / dynamically-built handles) carry base=nullptr, so `(array) is
             // Array` / castclass reaches nothing on the base chain; this bit lets
@@ -2347,7 +2533,7 @@ internal sealed partial class CppEmitter
             // Generic reflection: a closed instantiation points at its shared
             // open-definition handle and lists its closed type arguments. Non-generic
             // types leave these 0 (trailing-member convention). (Gate mirrored by
-            // NoteReflectedMemberArrayElements for SZArray type arguments.)
+            // NoteReflectedMemberTypes for array and enum type arguments.)
             string genDefExpr = "nullptr", genArgsExpr = "nullptr";
             int genArgCount = 0;
             if (!_e.IsCanonicalWorld(cls)

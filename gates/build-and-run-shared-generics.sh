@@ -47,6 +47,9 @@
 # A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
 # dispatches a base-typed call to the base body, never to the hider's override.
 # Same-name generic overloads with equal arity and parameter count keep distinct slots.
+# A plain class virtual obeys the same rule through the vtable: an override below a
+# `new virtual` hider binds the hider's slot, over a non-generic chain and over a
+# generic base's value and shared specializations.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -393,5 +396,14 @@ for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
     'gvm hider covariant=True'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
+done
+before_virtual_hider=$(strip_cr_win "$(dotnet "$app" before-virtual-hider)")
+prefix=$(awk '/^virtual hider base=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_virtual_hider"
+for line in 'virtual hider base=dog' 'virtual hider mid=dog' 'virtual hider hider=loud-puppy' \
+    'virtual hider value base=cell:Int32' 'virtual hider value hider=leaf:Int32' \
+    'virtual hider shared base=cell:String' 'virtual hider shared hider=leaf:String'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: class-virtual hider dispatch witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

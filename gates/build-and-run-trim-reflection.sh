@@ -55,7 +55,8 @@
 # declaration's default answers beside a stripped derived interface that
 # overrides nothing, while a derived interface's selected override throws the
 # PNSE naming that stripped interface. Arm 1 answers as .NET and keeps its
-# pre-section output unchanged when skipped.
+# pre-section output unchanged when skipped. A last section reads the field rows of
+# a library enum that only a kept app type's field names; every arm keeps them.
 # Keep original member metadata while comparing the C++ reflection policies.
 # ILDiet with --trim-reflection is covered by build-and-run-preserve-control.sh.
 source "$(dirname "$0")/_common.sh"

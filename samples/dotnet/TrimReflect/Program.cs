@@ -41,6 +41,12 @@ namespace TrimReflect
         public string Tag => "impl";
     }
 
+    // The only thing that names LibShade.
+    public class Palette
+    {
+        public LibShade Shade;
+    }
+
     internal static class Program
     {
         private static void Main()
@@ -57,6 +63,7 @@ namespace TrimReflect
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_DELEGATE_METHOD") == "1")
                 return;
             DelegateMethod();
+            MemberNamedEnum();
         }
 
         // Consumes side values so the transpiler cannot fold reaching calls away.
@@ -230,6 +237,15 @@ namespace TrimReflect
             Func<string> chosenDefault = Factory.MakeChosenDefault().Kind;
             Probe("unrelated stripped interface", () => unusedDefault.Method.DeclaringType.Name + "/" + unusedDefault());
             Probe("selected stripped interface", () => chosenDefault.Method.DeclaringType.Name + "/" + chosenDefault());
+        }
+
+        // 7. A library enum only a kept type's field names keeps its field rows in every
+        //    arm: they are the enum's whole member surface.
+        private static void MemberNamedEnum()
+        {
+            Console.WriteLine("== enum named by a reflected field ==");
+            Type shade = new Palette().GetType().GetField("Shade").FieldType;
+            Probe("GetFields", () => shade.Name + " fields=" + shade.GetFields().Length);
         }
 
         // Prints what a member-metadata read answers, or the exception it throws. The full

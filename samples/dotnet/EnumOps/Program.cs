@@ -29,6 +29,8 @@ namespace EnumOps
             EnumWide64Subset.Program.__GateEntry();
             // APPENDED LAST: the preceding output remains an unchanged prefix.
             EnumParseSpanSubset.Program.__GateEntry();
+            EnumCompareToSubset.Program.__GateEntry();
+            EnumJoinSubset.Program.__GateEntry();
         }
     }
 }

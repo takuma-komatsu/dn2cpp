@@ -3172,19 +3172,6 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var target = ResolveCastTarget(insn.Token);
                 var obj = Pop();
-                // (IComparable<T>)box where T is a primitive/enum/string: the boxed
-                // value's intrinsic type-info carries no IComparable<T> interface map,
-                // so a normal castclass against the interface throws InvalidCastException.
-                // The JIT treats this cast as valid for the matching boxed primitive;
-                // verify against T's own concrete type-info instead (which the box
-                // carries), keeping the boxed reference for the CompareTo callvirt to
-                // devirtualize.
-                if (ComparablePrimitiveArg(target) is { } cmpT && TypeArg0TypeInfoExpr(cmpT, insn.Token) is { } pti)
-                {
-                    Push(StackKind.Ref, "Dn2CppObject*",
-                        $"(Dn2CppObject*)dn2cpp_castclass((Dn2CppObject*){obj.Expr}, {pti})");
-                    break;
-                }
                 // An NFI-mapped target (CultureInfo/NumberFormatInfo/TextInfo/
                 // IFormatProvider — the headerless `const Dn2CppNumberFormatInfo*`
                 // lowering): an object-typed source may hold the interned wrapper an
@@ -3516,7 +3503,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // emitted, so note it, and register the canonical dispatch. This is the
                 // interface twin of the vtable lookup below — reachability already treats
                 // ldvirtftn like callvirt (ReachUsedVirtual covers both), so every
-                // implementation the delegate can bind to is in the tree.
+                // implementation the delegate can bind to is in the tree. A non-virtual
+                // interface member names its own body, like any non-virtual target.
                 // Checked after the GVM case: an interface-declared generic virtual has no
                 // interface-table slot either (its VtableSlot is unassigned), and its
                 // dispatcher is the right target.
@@ -3534,6 +3522,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // `call_indirect` type-immediate trap naming nothing).
                 //
                 bool vftnBounded = _c.IsBoundedMethod(m.DeclaringClass.FullName, m.Name);
+                bool bindsLowering = false;
                 if (vftnBounded)
                 {
                     expr = BoundedFtnStub(m, insn.Offset, receiverSlot: true);
@@ -3564,7 +3553,29 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
-                else if (m.DeclaringClass.IsInterface)
+                else if (ObjectDispatchHelper(m) is { } helper)
+                {
+                    // An Object virtual binds the helper a callvirt of it runs, which
+                    // dispatches through the receiver's type-info hooks: a boxed value or a
+                    // runtime-owned object has no vtable, and the slot of a class that does
+                    // not override the member holds a trap. Delegate.Method recognizes the
+                    // helper (dn2cpp_object_dispatch_member).
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
+                }
+                else if (m.IsVirtual && !m.DeclaringClass.IsInterface
+                         && CoreIntrinsics.IsIntrinsicType(m.DeclaringClass.FullName)
+                         && CoreIntrinsics.RuntimeOwnsTypeInfo(m.DeclaringClass))
+                {
+                    // A runtime-owned receiver (a reflection handle) has no transpiled
+                    // vtable to read, and a callvirt of an intrinsic type's member lowers
+                    // inline whatever the receiver, so the group binds that lowering as
+                    // the member's own body, exactly as ldftn does.
+                    bindsLowering = true;
+                    NoteFtnTargetBody(m.Emittable);
+                    _c.NoteNamedBodySymbol(_method, m.Emittable);
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{m.Emittable.CppName})";
+                }
+                else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);
@@ -3594,7 +3605,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                         : $"(void*)&{m.Emittable.CppName}";
                 }
                 Push(StackKind.Ptr, "void*", expr);
-                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual,
+                _stack[^1] = _stack[^1] with { DelegateMethod = m, DelegateVirtual = m.IsVirtual && !bindsLowering,
                     DelegateTag = (insn.Offset + 1).ToString(), DelegateAddressReady = true };
                 break;
             }

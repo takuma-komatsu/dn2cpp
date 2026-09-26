@@ -462,6 +462,20 @@ internal static class Program
         // MethodSpecification import to the right instantiation by its sigShape.
         Console.WriteLine(Counter.Echo<int>(7));
         Console.WriteLine(Counter.Echo<string>("gen2"));
+        // Generic virtual methods: a callvirt of a class or interface
+        // instantiation runs the receiver's override, a patch receiver's being
+        // its AOT ancestor's. Kind<T> and TypeName<T> never name T in their
+        // signatures, so each import binds its instantiation by type argument.
+        Shelf glass = new GlassShelf();
+        Console.WriteLine(glass.Label<int>(3));
+        Console.WriteLine(new Shelf().Label<int>(5));
+        Console.WriteLine(glass.Kind<int>());
+        Console.WriteLine(glass.Kind<string>());
+        Console.WriteLine(new FrostShelf().Label<int>(6));
+        ISorter sorter = new Sorter();
+        Console.WriteLine(sorter.Sort<int>(4));
+        Console.WriteLine(Counter.TypeName<int>());
+        Console.WriteLine(Counter.TypeName<string>());
         Console.WriteLine();
 
         // String building: the String.Concat overloads Roslyn lowers string-only
@@ -1206,6 +1220,12 @@ internal sealed class Silver : TaggedCounter
         : base("silver", start)
     {
     }
+}
+
+// A patch class below an AOT override of a generic virtual method: the
+// instantiation's dispatcher runs it as that AOT ancestor.
+internal sealed class FrostShelf : GlassShelf
+{
 }
 
 // A patch class rooted directly at object with mixed-width instance fields

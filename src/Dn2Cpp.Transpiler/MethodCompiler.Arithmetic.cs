@@ -623,12 +623,15 @@ internal sealed partial class MethodCompiler
     /// refuse with ArrayTypeMismatchException. The inline ref-element arm keeps
     /// the raw memmove for statically-equal elements even though a COVARIANT
     /// receiver could demand per-element checks (Base[] holding a Der[]) — the
-    /// same documented carve-out as the stelem helpers.</summary>
+    /// same documented carve-out as the stelem helpers. <paramref name="reliable"/> is
+    /// Array.ConstrainedCopy: a proven pair is a plain move either way, and the runtime
+    /// verdict refuses every pair that would convert or cast per element.</summary>
     private void EmitArrayCopy(StackEntry src, string srcIdx, StackEntry dst, string dstIdx, string len,
                                ArrayOperandKind srcKind = ArrayOperandKind.Argument,
                                ArrayOperandKind dstKind = ArrayOperandKind.CopyDest,
                                bool sameElementByConstruction = false,
-                               TypeDesc? elementType = null)
+                               TypeDesc? elementType = null,
+                               bool reliable = false)
     {
         ArrRep? rep = ArrayRepOfCppTypeOrNull(src.CppType);
         ArrRep? dstRep = ArrayRepOfCppTypeOrNull(dst.CppType);
@@ -639,7 +642,8 @@ internal sealed partial class MethodCompiler
             || (rep == ArrRep.I4 && dstRep == ArrRep.I4);
         if (rep is null || !proven)
         {
-            Emit($"dn2cpp_array_copy_dyn({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
+            string helper = reliable ? "dn2cpp_array_constrained_copy_dyn" : "dn2cpp_array_copy_dyn";
+            Emit($"{helper}({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
                  $"{Cast(dst, "Dn2CppObject*")}, (int32_t)({dstIdx}), (int32_t)({len}));");
             return;
         }
@@ -896,7 +900,7 @@ internal sealed partial class MethodCompiler
         {
             // Names dginvoke_<CppName> — record it like the Invoke call site does
             // (Compilation.DelegateInvokerUses).
-            _c.DelegateInvokerUses.Add(ccls);
+            _c.NoteDelegateInvokerUse(ccls);
             return $"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ {load} "
                  + $"return dginvoke_{ccls.CppName}(({ccls.CppStructName}*)_ctx, _a, _b); }}";
         }
@@ -1944,9 +1948,32 @@ internal sealed partial class MethodCompiler
     private void NoteFtnTargetBody(MethodInfo target)
     {
         if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+        {
+            // The real-body members' canonical counterpart is never reached (see the
+            // matching guard in TranslateGenericIntrinsic).
+            if (CoreIntrinsics.IsArrayRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
+                foreach (var arg in target.Context.MethodArgs)
+                    TaintIfCanonical(arg, "array-real-body");
             _c.NoteIntrinsicFtnTarget(target);
+        }
         else if (CoreIntrinsics.TryFindCutRow(target, out _))
             _c.NoteInterceptFtnTarget(target);
+    }
+
+    /// <summary>The runtime helper a call of System.Object's ToString(), Equals(object) or
+    /// GetHashCode() lowers to, whose signature is the method's with the receiver first;
+    /// null for any other method.</summary>
+    private static string? ObjectDispatchHelper(MethodInfo m)
+    {
+        if (m.IsStatic || m.DeclaringClass.FullName != "System.Object")
+            return null;
+        return (m.Name, m.Signature.ParameterTypes) switch
+        {
+            ("ToString", []) => "dn2cpp_object_tostring_virtual",
+            ("GetHashCode", []) => "dn2cpp_object_gethashcode",
+            ("Equals", [{ IsObject: true }]) => "dn2cpp_object_equals",
+            _ => null,
+        };
     }
 
     /// <summary>A boxed primitive's Object.Equals slot must bind to the primitive

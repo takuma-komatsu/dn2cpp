@@ -473,6 +473,13 @@ namespace ReflectDelegateIdentitySubset
             Console.WriteLine("delegate-method-generic-covariant=" + covariantTag.Method.DeclaringType.Name
                 + "/" + covariantTag.Method.Invoke(covariantReceiver, null)!.GetType().Name
                 + "/" + covariantTag().GetType().Name);
+            // An Object virtual's method group reports the method its receiver runs.
+            Func<string> objectText = receiver.ToString;
+            Func<string> structText = boxed.ToString;
+            Func<int> structHash = boxed.GetHashCode;
+            Console.WriteLine("delegate-method-object-virtual=" + objectText.Method.DeclaringType.Name + "." + objectText.Method.Name
+                + "/" + structText.Method.DeclaringType.Name + "/" + structHash.Method.DeclaringType.Name
+                + "/" + structText() + "/" + (structHash() == boxed.GetHashCode()));
             Console.WriteLine("delegate-method-end");
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_INTERFACE_SELECTION") == "1")
                 return false;

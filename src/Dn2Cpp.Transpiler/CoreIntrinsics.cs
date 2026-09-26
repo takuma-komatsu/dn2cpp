@@ -63,8 +63,9 @@ internal static partial class CoreIntrinsics
         "System.Diagnostics.Tracing.EventSource",
         // Array element access is via IL opcodes (newarr/ldelem/ldlen/...); the remaining
         // static helpers (Copy/Empty/Clear) reach MethodTable/covariance internals we do
-        // not model. Map the few that real BCL collections (List<T>) call to runtime
-        // intrinsics; the rest are never reached (used-slot).
+        // not model, so they lower to runtime intrinsics. Members whose real bodies are
+        // plain managed code are still intercepted, and the interception calls that body
+        // (IsArrayRealBodyGeneric).
         "System.Array",
         // Dictionary<K,V>'s prime-bucket sizing. Its real Primes table is a
         // ReadOnlySpan over RVA blob data (RuntimeHelpers.CreateSpan, a ref-struct
@@ -815,6 +816,44 @@ internal static partial class CoreIntrinsics
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
+    /// <summary>The names of the System.Object members whose rows the runtime answers a
+    /// named lookup with and lets derived types inherit only through a level declaring a
+    /// row for each method of such a name (the gated rows of <c>g_meta_members</c> in
+    /// dn2cpp_system_reflection.cpp; keep the two in step).</summary>
+    public static bool IsObjectMemberRowName(string name) =>
+        name is "ToString" or "Equals" or "GetHashCode" or "GetType" or "Finalize" or "ReferenceEquals";
+
+    /// <summary>System.Array's generic members whose real CoreLib bodies are plain managed
+    /// code: ThrowHelper argument checks, element reads, a delegate invoke, a List&lt;T&gt; or
+    /// ReadOnlyCollection&lt;T&gt;, and calls to each other. Their call sites stay intercepted
+    /// with the rest of the intrinsic type, but the lowering and an address-taken use both
+    /// name the real transpiled body, so .NET's argument order and messages hold by
+    /// construction.</summary>
+    public static bool IsArrayRealBodyGeneric(string declType, string name) =>
+        declType == "System.Array"
+        && name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"
+            or "Exists" or "TrueForAll" or "ConvertAll" or "ForEach" or "AsReadOnly";
+
+    /// <summary>System.Array's non-generic members routed like
+    /// <see cref="IsArrayRealBodyGeneric"/>: the 64-bit index and length overloads, whose
+    /// bodies range-check and call the Int32 overload, GetLongLength, and the constant
+    /// ICollection/IList properties.</summary>
+    public static bool IsArrayRealBodyMember(string declType, string name, MethodSignature<TypeDesc> sig)
+    {
+        if (declType != "System.Array")
+            return false;
+        if (name is "get_IsFixedSize" or "get_IsReadOnly" or "get_IsSynchronized" or "get_SyncRoot"
+            or "GetLongLength")
+            return true;
+        if (name is not ("Copy" or "CopyTo" or "GetValue" or "SetValue" or "CreateInstance"))
+            return false;
+        foreach (var p in sig.ParameterTypes)
+            if (p is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }
+                or { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } })
+                return true;
+        return false;
+    }
+
     /// <summary>Primitive members lowered inline despite their declaring type not always
     /// being intrinsic: the sub-word integers' format/parse family, plus both
     /// <c>CompareTo</c> overloads of every scalar primitive. The latter is one sibling
@@ -1225,6 +1264,10 @@ internal static partial class CoreIntrinsics
         // same check the RankException row above covers.
         ["System.ArrayTypeMismatchException"] = "&dn2cpp_array_type_mismatch_exception_type",
         ["System.MissingMethodException"] = "&dn2cpp_missing_method_exception_type",
+        // FieldInfo.SetValue's refusal of a constant or a static read-only field.
+        ["System.FieldAccessException"] = "&dn2cpp_field_access_exception_type",
+        // MethodBase.Invoke's fault on a static abstract interface member.
+        ["System.BadImageFormatException"] = "&dn2cpp_bad_image_format_exception_type",
         // ResourceManager's missing-set diagnosis. The .NET documentation tells a caller to
         // write `catch (MissingManifestResourceException)`, and a clause bound to an emitted
         // ti_System_Resources_MissingManifestResourceException would compile, link, and not

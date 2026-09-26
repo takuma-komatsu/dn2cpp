@@ -15,13 +15,7 @@ internal sealed partial class MethodCompiler
                 { Kind: TypeKind.Primitive, Primitive: var code } prim)
             return false;
 
-        string compareCt = code switch
-        {
-            PrimitiveTypeCode.UIntPtr => "uintptr_t",
-            PrimitiveTypeCode.IntPtr => "intptr_t",
-            PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
-            _ => CppTypes.Of(prim),
-        };
+        string compareCt = PrimitiveCompareCt(prim);
         string receiverCt = CppTypes.StorageOf(prim);
         string boxed = NewTemp("Dn2CppObject*");
         Emit($"{boxed} = {Cast(Pop(), "Dn2CppObject*")};");
@@ -38,8 +32,7 @@ internal sealed partial class MethodCompiler
         return true;
     }
 
-    /// <summary>The two <c>CompareTo</c> siblings on every scalar primitive. The
-    /// object form adds null and exact-box-type checks around the typed order.</summary>
+    /// <summary>The two <c>CompareTo</c> siblings on every scalar primitive.</summary>
     private bool TryEmitPrimitiveCompareTo(string declType, MethodSignature<TypeDesc> sig)
     {
         if (Compilation.WellKnownPrimitive(declType) is not
@@ -50,67 +43,69 @@ internal sealed partial class MethodCompiler
             return false;
 
         TypeDesc argType = sig.ParameterTypes[0];
-        bool objectArg = argType.IsObject;
-        if (!objectArg)
-        {
-            if (argType is not { Kind: TypeKind.Primitive, Primitive: var argCode }
-                || argCode != code)
-                return false;
-        }
-
-        string compareCt = code switch
-        {
-            PrimitiveTypeCode.UIntPtr => "uintptr_t",
-            PrimitiveTypeCode.IntPtr => "intptr_t",
-            PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
-            _ => CppTypes.Of(prim),
-        };
         string receiverCt = CppTypes.StorageOf(prim);
-
-        if (!objectArg)
+        if (argType.IsObject)
         {
-            string other = NewTemp(compareCt);
-            Emit($"{other} = ({compareCt})({Cast(Pop(), CppTypes.Of(prim))});");
-            string self = NewTemp(compareCt);
-            Emit($"{self} = ({compareCt})({DerefReceiver(receiverCt)});");
-            Push(StackKind.I4, "int32_t", PrimitiveCompareToExpr(code, self, other));
+            var boxedArg = Pop();
+            Push(StackKind.I4, "int32_t", EmitPrimitiveCompareToObject(prim, DerefReceiver(receiverCt), boxedArg));
             return true;
         }
+        if (argType is not { Kind: TypeKind.Primitive, Primitive: var argCode } || argCode != code)
+            return false;
 
+        string compareCt = PrimitiveCompareCt(prim);
+        string other = NewTemp(compareCt);
+        Emit($"{other} = ({compareCt})({Cast(Pop(), CppTypes.Of(prim))});");
+        string self = NewTemp(compareCt);
+        Emit($"{self} = ({compareCt})({DerefReceiver(receiverCt)});");
+        Push(StackKind.I4, "int32_t", CompareExpr(prim,
+            new StackEntry(self, CppTypes.KindOf(prim), compareCt), new StackEntry(other, CppTypes.KindOf(prim), compareCt)));
+        return true;
+    }
+
+    /// <summary>A scalar primitive's or String's <c>CompareTo(object)</c> over the
+    /// receiver value <paramref name="self"/>: null sorts first, a box of any other type
+    /// throws .NET's ArgumentException, and an exact box orders as the typed overload
+    /// does. The argument is spilled before <paramref name="self"/> is read, which is
+    /// when the callee reads its receiver.</summary>
+    private string EmitPrimitiveCompareToObject(TypeDesc prim, string self, StackEntry other)
+    {
+        string compareCt = PrimitiveCompareCt(prim);
         string boxed = NewTemp("Dn2CppObject*");
-        Emit($"{boxed} = {Cast(Pop(), "Dn2CppObject*")};");
+        Emit($"{boxed} = {Cast(other, "Dn2CppObject*")};");
         string selfObj = NewTemp(compareCt);
-        Emit($"{selfObj} = ({compareCt})({DerefReceiver(receiverCt)});");
+        Emit($"{selfObj} = ({compareCt})({self});");
         string result = NewTemp("int32_t");
         Emit($"{result} = 1;");
         Emit($"if ({boxed} != nullptr) {{");
         string ti = TypeInfoExpr(prim)!;
-        Emit($"    if ({boxed}->type != {ti}) dn2cpp_throw_argument_msg(\"Object must be of the same type as the value being compared.\");");
-        string payloadCt = CppTypes.Of(prim);
+        Emit($"    if ({boxed}->type != {ti}) dn2cpp_throw_compareto_type_mismatch({ti});");
         string otherObj = NewTemp(compareCt);
-        Emit($"    {otherObj} = ({compareCt})(*({payloadCt}*)({boxed} + 1));");
-        Emit($"    {result} = {PrimitiveCompareToExpr(code, selfObj, otherObj)};");
+        if (prim.IsString)
+        {
+            Emit($"    {otherObj} = (Dn2CppString*)({boxed});");
+            Emit($"    {result} = dn2cpp_str_compare({selfObj}, {otherObj}, 4);");
+        }
+        else
+        {
+            Emit($"    {otherObj} = ({compareCt})(*({CppTypes.Of(prim)}*)({boxed} + 1));");
+            string ordered = CompareExpr(prim, new StackEntry(selfObj, CppTypes.KindOf(prim), compareCt),
+                new StackEntry(otherObj, CppTypes.KindOf(prim), compareCt));
+            Emit($"    {result} = {ordered};");
+        }
         Emit("}");
-        Push(StackKind.I4, "int32_t", result);
-        return true;
+        return result;
     }
 
-    private static string PrimitiveCompareToExpr(PrimitiveTypeCode code, string self, string other) =>
-        code switch
-        {
-            // Sub-word integer and Char CompareTo return the raw widened difference,
-            // not its sign. The range always fits Int32.
-            PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte
-                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
-                or PrimitiveTypeCode.Char => $"({self} - {other})",
-            PrimitiveTypeCode.Boolean =>
-                $"(({self} != 0) < ({other} != 0) ? -1 : (({self} != 0) > ({other} != 0) ? 1 : 0))",
-            // Floating CompareTo defines a total order in which NaN sorts below numbers.
-            PrimitiveTypeCode.Single or PrimitiveTypeCode.Double =>
-                $"({self} < {other} ? -1 : ({self} > {other} ? 1 : ({self} == {other} ? 0 : "
-                + $"({self} != {self} ? ({other} != {other} ? 0 : -1) : 1))))",
-            _ => $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))",
-        };
+    /// <summary>The C++ type a primitive's CompareTo and Equals compare in: Boolean and
+    /// Char at their Int32 stack form, the pointer-sized integers at their own sign.</summary>
+    private static string PrimitiveCompareCt(TypeDesc prim) => prim.Primitive switch
+    {
+        PrimitiveTypeCode.UIntPtr => "uintptr_t",
+        PrimitiveTypeCode.IntPtr => "intptr_t",
+        PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
+        _ => CppTypes.Of(prim),
+    };
 
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
@@ -1598,25 +1593,83 @@ internal sealed partial class MethodCompiler
                         $"((void)({o.Expr}), dn2cpp_type_tostring({ti}))");
                     return true;
                 }
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})");
+                // A non-virtual call (base.ToString() inside an override) runs
+                // Object's own body; the type-info slot would re-enter the override.
+                Push(StackKind.Ref, "Dn2CppString*", CallIsVirtual
+                    ? $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})"
+                    : $"dn2cpp_object_tostring_nonvirtual({Cast(o, "Dn2CppObject*")})");
                 return true;
             }
             // Object.GetHashCode / Object.Equals(object) on a reference (or boxed
             // value) — dispatch the type's override via the type-info slots, else
             // fall back to identity hash / reference equality. A value-type
             // receiver arrives here boxed (the callvirt boxes it), matching the
-            // boxed payload the wired thunks expect.
+            // boxed payload the wired thunks expect. A non-virtual call (the base
+            // call inside an override) is Object's own body: the identity hash and
+            // reference equality, since the slot would re-enter the override.
             case ("System.Object", "GetHashCode") when sig.ParameterTypes.Length == 0:
             {
                 var o = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({Cast(o, "Dn2CppObject*")})");
+                Push(StackKind.I4, "int32_t", CallIsVirtual
+                    ? $"dn2cpp_object_gethashcode({Cast(o, "Dn2CppObject*")})"
+                    : $"dn2cpp_object_hashcode({Cast(o, "Dn2CppObject*")})");
                 return true;
             }
             case ("System.Object", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
             {
                 var other = Pop();
                 var o = Pop();
-                Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({Cast(o, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+                Push(StackKind.I4, "int32_t", CallIsVirtual
+                    ? $"dn2cpp_object_equals({Cast(o, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})"
+                    : $"(({Cast(o, "Dn2CppObject*")}) == ({Cast(other, "Dn2CppObject*")}) ? 1 : 0)");
+                return true;
+            }
+            // System.ValueType's three overrides. A callvirt dispatches as Object's
+            // does. A non-virtual call is the base call inside a struct's own override,
+            // on the box C# makes of `this`, and runs ValueType's body instead of
+            // re-entering the override: the type name, or the calling struct's field
+            // walk (Equals behind .NET's null and exact-type checks).
+            case ("System.ValueType", "ToString") when sig.ParameterTypes.Length == 0:
+            {
+                var o = Pop();
+                Push(StackKind.Ref, "Dn2CppString*", CallIsVirtual
+                    ? $"dn2cpp_object_tostring_virtual({Cast(o, "Dn2CppObject*")})"
+                    : $"dn2cpp_object_tostring_nonvirtual({Cast(o, "Dn2CppObject*")})");
+                return true;
+            }
+            case ("System.ValueType", "GetHashCode") when sig.ParameterTypes.Length == 0:
+            {
+                var o = Pop();
+                if (CallIsVirtual)
+                {
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_object_gethashcode({Cast(o, "Dn2CppObject*")})");
+                    return true;
+                }
+                var sc = BaseValueCallOwner(name);
+                var walk = BaseValueWalk(sc, hash: true);
+                string payload = $"({sc.CppStructName}*)(dn2cpp_null_check({Cast(o, "Dn2CppObject*")}) + 1)";
+                Push(StackKind.I4, "int32_t", $"{DirectCallSym(walk)}({ArgsWithRgctx(payload, walk)})");
+                return true;
+            }
+            case ("System.ValueType", "Equals") when sig.ParameterTypes is [{ IsObject: true }]:
+            {
+                var other = Pop();
+                var o = Pop();
+                if (CallIsVirtual)
+                {
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_object_equals({Cast(o, "Dn2CppObject*")}, {Cast(other, "Dn2CppObject*")})");
+                    return true;
+                }
+                var sc = BaseValueCallOwner(name);
+                var walk = BaseValueWalk(sc, hash: false);
+                string ct = sc.CppStructName;
+                string self = NewTemp("Dn2CppObject*");
+                Emit($"{self} = dn2cpp_null_check({Cast(o, "Dn2CppObject*")});");
+                string that = NewTemp("Dn2CppObject*");
+                Emit($"{that} = {Cast(other, "Dn2CppObject*")};");
+                string walkCall = $"{DirectCallSym(walk)}({ArgsWithRgctx($"({ct}*)({self} + 1), *({ct}*)({that} + 1)", walk)})";
+                Push(StackKind.I4, "int32_t",
+                    $"(({that}) != nullptr && ({that})->type == ({self})->type && {walkCall} ? 1 : 0)");
                 return true;
             }
             // Static Object.Equals(objA, objB): no receiver, two boxed args. The

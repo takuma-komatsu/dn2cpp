@@ -25,7 +25,9 @@
 #   - patch-deriving-patch types, SZArrays over eight element kinds (incl.
 #     catchable bounds/size faults and array covariance), interfaces, delegates,
 #     base-image generics (type, delegate and method instantiations bound by
-#     sigShape), String.Concat lowering, and exception handling
+#     sigShape, which a method's type arguments lead, and generic virtual
+#     methods dispatched on the receiver, a patch receiver as its AOT
+#     ancestor), String.Concat lowering, and exception handling
 #   - an external-base exception whose base is the never-loaded External BCL
 #     System.SystemException, driven from AOT and from a patch whose interpreted
 #     `base(message, quota)` runs the real emitted ctor body
@@ -80,11 +82,12 @@
 # so the caught throw carries a kind-0 PC trace that must not name a single
 # interpreted patch frame — interpreter PCs are dropped, never misattributed.
 #
-# Six negative sections assert the fences: a patch declaring a NEW virtual slot
+# Seven negative sections assert the fences: a patch declaring a NEW virtual slot
 # (newslot) is rejected by --emit-patch, so is one declaring an interface (a
 # patch may implement a base-image interface, not declare one), so are a generic
-# delegate binding (the missing-AOT-instantiation boundary) and a multicast
-# delegate (`+=` — single-target only); a corrupted baseImageAbiHash makes the
+# delegate binding (the missing-AOT-instantiation boundary), a multicast
+# delegate (`+=` — single-target only) and a generic virtual method (a generic
+# method has no patch body); a corrupted baseImageAbiHash makes the
 # loader reject the stale patch (see docs/BPI-FORMAT.md); and an unknown header
 # flag bit (bit31) makes it reject rather than silently run bytecode baked for a
 # newer runtime.
@@ -134,6 +137,7 @@ build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj
 build_proj samples/dotnet/HotUpdateBadPatchDelegate/HotUpdateBadPatchDelegate.csproj
 build_proj samples/dotnet/HotUpdateBadPatchMulticast/HotUpdateBadPatchMulticast.csproj
+build_proj samples/dotnet/HotUpdateBadPatchGvm/HotUpdateBadPatchGvm.csproj
 build_proj samples/dotnet/HotUpdateDirPatch1/HotUpdateDirPatch1.csproj
 build_proj samples/dotnet/HotUpdateDirPatch2/HotUpdateDirPatch2.csproj
 build_proj samples/dotnet/HotUpdateRecvPatch/HotUpdateRecvPatch.csproj
@@ -156,6 +160,7 @@ bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll
 baditf_app="samples/dotnet/HotUpdateBadPatchItf/bin/$CONFIG/$TFM/HotUpdateBadPatchItf.dll"
 baddg_app="samples/dotnet/HotUpdateBadPatchDelegate/bin/$CONFIG/$TFM/HotUpdateBadPatchDelegate.dll"
 badmc_app="samples/dotnet/HotUpdateBadPatchMulticast/bin/$CONFIG/$TFM/HotUpdateBadPatchMulticast.dll"
+badgvm_app="samples/dotnet/HotUpdateBadPatchGvm/bin/$CONFIG/$TFM/HotUpdateBadPatchGvm.dll"
 dir1_app="samples/dotnet/HotUpdateDirPatch1/bin/$CONFIG/$TFM/HotUpdateDirPatch1.dll"
 dir2_app="samples/dotnet/HotUpdateDirPatch2/bin/$CONFIG/$TFM/HotUpdateDirPatch2.dll"
 recv_app="samples/dotnet/HotUpdateRecvPatch/bin/$CONFIG/$TFM/HotUpdateRecvPatch.dll"
@@ -191,7 +196,7 @@ tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP
 # not be served a green recorded against the previous one.
 if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
         "$base_app" "$patch_app" "$bad_app" "$baditf_app" "$baddg_app" \
-        "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
+        "$badmc_app" "$badgvm_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
         samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll \
         samples/dotnet/HotUpdateCoreLibBadPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibBadPatch.dll \
@@ -413,6 +418,14 @@ gen
 20
 7
 gen2
+glass:3
+shelf:5
+glass Int32
+glass String
+glass:6
+sorted:4
+System.Int32
+System.String
 
 strings
 hello world
@@ -702,6 +715,21 @@ if ! grep -q "combining delegates" <<<"$badmc_err"; then
     exit 1
 fi
 echo "OK (multicast delegate rejected)"
+
+echo "-- negative: a patch declaring a generic virtual method must be rejected --"
+badgvm_rc=0
+badgvm_err=$(invoke_cli --emit-patch "$badgvm_app" --base-abi "$OUT/base-abi.json" -o "$OUT" 2>&1 >/dev/null) || badgvm_rc=$?
+if [ "$badgvm_rc" -ne 2 ]; then
+    echo "FAIL: --emit-patch on a generic-virtual patch exited $badgvm_rc (expected 2)" >&2
+    echo "$badgvm_err" >&2
+    exit 1
+fi
+if ! grep -q "must not declare generic virtual methods yet" <<<"$badgvm_err"; then
+    echo "FAIL: --emit-patch rejection message missing the generic-virtual fence:" >&2
+    echo "$badgvm_err" >&2
+    exit 1
+fi
+echo "OK (generic virtual method rejected)"
 
 echo "-- negative: a stale BPI (baseImageAbiHash mismatch) must be rejected --"
 cp "$OUT/HotUpdatePatch.bpi" "$OUT/stale.bpi"

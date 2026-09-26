@@ -273,6 +273,9 @@ namespace ExceptionMessageSubset
             // TypeLoadException's public constructors never need its VM-only lazy
             // formatter, but get_Message makes that body statically reachable.
             TypeLoadExceptionMessageSubset.Run();
+
+            // The one null-receiver fault a call site folded to a constant must still raise.
+            ConstBodyNullFaultSubset.Run();
         }
     }
 }

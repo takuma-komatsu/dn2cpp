@@ -61,6 +61,28 @@
 #     interface into a fitting and a too-small buffer. Its extra asserts pin that
 #     Int32's answers come from the relation rows the init prologue installs, and that
 #     the output before the section is unchanged.
+#   * ObjectVirtualDispatchSubset — base calls to the Object and ValueType virtuals
+#     inside an override (`call`, not `callvirt`): Object's type name, reference
+#     equality and identity hash, ValueType's type name and field-by-field equality
+#     and hash, never a dispatch back into the override; and RuntimeHelpers.GetHashCode
+#     agreeing with the default Object.GetHashCode. A struct boxed where no
+#     formatting call follows the box still formats through its ToString override,
+#     directly, through string.Join and through the box of a Nullable<T> of it, and
+#     a method group over Object's ToString, Equals or GetHashCode (`ldvirtftn`)
+#     runs what a callvirt runs on a class that does not override it, a boxed
+#     primitive, enum or struct, a string and an array. Its extra asserts pin that
+#     the output before the section is unchanged.
+#   * ConstrainedObjectCompareSubset — IComparable.CompareTo(object) on every scalar
+#     primitive, string, decimal and date/time type through a `constrained. !T` call,
+#     a boxed receiver and the direct overload: the order, a null argument, and a box
+#     of another type rejected with .NET's "Object must be of type X." message. Its
+#     typed rows ask IComparable<T>.CompareTo constrained and through a box, and the
+#     three default comparers, for the raw difference of the sub-word integers and
+#     Char and the unsigned order of nuint. A user class implementing IComparable<int>
+#     and IComparable<string> must keep its own CompareTo behind those interfaces (a
+#     box of the primitive is the only receiver that may be compared inline), and
+#     Comparer.Default returns a user IComparable's result unclamped. Its extra
+#     asserts pin that the output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -107,6 +129,30 @@ gate_extra_asserts() {
         return 1
     fi
     echo "boxed CLR relations answered from the relation rows: OK"
+
+    grep -Fxq '== object virtual dispatch ==' "$out/native.stdout"
+    grep -Fxq 'class base ToString: base-calls:ObjectVirtualDispatchSubset.BaseCalls' "$out/native.stdout"
+    grep -Fxq 'identity hash: True/True/True' "$out/native.stdout"
+    grep -Fxq 'struct base Equals: True/False/False/False' "$out/native.stdout"
+    grep -Fxq 'boxed struct ToString: stashed:4' "$out/native.stdout"
+    grep -Fxq 'boxed nullable struct: wrapped:7/label:7' "$out/native.stdout"
+    grep -Fxq 'method group ToString: ObjectVirtualDispatchSubset.Plain/named/5/grouped:3/ObjectVirtualDispatchSubset.Pair/text/System.Int32[]/High' "$out/native.stdout"
+    grep -Fxq 'method group Equals/GetHashCode: True/False/True/False/True/11/5/True/False' "$out/native.stdout"
+    DN2CPP_BEFORE_OBJECT_VIRTUALS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
+        > "$out/before-object-virtuals.stdout"
+    sed '/^== object virtual dispatch ==/,$d' "$out/native.stdout" > "$out/object-virtuals-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-object-virtuals.stdout") \
+        <(strip_cr_win_file "$out/object-virtuals-prefix.stdout")
+
+    grep -Fxq '== constrained CompareTo(object) ==' "$out/native.stdout"
+    grep -Fxq 'ccmp byte: 197 -197 1 | ArgumentException: Object must be of type Byte. | ArgumentException: Object must be of type Byte.' "$out/native.stdout"
+    grep -Fxq 'tcmp byte: 197 -197 197 197 197 197' "$out/native.stdout"
+    grep -Fxq 'interface: 42 43 42 43 True False' "$out/native.stdout"
+    DN2CPP_BEFORE_CONSTRAINED_OBJECT_COMPARE=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
+        > "$out/before-constrained-object-compare.stdout"
+    sed '/^== constrained CompareTo(object) ==/,$d' "$out/native.stdout" > "$out/constrained-object-compare-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-constrained-object-compare.stdout") \
+        <(strip_cr_win_file "$out/constrained-object-compare-prefix.stdout")
 }
 
 corelib_diff_gate BoxingPrimitives

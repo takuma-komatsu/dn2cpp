@@ -515,7 +515,7 @@ internal sealed partial class MethodCompiler
             if (NullableLayout(search) is not (_, { } hasValueField, { } valueField))
                 throw new NotSupportedException(
                     "DllImportResolver.Invoke search path is not a Nullable<T>");
-            _c.DelegateInvokerUses.Add(resolverClass);
+            _c.NoteDelegateInvokerUse(resolverClass);
             string searchType = CppTypes.Of(search);
             string callback = "+[](Dn2CppObject* __resolver, Dn2CppString* __name, "
                 + "const char* __assembly, int32_t __has_search_path, "

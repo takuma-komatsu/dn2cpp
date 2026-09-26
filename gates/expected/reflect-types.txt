@@ -1488,3 +1488,127 @@ arg-metadata ref=True struct=True enum=True array=True mdarray=True
 shared-arg ref=True nested=True
 == metadata-answer invoke flags ==
 SemaphoreSlim unwrapped -> PlatformNotSupportedException
+attribute Type property: LinkTarget
+== boxed attribute arguments ==
+Scalars: 6 defined=True
+  Boxed Big:X named=null field=null array=null
+  Boxed Int32:5 named=null field=null array=null
+  Boxed Small:B named=null field=null array=null
+  Boxed String:text named=null field=null array=null
+  Boxed Tone:High named=null field=null array=null
+  Boxed UBig:Max named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute("text")]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)5)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Big)1099511627776)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Small)250)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Tone)7)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.UBig)18446744073709551615)]
+Primitives: 13 defined=True
+  Boxed Boolean:True named=null field=null array=null
+  Boxed Byte:200 named=null field=null array=null
+  Boxed Char:' named=null field=null array=null
+  Boxed Char:c named=null field=null array=null
+  Boxed Double:1.5 named=null field=null array=null
+  Boxed Int16:-4 named=null field=null array=null
+  Boxed Int64:9 named=null field=null array=null
+  Boxed SByte:-3 named=null field=null array=null
+  Boxed Single:2.5 named=null field=null array=null
+  Boxed UInt16:65000 named=null field=null array=null
+  Boxed UInt32:4000000000 named=null field=null array=null
+  Boxed UInt64:9 named=null field=null array=null
+  Boxed null named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(''')]
+  data [ReflectAttrBoxedSubset.BoxedAttribute('c')]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Boolean)True)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Byte)200)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Double)1.5)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int16)-4)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int64)9)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((SByte)-3)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Single)2.5)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((String)null)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((UInt16)65000)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((UInt32)4000000000)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((UInt64)9)]
+Arrays: 8 defined=True
+  Boxed Byte[]{Byte:1,Byte:255} named=null field=null array=null
+  Boxed Int32[]{Int32:1,Int32:2} named=null field=null array=null
+  Boxed Object[]{Int32:1,String:x,null,Tone:Low,Type:System.Int32,Int32[]{Int32:3}} named=null field=null array=null
+  Boxed String[]{String:a,null} named=null field=null array=null
+  Boxed Tone[]{Tone:Low,Tone:High} named=null field=null array=null
+  Boxed Type[]{Type:System.String,null} named=null field=null array=null
+  Tones Tone[]{Tone:High}
+  Tones null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new Byte[2] { 1, 255 })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new Int32[2] { 1, 2 })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new Object[6] { (Int32)1, "x", (String)null, (ReflectAttrBoxedSubset.Tone)1, typeof(System.Int32), new Int32[1] { 3 } })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new ReflectAttrBoxedSubset.Tone[2] { 1, 7 })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new String[2] { "a", null })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(new Type[2] { typeof(System.String), null })]
+  data [ReflectAttrBoxedSubset.TonesAttribute((Tone[])null)]
+  data [ReflectAttrBoxedSubset.TonesAttribute(new ReflectAttrBoxedSubset.Tone[1] { 7 })]
+ObjectArrays: 5 defined=False
+  List Object[]{Int32:1,String:x,null,Small:A,Type:System.String,Object[]{Int32:2,String:y}}
+  List Object[]{}
+  List null
+  Params Object[]{Int32:1,String:two,Tone:High}
+  Params Object[]{}
+  data [ReflectAttrBoxedSubset.ListAttribute((Object[])null)]
+  data [ReflectAttrBoxedSubset.ListAttribute(new Object[0] {  })]
+  data [ReflectAttrBoxedSubset.ListAttribute(new Object[6] { (Int32)1, "x", (String)null, (ReflectAttrBoxedSubset.Small)3, typeof(System.String), new Object[2] { (Int32)2, "y" } })]
+  data [ReflectAttrBoxedSubset.ParamsAttribute(new Object[0] {  })]
+  data [ReflectAttrBoxedSubset.ParamsAttribute(new Object[3] { (Int32)1, "two", (ReflectAttrBoxedSubset.Tone)7 })]
+Named: 4 defined=True
+  Boxed Int32:0 named=Int32:7 field=String:f array=Object[]{Tone:Low,null}
+  Boxed Int32:1 named=null field=null array=null
+  Boxed Int32:2 named=Big:X field=Type:ReflectAttrBoxedSubset.Outer array=null
+  Boxed Int32:3 named=Int32[]{Int32:4,Int32:5} field=Char:n array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)0, NamedField = "f", Named = (Int32)7, NamedArray = new Object[2] { (ReflectAttrBoxedSubset.Tone)1, (String)null })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)1, NamedField = (String)null, Named = (String)null, NamedArray = null)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)2, NamedField = typeof(ReflectAttrBoxedSubset.Outer), Named = (ReflectAttrBoxedSubset.Big)1099511627776)]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)3, NamedField = 'n', Named = new Int32[2] { 4, 5 })]
+Typed: 2 defined=False
+  Typed X Max q Type:ReflectAttrBoxedSubset.Outer Off 2
+  Typed X Max r null Off 0
+  data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 'q', typeof(ReflectAttrBoxedSubset.Outer), Order = 2)]
+  data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 'r', (Type)null)]
+Types: 10 defined=True
+  Boxed Type:Box`1(def) named=null field=null array=null
+  Boxed Type:Box`1<Inner> named=null field=null array=null
+  Boxed Type:Box`1<Int32> named=null field=null array=null
+  Boxed Type:Box`1<String> named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer+Inner named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Outer[] named=null field=null array=null
+  Boxed Type:System.Int32 named=null field=null array=null
+  Boxed Type:System.Int32[,] named=null field=null array=null
+  Boxed Type:System.Int32[] named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[ReflectAttrBoxedSubset.Outer+Inner, ReflectTypes, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Box`1[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer+Inner))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Outer[]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32[,]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(System.Int32[]))]
+Nested: 3 defined=True
+  Boxed Int32:4 named=Mode:On field=null array=Object[]{Mode:Off,Type:Box`1<Int32>}
+  Boxed Mode:On named=null field=null array=null
+  Typed X Max s Type:ReflectAttrBoxedSubset.Outer+Inner On 3
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)4, Named = (ReflectAttrBoxedSubset.Outer+Mode)200, NamedArray = new Object[2] { (ReflectAttrBoxedSubset.Outer+Mode)0, typeof(ReflectAttrBoxedSubset.Box`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]]) })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Outer+Mode)200)]
+  data [ReflectAttrBoxedSubset.TypedAttribute((ReflectAttrBoxedSubset.Big)1099511627776, (ReflectAttrBoxedSubset.UBig)18446744073709551615, 's', typeof(ReflectAttrBoxedSubset.Outer+Inner), Order = 3, Mode = 200)]
+Type identity: 10 of 10
+GenericEnum: Byte 2
+  data [ReflectAttrBoxedSubset.BoxedAttribute((Int32)6, Named = (ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])3, NamedArray = new Object[2] { (ReflectAttrBoxedSubset.Box`1+Kind[[System.String, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])200, new ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]][1] { 3 } })]
+  data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])200)]
+  generic 6 named=A array={B,{A}}
+  generic B named=null array=null
+LonelyArrays: 2 defined=True
+  Boxed Type:ReflectAttrBoxedSubset.Lonely[,] named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Lonely[] named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Lonely[,]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Lonely[]))]
+Lonely arrays: Lonely rank 1, Lonely rank 2

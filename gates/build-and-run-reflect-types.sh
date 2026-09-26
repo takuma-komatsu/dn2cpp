@@ -299,6 +299,20 @@
 # (intrinsic levels are shape-ineligible), so the transpile completes and the
 # mint throws the catchable NotSupportedException where real .NET constructs.
 #
+# AttributeTypePropertySubset is a C++ compile test as much as a reflection one:
+# an attribute factory hands a Type-valued named property to its setter, whose
+# parameter is the managed System.Type pointer, not the runtime's Type handle.
+#
+# ReflectAttrBoxedSubset covers attribute arguments typed object or object[]: the
+# factory boxes each value at the type its blob encodes (primitive, string, enum,
+# Type, array, null), stores a named argument at its member's declared type, and
+# keeps a 64-bit enum's high bits; CustomAttributeData.ToString spells each value
+# with its encoded type and lists fields before properties. A serialized Type or
+# enum type name may name a nested type, an array or a closed generic, and decodes
+# to the identity typeof names; an enum nested in a generic type keeps its own
+# width; an array of a type nothing else names keeps its attribute. Every line of
+# the section matches real .NET.
+#
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
@@ -389,7 +403,7 @@ echo "OK — both mouths of CppEmitter.ArrayTypeInfoDeclared answered, none degr
 # The r-late line above is the behavioural half and covers ONE element. This is the
 # corpus-wide half, and it is the one that can see the class of bug: the rows used to
 # be planted at NOTING time, so an element first noted after the emit fixpoint — which
-# is where TypeMetadataEmitter.NoteReflectedMemberArrayElements notes every array a
+# is where TypeMetadataEmitter.NoteReflectedMemberTypes notes every array a
 # reflection table types a member with — got none, and its GetInterfaces() answered six
 # where .NET says eleven while the type TEST already answered eleven by
 # DN2CPP_TF_ARRAY_GEN_ITF. Nothing about that is loud: the transpile is green, the C++
@@ -566,3 +580,18 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
 ! compgen -G "$ES_OUT/generated*" >/dev/null \
     || { echo "FAIL: the refused transpile still emitted C++: $(ls -1 "$ES_OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
+
+# ── Attribute rows the program never reads ────────────────────────────────────
+# ReflectAttrUnread reads no custom attribute but constructs an attribute type,
+# which reaches its constructor, so the emitted metadata still renders each of
+# that attribute's rows. A row names the type-info of its Type and array
+# arguments — arrays of a type nothing else names, and an enum array — and every
+# one must be declared, or the transpile fails. Its checks are the diff.
+corelib_diff_gate ReflectAttrUnread --no-ildiet
+
+# ── Attribute rows read only through CustomAttributeData ──────────────────────
+# ReflectAttrDataOnly reads its attributes through CustomAttributeData views and
+# no other attribute API. Its types are internal, so no public app member roots
+# the attribute, and nothing constructs it: the views must open the route
+# GetCustomAttributes opens, or no row renders. Its checks are the diff.
+corelib_diff_gate ReflectAttrDataOnly --no-ildiet

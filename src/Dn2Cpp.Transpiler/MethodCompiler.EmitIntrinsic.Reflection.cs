@@ -53,6 +53,37 @@ internal sealed partial class MethodCompiler
         Push(StackKind.Ref, "Dn2CppArrayRef*", expr);
     }
 
+    /// <summary>Notes System.ValueType's type-info, through which the runtime's method
+    /// lookup, CreateDelegate and Delegate.Method reach a value type's ValueType and
+    /// Object rows. The runtime finds it by name, because no value type-info names its
+    /// base; only the handle is needed, so it seeds no reflection keep.</summary>
+    private void NoteValueTypeRows()
+    {
+        if (Comp.FindClassByFullName("System.ValueType") is { } valueType)
+            Comp.NoteTypeIdentityClosure(TypeDesc.MakeClass(valueType), keepSeed: false);
+    }
+
+    /// <summary>.NET's MethodBase or FieldInfo predicate getter <paramref name="name"/>
+    /// over the member's raw attributes word <paramref name="word"/>, the value
+    /// Attributes answers. An access predicate compares the access field, the low three
+    /// bits, which MethodAttributes and FieldAttributes code alike (ECMA-335 II.23.1.5,
+    /// II.23.1.10); a flag predicate tests its bit.</summary>
+    private static string AttributesTest(string word, string name)
+    {
+        var (mask, value) = name switch
+        {
+            "get_IsPrivate" => (0x7, 0x1),
+            "get_IsFamilyAndAssembly" => (0x7, 0x2),
+            "get_IsAssembly" => (0x7, 0x3),
+            "get_IsFamily" => (0x7, 0x4),
+            "get_IsFamilyOrAssembly" => (0x7, 0x5),
+            "get_IsHideBySig" or "get_IsNotSerialized" => (0x80, 0x80),
+            "get_IsPinvokeImpl" => (0x2000, 0x2000),
+            _ => throw new InvalidOperationException($"{name} is not an attributes-word predicate"),
+        };
+        return $"(int32_t)(({word} & 0x{mask:X}) == 0x{value:X})";
+    }
+
     private bool TryEmitReflectionIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Shared-body candidate: a typeof over a placeholder-bearing type rides the
@@ -821,6 +852,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_literal((Dn2CppFieldRef*)({f.Expr}))");
                 return true;
             }
+            case ("System.Reflection.FieldInfo", "GetRawConstantValue") when sig.ParameterTypes.Length == 0:
+            {
+                var f = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_fieldref_get_raw_constant_value((Dn2CppFieldRef*)({f.Expr}))");
+                return true;
+            }
             case ("System.Reflection.FieldInfo", "get_IsPublic"):
             {
                 var f = Pop();
@@ -892,6 +929,7 @@ internal sealed partial class MethodCompiler
             {
                 if (PopLookupArgs(sig, name: true, generic: true, returnType: false) is not { } ma)
                     return false;
+                NoteValueTypeRows();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"((Dn2CppObject*)dn2cpp_type_get_method_full({Cast(t, "Dn2CppType*")}, {ma.Name}, {ma.GenericCount ?? "-1"}, {ma.Types ?? "nullptr"}, {ma.Flags ?? "28"}, {ma.CallConv ?? "0"}, {ma.Binder ?? "nullptr"}))");
@@ -979,19 +1017,22 @@ internal sealed partial class MethodCompiler
                     $"(dn2cpp_methodref_is_static((Dn2CppMethodRef*)({m.Expr})) != 0 ? 0x1 : 0x21)");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsStatic"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsStatic"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_static((Dn2CppMethodRef*)({m.Expr}))");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsSpecialName"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsSpecialName"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_specialname((Dn2CppMethodRef*)({m.Expr}))");
                 return true;
             }
-            case ("System.Reflection.MethodBase", "get_IsPublic"):
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo", "get_IsPublic"):
             {
                 var m = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_methodref_is_public((Dn2CppMethodRef*)({m.Expr}))");
@@ -1038,6 +1079,7 @@ internal sealed partial class MethodCompiler
             case ("System.Reflection.MethodInfo", "CreateDelegate") when sig.ParameterTypes.Length is 1 or 2:
             {
                 Comp.NeedsReflectionDelegateBind = true;
+                NoteValueTypeRows();
                 string target = "nullptr";
                 int closedForm = 0;
                 if (sig.ParameterTypes.Length == 2)
@@ -1996,6 +2038,16 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
+                    or "System.Reflection.ConstructorInfo",
+                "get_IsPrivate" or "get_IsFamily" or "get_IsAssembly" or "get_IsFamilyOrAssembly"
+                    or "get_IsFamilyAndAssembly" or "get_IsHideBySig"):
+            {
+                var m = Pop();
+                Push(StackKind.I4, "int32_t",
+                    AttributesTest($"dn2cpp_methodref_attributes((Dn2CppMethodRef*)({m.Expr}))", name));
+                return true;
+            }
+            case ("System.Reflection.MethodBase" or "System.Reflection.MethodInfo"
                     or "System.Reflection.ConstructorInfo", "get_IsConstructor"):
             {
                 var m = Pop();
@@ -2063,6 +2115,14 @@ internal sealed partial class MethodCompiler
             {
                 var f = Pop();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_private((Dn2CppFieldRef*)({f.Expr}))");
+                return true;
+            }
+            case ("System.Reflection.FieldInfo", "get_IsFamily" or "get_IsAssembly" or "get_IsFamilyOrAssembly"
+                or "get_IsFamilyAndAssembly" or "get_IsNotSerialized" or "get_IsPinvokeImpl"):
+            {
+                var f = Pop();
+                Push(StackKind.I4, "int32_t",
+                    AttributesTest($"dn2cpp_fieldref_attributes((Dn2CppFieldRef*)({f.Expr}))", name));
                 return true;
             }
             case ("System.Reflection.FieldInfo", "get_IsSpecialName"):

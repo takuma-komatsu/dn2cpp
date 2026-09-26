@@ -235,6 +235,8 @@ struct ImportBinding
                         // from the receiver's interface map (type = the interface,
                         // vtableSlot = the interface method slot)
     int32_t vtableSlot; // >= 0: virtual — callvirt dispatches the receiver's vtable
+    void* gvmDispatcher; // a generic virtual row, which has no slot: the dispatcher a
+                        // callvirt enters to select the receiver's override
     void* fnPtr;
     void* invoker;
     const Dn2CppTypeInfo* type; // Type import: the resolved base type-info (may
@@ -1023,9 +1025,10 @@ enum OverloadStatus { kOverloadNone, kOverloadFound, kOverloadAmbiguous };
 // constructors —, `paramCount`, `wantStatic`). A --hotupdate-base build stamps a
 // `sigShape` on every row, so the import's `shape` string picks the exact
 // overload — chiefly one instantiation out of the several a generic method emits
-// under one name. Falls back to a lone unshaped candidate (a legacy row with no
-// sigShape — never produced by a --hotupdate-base build, so defensive only) and
-// reports ambiguity only among unshaped candidates. Returns kOverloadNone when
+// under one name, whose shapes its type arguments lead. Falls back to a lone
+// unshaped candidate (a legacy row with no sigShape — never produced by a
+// --hotupdate-base build, so defensive only) and reports ambiguity when two rows
+// carry the import's shape or among unshaped candidates. Returns kOverloadNone when
 // the table holds no matching overload (the caller then walks the base chain or
 // fails as unresolved); a shaped-but-no-match table reads as None too, so a
 // requested instantiation the base never emitted is a clean unresolved failure
@@ -1039,7 +1042,7 @@ OverloadStatus resolve_overload(
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> exact = nullptr;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> unshaped = nullptr;
-    int cand = 0, unshapedCount = 0;
+    int cand = 0, unshapedCount = 0, exactCount = 0;
     for (int32_t i = 0; i < count; i++)
     {
         auto mi = methods[i];
@@ -1058,8 +1061,11 @@ OverloadStatus resolve_overload(
         else if (name_equals(shape, shapeLen, mi->sigShape))
         {
             exact = mi;
+            exactCount++;
         }
     }
+    if (exactCount > 1)
+        return kOverloadAmbiguous;
     if (exact != nullptr)
     {
         *out = exact;
@@ -1080,6 +1086,20 @@ OverloadStatus resolve_overload(
     // Shaped candidates existed but none equalled the import's shape: the wanted
     // overload/instantiation is not in this table.
     return kOverloadNone;
+}
+
+// The dispatcher a callvirt of a closed generic virtual row enters, or null when
+// the row's own body is every receiver's (dn2cpp_gvm_row_dispatched). A row that
+// needs one the base image lacks is refused: its own body would skip every
+// override.
+void* gvm_row_dispatcher(const Dn2CppMethodInfo& row)
+{
+    if (!dn2cpp_gvm_row_dispatched(row))
+        return nullptr;
+    const Dn2CppGvmRowDispatch* d = dn2cpp_gvm_row_dispatch_of(row);
+    if (d == nullptr || d->dispatcher == nullptr)
+        interp_fail("BPI bind: a generic virtual method import has no dispatcher in the base image (root the instantiation in hotupdate-refs.txt)");
+    return d->dispatcher;
 }
 
 // The intrinsic table has TWO bind mouths — the exact-match loop below and the
@@ -1153,7 +1173,9 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     // interface): the concrete implementation is resolved from the receiver's
     // interface-dispatch map at run time, so the binding records the interface
     // type-info + method slot + the interface method's invoker (a --hotupdate-base
-    // build emits it signature-only). Dispatch reuses the invoker arm.
+    // build emits it signature-only). Dispatch reuses the invoker arm. A generic
+    // virtual row has no slot: every call enters its dispatcher instead, whose C++
+    // signature is the row's, so the row's invoker calls it.
     if ((declTi->flags & DN2CPP_TF_INTERFACE) != 0)
     {
         if (!isInstance)
@@ -1162,7 +1184,8 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
         if (resolve_overload(declTi->reflection().methods, declTi->reflection().methodCount, name, nameLen, /*matchName*/ true,
                 paramCount, /*wantStatic*/ false, shape, shapeLen, &im) == kOverloadAmbiguous)
             interp_fail("BPI bind: ambiguous interface method import (same-arity overloads share a sigShape)");
-        if (im == nullptr || im->invoker == nullptr || im->vtableSlot < 0)
+        void* gvm = im != nullptr ? gvm_row_dispatcher(*im) : nullptr;
+        if (im == nullptr || im->invoker == nullptr || (im->vtableSlot < 0 && gvm == nullptr))
             interp_fail("BPI bind: unresolved interface method import (is the base built with --hotupdate-base?)");
         if (paramCount > kMaxImportArgs)
             interp_fail("BPI bind: import call arity needs a later slice");
@@ -1177,6 +1200,12 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
         b.retType = im->returnType;
         b.method = im;
         b.type = declTi;          // the interface type-info (resolve_interface key)
+        if (gvm != nullptr)
+        {
+            b.fnPtr = gvm;
+            b.gvmDispatcher = gvm;
+            return;
+        }
         b.vtableSlot = im->vtableSlot; // the interface method slot
         b.isInterface = true;
         return;
@@ -1369,6 +1398,10 @@ void bind_method_import(const Dn2CppInterpImage* img, const Dn2CppBpiImport& imp
     b.type = declTi;
     b.isCtor = isCtor;
     b.vtableSlot = found->vtableSlot;
+    // A generic virtual row has no slot: a callvirt enters its dispatcher, whose C++
+    // signature is the row's; a call runs the row's own body.
+    if (!isCtor)
+        b.gvmDispatcher = gvm_row_dispatcher(*found);
 }
 
 // Field import: resolved to the declaring type's Dn2CppFieldInfo entry (base
@@ -2008,6 +2041,7 @@ Dn2CppInterpImage* dn2cpp_patch_load(const void* blobPtr, size_t len)
             iti->magic = kInterpTypeInfoMagic;
             Dn2CppTypeInfo* ti = &iti->ti;
             ti->name = nameCopy;
+            ti->flags = DN2CPP_TF_PATCH;
             ti->base = base;
             ti->instanceSize = static_cast<int32_t>(size);
             ti->vtable = base->vtable;
@@ -3391,8 +3425,10 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                 // its precise C++ widths), references pass through. A
                                 // callvirt on a virtual method fetches the target from
                                 // the live receiver's vtable — the same slot the AOT
-                                // call site would dispatch; call (and a non-virtual
-                                // callvirt) uses the bound fnPtr directly. A ctor
+                                // call site would dispatch — or, on a generic virtual
+                                // one, enters the dispatcher the AOT call site would;
+                                // call (and a non-virtual callvirt) uses the bound
+                                // fnPtr directly. A ctor
                                 // import reached by `call` is the base-ctor chain
                                 // of an inheriting patch constructor — an ordinary
                                 // instance call on the half-built receiver.
@@ -3440,6 +3476,10 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
                                         fn = const_cast<void*>(self->type->vtable[b.vtableSlot]);
                                         if (fn == nullptr)
                                             interp_fail("interp: receiver vtable slot is empty");
+                                    }
+                                    else if (insn.op == 0x6F && b.gvmDispatcher != nullptr)
+                                    {
+                                        fn = b.gvmDispatcher;
                                     }
                                 }
                                 Dn2CppObject* r =
@@ -4688,6 +4728,10 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                         fn = const_cast<void*>(self->type->vtable[b.vtableSlot]);
                                         if (fn == nullptr)
                                             interp_fail("interp: receiver vtable slot is empty");
+                                    }
+                                    else if (insn.op == R_CALLVIRT && b.gvmDispatcher != nullptr)
+                                    {
+                                        fn = b.gvmDispatcher;
                                     }
                                 }
                                 Dn2CppObject* r =

@@ -1409,6 +1409,19 @@ internal sealed partial class MethodCompiler
             return;
         }
 
+        // Find/FindAll/FindIndex/Exists/ConvertAll/ForEach/AsReadOnly and kin: call the
+        // real transpiled body. Their nested calls to each other land back here.
+        if (CoreIntrinsics.IsArrayRealBodyGeneric(declType, name))
+        {
+            // Only a closed instantiation is reached as a real body: Reach cuts the
+            // canonical counterpart of an intrinsic type's member, so a shared caller
+            // has no body to call and each instantiation compiles its own.
+            foreach (var arg in methodArgs)
+                TaintIfCanonical(arg, "array-real-body");
+            EmitManagedCall(Comp.ReachIntrinsicTypeMethodSpec(_module, msh, Method.Context), isCallvirt: false);
+            return;
+        }
+
         // string.Join<T>(separator, IEnumerable<T>) — the form `string.Join(",", arr)`
         // binds to when the elements are a value type (int[] -> IEnumerable<int>).
         // Supported over arrays (the dominant case) and over a List<T>: a
@@ -2217,6 +2230,10 @@ internal sealed partial class MethodCompiler
             && methodArgs.Length == 1)
         {
             var dT = methodArgs[0];
+            // T may be named nowhere else, and the binder finds its trampoline among
+            // the emitted delegate classes.
+            if (dT is { Kind: TypeKind.Class, Class: { IsDelegate: true } dCls })
+                NoteReferencedType(dCls);
             string tiExpr = TypeInfoExpr(dT)
                 ?? throw new NotSupportedException("CreateDelegate<T>: T has no runtime type-info");
             Comp.NeedsReflectionDelegateBind = true;
@@ -2230,6 +2247,7 @@ internal sealed partial class MethodCompiler
                 closedForm = 1;
             }
             var m = Pop();
+            NoteValueTypeRows();
             string ct = CppTypes.Of(dT);
             Push(StackKind.Ref, ct,
                 $"({ct})dn2cpp_delegate_create(dn2cpp_get_type_from_handle({tiExpr}), {cdTarget}, (Dn2CppMethodRef*)({m.Expr}), {closedForm}, 1)");
@@ -2291,11 +2309,17 @@ internal sealed partial class MethodCompiler
         string sepStr = sep.Kind == StackKind.Ref
             ? Cast(sep, "Dn2CppString*")
             : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
+        // A null sequence is .NET's ArgumentNullException, not an empty join.
+        string values = NewTemp(arr.CppType);
+        Emit($"{values} = {Cast(arr, arr.CppType)};");
+        Emit($"if ({values} == nullptr) dn2cpp_throw_argument_null_param(\"values\");");
+        arr = arr with { Expr = values };
         string arrExpr, countArg, suffix;
+        string? listCount = null;
         if (arr.CppType.StartsWith("Dn2CppArray"))
             (arrExpr, countArg, suffix) = (arr.Expr, "", "");
         else if (TryListBacking(arr) is { } lb)
-            (arrExpr, countArg, suffix) = (lb.Items, $", {lb.Count}", "_n");
+            (arrExpr, countArg, suffix, listCount) = (lb.Items, $", {lb.Count}", "_n", lb.Count);
         // A concrete IEnumerable<T> collection (SortedSet, Sorted*.Keys/.Values)
         // that is neither a Dn2CppArray nor a List<T> backing: enumerate it via
         // its interface. Pushes the result itself, so return early.
@@ -2309,6 +2333,22 @@ internal sealed partial class MethodCompiler
             throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join is only " +
                 "supported over arrays, List<T>, or an IEnumerable<T> collection yet");
+        // An enum element joins by name, not by its underlying integer.
+        if (t is { Kind: TypeKind.Class, Class.IsEnum: true })
+        {
+            string eti = TypeInfoExpr(t)
+                ?? throw new NotSupportedException(
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join<{t}> has no emitted type-info");
+            string arrCt = ArrayCppPtr(t);
+            string arrT = NewTemp(arrCt);
+            Emit($"{arrT} = ({arrCt})({arrExpr});");
+            var (data, stride) = ArrayDataStride(t, arrT);
+            string count = listCount ?? $"{arrT}->length";
+            Push(StackKind.Ref, "Dn2CppString*",
+                $"dn2cpp_string_join_enum_n({sepStr}, {arrT} == nullptr ? nullptr : {data}, "
+                + $"{arrT} == nullptr ? 0 : {stride}, {arrT} == nullptr ? 0 : {count}, {eti})");
+            return;
+        }
         string call = RepOf(t) switch
         {
             // Unsigned 32/64-bit elements format unsigned — the signed

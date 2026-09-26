@@ -38,3 +38,4 @@ NullableValueSubset.Program.__GateEntry();          // C# 2 — Nullable<T> valu
 TupleSubset.Program.__GateEntry();                  // C# 7 — value tuples
 DefaultInterfaceMethodSubset.Program.__GateEntry(); // C# 8 — default interface methods
 RecordSubset.Program.__GateEntry();                 // C# 9 — positional records
+InterfaceSealedMemberSubset.Program.__GateEntry();  // C# 8 — sealed and private interface members

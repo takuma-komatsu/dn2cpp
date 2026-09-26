@@ -499,6 +499,15 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // the non-generic comparer dispatch asks "is this the default comparer?" once per
 // element; nothing but that mint stamps it.
 #define DN2CPP_TF_DEFAULT_EQ_COMPARER 0x4000000
+// A type-info the hot-update loader built for a patch type. A patch type overrides
+// no generic virtual method, so a generic virtual dispatcher, which selects on
+// exact AOT type-infos, runs such a receiver as its nearest AOT ancestor.
+#define DN2CPP_TF_PATCH 0x8000000
+// Every method this level declares under the name of a System.Object member the
+// runtime answers (g_meta_members in dn2cpp_system_reflection.cpp) has a method
+// row, so an Object or ValueType row reached through this level is never one an
+// unseen override replaces. Runtime-owned, stripped and patch levels never carry it.
+#define DN2CPP_TF_OBJECT_MEMBER_ROWS 0x10000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels
@@ -778,8 +787,9 @@ struct Dn2CppType : Dn2CppObject
 // Reflection field metadata. One entry per declared field in a type's
 // Dn2CppTypeInfo::fields table. getter/setter are CppEmitter-generated thunks that
 // do the typed access + box/unbox; null when the field has no reflectable
-// storage (a literal/const, or an opaque declaring type), in which case
-// GetValue/SetValue raise InvalidOperationException.
+// storage (an opaque declaring type), in which case GetValue/SetValue raise
+// InvalidOperationException. A literal has no setter, and a getter only when
+// literalValue cannot carry its constant.
 struct Dn2CppFieldInfo
 {
     const char* name;
@@ -795,13 +805,11 @@ struct Dn2CppFieldInfo
     // field's metadata token. 0-fill trailing convention (0 when unrecorded).
     int32_t ilAttrs;
     int32_t metadataToken;
-    // The constant of a LITERAL row that has no storage to thunk-read, widened
-    // to int64 (an enum member's value — the rows CppEmitter emits for enum
-    // type-infos). getter/setter stay null; dn2cpp_fieldref_get_value boxes
-    // this as the declaring enum instead of throwing, so GetField(name)
-    // .GetValue(null) answers like real .NET (the Newtonsoft EnumUtils path).
-    // Same trailing 0-fill convention — non-enum rows leave it 0 and keep the
-    // null-thunk InvalidOperationException behavior.
+    // The bits of a LITERAL row's constant when it is encoded at the field's own
+    // primitive or enum type: sign- or zero-extended integers, a float's or
+    // double's IEEE bits. dn2cpp_fieldref_get_value boxes them at fieldType, and a
+    // reference-typed row without a getter is a null constant. Same trailing
+    // 0-fill convention.
     int64_t literalValue;
     // FieldInfo.ToString display, pre-rendered while the full metadata signature
     // (including byref/generic spelling) is still available. Trailing for source
@@ -812,7 +820,7 @@ struct Dn2CppFieldInfo
 // Dn2CppFieldInfo::attrs bits. PUBLIC/PRIVATE mirror the CLR field
 // accessibility (internal/protected set neither bit); STATIC marks a static
 // field; INITONLY a C# readonly field (FieldAttributes.InitOnly); LITERAL a
-// const (FieldAttributes.Literal — no storage, GetValue/SetValue thunks null).
+// const (FieldAttributes.Literal — no storage; see literalValue).
 #define DN2CPP_FLDA_STATIC   0x1
 #define DN2CPP_FLDA_PUBLIC   0x2
 #define DN2CPP_FLDA_PRIVATE  0x4
@@ -888,17 +896,19 @@ struct Dn2CppMethodInfo
     void* fnPtr;
     // Signature-deduplicated invoker thunk: unboxes/casts the boxed args,
     // calls fnPtr with the right C++ signature, and boxes the result. null when the
-    // method body was not reached/emitted (Invoke then throws). Shape:
+    // method body was not reached/emitted (Invoke then throws), except on a bodiless
+    // virtual row: Invoke hands its thunk the receiver's slot. Shape:
     //   Dn2CppObject* (*)(void* fn, Dn2CppObject* self, Dn2CppObject** args,
     //                     const Dn2CppTypeInfo* retType)
     void* invoker;
     // Custom attributes applied to this method/constructor; 0-fill trailing.
     Dn2CppMetadataTable<Dn2CppAttrInfo> customAttrs;
     int32_t customAttrCount;
-    // The method's v1 sigShape ("(paramTypes):retType" in TypeDesc rendering) —
-    // the overload discriminator the hot-update loader matches an import against
-    // by string equality when a type carries several same-(name, arity, static)
-    // methods (chiefly the instantiations a generic method emits under one name).
+    // The method's sigShape ("(paramTypes):retType" in TypeDesc rendering, led by
+    // "<typeArgs>" on a generic method's instantiation) — the overload
+    // discriminator the hot-update loader matches an import against by string
+    // equality when a type carries several same-(name, arity, static) methods
+    // (chiefly the instantiations a generic method emits under one name).
     // Non-null only in a --hotupdate-base build; null otherwise (normal builds
     // never read it). Hand-written method rows that omit it (and the trailing
     // members below) value-initialize the rest to 0.
@@ -1081,6 +1091,25 @@ struct Dn2CppDelegateMethodIdentity
     const Dn2CppDelegateMethodTarget* targets;
 };
 
+// A generic virtual method row has no slot: reflection enters it through the
+// dispatcher a callvirt of the same instantiation calls, whose C++ signature is the
+// row's. Sorted by metadata token; the identity carries the targets the dispatcher
+// selects. A single null row when reflection enters none, so the symbols link.
+struct Dn2CppGvmRowDispatch
+{
+    Dn2CppDelegateMethodIdentity identity;
+    void* dispatcher;
+};
+extern const Dn2CppGvmRowDispatch dn2cpp_gvm_row_dispatch[];
+extern const int32_t dn2cpp_gvm_row_dispatch_count;
+// Whether a callvirt of the row selects the receiver's override through a
+// dispatcher: false when the row's own body is every receiver's, a static,
+// non-virtual or final row or one on a sealed class.
+bool dn2cpp_gvm_row_dispatched(const Dn2CppMethodInfo& row);
+// That dispatcher's entry, or null when the row is not dispatched or no
+// dispatcher serves it.
+const Dn2CppGvmRowDispatch* dn2cpp_gvm_row_dispatch_of(const Dn2CppMethodInfo& row);
+
 // Uniform layout of all generated delegate types; the identity is static metadata.
 // `prev` chains earlier entries of the invocation list (null = single).
 struct Dn2CppDelegate : Dn2CppObject
@@ -1136,6 +1165,9 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      int32_t throwOnFailure);
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
+// Whether two closed-instance bindings over one receiver run one body, the answer
+// delegate equality gives for bindings through different rows.
+bool dn2cpp_reflbind_same_body(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
 // unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);
@@ -1442,10 +1474,19 @@ inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
+inline constexpr const char* DN2CPP_SR_ENTRY_POINT_NOT_FOUND = "Arg_EntryPointNotFoundException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_MEMBER = "Arg_AmbiguousMatchException_MemberInfo";
+inline constexpr const char* DN2CPP_SR_AMBIGUOUS_MATCH_ATTRIBUTE = "Arg_AmbiguousMatchException_Attribute";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
+inline constexpr const char* DN2CPP_SR_FIELD_TARGET_MISMATCH = "Arg_FieldDeclTarget";
+inline constexpr const char* DN2CPP_SR_FIELD_CONSTANT = "Acc_ReadOnly";
+inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetInitonlyStaticField";
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
+inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
+inline constexpr const char* DN2CPP_SR_BAD_IL_FORMAT = "BadImageFormat_BadILFormat";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
@@ -1462,10 +1503,32 @@ inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "Argumen
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BOOLEAN = "Arg_MustBeBoolean";
+inline constexpr const char* DN2CPP_SR_MUST_BE_CHAR = "Arg_MustBeChar";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SBYTE = "Arg_MustBeSByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_BYTE = "Arg_MustBeByte";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT16 = "Arg_MustBeInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT16 = "Arg_MustBeUInt16";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT32 = "Arg_MustBeInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT32 = "Arg_MustBeUInt32";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INT64 = "Arg_MustBeInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINT64 = "Arg_MustBeUInt64";
+inline constexpr const char* DN2CPP_SR_MUST_BE_SINGLE = "Arg_MustBeSingle";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DOUBLE = "Arg_MustBeDouble";
+inline constexpr const char* DN2CPP_SR_MUST_BE_INTPTR = "Arg_MustBeIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_UINTPTR = "Arg_MustBeUIntPtr";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DECIMAL = "Arg_MustBeDecimal";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIME = "Arg_MustBeDateTime";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMESPAN = "Arg_MustBeTimeSpan";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATETIMEOFFSET = "Arg_MustBeDateTimeOffset";
+inline constexpr const char* DN2CPP_SR_MUST_BE_DATEONLY = "Arg_MustBeDateOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_TIMEONLY = "Arg_MustBeTimeOnly";
+inline constexpr const char* DN2CPP_SR_MUST_BE_STRING = "Arg_MustBeString";
+inline constexpr const char* DN2CPP_SR_ENUM_AND_OBJECT_MUST_BE_SAME_TYPE = "Arg_EnumAndObjectMustBeSameType";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
 const char* dn2cpp_sr_text(const char* key);
-// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 2), or null
+// The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 3), or null
 // when the text is absent.
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc);
 // Dynamic side-chain of the type-name registry: type-infos constructed at run
@@ -1503,6 +1566,9 @@ int32_t dn2cpp_methodref_is_specialname(Dn2CppMethodRef* m);
 // emitter-generated thunks; reference fields pass the object reference through.
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj);
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value);
+// FieldInfo.GetRawConstantValue: a constant at its encoded type (an enum's
+// underlying primitive); any other field throws InvalidOperationException.
+Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f);
 // MemberInfo.Name / DeclaringType — shared by FieldInfo, MethodInfo and Type;
 // dispatch on the managed object header (a FieldRef carries dn2cpp_fieldinfo_type,
 // a MethodRef dn2cpp_methodinfo_type).
@@ -1698,6 +1764,15 @@ Dn2CppObject* dn2cpp_array_create_instance_lengths(Dn2CppType* t, Dn2CppArrayI4*
                                                    Dn2CppArrayI4* lowerBounds);
 Dn2CppObject* dn2cpp_array_create_instance_from_arraytype(Dn2CppType* arrayType,
                                                           const int32_t* lengths, int32_t rank);
+// The (Type, int[] lengths[, int[] lowerBounds]) forms; hasBounds tells the second
+// form's null lowerBounds (ArgumentNullException) from the first form's absent one.
+Dn2CppObject* dn2cpp_array_create_instance_from_arraytype_lengths(Dn2CppType* arrayType,
+                                                                  Dn2CppArrayI4* lengths,
+                                                                  Dn2CppArrayI4* lowerBounds,
+                                                                  int32_t hasBounds);
+// Array.Initialize when only the array object states its element type: runs that
+// type's parameterless constructor row over every element.
+void dn2cpp_array_initialize(Dn2CppObject* a);
 const Dn2CppTypeInfo* dn2cpp_array_ti(const Dn2CppTypeInfo* elem, int32_t rank);
 // The registry's SZ-array type-info over `elem`, or null when the image never
 // statically instantiated T[] (defined in the reflection unit's registry-scan
@@ -2245,9 +2320,9 @@ extern Dn2CppTypeInfo dn2cpp_rank_exception_type;
 // the two operands' element types satisfy no arm of the CLR's Array.Copy
 // compatibility verdict (which lives at dn2cpp_array_copy_checked).
 extern Dn2CppTypeInfo dn2cpp_array_type_mismatch_exception_type;
-// System.Reflection.AmbiguousMatchException: raised by the member-lookup
-// helpers (GetMethod/GetProperty with several undecidable matches), matching
-// real .NET's reflection contract.
+// System.Reflection.AmbiguousMatchException: raised by the reflection lookups
+// with several undecidable matches (members, interfaces, constructor binding,
+// single-attribute getters), with real .NET's message and HResult.
 extern Dn2CppTypeInfo dn2cpp_ambiguous_match_exception_type;
 // System.Runtime.AmbiguousImplementationException: raised by an invoked
 // interface slot whose derived interfaces give it no most specific body.
@@ -2259,6 +2334,12 @@ extern Dn2CppTypeInfo dn2cpp_application_exception_type;
 // System.MissingMethodException: raised by the Activator/ConstructorInfo
 // helpers when constructor resolution finds no invokable match.
 extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
+// System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
+// static read-only field.
+extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
+// System.BadImageFormatException: raised by MethodBase.Invoke on a static abstract
+// interface member.
+extern Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type;
 extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when
@@ -2524,9 +2605,13 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 //
 // _named answers the first: for a struct-returning virtual the emitter bakes the
 // (class, method) descriptor into a per-slot stub, so the abort names the slot without
-// reading `self`. The receiver-scanning form stays the default, being more precise.
+// reading `self`; `slotFn` is the stub's own address. The receiver-scanning form stays
+// the default, being more precise.
+//
+// Every trap first asks dn2cpp_reflective_slot_check with the function it was entered
+// through, so a slot reflection enters directly reports its stripped body instead.
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self);
-[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_vcall_unimplemented_named(const char* slotDesc, const void* slotFn);
 // The receiver-scanning form entered through a per-signature trap thunk. The emitter
 // gives each trapped slot a thunk carrying the slot's exact C++ signature — a wasm
 // call_indirect checks the callee's type immediate, so the shared symbol above dies
@@ -2540,6 +2625,12 @@ int64_t dn2cpp_gc_total_allocated_bytes();
 // prologue. For the callers that must recognise a trapped slot WITHOUT calling it
 // (dn2cpp_exception_message's override probe); one image, one registration.
 void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count);
+// A dispatch trap entered as `slotFn` throws the catchable NotSupportedException
+// MethodBase.Invoke and a CreateDelegate binding raise for a receiver whose body the
+// image stripped, when `slotFn` is the slot the innermost such reflective call is
+// entering (dn2cpp_invoke_row). Returns otherwise: a trap reached from compiled code
+// is a reachability defect and still aborts.
+void dn2cpp_reflective_slot_check(const void* slotFn);
 
 // Throws a managed OverflowException (catchable), unlike dn2cpp_fail.
 [[noreturn]] void dn2cpp_overflow();
@@ -2625,9 +2716,6 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // A typed `catch (KeyNotFoundException)` needs the matching type, so it has its
 // own handle + trap (rather than falling through to the InvalidOperation trap).
 [[noreturn]] void dn2cpp_throw_key_not_found();
-// Reflection member lookup with several undecidable matches (Type.GetMethod /
-// GetProperty), matching .NET's AmbiguousMatchException.
-[[noreturn]] void dn2cpp_throw_ambiguous_match();
 // An array block move whose two operands disagree on rank.
 [[noreturn]] void dn2cpp_throw_rank();
 // Constructor resolution with no invokable match (Activator.CreateInstance and
@@ -2686,6 +2774,12 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // holding the operand .NET's own sentence names (the string that failed to parse, the
 // duplicate dictionary key). Falls back to `ti`'s default text if the key is absent.
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0);
+// The same over a two-argument format.
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1);
+// The ArgumentException a built-in's CompareTo(object) raises for a box of another type.
+// .NET's message names the RECEIVER's type `self`; a type without one keeps the default.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self);
 // ArgumentOutOfRangeException with the paramName/actual-value tail real .NET's Message
 // overrides append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
@@ -3575,13 +3669,15 @@ const void** dn2cpp_try_resolve_interface(const Dn2CppTypeInfo* t, const Dn2CppT
 // receiver out of argument 0 and names its type — the emitter enters it through a
 // per-signature thunk carrying the slot's exact C++ signature (a wasm call_indirect
 // checks the callee's type immediate, and with the signature exact `self` really is the
-// receiver at the C++ level). For an indirect struct return the emitter prefers a tiny
-// per-slot stub that calls _named with the (class, interface, method) descriptor baked
-// in — exact even on a metadata-stripped image. _anon is kept for the rare slot the
-// emitter has neither a signature nor a descriptor for.
+// receiver at the C++ level), which passes its own address to _at. For an indirect
+// struct return the emitter prefers a tiny per-slot stub that calls _named with the
+// (class, interface, method) descriptor and its own address baked in — exact even on
+// a metadata-stripped image. _anon is kept for the rare slot the emitter has neither a
+// signature nor a descriptor for. Each asks dn2cpp_reflective_slot_check first.
 [[noreturn]] void dn2cpp_itf_slot_missing(void* self);
+[[noreturn]] void dn2cpp_itf_slot_missing_at(void* self, const void* slotFn);
 [[noreturn]] void dn2cpp_itf_slot_missing_anon();
-[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc);
+[[noreturn]] void dn2cpp_itf_slot_missing_named(const char* slotDesc, const void* slotFn);
 Dn2CppObject* dn2cpp_isinst(Dn2CppObject* obj, const Dn2CppTypeInfo* ti);
 // The pure (source type-info, target type-info) decision behind dn2cpp_isinst,
 // cached per pair: base chain + interface rows, generic variance, and the array
@@ -5064,6 +5160,13 @@ int32_t dn2cpp_search_values_index_of_any_str(const char16_t* span, int32_t n, c
 // two-caller invariant is written out at the definition.
 Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj);
 Dn2CppString* dn2cpp_object_tostring_virtual(Dn2CppObject* obj);
+// Object.ToString's own body for a non-virtual call (a base.ToString() inside an
+// override): the type name, never the type's tostring slot. Null throws.
+Dn2CppString* dn2cpp_object_tostring_nonvirtual(Dn2CppObject* obj);
+// The identity hash behind RuntimeHelpers.GetHashCode, a non-virtual
+// Object.GetHashCode and dn2cpp_object_gethashcode's default: non-negative, 0 for
+// null.
+int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 // Object.GetHashCode / Object.Equals(object) virtual dispatch. If the
 // runtime type wires a `gethashcode`/`equals` override, call it; otherwise fall
 // back to .NET's defaults — an identity hash derived from the object pointer, and
@@ -5074,27 +5177,31 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj);
 // Clone paths never call it.
 Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj);
 int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
-// Three-way ordering (-1/0/+1) of two boxed values by runtime type — the object-element
-// counterpart of dn2cpp_object_equals, for the non-generic Array.Sort/BinarySearch(Array, …)
-// lowerings whose element type is unknown until run time (MethodCompiler.EmitIntrinsic.EnumArray).
-// .NET Comparer.Default null order: null sorts first. Boxed primitive/enum/string compare INLINE
-// because the inline arms are tried FIRST (not for want of a map) — each integer at its own width
-// AND signedness, since ordering cannot lump widths the way equality does, and float/double on the
-// NaN-aware TOTAL order the sole static comparison window (MethodCompiler.TryCompareLValue) emits,
-// so a value ordered here and one ordered inline agree. Decimal and the date/time value types are
-// inline too, through that same window's intrinsic three-ways — this is the ladder the
-// boxed-built-in IComparable thunk delegates to, and it may not refuse a type whose type test
-// claims IComparable. A user reference type dispatches the non-generic
-// System.IComparable.CompareTo(object) through the closed type-info the caller supplies
-// (icomparable_ti — nullptr if the transpiler could not resolve System.IComparable). A value that is
-// neither is refused with a catchable PlatformNotSupportedException naming the type, never a silent 0.
+// Three-way ordering of two boxed values by runtime type, whose sign is the order — the
+// object-element counterpart of dn2cpp_object_equals, for Comparer.Default and the non-generic
+// Array.Sort/BinarySearch(Array, …) lowerings whose element type is unknown until run time
+// (MethodCompiler.EmitIntrinsic.EnumArray). The value is the one .NET's Comparer.Default returns:
+// a sub-word integer, Char or sub-word enum answers the raw difference its CompareTo returns.
+// Null sorts first. Boxed primitive/enum/string compare INLINE because the inline arms are tried
+// FIRST (not for want of a map) — each integer at its own width AND signedness, since ordering
+// cannot lump widths the way equality does, and float/double on the NaN-aware TOTAL order the
+// sole static comparison window (MethodCompiler.TryCompareLValue) emits, so a value ordered here
+// and one ordered inline agree. Decimal and the date/time value types are inline too, through
+// that same window's intrinsic three-ways — this is the ladder the boxed-built-in IComparable
+// thunk delegates to, and it may not refuse a type whose type test claims IComparable. A user
+// reference type dispatches the non-generic System.IComparable.CompareTo(object) through the
+// closed type-info the caller supplies (icomparable_ti — nullptr if the transpiler could not
+// resolve System.IComparable). A value that is neither is refused with a catchable
+// PlatformNotSupportedException naming the type, never a silent 0.
+// A user IComparable's result passes through unclamped, as Comparer.Default returns it.
 // String order is ORDINAL (dn2cpp_str_compare(…,4)) — the same deliberate divergence from
 // culture-sensitive Comparer<string>.Default the generic sort/search path already makes.
 int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppTypeInfo* icomparable_ti);
 
-// System.Enum::CompareTo(object): the synthesized enum value body (BrEnumInstanceFormat) calls
-// this. Null target sorts first (this > null -> 1), a cross-enum-type target is an
-// ArgumentException, and same type delegates to dn2cpp_object_compare's boxed-enum width ladder.
+// System.Enum::CompareTo(object) for the synthesized enum value body (BrEnumInstanceFormat) and a
+// constrained call on an enum value. Null target sorts first (this > null -> 1), a target of any
+// other type is .NET's ArgumentException naming both types, and same type delegates to
+// dn2cpp_object_compare's boxed-enum width ladder.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b);
 
 // Double/Single value semantics, shared by the two callers that must agree: the
@@ -5129,6 +5236,12 @@ Dn2CppString* dn2cpp_string_join_u4_n(Dn2CppString* sep, Dn2CppArrayI4* a, int32
 Dn2CppString* dn2cpp_string_join_u8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
 Dn2CppString* dn2cpp_string_join_r8_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
 Dn2CppString* dn2cpp_string_join_ref_n(Dn2CppString* sep, Dn2CppArrayRef* a, int32_t n);
+// Join over the first `n` elements of an enum array's storage (`stride` bytes each, the
+// underlying's width): each element is boxed under the enum's own type-info `eti` — the
+// storage sign-extended per the underlying into the box's model payload — so it formats by
+// name, as Enum.ToString does, never as its underlying integer.
+Dn2CppString* dn2cpp_string_join_enum_n(Dn2CppString* sep, const void* data, int32_t stride, int32_t n,
+                                        const Dn2CppTypeInfo* eti);
 // Join(separator, string[], startIndex, count) — the 4-arg slice form (null
 // array ANE, bad slice catchable AOORE, both like .NET).
 Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
@@ -5139,7 +5252,6 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
 Dn2CppString* dn2cpp_string_join_objs(Dn2CppString* sep, Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_concat_objs(Dn2CppObject* const* d, int32_t n);
 Dn2CppString* dn2cpp_string_join_ch_n(Dn2CppString* sep, Dn2CppArrayN* a, int32_t n);
-int32_t dn2cpp_object_hashcode(Dn2CppObject* obj);
 
 Dn2CppArrayI4* dn2cpp_newarr_i4(int32_t length);
 Dn2CppArrayRef* dn2cpp_newarr_ref(int32_t length);
@@ -5195,12 +5307,18 @@ Dn2CppObject* dn2cpp_array_clone_dyn(Dn2CppObject* src); // rep from runtime typ
 // CLR's full compatibility verdict (dn2cpp_array_copy_checked). Clear
 // takes one array, so no type question arises on it.
 void dn2cpp_array_copy_dyn(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
+// Array.ConstrainedCopy: the same checks, then only a pair that moves without a
+// per-element conversion; any other pair throws ArrayTypeMismatchException before
+// an element moves.
+void dn2cpp_array_constrained_copy_dyn(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
 void dn2cpp_array_clear_dyn(Dn2CppObject* arr, int32_t idx, int32_t len);
 // The mixed-identity half of dn2cpp_array_copy_dyn (defined beside the
 // CanPrimitiveWiden matrix in dn2cpp_system_reflection.cpp): .NET's Array.Copy
 // type-compatibility verdict and its per-element widen/box/unbox/cast arms.
-// Callers have already validated null, rank equality and both ranges.
-void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len);
+// Callers have already validated null, rank equality and both ranges. reliable is
+// ConstrainedCopy's verdict: only the raw-move arms are taken.
+void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx, Dn2CppObject* dst, int32_t dstIdx, int32_t len,
+                               bool reliable = false);
 
 // RuntimeHelpers.GetSubArray<T>(T[], Range) = array[range]. The Range's
 // two Index ._value fields are resolved against the source length into (offset, length)
@@ -5772,6 +5890,70 @@ inline int32_t dn2cpp_md_total_length(Dn2CppMDArray* arr)
     for (int32_t i = 0; i < arr->rank; i++)
         total *= arr->lengths[i];
     return total;
+}
+
+// Rank / GetLength / GetLowerBound / GetUpperBound on a receiver statically known to
+// be SZ or MD: a null receiver is NullReferenceException and a dimension outside
+// [0, rank) IndexOutOfRangeException, as on .NET.
+inline int32_t dn2cpp_sz_rank(Dn2CppArray* arr)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    return 1;
+}
+
+inline int32_t dn2cpp_sz_get_length(Dn2CppArray* arr, int32_t dim)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (dim != 0)
+        dn2cpp_throw_index_out_of_range();
+    return arr->length;
+}
+
+inline int32_t dn2cpp_sz_get_lower_bound(Dn2CppArray* arr, int32_t dim)
+{
+    dn2cpp_sz_get_length(arr, dim);
+    return 0;
+}
+
+inline int32_t dn2cpp_sz_get_upper_bound(Dn2CppArray* arr, int32_t dim)
+{
+    return dn2cpp_sz_get_length(arr, dim) - 1;
+}
+
+inline int32_t dn2cpp_md_rank(Dn2CppMDArray* arr)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    return arr->rank;
+}
+
+inline int32_t dn2cpp_md_dim(Dn2CppMDArray* arr, int32_t dim)
+{
+    if (arr == nullptr)
+        dn2cpp_throw_null_reference();
+    if (static_cast<uint32_t>(dim) >= static_cast<uint32_t>(arr->rank))
+        dn2cpp_throw_index_out_of_range();
+    return dim;
+}
+
+inline int32_t dn2cpp_md_get_length(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lengths[d];
+}
+
+inline int32_t dn2cpp_md_get_lower_bound(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lowerBounds[d];
+}
+
+inline int32_t dn2cpp_md_get_upper_bound(Dn2CppMDArray* arr, int32_t dim)
+{
+    int32_t d = dn2cpp_md_dim(arr, dim);
+    return arr->lowerBounds[d] + arr->lengths[d] - 1;
 }
 
 // ── The SHAPE questions the block-move lowerings ask of an operand whose static

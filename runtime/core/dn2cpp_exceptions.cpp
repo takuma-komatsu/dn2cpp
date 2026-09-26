@@ -85,7 +85,9 @@
 
 [[noreturn]] void dn2cpp_vcall_unimplemented(Dn2CppObject* self)
 {
-    dn2cpp_vcall_report(self, reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented));
+    const void* trap = reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented);
+    dn2cpp_reflective_slot_check(trap);
+    dn2cpp_vcall_report(self, trap);
 }
 
 // Entered through a per-signature trap thunk (declaration comment in dn2cpp.h): the
@@ -93,6 +95,7 @@
 // holding it — the same-signature subset, usually one.
 [[noreturn]] void dn2cpp_vcall_unimplemented_at(Dn2CppObject* self, const void* slotFn)
 {
+    dn2cpp_reflective_slot_check(slotFn);
     dn2cpp_vcall_report(self, slotFn);
 }
 
@@ -107,9 +110,9 @@ void dn2cpp_register_vcall_traps(const void* const* fns, int32_t count)
     g_vcall_trap_count = count;
 }
 
-// Whether `fn` is a vtable dispatch trap — the shared symbol or one of the image's
-// registered per-signature thunks. For probes that must not CALL a trapped slot to
-// find out (the trap aborts). Linear over a small set, on already-cold paths.
+// Whether `fn` is a vtable dispatch trap — the shared symbol or one of the registered
+// per-signature thunks — for probes that must not CALL a trapped slot to find out.
+// Linear over a small set; every caller is already a slow path.
 static bool dn2cpp_is_vcall_trap(const void* fn)
 {
     if (fn == reinterpret_cast<const void*>(&dn2cpp_vcall_unimplemented))
@@ -335,7 +338,7 @@ const char* dn2cpp_sr_text(const char* key)
 }
 
 // The composite-format substitution SR.Format performs, over a template this runtime
-// already holds: `{0}`/`{1}` only, no alignment or format specifier, because these are
+// already holds: `{0}` to `{2}` only, no alignment or format specifier, because these are
 // exception-message resources and nothing else may reach it. An unresolved template
 // (null) yields null, which every caller reads as "no message".
 static Dn2CppString* dn2cpp_sr_format(const char* key, const std::string* args, int32_t argc)
@@ -370,8 +373,8 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
 
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
 {
-    std::string text[2];
-    if (argc > 2)
+    std::string text[3];
+    if (argc > 3)
         dn2cpp_throw_invalid_operation();
     for (int32_t i = 0; i < argc; i++)
         text[i] = dn2cpp_sr_arg(args[i]);
@@ -409,6 +412,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
     if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
     if (ti == &dn2cpp_target_parameter_count_exception_type) return DN2CPP_SR_TARGET_PARAMETER_COUNT;
+    if (ti == &dn2cpp_entry_point_not_found_exception_type) return DN2CPP_SR_ENTRY_POINT_NOT_FOUND;
     return nullptr;
 }
 
@@ -458,6 +462,49 @@ void dn2cpp_overflow()
     Dn2CppString* msg = dn2cpp_sr_format(key, args, 1);
     dn2cpp_throw(dn2cpp_exception_new(ti,
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
+}
+
+[[noreturn]] void dn2cpp_throw_sr2(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0,
+    Dn2CppString* a1)
+{
+    std::string args[2] = { dn2cpp_sr_arg(a0), dn2cpp_sr_arg(a1) };
+    Dn2CppString* msg = dn2cpp_sr_format(key, args, 2);
+    dn2cpp_throw(dn2cpp_exception_new(ti,
+        msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
+}
+
+// Keyed by the handle a box carries, which is the one handle each of these types has.
+[[noreturn]] void dn2cpp_throw_compareto_type_mismatch(const Dn2CppTypeInfo* self)
+{
+    struct Row { const Dn2CppTypeInfo* ti; const char* key; };
+    static const Row rows[] = {
+        { &dn2cpp_bool_type, DN2CPP_SR_MUST_BE_BOOLEAN },
+        { &dn2cpp_char_type, DN2CPP_SR_MUST_BE_CHAR },
+        { &dn2cpp_sbyte_type, DN2CPP_SR_MUST_BE_SBYTE },
+        { &dn2cpp_byte_type, DN2CPP_SR_MUST_BE_BYTE },
+        { &dn2cpp_int16_type, DN2CPP_SR_MUST_BE_INT16 },
+        { &dn2cpp_uint16_type, DN2CPP_SR_MUST_BE_UINT16 },
+        { &dn2cpp_int32_type, DN2CPP_SR_MUST_BE_INT32 },
+        { &dn2cpp_uint32_type, DN2CPP_SR_MUST_BE_UINT32 },
+        { &dn2cpp_int64_type, DN2CPP_SR_MUST_BE_INT64 },
+        { &dn2cpp_uint64_type, DN2CPP_SR_MUST_BE_UINT64 },
+        { &dn2cpp_single_type, DN2CPP_SR_MUST_BE_SINGLE },
+        { &dn2cpp_double_type, DN2CPP_SR_MUST_BE_DOUBLE },
+        { &dn2cpp_intptr_type, DN2CPP_SR_MUST_BE_INTPTR },
+        { &dn2cpp_uintptr_type, DN2CPP_SR_MUST_BE_UINTPTR },
+        { &dn2cpp_decimal_type, DN2CPP_SR_MUST_BE_DECIMAL },
+        { &dn2cpp_datetime_type, DN2CPP_SR_MUST_BE_DATETIME },
+        { &dn2cpp_timespan_type, DN2CPP_SR_MUST_BE_TIMESPAN },
+        { &dn2cpp_datetimeoffset_type, DN2CPP_SR_MUST_BE_DATETIMEOFFSET },
+        { &dn2cpp_dateonly_type, DN2CPP_SR_MUST_BE_DATEONLY },
+        { &dn2cpp_timeonly_type, DN2CPP_SR_MUST_BE_TIMEONLY },
+        { &dn2cpp_string_type, DN2CPP_SR_MUST_BE_STRING },
+    };
+    for (const Row& r : rows)
+        if (r.ti == self)
+            if (const char* text = dn2cpp_sr_text(r.key))
+                dn2cpp_throw_argument_msg(text);
+    dn2cpp_throw_argument();
 }
 
 // ArgumentOutOfRangeException as real .NET assembles it: the resource's own sentence,
@@ -537,7 +584,6 @@ void dn2cpp_throw_out_of_memory() { dn2cpp_throw_of(&dn2cpp_out_of_memory_except
 void dn2cpp_throw_type_load() { dn2cpp_throw_of(&dn2cpp_type_load_exception_type); }
 void dn2cpp_throw_not_supported() { dn2cpp_throw_of(&dn2cpp_not_supported_exception_type); }
 void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_exception_type); }
-void dn2cpp_throw_ambiguous_match() { dn2cpp_throw_of(&dn2cpp_ambiguous_match_exception_type); }
 void dn2cpp_throw_rank() { dn2cpp_throw_of(&dn2cpp_rank_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
 void dn2cpp_throw_divide_by_zero() { dn2cpp_throw_of(&dn2cpp_divide_by_zero_exception_type); }
@@ -562,6 +608,7 @@ void dn2cpp_throw_invoker_missing(const char* message)
 {
     Dn2CppObject* obj = dn2cpp_exception_new(&dn2cpp_not_supported_exception_type,
         dn2cpp_string_from_utf8(message, static_cast<int32_t>(std::strlen(message))), nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(obj)->hresult = static_cast<int32_t>(0x80131515u);
     dn2cpp_exc_stamp_trace(obj);
     dn2cpp_exc_inflight_push(obj);
     throw Dn2CppInvokerMissing{ { obj } };

@@ -412,6 +412,7 @@ ORDERED_PROJECTS=(
     "samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj"
     "samples/dotnet/HotUpdateBadPatchDelegate/HotUpdateBadPatchDelegate.csproj"
     "samples/dotnet/HotUpdateBadPatchMulticast/HotUpdateBadPatchMulticast.csproj"
+    "samples/dotnet/HotUpdateBadPatchGvm/HotUpdateBadPatchGvm.csproj"
     "samples/dotnet/HotUpdateDirPatch1/HotUpdateDirPatch1.csproj"
     "samples/dotnet/HotUpdateDirPatch2/HotUpdateDirPatch2.csproj"
     "samples/dotnet/HotUpdateCoreLibBase/HotUpdateCoreLibBase.csproj"

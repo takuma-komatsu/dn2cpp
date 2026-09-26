@@ -41,6 +41,7 @@ internal sealed partial class AssemblyDiet : IDisposable
     private readonly List<TypeDefinition> _typeTokenTypes = new();
     private readonly HashSet<TypeDefinition> _typeTokenSeen = new();
     private bool _constructsFromRuntimeType;
+    private bool _initializesArrays;
     private readonly Dictionary<ModuleDefinition, DietAssembly> _byModule = new();
     private bool _cutsValidated = true;
 
@@ -454,9 +455,27 @@ internal sealed partial class AssemblyDiet : IDisposable
         foreach (var type in _typeTokenTypes) KeepInstanceConstructors(type);
     }
 
+    // Array.Initialize runs a value-type element's parameterless constructor, which no
+    // IL names, so once the program calls it, directly or through a method group, every
+    // stripped value type keeps its own.
+    private void ArmArrayInitialize()
+    {
+        if (_initializesArrays) return;
+        _initializesArrays = true;
+        foreach (var assembly in _assemblies)
+        {
+            if (assembly.Copy) continue;
+            foreach (var type in AllTypes(assembly.Assembly.MainModule.Types))
+                if (type.IsValueType)
+                    foreach (var method in type.Methods)
+                        if (method.IsConstructor && !method.IsStatic && method.Parameters.Count == 0)
+                            MarkMethod(method);
+        }
+    }
+
     // Activator.CreateInstance(Type) and ConstructorInfo.Invoke can construct any
-    // application type a type token names, including an open generic definition
-    // closed later through MakeGenericType.
+    // application type a type token or a custom-attribute Type argument names,
+    // including an open generic definition closed later through MakeGenericType.
     private void NoteTypeToken(TypeReference reference)
     {
         var element = reference.GetElementType();
@@ -591,6 +610,8 @@ internal sealed partial class AssemblyDiet : IDisposable
             try
             {
                 bool registration = IsRegistrationAttribute(attribute, provider);
+                // A registration list is filtered to types retained elsewhere, so its
+                // entries neither mark types nor select constructors.
                 foreach (var argument in attribute.ConstructorArguments)
                     if (registration && IsTypeArray(argument)) MarkType(argument.Type);
                     else MarkArgument(argument);
@@ -618,7 +639,11 @@ internal sealed partial class AssemblyDiet : IDisposable
     private void MarkArgument(CustomAttributeArgument argument)
     {
         MarkType(argument.Type);
-        if (argument.Value is TypeReference type) MarkType(type);
+        if (argument.Value is TypeReference type)
+        {
+            MarkType(type);
+            NoteTypeToken(type);
+        }
         else if (argument.Value is CustomAttributeArgument nested) MarkArgument(nested);
         else if (argument.Value is CustomAttributeArgument[] values)
             foreach (var value in values) MarkArgument(value);
@@ -651,10 +676,15 @@ internal sealed partial class AssemblyDiet : IDisposable
             {
                 case MethodReference target:
                     if (!_registryFactories.ContainsKey(instruction)) MarkMethod(target);
-                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt
-                        && target.MetadataToken.TokenType == TokenType.MemberRef
+                    // A method group runs its target through the delegate, so it arms
+                    // whatever a call to the target arms.
+                    bool runs = instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn;
+                    if (runs && target.MetadataToken.TokenType == TokenType.MemberRef
                         && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
                         ArmRuntimeTypeConstruction();
+                    if (runs && target.Name == "Initialize" && target.Parameters.Count == 0
+                        && target.DeclaringType.FullName == "System.Array")
+                        ArmArrayInitialize();
                     break;
                 case FieldReference field: MarkField(field); break;
                 case TypeReference type:
