@@ -462,6 +462,10 @@ internal static class Program
         // MethodSpecification import to the right instantiation by its sigShape.
         Console.WriteLine(Counter.Echo<int>(7));
         Console.WriteLine(Counter.Echo<string>("gen2"));
+        // TypeName<T> never names T in its signature, so each import binds its
+        // instantiation by type argument.
+        Console.WriteLine(Counter.TypeName<int>());
+        Console.WriteLine(Counter.TypeName<string>());
         Console.WriteLine();
 
         // String building: the String.Concat overloads Roslyn lowers string-only

@@ -249,11 +249,19 @@ public class Counter
     // (Counter::Echo[System.Int32] / [System.String]). Both are emitted under the
     // one reflected name "Echo" with the method type parameter fully erased, so
     // the hot-update loader tells the two instantiations a patch binds apart by
-    // their sigShape ((Int32):Int32 vs (String):String) — the
+    // their sigShape (<Int32>(Int32):Int32 vs <String>(String):String) — the
     // generic-method-on-the-patch-surface path.
     public static T Echo<T>(T value)
     {
         return value;
+    }
+
+    // A generic method whose signature never names its type parameter, so its
+    // instantiations (Counter::TypeName[System.Int32] / [System.String]) differ
+    // in their type arguments alone.
+    public static string TypeName<T>()
+    {
+        return typeof(T).FullName;
     }
 }
 

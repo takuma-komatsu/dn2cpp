@@ -2581,9 +2581,10 @@ internal static class PatchConverter
         // A generic-method call: DecodeMemberRef captured the closed method type
         // arguments into declCtx.MethodArgs and the signature above was decoded
         // under them, so sig.ParameterTypes/ReturnType are the instantiation's
-        // concrete types and the baked sigShape/param EntityRefs are the
-        // instantiation's — the loader binds the import to that one instantiation
-        // among the several the base emits under this name. The instantiation must
+        // concrete types and the baked sigShape (led by those type arguments) and
+        // param EntityRefs are the instantiation's — the loader binds the import to
+        // that one instantiation among the several the base emits under this name,
+        // even when its signature never names a type argument. The instantiation must
         // be AOT-present: the --hotupdate-base build must have emitted this closed
         // method (a hotupdate-refs.txt method root force-emits one the base program
         // never calls), else the loader's method-import bind fails as unresolved —
@@ -2623,7 +2624,7 @@ internal static class PatchConverter
         }
 
         uint typeImport = TypeImportOf(w, typeImports, typeName);
-        string shape = SigShape(sig);
+        string shape = AbiContract.ImportShape(sig, declCtx.MethodArgs);
         string key = typeName + "::" + methodName + (isInstance ? "#i" : "#s") + shape;
         if (!methodImports.TryGetValue(key, out uint methodImport))
         {

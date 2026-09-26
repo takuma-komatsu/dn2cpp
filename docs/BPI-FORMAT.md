@@ -45,7 +45,7 @@ invariants:
 | off | size | field | description |
 |-----|------|-------|-------------|
 | 0  | 8 | `magic` | `"DN2BPI\0\0"` |
-| 8  | 4 | `formatVersion` | +1 on layout-incompatible change. The loader rejects an unknown major |
+| 8  | 4 | `formatVersion` | +1 on any change a BPI of another version would misread: a record layout or an import identity (`sigShape`). The loader accepts only its own version |
 | 12 | 4 | `flags` | bit0 selects the register code format (§Register code format — the converter's default; 0 = the v1 stack encoding, forced by `--patch-stackcode`). Loaders reject unknown bits |
 | 16 | 8 | `baseImageAbiHash` | hash of the base-image ABI contract (below). The loader checks it against the running base |
 | 24 | 4 | `sectionCount` | |
@@ -124,9 +124,13 @@ and otherwise constructs an array type-info from the resolved element **after
 patch-type construction** (§Load step 5b), so patch-class elements resolve too.
 Only single-dimension zero-based arrays over the fenced element kinds exist.
 
-The v1 `sigShape` string (both here and in MethodTable) is the transpiler's
+The `sigShape` string (both here and in MethodTable) is the transpiler's
 `SigKey` with the leading name removed: `(<paramTypes, comma-joined>):<ret>`
-in `TypeDesc` rendering — e.g. `WriteLine(string)` is `(String):Void`.
+in `TypeDesc` rendering — e.g. `WriteLine(string)` is `(String):Void`. A
+method import of a closed generic-method instantiation, and the base method row
+it binds, lead that with the method's type arguments (`AbiContract.ImportShape`):
+`TypeName<int>()` is `<Int32>():String`, so instantiations whose signatures
+never name a type argument stay distinct.
 
 **Nested base-image types are outside the type-import boundary.** The registry
 keys a nested type by its CLR reflection name (`Ns.Outer+Inner`), but the
@@ -954,9 +958,10 @@ build — the loader is its only reader), and the converter bakes the import's
 `sigShape` from the **substituted** signature (decoding the
 `MethodSpecification`'s type arguments and resolving the closed method under a
 method-arg generic context, so `Echo<int>`'s `!!0`→`Int32` gives
-`(Int32):Int32`). One shared routine renders both strings, so they agree
-byte-for-byte and the loader binds each import to its exact instantiation
-(§Load step 3).
+`<Int32>(Int32):Int32`). The type arguments lead the shape, so `TypeName<int>()`
+and `TypeName<string>()`, whose signatures are both `():String`, stay apart. One
+shared routine renders both strings, so they agree byte-for-byte and the loader
+binds each import to its exact instantiation (§Load step 3).
 
 **Missing-AOT-instantiation boundary (methods).** Unlike a generic type, the
 converter cannot see the base's emitted method table, so it does not reject a
@@ -1153,7 +1158,8 @@ i.e. `+=`/`-=`) is a conversion-time rejection.
      by name + parameter count + staticness, then disambiguated by full
      `sigShape` (§Generic methods). A same-`(name, arity, staticness)` set with
      no `sigShape` match is unresolved, never a silent bind onto a sibling;
-     genuine ambiguity survives only among legacy unshaped rows. The `aux1`
+     two rows carrying the import's `sigShape`, or several legacy unshaped
+     rows, are ambiguous. The `aux1`
      signature run is decoded into per-value marshal descriptors (scalars
      box/unbox across the invoker-thunk boundary; references pass through).
 
@@ -1329,8 +1335,10 @@ ordinary §Load step-3 path. Fences on that surface:
 
 ## Versioning and compatibility
 
-- `formatVersion`: +1 on layout-incompatible change; the loader rejects a
-  major mismatch.
+- `formatVersion`: +1 on any change a BPI of another version would misread —
+  a record layout or an import identity; the loader rejects any other
+  version, so a base image loads only BPIs baked by a converter of its own
+  format.
 - `flags`: loaders enforce a supported-flags mask and reject an unknown bit.
 - `baseImageAbiHash`: independently of format compatibility, guarantees
   **base-binary compatibility** — a base rebuild that changes layouts/slots

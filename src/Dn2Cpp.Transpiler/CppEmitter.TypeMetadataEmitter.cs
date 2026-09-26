@@ -2038,7 +2038,8 @@ internal sealed partial class CppEmitter
                 // a --hotupdate-base build (the hot-update loader is the sole reader;
                 // normal builds keep it null). It lets the loader tell same-(name,
                 // arity, static) methods apart — chiefly a generic method's several
-                // instantiations, all emitted under one name.
+                // instantiations, all emitted under one name, which it tells apart
+                // by type arguments (AbiContract.ImportShape).
 
                 // Trailing raw ECMA words + token: MethodAttributes, MethodImplAttributes,
                 // and the method's metadata token (MemberInfo.MetadataToken).
@@ -2066,7 +2067,7 @@ internal sealed partial class CppEmitter
                     MetadataValue.Text(m.Name), MetadataValue.Ref(_e.TypeInfoRef(cls, "method/ctor row's declaring type")),
                     MetadataValue.Ref(retInfo), MetadataValue.Ref(paramsExpr), MetadataValue.Signed(ps.Length), MetadataValue.ExplicitSigned(attrs),
                     MetadataValue.Signed(m.VtableSlot), MetadataValue.Ref(fnPtr), MetadataValue.Ref(invoker),
-                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? m.SigShape : null),
+                    MetadataValue.Ref(mca.Expr), MetadataValue.Signed(mca.Count), MetadataValue.Text(_e._hotUpdateBase ? AbiContract.ImportShape(m.Signature, m.Context.MethodArgs) : null),
                     MetadataValue.Signed((int)m.Attributes), MetadataValue.Signed((int)m.ImplAttributes), MetadataValue.Signed(mdToken),
                     MetadataValue.Signed(m.Context.MethodArgs.Length), MetadataValue.Ref(genArgsExpr),
                     MetadataValue.Ref(retReq.Expr), MetadataValue.Signed(retReq.Count), MetadataValue.Ref(retOpt.Expr), MetadataValue.Signed(retOpt.Count),

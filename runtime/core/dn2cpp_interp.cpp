@@ -1023,9 +1023,10 @@ enum OverloadStatus { kOverloadNone, kOverloadFound, kOverloadAmbiguous };
 // constructors —, `paramCount`, `wantStatic`). A --hotupdate-base build stamps a
 // `sigShape` on every row, so the import's `shape` string picks the exact
 // overload — chiefly one instantiation out of the several a generic method emits
-// under one name. Falls back to a lone unshaped candidate (a legacy row with no
-// sigShape — never produced by a --hotupdate-base build, so defensive only) and
-// reports ambiguity only among unshaped candidates. Returns kOverloadNone when
+// under one name, whose shapes its type arguments lead. Falls back to a lone
+// unshaped candidate (a legacy row with no sigShape — never produced by a
+// --hotupdate-base build, so defensive only) and reports ambiguity when two rows
+// carry the import's shape or among unshaped candidates. Returns kOverloadNone when
 // the table holds no matching overload (the caller then walks the base chain or
 // fails as unresolved); a shaped-but-no-match table reads as None too, so a
 // requested instantiation the base never emitted is a clean unresolved failure
@@ -1039,7 +1040,7 @@ OverloadStatus resolve_overload(
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> exact = nullptr;
     Dn2CppMetadataHandle<Dn2CppMethodInfo> unshaped = nullptr;
-    int cand = 0, unshapedCount = 0;
+    int cand = 0, unshapedCount = 0, exactCount = 0;
     for (int32_t i = 0; i < count; i++)
     {
         auto mi = methods[i];
@@ -1058,8 +1059,11 @@ OverloadStatus resolve_overload(
         else if (name_equals(shape, shapeLen, mi->sigShape))
         {
             exact = mi;
+            exactCount++;
         }
     }
+    if (exactCount > 1)
+        return kOverloadAmbiguous;
     if (exact != nullptr)
     {
         *out = exact;

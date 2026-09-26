@@ -138,17 +138,17 @@ internal static class AbiContract
         return sb.ToString();
     }
 
-    /// <summary>The v1 <c>sigShape</c> string of a method signature — its
+    /// <summary>The <c>sigShape</c> string of a method signature — its
     /// parameter and return types in <see cref="TypeDesc.ToString"/> rendering,
     /// <c>(paramTypes):retType</c> (i.e. <see cref="MethodInfo.SigKey"/> without
-    /// the leading name). It is the method-import overload discriminator + bridge
-    /// ABI shape (BPI-FORMAT.md). The single renderer is shared by the converter
-    /// (which computes it from the patch IL under a generic context) and the base
-    /// emitter (which bakes it into each reflected method row of a
+    /// the leading name). It is the bridge ABI shape and, under
+    /// <see cref="ImportShape"/>, the method-import overload discriminator
+    /// (BPI-FORMAT.md). The single renderer is shared by the converter (which
+    /// computes it from the patch IL under a generic context) and the base emitter
+    /// (which bakes it into each reflected method row of a
     /// <c>--hotupdate-base</c> build), so the two always agree byte-for-byte —
-    /// the loader disambiguates same-<c>(name, arity, static)</c> overloads,
-    /// including the several instantiations a generic method emits under one name,
-    /// by string-equality on it.</summary>
+    /// the loader disambiguates same-<c>(name, arity, static)</c> overloads by
+    /// string-equality on it.</summary>
     public static string SigShape(MethodSignature<TypeDesc> sig)
     {
         var sb = new StringBuilder("(");
@@ -159,6 +159,26 @@ internal static class AbiContract
             sb.Append(sig.ParameterTypes[i]);
         }
         sb.Append("):").Append(sig.ReturnType);
+        return sb.ToString();
+    }
+
+    /// <summary>The <c>sigShape</c> a method import and a base method row are matched
+    /// by: <see cref="SigShape"/>, led by a closed generic-method instantiation's own
+    /// type arguments (<c>&lt;Int32&gt;():String</c>). Instantiations whose signatures
+    /// never name a type argument share a <see cref="SigShape"/>, so without the
+    /// arguments the loader could bind one to another.</summary>
+    public static string ImportShape(MethodSignature<TypeDesc> sig, IReadOnlyList<TypeDesc> methodArgs)
+    {
+        if (methodArgs.Count == 0)
+            return SigShape(sig);
+        var sb = new StringBuilder("<");
+        for (int i = 0; i < methodArgs.Count; i++)
+        {
+            if (i > 0)
+                sb.Append(',');
+            sb.Append(methodArgs[i]);
+        }
+        sb.Append('>').Append(SigShape(sig));
         return sb.ToString();
     }
 

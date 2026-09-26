@@ -360,7 +360,7 @@ internal sealed class BpiWriter
         head.Utf8("DN2BPI");
         head.Byte(0);
         head.Byte(0);
-        head.U32(1);                    // formatVersion
+        head.U32(2);                    // formatVersion (DN2CPP_BPI_VERSION)
         head.U32(flags);                // flags (bit0 = register code format)
         head.U64(baseImageAbiHash);
         head.U32((uint)sections.Count);
