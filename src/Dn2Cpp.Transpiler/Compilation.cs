@@ -4757,44 +4757,10 @@ internal sealed partial class Compilation
                 {
                     if (!IsUserModule(cls.Module))
                         continue;
-                    try
-                    {
-                        var reader = cls.Module.Reader;
-                        var td = reader.GetTypeDefinition(cls.Handle);
-                        ReachAttributesOf(cls.Module, td.GetCustomAttributes());
-                        foreach (var fh in td.GetFields())
-                            ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes());
-                        foreach (var mh in td.GetMethods())
-                        {
-                            var md = reader.GetMethodDefinition(mh);
-                            ReachAttributesOf(cls.Module, md.GetCustomAttributes());
-                            foreach (var pph in md.GetParameters())
-                                ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes());
-                        }
-                        foreach (var ph in td.GetProperties())
-                            ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A class without decodable metadata (e.g. a generic instance) just
-                        // contributes no reflected attributes.
-                    }
+                    _attributeWalked.Add(cls);
+                    ReachClassAttributes(cls, reach: true);
                 }
-                // Assembly-level custom attributes: every loaded module's assembly
-                // attributes participate in the same keep-alive rules (attribute ctor +
-                // named setters + typeof-arg types), so Assembly.GetCustomAttributes can
-                // materialize them. DecodeCustomAttributes bounds this to attribute types
-                // defined in non-framework modules (plus the user-typeof-named framework
-                // ones), so a real CoreLib pulled in with -r contributes almost nothing.
-                foreach (var module in Modules)
-                    try
-                    {
-                        ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes());
-                    }
-                    catch (Exception e) when (!IsMustEscape(e))
-                    {
-                        // A module without an assembly definition contributes no attributes.
-                    }
+                ReachAssemblyAttributes(reach: true);
                 DrainReachability();
             }
         }
@@ -4806,6 +4772,13 @@ internal sealed partial class Compilation
         // used×allocated cross product it stands in for does.
         while (ReachBoxedValueEquality())
             DrainReachability();
+
+        // The emit side renders an attribute row whatever reached its ctor, and routes other
+        // than the walk above reach ctors (the reflection-ctor route reaches every app-module
+        // one). Note what the rows the walk did not visit name, once ctor reachability has
+        // settled; the drain completes the shapes of the instantiations they name.
+        NoteUnwalkedAttributeRows();
+        DrainReachability();
 
         // --trim-godot-classes: the allowlist may only grow while reachability can
         // still deliver the released lambdas' subtrees — freeze it here, after the
@@ -5624,28 +5597,96 @@ internal sealed partial class Compilation
     /// unemitted) — accepted, as no real user assembly claims a BCL name.</summary>
     internal bool IsUserModule(Module m) => !IsFrameworkAssemblyName(m.AssemblyName);
 
-    /// <summary>Reaches an attribute's ctor, named-property setters, and allocated type
-    /// for every reflectable custom attribute in the collection, and notes what each
-    /// argument's factory names (<see cref="NoteAttrArg"/>) so the argument stays
-    /// renderable.</summary>
-    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles)
+    /// <summary>The user-module classes the reflection-attribute walk visited;
+    /// <see cref="NoteUnwalkedAttributeRows"/> covers every other one.</summary>
+    private readonly HashSet<ClassInfo> _attributeWalked = new();
+
+    /// <summary>Notes what the attribute rows of every user-module class the walk did not
+    /// visit name — all of them when nothing reads attributes, else the classes minted after
+    /// it — and of every assembly, for the attributes whose ctor is reached: those rows
+    /// render, and each handle a row names must be declared.</summary>
+    private void NoteUnwalkedAttributeRows()
     {
-        foreach (var da in DecodeCustomAttributes(module, handles))
+        foreach (var cls in Classes.ToList())
+            if (IsUserModule(cls.Module) && _attributeWalked.Add(cls))
+                ReachClassAttributes(cls, reach: false);
+        ReachAssemblyAttributes(reach: false);
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over a class's own attributes and those of
+    /// its fields, methods, parameters and properties.</summary>
+    private void ReachClassAttributes(ClassInfo cls, bool reach)
+    {
+        try
         {
-            Reach(da.Ctor);
-            // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
-            // is attrType[] in .NET; the runtime helper stamps that identity via
-            // dn2cpp_find_array_ti, which only answers for elements the image emitted a
-            // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
-            // note it — note every reflectable attribute type here instead (the bounded
-            // set a filter can usefully name). The ti alone suffices: the stamped array's
-            // interface DISPATCH rides the shared reference-element fallback.
-            NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
-            if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
-                ReachAllocatedType(da.AttrClass);
+            var reader = cls.Module.Reader;
+            var td = reader.GetTypeDefinition(cls.Handle);
+            ReachAttributesOf(cls.Module, td.GetCustomAttributes(), reach);
+            foreach (var fh in td.GetFields())
+                ReachAttributesOf(cls.Module, reader.GetFieldDefinition(fh).GetCustomAttributes(), reach);
+            foreach (var mh in td.GetMethods())
+            {
+                var md = reader.GetMethodDefinition(mh);
+                ReachAttributesOf(cls.Module, md.GetCustomAttributes(), reach);
+                foreach (var pph in md.GetParameters())
+                    ReachAttributesOf(cls.Module, reader.GetParameter(pph).GetCustomAttributes(), reach);
+            }
+            foreach (var ph in td.GetProperties())
+                ReachAttributesOf(cls.Module, reader.GetPropertyDefinition(ph).GetCustomAttributes(), reach);
+        }
+        catch (Exception e) when (!IsMustEscape(e))
+        {
+            // A class without decodable metadata (e.g. a generic instance) just
+            // contributes no reflected attributes.
+        }
+    }
+
+    /// <summary><see cref="ReachAttributesOf"/> over every loaded module's assembly-level
+    /// attributes, which follow the element rules so Assembly.GetCustomAttributes can
+    /// materialize them. DecodeCustomAttributes bounds this to attribute types defined in
+    /// non-framework modules (plus the user-typeof-named framework ones), so a real CoreLib
+    /// pulled in with -r contributes almost nothing.</summary>
+    private void ReachAssemblyAttributes(bool reach)
+    {
+        foreach (var module in Modules)
+            try
+            {
+                ReachAttributesOf(module, module.Reader.GetAssemblyDefinition().GetCustomAttributes(), reach);
+            }
+            catch (Exception e) when (!IsMustEscape(e))
+            {
+                // A module without an assembly definition contributes no attributes.
+            }
+    }
+
+    /// <summary>Notes what each argument's factory names (<see cref="NoteAttrArg"/>) for
+    /// every reflectable custom attribute in the collection, so the argument stays
+    /// renderable. With <paramref name="reach"/> it also reaches the attribute's ctor,
+    /// named-property setters and allocated type; without, it notes only the attributes
+    /// whose ctor something else reached, which are the rows the emit side renders.</summary>
+    private void ReachAttributesOf(Module module, CustomAttributeHandleCollection handles, bool reach)
+    {
+        // A row only another route rendered is read by nothing unless attributes are read.
+        bool keep = reach || _reflectionAttrUsed;
+        foreach (var da in DecodeCustomAttributes(module, handles, reachedCtorsOnly: !reach))
+        {
+            if (reach)
+            {
+                Reach(da.Ctor);
+                // GetCustomAttributes(attrType[, bool]) returns an array whose RUNTIME type
+                // is attrType[] in .NET; the runtime helper stamps that identity via
+                // dn2cpp_find_array_ti, which only answers for elements the image emitted a
+                // ti_arr_ handle for. The filter is a runtime Type value, so no call site can
+                // note it — note every reflectable attribute type here instead (the bounded
+                // set a filter can usefully name). The ti alone suffices: the stamped array's
+                // interface DISPATCH rides the shared reference-element fallback.
+                NoteArrayElementType(TypeDesc.MakeClass(da.AttrClass));
+                if (!da.AttrClass.IsValueType && !da.AttrClass.IsAbstract)
+                    ReachAllocatedType(da.AttrClass);
+            }
             var ps = da.Ctor.Signature.ParameterTypes;
             for (int i = 0; i < da.Fixed.Length; i++)
-                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject);
+                NoteAttrArg(da.Fixed[i].Type, da.Fixed[i].Value, i < ps.Length && ps[i].IsObject, keep);
             foreach (var na in da.Named)
             {
                 // The member may be declared on an attribute BASE class — walk the
@@ -5657,13 +5698,14 @@ internal sealed partial class Compilation
                 if (na.Kind == CustomAttributeNamedArgumentKind.Property && na.Name is { } pn
                     && da.AttrClass.InstanceMethodOnBaseChain("set_" + pn) is { } sm)
                 {
-                    Reach(sm);
+                    if (reach)
+                        Reach(sm);
                     boxed = sm.Signature.ParameterTypes.Length > 0 && sm.Signature.ParameterTypes[0].IsObject;
                 }
                 else if (na.Kind == CustomAttributeNamedArgumentKind.Field && na.Name is { } fn
                     && da.AttrClass.InstanceFieldOnBaseChain(fn) is { } f)
                     boxed = f.Type.IsObject;
-                NoteAttrArg(na.Type, na.Value, boxed);
+                NoteAttrArg(na.Type, na.Value, boxed, keep);
             }
         }
     }
@@ -5681,24 +5723,26 @@ internal sealed partial class Compilation
     /// exactly as TypeMetadataEmitter.NoteReflectedType notes for member types;</item>
     /// <item>a boxed enum's ti_, which the box carries;</item>
     /// <item>a Type value's identity closure, so its handle survives tree-shaking.</item>
-    /// </list></summary>
-    private void NoteAttrArg(TypeDesc encoded, object? value, bool boxed)
+    /// </list>
+    /// Without <paramref name="keep"/> the classes are referenced for their type-info
+    /// alone: a row the program cannot read is no sign it reflects over them.</summary>
+    private void NoteAttrArg(TypeDesc encoded, object? value, bool boxed, bool keep)
     {
         if (encoded.Kind == TypeKind.SZArray)
         {
             var el = encoded.Element!;
             NoteArrayElementType(el);
-            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-                NoteReferencedType(ec);
+            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+                NoteTypeIdentityClosure(el, keep);
             if (value is ImmutableArray<CustomAttributeTypedArgument<TypeDesc>> items)
                 foreach (var item in items)
-                    NoteAttrArg(item.Type, item.Value, el.IsObject);
+                    NoteAttrArg(item.Type, item.Value, el.IsObject, keep);
             return;
         }
         if (value is TypeDesc type)
-            NoteTypeIdentityClosure(type);
-        else if (boxed && value is not null && encoded is { Kind: TypeKind.Class, Class: { IsEnum: true } boxedEnum })
-            NoteReferencedType(boxedEnum);
+            NoteTypeIdentityClosure(type, keep);
+        else if (boxed && value is not null && encoded is { Kind: TypeKind.Class, Class: { IsEnum: true } })
+            NoteTypeIdentityClosure(encoded, keep);
     }
 
     /// <summary>Drives the reachability/discovery fixpoint to quiescence: complete

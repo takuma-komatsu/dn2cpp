@@ -310,7 +310,8 @@
 # with its encoded type and lists fields before properties. A serialized Type or
 # enum type name may name a nested type, an array or a closed generic, and decodes
 # to the identity typeof names; an enum nested in a generic type keeps its own
-# width. Every line of the section matches real .NET.
+# width; an array of a type nothing else names keeps its attribute. Every line of
+# the section matches real .NET.
 #
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
@@ -579,3 +580,11 @@ grep -q "EventListenerProbe.ProbeListener..ctor <- EventListenerProbe.Program.Ma
 ! compgen -G "$ES_OUT/generated*" >/dev/null \
     || { echo "FAIL: the refused transpile still emitted C++: $(ls -1 "$ES_OUT" | tr '\n' ' ')" >&2; exit 1; }
 echo "refusal OK: exit $es_code, named the observation side + EventListener + a remedy + the caller, emitted nothing"
+
+# ── Attribute rows the program never reads ────────────────────────────────────
+# ReflectAttrUnread reads no custom attribute but constructs an attribute type,
+# which reaches its constructor, so the emitted metadata still renders each of
+# that attribute's rows. A row names the type-info of its Type and array
+# arguments — arrays of a type nothing else names, and an enum array — and every
+# one must be declared, or the transpile fails. Its checks are the diff.
+corelib_diff_gate ReflectAttrUnread --no-ildiet

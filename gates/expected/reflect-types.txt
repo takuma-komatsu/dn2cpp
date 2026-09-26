@@ -1606,3 +1606,9 @@ GenericEnum: Byte 2
   data [ReflectAttrBoxedSubset.BoxedAttribute((ReflectAttrBoxedSubset.Box`1+Kind[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]])200)]
   generic 6 named=A array={B,{A}}
   generic B named=null array=null
+LonelyArrays: 2 defined=True
+  Boxed Type:ReflectAttrBoxedSubset.Lonely[,] named=null field=null array=null
+  Boxed Type:ReflectAttrBoxedSubset.Lonely[] named=null field=null array=null
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Lonely[,]))]
+  data [ReflectAttrBoxedSubset.BoxedAttribute(typeof(ReflectAttrBoxedSubset.Lonely[]))]
+Lonely arrays: Lonely rank 1, Lonely rank 2

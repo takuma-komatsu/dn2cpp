@@ -13,7 +13,8 @@ using System.Reflection;
 // type, an array or a closed generic, which decodes to the same type identity
 // typeof names; CustomAttributeData.ToString spells a closed generic's type
 // arguments assembly-qualified. An enum nested in a generic type keeps its own
-// width, in the blob and in memory.
+// width, in the blob and in memory. A Type argument naming an array of a type
+// nothing else names keeps its attribute, single- and multi-dimensional alike.
 namespace ReflectAttrBoxedSubset
 {
     public enum Tone { Low = 1, High = 7 }
@@ -122,6 +123,12 @@ namespace ReflectAttrBoxedSubset
     [Boxed(6, Named = Box<int>.Kind.A, NamedArray = new object[] { Box<string>.Kind.B, new Box<int>.Kind[] { Box<int>.Kind.A } })]
     public sealed class GenericEnum { }
 
+    // Named by nothing but the attribute blobs below.
+    public class Lonely { }
+
+    [Boxed(typeof(Lonely[]))] [Boxed(typeof(Lonely[,]))]
+    public sealed class LonelyArrays { }
+
     internal static class Program
     {
         private static string Describe(object value)
@@ -214,6 +221,13 @@ namespace ReflectAttrBoxedSubset
                 + Buffer.ByteLength(new Box<int>.Kind[2]));
             foreach (string line in generic)
                 Console.WriteLine(line);
+            Dump(typeof(LonelyArrays), true);
+            var lonely = new List<string>();
+            foreach (BoxedAttribute boxed in typeof(LonelyArrays).GetCustomAttributes(typeof(BoxedAttribute), false))
+                if (boxed.Value is Type type)
+                    lonely.Add(type.GetElementType().Name + " rank " + type.GetArrayRank());
+            lonely.Sort(StringComparer.Ordinal);
+            Console.WriteLine("Lonely arrays: " + string.Join(", ", lonely));
         }
     }
 }

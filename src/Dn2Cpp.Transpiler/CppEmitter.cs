@@ -4618,9 +4618,9 @@ internal sealed partial class CppEmitter
     }
 
     /// <summary>The type-info handle a Type-valued attribute argument names, or null when
-    /// this emission defines none. Compilation.NoteAttrArg notes the identity closure of
-    /// every reached argument, which is what declares an array's precise handle and keeps
-    /// a class's own.</summary>
+    /// this emission declares none, which drops the attribute. Compilation.NoteAttrArg
+    /// notes the identity closure of every rendered row's arguments, which is what
+    /// declares an array's precise handle and keeps a class's own.</summary>
     private string? AttrTypeHandle(TypeDesc td)
     {
         switch (td.Kind)
@@ -4636,9 +4636,8 @@ internal sealed partial class CppEmitter
                     ? TypeInfoRef(cls, "custom-attribute Type argument")
                     : null;
             case TypeKind.SZArray:
-                return ArrayTypeInfoDeclared(td.Element!, "custom-attribute Type argument (array)")
-                    ? MethodCompiler.PreciseArrayTypeInfoExprOf(td.Element!)
-                    : null;
+                string sz = "ti_arr_" + Compilation.ArrayElemMangle(td.Element!);
+                return TypeInfoSymbolDefined(sz) ? "&" + sz : null;
             case TypeKind.MDArray:
                 string md = "ti_md_" + Compilation.ArrayElemMangle(td);
                 return TypeInfoSymbolDefined(md) ? "&" + md : null;

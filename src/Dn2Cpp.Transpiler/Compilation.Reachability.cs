@@ -4446,8 +4446,11 @@ internal sealed partial class Compilation
     /// row on every reflected element. A framework attribute NOT so named stays dropped
     /// (its element reflects an empty set where real .NET reports the row — the same
     /// managed-stripping divergence as before, asserted by the reflect-types gate's
-    /// framework-attribute section).</summary>
-    internal List<DecodedAttribute> DecodeCustomAttributes(Module module, CustomAttributeHandleCollection handles)
+    /// framework-attribute section). <paramref name="reachedCtorsOnly"/> also skips an
+    /// attribute whose ctor is not reached before its blob decodes, so decoding mints no
+    /// instantiation for a row that never renders.</summary>
+    internal List<DecodedAttribute> DecodeCustomAttributes(Module module, CustomAttributeHandleCollection handles,
+        bool reachedCtorsOnly = false)
     {
         var result = new List<DecodedAttribute>();
         var reader = module.Reader;
@@ -4461,7 +4464,8 @@ internal sealed partial class Compilation
                 ctor = ResolveAttrCtorRef(module, (MemberReferenceHandle)ca.Constructor);
             if (ctor is null
                 || (IsFrameworkAssemblyName(ctor.DeclaringClass.Module.AssemblyName)
-                    && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName)))
+                    && !IsUserTypeofNamedFrameworkType(ctor.DeclaringClass.FullName))
+                || (reachedCtorsOnly && !Reachable.Contains(ctor)))
                 continue;
             CustomAttributeValue<TypeDesc> val;
             try { val = ca.DecodeValue(AttrProvider); }
