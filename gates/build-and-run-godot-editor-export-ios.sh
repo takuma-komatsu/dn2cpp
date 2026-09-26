@@ -72,8 +72,8 @@ godot_fork_pin_abi_check
 # from the packaged toolchain — so the key is inputs-only: the self-hosted CLI,
 # the packaging script, the sample project and the fork's pinned binaries (pins
 # + editor/template identity in the context string; the runtime/ tree the
-# packaging ships is in every key already). Xcode + simulator SDK join the
-# context because they build and host the exported project. The pin/ABI
+# packaging ships is in every key already). Xcode and both iOS SDKs join the
+# key because they build and host the exported project. The pin/ABI
 # tripwire above stays always-on, so a drifted fork still fails even on
 # otherwise unchanged inputs. A hit exits long before step 8/9's sim_lock, so
 # a cached pass never contends for the shared simulator.
@@ -86,8 +86,8 @@ godot_fork_pin_abi_check
 # and gate_cache_check answers that with a warning and no key, which
 # would leave this gate uncached on every fresh clone.
 mkdir -p "$OUT"
-if gate_cache_check "$OUT" \
-    "godot-editor-export-ios|trim-reflection=default-on|trim-godot-classes=default-on|shared-generics=default-on|$(godot_fork_ctx)|tmpl=$(file_sig "$IOS_TEMPLATE")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")|iossdk=$(or_none "$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null)")" \
+if gate_cache_check --ios-sdks "$OUT" \
+    "godot-editor-export-ios|trim-reflection=default-on|trim-godot-classes=default-on|shared-generics=default-on|$(godot_fork_ctx)|tmpl=$(file_sig "$IOS_TEMPLATE")|xcode=$(or_none "$(first_line "$(xcodebuild -version 2>/dev/null)")")" \
     "$SELFHOST_BIN" \
     dist/package-toolchain.sh \
     "$SAMPLE" \
