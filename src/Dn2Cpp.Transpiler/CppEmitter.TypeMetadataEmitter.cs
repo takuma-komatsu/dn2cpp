@@ -449,7 +449,7 @@ internal sealed partial class CppEmitter
                     // (constructors are deliberately not stripped); methtab/proptab are not.
                     if (!(ctorRow || (methodRow && keepRefl)))
                         continue;
-                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
+                    if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
                         continue;
                     NoteReflectedType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
@@ -1888,7 +1888,7 @@ internal sealed partial class CppEmitter
                 // Rva == 0 is a bodiless declaration -- an interface or abstract slot,
                 // which is never reached (dispatch reaches the impl) yet must stay
                 // visible, or the type's GetMethods() would come back empty.
-                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
+                if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsUnreachedRow(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
                 if (prefix == "methtab" && !m.Handle.IsNil && CoreIntrinsics.IsObjectMemberRowName(m.Name))

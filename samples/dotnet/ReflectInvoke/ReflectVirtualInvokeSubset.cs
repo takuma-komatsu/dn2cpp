@@ -28,7 +28,8 @@ using System.Reflection;
 // direct calls include a struct's generic interface method through its box and a
 // delegate. An open binding of a generic virtual row is refused. An override
 // hides the generic virtual method it overrides from GetMethod and GetMethods, and
-// GetBaseDefinition answers the definition that introduces the chain. A binding
+// GetBaseDefinition answers the definition that introduces the chain, where the
+// hiding ends, although only base calls name the rows below it. A binding
 // closed over null runs the row's own body. A call through System.Object runs the
 // override of Object's member, which a non-virtual or new-slot redeclaration does not
 // replace. System.Object's and System.ValueType's members answer a named lookup
@@ -425,6 +426,33 @@ class GvmProvider : TypeDescriptionProvider
         base.RegisterType<GvmRoot>();
         return Registered;
     }
+}
+
+// Only base calls name the chain's instantiations, so the image has no other row
+// of the method that introduces it, a new slot over a method of its signature.
+class GvmChainBase
+{
+    public virtual string Chain<T>() => "chain-base:" + typeof(T).Name;
+}
+
+class GvmChainRoot : GvmChainBase
+{
+    public new virtual string Chain<T>() => "chain-root:" + typeof(T).Name;
+}
+
+class GvmChainMid : GvmChainRoot
+{
+    public override string Chain<T>() => "chain-mid:" + typeof(T).Name;
+}
+
+class GvmChainLeaf : GvmChainMid
+{
+    public override string Chain<T>() => "chain-leaf/" + base.Chain<T>();
+}
+
+sealed class GvmChainTip : GvmChainLeaf
+{
+    public string Probe() => base.Chain<int>();
 }
 
 class NullHost
@@ -1170,6 +1198,14 @@ static class Program
             bound();
             return ((GvmProvider)bound.Target!).Registered + "/" + Describe(bound.Method);
         });
+
+        // The chain ends at the method that introduces it, which hides nothing above.
+        var chain = new GvmChainTip();
+        Try("chain base calls", () => chain.Probe() + "|" + ((GvmChainBase)chain).Chain<int>());
+        Try("GetMethods, chain over a new slot", () => Declarers(typeof(GvmChainLeaf), "Chain"));
+        Try("base definition, chain", () => Definition(typeof(GvmChainLeaf)
+            .GetMethod("Chain", BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)!
+            .MakeGenericMethod(typeof(int)).GetBaseDefinition()));
 
         Console.WriteLine("generic virtual invoke end");
     }

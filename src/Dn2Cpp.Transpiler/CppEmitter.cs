@@ -2127,6 +2127,9 @@ internal sealed partial class CppEmitter
             // reaching the wrapper support so the next batch compiles it. Runs each round
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
+            // A generic virtual override's row needs the row of the method that
+            // introduces its chain; the reflected rows below include those.
+            _c.InstantiateGvmChainRoots();
             // Reflection's virtual rows dispatch through the receiver's slot; reach what
             // those slots hold for the rows the bodies just compiled made invocable.
             _c.ReachReflectedVirtualSlots();

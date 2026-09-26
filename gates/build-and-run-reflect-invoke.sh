@@ -149,7 +149,8 @@
 # and a delegate. An open binding of a generic virtual row is refused with .NET's
 # NotSupportedException. An override hides the generic virtual method it overrides
 # from GetMethod and GetMethods while a new slot or a new method stays a second
-# method, and GetBaseDefinition answers the definition that introduces the chain. A
+# method, and GetBaseDefinition answers the definition that introduces the chain,
+# where the hiding ends, although only base calls name the rows below it. A
 # binding closed over null runs the row's own body, a bodiless row faulting as bad
 # IL, and an open binding runs a non-virtual row over a null receiver. A call
 # through System.Object runs the override of Object's member past a non-virtual
@@ -480,6 +481,8 @@ gate_extra_asserts() {
     grep -Fxq 'open delegate, null receiver, non-virtual row: plain' "$out/metadata-layout.stdout"
     grep -Fxq 'framework row, override: provider:GvmRoot' "$out/metadata-layout.stdout"
     grep -Fxq 'closed delegate, framework row: provider:GvmRoot/GvmProvider.RegisterType' "$out/metadata-layout.stdout"
+    grep -Fxq 'GetMethods, chain over a new slot: GvmChainLeaf.Chain,GvmChainBase.Chain' "$out/metadata-layout.stdout"
+    grep -Fxq 'base definition, chain: GvmChainRoot.Chain/True/GvmChainRoot' "$out/metadata-layout.stdout"
     grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"

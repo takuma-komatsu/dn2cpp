@@ -1015,7 +1015,7 @@ internal sealed partial class Compilation
     /// <summary>Whether <paramref name="m"/>'s method row must survive the unreached-row
     /// trim: <c>Delegate.Method</c> answers a delegate's declaration from it even when
     /// every receiver overrides the body.</summary>
-    internal bool KeepsDelegateTargetRow(MethodInfo m) =>
+    private bool KeepsDelegateTargetRow(MethodInfo m) =>
         _delegateMethodRead && _delegateIdentityTargets.Contains(m.CppName);
 
     /// <summary>The recorded identities in symbol order; no body may name one
@@ -3839,6 +3839,83 @@ internal sealed partial class Compilation
         }
         ReachUsedGvm(m, callSite: false);
         return true;
+    }
+
+    /// <summary>How much of <see cref="_methodInstanceOrder"/>
+    /// <see cref="InstantiateGvmChainRoots"/> has visited.</summary>
+    private int _gvmChainRootCursor;
+
+    /// <summary>Each instantiation <see cref="InstantiateGvmChainRoots"/> made of a method
+    /// that introduces a class generic virtual override chain, with the overrides it
+    /// roots.</summary>
+    private readonly Dictionary<MethodInfo, List<MethodInfo>> _gvmChainRoots = new();
+
+    /// <summary>A closed class generic virtual row has no slot, so the runtime reads an
+    /// override's chain off the same-signature rows of its base types: hiding ends, and
+    /// GetBaseDefinition answers, at the row of the method that introduces the chain.
+    /// Instantiates that method at each override's type arguments, so its row exists
+    /// wherever the override's does. Driven each round: bodies keep minting
+    /// instantiations.</summary>
+    public void InstantiateGvmChainRoots()
+    {
+        while (_gvmChainRootCursor < _methodInstanceOrder.Count)
+        {
+            var m = _methodInstanceOrder[_gvmChainRootCursor++];
+            if (GvmChainRootOrNull(m) is not { } root)
+                continue;
+            if (!_gvmChainRoots.TryGetValue(root, out var overrides))
+                _gvmChainRoots.Add(root, overrides = new List<MethodInfo>());
+            overrides.Add(m);
+        }
+    }
+
+    /// <summary>The instantiation at <paramref name="m"/>'s type arguments of the first
+    /// new slot up <paramref name="m"/>'s base types with its name, generic arity and
+    /// closed signature, the relation the runtime matches rows by, when
+    /// <paramref name="m"/> overrides a class generic virtual method; otherwise null.</summary>
+    private MethodInfo? GvmChainRootOrNull(MethodInfo m)
+    {
+        var cls = m.DeclaringClass;
+        var args = m.Context.MethodArgs;
+        if (!IsGvmCall(m) || (m.Attributes & MethodAttributes.NewSlot) != 0 || cls.IsInterface
+            || ContainsCanonPlaceholder(cls) || ContainsGenericVar(cls))
+            return null;
+        foreach (var arg in args)
+            if (ContainsCanonPlaceholder(arg) || ContainsGenericVar(arg))
+                return null;
+        try
+        {
+            for (var b = cls.BaseClass; b is not null; b = b.BaseClass)
+            {
+                if (b.Handle.IsNil
+                    || FindGvmClassTemplate(b, m.Name, args, m.Signature, matchReturn: true, slotOf: null)
+                        is not { } template)
+                    continue;
+                if ((b.Module.Reader.GetMethodDefinition(template).Attributes & MethodAttributes.NewSlot) != 0)
+                    return InstantiateMethodOnClass(b, b.Module, template, args);
+            }
+        }
+        // A signature no row can spell has no chain to complete.
+        catch (NotSupportedException e) when (!IsMustEscape(e))
+        {
+        }
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="m"/>'s row must survive the unreached-row trim:
+    /// <c>Delegate.Method</c> answers from it (<see cref="KeepsDelegateTargetRow"/>), or it
+    /// introduces the chain of an override whose row the image keeps.</summary>
+    internal bool KeepsUnreachedRow(MethodInfo m)
+    {
+        if (KeepsDelegateTargetRow(m))
+            return true;
+        if (!_gvmChainRoots.TryGetValue(m, out var overrides))
+            return false;
+        foreach (var o in overrides)
+            if (o.DeclaringClass.Module == AppModule || o.Rva == 0 || Reachable.Contains(o)
+                || KeepsDelegateTargetRow(o))
+                return true;
+        return false;
     }
 
     // A value type's row is sealed; an intrinsic type carries no rows.

@@ -1845,22 +1845,27 @@ internal sealed partial class Compilation
         });
     }
 
+    private MethodDefinitionHandle? FindGvmClassTemplate(
+        GvmDispatch disp, ClassInfo owner, string name,
+        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot) =>
+        FindGvmClassTemplate(owner, name, disp.MethodArgs, expected, matchReturn, requireSlot ? disp : null);
+
     // Match the closed parameter types before asking which virtual slot a row uses.
     // A same-name overload with the same arity and parameter count can override a
     // different slot; the generic-template lookup's fallback must not select it.
     private MethodDefinitionHandle? FindGvmClassTemplate(
-        GvmDispatch disp, ClassInfo owner, string name,
-        MethodSignature<TypeDesc> expected, bool matchReturn, bool requireSlot)
+        ClassInfo owner, string name, TypeDesc[] methodArgs,
+        MethodSignature<TypeDesc> expected, bool matchReturn, GvmDispatch? slotOf)
     {
         var reader = owner.Module.Reader;
         if (!TypeDefMethodNames(owner.Module, owner.Handle).ByName.TryGetValue(name, out var candidates))
             return null;
-        var ctx = new GenericContext(owner.Context.TypeArgs, disp.MethodArgs);
+        var ctx = new GenericContext(owner.Context.TypeArgs, methodArgs);
         foreach (var candidate in candidates)
         {
             var md = reader.GetMethodDefinition(candidate);
             if ((md.Attributes & MethodAttributes.Virtual) == 0
-                || md.GetGenericParameters().Count != disp.MethodArgs.Length)
+                || md.GetGenericParameters().Count != methodArgs.Length)
                 continue;
             var sig = md.DecodeSignature(SigProvider, ctx);
             if (sig.ParameterTypes.Length != expected.ParameterTypes.Length
@@ -1873,7 +1878,7 @@ internal sealed partial class Compilation
                     sameParams = false;
                     break;
                 }
-            if (!sameParams || (requireSlot && !GvmTemplateUsesSlot(disp, owner, candidate)))
+            if (!sameParams || (slotOf is not null && !GvmTemplateUsesSlot(slotOf, owner, candidate)))
                 continue;
             return candidate;
         }
