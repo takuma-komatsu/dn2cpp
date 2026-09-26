@@ -1323,13 +1323,12 @@ internal sealed partial class Compilation
                     ? mdm : null;
                 break;
             case HandleKind.MethodSpecification:
-                // Only a generic method's interface body is reached here: it runs on
-                // a box of the value type.
+                // A generic method binds only through the shared resolution; the
+                // name+shape walk below cannot see an instantiation.
                 try { resolvedCallee = ResolveMethodSpec(module, (MethodSpecificationHandle)calleeHandle, ctx); }
                 catch (NotSupportedException e) when (!IsMustEscape(e)) { }
-                if (resolvedCallee is not null
-                    && ConstrainedImplOf(c, resolvedCallee) is { DeclaringClass.IsInterface: true } specBody)
-                    ReachBoxedInterfaceBody(c, specBody);
+                if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } specBound)
+                    ReachConstrainedBody(c, specBound);
                 return;
             default:
                 return;
@@ -1384,10 +1383,7 @@ internal sealed partial class Compilation
         // emits a direct call that only this edge reaches.
         if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } bound)
         {
-            if (bound.DeclaringClass.IsInterface)
-                ReachBoxedInterfaceBody(c, bound);
-            else
-                Reach(bound);
+            ReachConstrainedBody(c, bound);
             return;
         }
         // No resolved callee (or none bound): fall back to the name+shape walk, which can
@@ -1424,12 +1420,13 @@ internal sealed partial class Compilation
         }
     }
 
-    /// <summary>Reaches an interface body a constrained call runs on the box of
-    /// <paramref name="c"/>, which must carry a real interface table: the body's own
-    /// interface calls dispatch through it.</summary>
-    private void ReachBoxedInterfaceBody(ClassInfo c, MethodInfo body)
+    /// <summary>Reaches the body a constrained call on value type <paramref name="c"/>
+    /// binds. An interface body runs on the box, which must carry a real interface
+    /// table: the body's own interface calls dispatch through it.</summary>
+    private void ReachConstrainedBody(ClassInfo c, MethodInfo body)
     {
-        ReachAllocatedType(c);
+        if (body.DeclaringClass.IsInterface)
+            ReachAllocatedType(c);
         Reach(body);
     }
 
@@ -1564,9 +1561,17 @@ internal sealed partial class Compilation
             known.CallSite |= callSite;
             return;
         }
+        var disp = NewGvmDispatch(gvm, callSite);
+        _usedGvms.Add(gvm.CppName, disp);
+        foreach (var c in _allocatedRefTypes.ToList())
+            ReachGvmImpl(disp, c);
+    }
+
+    private GvmDispatch NewGvmDispatch(MethodInfo gvm, bool callSite)
+    {
         var openParams = gvm.Module.Reader.GetMethodDefinition(gvm.Handle)
             .DecodeSignature(SigProvider, GenericContext.Empty).ParameterTypes;
-        var disp = new GvmDispatch
+        return new GvmDispatch
         {
             Gvm = gvm,
             Decl = gvm.DeclaringClass,
@@ -1575,9 +1580,6 @@ internal sealed partial class Compilation
             ParamCount = gvm.Signature.ParameterTypes.Length,
             CallSite = callSite,
         };
-        _usedGvms.Add(gvm.CppName, disp);
-        foreach (var c in _allocatedRefTypes.ToList())
-            ReachGvmImpl(disp, c);
     }
 
     /// <summary>Reaches concrete type <paramref name="c"/>'s override of GVM
@@ -1594,17 +1596,8 @@ internal sealed partial class Compilation
             // map selects, instantiated at the dispatcher's method args.
             if (c.IsInterface || !ImplementsInterface(c, disp.Decl))
                 return;
-            if (InterfaceGvmClassImplOrNull(disp, c) is { } classImpl)
+            if (InterfaceGvmCaseOrNull(disp, c, out bool ambiguous) is { } impl)
             {
-                Reach(classImpl);
-                disp.Cases[c] = classImpl;
-                return;
-            }
-            var derived = FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out bool ambiguous);
-            if (derived is { } selected)
-            {
-                var impl = InstantiateMethodOnClass(selected.Interface, selected.Interface.Module,
-                    selected.Body, disp.MethodArgs);
                 Reach(impl);
                 disp.Cases[c] = impl;
                 return;
@@ -1632,6 +1625,21 @@ internal sealed partial class Compilation
             return;
         }
         disp.Cases[c] = disp.Gvm;
+    }
+
+    /// <summary>The body interface GVM <paramref name="disp"/> binds for
+    /// <paramref name="c"/> ahead of the declaration's own default: the class body,
+    /// else the most specific derived interface override, instantiated at the
+    /// dispatcher's method args. Null with <paramref name="ambiguous"/> set when
+    /// sibling overrides leave no most specific one.</summary>
+    private MethodInfo? InterfaceGvmCaseOrNull(GvmDispatch disp, ClassInfo c, out bool ambiguous)
+    {
+        ambiguous = false;
+        if (InterfaceGvmClassImplOrNull(disp, c) is { } classImpl)
+            return classImpl;
+        return FindDerivedInterfaceGenericMethodTemplate(c, disp.Gvm, out ambiguous) is { } selected
+            ? InstantiateMethodOnClass(selected.Interface, selected.Interface.Module, selected.Body, disp.MethodArgs)
+            : null;
     }
 
     /// <summary>The case of runtime template <paramref name="c"/> in a class GVM

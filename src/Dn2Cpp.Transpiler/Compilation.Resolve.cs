@@ -1992,6 +1992,16 @@ internal sealed partial class Compilation
         EnsureCompleted(cls);
         if (callee.DeclaringClass.IsInterface && !callee.IsVirtual)
             return callee.IsStatic || callee.Rva == 0 ? null : callee;
+        // A generic virtual method binds per instantiation, as its dispatcher's case
+        // for the type does.
+        if (callee.DeclaringClass.IsInterface && IsGvmCall(callee))
+        {
+            if (!ImplementsInterface(cls, callee.DeclaringClass))
+                return null;
+            if (InterfaceGvmCaseOrNull(NewGvmDispatch(callee, callSite: false), cls, out ambiguous) is { } gvmImpl)
+                return gvmImpl;
+            return ambiguous || callee.IsAbstract || callee.Rva == 0 ? null : callee;
+        }
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs.Length == 1
             && callee.Signature.ParameterTypes.Length == 1)
@@ -2029,9 +2039,7 @@ internal sealed partial class Compilation
         }
         if (found is not null || !ImplementsInterface(cls, callee.DeclaringClass))
             return found;
-        // An open generic definition names no callable body.
         return ResolveItfImplOrNull(cls, callee, out ambiguous) is { DeclaringClass.IsInterface: true } body
-            && (body.Signature.GenericParameterCount == 0 || body.NameSuffix.Length > 0)
             ? body
             : null;
     }

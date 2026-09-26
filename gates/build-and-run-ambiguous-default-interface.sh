@@ -27,7 +27,7 @@ gate_extra_asserts() {
         || { echo "FAIL: the struct's unambiguous default body did not run" >&2; exit 1; }
     for label in 'pick' 'pick-generic<int>' 'pick-generic<string>' 'take<string>' \
         'find(First.Key)' 'find(Second.Key)' 'made pick' 'made pick-generic<int>' \
-        'constrained pick'; do
+        'constrained pick' 'constrained pick-generic<int>'; do
         thrown="$label: System.Runtime.AmbiguousImplementationException: Could not call method "
         grep -Fq -- "$thrown" <<<"$output" \
             || { echo "FAIL: $label did not throw AmbiguousImplementationException" >&2; exit 1; }

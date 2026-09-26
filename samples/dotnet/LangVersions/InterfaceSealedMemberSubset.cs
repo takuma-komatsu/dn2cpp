@@ -58,6 +58,34 @@ namespace InterfaceSealedMemberSubset
         public string Show() => "class-show";
     }
 
+    internal interface IPick
+    {
+        string Pick<T>(T value) => "base:" + value;
+    }
+
+    internal interface IPickLeft : IPick
+    {
+        string IPick.Pick<T>(T value) => "left:" + typeof(T).Name + ":" + value;
+    }
+
+    internal struct Picker : IPickLeft
+    {
+    }
+
+    internal struct OwnPicker : IPick
+    {
+        public string Pick<T>(T value) => "own:" + value;
+    }
+
+    internal struct ExplicitPicker : IPick
+    {
+        string IPick.Pick<T>(T value) => "explicit:" + value;
+    }
+
+    internal struct PlainPicker : IPick
+    {
+    }
+
     internal static class Program
     {
         private static string Try(Func<string> call)
@@ -77,6 +105,7 @@ namespace InterfaceSealedMemberSubset
         private static string Echo<T>(T value) where T : IShout => value.Echo();
         private static string Twice<T>(T value) where T : IShout => value.Twice(7);
         private static string Show<T, U>(T value) where T : IValue<U> => value.Show();
+        private static string PickOf<T>(T value) where T : IPick => value.Pick(8);
 
         internal static void __GateEntry()
         {
@@ -99,6 +128,8 @@ namespace InterfaceSealedMemberSubset
             IValue<string> text = new TextValue();
             Console.WriteLine("generic interface: " + number.Show() + " / " + text.Show()
                 + " / " + Show<IntValue, int>(new IntValue()) + " / " + Show<TextValue, string>(new TextValue()));
+            Console.WriteLine("generic virtual: " + PickOf(new Picker()) + " / " + ((IPick)new Picker()).Pick("s")
+                + " / " + PickOf(new OwnPicker()) + " / " + PickOf(new ExplicitPicker()) + " / " + PickOf(new PlainPicker()));
         }
     }
 }

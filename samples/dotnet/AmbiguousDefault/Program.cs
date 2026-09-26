@@ -116,12 +116,22 @@ namespace AmbiguousDefault
             {
                 Report("constrained pick", e);
             }
+            try
+            {
+                Console.WriteLine("constrained pick-generic<int>: " + PickGenericOf(new BothValue()));
+            }
+            catch (AmbiguousImplementationException e)
+            {
+                Report("constrained pick-generic<int>", e);
+            }
             Console.WriteLine("constrained after: " + PlainOf(new BothValue()));
         }
 
         private static string PlainOf<T>(T value) where T : IBase => value.Plain();
 
         private static string PickOf<T>(T value) where T : IBase => value.Pick(4, "four");
+
+        private static string PickGenericOf<T>(T value) where T : IBase => value.PickGeneric<int>();
 
         private static void Report(string label, AmbiguousImplementationException e)
         {
