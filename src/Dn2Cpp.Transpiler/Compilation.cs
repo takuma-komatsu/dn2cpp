@@ -3243,6 +3243,18 @@ internal sealed partial class Compilation
         return m;
     }
 
+    /// <summary>The generic counterpart of <see cref="ReachStringStaticMethod"/>: resolves
+    /// the closed instantiation a MethodSpec names on an intrinsic-mapped type
+    /// (<see cref="CoreIntrinsics.IsArrayRealBodyGeneric"/>) and reaches its real body for
+    /// the intercepted call site to call.</summary>
+    internal MethodInfo ReachIntrinsicTypeMethodSpec(Module module, MethodSpecificationHandle msh, GenericContext ctx)
+    {
+        var m = ResolveMethodSpec(module, msh, ctx);
+        ReachIntrinsicTypeMethod(m);
+        DrainReachability();
+        return m;
+    }
+
     /// <summary>Resolves and reaches an ordinary (non-intrinsic-mapped) loaded
     /// class's instance method or ctor so an intrinsic call site can allocate the
     /// object and delegate to the real transpiled body — the bridge from a
@@ -3338,6 +3350,13 @@ internal sealed partial class Compilation
     {
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
+        // Its calls already delegate to the real body, which serves the address too.
+        if (CoreIntrinsics.IsArrayRealBodyGeneric(m.DeclaringClass.FullName, m.Name))
+        {
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return;
+        }
         if (IntrinsicFtnTargets.Add(m))
             Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
     }

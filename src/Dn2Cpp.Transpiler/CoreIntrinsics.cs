@@ -63,8 +63,9 @@ internal static partial class CoreIntrinsics
         "System.Diagnostics.Tracing.EventSource",
         // Array element access is via IL opcodes (newarr/ldelem/ldlen/...); the remaining
         // static helpers (Copy/Empty/Clear) reach MethodTable/covariance internals we do
-        // not model. Map the few that real BCL collections (List<T>) call to runtime
-        // intrinsics; the rest are never reached (used-slot).
+        // not model, so they lower to runtime intrinsics. Members whose real bodies are
+        // plain managed code are still intercepted, and the interception calls that body
+        // (IsArrayRealBodyGeneric).
         "System.Array",
         // Dictionary<K,V>'s prime-bucket sizing. Its real Primes table is a
         // ReadOnlySpan over RVA blob data (RuntimeHelpers.CreateSpan, a ref-struct
@@ -814,6 +815,17 @@ internal static partial class CoreIntrinsics
     };
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
+
+    /// <summary>System.Array's generic members whose real CoreLib bodies are plain managed
+    /// code: ThrowHelper argument checks, element reads, a delegate invoke, a List&lt;T&gt; or
+    /// ReadOnlyCollection&lt;T&gt;, and calls to each other. Their call sites stay intercepted
+    /// with the rest of the intrinsic type, but the lowering and an address-taken use both
+    /// name the real transpiled body, so .NET's argument order and messages hold by
+    /// construction.</summary>
+    public static bool IsArrayRealBodyGeneric(string declType, string name) =>
+        declType == "System.Array"
+        && name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"
+            or "Exists" or "TrueForAll" or "ConvertAll" or "ForEach" or "AsReadOnly";
 
     /// <summary>Primitive members lowered inline despite their declaring type not always
     /// being intrinsic: the sub-word integers' format/parse family, plus both
