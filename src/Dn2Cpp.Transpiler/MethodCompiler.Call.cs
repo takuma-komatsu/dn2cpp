@@ -826,18 +826,17 @@ internal sealed partial class MethodCompiler
                             _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context),
                             ic.Context.TypeArgs[0]))
                         return;
-                    // A callvirt through IComparable<T>.CompareTo on a boxed primitive/
-                    // enum/string — the unconstrained `(IComparable<T>)box.CompareTo`
-                    // cast form. The boxed
-                    // value's intrinsic type-info has no IComparable<T> interface map, so
-                    // real dispatch can't resolve it; devirtualize to the same typed
-                    // three-way compare, unboxing the receiver.
+                    // A callvirt through IComparable<T>.CompareTo with T a primitive or
+                    // string — the unconstrained `(IComparable<T>)box.CompareTo` form. A
+                    // box of T orders inline; any other receiver implements the interface
+                    // itself and is dispatched.
                     if (parent is { Kind: TypeKind.Class, Class: { } cc }
                         && _c.GenericDefFullName(cc) == "System.IComparable"
                         && mrName == "CompareTo"
                         && ComparablePrimitiveArg(parent) is { } cmpT)
                     {
-                        EmitBoxedComparableCompareTo(cmpT);
+                        EmitBoxedComparableCompareTo(
+                            _c.ResolveMemberRefMethod(_module, (MemberReferenceHandle)handle, _method.Context), cmpT);
                         return;
                     }
                     // Span<T>/ReadOnlySpan<T> instance bulk methods (Clear/Fill/CopyTo/
@@ -3752,40 +3751,48 @@ internal sealed partial class MethodCompiler
         $"((int32_t)({storage})({x}) - (int32_t)({storage})({y}))";
 
     /// <summary>If <paramref name="t"/> is a closed <c>System.IComparable&lt;T&gt;</c>
-    /// whose argument is a primitive, string or enum (a key type CompareExpr can
-    /// devirtualize), returns that argument; otherwise null. Used to recognise the
-    /// boxed <c>(IComparable&lt;T&gt)box.CompareTo</c> cast form — a
-    /// reference-type T has a real interface map and takes the normal path.</summary>
+    /// whose argument is a primitive or string (a key type CompareExpr can
+    /// devirtualize), returns that argument; otherwise null. An enum is excluded because
+    /// a boxed enum never implements IComparable&lt;TEnum&gt;, and so is the enum
+    /// placeholder of a shared body; Object and the reference placeholder have no typed
+    /// compare.</summary>
     private TypeDesc? ComparablePrimitiveArg(TypeDesc t)
     {
         if (t is { Kind: TypeKind.Class, Class: { } cls }
             && _c.GenericDefFullName(cls) == "System.IComparable"
-            && cls.Context.TypeArgs.Length == 1)
-        {
-            var arg = cls.Context.TypeArgs[0];
-            // Object (and the reference placeholder it models) is not a
-            // devirtualizable compare — CompareExpr rejects it.
-            if ((arg.Kind == TypeKind.Primitive && !arg.IsObject)
-                || arg is { Kind: TypeKind.Class, Class.IsEnum: true })
-                return arg;
-        }
+            && cls.Context.TypeArgs.Length == 1
+            && cls.Context.TypeArgs[0] is { Kind: TypeKind.Primitive, IsObject: false, IsCanonPlaceholder: false } arg)
+            return arg;
         return null;
     }
 
-    /// <summary><c>IComparable&lt;T&gt;.CompareTo(T)</c> on a boxed primitive/enum/
-    /// string receiver — the unconstrained cast form. Pops the argument (an unboxed
-    /// T) and the boxed receiver, then emits the same typed three-way compare the
-    /// constrained path uses, unboxing the receiver from the box header.
-    /// A string box is identity, so its receiver is the reference itself.</summary>
-    private void EmitBoxedComparableCompareTo(TypeDesc t)
+    /// <summary><c>IComparable&lt;T&gt;.CompareTo(T)</c> called through the interface for a
+    /// primitive or string T. A receiver that is a box of T (a string is its own box)
+    /// orders inline by the typed compare; any other receiver is a type implementing
+    /// IComparable&lt;T&gt; and dispatches through its interface table. Both arms read the
+    /// receiver and the argument, so each is evaluated once into a temp.</summary>
+    private void EmitBoxedComparableCompareTo(MethodInfo compareTo, TypeDesc t)
     {
+        string ct = CppTypes.Of(t);
         var arg = Pop();      // the other value (y), an unboxed T
-        var receiver = Pop(); // the boxed receiver (x)
-        StackEntry x = t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.String }
-            ? new StackEntry(Cast(receiver, "Dn2CppString*"), StackKind.Ref, "Dn2CppString*")
-            : new StackEntry($"(*({CppTypes.Of(t)}*)((Dn2CppObject*)({receiver.Expr}) + 1))",
-                CppTypes.KindOf(t), CppTypes.Of(t));
-        Push(StackKind.I4, "int32_t", CompareExpr(t, x, arg));
+        var receiver = Pop(); // the receiver (x)
+        string recv = NewTemp("Dn2CppObject*");
+        Emit($"{recv} = dn2cpp_null_check({Cast(receiver, "Dn2CppObject*")});");
+        var y = new StackEntry(NewTemp(ct), CppTypes.KindOf(t), ct);
+        Emit($"{y.Expr} = {Cast(arg, ct)};");
+        StackEntry x = t.IsString
+            ? new StackEntry($"((Dn2CppString*){recv})", StackKind.Ref, "Dn2CppString*")
+            : new StackEntry($"(*({ct}*)({recv} + 1))", CppTypes.KindOf(t), ct);
+        string ti = TypeInfoExpr(t)
+            ?? throw new InvalidOperationException($"IComparable<{t}>: a primitive key has no runtime type-info");
+        var itf = compareTo.DeclaringClass;
+        if (itf.IntrinsicCppName is null)
+            NoteReferencedType(itf);
+        NoteCanonicalItfDispatch(itf);
+        NoteDispatchSignatureTypes(compareTo);
+        string dispatch = $"(({FnPtrType(compareTo)})(dn2cpp_resolve_interface({recv}->type, "
+            + $"&{ItfDispatchTi(itf).CppTypeInfoName})[{compareTo.VtableSlot}]))(({itf.CppStructName}*){recv}, {y.Expr})";
+        Push(StackKind.I4, "int32_t", $"({recv}->type == {ti} ? {CompareExpr(t, x, y)} : {dispatch})");
     }
 
     /// <summary>An <c>IEqualityComparer&lt;T&gt;</c> interface call (GetHashCode/Equals)

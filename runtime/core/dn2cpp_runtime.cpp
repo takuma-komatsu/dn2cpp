@@ -759,14 +759,15 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
     // Two boxed enums only reach HERE when their types DIFFER (the arm above requires b->type == t), and
     // dispatching System.Enum.CompareTo(object) is exactly right there — it raises the ArgumentException
     // real .NET raises, instead of the type-not-comparable refusal below.
+    // The result is CompareTo's own, unclamped, as Comparer.Default returns it; the reversed
+    // call negates with .NET's unchecked wrap, so int.MinValue stays int.MinValue.
     if (icomparable_ti != nullptr)
     {
         if (const void** sa = dn2cpp_try_resolve_interface(t, icomparable_ti))
-            return dn2cpp_cmp3<int32_t>(
-                (reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(sa[0])))(a, b), 0);
+            return (reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(sa[0])))(a, b);
         if (const void** sb = dn2cpp_try_resolve_interface(b->type, icomparable_ti))
-            return -dn2cpp_cmp3<int32_t>(
-                (reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(sb[0])))(b, a), 0);
+            return static_cast<int32_t>(0u - static_cast<uint32_t>(
+                (reinterpret_cast<int32_t (*)(Dn2CppObject*, Dn2CppObject*)>(const_cast<void*>(sb[0])))(b, a)));
     }
     // Neither an inlined kind nor IComparable — refuse loudly (never a silent 0). Mirrors real .NET's
     // Comparer.Default, which throws ArgumentException("At least one object must implement IComparable").

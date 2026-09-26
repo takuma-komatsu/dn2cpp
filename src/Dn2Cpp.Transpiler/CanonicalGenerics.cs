@@ -34,8 +34,7 @@ internal enum RgctxSlotKind
     /// Task.</summary>
     TaskTypeInfo,
     /// <summary>The type-info of the resolved closed generic's first type
-    /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity) and the
-    /// IComparable&lt;T&gt; boxed-primitive cast.</summary>
+    /// argument — Nullable&lt;T&gt; boxing (the box carries T's identity).</summary>
     TypeArg0TypeInfo,
     /// <summary>The precise per-element array type-info (<c>ti_arr_*</c>) for a
     /// newarr (element token) or typeof(T[]) (SZArray token) site.</summary>

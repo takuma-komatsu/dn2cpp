@@ -5190,6 +5190,7 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
 // closed type-info the caller supplies (icomparable_ti — nullptr if the transpiler could not
 // resolve System.IComparable). A value that is neither is refused with a catchable
 // PlatformNotSupportedException naming the type, never a silent 0.
+// A user IComparable's result passes through unclamped, as Comparer.Default returns it.
 // String order is ORDINAL (dn2cpp_str_compare(…,4)) — the same deliberate divergence from
 // culture-sensitive Comparer<string>.Default the generic sort/search path already makes.
 int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppTypeInfo* icomparable_ti);

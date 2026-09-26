@@ -10,8 +10,23 @@ using System.Collections.Generic;
 // type. The typed rows then ask IComparable<T>.CompareTo under a generic, the three
 // default comparers and a boxed IComparable<T> receiver, each answering the raw
 // difference for the sub-word integers and Char and the unsigned order of nuint.
+// A user class implementing IComparable<int> or IComparable<string> keeps its own
+// CompareTo behind those interfaces, and Comparer.Default returns a user
+// IComparable's result unclamped.
 namespace ConstrainedObjectCompareSubset
 {
+    internal sealed class Threshold : IComparable<int>, IComparable<string>
+    {
+        public int Limit = 1000;
+        public int CompareTo(int other) => 42;
+        public int CompareTo(string other) => 43;
+    }
+
+    internal sealed class Loose : IComparable
+    {
+        public int CompareTo(object other) => 42;
+    }
+
     internal static class Program
     {
         private static string Try(Func<int> compare)
@@ -89,6 +104,14 @@ namespace ConstrainedObjectCompareSubset
             TypedRow("decimal", 2.5m, -1m);
             TypedRow("DateTime", new DateTime(2020, 1, 2), new DateTime(2020, 1, 1));
             TypedRow("TimeSpan", TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(-1));
+            IComparable<int> threshold = new Threshold();
+            IComparable<string> named = new Threshold();
+            object untyped = new Threshold();
+            Console.WriteLine("interface: " + threshold.CompareTo(3) + " " + named.CompareTo("x") + " "
+                + ((IComparable<int>)untyped).CompareTo(3) + " " + ((IComparable<string>)untyped).CompareTo("x") + " "
+                + (untyped is IComparable<int>) + " " + (untyped is IComparable<long>));
+            Console.WriteLine("user IComparable: " + Comparer.Default.Compare(new Loose(), 1) + " "
+                + Comparer.Default.Compare(new object(), new Loose()) + " " + Comparer<object>.Default.Compare(new Loose(), 1));
         }
     }
 }

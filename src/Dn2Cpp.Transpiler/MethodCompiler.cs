@@ -3172,19 +3172,6 @@ internal sealed partial class MethodCompiler : IEvalStack
             {
                 var target = ResolveCastTarget(insn.Token);
                 var obj = Pop();
-                // (IComparable<T>)box where T is a primitive/enum/string: the boxed
-                // value's intrinsic type-info carries no IComparable<T> interface map,
-                // so a normal castclass against the interface throws InvalidCastException.
-                // The JIT treats this cast as valid for the matching boxed primitive;
-                // verify against T's own concrete type-info instead (which the box
-                // carries), keeping the boxed reference for the CompareTo callvirt to
-                // devirtualize.
-                if (ComparablePrimitiveArg(target) is { } cmpT && TypeArg0TypeInfoExpr(cmpT, insn.Token) is { } pti)
-                {
-                    Push(StackKind.Ref, "Dn2CppObject*",
-                        $"(Dn2CppObject*)dn2cpp_castclass((Dn2CppObject*){obj.Expr}, {pti})");
-                    break;
-                }
                 // An NFI-mapped target (CultureInfo/NumberFormatInfo/TextInfo/
                 // IFormatProvider — the headerless `const Dn2CppNumberFormatInfo*`
                 // lowering): an object-typed source may hold the interned wrapper an
