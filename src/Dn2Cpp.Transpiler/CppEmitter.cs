@@ -5819,9 +5819,14 @@ internal sealed partial class CppEmitter
             // the mirror case dereferences. Decide on the TypeDesc KIND, never on the
             // rendered `*`: a class-typed value is a C++ pointer too but is NOT a managed
             // by-ref, and must keep the plain cast.
+            // A value type's body takes the payload after the box's header, as its
+            // unboxing thunk passes it; an interface default body takes the box.
             string ForwardCall(MethodInfo target)
             {
-                var ca = new List<string> { $"({target.DeclaringClass.CppStructName}*)a0" };
+                string self = target.DeclaringClass.IsValueType
+                    ? $"({target.DeclaringClass.CppStructName}*)((Dn2CppObject*)a0 + 1)"
+                    : $"({target.DeclaringClass.CppStructName}*)a0";
+                var ca = new List<string> { self };
                 for (int k = 0; k < target.Signature.ParameterTypes.Length; k++)
                 {
                     var tp = target.Signature.ParameterTypes[k];

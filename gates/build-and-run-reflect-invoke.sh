@@ -135,6 +135,8 @@
 # only open and finds no entry point when called. With DN2CPP_STRIPPED_OVERRIDES=1 it asserts dn2cpp alone: a
 # receiver's body the image stripped raises a catchable NotSupportedException naming
 # the member and the remedy, for every trap shape a vtable or interface slot holds.
+# Its generic virtual section calls generic virtual methods directly, a struct's
+# generic interface method through its box and a delegate included.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -392,6 +394,14 @@ gate_extra_asserts() {
     sed '/^== field validation ==/,$d' "$out/metadata-layout.stdout" > "$out/field-validation-prefix.stdout"
     diff -u <(strip_cr_win_file "$out/before-field-validation.stdout") \
         <(strip_cr_win_file "$out/field-validation-prefix.stdout")
+    grep -Fxq '== generic virtual invoke ==' "$out/metadata-layout.stdout"
+    grep -Fxq 'direct interface calls: struct:9:Int32|struct:9:String|fallback:Int32|concrete:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'interface delegate, struct: struct:9:Int32/GvmStructPick.Pick' "$out/metadata-layout.stdout"
+    grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
+    DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
+    sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"
+    diff -u <(strip_cr_win_file "$out/before-generic-virtual-invoke.stdout") \
+        <(strip_cr_win_file "$out/generic-virtual-invoke-prefix.stdout")
 
     # Enforce each operation's first and repeated allocation budget independently.
     # The capture reports time too, but timing is not a pass/fail threshold.

@@ -18,7 +18,8 @@ using System.Reflection;
 // application interface's static, non-virtual and private members that nothing
 // calls run as themselves, and its static virtual and abstract members answer as
 // .NET's do. RunStripped (dn2cpp only) reaches bodies the image stripped through
-// each trap shape.
+// each trap shape. RunGenericVirtual calls generic virtual methods directly, a
+// struct's generic interface method through its box and a delegate included.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -236,6 +237,93 @@ interface IFactory
     static virtual string Virt() => "virt";
     static virtual string Echo(string text) => "echo:" + text;
     static abstract string Abs();
+}
+
+class GvmRoot
+{
+    public virtual string Tag<T>() => "root:" + typeof(T).Name;
+    public virtual string Pair<T>(T value) => "root-pair:" + value;
+}
+
+class GvmMid : GvmRoot
+{
+    public override string Tag<T>() => "mid:" + typeof(T).Name;
+}
+
+class GvmLeaf : GvmMid
+{
+    public override string Tag<T>() => "leaf:" + typeof(T).Name;
+    public override string Pair<T>(T value) => "leaf-pair:" + typeof(T).Name + "=" + value;
+}
+
+// A new slot: GvmRoot's method keeps the root slot, whose most derived body for
+// a GvmHiderLeaf is GvmMid's; GvmHider's method runs the hider chain.
+class GvmHider : GvmMid
+{
+    public new virtual string Tag<T>() => "hider:" + typeof(T).Name;
+}
+
+class GvmHiderLeaf : GvmHider
+{
+    public override string Tag<T>() => "hider-leaf:" + typeof(T).Name;
+}
+
+class GvmCovariantBase
+{
+    public virtual GvmCovariantBase Make<T>() => new GvmCovariantBase();
+    public override string ToString() => "covariant-base";
+}
+
+class GvmCovariantLeaf : GvmCovariantBase
+{
+    public override GvmCovariantLeaf Make<T>() => this;
+    public override string ToString() => "covariant-leaf";
+}
+
+abstract class GvmShape
+{
+    public abstract string Kind<T>(T value);
+}
+
+sealed class GvmSquare : GvmShape
+{
+    public override string Kind<T>(T value) => "square<" + typeof(T).Name + ">:" + value;
+}
+
+class GvmBox<T>
+{
+    public virtual string Show<U>(T first, U second) => "box:" + first + "/" + second;
+}
+
+// A shared class body over a reference argument, a specialized one over a value.
+class GvmWrapper<T> : GvmBox<T>
+{
+    public override string Show<U>(T first, U second) =>
+        "wrapper<" + typeof(T).Name + "," + typeof(U).Name + ">:" + first + "/" + second;
+}
+
+interface IGvmPick
+{
+    string Pick<T>();
+    string Fallback<T>() => "fallback:" + typeof(T).Name;
+}
+
+// The interface maps to this abstract level's method, which no call names.
+abstract class GvmAbstractPick : IGvmPick
+{
+    public abstract string Pick<T>();
+}
+
+sealed class GvmConcretePick : GvmAbstractPick
+{
+    public override string Pick<T>() => "concrete:" + typeof(T).Name;
+}
+
+struct GvmStructPick : IGvmPick
+{
+    public int Id;
+
+    public string Pick<T>() => "struct:" + Id + ":" + typeof(T).Name;
 }
 
 static class Program
@@ -583,5 +671,27 @@ static class Program
         });
 
         Console.WriteLine("virtual invoke end");
+    }
+
+    internal static void RunGenericVirtual()
+    {
+        Console.WriteLine("== generic virtual invoke ==");
+
+        // The direct calls put each closed instantiation reflected below in the image.
+        GvmRoot root = new GvmLeaf();
+        GvmShape shape = new GvmSquare();
+        GvmBox<string> textBox = new GvmWrapper<string>();
+        GvmBox<int> numberBox = new GvmWrapper<int>();
+        GvmCovariantBase covariant = new GvmCovariantLeaf();
+        IGvmPick boxed = new GvmStructPick { Id = 9 };
+        Try("direct calls", () => root.Tag<int>() + "|" + root.Tag<string>() + "|" + root.Pair(5) + "|" + root.Pair("s")
+            + "|" + ((GvmHider)new GvmHiderLeaf()).Tag<int>() + "|" + covariant.Make<int>()
+            + "|" + shape.Kind(1) + "|" + shape.Kind("t") + "|" + textBox.Show("a", 0) + "|" + numberBox.Show(0, "b"));
+        Try("direct interface calls", () => boxed.Pick<int>() + "|" + boxed.Pick<string>() + "|" + boxed.Fallback<int>()
+            + "|" + ((IGvmPick)new GvmConcretePick()).Pick<int>());
+        Func<string> boxedPick = boxed.Pick<int>;
+        Try("interface delegate, struct", () => boxedPick() + "/" + Describe(boxedPick.Method));
+
+        Console.WriteLine("generic virtual invoke end");
     }
 }
