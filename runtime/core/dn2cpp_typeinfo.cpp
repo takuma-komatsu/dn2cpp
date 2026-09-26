@@ -747,6 +747,12 @@ extern const Dn2CppType dn2cpp_field_access_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_field_access_exception_type =
     dn2cpp_ti_with_typeobject({ "System.FieldAccessException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_field_access_exception_type_obj);
 const Dn2CppType dn2cpp_field_access_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_field_access_exception_type };
+// MethodBase.Invoke on a static abstract interface member, matching .NET's
+// BadImageFormatException.
+extern const Dn2CppType dn2cpp_bad_image_format_exception_type_obj;
+Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type =
+    dn2cpp_ti_with_typeobject({ "System.BadImageFormatException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_bad_image_format_exception_type_obj);
+const Dn2CppType dn2cpp_bad_image_format_exception_type_obj = { { &dn2cpp_type_type }, &dn2cpp_bad_image_format_exception_type };
 extern const Dn2CppType dn2cpp_missing_manifest_resource_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_missing_manifest_resource_exception_type =
     dn2cpp_ti_with_typeobject({ "System.Resources.MissingManifestResourceException", &dn2cpp_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_missing_manifest_resource_exception_type_obj);

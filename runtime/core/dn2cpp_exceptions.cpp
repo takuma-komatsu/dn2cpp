@@ -412,6 +412,7 @@ static const char* dn2cpp_default_message_key(const Dn2CppTypeInfo* ti)
     if (ti == &dn2cpp_synchronization_lock_exception_type) return DN2CPP_SR_SYNCHRONIZATION_LOCK;
     if (ti == &dn2cpp_target_invocation_exception_type) return DN2CPP_SR_TARGET_INVOCATION;
     if (ti == &dn2cpp_target_parameter_count_exception_type) return DN2CPP_SR_TARGET_PARAMETER_COUNT;
+    if (ti == &dn2cpp_entry_point_not_found_exception_type) return DN2CPP_SR_ENTRY_POINT_NOT_FOUND;
     return nullptr;
 }
 

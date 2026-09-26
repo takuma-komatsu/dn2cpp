@@ -46,6 +46,7 @@ internal static class BclMessages
         "Arg_SynchronizationLockException",
         "Arg_TargetInvocationException",
         "Arg_TargetParameterCountException",
+        "Arg_EntryPointNotFoundException",
         // Sentences a runtime throw site raises in place of its type's default.
         "RFLCT_Targ_StatMethReqTarg",
         "RFLCT_Targ_StatFldReqTarg",
@@ -53,6 +54,7 @@ internal static class BclMessages
         "Arg_UnboundGenParam",
         "Acc_ReadOnly",
         "Arg_DlgtTargMeth",
+        "BadImageFormat_BadILFormat",
         // Composite formats a runtime throw site fills from what it already holds.
         "RFLCT_Targ_ITargMismatch_WithType",
         "Arg_FieldDeclTarget",

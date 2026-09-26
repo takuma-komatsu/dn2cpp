@@ -2261,6 +2261,25 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
         dn2cpp_sr_message(DN2CPP_SR_PARAMETER_COUNT, nullptr, 0), 0x8002000Eu);
 }
 
+// .NET finds no entry point for a static virtual or abstract interface member
+// bound to a delegate.
+[[noreturn]] static void dn2cpp_throw_static_virtual_entry_point()
+{
+    dn2cpp_throw_reflection_fault(&dn2cpp_entry_point_not_found_exception_type, nullptr, 0x80131523u);
+}
+
+// .NET runs no body for a static abstract interface member: Invoke faults as bad
+// IL, wrapped like a fault of the target unless the caller asked otherwise.
+[[noreturn]] static void dn2cpp_throw_invoke_static_abstract(bool wrapExceptions)
+{
+    Dn2CppObject* fault = dn2cpp_exception_new(&dn2cpp_bad_image_format_exception_type,
+        dn2cpp_sr_message(DN2CPP_SR_BAD_IL_FORMAT, nullptr, 0), nullptr);
+    reinterpret_cast<Dn2CppExceptionObject*>(fault)->hresult = static_cast<int32_t>(0x8007000Bu);
+    if (!wrapExceptions)
+        dn2cpp_throw(fault);
+    dn2cpp_throw_target_invocation(fault);
+}
+
 [[noreturn]] static void dn2cpp_throw_invoke_argument(const Dn2CppTypeInfo* from,
     const Dn2CppTypeInfo* to)
 {
@@ -2638,6 +2657,9 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
         if (argc != row.paramCount)
             dn2cpp_throw_invoke_parameter_count();
         args = dn2cpp_invoke_check_args(mi, args, argc);
+        if (isStatic && (mi->ilAttrs & DN2CPP_MA_ABSTRACT) != 0
+            && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+            dn2cpp_throw_invoke_static_abstract(wrapExceptions);
     }
     if (row.invoker == nullptr)
         dn2cpp_throw_invalid_operation();
@@ -2769,9 +2791,15 @@ const Dn2CppTypeInfo dn2cpp_reflbind_type = { "<ReflectionDelegateBind>", nullpt
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
-    if ((mi->attrs & DN2CPP_MTHA_STATIC) == 0 && self == nullptr)
-        dn2cpp_throw_null_reference();
-    return dn2cpp_invoke_mi(mi, self, argv, mi->paramCount, false, nullptr, Dn2CppInvokeMode::Bound);
+    const Dn2CppMethodInfo row = *mi;
+    if ((row.attrs & DN2CPP_MTHA_STATIC) == 0)
+    {
+        if (self == nullptr)
+            dn2cpp_throw_null_reference();
+    }
+    else if ((row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+        dn2cpp_throw_static_virtual_entry_point();
+    return dn2cpp_invoke_mi(mi, self, argv, row.paramCount, false, nullptr, Dn2CppInvokeMode::Bound);
 }
 
 static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_invoke_row(const Dn2CppTypeInfo* ti)
@@ -2920,6 +2948,12 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // Return: covariant reference widening from the method's to the delegate's.
     if (!dn2cpp_dgbind_widens(mi->returnType, inv->returnType))
         return fail();
+    // .NET binds a static virtual or abstract interface member only open, and a call
+    // through that binding finds no entry point (dn2cpp_reflbind_invoke).
+    bool staticVirtual = mStatic && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
+        && (declTi->flags & DN2CPP_TF_INTERFACE) != 0;
+    if (staticVirtual && mode == DN2CPP_DGBIND_CLOSED_STATIC)
+        dn2cpp_throw_static_virtual_entry_point();
     // The shape binds; only now can the image refuse. A bodiless virtual row
     // (abstract or interface) binds the receiver's slot at each call, as
     // MethodInfo.Invoke does. A boxed value has no vtable, so a class row bound to
@@ -2928,7 +2962,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         && ((declTi->flags & DN2CPP_TF_INTERFACE) != 0
             || ((declTi->flags & DN2CPP_TF_VALUETYPE) == 0
                 && (target == nullptr || target->type->vtable != nullptr)));
-    if (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound))
+    if (!staticVirtual && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the target method's body was not compiled into this image");
 

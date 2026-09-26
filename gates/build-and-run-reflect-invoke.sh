@@ -130,7 +130,9 @@
 # an interface or System.Enum row, or as a static method's first argument, each call
 # running on the box the delegate holds. Bindings through a declaration and through
 # the override it resolves to are equal delegates, and a binding that does not fit
-# fails with .NET's message. With DN2CPP_STRIPPED_OVERRIDES=1 it asserts dn2cpp alone: a
+# fails with .NET's message. A static virtual interface member's default body runs
+# through Invoke and a static abstract one faults as bad IL; a delegate binds either
+# only open and finds no entry point when called. With DN2CPP_STRIPPED_OVERRIDES=1 it asserts dn2cpp alone: a
 # receiver's body the image stripped raises a catchable NotSupportedException naming
 # the member and the remedy, for every trap shape a vtable or interface slot holds.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
@@ -341,6 +343,9 @@ gate_extra_asserts() {
     grep -Fxq 'boxed struct delegate equality across rows: True/True' "$out/metadata-layout.stdout"
     grep -Fxq 'closed delegate equality across rows: True/True' "$out/metadata-layout.stdout"
     grep -Fxq 'closed delegate, unrelated receiver: ArgumentException 0x80070057 Cannot bind to the target method because its signature is not compatible with that of the delegate type.' "$out/metadata-layout.stdout"
+    grep -Fxq 'static abstract row: TargetInvocationException 0x80131604/BadImageFormatException 0x8007000B' "$out/metadata-layout.stdout"
+    grep -Fxq 'static virtual delegate: IFactory.Virt/True/EntryPointNotFoundException 0x80131523' "$out/metadata-layout.stdout"
+    grep -Fxq 'static abstract row, typed catch: caught:True' "$out/metadata-layout.stdout"
     grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"

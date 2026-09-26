@@ -1445,6 +1445,7 @@ inline constexpr const char* DN2CPP_SR_DIVIDE_BY_ZERO = "Arg_DivideByZero";
 inline constexpr const char* DN2CPP_SR_SYNCHRONIZATION_LOCK = "Arg_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_TARGET_INVOCATION = "Arg_TargetInvocationException";
 inline constexpr const char* DN2CPP_SR_TARGET_PARAMETER_COUNT = "Arg_TargetParameterCountException";
+inline constexpr const char* DN2CPP_SR_ENTRY_POINT_NOT_FOUND = "Arg_EntryPointNotFoundException";
 inline constexpr const char* DN2CPP_SR_TARGET_REQUIRED = "RFLCT_Targ_StatMethReqTarg";
 inline constexpr const char* DN2CPP_SR_TARGET_MISMATCH = "RFLCT_Targ_ITargMismatch_WithType";
 inline constexpr const char* DN2CPP_SR_FIELD_TARGET_REQUIRED = "RFLCT_Targ_StatFldReqTarg";
@@ -1454,6 +1455,7 @@ inline constexpr const char* DN2CPP_SR_FIELD_INITONLY_STATIC = "RFLCT_CannotSetI
 inline constexpr const char* DN2CPP_SR_PARAMETER_COUNT = "Arg_ParmCnt";
 inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_DELEGATE_BIND = "Arg_DlgtTargMeth";
+inline constexpr const char* DN2CPP_SR_BAD_IL_FORMAT = "BadImageFormat_BadILFormat";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
@@ -2273,6 +2275,9 @@ extern Dn2CppTypeInfo dn2cpp_missing_method_exception_type;
 // System.FieldAccessException: raised by FieldInfo.SetValue on a constant or a
 // static read-only field.
 extern Dn2CppTypeInfo dn2cpp_field_access_exception_type;
+// System.BadImageFormatException: raised by MethodBase.Invoke on a static abstract
+// interface member.
+extern Dn2CppTypeInfo dn2cpp_bad_image_format_exception_type;
 extern Dn2CppTypeInfo dn2cpp_dll_not_found_exception_type;
 extern Dn2CppTypeInfo dn2cpp_entry_point_not_found_exception_type;
 // System.Resources.MissingManifestResourceException: raised by ResourceManager when

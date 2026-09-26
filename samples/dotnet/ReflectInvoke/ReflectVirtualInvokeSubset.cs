@@ -16,8 +16,9 @@ using System.Reflection;
 // arguments first, and a closed CreateDelegate binding reports the body it runs;
 // a boxed value binds as a receiver or a first argument and runs on its box. An
 // application interface's static, non-virtual and private members that nothing
-// calls run as themselves. RunStripped (dn2cpp only) reaches bodies the image
-// stripped through each trap shape.
+// calls run as themselves, and its static virtual and abstract members answer as
+// .NET's do. RunStripped (dn2cpp only) reaches bodies the image stripped through
+// each trap shape.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -227,6 +228,16 @@ struct NamedTally : ICounter
     public string Label() => "named:" + N;
 }
 
+// Invoke runs a static virtual member's default body and faults a static abstract
+// one as bad IL; a delegate binds either only open and finds no entry point when
+// called.
+interface IFactory
+{
+    static virtual string Virt() => "virt";
+    static virtual string Echo(string text) => "echo:" + text;
+    static abstract string Abs();
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -263,6 +274,22 @@ static class Program
         type.GetMethod(name, Type.EmptyTypes) ?? throw new MissingMethodException(type.Name, name);
 
     private static int Hundreds(ICounter counter) => counter.Get() * 100;
+
+    // An exception by type and HResult, with its inner one: .NET's message for bad
+    // IL depends on how often the member was entered.
+    private static string Faulted(Func<object?> invoke)
+    {
+        try
+        {
+            invoke();
+            return "no fault";
+        }
+        catch (Exception ex)
+        {
+            return $"{ex.GetType().Name} 0x{ex.HResult:X8}"
+                + (ex.InnerException is { } inner ? $"/{inner.GetType().Name} 0x{inner.HResult:X8}" : "");
+        }
+    }
 
     private static string Ymd(object? value)
     {
@@ -520,6 +547,40 @@ static class Program
         Fault("boxed struct delegate, unrelated row, throwing", () => Delegate.CreateDelegate(typeof(Func<string>), tally, kind));
         Fault("closed delegate, unrelated receiver", () => Delegate.CreateDelegate(typeof(Func<string>), new Leaf(), kind));
         Fault("open delegate, unrelated receiver type", () => Delegate.CreateDelegate(typeof(Func<object, int>), counterGet));
+
+        MethodInfo factoryVirt = typeof(IFactory).GetMethod("Virt")!;
+        MethodInfo factoryEcho = typeof(IFactory).GetMethod("Echo")!;
+        MethodInfo factoryAbs = typeof(IFactory).GetMethod("Abs")!;
+        Try("static virtual row", () => factoryVirt.Invoke(null, null));
+        Try("static virtual row, argument", () => factoryEcho.Invoke(null, new object[] { "y" }));
+        Try("static abstract row", () => Faulted(() => factoryAbs.Invoke(null, null)));
+        Try("static abstract row, unwrapped", () =>
+            Faulted(() => factoryAbs.Invoke(null, BindingFlags.DoNotWrapExceptions, null, null, null)));
+        Fault("static abstract row, extra argument", () => factoryAbs.Invoke(null, new object[] { 1 }));
+        Try("static virtual delegate", () =>
+        {
+            var toVirt = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), factoryVirt);
+            return Describe(toVirt.Method) + "/" + (toVirt.Target is null) + "/" + Faulted(() => toVirt());
+        });
+        Try("static abstract delegate", () =>
+        {
+            var toAbs = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), factoryAbs);
+            return Faulted(() => toAbs());
+        });
+        Fault("static virtual delegate, first argument", () =>
+            Delegate.CreateDelegate(typeof(Func<string>), "x", factoryEcho));
+        Try("static abstract row, typed catch", () =>
+        {
+            try
+            {
+                factoryAbs.Invoke(null, BindingFlags.DoNotWrapExceptions, null, null, null);
+                return "no fault";
+            }
+            catch (BadImageFormatException ex)
+            {
+                return "caught:" + (ex is SystemException);
+            }
+        });
 
         Console.WriteLine("virtual invoke end");
     }
