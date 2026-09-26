@@ -1136,6 +1136,9 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      int32_t throwOnFailure);
 // The boxed-invoker dispatch behind a dgrefl_* trampoline.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv);
+// Whether two closed-instance bindings over one receiver run one body, the answer
+// delegate equality gives for bindings through different rows.
+bool dn2cpp_reflbind_same_body(const Dn2CppReflBind* a, const Dn2CppReflBind* b);
 // Delegate.Target / Delegate.Method: the bound receiver / reflected MethodInfo,
 // unwrapping a reflection-bind node or resolving an IL delegate's metadata identity.
 Dn2CppObject* dn2cpp_delegate_get_target(Dn2CppObject* d);

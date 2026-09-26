@@ -492,6 +492,31 @@ static class Program
         Try("boxed struct delegate, unrelated row", () =>
             Delegate.CreateDelegate(typeof(Func<string>), tally, kind, false) is null);
 
+        // Bindings through a declaration and through the override it resolves to run
+        // one body, so they are equal delegates.
+        Try("boxed struct delegate equality across rows", () =>
+        {
+            var viaInterface = Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet);
+            var viaStruct = Delegate.CreateDelegate(typeof(Func<int>), tally, Method(typeof(Tally), "Get"));
+            return viaInterface.Equals(viaStruct) + "/" + (viaInterface.GetHashCode() == viaStruct.GetHashCode());
+        });
+        var sharedSquare = new Square();
+        Try("closed delegate equality across rows", () =>
+        {
+            var viaBase = Delegate.CreateDelegate(typeof(Func<string>), sharedSquare, kind);
+            var viaOverride = Delegate.CreateDelegate(typeof(Func<string>), sharedSquare, Method(typeof(Square), "Kind"));
+            return viaBase.Equals(viaOverride) + "/" + (viaBase.GetHashCode() == viaOverride.GetHashCode());
+        });
+        var sharedCustom = new CustomGreeting();
+        Try("interface delegate equality across rows", () =>
+        {
+            var viaInterface = Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, hello);
+            var viaClass = Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, Method(typeof(CustomGreeting), "Hello"));
+            return viaInterface.Equals(viaClass) + "/" + (viaInterface.GetHashCode() == viaClass.GetHashCode());
+        });
+        Try("closed delegate equality, other body", () => Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, hello)
+            .Equals(Delegate.CreateDelegate(typeof(Func<string>), sharedCustom, tag)));
+
         Console.WriteLine("virtual invoke end");
     }
 }

@@ -3367,6 +3367,45 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_reflbind_method(const Dn2Cp
     return hit ? hit : mi;
 }
 
+// The function a closed binding's call enters: its receiver's slot for a virtual row,
+// the row's own body otherwise.
+static const void* dn2cpp_reflbind_body(const Dn2CppReflBind* bind)
+{
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = bind->method;
+    const Dn2CppMethodInfo row = *mi;
+    const Dn2CppTypeInfo* receiver = bind->target->type;
+    if ((row.attrs & DN2CPP_MTHA_STATIC) == 0 && row.vtableSlot >= 0 && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
+    {
+        if ((row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
+        {
+            if (const void** slots = dn2cpp_try_resolve_interface(receiver, row.declaringType))
+                return slots[row.vtableSlot];
+        }
+        else if ((row.declaringType->flags & DN2CPP_TF_VALUETYPE) == 0 && receiver->vtable != nullptr)
+            return receiver->vtable[row.vtableSlot];
+    }
+    return row.fnPtr;
+}
+
+// .NET binds a virtual row to its receiver's override, so a binding through the
+// declaration and one through the override are one delegate. A value receiver's
+// interface slot holds an unboxing thunk hiding the body, so its bindings compare
+// the rows they report, which needs the receiver's metadata.
+bool dn2cpp_reflbind_same_body(const Dn2CppReflBind* a, const Dn2CppReflBind* b)
+{
+    if (a->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || a->target == nullptr)
+        return false;
+    const Dn2CppTypeInfo* receiver = a->target->type;
+    if ((receiver->flags & DN2CPP_TF_VALUETYPE) == 0)
+    {
+        const void* body = dn2cpp_reflbind_body(a);
+        return body != nullptr && body == dn2cpp_reflbind_body(b);
+    }
+    if ((receiver->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
+        return false;
+    return dn2cpp_reflbind_method(a) == dn2cpp_reflbind_method(b);
+}
+
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
 {
     if (d == nullptr)

@@ -1573,8 +1573,9 @@ Dn2CppObject* dn2cpp_delegate_remove(Dn2CppObject* source, Dn2CppObject* value)
 }
 
 // Target-slot identity, with reflection-bind nodes (CreateDelegate) compared by
-// content: two separately created bindings of the same (method row, target,
-// mode) are equal delegates, matching .NET.
+// content: two separately created bindings of the same target and mode are equal
+// delegates when they bind one row or, over one receiver, run one body — matching
+// .NET.
 static bool dn2cpp_delegate_target_equal(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (a == b)
@@ -1584,7 +1585,9 @@ static bool dn2cpp_delegate_target_equal(Dn2CppObject* a, Dn2CppObject* b)
         return false;
     auto* ra = reinterpret_cast<Dn2CppReflBind*>(a);
     auto* rb = reinterpret_cast<Dn2CppReflBind*>(b);
-    return ra->method == rb->method && ra->target == rb->target && ra->mode == rb->mode;
+    if (ra->target != rb->target || ra->mode != rb->mode)
+        return false;
+    return ra->method == rb->method || dn2cpp_reflbind_same_body(ra, rb);
 }
 
 int32_t dn2cpp_delegate_equal(Dn2CppObject* a, Dn2CppObject* b)
@@ -1627,11 +1630,14 @@ int32_t dn2cpp_delegate_hash(Dn2CppObject* d)
     {
         // A reflection-bind node hashes by content (method row + bound target),
         // so the separately created equal bindings agree with the equality above.
+        // A closed binding over a receiver leaves the row out: bindings through
+        // different rows that run one body are equal.
         Dn2CppObject* t = n->target;
         if (t != nullptr && t->type == &dn2cpp_reflbind_type)
         {
             auto* rb = reinterpret_cast<Dn2CppReflBind*>(t);
-            h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity()))) * 1099511628211ull;
+            if (rb->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || rb->target == nullptr)
+                h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->method.identity()))) * 1099511628211ull;
             h = (h ^ static_cast<uint64_t>(reinterpret_cast<uintptr_t>(rb->target))) * 1099511628211ull;
         }
         else
