@@ -102,7 +102,9 @@
 # because a byref write would leave it stale: a delegate built from it is refused
 # when transpiled, from a native-int or int64 local alike, and one built from a
 # copy of it throws NotSupportedException when constructed. Address-taken locals
-# beside a delegate in plain C# still transpile.
+# beside a delegate in plain C# still transpile. An ldvirtftn of a sealed
+# interface member, plain or generic, binds that member's own body where the
+# receiver's class declares a virtual of its signature.
 # ReflectToStringSubset asserts MethodInfo/ConstructorInfo/FieldInfo/PropertyInfo/
 # ParameterInfo and CustomAttributeData signature display through typed, base, and
 # object dispatch, including byref, indexer, generic-method, and attribute arguments.
@@ -320,6 +322,7 @@ gate_extra_asserts() {
     grep -Fxq 'ldftn-local-instance=15/Offset' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-int64=12/Add' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-address-taken=42/9/12/Add' "$out/metadata-layout.stdout"
+    grep -Fxq 'ldftn-local-sealed-interface=105/ISealedScale.Scale/205/ISealedScale.Shift' "$out/metadata-layout.stdout"
     grep -Fxq 'ldftn-local-end' "$out/metadata-layout.stdout"
     # Every emitted body follows its `// Type::Method` line, CRLF-terminated on a
     # Windows host. Delegate tags belong to the rewritten bodies alone, since C#
