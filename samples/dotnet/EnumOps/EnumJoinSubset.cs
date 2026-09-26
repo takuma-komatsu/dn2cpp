@@ -4,7 +4,8 @@ using System.Text;
 
 // string.Join<T> and StringBuilder.AppendJoin<T> over enum elements: each element formats
 // by name, as Enum.ToString does — an undefined value as its number, a [Flags] combination
-// by its names — at every underlying width, from an array and from a List<T>.
+// by its names — at every underlying width, from an array and from a List<T>; a null
+// sequence is rejected with .NET's ArgumentNullException.
 namespace EnumJoinSubset
 {
     internal enum Tone { Low = 1, High = 7 }
@@ -30,6 +31,15 @@ namespace EnumJoinSubset
             var tones = new List<Tone> { Tone.High, Tone.Low };
             Console.WriteLine("list: " + string.Join(';', tones));
             Console.WriteLine("append: " + new StringBuilder("[").AppendJoin(", ", new List<Small> { Small.A, Small.B }).Append(']'));
+            Tone[] none = null;
+            try
+            {
+                Console.WriteLine("null: " + string.Join(",", none));
+            }
+            catch (ArgumentNullException ex)
+            {
+                Console.WriteLine("null: " + ex.GetType().Name + ": " + ex.Message);
+            }
         }
     }
 }

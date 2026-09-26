@@ -2309,6 +2309,11 @@ internal sealed partial class MethodCompiler
         string sepStr = sep.Kind == StackKind.Ref
             ? Cast(sep, "Dn2CppString*")
             : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
+        // A null sequence is .NET's ArgumentNullException, not an empty join.
+        string values = NewTemp(arr.CppType);
+        Emit($"{values} = {Cast(arr, arr.CppType)};");
+        Emit($"if ({values} == nullptr) dn2cpp_throw_argument_null_param(\"values\");");
+        arr = arr with { Expr = values };
         string arrExpr, countArg, suffix;
         string? listCount = null;
         if (arr.CppType.StartsWith("Dn2CppArray"))
