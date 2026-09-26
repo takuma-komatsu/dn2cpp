@@ -111,6 +111,15 @@
 # struct — so nothing a user writes reaches the abort. Its second half runs the same
 # members on real arrays through the same System.Array-typed route, so a regression
 # that turned the check into a blanket refusal is red too.
+#
+# ArrayPredicateSubset is Array's delegate-driven generics (Find, FindLast, FindAll,
+# the FindIndex and FindLastIndex overloads, Exists, TrueForAll, ConvertAll, ForEach,
+# AsReadOnly). Their call sites are intercepted with the rest of the intrinsic type
+# and call the members' real CoreLib bodies, so its fault rows are the argument order
+# and messages those bodies raise through ThrowHelper — including the paramName an
+# argument-only sink appends. Its generic callers put a reference-type instantiation
+# behind a shared body, which must fall back to per-instantiation bodies because only
+# a closed instantiation of an intrinsic type's member is ever reached.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore

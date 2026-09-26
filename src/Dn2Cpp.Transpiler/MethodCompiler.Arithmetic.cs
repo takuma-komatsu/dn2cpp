@@ -1944,7 +1944,14 @@ internal sealed partial class MethodCompiler
     private void NoteFtnTargetBody(MethodInfo target)
     {
         if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+        {
+            // The real-body members' canonical counterpart is never reached (see the
+            // matching guard in TranslateGenericIntrinsic).
+            if (CoreIntrinsics.IsArrayRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
+                foreach (var arg in target.Context.MethodArgs)
+                    TaintIfCanonical(arg, "array-real-body");
             _c.NoteIntrinsicFtnTarget(target);
+        }
         else if (CoreIntrinsics.TryFindCutRow(target, out _))
             _c.NoteInterceptFtnTarget(target);
     }
