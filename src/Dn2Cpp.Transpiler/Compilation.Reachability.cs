@@ -5000,8 +5000,8 @@ internal sealed partial class Compilation
         // chain so a failure deep in the BCL points back at the app call site.
         // The pending `constrained.` prefix type for the next callvirt.
         TypeDesc? constrained = null;
-        // The struct boxed by the immediately-preceding instruction, pending a
-        // formatting call that would dispatch its ToString.
+        // The struct boxed by the immediately-preceding instruction whose ToString the
+        // box did not reach, pending a formatting call that would dispatch it.
         ClassInfo? boxedForFormat = null;
         // The most recent `ldtoken <type>` operand, pending a
         // RuntimeHelpers.RunClassConstructor call (the typeof(T).TypeHandle chain
@@ -5540,12 +5540,13 @@ internal sealed partial class Compilation
                                 && cmpCls.Context.TypeArgs.Length >= 1)
                                 ReachValueKeyEquality(cmpCls.Context.TypeArgs[0]);
                         }
-                        // A struct boxed by the immediately-preceding instruction and
-                        // passed straight to a formatting call (Console.Write/WriteLine,
-                        // String.Concat/Format) is formatted via Object.ToString —
-                        // reach its override so dn2cpp_object_tostring's tostring slot
-                        // is wired. Gated on the formatting call (not the box) so a
-                        // struct boxed for other reasons doesn't drag its ToString in.
+                        // A framework struct boxed by the immediately-preceding
+                        // instruction and passed straight to a formatting call
+                        // (Console.Write/WriteLine, String.Concat/Format) is formatted via
+                        // Object.ToString — reach its override so dn2cpp_object_tostring's
+                        // tostring slot is wired. Gated on the formatting call (not the
+                        // box) so a framework struct boxed for other reasons doesn't drag
+                        // its ToString in; a non-framework struct's was reached at the box.
                         if (prevBoxed is { } pb
                             && insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && IsObjectFormattingCall(module, handle)
@@ -5747,19 +5748,26 @@ internal sealed partial class Compilation
                         // dispatch table is emitted — a value type is otherwise
                         // dispatched only via direct constrained calls.
                         if (ResolveTypeTokenForScan(module, handle, m.Context)
-                            is { Kind: TypeKind.Class, Class: { IsValueType: true } bc })
+                            is { Kind: TypeKind.Class, Class: { IsValueType: true } bc } boxedType)
                         {
                             ReachAllocatedType(bc);
-                            // A boxed struct formatted as a unit (Console.WriteLine /
-                            // "s" + tuple) dispatches its ToString through
-                            // dn2cpp_object_tostring's tostring slot — but boxing
-                            // alone doesn't mean formatting (a struct is also boxed for
-                            // Equals/interface dispatch/storage). Remember it; the
-                            // ToString is reached only if the *next* instruction is a
-                            // formatting call (below). Primitives are excluded — the
-                            // runtime formats boxed primitives directly, and their real
-                            // ToString pulls culture/Calli.
-                            if (!IsRuntimeFormattedPrimitive(bc))
+                            // A boxed struct dispatches its ToString through the
+                            // type-info's tostring slot wherever the box is formatted: a
+                            // callvirt, a method group, string.Join or a formatting call.
+                            // A non-framework struct's override is reached at the box,
+                            // including the struct a Nullable<T> box holds. A framework
+                            // struct's is reached only when a formatting call directly
+                            // follows the box (below): framework structs are boxed for
+                            // equality, interface dispatch and storage far more often
+                            // than formatted, and their overrides drag the BCL formatting
+                            // code in. Primitives are excluded — the runtime formats
+                            // boxed primitives directly, and their real ToString pulls
+                            // culture/Calli.
+                            var held = NullableUnderlying(boxedType) is
+                                { Kind: TypeKind.Class, Class: { IsValueType: true } nu } ? nu : bc;
+                            if (IsUserModule(held.Module) && EffectiveToString(held) is { } heldToString)
+                                Reach(heldToString);
+                            else if (!IsRuntimeFormattedPrimitive(bc))
                                 boxedForFormat = bc;
                         }
                         continue;

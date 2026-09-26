@@ -51,7 +51,9 @@ namespace BoxingPrimitives
     //     interface.
     //   * ObjectVirtualDispatchSubset is a NON-VIRTUAL CALL test: base calls to the
     //     Object and ValueType virtuals run the base body rather than dispatching back
-    //     into the override, and the identity hash is one function.
+    //     into the override, and the identity hash is one function. It also formats
+    //     boxed structs away from any formatting call and calls Object's virtuals
+    //     through method groups.
     internal static class Program
     {
         private static void Main()

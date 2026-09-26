@@ -65,8 +65,13 @@
 #     inside an override (`call`, not `callvirt`): Object's type name, reference
 #     equality and identity hash, ValueType's type name and field-by-field equality
 #     and hash, never a dispatch back into the override; and RuntimeHelpers.GetHashCode
-#     agreeing with the default Object.GetHashCode. Its extra asserts pin that the
-#     output before the section is unchanged.
+#     agreeing with the default Object.GetHashCode. A struct boxed where no
+#     formatting call follows the box still formats through its ToString override,
+#     directly, through string.Join and through the box of a Nullable<T> of it, and
+#     a method group over Object's ToString, Equals or GetHashCode (`ldvirtftn`)
+#     runs what a callvirt runs on a class that does not override it, a boxed
+#     primitive, enum or struct, a string and an array. Its extra asserts pin that
+#     the output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
@@ -118,6 +123,10 @@ gate_extra_asserts() {
     grep -Fxq 'class base ToString: base-calls:ObjectVirtualDispatchSubset.BaseCalls' "$out/native.stdout"
     grep -Fxq 'identity hash: True/True/True' "$out/native.stdout"
     grep -Fxq 'struct base Equals: True/False/False/False' "$out/native.stdout"
+    grep -Fxq 'boxed struct ToString: stashed:4' "$out/native.stdout"
+    grep -Fxq 'boxed nullable struct: wrapped:7/label:7' "$out/native.stdout"
+    grep -Fxq 'method group ToString: ObjectVirtualDispatchSubset.Plain/named/5/grouped:3/ObjectVirtualDispatchSubset.Pair/text/System.Int32[]/High' "$out/native.stdout"
+    grep -Fxq 'method group Equals/GetHashCode: True/False/True/False/True/11/5/True/False' "$out/native.stdout"
     DN2CPP_BEFORE_OBJECT_VIRTUALS=1 run_bounded "$out/BoxingPrimitives$EXE_EXT" \
         > "$out/before-object-virtuals.stdout"
     sed '/^== object virtual dispatch ==/,$d' "$out/native.stdout" > "$out/object-virtuals-prefix.stdout"
