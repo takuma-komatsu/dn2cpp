@@ -29,7 +29,9 @@ using System.Reflection;
 // GetBaseDefinition answers the definition that introduces the chain. A binding
 // closed over null runs the row's own body. A call through System.Object runs the
 // override of Object's member, which a non-virtual or new-slot redeclaration does not
-// replace.
+// replace. System.Object's and System.ValueType's members answer a named lookup
+// beside an override or an overload as on .NET, and Invoke, CreateDelegate and a
+// method group run what a callvirt of them runs.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -411,6 +413,30 @@ class NullHost
     public string Plain() => "plain";
 }
 
+class Labeled
+{
+    public override string ToString() => "labeled";
+}
+
+sealed class LabeledLeaf : Labeled { }
+
+struct Mark
+{
+    public int Id;
+    public string? Tag;
+}
+
+struct ShownMark
+{
+    public int Id;
+    public override string ToString() => "shown:" + Id;
+}
+
+class Overloads
+{
+    public string ToString(string format) => format;
+}
+
 class HiddenText
 {
     public new string ToString() => "hidden";
@@ -777,6 +803,97 @@ static class Program
             object hidden = new HiddenText();
             object slot = new SlotTextLeaf();
             return hidden.ToString() + "/" + slot.ToString() + "/" + ((SlotText)slot).ToString();
+        });
+
+        // System.Object and System.ValueType rows: a named lookup finds them through
+        // levels with a row for each override, and Invoke, CreateDelegate and a method
+        // group run what a callvirt of them runs.
+        MethodInfo objectText = typeof(object).GetMethod("ToString")!;
+        MethodInfo objectEquals = typeof(object).GetMethod("Equals", new[] { typeof(object) })!;
+        MethodInfo objectHash = typeof(object).GetMethod("GetHashCode")!;
+        MethodInfo objectType = typeof(object).GetMethod("GetType")!;
+        MethodInfo valueText = typeof(ValueType).GetMethod("ToString", Type.EmptyTypes)!;
+        MethodInfo valueEquals = typeof(ValueType).GetMethod("Equals", new[] { typeof(object) })!;
+        Try("object rows", () => objectText + "|" + objectEquals + "|" + objectHash + "|" + objectType);
+        Try("object row attributes", () => ((int)objectText.Attributes).ToString("X4") + "/"
+            + ((int)objectType.Attributes).ToString("X4") + "/" + ((int)valueText.Attributes).ToString("X4"));
+        Try("object Equals, no types", () => typeof(object).GetMethod("Equals"));
+        Try("value Equals, no types", () => Describe(typeof(ValueType).GetMethod("Equals")!));
+        Try("inherited object rows", () => Describe(typeof(Leaf).GetMethod("ToString")!)
+            + "/" + Describe(typeof(Mark).GetMethod("ToString")!) + "/" + Describe(typeof(Mark).GetMethod("GetType")!)
+            + "/" + Describe(typeof(int[]).GetMethod("GetHashCode")!));
+        Try("override beside object row", () => Describe(typeof(LabeledLeaf).GetMethod("ToString")!)
+            + "/" + Describe(typeof(ShownMark).GetMethod("ToString")!) + "/" + Describe(typeof(HiddenText).GetMethod("ToString")!));
+        Try("overload beside object row", () => typeof(Overloads).GetMethod("ToString"));
+        Try("object row beside overload", () => Describe(typeof(Overloads).GetMethod("ToString", Type.EmptyTypes)!));
+        Try("object statics", () => typeof(object).GetMethod("Equals", new[] { typeof(object), typeof(object) })!
+                .Invoke(null, new object?[] { 4, 4 })
+            + "/" + typeof(object).GetMethod("ReferenceEquals")!.Invoke(null, new object?[] { 1, 1 })
+            + "/" + (typeof(Leaf).GetMethod("ReferenceEquals") is null));
+        Try("object row, receivers", () => objectText.Invoke(new LabeledLeaf(), null) + "/" + objectText.Invoke(new Leaf(), null)
+            + "/" + objectText.Invoke(42, null) + "/" + objectText.Invoke(new ShownMark { Id = 2 }, null)
+            + "/" + objectText.Invoke(new HiddenText(), null) + "/" + objectText.Invoke(new SlotTextLeaf(), null));
+        Try("value row, receivers", () => valueText.Invoke(new ShownMark { Id = 3 }, null)
+            + "/" + valueText.Invoke(new Mark(), null) + "/" + valueText.Invoke(7, null));
+        Try("object Equals", () => objectEquals.Invoke(new Mark { Id = 1, Tag = "t" }, new object?[] { new Mark { Id = 1, Tag = "t" } })
+            + "/" + objectEquals.Invoke(new Mark { Id = 1 }, new object?[] { new Mark { Id = 2 } })
+            + "/" + objectEquals.Invoke("ab", new object?[] { new string(new[] { 'a', 'b' }) })
+            + "/" + objectEquals.Invoke(new Leaf(), new object?[] { null })
+            + "/" + valueEquals.Invoke(3, new object?[] { 3L }));
+        Try("object GetHashCode", () =>
+        {
+            object mark = new Mark { Id = 9, Tag = "q" };
+            object text = "abc";
+            return ((int)objectHash.Invoke(mark, null)! == mark.GetHashCode())
+                + "/" + ((int)objectHash.Invoke(text, null)! == text.GetHashCode());
+        });
+        Try("object GetType", () => ((Type)objectType.Invoke(new Mark(), null)!).Name
+            + "/" + ((Type)objectType.Invoke(1.5, null)!).Name);
+        Fault("object row, null receiver", () => objectText.Invoke(null, null));
+        Fault("value row, class receiver", () => valueText.Invoke(new Leaf(), null));
+        Fault("object Equals, no argument", () => objectEquals.Invoke(1, null));
+        Try("closed object row, labeled", () =>
+        {
+            var text = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new LabeledLeaf(), objectText);
+            return text() + "/" + Describe(text.Method);
+        });
+        Try("closed object row, plain", () =>
+        {
+            var text = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new Leaf(), objectText);
+            return text() + "/" + (text.Method == objectText);
+        });
+        Try("closed object rows, boxed", () => ((Func<int>)Delegate.CreateDelegate(typeof(Func<int>), 42, objectHash))()
+            + "/" + ((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new ShownMark { Id = 4 }, valueText))()
+            + "/" + Describe(((Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new Mark(), valueText)).Method));
+        Try("closed value row, class", () => Delegate.CreateDelegate(typeof(Func<string>), new Leaf(), valueText));
+        Try("open object rows", () =>
+        {
+            var text = (Func<object, string>)Delegate.CreateDelegate(typeof(Func<object, string>), objectText);
+            var equal = (Func<object, object?, bool>)Delegate.CreateDelegate(typeof(Func<object, object?, bool>), objectEquals);
+            return text(new LabeledLeaf()) + "/" + text(5) + "/" + equal(5, 5) + "/" + (text.Method == objectText);
+        });
+        Try("closed object row equality", () =>
+        {
+            var labeled = new LabeledLeaf();
+            return Delegate.CreateDelegate(typeof(Func<string>), labeled, objectText)
+                .Equals(Delegate.CreateDelegate(typeof(Func<string>), labeled, typeof(Labeled).GetMethod("ToString")!));
+        });
+        Try("object base definitions", () => Describe(typeof(LabeledLeaf).GetMethod("ToString")!.GetBaseDefinition())
+            + "/" + (valueText.GetBaseDefinition() == objectText)
+            + "/" + Describe(typeof(ShownMark).GetMethod("ToString")!.GetBaseDefinition())
+            + "/" + Describe(typeof(SlotTextLeaf).GetMethod("ToString")!.GetBaseDefinition()));
+        Try("object method groups", () =>
+        {
+            object boxed = 5;
+            object mark = new Mark { Id = 1 };
+            Func<string?> number = boxed.ToString;
+            Func<string?> markText = mark.ToString;
+            Func<object?, bool> markEquals = mark.Equals;
+            Func<int> markHash = mark.GetHashCode;
+            Func<string?> leaf = new Leaf().ToString;
+            return number() + "/" + markText() + "/" + markEquals(new Mark { Id = 1 })
+                + "/" + (markHash() == mark.GetHashCode()) + "/" + leaf()
+                + "/" + Describe(markText.Method) + "/" + Describe(leaf.Method);
         });
 
         Console.WriteLine("virtual invoke end");

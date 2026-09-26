@@ -1999,27 +1999,35 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_resolve_method_candidates(D
 // METADATA — of its type arguments, of its receiver's type, or of both. Such a member
 // needs neither a compiled body nor a statically reached instantiation, since the
 // answer is derivable from a Dn2CppTypeInfo at the moment reflection asks — precisely
-// what an AOT image cannot do for an ordinary generic method. Two members qualify
-// today: Unsafe.SizeOf<T>, reached through MakeGenericMethod with T known only at run
-// time, and Object.MemberwiseClone, the shallow copy every reflective cloner is built
-// on and the only route by which an array or a string is ever a receiver.
+// what an AOT image cannot do for an ordinary generic method. Unsafe.SizeOf<T>
+// qualifies, reached through MakeGenericMethod with T known only at run time, and so
+// does Object.MemberwiseClone, the shallow copy every reflective cloner is built on and
+// the only route by which an array or a string is ever a receiver. The other members
+// of System.Object and System.ValueType qualify too: each answers from the receiver's
+// type-info hooks, which is what a callvirt of it runs, so neither the runtime-owned
+// Object nor the intrinsic ValueType needs an emitted table.
 //
 // The rows are synthesized on demand and interned, so handle identity, Equals and
 // GetHashCode behave like a real row's. They are reachable only through a NAMED
 // lookup (Type.GetMethod): GetMethods() deliberately does not list them, because a
-// one-element member table for a type that really has dozens is a different wrong
-// answer, where a named lookup answering the one member dn2cpp can compute is right.
+// partial member table for a type that really has dozens is a different wrong
+// answer, and listing Object's members would change every type's enumeration.
 
 #define DN2CPP_META_MAX_ARITY 4
 
 // One metadata-answerable member. `answer` receives the closed row's type arguments
-// (null for a non-generic member) and the receiver MethodInfo.Invoke was handed (null
-// for a static one), and returns the boxed result Invoke hands back.
+// (null for a non-generic member), the receiver MethodInfo.Invoke was handed (null
+// for a static one) and the arguments, already checked against `params`, and returns
+// the boxed result Invoke hands back.
 //
-// `attrs` and `ilAttrs` are per-row rather than fixed because the second member is an
-// INSTANCE, NON-PUBLIC one: they drive both the row the intern mints and the
-// BindingFlags filter in dn2cpp_meta_lookup, so a row cannot be found under flags
-// that disagree with the row it would hand back.
+// `attrs` and `ilAttrs` are per-row because the members differ in scope and
+// visibility: they drive both the row the intern mints and the BindingFlags filter in
+// dn2cpp_meta_lookup, so a row cannot be found under flags that disagree with the row
+// it would hand back.
+//
+// A GATED member is inherited only through levels carrying
+// DN2CPP_TF_OBJECT_MEMBER_ROWS: found through a level whose override has no row, it
+// would be a wrong method where null is only a missing one.
 struct Dn2CppMetaMember
 {
     const char* typeName;
@@ -2028,7 +2036,13 @@ struct Dn2CppMetaMember
     const Dn2CppTypeInfo* retType;
     int32_t attrs;   // DN2CPP_MTHA_* visibility/scope (METAANSWER/GENERIC are added by dn2cpp_meta_row)
     int32_t ilAttrs; // the MethodAttributes word MethodBase.Attributes reads
-    Dn2CppObject* (*answer)(const Dn2CppTypeInfo* const* args, Dn2CppObject* receiver);
+    Dn2CppObject* (*answer)(const Dn2CppTypeInfo* const* args, Dn2CppObject* receiver,
+                            Dn2CppObject** argv);
+    const Dn2CppParamInfo* params;
+    int32_t paramCount;
+    const char* display; // MethodInfo.ToString; null for a generic member
+    const char* returnDisplay;
+    bool gated;
 };
 
 // The CLR FIELD-LAYOUT size of a type — what `sizeof(T)` is in IL and what
@@ -2076,9 +2090,11 @@ static int32_t dn2cpp_layout_size(const Dn2CppTypeInfo* ti)
 }
 
 // Unsafe.SizeOf<T>().
-static Dn2CppObject* dn2cpp_meta_unsafe_sizeof(const Dn2CppTypeInfo* const* args, Dn2CppObject* receiver)
+static Dn2CppObject* dn2cpp_meta_unsafe_sizeof(const Dn2CppTypeInfo* const* args, Dn2CppObject* receiver,
+                                               Dn2CppObject** argv)
 {
     (void)receiver; // static
+    (void)argv;
     int32_t n = dn2cpp_layout_size(args[0]);
     return dn2cpp_box(&dn2cpp_int32_type, &n, sizeof(int32_t));
 }
@@ -2090,20 +2106,150 @@ static Dn2CppObject* dn2cpp_meta_unsafe_sizeof(const Dn2CppTypeInfo* const* args
 // type can be derived from. Without this row
 // `typeof(object).GetMethod("MemberwiseClone", Instance | NonPublic)` answers null.
 static Dn2CppObject* dn2cpp_meta_object_memberwise_clone(const Dn2CppTypeInfo* const* args,
-                                                         Dn2CppObject* receiver)
+                                                         Dn2CppObject* receiver, Dn2CppObject** argv)
 {
     (void)args; // non-generic
+    (void)argv;
     return dn2cpp_object_memberwise_clone(receiver);
 }
 
-// MethodAttributes: Public | Static | HideBySig (0x0016) and Family | HideBySig
-// (0x0084) — the words MethodBase.Attributes and IsVirtual/IsAbstract/IsFinal read.
+static Dn2CppObject* dn2cpp_meta_box_bool(bool value)
+{
+    int32_t v = value ? 1 : 0;
+    return dn2cpp_box(&dn2cpp_bool_type, &v, sizeof(int32_t));
+}
+
+// Object's own members run what a call of them runs: a virtual one the receiver's
+// type-info hook, which a boxed value and a runtime-owned object answer too. Only a
+// binding closed over null hands them a null receiver, and then each does what
+// Object's own body does with a null `this`.
+static Dn2CppObject* dn2cpp_meta_object_tostring(const Dn2CppTypeInfo* const* args,
+                                                 Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)argv;
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_object_tostring_virtual(receiver));
+}
+
+static Dn2CppObject* dn2cpp_meta_object_equals(const Dn2CppTypeInfo* const* args,
+                                               Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    return dn2cpp_meta_box_bool(dn2cpp_object_equals(receiver, argv[0]) != 0);
+}
+
+static Dn2CppObject* dn2cpp_meta_object_gethashcode(const Dn2CppTypeInfo* const* args,
+                                                    Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)argv;
+    int32_t hash = dn2cpp_object_gethashcode(receiver);
+    return dn2cpp_box(&dn2cpp_int32_type, &hash, sizeof(int32_t));
+}
+
+static Dn2CppObject* dn2cpp_meta_object_gettype(const Dn2CppTypeInfo* const* args,
+                                                Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)argv;
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    return reinterpret_cast<Dn2CppObject*>(dn2cpp_get_type_from_handle(receiver->type));
+}
+
+static Dn2CppObject* dn2cpp_meta_object_finalize(const Dn2CppTypeInfo* const* args,
+                                                 Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)argv;
+    if (receiver != nullptr && receiver->type->finalize != nullptr)
+        receiver->type->finalize(receiver);
+    return nullptr;
+}
+
+static Dn2CppObject* dn2cpp_meta_object_static_equals(const Dn2CppTypeInfo* const* args,
+                                                      Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)receiver; // static
+    return dn2cpp_meta_box_bool(dn2cpp_object_equals(argv[0], argv[1]) != 0);
+}
+
+static Dn2CppObject* dn2cpp_meta_object_reference_equals(const Dn2CppTypeInfo* const* args,
+                                                         Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    (void)receiver; // static
+    return dn2cpp_meta_box_bool(argv[0] == argv[1]);
+}
+
+// ValueType's bodies read their receiver's type, except that Equals answers false for
+// a null argument first.
+static Dn2CppObject* dn2cpp_meta_valuetype_equals(const Dn2CppTypeInfo* const* args,
+                                                  Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    (void)args;
+    if (argv[0] == nullptr)
+        return dn2cpp_meta_box_bool(false);
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_meta_box_bool(dn2cpp_object_equals(receiver, argv[0]) != 0);
+}
+
+static Dn2CppObject* dn2cpp_meta_valuetype_gethashcode(const Dn2CppTypeInfo* const* args,
+                                                       Dn2CppObject* receiver, Dn2CppObject** argv)
+{
+    if (receiver == nullptr)
+        dn2cpp_throw_null_reference();
+    return dn2cpp_meta_object_gethashcode(args, receiver, argv);
+}
+
+static const Dn2CppParamInfo g_meta_params_obj[] = {
+    { &dn2cpp_object_type, "obj", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "System.Object obj", nullptr },
+};
+
+static const Dn2CppParamInfo g_meta_params_obj_pair[] = {
+    { &dn2cpp_object_type, "objA", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "System.Object objA", nullptr },
+    { &dn2cpp_object_type, "objB", {}, 0, 0, nullptr, 0, nullptr, 0, 1, "System.Object objB", nullptr },
+};
+
+// The MethodAttributes words are .NET's (MethodBase.Attributes, IsVirtual/IsFinal
+// read them): 0x0016 Public|Static|HideBySig, 0x0085 FamORAssem|HideBySig, 0x01C6
+// Public|Virtual|HideBySig|NewSlot, 0x01C4 its Family form, 0x0086 Public|HideBySig,
+// 0x0096 Public|Static|HideBySig, and 0x00C6 Public|Virtual|HideBySig for an override.
+// The transpiler's CoreIntrinsics.IsObjectMemberRowName lists the gated rows' names.
 static const Dn2CppMetaMember g_meta_members[] = {
     { "System.Runtime.CompilerServices.Unsafe", "SizeOf", 1, &dn2cpp_int32_type,
-      DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0016, dn2cpp_meta_unsafe_sizeof },
+      DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0016, dn2cpp_meta_unsafe_sizeof,
+      nullptr, 0, nullptr, "Int32", false },
     { "System.Object", "MemberwiseClone", 0, &dn2cpp_object_type,
-      0 /* instance, non-public */, 0x0084, dn2cpp_meta_object_memberwise_clone },
+      0 /* instance, non-public */, 0x0085, dn2cpp_meta_object_memberwise_clone,
+      nullptr, 0, "System.Object MemberwiseClone()", "System.Object", false },
+    { "System.Object", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
+      dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
+    { "System.Object", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
+      dn2cpp_meta_object_equals, g_meta_params_obj, 1, "Boolean Equals(System.Object)", "Boolean", true },
+    { "System.Object", "GetHashCode", 0, &dn2cpp_int32_type, DN2CPP_MTHA_PUBLIC, 0x01C6,
+      dn2cpp_meta_object_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
+    { "System.Object", "GetType", 0, &dn2cpp_type_type, DN2CPP_MTHA_PUBLIC, 0x0086,
+      dn2cpp_meta_object_gettype, nullptr, 0, "System.Type GetType()", "System.Type", true },
+    { "System.Object", "Finalize", 0, &dn2cpp_void_type, 0 /* instance, non-public */, 0x01C4,
+      dn2cpp_meta_object_finalize, nullptr, 0, "Void Finalize()", "Void", true },
+    { "System.Object", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096,
+      dn2cpp_meta_object_static_equals, g_meta_params_obj_pair, 2,
+      "Boolean Equals(System.Object, System.Object)", "Boolean", true },
+    { "System.Object", "ReferenceEquals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_STATIC | DN2CPP_MTHA_PUBLIC, 0x0096,
+      dn2cpp_meta_object_reference_equals, g_meta_params_obj_pair, 2,
+      "Boolean ReferenceEquals(System.Object, System.Object)", "Boolean", true },
+    { "System.ValueType", "ToString", 0, &dn2cpp_string_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
+      dn2cpp_meta_object_tostring, nullptr, 0, "System.String ToString()", "System.String", true },
+    { "System.ValueType", "Equals", 0, &dn2cpp_bool_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
+      dn2cpp_meta_valuetype_equals, g_meta_params_obj, 1, "Boolean Equals(System.Object)", "Boolean", true },
+    { "System.ValueType", "GetHashCode", 0, &dn2cpp_int32_type, DN2CPP_MTHA_PUBLIC, 0x00C6,
+      dn2cpp_meta_valuetype_gethashcode, nullptr, 0, "Int32 GetHashCode()", "Int32", true },
 };
+static constexpr int32_t g_meta_member_count =
+    static_cast<int32_t>(sizeof(g_meta_members) / sizeof(g_meta_members[0]));
 
 // A synthesized row plus the descriptor it answers from. Rows are interned per
 // (descriptor, declaring type-info, type arguments) so repeated lookups hand back
@@ -2168,6 +2314,8 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_row(const Dn2CppMetaMe
     r->row.name = d->methodName;
     r->row.declaringType = declaring;
     r->row.returnType = d->retType;
+    r->row.parameters = Dn2CppMetadataTable<Dn2CppParamInfo>(d->params);
+    r->row.paramCount = d->paramCount;
     r->row.attrs = d->attrs | DN2CPP_MTHA_METAANSWER
         | (d->genericArity > 0 ? DN2CPP_MTHA_GENERIC : 0);
     r->row.vtableSlot = -1;
@@ -2175,6 +2323,9 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_row(const Dn2CppMetaMe
     // hand-written row in the tree carries.
     r->row.ilAttrs = d->ilAttrs;
     r->row.genericParamCount = d->genericArity;
+    r->row.returnCustomModifiersKnown = 1;
+    r->row.display = d->display;
+    r->row.returnDisplay = d->returnDisplay;
     if (args != nullptr)
     {
         for (int32_t i = 0; i < argc; i++)
@@ -2186,51 +2337,155 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_row(const Dn2CppMetaMe
     return &r->row;
 }
 
-// The named-lookup hook. Consulted only after the type's own rows produced no
-// candidate, so a real row always wins and an image that did carry Unsafe's methods
-// would not be shadowed.
+// System.ValueType's type-info, found by name because no value type-info names it as
+// its base. Null when the image emitted none; a value type then reaches no gated row.
+static const Dn2CppTypeInfo* dn2cpp_meta_valuetype()
+{
+    static const Dn2CppTypeInfo* const valueType = dn2cpp_type_registry_find("System.ValueType", 16);
+    return valueType;
+}
+
+// The next level of the chain the rows are inherited along. Every value type derives
+// from System.ValueType and every array from System.Array, whose members Object's
+// rows describe, though neither type-info names that base.
+static const Dn2CppTypeInfo* dn2cpp_meta_next_level(const Dn2CppTypeInfo* ti)
+{
+    if (ti->base != nullptr)
+        return ti->base;
+    if ((ti->flags & DN2CPP_TF_ARRAY) != 0)
+        return &dn2cpp_object_type;
+    if ((ti->flags & DN2CPP_TF_VALUETYPE) != 0)
+        return dn2cpp_meta_valuetype();
+    return nullptr;
+}
+
+static bool dn2cpp_meta_declares(const Dn2CppTypeInfo* ti, const Dn2CppMetaMember* d)
+{
+    return ti->name != nullptr && std::strcmp(ti->name, d->typeName) == 0;
+}
+
+// Whether a gated row stays reachable past `ti`: the level has a row for every method
+// it declares under an Object member name, is an array, or is Object or ValueType,
+// whose members are these rows.
+static bool dn2cpp_meta_level_passes(const Dn2CppTypeInfo* ti)
+{
+    if ((ti->flags & (DN2CPP_TF_OBJECT_MEMBER_ROWS | DN2CPP_TF_ARRAY)) != 0)
+        return true;
+    return ti->name != nullptr
+        && (std::strcmp(ti->name, "System.Object") == 0 || std::strcmp(ti->name, "System.ValueType") == 0);
+}
+
+static bool dn2cpp_meta_params_match_types(const Dn2CppMetaMember* d, Dn2CppArrayRef* types)
+{
+    if (d->paramCount != types->length)
+        return false;
+    for (int32_t j = 0; j < types->length; j++)
+    {
+        auto* pt = reinterpret_cast<Dn2CppType*>(types->data[j]);
+        if (pt == nullptr)
+            dn2cpp_throw_argument_null();
+        if (d->params[j].paramType != pt->typeInfo)
+            return false;
+    }
+    return true;
+}
+
+// Whether an emitted row has a member's parameter list.
+static bool dn2cpp_meta_same_params(const Dn2CppMethodInfo& row, const Dn2CppMetaMember* d)
+{
+    if (row.paramCount != d->paramCount)
+        return false;
+    for (int32_t j = 0; j < d->paramCount; j++)
+        if (row.parameters[j]->paramType != d->params[j].paramType)
+            return false;
+    return true;
+}
+
+// The Object virtual whose name and parameters an instance virtual `row` has: the
+// member it overrides, unless the row is a new slot, which starts a chain of its own.
+static const Dn2CppMetaMember* dn2cpp_meta_object_virtual_named(const Dn2CppMethodInfo& row)
+{
+    if ((row.attrs & DN2CPP_MTHA_STATIC) != 0 || (row.ilAttrs & DN2CPP_MA_VIRTUAL) == 0
+        || row.genericParamCount != 0)
+        return nullptr;
+    for (int32_t k = 0; k < g_meta_member_count; k++)
+    {
+        const Dn2CppMetaMember* d = &g_meta_members[k];
+        if (d->gated && (d->ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && std::strcmp(d->typeName, "System.Object") == 0
+            && std::strcmp(d->methodName, row.name) == 0 && dn2cpp_meta_same_params(row, d))
+            return d;
+    }
+    return nullptr;
+}
+
+static bool dn2cpp_meta_same_member(const Dn2CppMetaMember* a, const Dn2CppMetaMember* b)
+{
+    if (std::strcmp(a->methodName, b->methodName) != 0 || a->paramCount != b->paramCount)
+        return false;
+    for (int32_t j = 0; j < a->paramCount; j++)
+        if (a->params[j].paramType != b->params[j].paramType)
+            return false;
+    return true;
+}
+
+// The Object virtual a ValueType member overrides.
+static const Dn2CppMetaMember* dn2cpp_meta_object_counterpart(const Dn2CppMetaMember* d)
+{
+    for (int32_t k = 0; k < g_meta_member_count; k++)
+    {
+        const Dn2CppMetaMember* o = &g_meta_members[k];
+        if ((o->ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && std::strcmp(o->typeName, "System.Object") == 0
+            && dn2cpp_meta_same_member(o, d))
+            return o;
+    }
+    return nullptr;
+}
+
+// The named-lookup hook: appends the rows a lookup on `queried` finds after the
+// emitted candidates, so dn2cpp_resolve_method_candidates lets an emitted override
+// hide the Object or ValueType member it overrides and reports an overload beside one
+// as ambiguous, as .NET does.
 //
-// It walks the BASE CHAIN, like the caller it stands in for: Object.MemberwiseClone is
-// an inherited member of every reference type, so `obj.GetType().GetMethod(
+// It walks the BASE CHAIN, like the emitted walk: Object.MemberwiseClone is an
+// inherited member of every reference type, so `obj.GetType().GetMethod(
 // "MemberwiseClone", Instance | NonPublic)` has to find it on Object — and the row it
 // hands back must name Object as its DeclaringType, which is why `declaring` is the
 // matched link rather than the queried type. DeclaredOnly stops the walk for the same
-// reason it stops the real one.
-//
-// A GENERIC member answers the definition VIEW (real .NET's GetMethod("SizeOf") gives
-// the open definition and MakeGenericMethod closes it); a non-generic row is already
-// closed, so it answers the plain handle — a def-view there would be a MethodInfo that
-// Invoke refuses.
-static Dn2CppMethodRef* dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name,
-                                           int32_t genericParamCount,
-                                           Dn2CppArrayRef* paramTypes, int32_t bindingFlags)
+// reason it stops the real one, and a gated row stops being reachable past a level
+// dn2cpp_meta_level_passes refuses.
+static void dn2cpp_meta_lookup(const Dn2CppTypeInfo* queried, Dn2CppString* name,
+    int32_t genericParamCount, Dn2CppArrayRef* paramTypes, int32_t bindingFlags,
+    Dn2CppMetadataHandle<Dn2CppMethodInfo>* cands, int32_t* n, int32_t capacity)
 {
-    for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = ti->base)
+    bool named = false;
+    for (int32_t k = 0; k < g_meta_member_count && !named; k++)
+        named = dn2cpp_ascii_str_eq(g_meta_members[k].methodName, name);
+    if (!named)
+        return;
+    bool gatedOpen = true;
+    for (const Dn2CppTypeInfo* ti = queried; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
     {
-        if (ti->name == nullptr)
-            continue;
         bool inherited = (ti != queried);
-        for (size_t k = 0; k < sizeof(g_meta_members) / sizeof(g_meta_members[0]); k++)
+        for (int32_t k = 0; k < g_meta_member_count; k++)
         {
             const Dn2CppMetaMember* d = &g_meta_members[k];
-            if (std::strcmp(ti->name, d->typeName) != 0 || !dn2cpp_ascii_str_eq(d->methodName, name))
+            if ((d->gated && !gatedOpen) || !dn2cpp_ascii_str_eq(d->methodName, name)
+                || !dn2cpp_meta_declares(ti, d))
                 continue;
             if (genericParamCount >= 0 && genericParamCount != d->genericArity)
                 continue;
-            // Every member modeled here is parameterless, so a Type[] filter naming
-            // any parameter cannot match it.
-            if (paramTypes != nullptr && paramTypes->length != 0)
+            if (paramTypes != nullptr && !dn2cpp_meta_params_match_types(d, paramTypes))
                 continue;
             if (!dn2cpp_member_matches(d->attrs, bindingFlags, inherited))
                 continue;
-            Dn2CppMetadataHandle<Dn2CppMethodInfo> row = dn2cpp_meta_row(d, ti, nullptr, 0);
-            return d->genericArity > 0 ? dn2cpp_make_methodref_defview(row, queried)
-                                       : dn2cpp_make_methodref(row, queried);
+            if (*n < capacity)
+                cands[(*n)++] = dn2cpp_meta_row(d, ti, nullptr, 0);
         }
         if (bindingFlags & DN2CPP_BF_DECLAREDONLY)
             break;
+        if (!dn2cpp_meta_level_passes(ti))
+            gatedOpen = false;
     }
-    return nullptr;
 }
 
 Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
@@ -2286,9 +2541,15 @@ Dn2CppMethodRef* dn2cpp_type_get_method_full(Dn2CppType* t, Dn2CppString* name,
             break;
         gvm.next_type();
     }
+    dn2cpp_meta_lookup(t->typeInfo, name, genericParamCount, paramTypes, bindingFlags, cands, &n, 64);
     if (n == 0)
-        return dn2cpp_meta_lookup(t->typeInfo, name, genericParamCount, paramTypes, bindingFlags);
-    return dn2cpp_make_methodref(dn2cpp_resolve_method_candidates(cands, n), t->typeInfo);
+        return nullptr;
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo> hit = dn2cpp_resolve_method_candidates(cands, n);
+    // A generic metadata-answered member answers its definition view, as .NET's
+    // GetMethod("SizeOf") gives the open definition MakeGenericMethod closes.
+    if ((hit->attrs & DN2CPP_MTHA_METAANSWER) != 0 && hit->genericParamCount > 0)
+        return dn2cpp_make_methodref_defview(hit, t->typeInfo);
+    return dn2cpp_make_methodref(hit, t->typeInfo);
 }
 
 Dn2CppMethodRef* dn2cpp_type_get_method(Dn2CppType* t, Dn2CppString* name, int32_t bindingFlags)
@@ -2840,10 +3101,11 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
                 obj = dn2cpp_invoke_receiver(row, obj, reflected);
                 if (argc != row.paramCount)
                     dn2cpp_throw_invoke_parameter_count();
+                args = dn2cpp_invoke_check_args(mi, args, argc);
             }
             try
             {
-                return d->answer(row.genericArgs, obj);
+                return d->answer(row.genericArgs, obj, args);
             }
             catch (Dn2CppInvokerMissing&)
             {
@@ -2875,8 +3137,9 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // signature every body in the slot shares, and passes the receiver unadjusted,
     // since the adjustment below keys on the declaring type. A value type's row is
     // sealed, and a receiver without a vtable (a boxed value, a runtime-owned
-    // handle) runs the row's own body: System.Object and System.ValueType carry no
-    // rows and an enum declares no methods. A static or non-virtual interface member
+    // handle) runs the row's own body: System.Object's and System.ValueType's rows
+    // are metadata-answered above and an enum declares no methods. A static or
+    // non-virtual interface member
     // runs its own body: its row carries a map index no receiver's map fills for it.
     // A closed generic virtual row has no slot; it runs through the dispatcher a
     // callvirt of the same instantiation calls, which takes the row's signature and
@@ -3191,7 +3454,10 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     if (!slotBound && !mStatic && !nullBound && mi->genericParamCount != 0)
         slotBound = dn2cpp_gvm_row_dispatch_of(*mi) != nullptr;
     bool bodiless = nullBound && (mi->ilAttrs & DN2CPP_MA_ABSTRACT) != 0;
-    if (!staticVirtual && !bodiless && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
+    // A metadata-answered row needs no body; dn2cpp_invoke_row answers it.
+    bool answered = (mi->attrs & DN2CPP_MTHA_METAANSWER) != 0;
+    if (!staticVirtual && !bodiless && !answered
+        && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the target method's body was not compiled into this image");
 
@@ -3603,6 +3869,60 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_delegate_interface_target(
     return {};
 }
 
+// The method a callvirt of Object or ValueType virtual `d` runs on a `receiver`: the
+// most derived row overriding it, else the ValueType or Object row. Null once a level
+// dn2cpp_meta_level_passes refuses lies in between, since its override has no row.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_object_virtual_target(
+    const Dn2CppTypeInfo* receiver, const Dn2CppMetaMember* d)
+{
+    const Dn2CppMetaMember* root = std::strcmp(d->typeName, "System.Object") == 0
+        ? d : dn2cpp_meta_object_counterpart(d);
+    Dn2CppMetadataHandle<Dn2CppMethodInfo> found{};
+    for (const Dn2CppTypeInfo* ti = receiver; ti != nullptr; ti = dn2cpp_meta_next_level(ti))
+    {
+        if (!dn2cpp_meta_level_passes(ti))
+            return {};
+        for (int32_t k = 0; k < g_meta_member_count; k++)
+        {
+            const Dn2CppMetaMember* own = &g_meta_members[k];
+            if ((own->ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && dn2cpp_meta_declares(ti, own)
+                && dn2cpp_meta_same_member(own, d))
+                return found ? found : dn2cpp_meta_row(own, ti, nullptr, 0);
+        }
+        // Rows below a new slot of the member override that slot, not this member.
+        const auto reflection = ti->reflection();
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const Dn2CppMethodInfo row = *reflection.methods[i];
+            if (dn2cpp_meta_object_virtual_named(row) != root)
+                continue;
+            if ((row.ilAttrs & DN2CPP_MA_NEWSLOT) != 0)
+                found = {};
+            else if (!found && (row.ilAttrs & DN2CPP_MA_ABSTRACT) == 0)
+                found = reflection.methods[i];
+        }
+    }
+    return {};
+}
+
+// The Object virtual whose dispatch helper a delegate holds: MethodCompiler binds
+// `ldvirtftn` of one to the helper a call of it runs.
+static const Dn2CppMetaMember* dn2cpp_object_dispatch_member(const void* fn)
+{
+    const char* name = fn == reinterpret_cast<const void*>(&dn2cpp_object_tostring_virtual) ? "ToString"
+        : fn == reinterpret_cast<const void*>(&dn2cpp_object_equals) ? "Equals"
+        : fn == reinterpret_cast<const void*>(&dn2cpp_object_gethashcode) ? "GetHashCode"
+        : nullptr;
+    for (int32_t k = 0; name != nullptr && k < g_meta_member_count; k++)
+    {
+        const Dn2CppMetaMember* d = &g_meta_members[k];
+        if ((d->ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && std::strcmp(d->typeName, "System.Object") == 0
+            && std::strcmp(d->methodName, name) == 0)
+            return d;
+    }
+    return nullptr;
+}
+
 // The method a reflection-bound delegate reports. A closed instance binding of a
 // virtual row names the body its receiver's slot runs; an open binding names the
 // row, as .NET's Delegate.Method does.
@@ -3614,6 +3934,14 @@ static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_reflbind_method(const Dn2Cp
     const Dn2CppMethodInfo decl = *mi;
     const Dn2CppTypeInfo* owner = decl.declaringType;
     const Dn2CppTypeInfo* receiver = bind->target->type;
+    // An Object or ValueType virtual names the override its receiver runs, or null.
+    if ((decl.attrs & DN2CPP_MTHA_METAANSWER) != 0)
+    {
+        const Dn2CppMetaMember* d = dn2cpp_meta_desc_of(mi);
+        if (d == nullptr || !d->gated || (d->ilAttrs & DN2CPP_MA_VIRTUAL) == 0)
+            return mi;
+        return dn2cpp_object_virtual_target(receiver, d);
+    }
     // A generic virtual row names the body its dispatcher selects for the receiver;
     // a receiver without a recorded case runs the row's own body.
     if (decl.genericParamCount != 0)
@@ -3670,14 +3998,17 @@ bool dn2cpp_reflbind_same_body(const Dn2CppReflBind* a, const Dn2CppReflBind* b)
     if (a->mode != DN2CPP_DGBIND_CLOSED_INSTANCE || a->target == nullptr)
         return false;
     const Dn2CppTypeInfo* receiver = a->target->type;
-    if ((receiver->flags & DN2CPP_TF_VALUETYPE) == 0)
+    // A metadata-answered row has no body address, so it compares by the row it reports.
+    bool answered = ((a->method->attrs | b->method->attrs) & DN2CPP_MTHA_METAANSWER) != 0;
+    if ((receiver->flags & DN2CPP_TF_VALUETYPE) == 0 && !answered)
     {
         const void* body = dn2cpp_reflbind_body(a);
         return body != nullptr && body == dn2cpp_reflbind_body(b);
     }
     if ((receiver->flags & DN2CPP_TF_METADATA_STRIPPED) != 0)
         return false;
-    return dn2cpp_reflbind_method(a) == dn2cpp_reflbind_method(b);
+    const Dn2CppMetadataHandle<Dn2CppMethodInfo> method = dn2cpp_reflbind_method(a);
+    return method && method == dn2cpp_reflbind_method(b);
 }
 
 Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
@@ -3686,10 +4017,12 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
         return nullptr;
     Dn2CppObject* t = reinterpret_cast<Dn2CppDelegate*>(d)->target;
     if (t != nullptr && t->type == &dn2cpp_reflbind_type)
+    {
         // Declaring-normalized (null): .NET's delegate.Method is the declaring-typed
         // instance even when the delegate was created from a derived-reflected row.
-        return reinterpret_cast<Dn2CppObject*>(
-            dn2cpp_make_methodref(dn2cpp_reflbind_method(reinterpret_cast<Dn2CppReflBind*>(t)), nullptr));
+        const auto bound = dn2cpp_reflbind_method(reinterpret_cast<Dn2CppReflBind*>(t));
+        return bound ? reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(bound, nullptr)) : nullptr;
+    }
     auto* dg = reinterpret_cast<Dn2CppDelegate*>(d);
     // Runtime-created and interpreted delegates carry no static identity.
     const auto* identity = dg->identity;
@@ -3700,9 +4033,16 @@ Dn2CppObject* dn2cpp_delegate_get_method(Dn2CppObject* d)
     const auto declared = dn2cpp_find_method_instantiation(owner->reflection(),
         identity->metadataToken, identity->genericArgCount,
         [identity](int32_t i) { return identity->genericArgs[i]; });
-    // A runtime-owned or opaque owner carries no method rows.
+    // A runtime-owned or opaque owner carries no method rows, except that Object's
+    // virtuals answer from metadata.
     if (!declared)
-        return nullptr;
+    {
+        const Dn2CppMetaMember* d = owner == &dn2cpp_object_type && identity->virtualBinding && t != nullptr
+            ? dn2cpp_object_dispatch_member(dg->method) : nullptr;
+        const auto hit = d != nullptr ? dn2cpp_object_virtual_target(t->type, d)
+                                      : Dn2CppMetadataHandle<Dn2CppMethodInfo>{};
+        return hit ? reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(hit, nullptr)) : nullptr;
+    }
     if (!identity->virtualBinding || t == nullptr)
         return reinterpret_cast<Dn2CppObject*>(dn2cpp_make_methodref(declared, nullptr));
     // .NET names the override the binding resolved, so the declaration answers
@@ -5613,6 +5953,42 @@ Dn2CppMethodRef* dn2cpp_methodref_make_generic(Dn2CppMethodRef* m, Dn2CppArrayRe
     dn2cpp_throw_platform_not_supported(buf);
 }
 
+// The Object row the override chain through `mi` roots at: `mi` is a ValueType row, or
+// an emitted override of an Object virtual whose levels up to Object all pass
+// dn2cpp_meta_level_passes, since a level without the rows could hold the new slot the
+// chain really roots at. Null otherwise.
+static Dn2CppMetadataHandle<Dn2CppMethodInfo> dn2cpp_meta_object_base(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi)
+{
+    const Dn2CppMethodInfo row = *mi;
+    const Dn2CppMetaMember* d = nullptr;
+    if ((row.attrs & DN2CPP_MTHA_METAANSWER) != 0)
+    {
+        const Dn2CppMetaMember* own = dn2cpp_meta_desc_of(mi);
+        if (own != nullptr && std::strcmp(own->typeName, "System.ValueType") == 0)
+            d = dn2cpp_meta_object_counterpart(own);
+    }
+    else if ((row.ilAttrs & DN2CPP_MA_NEWSLOT) == 0)
+        d = dn2cpp_meta_object_virtual_named(row);
+    if (d == nullptr)
+        return {};
+    for (const Dn2CppTypeInfo* ti = dn2cpp_meta_next_level(row.declaringType); ti != nullptr;
+         ti = dn2cpp_meta_next_level(ti))
+    {
+        if (dn2cpp_meta_declares(ti, d))
+            return dn2cpp_meta_row(d, ti, nullptr, 0);
+        if (!dn2cpp_meta_level_passes(ti))
+            return {};
+        const auto reflection = ti->reflection();
+        for (int32_t i = 0; i < reflection.methodCount; i++)
+        {
+            const Dn2CppMethodInfo level = *reflection.methods[i];
+            if ((level.ilAttrs & DN2CPP_MA_NEWSLOT) != 0 && dn2cpp_meta_object_virtual_named(level) == d)
+                return {};
+        }
+    }
+    return {};
+}
+
 // MethodInfo.GetBaseDefinition: walk the base chain for the shallowest ancestor
 // declaring a row on the same vtable slot (slot numbering is chain-consistent:
 // a derived vtable extends its base, an override keeps the base's slot, and a
@@ -5630,7 +6006,10 @@ Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
     {
         Dn2CppMethodInfo row = *mi;
         if (!dn2cpp_is_gvm_row(row) || (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
-            return m;
+        {
+            const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(mi);
+            return root ? dn2cpp_make_methodref(root, nullptr) : m;
+        }
         Dn2CppMetadataHandle<Dn2CppMethodInfo> root = mi;
         for (const Dn2CppTypeInfo* ti = row.declaringType->base;
              ti != nullptr && dn2cpp_is_gvm_override(row); ti = ti->base)
@@ -5662,6 +6041,8 @@ Dn2CppMethodRef* dn2cpp_methodref_get_base_definition(Dn2CppMethodRef* m)
                 break;
             }
     }
+    if (const Dn2CppMetadataHandle<Dn2CppMethodInfo> root = dn2cpp_meta_object_base(best))
+        return dn2cpp_make_methodref(root, nullptr);
     // Declaring-normalized (null): .NET's GetBaseDefinition answers the base declaring
     // type's own instance, so a derived-reflected receiver does not propagate.
     // `best == mi` short-circuits only when the receiver IS declaring-reflected — a

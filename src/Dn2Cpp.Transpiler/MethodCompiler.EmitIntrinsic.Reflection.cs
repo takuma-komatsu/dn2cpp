@@ -53,6 +53,16 @@ internal sealed partial class MethodCompiler
         Push(StackKind.Ref, "Dn2CppArrayRef*", expr);
     }
 
+    /// <summary>Notes System.ValueType's type-info, through which the runtime's method
+    /// lookup, CreateDelegate and Delegate.Method reach a value type's ValueType and
+    /// Object rows. The runtime finds it by name, because no value type-info names its
+    /// base; only the handle is needed, so it seeds no reflection keep.</summary>
+    private void NoteValueTypeRows()
+    {
+        if (Comp.FindClassByFullName("System.ValueType") is { } valueType)
+            Comp.NoteTypeIdentityClosure(TypeDesc.MakeClass(valueType), keepSeed: false);
+    }
+
     private bool TryEmitReflectionIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         // Shared-body candidate: a typeof over a placeholder-bearing type rides the
@@ -898,6 +908,7 @@ internal sealed partial class MethodCompiler
             {
                 if (PopLookupArgs(sig, name: true, generic: true, returnType: false) is not { } ma)
                     return false;
+                NoteValueTypeRows();
                 var t = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"((Dn2CppObject*)dn2cpp_type_get_method_full({Cast(t, "Dn2CppType*")}, {ma.Name}, {ma.GenericCount ?? "-1"}, {ma.Types ?? "nullptr"}, {ma.Flags ?? "28"}, {ma.CallConv ?? "0"}, {ma.Binder ?? "nullptr"}))");
@@ -1044,6 +1055,7 @@ internal sealed partial class MethodCompiler
             case ("System.Reflection.MethodInfo", "CreateDelegate") when sig.ParameterTypes.Length is 1 or 2:
             {
                 Comp.NeedsReflectionDelegateBind = true;
+                NoteValueTypeRows();
                 string target = "nullptr";
                 int closedForm = 0;
                 if (sig.ParameterTypes.Length == 2)

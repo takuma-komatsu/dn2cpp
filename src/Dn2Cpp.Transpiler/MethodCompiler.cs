@@ -3564,6 +3564,15 @@ internal sealed partial class MethodCompiler : IEvalStack
                         + $"(void*)+[](Dn2CppObject* receiver, Dn2CppObject* other) -> int32_t "
                         + $"{{ return {impl.CppName}(({virtualTarget.DeclaringClass.CppStructName}*)(receiver + 1), other); }})";
                 }
+                else if (ObjectDispatchHelper(m) is { } helper)
+                {
+                    // An Object virtual binds the helper a callvirt of it runs, which
+                    // dispatches through the receiver's type-info hooks: a boxed value or a
+                    // runtime-owned object has no vtable, and the slot of a class that does
+                    // not override the member holds a trap. Delegate.Method recognizes the
+                    // helper (dn2cpp_object_dispatch_member).
+                    expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
+                }
                 else if (m.DeclaringClass.IsInterface)
                 {
                     if (m.DeclaringClass.IntrinsicCppName is null)

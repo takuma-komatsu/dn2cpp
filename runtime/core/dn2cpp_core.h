@@ -503,6 +503,11 @@ constexpr Dn2CppTypeInfo dn2cpp_ti_with_formatspec(
 // no generic virtual method, so a generic virtual dispatcher, which selects on
 // exact AOT type-infos, runs such a receiver as its nearest AOT ancestor.
 #define DN2CPP_TF_PATCH 0x8000000
+// Every method this level declares under the name of a System.Object member the
+// runtime answers (g_meta_members in dn2cpp_system_reflection.cpp) has a method
+// row, so an Object or ValueType row reached through this level is never one an
+// unseen override replaces. Runtime-owned, stripped and patch levels never carry it.
+#define DN2CPP_TF_OBJECT_MEMBER_ROWS 0x10000000
 
 // The clone-owned rgctx anchor lookup behind DN2CPP_TF_RUNTIME_SYNTH
 // (dn2cpp_system_reflection.cpp); falls back to the base-chain walk for levels

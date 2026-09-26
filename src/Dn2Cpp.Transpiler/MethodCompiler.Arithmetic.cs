@@ -1960,6 +1960,22 @@ internal sealed partial class MethodCompiler
             _c.NoteInterceptFtnTarget(target);
     }
 
+    /// <summary>The runtime helper a call of System.Object's ToString(), Equals(object) or
+    /// GetHashCode() lowers to, whose signature is the method's with the receiver first;
+    /// null for any other method.</summary>
+    private static string? ObjectDispatchHelper(MethodInfo m)
+    {
+        if (m.IsStatic || m.DeclaringClass.FullName != "System.Object")
+            return null;
+        return (m.Name, m.Signature.ParameterTypes) switch
+        {
+            ("ToString", []) => "dn2cpp_object_tostring_virtual",
+            ("GetHashCode", []) => "dn2cpp_object_gethashcode",
+            ("Equals", [{ IsObject: true }]) => "dn2cpp_object_equals",
+            _ => null,
+        };
+    }
+
     /// <summary>A boxed primitive's Object.Equals slot must bind to the primitive
     /// override even though the ldvirtftn token names System.Object.</summary>
     private MethodInfo PrimitiveObjectEqualsVirtualTarget(MethodInfo declared, StackEntry receiver)

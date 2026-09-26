@@ -367,6 +367,7 @@ internal sealed partial class MethodCompiler
                     target = Cast(fa, "Dn2CppObject*");
                 }
                 var ty = Pop();
+                NoteValueTypeRows();
                 Push(StackKind.Ref, "Dn2CppObject*",
                     $"dn2cpp_delegate_create({Cast(ty, "Dn2CppType*")}, {target}, (Dn2CppMethodRef*)({m.Expr}), {(hasFirstArg ? 1 : 0)}, {throwExpr})");
                 return true;
@@ -412,6 +413,7 @@ internal sealed partial class MethodCompiler
             case ("System.Delegate", "get_Method"):
             {
                 Comp.NoteDelegateMethodRead();
+                NoteValueTypeRows();
                 var d = Pop();
                 Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_delegate_get_method({Cast(d, "Dn2CppObject*")})");
                 return true;

@@ -61,8 +61,9 @@
 # ReflectDelegateIdentitySubset asserts Delegate.Method for IL-bound delegates:
 # class and generic virtual overrides (new-slot hiders and covariant returns
 # included), interface bindings over class, struct, explicit, default and
-# generic implementations, array generic arguments, and runtime-owned declaring
-# types, which may answer null but never a wrong method. Its interface section
+# generic implementations, array generic arguments, runtime-owned declaring
+# types, which may answer null but never a wrong method, and Object virtuals'
+# method groups, which name the method their receiver runs. Its interface section
 # pins the selected method for competing plain and explicit generic bodies in
 # either metadata order, and for a derived interface's override of a default
 # over class, struct, inherited, typed, generic, identical-body and
@@ -150,7 +151,11 @@
 # binding closed over null runs the row's own body, a bodiless row faulting as bad
 # IL, and an open binding runs a non-virtual row over a null receiver. A call
 # through System.Object runs the override of Object's member past a non-virtual
-# or new-slot redeclaration.
+# or new-slot redeclaration. Its System.Object and System.ValueType section
+# asserts that a named lookup answers their members through levels with a row for
+# each override, hides one behind such an override and reports an overload beside
+# one as ambiguous, and that Invoke, CreateDelegate and a method group run and
+# report what a callvirt runs, with .NET's receiver and arity faults.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -217,6 +222,7 @@ gate_extra_asserts() {
     grep -Fxq 'delegate-method-array-generic=Int32[]/String[]' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-hider=GvmBase/base/GvmLeaf/leaf' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-covariant=CovariantLeaf/CovariantLeaf/CovariantLeaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'delegate-method-object-virtual=Object.ToString/ValueType/ValueType/ReflectDelegateIdentitySubset.Program+StructProbe/True' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-end' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-interface-begin' "$out/metadata-layout.stdout"
     grep -Fxq 'delegate-method-generic-explicit-order=explicit/PlainFirstGeneric/True/explicit/ExplicitFirstGeneric/True' "$out/metadata-layout.stdout"
@@ -368,6 +374,17 @@ gate_extra_asserts() {
     grep -Fxq 'static virtual delegate: IFactory.Virt/True/EntryPointNotFoundException 0x80131523' "$out/metadata-layout.stdout"
     grep -Fxq 'static abstract row, typed catch: caught:True' "$out/metadata-layout.stdout"
     grep -Fxq 'object callvirt past new slots: ReflectVirtualInvokeSubset.HiddenText/ReflectVirtualInvokeSubset.SlotTextLeaf/slot-leaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'object rows: System.String ToString()|Boolean Equals(System.Object)|Int32 GetHashCode()|System.Type GetType()' "$out/metadata-layout.stdout"
+    grep -Fxq 'object Equals, no types: AmbiguousMatchException' "$out/metadata-layout.stdout"
+    grep -Fxq 'value Equals, no types: ValueType.Equals' "$out/metadata-layout.stdout"
+    grep -Fxq 'overload beside object row: AmbiguousMatchException' "$out/metadata-layout.stdout"
+    grep -Fxq 'object row, receivers: labeled/ReflectVirtualInvokeSubset.Leaf/42/shown:2/ReflectVirtualInvokeSubset.HiddenText/ReflectVirtualInvokeSubset.SlotTextLeaf' "$out/metadata-layout.stdout"
+    grep -Fxq 'object row, null receiver: TargetException 0x80131603 Non-static method requires a target.' "$out/metadata-layout.stdout"
+    grep -Fxq 'value row, class receiver: TargetException 0x80131603 Object type System.ValueType does not match target type ReflectVirtualInvokeSubset.Leaf.' "$out/metadata-layout.stdout"
+    grep -Fxq 'object Equals, no argument: TargetParameterCountException 0x8002000E Parameter count mismatch.' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed object row, labeled: labeled/Labeled.ToString' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed value row, class: ArgumentException' "$out/metadata-layout.stdout"
+    grep -Fxq 'object method groups: 5/ReflectVirtualInvokeSubset.Mark/True/True/ReflectVirtualInvokeSubset.Leaf/ValueType.ToString/Object.ToString' "$out/metadata-layout.stdout"
     grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"

@@ -2247,6 +2247,7 @@ internal sealed partial class MethodCompiler
                 closedForm = 1;
             }
             var m = Pop();
+            NoteValueTypeRows();
             string ct = CppTypes.Of(dT);
             Push(StackKind.Ref, ct,
                 $"({ct})dn2cpp_delegate_create(dn2cpp_get_type_from_handle({tiExpr}), {cdTarget}, (Dn2CppMethodRef*)({m.Expr}), {closedForm}, 1)");

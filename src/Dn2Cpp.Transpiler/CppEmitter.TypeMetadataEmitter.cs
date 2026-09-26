@@ -45,6 +45,9 @@ internal sealed partial class CppEmitter
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _methodTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _ctorTabs = new();
         private readonly Dictionary<ClassInfo, (string Expr, int Count)> _propTabs = new();
+        // The methods under an Object member name that got a method row, per class, for
+        // the class's DN2CPP_TF_OBJECT_MEMBER_ROWS decision (CarriesObjectMemberRows).
+        private readonly Dictionary<ClassInfo, HashSet<MethodDefinitionHandle>> _objectMemberRows = new();
         // A method's address within its emitted table ("&methtab_X[k]"), so a property's
         // accessor can reference its method-table entry.
         private readonly Dictionary<MethodInfo, string> _memberAddr = new();
@@ -774,7 +777,8 @@ internal sealed partial class CppEmitter
                 // the enum metadata (enumUnderlying, enumMembers, enumMemberCount).
                 string enFlags = "(DN2CPP_TF_ENUM | DN2CPP_TF_VALUETYPE | DN2CPP_TF_SEALED"
                     + (IsNestedType(en) ? " | DN2CPP_TF_NESTED" : "")
-                    + (EnumHasFlagsAttribute(en) ? " | DN2CPP_TF_FLAGS" : "") + ")";
+                    + (EnumHasFlagsAttribute(en) ? " | DN2CPP_TF_FLAGS" : "")
+                    + (CarriesObjectMemberRows(en) ? " | DN2CPP_TF_OBJECT_MEMBER_ROWS" : "") + ")";
                 var (enIlAttrs, enToken) = TypeIlMeta(en);
                 // instanceSize is the enum's MODEL width — int32, or int64 for a long/ulong
                 // underlying — not its CLR underlying width: every reader of this field
@@ -1887,6 +1891,12 @@ internal sealed partial class CppEmitter
                 if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
                     continue;
                 _memberAddr[m] = rows.Count.ToString();
+                if (prefix == "methtab" && !m.Handle.IsNil && CoreIntrinsics.IsObjectMemberRowName(m.Name))
+                {
+                    if (!_objectMemberRows.TryGetValue(cls, out var named))
+                        _objectMemberRows[cls] = named = new HashSet<MethodDefinitionHandle>();
+                    named.Add(m.Handle);
+                }
                 int attrs = MetadataMemberAttrs((int)m.Attributes)
                     | (((int)m.Attributes & 0x800) != 0 ? 0x20 : 0)
                     | (m.Context.MethodArgs.Length > 0 ? 0x40 : 0);
@@ -2164,7 +2174,8 @@ internal sealed partial class CppEmitter
             // Skip opaque/intrinsic types (System.Object/ValueType/Exception/…): their
             // members are intrinsic-dispatched and their ti_ sits in user types' base
             // chains, so emitting a table here would leak Object.ToString/Equals/etc.
-            // into GetMethods — which, unlike real .NET, dn2cpp does not reflect.
+            // into GetMethods, which unlike real .NET lists no Object member; a named
+            // lookup answers those from the runtime's rows (dn2cpp_meta_lookup).
             if (cls.IsEnum || _e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                 return;
             // Dedupe by CppName: a class can list the same method twice (e.g. an
@@ -2209,6 +2220,33 @@ internal sealed partial class CppEmitter
             // table it points into.
             if (keepRefl && BuildPropTable(cls, methods) is { } pt)
                 _propTabs[cls] = pt;
+        }
+
+        /// <summary>Whether every method <paramref name="cls"/> declares under a name
+        /// <see cref="CoreIntrinsics.IsObjectMemberRowName"/> accepts got a method row, so
+        /// the runtime may answer an Object or ValueType row through this level without
+        /// passing over an override it has no row for. Reads only the raw TypeDef, so it
+        /// decodes nothing; a class whose tables are stripped never qualifies.</summary>
+        private bool CarriesObjectMemberRows(ClassInfo cls)
+        {
+            _objectMemberRows.Remove(cls, out var rows);
+            if (cls.Handle.IsNil || !_c.KeepsReflectionMetadata(cls))
+                return false;
+            try
+            {
+                var reader = cls.Module.Reader;
+                foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+                {
+                    if (CoreIntrinsics.IsObjectMemberRowName(reader.GetString(reader.GetMethodDefinition(handle).Name))
+                        && rows?.Contains(handle) != true)
+                        return false;
+                }
+                return true;
+            }
+            catch (Exception e) when (!Compilation.IsMustEscape(e))
+            {
+                return false;
+            }
         }
 
         // The class's type-info + interned Type object: the externally-visible
@@ -2395,6 +2433,8 @@ internal sealed partial class CppEmitter
             // kept, so the bit does not speak for GetConstructor/Activator.
             if (!_c.KeepsReflectionMetadata(cls))
                 flagBits.Add("DN2CPP_TF_METADATA_STRIPPED");
+            if (CarriesObjectMemberRows(cls))
+                flagBits.Add("DN2CPP_TF_OBJECT_MEMBER_ROWS");
             // Abstract System.Array base. Array type-infos (ti_arr_<T> and the runtime's
             // built-in / dynamically-built handles) carry base=nullptr, so `(array) is
             // Array` / castclass reaches nothing on the base chain; this bit lets

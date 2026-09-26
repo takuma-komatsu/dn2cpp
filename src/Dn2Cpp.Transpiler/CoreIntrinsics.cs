@@ -816,6 +816,13 @@ internal static partial class CoreIntrinsics
 
     public static bool IsIntrinsicType(string fullTypeName) => s_intrinsicTypes.Contains(fullTypeName);
 
+    /// <summary>The names of the System.Object members whose rows the runtime answers a
+    /// named lookup with and lets derived types inherit only through a level declaring a
+    /// row for each method of such a name (the gated rows of <c>g_meta_members</c> in
+    /// dn2cpp_system_reflection.cpp; keep the two in step).</summary>
+    public static bool IsObjectMemberRowName(string name) =>
+        name is "ToString" or "Equals" or "GetHashCode" or "GetType" or "Finalize" or "ReferenceEquals";
+
     /// <summary>System.Array's generic members whose real CoreLib bodies are plain managed
     /// code: ThrowHelper argument checks, element reads, a delegate invoke, a List&lt;T&gt; or
     /// ReadOnlyCollection&lt;T&gt;, and calls to each other. Their call sites stay intercepted

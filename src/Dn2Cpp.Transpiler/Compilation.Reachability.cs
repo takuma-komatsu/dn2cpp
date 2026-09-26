@@ -875,6 +875,33 @@ internal sealed partial class Compilation
     /// emission — the wiring it drives is decided before a single body compiles).</summary>
     private void NoteObjectEqualityDispatch() => _objectEqualityDispatched = true;
 
+    /// <summary>Whether an <c>ldvirtftn</c> token names an Object-rooted Equals or
+    /// GetHashCode (<see cref="CoreIntrinsics.ScObjectEqualityDispatch"/>), from raw
+    /// metadata names alone; the name is tested before the parent is composed.</summary>
+    private bool IsObjectEqualityFtn(Module module, EntityHandle handle)
+    {
+        var reader = module.Reader;
+        switch (handle.Kind)
+        {
+            case HandleKind.MemberReference:
+            {
+                var mrh = (MemberReferenceHandle)handle;
+                string name = reader.GetString(reader.GetMemberReference(mrh).Name);
+                return CoreIntrinsics.IsObjectEqualityMemberName(name)
+                    && CoreIntrinsics.ScObjectEqualityDispatch.Matches(MemberRefParentTypeName(module, mrh), name);
+            }
+            case HandleKind.MethodDefinition:
+            {
+                var mdh = (MethodDefinitionHandle)handle;
+                string name = reader.GetString(reader.GetMethodDefinition(mdh).Name);
+                return CoreIntrinsics.IsObjectEqualityMemberName(name)
+                    && CoreIntrinsics.ScObjectEqualityDispatch.Matches(MethodDefParentTypeName(module, mdh), name);
+            }
+            default:
+                return false;
+        }
+    }
+
     /// <summary>Minted structural bodies in mint order — the emitter's synthesis round
     /// reads this (a synthetic is not in its class's <c>Methods</c>, so the body walk
     /// cannot see it). Mint order is reach order, which is deterministic; the emitter
@@ -5061,8 +5088,14 @@ internal sealed partial class Compilation
                             // on to ResolveCallTarget below exactly as it would have.
                             if (CoreIntrinsics.ScObjectEqualityDispatch.Matches(mrParent, mrName))
                                 NoteObjectEqualityDispatch();
+                            // A reflected Object or ValueType row answers Equals and
+                            // GetHashCode through the same helpers, so the invoke and
+                            // CreateDelegate marks are object-equality dispatches too.
                             if (mrName == "Invoke" && mrParent is "System.Reflection.MethodBase" or "System.Reflection.MethodInfo")
+                            {
                                 _reflectionInvokeUsed = true;
+                                NoteObjectEqualityDispatch();
+                            }
                             // PropertyInfo.GetValue/SetValue invoke the accessor methods,
                             // so treat them like Invoke usage — reach app-module methods
                             // (which include property get_/set_ accessors).
@@ -5074,7 +5107,10 @@ internal sealed partial class Compilation
                             // reach every app body.
                             else if (mrName == "CreateDelegate" && IsUserModule(module)
                                 && mrParent is "System.Delegate" or "System.Reflection.MethodInfo")
+                            {
                                 _reflectionInvokeUsed = true;
+                                NoteObjectEqualityDispatch();
+                            }
                             // ConstructorInfo.Invoke / non-generic Activator.CreateInstance(Type)
                             // -> reach app-module ctors so a reflected ctor is invokable.
                             // ILDiet keeps typeof-named ctors on the same predicate.
@@ -5138,7 +5174,15 @@ internal sealed partial class Compilation
                         else if (insn.OpCode is ILOpCode.Call or ILOpCode.Callvirt
                             && handle.Kind == HandleKind.MethodSpecification && IsUserModule(module)
                             && IsCreateDelegateSpec(module, (MethodSpecificationHandle)handle))
+                        {
                             _reflectionInvokeUsed = true;
+                            NoteObjectEqualityDispatch();
+                        }
+                        // A delegate over Object::Equals/GetHashCode binds the helper a call
+                        // lowers to (MethodCompiler's ldvirtftn arm): the same dispatch.
+                        else if (!_objectEqualityDispatched && insn.OpCode == ILOpCode.Ldvirtftn
+                            && IsObjectEqualityFtn(module, handle))
+                            NoteObjectEqualityDispatch();
                         // The same mark, for the shape the block above cannot see: a body of
                         // the loaded CoreLib calling Object::Equals/GetHashCode names them
                         // with a MethodDef token (same module), not a MemberRef. Read behind
