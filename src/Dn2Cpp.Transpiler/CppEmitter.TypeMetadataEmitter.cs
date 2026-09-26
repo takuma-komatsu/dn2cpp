@@ -371,38 +371,47 @@ internal sealed partial class CppEmitter
             return result.OrderBy(c => c.CppName, System.StringComparer.Ordinal).ToList();
         }
 
-        /// <summary>One SZArray member type the reflection tables will name: record its
-        /// element (<see cref="Compilation.NoteArrayElementType"/> — the same route every
-        /// <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
-        /// <c>ti_arr_&lt;elem&gt;</c> handle <see cref="CppEmitter.FieldTypeInfoExpr"/>'s
-        /// SZArray arm names is forward-declared and emitted, and — for an enum element —
-        /// note the enum referenced so its own <c>ti_</c> (the array handle's elementType,
-        /// what GetElementType answers with) is emitted by the referenced-enum loops below —
-        /// an enum only ever named as a reflected array element has no token site to have
-        /// done either. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm; a
-        /// canonical-placeholder element is refused by NoteArrayElementType itself.</summary>
-        private void NoteReflectedArrayType(TypeDesc t)
+        /// <summary>One type the reflection tables will name by its type-info: a member's
+        /// type, a closed generic argument, or an array member's element. An enum is noted
+        /// referenced so its own <c>ti_</c> is emitted by the referenced-enum loops below:
+        /// <see cref="CppEmitter.FieldTypeInfoExpr"/> degrades an enum without one to
+        /// System.Object, and an enum only a reflected row names has no token site to have
+        /// noted it. An SZArray records its element (<see cref="Compilation.NoteArrayElementType"/>
+        /// — the same route every <c>newarr</c>/<c>typeof(T[])</c> site takes) so the precise
+        /// <c>ti_arr_&lt;elem&gt;</c> handle the SZArray arm names is forward-declared and
+        /// emitted. Element kinds mirror the <c>ldtoken typeof(T[])</c> arm, a cross-assembly
+        /// name is promoted as FieldTypeInfoExpr promotes it, and a canonical-placeholder type
+        /// is refused.</summary>
+        private void NoteReflectedType(TypeDesc t)
         {
+            if (t is { Kind: TypeKind.External, ExternalName: { } xn } && _c.FindClassByFullName(xn) is { } xc)
+                t = TypeDesc.MakeClass(xc);
+            if (t is { Kind: TypeKind.Class, Class: { IsEnum: true } en })
+            {
+                if (!Compilation.ContainsCanonPlaceholder(t))
+                    _c.NoteReferencedType(en);
+                return;
+            }
             if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el })
                 return;
             _c.NoteArrayElementType(el);
-            if (el is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
-                _c.NoteReferencedType(ec);
+            NoteReflectedType(el);
         }
 
-        /// <summary>Pre-notes every SZArray type the reflection tables emit as a member
-        /// type — field types (<see cref="RenderFieldTable"/>), method/ctor return,
-        /// parameter and generic-argument types (<see cref="BuildMemberTable"/> via
-        /// <see cref="RenderMemberTables"/>), property types (<see cref="BuildPropTable"/>)
-        /// and the closed generic-argument vectors (<see cref="RenderTypeInfo"/>) — by
-        /// mirroring those emitters' class/member filters, so it reads exactly the member
-        /// types they read (the trim rule is applied before any signature is touched, like
-        /// BuildMemberTable's row loop). MUST run before the forward-declaration loops in
-        /// <see cref="Emit"/>: the ti_arr_/enum-ti_ externs — and with them the
-        /// declared-handle record <see cref="CppEmitter.ArrayTypeInfoDeclared"/> answers
-        /// from — are taken there, and an element noted later can no longer be named by a
-        /// member type. Each mirrored emitter names this method at its guard.</summary>
-        private void NoteReflectedMemberArrayElements()
+        /// <summary>Pre-notes every type the reflection tables name by its type-info
+        /// (<see cref="NoteReflectedType"/>) — field types (<see cref="RenderFieldTable"/>),
+        /// method/ctor return, parameter and generic-argument types
+        /// (<see cref="BuildMemberTable"/> via <see cref="RenderMemberTables"/>), property
+        /// types (<see cref="BuildPropTable"/>) and the closed generic-argument vectors
+        /// (<see cref="RenderTypeInfo"/>) — by mirroring those emitters' class/member
+        /// filters, so it reads exactly the member types they read (the trim rule is applied
+        /// before any signature is touched, like BuildMemberTable's row loop). MUST run
+        /// before the forward-declaration loops in <see cref="Emit"/>: the ti_arr_/enum-ti_
+        /// externs — and with them the declared-handle record
+        /// <see cref="CppEmitter.ArrayTypeInfoDeclared"/> answers from — are taken there, and
+        /// a type noted later can no longer be named by a member row. Each mirrored emitter
+        /// names this method at its guard.</summary>
+        private void NoteReflectedMemberTypes()
         {
             foreach (var cls in _e.TopoOrder())
             {
@@ -411,13 +420,13 @@ internal sealed partial class CppEmitter
                 // RenderFieldTable's guard.
                 if (cls.Fields.Count > 0 && !_e.IsCanonicalWorld(cls) && _c.KeepsReflectionMetadata(cls))
                     foreach (var f in cls.Fields)
-                        NoteReflectedArrayType(f.Type);
+                        NoteReflectedType(f.Type);
                 // RenderTypeInfo's generic-argument vector gate (its _genericDefSyms
                 // lookup succeeds exactly when GenericDefInfo is non-null).
                 if (!_e.IsCanonicalWorld(cls) && !_e.SkipsCanonicalMetadata(cls)
                     && _e.GenericDefInfo(cls) is not null)
                     foreach (var a in cls.Context.TypeArgs)
-                        NoteReflectedArrayType(a);
+                        NoteReflectedType(a);
                 // RenderMemberTables' guard + BuildMemberTable's row trim.
                 if (_e.IsOpaque(cls) || _e.IsCanonicalWorld(cls))
                     continue;
@@ -439,11 +448,11 @@ internal sealed partial class CppEmitter
                         continue;
                     if (trim && m.Rva != 0 && !_c.Reachable.Contains(m) && !_c.KeepsDelegateTargetRow(m))
                         continue;
-                    NoteReflectedArrayType(m.Signature.ReturnType);
+                    NoteReflectedType(m.Signature.ReturnType);
                     foreach (var p in m.Signature.ParameterTypes)
-                        NoteReflectedArrayType(p);
+                        NoteReflectedType(p);
                     foreach (var ga in m.Context.MethodArgs)
-                        NoteReflectedArrayType(ga);
+                        NoteReflectedType(ga);
                     if (CustomModifiers(m) is { } modifiers)
                     {
                         NoteModifierTypes(modifiers.ReturnType);
@@ -466,7 +475,7 @@ internal sealed partial class CppEmitter
                         if ((acc.Getter.IsNil || !accessorRows.Contains(acc.Getter))
                             && (acc.Setter.IsNil || !accessorRows.Contains(acc.Setter)))
                             continue;
-                        NoteReflectedArrayType(
+                        NoteReflectedType(
                             reader.GetPropertyDefinition(ph).DecodeSignature(_c.SigProvider, cls.Context).ReturnType);
                     }
                 }
@@ -478,7 +487,7 @@ internal sealed partial class CppEmitter
             foreach (var cls in _e._referencedIntrinsicTis)
                 if (_e.GenericDefInfo(cls) is not null)
                     foreach (var a in cls.Context.TypeArgs)
-                        NoteReflectedArrayType(a);
+                        NoteReflectedType(a);
         }
 
         /// <summary>The pooled <c>genargpool_</c> symbol for <paramref name="cls"/>'s closed
@@ -620,10 +629,10 @@ internal sealed partial class CppEmitter
             // to it, which is why that step re-derives.
             _e._referencedIntrinsicTis = ReferencedIntrinsicTypeInfos();
 
-            // Before anything is forward-declared: note every SZArray the reflection
-            // tables below will type a member with, so its precise ti_arr_ handle (and
-            // an enum element's ti_) is declared/emitted like a body-noted one.
-            NoteReflectedMemberArrayElements();
+            // Before anything is forward-declared: note every array and enum the
+            // reflection tables below will type a member or a generic argument with, so its
+            // precise ti_arr_ or enum ti_ is declared and emitted like a body-noted one.
+            NoteReflectedMemberTypes();
 
             // The note pass also discovers custom-modifier types. Unlike member
             // parameter types, those are erased by the main TypeDesc signature and
@@ -1655,8 +1664,8 @@ internal sealed partial class CppEmitter
         // carries the field's name, declaring/field type-info, and accessibility bits.
         private void RenderFieldTable(ClassInfo cls)
         {
-            // Guard mirrored by NoteReflectedMemberArrayElements (which pre-notes the
-            // SZArray field types this table names) — keep the two in step.
+            // Guard mirrored by NoteReflectedMemberTypes (which pre-notes the
+            // array and enum field types this table names) — keep the two in step.
             if (cls.IsEnum || cls.Fields.Count == 0 || _e.IsCanonicalWorld(cls)
                 || !_c.KeepsReflectionMetadata(cls))
                 return;
@@ -1743,8 +1752,8 @@ internal sealed partial class CppEmitter
                         ? $"return (Dn2CppObject*)({access});"
                         : $"{cppT} v = {access}; return dn2cpp_box({ftInfo}, &v, sizeof({cppT}));");
                     // A null value stores the default. The dispatcher converts null
-                    // through the row's field type, which reads Object for an enum the
-                    // image emits no type-info for.
+                    // through the row's field type, which reads Object for a value type
+                    // the image emits no type-info for.
                     string setBody = ensure + (isHeaderless
                         ? $"{access} = {MethodCompiler.HeaderlessUnwrapExpr("val", memberT)};"
                         : isRef
@@ -1808,7 +1817,7 @@ internal sealed partial class CppEmitter
             // program that reflects-and-invokes force-reaches app-module bodies only. A
             // hot-update base keeps everything: the interpreter binds a patch's imports by
             // walking these tables.
-            // (Row filter mirrored by NoteReflectedMemberArrayElements — keep in step.)
+            // (Row filter mirrored by NoteReflectedMemberTypes — keep in step.)
             bool trim = !appCls && !_e._hotUpdateBase;
             foreach (var m in members)
             {
@@ -2022,7 +2031,7 @@ internal sealed partial class CppEmitter
         // entry. `methods` is the type's deduped method list (whose addresses
         // are recorded in _memberAddr). Returns null when the type has no properties.
         // (Row condition + property-type decode mirrored by
-        // NoteReflectedMemberArrayElements — keep the two in step.)
+        // NoteReflectedMemberTypes — keep the two in step.)
         private (string Expr, int Count)? BuildPropTable(ClassInfo cls, List<MethodInfo> methods)
         {
             var byHandle = new Dictionary<MethodDefinitionHandle, MethodInfo>();
@@ -2423,7 +2432,7 @@ internal sealed partial class CppEmitter
             // Generic reflection: a closed instantiation points at its shared
             // open-definition handle and lists its closed type arguments. Non-generic
             // types leave these 0 (trailing-member convention). (Gate mirrored by
-            // NoteReflectedMemberArrayElements for SZArray type arguments.)
+            // NoteReflectedMemberTypes for array and enum type arguments.)
             string genDefExpr = "nullptr", genArgsExpr = "nullptr";
             int genArgCount = 0;
             if (!_e.IsCanonicalWorld(cls)

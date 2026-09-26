@@ -2607,7 +2607,7 @@ internal sealed partial class Compilation
 
     /// <summary>See <see cref="MdArrayTypes"/>. Recurses like NoteArrayElementType so
     /// the whole GetElementType chain stays linkable, notes a referenced enum element's
-    /// own ti_ (the NoteReflectedArrayType precedent), and keys the shared rank&gt;=2
+    /// own ti_ (the NoteReflectedType precedent), and keys the shared rank&gt;=2
     /// dispatch map — the MD identity can flow through an SZ array or constructed
     /// generic metadata without a statically visible MD token.</summary>
     internal void NoteMdArrayType(TypeDesc md)
@@ -2789,7 +2789,7 @@ internal sealed partial class Compilation
     /// <summary>Plants those rows on every noted element whose array still has no dispatch
     /// map, once the noted set is final. The eager loop above runs at NOTING time and so
     /// cannot see an element first noted AFTER the emit fixpoint — the reflection tables'
-    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>) is
+    /// member-type pre-note (<c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>) is
     /// exactly that, and its arrays enumerated six interfaces where .NET reports eleven.
     /// This sweep is the confirmation point, so the answer stops depending on WHEN
     /// an element was noted; a dispatch map cannot be wired here (its thunks need bodies the
@@ -5084,7 +5084,7 @@ internal sealed partial class Compilation
     ///
     /// <para>This arm is the necessary pair of the precise reflected array member
     /// types (<c>CppEmitter.FieldTypeInfoExpr</c>'s SZArray arm +
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>): a precise
+    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>): a precise
     /// <c>T[]</c> member type is what routes the contract resolver onto the ARRAY
     /// contract — and therefore onto this temporary — where the old
     /// <c>System.Object</c> degrade fell into the untyped/Linq contract and never
@@ -5214,7 +5214,7 @@ internal sealed partial class Compilation
     /// has no interface-dispatch map, so the first LINQ over it inside the attribute
     /// ctor (e.g. <c>inputNames.Count(...)</c>) aborts loudly.
     /// An enum element also needs its own referenced ti_, exactly as
-    /// TypeMetadataEmitter.NoteReflectedArrayType notes for member types.</summary>
+    /// TypeMetadataEmitter.NoteReflectedType notes for member types.</summary>
     private void NoteAttrArgArrayType(TypeDesc t)
     {
         if (t is not { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray } el })

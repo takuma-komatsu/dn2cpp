@@ -11,7 +11,8 @@ using System.Reflection;
 // Nullable<U>; null stores the field type's default. A constant answers from
 // metadata whatever the receiver and refuses SetValue before any check; a static
 // read-only field refuses SetValue once the value checks; a Nullable<T> field
-// reads back as null or a boxed T.
+// reads back as null or a boxed T. An enum that only a reflected member row or a
+// closed generic argument names reports its own type.
 namespace ReflectFieldValidationSubset;
 
 enum Level { Low, Mid, High }
@@ -62,14 +63,30 @@ class Target
 
 class DerivedTarget : Target { }
 
-// No code names Unnamed, so its type-info is not emitted and the field's
-// reflected type reads Object; only its setter knows the field is a value.
+// Only a reflected field row names Unnamed.
 enum Unnamed { None, Some }
 
 class Quiet
 {
     public Unnamed Mode;
+    public Unnamed? MaybeMode;
+    public UnnamedProp Prop { get; set; }
+    public static int Take(UnnamedParam p) => (int)p;
+    public static UnnamedRet Give() => UnnamedRet.R1;
 }
+
+// Only a reflected member row or a closed generic argument names each of these.
+enum UnnamedConst { First, Second }
+
+enum UnnamedParam { P0, P1 }
+
+enum UnnamedProp { Q0, Q1 }
+
+enum UnnamedRet { R0, R1 }
+
+enum UnnamedArg { A0 }
+
+class Marker<T> { }
 
 // Only typeof names this definition, so MakeGenericType mints each instantiation
 // from one template, whose field rows serve every instantiation.
@@ -103,6 +120,7 @@ class Constants
     public const uint Large = 4000000000;
     public const Level Grade = Level.High;
     public const Wide Span = Wide.Big;
+    public const UnnamedConst Fixed = UnnamedConst.Second;
     public const nint Native = 7;
     public const decimal Money = 1.25m;
     private const int Hidden = 5;
@@ -323,6 +341,32 @@ static class Program
         Show("nullable set null, get", () => { some.SetValue(optional, null); return some.GetValue(optional); });
         Show("static nullable set, get", () => { optionalShared.SetValue(null, 2.5); return optionalShared.GetValue(null); });
         Show("nullable set short", () => { some.SetValue(optional, (short)3); return null; });
+
+        var quiet = new Quiet();
+        FieldInfo maybeMode = Field(typeof(Quiet), "MaybeMode");
+        Show("unnamed field type", () => mode.FieldType.FullName);
+        Show("unnamed get", () => mode.GetValue(quiet));
+        Show("unnamed set int", () => { mode.SetValue(quiet, 1); return mode.GetValue(quiet); });
+        Show("unnamed set other enum", () => { mode.SetValue(quiet, Level.High); return mode.GetValue(quiet); });
+        Show("unnamed set string", () => { mode.SetValue(quiet, "x"); return null; });
+        Show("unnamed names", () => string.Join(",", Enum.GetNames(mode.FieldType)));
+        Show("unnamed nullable type", () => maybeMode.FieldType.ToString());
+        Show("unnamed nullable get", () => maybeMode.GetValue(quiet));
+        Show("unnamed nullable set", () => { maybeMode.SetValue(quiet, mode.GetValue(quiet)); return maybeMode.GetValue(quiet); });
+        FieldInfo fixedField = Field(typeof(Constants), "Fixed");
+        Show($"unnamed constant {fixedField.FieldType.Name}", () => fixedField.GetValue(null));
+        MethodInfo take = typeof(Quiet).GetMethod("Take")!;
+        Show("unnamed parameter type", () => take.GetParameters()[0].ParameterType.FullName);
+        Show("unnamed parameter invoke", () => take.Invoke(null, new object[] { 1 }));
+        Show("unnamed parameter wrong argument", () => take.Invoke(null, new object[] { "x" }));
+        PropertyInfo prop = typeof(Quiet).GetProperty("Prop")!;
+        Show("unnamed property type", () => prop.PropertyType.FullName);
+        Show("unnamed property get", () => prop.GetValue(quiet));
+        Show("unnamed property wrong value", () => { prop.SetValue(quiet, "x"); return null; });
+        MethodInfo give = typeof(Quiet).GetMethod("Give")!;
+        Show("unnamed return type", () => give.ReturnType.FullName);
+        Show("unnamed return invoke", () => give.Invoke(null, null));
+        Show("unnamed generic argument", () => new Marker<UnnamedArg>().GetType().ToString());
 
         Console.WriteLine("field validation end");
     }

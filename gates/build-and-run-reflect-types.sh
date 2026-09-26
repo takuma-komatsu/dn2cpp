@@ -393,7 +393,7 @@ echo "OK — both mouths of CppEmitter.ArrayTypeInfoDeclared answered, none degr
 # The r-late line above is the behavioural half and covers ONE element. This is the
 # corpus-wide half, and it is the one that can see the class of bug: the rows used to
 # be planted at NOTING time, so an element first noted after the emit fixpoint — which
-# is where TypeMetadataEmitter.NoteReflectedMemberArrayElements notes every array a
+# is where TypeMetadataEmitter.NoteReflectedMemberTypes notes every array a
 # reflection table types a member with — got none, and its GetInterfaces() answered six
 # where .NET says eleven while the type TEST already answered eleven by
 # DN2CPP_TF_ARRAY_GEN_ITF. Nothing about that is loud: the transpile is green, the C++

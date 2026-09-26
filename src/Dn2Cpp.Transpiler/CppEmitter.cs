@@ -1420,7 +1420,7 @@ internal sealed partial class CppEmitter
     /// see — the emission is well-formed either way, and what is lost is a fact about a type.
     ///
     /// <para>Zero holds because for both mouths the declared set is filled by a PAIRING that
-    /// mirrors the mouth: <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c>
+    /// mirrors the mouth: <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c>
     /// pre-notes exactly the member types the reflection tables go on to render, and
     /// <c>Compilation.NoteAttrArgArrayType</c> notes an attribute argument's element in the
     /// same loop that reaches the attribute's ctor. A "no" means a pairing has come
@@ -1460,7 +1460,7 @@ internal sealed partial class CppEmitter
             return;
         }
         sb.AppendLine("Note the element where the mouth's pairing does: a reflected member type "
-                      + "through TypeMetadataEmitter.NoteReflectedMemberArrayElements, an attribute "
+                      + "through TypeMetadataEmitter.NoteReflectedMemberTypes, an attribute "
                       + "argument through Compilation.NoteAttrArgArrayType. Both run before the "
                       + "declaration loops, which is what makes the handle exist.");
         sb.Append($"Raise {EnvKnobs.MaxArrayTypeInfoDegrades}=<n> to accept them (cap is {cap}) — the "
@@ -4080,12 +4080,14 @@ internal sealed partial class CppEmitter
     /// an object-degraded array member deserializes as an untyped JArray and the setter
     /// thunk's blind cast stores it — silent corruption). Gated on
     /// <see cref="ArrayTypeInfoDeclared"/> so only a forward-declared handle is ever named;
-    /// <c>TypeMetadataEmitter.NoteReflectedMemberArrayElements</c> is what puts reflected
+    /// <c>TypeMetadataEmitter.NoteReflectedMemberTypes</c> is what puts reflected
     /// member elements in that set — a mirror of this emitter's own filters, so a "no" here
     /// means the mirror came apart, which is why it is counted and fails the transpile
     /// (<see cref="AssertArrayTypeInfoDegradesWithinCap"/>) rather than degrading in
     /// silence. An MDArray type whose identity closure was noted names the same static
-    /// <c>ti_md_</c> handle the runtime interner registers for that element/rank shape.</summary>
+    /// <c>ti_md_</c> handle the runtime interner registers for that element/rank shape.
+    /// An enum names its own ti_, which the same pre-note emits for every enum a member
+    /// row or a closed generic-argument vector names.</summary>
     private string FieldTypeInfoExpr(TypeDesc t, HashSet<ClassInfo> emittedEnums)
     {
         if (t is { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive or TypeKind.Class or TypeKind.External or TypeKind.SZArray or TypeKind.MDArray } el }
