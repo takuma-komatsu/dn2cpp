@@ -127,8 +127,11 @@ internal sealed class CustomAttributeTypeProvider : ICustomAttributeTypeProvider
         (type.Kind == TypeKind.External && type.ExternalName == "System.Type")
         || (type.Kind == TypeKind.Class && type.Class!.FullName == "System.Type");
 
-    public TypeDesc GetTypeFromSerializedName(string name)
+    public TypeDesc GetTypeFromSerializedName(string? name)
     {
+        // A null Type argument arrives as a null name and decodes to a null value.
+        if (name is null)
+            return null!;
         // The blob carries an assembly-qualified name ("Ns.Type, Assembly, …"); only the
         // type-name prefix matters. Resolve it to an emitted ClassInfo when possible, else
         // an External placeholder (CppEmitter then treats the attribute as unsupported).
