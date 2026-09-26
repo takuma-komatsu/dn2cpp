@@ -12,11 +12,12 @@ using System.Reflection;
 // MakeGenericType receiver, a boxed enum through a System.Enum row, compiled
 // framework overrides of abstract rows, framework overrides only reflection
 // reaches, which a string literal after typeof names, and interface rows whose
-// declaration has a default body. An abstract row checks its receiver and arguments first,
-// and a closed CreateDelegate binding reports the body it runs. An application
-// interface's static, non-virtual and private members that nothing calls run as
-// themselves. RunStripped (dn2cpp only) reaches bodies the image stripped
-// through each trap shape.
+// declaration has a default body. An abstract row checks its receiver and
+// arguments first, and a closed CreateDelegate binding reports the body it runs;
+// a boxed value binds as a receiver or a first argument and runs on its box. An
+// application interface's static, non-virtual and private members that nothing
+// calls run as themselves. RunStripped (dn2cpp only) reaches bodies the image
+// stripped through each trap shape.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -202,6 +203,30 @@ class Toolbox : IToolbox
     public string Id() => "box";
 }
 
+interface ICounter
+{
+    int Get();
+    void Bump();
+    string Label() => "counter-default:" + Get();
+}
+
+struct Tally : ICounter
+{
+    public int N;
+
+    public int Get() => N;
+    public void Bump() => N++;
+}
+
+struct NamedTally : ICounter
+{
+    public int N;
+
+    public int Get() => N;
+    public void Bump() => N += 10;
+    public string Label() => "named:" + N;
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -236,6 +261,8 @@ static class Program
 
     private static MethodInfo Method(Type type, string name) =>
         type.GetMethod(name, Type.EmptyTypes) ?? throw new MissingMethodException(type.Name, name);
+
+    private static int Hundreds(ICounter counter) => counter.Get() * 100;
 
     private static string Ymd(object? value)
     {
@@ -418,6 +445,52 @@ static class Program
         Try("reflection-only struct-returning override", () => Ymd(typeof(Calendar).GetMethod("AddMonths")!
             .Invoke(new GregorianCalendar(), new object[] { new DateTime(2020, 1, 31), 1 })));
         Try("reflection-only framework interface impl", () => typeof(ICloneable).GetMethod("Clone")!.Invoke(new Version(1, 2), null));
+
+        // A boxed value binds an interface row or a reference base's row, and each
+        // call runs the value's body on the box the delegate holds.
+        object tally = new Tally { N = 5 };
+        MethodInfo counterGet = typeof(ICounter).GetMethod("Get")!;
+        MethodInfo counterBump = typeof(ICounter).GetMethod("Bump")!;
+        MethodInfo counterLabel = typeof(ICounter).GetMethod("Label")!;
+        Try("boxed struct delegate", () =>
+        {
+            var getTally = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet);
+            var bumpTally = (Action)Delegate.CreateDelegate(typeof(Action), tally, counterBump);
+            bumpTally();
+            bumpTally();
+            return getTally() + "/" + ((Tally)tally).N + "/" + ReferenceEquals(bumpTally.Target, tally);
+        });
+        Try("boxed struct delegate method", () =>
+            Describe(Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet).Method) + "/"
+            + Describe(Delegate.CreateDelegate(typeof(Action), tally, counterBump).Method));
+        Try("boxed struct delegate equality", () => Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet)
+            .Equals(Delegate.CreateDelegate(typeof(Func<int>), tally, counterGet)));
+        Try("boxed struct default body", () =>
+        {
+            var labelTally = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), tally, counterLabel);
+            return labelTally() + "/" + Describe(labelTally.Method);
+        });
+        Try("boxed struct own body", () =>
+        {
+            var labelNamed = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), new NamedTally { N = 3 },
+                counterLabel);
+            return labelNamed() + "/" + Describe(labelNamed.Method);
+        });
+        Try("boxed struct generic CreateDelegate", () => counterGet.CreateDelegate<Func<int>>(tally)());
+        Try("boxed struct first argument", () =>
+        {
+            var hundreds = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), tally,
+                typeof(Program).GetMethod(nameof(Hundreds), BindingFlags.NonPublic | BindingFlags.Static)!);
+            return hundreds() + "/" + ReferenceEquals(hundreds.Target, tally);
+        });
+        Try("boxed enum delegate", () =>
+        {
+            var compareTone = (Func<object, int>)Delegate.CreateDelegate(typeof(Func<object, int>), Tone.High,
+                typeof(Enum).GetMethod("CompareTo")!);
+            return compareTone(Tone.Low) + "/" + Describe(compareTone.Method) + "/" + compareTone.Target;
+        });
+        Try("boxed struct delegate, unrelated row", () =>
+            Delegate.CreateDelegate(typeof(Func<string>), tally, kind, false) is null);
 
         Console.WriteLine("virtual invoke end");
     }

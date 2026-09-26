@@ -2803,6 +2803,20 @@ static bool dn2cpp_dgbind_widens(const Dn2CppTypeInfo* from, const Dn2CppTypeInf
                                           dn2cpp_get_type_from_handle(from)) != 0;
 }
 
+// Whether .NET binds `obj` where an instance of `to` is expected: a closed
+// receiver, or a closed static method's first argument. The object is stored
+// unconverted, so a boxed value binds wherever its box is an instance of `to` — an
+// interface it implements, System.Enum, ValueType or Object. No other boxing
+// conversion binds.
+static bool dn2cpp_dgbind_instance_of(const Dn2CppObject* obj, const Dn2CppTypeInfo* to)
+{
+    const Dn2CppTypeInfo* from = obj->type;
+    if (from == to || dn2cpp_dgbind_widens(from, to))
+        return true;
+    return (from->flags & DN2CPP_TF_VALUETYPE) != 0 && (to->flags & DN2CPP_TF_VALUETYPE) == 0
+        && dn2cpp_typeinfo_assignable(from, to) != 0;
+}
+
 Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
                                      Dn2CppMethodRef* m, int32_t closedForm,
                                      int32_t throwOnFailure)
@@ -2839,14 +2853,6 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the delegate type is not in this image's reflection-bind registry "
             "(AOT: only delegate types the transpile emitted can be bound)");
-    // A bodiless virtual row (abstract or interface) binds the receiver's slot at
-    // each call, as MethodInfo.Invoke does.
-    bool slotBound = (mi->attrs & DN2CPP_MTHA_STATIC) == 0 && mi->vtableSlot >= 0
-        && (mi->declaringType->flags & DN2CPP_TF_VALUETYPE) == 0;
-    if (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound))
-        dn2cpp_throw_platform_not_supported(
-            "CreateDelegate: the target method's body was not compiled into this image");
-
     // Binding mode: .NET's shape rules. Open static / closed instance are the
     // classic forms; a delegate one parameter LONGER than an instance method is
     // open-instance (its first argument is the receiver); a delegate one
@@ -2879,7 +2885,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
 
     const Dn2CppTypeInfo* declTi = mi->declaringType;
     if (mode == DN2CPP_DGBIND_CLOSED_INSTANCE && target != nullptr
-        && target->type != declTi && !dn2cpp_dgbind_widens(target->type, declTi))
+        && !dn2cpp_dgbind_instance_of(target, declTi))
         return fail();
     if (mode == DN2CPP_DGBIND_OPEN_INSTANCE)
     {
@@ -2899,7 +2905,7 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
         const Dn2CppTypeInfo* p0 = mi->parameters[0]->paramType;
         if ((p0->flags & DN2CPP_TF_VALUETYPE) != 0)
             return fail();
-        if (target != nullptr && !dn2cpp_dgbind_widens(target->type, p0))
+        if (target != nullptr && !dn2cpp_dgbind_instance_of(target, p0))
             return fail();
     }
     // Remaining parameters: delegate argument j feeds method parameter
@@ -2913,6 +2919,17 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // Return: covariant reference widening from the method's to the delegate's.
     if (!dn2cpp_dgbind_widens(mi->returnType, inv->returnType))
         return fail();
+    // The shape binds; only now can the image refuse. A bodiless virtual row
+    // (abstract or interface) binds the receiver's slot at each call, as
+    // MethodInfo.Invoke does. A boxed value has no vtable, so a class row bound to
+    // one runs its own body.
+    bool slotBound = !mStatic && mi->vtableSlot >= 0 && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
+        && ((declTi->flags & DN2CPP_TF_INTERFACE) != 0
+            || ((declTi->flags & DN2CPP_TF_VALUETYPE) == 0
+                && (target == nullptr || target->type->vtable != nullptr)));
+    if (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound))
+        dn2cpp_throw_platform_not_supported(
+            "CreateDelegate: the target method's body was not compiled into this image");
 
     auto* node = static_cast<Dn2CppReflBind*>(dn2cpp_alloc(sizeof(Dn2CppReflBind)));
     node->type = &dn2cpp_reflbind_type;
