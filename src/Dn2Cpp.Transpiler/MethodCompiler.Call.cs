@@ -2228,9 +2228,12 @@ internal sealed partial class MethodCompiler
         {
             // A trivially-constant body (`ldc; ret`) folds to its literal rather
             // than an out-of-line cross-TU direct call. The args were popped above;
-            // discarding them is side-effect-free (see TryFoldTrivialConstBody).
+            // discarding them is side-effect-free (see TryFoldTrivialConstBody),
+            // except a callvirt's receiver null check, which stays.
             if (TryFoldTrivialConstBody(callee, out string constLit))
             {
+                if (isCallvirt && !callee.IsStatic && !callee.DeclaringClass.IsValueType && args.Count > 0)
+                    Emit($"{args[0]};");
                 Push(CppTypes.KindOf(callee.Signature.ReturnType),
                     CppTypes.Of(callee.Signature.ReturnType), constLit);
                 return;
@@ -4447,9 +4450,10 @@ internal sealed partial class MethodCompiler
     /// Discarding the already-popped receiver/arguments is side-effect-free: every
     /// stack value is materialized into a temp at its own <see cref="Push"/> time, so
     /// all side effects (bounds checks, field reads, sub-calls) were already emitted
-    /// before this call site; the popped strings are just those temp names. A
-    /// <c>ldc;ret</c> body never dereferences its receiver, so folding also matches
-    /// the direct-call path's own behavior (it emits no explicit null check).</summary>
+    /// before this call site; the popped strings are just those temp names. The one
+    /// exception is a callvirt's receiver null check, which the caller keeps: a
+    /// <c>ldc;ret</c> body never dereferences its receiver, so nothing else would
+    /// raise the NullReferenceException .NET raises at the call.</summary>
     private bool TryFoldTrivialConstBody(MethodInfo callee, out string literal)
     {
         literal = "";

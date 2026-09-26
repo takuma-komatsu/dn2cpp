@@ -38,6 +38,11 @@
 # did NOT fold: build-and-run-ios-sim-console.sh and build-and-run-wasm-console.sh
 # each re-transpile NestedFinallySubset as their cross-compile EH probe, so the
 # project has to keep existing.
+#
+# ConstBodyNullFaultSubset is the callvirt null check at a call site folded to a
+# constant: a non-virtual callee whose body is `ldc; ret` never touches its
+# receiver, so without the check kept at the fold a null receiver answers the
+# constant instead of raising NullReferenceException.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ExceptionMessageSubset
