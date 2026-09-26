@@ -3108,8 +3108,9 @@ internal sealed partial class MethodCompiler
     };
 
     /// <summary>constrained.&lt;C&gt; callvirt: the receiver is a managed pointer.
-    /// For a value type with a direct implementation, call it on the pointer;
-    /// for a reference type, dereference and dispatch virtually.</summary>
+    /// For a value type, call its own implementation on the pointer, or an
+    /// interface body on its box; for a reference type, dereference and dispatch
+    /// virtually, or call a non-virtual callee directly.</summary>
     private void EmitConstrainedCall(MethodInfo callee, TypeDesc c)
     {
         var ps = callee.Signature.ParameterTypes;
@@ -3136,7 +3137,7 @@ internal sealed partial class MethodCompiler
             _c.EnsureCompleted(c.Class);
             // ONE resolution, shared with the reachability cut (ReachConstrainedImpl):
             // a private copy here would call a body nothing transpiled.
-            var impl = _c.ConstrainedImplOf(c.Class, callee);
+            var impl = _c.ConstrainedImplOf(c.Class, callee, out bool ambiguous);
             if (impl is null)
             {
                 // `constrained.<T> callvirt IDisposable::Dispose` with no resolvable
@@ -3153,6 +3154,18 @@ internal sealed partial class MethodCompiler
                     && ps.Length == 0
                     && callee.DeclaringClass.FullName == "System.IDisposable")
                     return;
+                // Sibling interface overrides with no most specific one: .NET
+                // throws where the call runs, as the interface slot does.
+                if (ambiguous)
+                {
+                    Emit(CppEmitter.ConstrainedAmbiguousImplementationThrow(c.Class, callee));
+                    if (!callee.Signature.ReturnType.IsVoid)
+                    {
+                        string at = CppTypes.Of(callee.Signature.ReturnType);
+                        Push(CppTypes.KindOf(callee.Signature.ReturnType), at, CppTypes.ZeroInitExpr(at));
+                    }
+                    return;
+                }
                 // The struct DECLARES the interface this call constrains to, so the
                 // dispatch must bind — a null impl here is a transpiler resolution
                 // bug (a shell that slipped past EnsureCompleted, an unmatched
@@ -3187,7 +3200,14 @@ internal sealed partial class MethodCompiler
                 return;
             }
             var implPs = impl.Signature.ParameterTypes;
-            var all = new List<string> { Cast(receiver, c.Class.CppStructName + "*") };
+            // An interface body takes an object receiver: .NET boxes the value for
+            // it, so the body's own interface calls dispatch on the box.
+            var all = new List<string>
+            {
+                impl.DeclaringClass.IsInterface
+                    ? $"(({impl.DeclaringClass.CppStructName}*){BoxedConstrainedReceiver(c, receiver)})"
+                    : Cast(receiver, c.Class.CppStructName + "*"),
+            };
             for (int i = 0; i < rawArgs.Length; i++)
                 all.Add(Cast(rawArgs[i], CppTypes.Of(implPs[i])));
             EmitCallResult(impl, DirectCall(impl, all));
@@ -3215,6 +3235,12 @@ internal sealed partial class MethodCompiler
         var args2 = new List<string> { typedObj };
         for (int i = 0; i < rawArgs.Length; i++)
             args2.Add(Cast(rawArgs[i], CppTypes.Of(ps[i])));
+        // A non-virtual callee has no slot: the object runs its own body.
+        if (!callee.IsVirtual)
+        {
+            EmitCallResult(callee, DirectCall(callee, args2));
+            return;
+        }
         NoteDispatchSignatureTypes(callee);
         string fnPtrType = FnPtrType(callee);
         if (callee.DeclaringClass.IsInterface)

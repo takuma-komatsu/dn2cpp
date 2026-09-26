@@ -6119,6 +6119,11 @@ internal sealed partial class CppEmitter
         return $"dn2cpp_throw_ambiguous_implementation_for({self}, {CppUtf8Literal(head)}, {CppUtf8Literal(tail)});";
     }
 
+    /// <summary><see cref="AmbiguousImplementationThrow"/> for a constrained call of
+    /// <paramref name="slot"/> on the value type <paramref name="receiver"/>.</summary>
+    internal static string ConstrainedAmbiguousImplementationThrow(ClassInfo receiver, MethodInfo slot) =>
+        AmbiguousImplementationThrow(receiver, slot.DeclaringClass, slot, null);
+
     /// <summary>A slot stub's pool key. Slots whose stub texts match can still
     /// differ in signature, and a stub entered through another signature traps
     /// under wasm's call_indirect check.</summary>

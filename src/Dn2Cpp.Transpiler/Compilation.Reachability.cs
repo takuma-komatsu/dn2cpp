@@ -1319,7 +1319,18 @@ internal sealed partial class Compilation
                 var md = module.Reader.GetMethodDefinition((MethodDefinitionHandle)calleeHandle);
                 name = module.Reader.GetString(md.Name);
                 sig = md.DecodeSignature(SigProvider, ctx);
+                resolvedCallee = module.MethodMap.TryGetValue((MethodDefinitionHandle)calleeHandle, out var mdm)
+                    ? mdm : null;
                 break;
+            case HandleKind.MethodSpecification:
+                // Only a generic method's interface body is reached here: it runs on
+                // a box of the value type.
+                try { resolvedCallee = ResolveMethodSpec(module, (MethodSpecificationHandle)calleeHandle, ctx); }
+                catch (NotSupportedException e) when (!IsMustEscape(e)) { }
+                if (resolvedCallee is not null
+                    && ConstrainedImplOf(c, resolvedCallee) is { DeclaringClass.IsInterface: true } specBody)
+                    ReachBoxedInterfaceBody(c, specBody);
+                return;
             default:
                 return;
         }
@@ -1373,7 +1384,10 @@ internal sealed partial class Compilation
         // emits a direct call that only this edge reaches.
         if (resolvedCallee is not null && ConstrainedImplOf(c, resolvedCallee) is { } bound)
         {
-            Reach(bound);
+            if (bound.DeclaringClass.IsInterface)
+                ReachBoxedInterfaceBody(c, bound);
+            else
+                Reach(bound);
             return;
         }
         // No resolved callee (or none bound): fall back to the name+shape walk, which can
@@ -1408,6 +1422,15 @@ internal sealed partial class Compilation
                 return;
             }
         }
+    }
+
+    /// <summary>Reaches an interface body a constrained call runs on the box of
+    /// <paramref name="c"/>, which must carry a real interface table: the body's own
+    /// interface calls dispatch through it.</summary>
+    private void ReachBoxedInterfaceBody(ClassInfo c, MethodInfo body)
+    {
+        ReachAllocatedType(c);
+        Reach(body);
     }
 
     /// <summary>Reaches the constrained type's <b>static</b> implementation of the

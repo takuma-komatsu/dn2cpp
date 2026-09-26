@@ -1975,10 +1975,23 @@ internal sealed partial class Compilation
     /// <c>!0</c> makes the signature walk match the struct's <c>Equals(object)</c> override
     /// instead of the typed overload the interface dispatch must reach (SRM's
     /// Symbolic.BitVector has both). The non-generic <c>System.IComparable</c> (no type
-    /// args, boxed argument) keeps the signature path.</para></summary>
-    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee)
+    /// args, boxed argument) keeps the signature path.</para>
+    ///
+    /// <para>A non-virtual interface member binds its own body, and a type with no body
+    /// of its own for an interface member binds the most specific interface override;
+    /// either runs on the box.</para></summary>
+    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee) =>
+        ConstrainedImplOf(cls, callee, out _);
+
+    /// <summary><see cref="ConstrainedImplOf(ClassInfo, MethodInfo)"/>, also reporting
+    /// through <paramref name="ambiguous"/> that a null answer comes from sibling
+    /// interface overrides with no most specific one.</summary>
+    internal MethodInfo? ConstrainedImplOf(ClassInfo cls, MethodInfo callee, out bool ambiguous)
     {
+        ambiguous = false;
         EnsureCompleted(cls);
+        if (callee.DeclaringClass.IsInterface && !callee.IsVirtual)
+            return callee.IsStatic || callee.Rva == 0 ? null : callee;
         if (callee.DeclaringClass is { IsInterface: true } itf
             && itf.Context.TypeArgs.Length == 1
             && callee.Signature.ParameterTypes.Length == 1)
@@ -2014,7 +2027,13 @@ internal sealed partial class Compilation
                     + "bodies — the variance-compatible one cannot be told apart here");
             found = impl;
         }
-        return found;
+        if (found is not null || !ImplementsInterface(cls, callee.DeclaringClass))
+            return found;
+        // An open generic definition names no callable body.
+        return ResolveItfImplOrNull(cls, callee, out ambiguous) is { DeclaringClass.IsInterface: true } body
+            && (body.Signature.GenericParameterCount == 0 || body.NameSuffix.Length > 0)
+            ? body
+            : null;
     }
 
     /// <summary>The implementation <paramref name="cls"/> or one of its bases declares for
@@ -2022,16 +2041,19 @@ internal sealed partial class Compilation
     /// implementation's dotted metadata name is invisible to the signature scan), then a
     /// full name+signature match — <see cref="MethodInfo.SigKey"/> covers the parameter
     /// types and the return type, and one MethodDef row is one generic arity. Per level, so
-    /// a derived level's match outranks a base's.</summary>
+    /// a derived level's match outranks a base's. An interface slot maps by name only a
+    /// public virtual method (ECMA-335 II.12.2).</summary>
     private MethodInfo? DeclaredImplOf(ClassInfo cls, MethodInfo target)
     {
+        bool interfaceSlot = target.DeclaringClass.IsInterface;
         for (var c = cls; c is not null; c = c.BaseClass)
         {
             EnsureCompleted(c);
             if (c.ExplicitInterfaceImpls.TryGetValue(target, out var em))
                 return em;
             if (c.Methods.FirstOrDefault(x => !x.IsStatic && x.Rva != 0
-                    && x.Name == target.Name && x.SigKey == target.SigKey) is { } m)
+                    && x.Name == target.Name && x.SigKey == target.SigKey
+                    && (!interfaceSlot || (x.IsVirtual && x.IsPublic))) is { } m)
                 return m;
         }
         return null;
