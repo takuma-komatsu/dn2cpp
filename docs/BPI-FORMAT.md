@@ -985,8 +985,9 @@ generic-method root of such an instantiation registers its dispatcher with the
 overrides of every allocated type. The loader binds a generic virtual row to
 that dispatcher, which a `callvirt` enters (as does every call of an interface
 row), and refuses a row that needs one the base image lacks; a final method's
-or a sealed class's row runs its own body. A patch type overrides none (a
-generic method has no patch body), so a dispatcher runs a patch receiver
+or a sealed class's row runs its own body. A patch type cannot override one: a
+generic method has no patch body, so a patch type declaring a generic virtual
+method is a conversion-time rejection, and a dispatcher runs a patch receiver
 (`DN2CPP_TF_PATCH`) as its nearest AOT ancestor.
 
 ## N2M trampolines (interpreted virtual overrides)

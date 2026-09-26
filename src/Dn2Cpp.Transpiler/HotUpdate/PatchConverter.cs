@@ -481,6 +481,16 @@ internal static class PatchConverter
                 throw new NotSupportedException($"emit-patch: patch type {c.FullName} — overriding {m.Name} is not supported yet (it dispatches through a dedicated type-info entry, not a vtable slot)");
             }
         }
+        // The model lists no generic method definition, so a generic virtual one
+        // would bake nothing and its receivers would run the base image's body.
+        var reader = c.Module.Reader;
+        foreach (var mh in reader.GetTypeDefinition(c.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(mh);
+            if (md.GetGenericParameters().Count > 0
+                && (md.Attributes & System.Reflection.MethodAttributes.Virtual) != 0)
+                throw new NotSupportedException($"emit-patch: patch type {c.FullName} must not declare generic virtual methods yet ({reader.GetString(md.Name)} — a generic method has no patch body)");
+        }
         foreach (var f in c.Fields)
         {
             if (f.IsLiteral)
