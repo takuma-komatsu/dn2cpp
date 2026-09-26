@@ -588,3 +588,10 @@ echo "refusal OK: exit $es_code, named the observation side + EventListener + a 
 # arguments — arrays of a type nothing else names, and an enum array — and every
 # one must be declared, or the transpile fails. Its checks are the diff.
 corelib_diff_gate ReflectAttrUnread --no-ildiet
+
+# ── Attribute rows read only through CustomAttributeData ──────────────────────
+# ReflectAttrDataOnly reads its attributes through CustomAttributeData views and
+# no other attribute API. Its types are internal, so no public app member roots
+# the attribute, and nothing constructs it: the views must open the route
+# GetCustomAttributes opens, or no row renders. Its checks are the diff.
+corelib_diff_gate ReflectAttrDataOnly --no-ildiet
