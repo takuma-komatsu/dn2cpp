@@ -34,12 +34,18 @@ internal static class ThrowHelperResources
     /// the sink's own parameter <see cref="ArgIndex"/>.</summary>
     internal readonly record struct Source(bool IsConst, int Value, int ArgIndex);
 
-    /// <summary>The resource and argument sources of the sink <paramref name="name"/> with
-    /// <paramref name="argCount"/> parameters, or (null, null) when the body is not one of
-    /// the shapes above.</summary>
-    internal static (Source? Res, Source? Arg) Sources(Module m, string name, int argCount)
+    /// <summary>What a sink's body states: where its resource and argument come from, and,
+    /// for a sink that builds its exception from the argument alone
+    /// (<c>throw new ArgumentNullException(GetArgumentName(argument))</c>), the full name of
+    /// that exception type, whose message is its own default text plus the paramName.</summary>
+    internal readonly record struct Sink(Source? Res, Source? Arg, string? ArgumentOnlyException);
+
+    /// <summary>The sources of the sink <paramref name="name"/> with
+    /// <paramref name="argCount"/> parameters; all null when the body is not one of the
+    /// shapes above.</summary>
+    internal static Sink Sources(Module m, string name, int argCount)
     {
-        var byName = m.ThrowHelperSinks ??= new Dictionary<(string, int), (Source?, Source?)>();
+        var byName = m.ThrowHelperSinks ??= new Dictionary<(string, int), Sink>();
         if (byName.TryGetValue((name, argCount), out var cached))
             return cached;
         var result = Decode(m, name, argCount);
@@ -55,10 +61,10 @@ internal static class ThrowHelperResources
     internal static string? ArgumentName(Module m, int value) =>
         EnumMap(m, "ExceptionArgument").TryGetValue(value, out var n) ? n : null;
 
-    private static (Source?, Source?) Decode(Module m, string name, int argCount)
+    private static Sink Decode(Module m, string name, int argCount)
     {
         if (FindThrowHelper(m) is not { } thh)
-            return (null, null);
+            return default;
         var reader = m.Reader;
         var td = reader.GetTypeDefinition(thh);
         foreach (var mh in td.GetMethods())
@@ -69,14 +75,14 @@ internal static class ThrowHelperResources
                 continue;
             return Walk(m, thh, md);
         }
-        return (null, null);
+        return default;
     }
 
     /// <summary>Abstract-interprets the sink's body over the only shape these have —
     /// a run of <c>ldarg</c>/<c>ldc.i4</c> pushes feeding one <c>call</c>. Anything else
     /// (a branch, a field read, a string) ends the walk with what it has, which for an
     /// unmodeled sink is nothing.</summary>
-    private static (Source?, Source?) Walk(Module m, TypeDefinitionHandle thh, MethodDefinition md)
+    private static Sink Walk(Module m, TypeDefinitionHandle thh, MethodDefinition md)
     {
         var reader = m.Reader;
         List<Instruction> insns;
@@ -87,11 +93,12 @@ internal static class ThrowHelperResources
         }
         catch (System.Exception)
         {
-            return (null, null);
+            return default;
         }
         var pushes = new List<Source>();
-        foreach (var insn in insns)
+        for (int at = 0; at < insns.Count; at++)
         {
+            var insn = insns[at];
             switch (insn.OpCode)
             {
                 case ILOpCode.Ldarg_0: case ILOpCode.Ldarg_1:
@@ -113,27 +120,73 @@ internal static class ThrowHelperResources
                 case ILOpCode.Nop:
                     continue;
                 case ILOpCode.Call:
-                    return Match(m, thh, insn.Token, pushes);
+                {
+                    var (res, arg, argCount) = Match(m, thh, insn.Token, pushes);
+                    string? argumentOnly = res is null && arg is not null && argCount == pushes.Count
+                        ? ArgumentOnlyException(reader, insns, at + 1) : null;
+                    return new Sink(res, arg, argumentOnly);
+                }
                 default:
-                    return (null, null);
+                    return default;
             }
         }
-        return (null, null);
+        return default;
+    }
+
+    /// <summary>The exception a body's tail <c>newobj E(string); throw</c> constructs from the
+    /// string the preceding call returned, when that single string is E's paramName — true
+    /// of ArgumentNullException and ArgumentOutOfRangeException only; ArgumentException's
+    /// single string is its message.</summary>
+    private static string? ArgumentOnlyException(MetadataReader reader, List<Instruction> insns, int at)
+    {
+        while (at < insns.Count && insns[at].OpCode == ILOpCode.Nop)
+            at++;
+        if (at + 1 >= insns.Count || insns[at].OpCode != ILOpCode.Newobj
+            || insns[at + 1].OpCode != ILOpCode.Throw)
+            return null;
+        var h = SRME.EntityHandle(insns[at].Token);
+        string type;
+        BlobHandle sig;
+        if (h.Kind == HandleKind.MethodDefinition)
+        {
+            var md = reader.GetMethodDefinition((MethodDefinitionHandle)h);
+            var td = reader.GetTypeDefinition(md.GetDeclaringType());
+            type = reader.GetString(td.Namespace) + "." + reader.GetString(td.Name);
+            sig = md.Signature;
+        }
+        else if (h.Kind == HandleKind.MemberReference
+            && reader.GetMemberReference((MemberReferenceHandle)h) is { Parent.Kind: HandleKind.TypeReference } mr)
+        {
+            var tr = reader.GetTypeReference((TypeReferenceHandle)mr.Parent);
+            type = reader.GetString(tr.Namespace) + "." + reader.GetString(tr.Name);
+            sig = mr.Signature;
+        }
+        else
+            return null;
+        if (type is not ("System.ArgumentNullException" or "System.ArgumentOutOfRangeException"))
+            return null;
+        var blob = reader.GetBlobReader(sig);
+        blob.ReadSignatureHeader();
+        return blob.ReadCompressedInteger() == 1
+            && blob.ReadSignatureTypeCode() == SignatureTypeCode.Void
+            && blob.ReadSignatureTypeCode() == SignatureTypeCode.String
+            ? type
+            : null;
     }
 
     /// <summary>Aligns the pushes with the callee's parameters and reads off the two named
     /// positions. A callee outside this ThrowHelper (a real exception constructor) is not
     /// modeled — its message is built from arguments this lowering does not carry.</summary>
-    private static (Source?, Source?) Match(Module m, TypeDefinitionHandle thh, int token,
+    private static (Source?, Source?, int) Match(Module m, TypeDefinitionHandle thh, int token,
         List<Source> pushes)
     {
         var reader = m.Reader;
         var h = SRME.EntityHandle(token);
         if (h.Kind != HandleKind.MethodDefinition)
-            return (null, null);
+            return (null, null, 0);
         var callee = reader.GetMethodDefinition((MethodDefinitionHandle)h);
         if (callee.GetDeclaringType() != thh)
-            return (null, null);
+            return (null, null, 0);
         var names = new List<string>();
         foreach (var ph in callee.GetParameters())
         {
@@ -142,7 +195,7 @@ internal static class ThrowHelperResources
                 names.Add(reader.GetString(p.Name));
         }
         if (names.Count == 0 || pushes.Count < names.Count)
-            return (null, null);
+            return (null, null, 0);
         int first = pushes.Count - names.Count;
         Source? res = null, arg = null;
         for (int i = 0; i < names.Count; i++)
@@ -152,7 +205,7 @@ internal static class ThrowHelperResources
             else if (names[i] is "argument" or "paramName")
                 arg = pushes[first + i];
         }
-        return (res, arg);
+        return (res, arg, names.Count);
     }
 
     private static int CountParams(MetadataReader reader, MethodDefinition md)
