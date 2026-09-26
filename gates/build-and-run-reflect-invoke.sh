@@ -155,7 +155,10 @@
 # asserts that a named lookup answers their members through levels with a row for
 # each override, hides one behind such an override and reports an overload beside
 # one as ambiguous, and that Invoke, CreateDelegate and a method group run and
-# report what a callvirt runs, with .NET's receiver and arity faults.
+# report what a callvirt runs, with .NET's receiver and arity faults. Its
+# visibility section asserts MethodBase's and FieldInfo's access, hide-by-signature,
+# not-serialized and p/invoke predicates over every accessibility of a method,
+# constructor and field, and over System.Object's rows.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -391,6 +394,11 @@ gate_extra_asserts() {
     grep -Fxq 'closed object row, labeled: labeled/Labeled.ToString' "$out/metadata-layout.stdout"
     grep -Fxq 'closed value row, class: ArgumentException' "$out/metadata-layout.stdout"
     grep -Fxq 'object method groups: 5/ReflectVirtualInvokeSubset.Mark/True/True/ReflectVirtualInvokeSubset.Leaf/ValueType.ToString/Object.ToString' "$out/metadata-layout.stdout"
+    grep -Fxq 'object method group overrides: shown:2/ShownMark.ToString/labeled/Labeled.ToString' "$out/metadata-layout.stdout"
+    grep -Fxq 'method visibility: Hidden=ph Fam=fh Pub=uh Asm=ah FamOrAsm=oh FamAndAsm=nh' "$out/metadata-layout.stdout"
+    grep -Fxq 'constructor visibility: Int32=ph Int64=fh uh String=ah Double=oh Char=nh' "$out/metadata-layout.stdout"
+    grep -Fxq 'field visibility: Hidden=p Fam=f Pub=u Asm=a FamOrAsm=o FamAndAsm=n Skipped=us' "$out/metadata-layout.stdout"
+    grep -Fxq 'object row visibility: uh uh oh fh uh' "$out/metadata-layout.stdout"
     grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"

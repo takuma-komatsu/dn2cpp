@@ -31,7 +31,9 @@ using System.Reflection;
 // override of Object's member, which a non-virtual or new-slot redeclaration does not
 // replace. System.Object's and System.ValueType's members answer a named lookup
 // beside an override or an overload as on .NET, and Invoke, CreateDelegate and a
-// method group run what a callvirt of them runs.
+// method group run what a callvirt of them runs. MethodBase's and FieldInfo's
+// access, hide-by-signature, not-serialized and p/invoke predicates read the
+// member's attributes word for every accessibility, and for System.Object's rows.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -452,6 +454,36 @@ class SlotTextLeaf : SlotText
     public override string ToString() => "slot-leaf";
 }
 
+class Visible
+{
+    private Visible(int value) { }
+    protected Visible(long value) { }
+    public Visible() { }
+    internal Visible(string value) { }
+    protected internal Visible(double value) { }
+    private protected Visible(char value) { }
+
+    private void Hidden() { }
+    protected void Fam() { }
+    public void Pub() { }
+    internal void Asm() { }
+    protected internal void FamOrAsm() { }
+    private protected void FamAndAsm() { }
+}
+
+#pragma warning disable CS0169, CS0649
+class VisibleFields
+{
+    private int Hidden;
+    protected int Fam;
+    public int Pub;
+    internal int Asm;
+    protected internal int FamOrAsm;
+    private protected int FamAndAsm;
+    [NonSerialized] public int Skipped;
+}
+#pragma warning restore CS0169, CS0649
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -483,6 +515,32 @@ static class Program
     }
 
     private static string Describe(MethodInfo method) => method.DeclaringType!.Name + "." + method.Name;
+
+    // u public, p private, f family, a assembly, o family-or-assembly,
+    // n family-and-assembly, h hide-by-signature.
+    private static string Access(MethodBase method) =>
+        (method.IsPublic ? "u" : "") + (method.IsPrivate ? "p" : "") + (method.IsFamily ? "f" : "")
+        + (method.IsAssembly ? "a" : "") + (method.IsFamilyOrAssembly ? "o" : "")
+        + (method.IsFamilyAndAssembly ? "n" : "") + (method.IsHideBySig ? "h" : "");
+
+    // The method codes, plus s not-serialized and i p/invoke.
+#pragma warning disable SYSLIB0050
+    private static string Access(FieldInfo field) =>
+        (field.IsPublic ? "u" : "") + (field.IsPrivate ? "p" : "") + (field.IsFamily ? "f" : "")
+        + (field.IsAssembly ? "a" : "") + (field.IsFamilyOrAssembly ? "o" : "")
+        + (field.IsFamilyAndAssembly ? "n" : "") + (field.IsNotSerialized ? "s" : "")
+        + (field.IsPinvokeImpl ? "i" : "");
+#pragma warning restore SYSLIB0050
+
+    private static string MethodAccess(string name) =>
+        name + "=" + Access(typeof(Visible).GetMethod(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!);
+
+    private static string ConstructorAccess(Type parameter) =>
+        parameter.Name + "=" + Access(typeof(Visible).GetConstructor(
+            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new[] { parameter }, null)!);
+
+    private static string FieldAccess(string name) =>
+        name + "=" + Access(typeof(VisibleFields).GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!);
 
     private static MethodInfo Method(Type type, string name) =>
         type.GetMethod(name, Type.EmptyTypes) ?? throw new MissingMethodException(type.Name, name);
@@ -895,6 +953,27 @@ static class Program
                 + "/" + (markHash() == mark.GetHashCode()) + "/" + leaf()
                 + "/" + Describe(markText.Method) + "/" + Describe(leaf.Method);
         });
+        Try("object method group overrides", () =>
+        {
+            object shown = new ShownMark { Id = 2 };
+            object labeled = new LabeledLeaf();
+            Func<string?> shownText = shown.ToString;
+            Func<string?> labeledText = labeled.ToString;
+            return shownText() + "/" + Describe(shownText.Method) + "/" + labeledText() + "/" + Describe(labeledText.Method);
+        });
+        Try("method visibility", () => MethodAccess("Hidden") + " " + MethodAccess("Fam") + " " + MethodAccess("Pub")
+            + " " + MethodAccess("Asm") + " " + MethodAccess("FamOrAsm") + " " + MethodAccess("FamAndAsm"));
+        Try("constructor visibility", () => ConstructorAccess(typeof(int)) + " " + ConstructorAccess(typeof(long))
+            + " " + Access(typeof(Visible).GetConstructor(Type.EmptyTypes)!) + " " + ConstructorAccess(typeof(string))
+            + " " + ConstructorAccess(typeof(double)) + " " + ConstructorAccess(typeof(char)));
+        Try("field visibility", () => FieldAccess("Hidden") + " " + FieldAccess("Fam") + " " + FieldAccess("Pub")
+            + " " + FieldAccess("Asm") + " " + FieldAccess("FamOrAsm") + " " + FieldAccess("FamAndAsm")
+            + " " + FieldAccess("Skipped"));
+        Try("object row visibility", () => Access(typeof(object).GetMethod("ToString")!)
+            + " " + Access(typeof(object).GetMethod("GetType")!)
+            + " " + Access(typeof(object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance)!)
+            + " " + Access(typeof(object).GetMethod("Finalize", BindingFlags.NonPublic | BindingFlags.Instance)!)
+            + " " + Access(typeof(object).GetMethod("ReferenceEquals")!));
 
         Console.WriteLine("virtual invoke end");
     }
