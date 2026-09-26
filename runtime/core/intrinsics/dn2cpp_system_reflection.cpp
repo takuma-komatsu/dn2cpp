@@ -2442,6 +2442,19 @@ void dn2cpp_throw_target_invocation(Dn2CppObject* inner)
     dn2cpp_throw_target_invocation(fault);
 }
 
+// .NET calls a bodiless row bound to a null receiver without dispatch, which faults
+// as a bad image with the HResult's system message.
+[[noreturn]] static void dn2cpp_throw_null_bound_bodiless()
+{
+#ifdef _WIN32
+    static constexpr char text[] = "An attempt was made to load a program with an incorrect format.\r\n (0x8007000B)";
+#else
+    static constexpr char text[] = "An attempt was made to load a program with an incorrect format.\n (0x8007000B)";
+#endif
+    dn2cpp_throw_reflection_fault(&dn2cpp_bad_image_format_exception_type,
+        dn2cpp_string_from_utf8(text, static_cast<int32_t>(sizeof text - 1)), 0x8007000Bu);
+}
+
 [[noreturn]] static void dn2cpp_throw_invoke_argument(const Dn2CppTypeInfo* from,
     const Dn2CppTypeInfo* to)
 {
@@ -2985,16 +2998,20 @@ const Dn2CppTypeInfo dn2cpp_reflbind_type = { "<ReflectionDelegateBind>", nullpt
 // The boxed-invoker dispatch behind a dgrefl_* trampoline: same value-type
 // receiver adjustment + invoker-thunk call as MethodInfo.Invoke, without its
 // checks, since the bind proved the shapes and the trampoline boxes each argument
-// exactly. A null receiver on an instance binding (the null-bound closed delegate
-// real .NET admits from the explicit-firstArgument overloads) fails loud.
+// exactly. A null receiver runs the row's own body with a null `this`, as .NET's
+// call does, except where .NET dispatches: an open binding of a virtual row
+// dereferences it. A binding closed over null (the explicit-firstArgument
+// overloads) never dispatches, so a bodiless row there is bad IL.
 Dn2CppObject* dn2cpp_reflbind_invoke(Dn2CppReflBind* ctx, Dn2CppObject* self, Dn2CppObject** argv)
 {
     Dn2CppMetadataHandle<Dn2CppMethodInfo> mi = ctx->method;
     const Dn2CppMethodInfo row = *mi;
     if ((row.attrs & DN2CPP_MTHA_STATIC) == 0)
     {
-        if (self == nullptr)
+        if (self == nullptr && ctx->mode == DN2CPP_DGBIND_OPEN_INSTANCE && (row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0)
             dn2cpp_throw_null_reference();
+        if (self == nullptr && (row.ilAttrs & DN2CPP_MA_ABSTRACT) != 0)
+            dn2cpp_throw_null_bound_bodiless();
     }
     else if ((row.ilAttrs & DN2CPP_MA_VIRTUAL) != 0 && (row.declaringType->flags & DN2CPP_TF_INTERFACE) != 0)
         dn2cpp_throw_static_virtual_entry_point();
@@ -3160,14 +3177,18 @@ Dn2CppObject* dn2cpp_delegate_create(Dn2CppType* dt, Dn2CppObject* target,
     // The shape binds; only now can the image refuse. A bodiless virtual row
     // (abstract or interface) binds the receiver's slot at each call, as
     // MethodInfo.Invoke does, and a generic virtual row its dispatcher. A boxed
-    // value has no vtable, so a class row bound to one runs its own body.
-    bool slotBound = !mStatic && mi->vtableSlot >= 0 && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
+    // value has no vtable, so a class row bound to one runs its own body. A binding
+    // closed over null runs the row's own body, and a bodiless row faults when called
+    // (dn2cpp_reflbind_invoke).
+    bool nullBound = mode == DN2CPP_DGBIND_CLOSED_INSTANCE && target == nullptr;
+    bool slotBound = !mStatic && !nullBound && mi->vtableSlot >= 0 && (mi->ilAttrs & DN2CPP_MA_VIRTUAL) != 0
         && ((declTi->flags & DN2CPP_TF_INTERFACE) != 0
             || ((declTi->flags & DN2CPP_TF_VALUETYPE) == 0
                 && (target == nullptr || target->type->vtable != nullptr)));
-    if (!slotBound && !mStatic && mi->genericParamCount != 0)
+    if (!slotBound && !mStatic && !nullBound && mi->genericParamCount != 0)
         slotBound = dn2cpp_gvm_row_dispatch_of(*mi) != nullptr;
-    if (!staticVirtual && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
+    bool bodiless = nullBound && (mi->ilAttrs & DN2CPP_MA_ABSTRACT) != 0;
+    if (!staticVirtual && !bodiless && (mi->invoker == nullptr || (mi->fnPtr == nullptr && !slotBound)))
         dn2cpp_throw_platform_not_supported(
             "CreateDelegate: the target method's body was not compiled into this image");
 

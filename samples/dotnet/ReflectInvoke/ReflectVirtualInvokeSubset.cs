@@ -26,7 +26,8 @@ using System.Reflection;
 // direct calls include a struct's generic interface method through its box and a
 // delegate. An open binding of a generic virtual row is refused. An override
 // hides the generic virtual method it overrides from GetMethod and GetMethods, and
-// GetBaseDefinition answers the definition that introduces the chain.
+// GetBaseDefinition answers the definition that introduces the chain. A binding
+// closed over null runs the row's own body.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -403,6 +404,11 @@ class GvmPairShadow : GvmRoot
     public new string Pair<T>(T value) => "pair-shadow:" + value;
 }
 
+class NullHost
+{
+    public string Plain() => "plain";
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -753,6 +759,9 @@ static class Program
     private static MethodInfo Generic(Type type, string name, Type argument) =>
         type.GetMethod(name)!.MakeGenericMethod(argument);
 
+    private static Func<string> NullBound(MethodInfo row) =>
+        (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), null, row);
+
     private static string Definition(MethodInfo method) =>
         Describe(method) + "/" + method.IsGenericMethodDefinition + "/" + method.ReflectedType!.Name;
 
@@ -880,6 +889,31 @@ static class Program
         Try("base definition, covariant override", () => Definition(Generic(typeof(GvmCovariantLeaf), "Make", typeof(int))
             .GetBaseDefinition()));
         Try("base definition, abstract row", () => Definition(Generic(typeof(GvmSquare), "Kind", typeof(int)).GetBaseDefinition()));
+
+        // A binding closed over null runs the row's own body with a null receiver,
+        // never an override, and a bodiless row faults as bad IL. An open binding
+        // runs a non-virtual row over a null receiver and dereferences it for a
+        // virtual one.
+        Try("null-bound delegate, class virtual row", () => NullBound(Method(typeof(Base), "Who"))());
+        Try("null-bound delegate, override row", () => NullBound(Method(typeof(Leaf), "Who"))());
+        Try("null-bound delegate, default interface row", () => NullBound(Method(typeof(IGreeting), "Hello"))());
+        Try("null-bound delegate, generic virtual row", () => NullBound(rootTag)());
+        Try("null-bound delegate, generic virtual override row", () => NullBound(Generic(typeof(GvmLeaf), "Tag", typeof(int)))());
+        Try("null-bound delegate, default generic interface row", () => NullBound(fallback)());
+        Try("null-bound delegate, reported row", () =>
+        {
+            var bound = NullBound(Method(typeof(Leaf), "Who"));
+            return Describe(bound.Method) + "/" + (bound.Target is null);
+        });
+        Try("null-bound delegate, abstract row", () => Faulted(() => NullBound(Method(typeof(Shape), "Kind"))()));
+        Try("null-bound delegate, interface row", () => Faulted(() => NullBound(Method(typeof(IGreeting), "Tag"))()));
+        Try("null-bound delegate, abstract generic virtual row", () => Faulted(() =>
+            ((Func<int, string>)Delegate.CreateDelegate(typeof(Func<int, string>), null, kind))(1)));
+        Try("null-bound delegate, generic interface row", () => Faulted(() => NullBound(pick)()));
+        Try("open delegate, null receiver, non-virtual row", () =>
+            ((Func<NullHost, string>)Delegate.CreateDelegate(typeof(Func<NullHost, string>), Method(typeof(NullHost), "Plain")))(null!));
+        Try("open delegate, null receiver, virtual row", () =>
+            ((Func<Base, string>)Delegate.CreateDelegate(typeof(Func<Base, string>), Method(typeof(Base), "Who")))(null!));
 
         Console.WriteLine("generic virtual invoke end");
     }

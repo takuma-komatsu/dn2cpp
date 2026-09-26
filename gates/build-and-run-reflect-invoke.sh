@@ -146,7 +146,9 @@
 # and a delegate. An open binding of a generic virtual row is refused with .NET's
 # NotSupportedException. An override hides the generic virtual method it overrides
 # from GetMethod and GetMethods while a new slot or a new method stays a second
-# method, and GetBaseDefinition answers the definition that introduces the chain.
+# method, and GetBaseDefinition answers the definition that introduces the chain. A
+# binding closed over null runs the row's own body, a bodiless row faulting as bad
+# IL, and an open binding runs a non-virtual row over a null receiver.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -427,6 +429,9 @@ gate_extra_asserts() {
     grep -Fxq 'GetMethod, new slot: AmbiguousMatchException' "$out/metadata-layout.stdout"
     grep -Fxq 'GetMethods, hider chain: GvmHiderLeaf.Tag,GvmMid.Tag' "$out/metadata-layout.stdout"
     grep -Fxq 'base definition, hider chain: GvmHider.Tag/True/GvmHider' "$out/metadata-layout.stdout"
+    grep -Fxq 'null-bound delegate, generic virtual override row: leaf:Int32' "$out/metadata-layout.stdout"
+    grep -Fxq 'null-bound delegate, abstract generic virtual row: BadImageFormatException 0x8007000B' "$out/metadata-layout.stdout"
+    grep -Fxq 'open delegate, null receiver, non-virtual row: plain' "$out/metadata-layout.stdout"
     grep -Fxq 'generic virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_GENERIC_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-generic-virtual-invoke.stdout"
     sed '/^== generic virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/generic-virtual-invoke-prefix.stdout"
