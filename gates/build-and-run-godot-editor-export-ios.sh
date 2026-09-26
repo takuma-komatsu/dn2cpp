@@ -104,10 +104,11 @@ stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
 
 echo "== 3/9 Staging the sample project =="
 # Copied rather than exported in place: the preset needs an absolute template
-# path patched in, and the project accumulates .godot/, bin/ and obj/. The work
-# dir is NOT wiped — the persistent .godot/mono/dn2cpp/ slots (one per RID) are
-# what keep a re-export from recompiling the runtime three times over.
+# path patched in, and the project accumulates .godot/, bin/ and obj/. Stage it
+# clean so a prior gate run cannot supply stale CMake state; the three RID builds
+# within this run keep their persistent .godot/mono/dn2cpp/ slots.
 PROJ="$OUT/project"
+rm -rf "$PROJ"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
 

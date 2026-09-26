@@ -241,10 +241,11 @@ stage_editor_toolchain "$FORK_GODOTSHARP" "$SELFHOST_BIN" "$OUT/package.log"
 echo "== 3/14 Staging the sample project =="
 # Copied rather than exported in place because the project accumulates .godot/,
 # bin/ and obj/. Non-Windows hosts also patch in an absolute fork-template path;
-# Windows deliberately preserves empty custom-template fields. The work dir is
-# NOT wiped — its persistent build tree keeps re-export from recompiling the
-# whole runtime.
+# Windows deliberately preserves empty custom-template fields. Stage it clean so
+# a prior gate run cannot supply stale CMake state; the exports within this run
+# keep the persistent build tree and exercise incremental re-export.
 PROJ="$OUT/project"
+rm -rf "$PROJ"
 mkdir -p "$PROJ"
 cp -R "$SAMPLE/." "$PROJ/"
 
@@ -934,10 +935,210 @@ CS
     fi
 fi
 
-echo "== 8/14 Recovering from a build cache configured from another source tree =="
-# The persisting build tree is keyed on the export TARGET (platform, config, RID) —
-# not on where the runtime sources it was configured from live. So every way the
-# toolchain's path can move leaves a cache that names a tree cmake will not accept:
+echo "== 8/14 Recovering from stale persistent build caches =="
+# Replacing the packaged toolchain in place leaves every path in CMakeCache.txt
+# unchanged. The content stamp is what detects that case: it covers the bundled
+# prebuilt key, including the compiler identity CMake otherwise keeps under
+# CMakeFiles/. Corrupt only the recorded hash, not the shared installed bundle,
+# so this gate does not race another editor-export suite using the same editor.
+CONTENT_HASH_STAMP="$BUILD_DIR/toolchain-content-hash.txt"
+TOOLCHAIN_MANIFEST="$FORK_GODOTSHARP/Dn2Cpp/manifest.json"
+TOOLCHAIN_CONTENT_HASH="$(first_line "$(sed -n 's/^[[:space:]]*"content_hash": "\([^"]*\)".*/\1/p' "$TOOLCHAIN_MANIFEST")")"
+[ -n "$TOOLCHAIN_CONTENT_HASH" ] \
+    || { echo "FAIL: $TOOLCHAIN_MANIFEST names no content_hash" >&2; exit 1; }
+[ -f "$CONTENT_HASH_STAMP" ] \
+    || { echo "FAIL: the current build has no toolchain-content stamp at $CONTENT_HASH_STAMP" >&2; exit 1; }
+RECORDED_CONTENT_HASH="$(first_line "$(sed -n '1p' "$CONTENT_HASH_STAMP")")"
+[ "$RECORDED_CONTENT_HASH" = "$TOOLCHAIN_CONTENT_HASH" ] \
+    || { echo "FAIL: the current build stamp names '$RECORDED_CONTENT_HASH', not the" >&2
+         echo "      installed toolchain content '$TOOLCHAIN_CONTENT_HASH'" >&2; exit 1; }
+
+STALE_CONTENT_HASH=dn2cpp-gate-stale-toolchain-content
+printf '%s\n' "$STALE_CONTENT_HASH" > "$CONTENT_HASH_STAMP"
+grep -qxF "$STALE_CONTENT_HASH" "$CONTENT_HASH_STAMP" \
+    || { echo "FAIL: could not make $CONTENT_HASH_STAMP stale" >&2; exit 1; }
+
+CONTENT_RESET_WITNESS="$BUILD_DIR/dn2cpp-gate-content-reset-witness"
+: > "$CONTENT_RESET_WITNESS"
+CONTENT_STALE_LOG="$OUT/export-stale-toolchain-content.log"
+rm -rf "$APP" "$DATA_DIR"
+if ! godot_export_step 2400 "$CONTENT_STALE_LOG" "$APP" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-release "$PRESET" "$APP"; then
+    echo "FAIL: the export over a stale toolchain-content identity failed (see below)" >&2
+    cat "$CONTENT_STALE_LOG" >&2
+    exit 1
+fi
+assert_export_succeeded "$CONTENT_STALE_LOG" "the export over a stale toolchain-content identity"
+grep -qF "dn2cpp: stale build cache reset" "$CONTENT_STALE_LOG" \
+    || { echo "FAIL: the stale toolchain-content identity was not reported and reset" >&2
+         cat "$CONTENT_STALE_LOG" >&2; exit 1; }
+grep -qF "toolchain content hash is '$STALE_CONTENT_HASH'" "$CONTENT_STALE_LOG" \
+    || { echo "FAIL: the reset does not name the stale toolchain content hash" >&2
+         cat "$CONTENT_STALE_LOG" >&2; exit 1; }
+grep -qF "but this export uses '$TOOLCHAIN_CONTENT_HASH'" "$CONTENT_STALE_LOG" \
+    || { echo "FAIL: the reset does not name the current toolchain content hash" >&2
+         cat "$CONTENT_STALE_LOG" >&2; exit 1; }
+[ ! -e "$CONTENT_RESET_WITNESS" ] \
+    || { echo "FAIL: the toolchain-content reset retained $CONTENT_RESET_WITNESS" >&2; exit 1; }
+RECORDED_CONTENT_HASH="$(first_line "$(sed -n '1p' "$CONTENT_HASH_STAMP")")"
+[ "$RECORDED_CONTENT_HASH" = "$TOOLCHAIN_CONTENT_HASH" ] \
+    || { echo "FAIL: the recreated build stamp names '$RECORDED_CONTENT_HASH', not" >&2
+         echo "      '$TOOLCHAIN_CONTENT_HASH'" >&2; exit 1; }
+CONTENT_EXPORTER_LOG="$(first_line "$(ls -t "$PROJ"/.godot/mono/temp/bin/dn2cpp/logs/export-*.log 2>/dev/null)")"
+[ -n "$CONTENT_EXPORTER_LOG" ] \
+    || { echo "FAIL: the stale-content export wrote no exporter log" >&2; exit 1; }
+grep -qF "using the prebuilt runtime" "$CONTENT_EXPORTER_LOG" \
+    || { echo "FAIL: the reset build did not recover prebuilt runtime adoption" >&2
+         grep -i "prebuilt" "$CONTENT_EXPORTER_LOG" >&2 \
+             || echo "  (the configure said nothing about a prebuilt at all)" >&2
+         exit 1; }
+
+# First corrupt only the per-slot recorded compiler identity. This exercises the
+# reset decision without modifying an executable shared with another gate.
+COMPILER_STAMP="$BUILD_DIR/native-compiler-hash.txt"
+[ -s "$COMPILER_STAMP" ] \
+    || { echo "FAIL: the build slot has no native compiler identity at $COMPILER_STAMP" >&2; exit 1; }
+COMPILER_HASH="$(first_line "$(sed -n '1p' "$COMPILER_STAMP")")"
+STALE_COMPILER_HASH=dn2cpp-gate-stale-native-compiler
+[ "$COMPILER_HASH" != "$STALE_COMPILER_HASH" ] \
+    || { echo "FAIL: the current native compiler identity matches the stale fixture" >&2; exit 1; }
+COMPILER_CACHE_BEFORE="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+[ -n "$COMPILER_CACHE_BEFORE" ] \
+    || { echo "FAIL: $CMAKE_CACHE names no C++ compiler" >&2; exit 1; }
+printf '%s\n' "$STALE_COMPILER_HASH" > "$COMPILER_STAMP"
+COMPILER_RESET_WITNESS="$BUILD_DIR/dn2cpp-gate-compiler-reset-witness"
+: > "$COMPILER_RESET_WITNESS"
+COMPILER_STALE_LOG="$OUT/export-stale-native-compiler.log"
+rm -rf "$APP" "$DATA_DIR"
+if ! godot_export_step 2400 "$COMPILER_STALE_LOG" "$APP" \
+    "$FORK_EDITOR" --headless \
+    --path "$PWD/$PROJ" --export-release "$PRESET" "$APP"; then
+    echo "FAIL: the export over a stale native compiler identity failed (see below)" >&2
+    cat "$COMPILER_STALE_LOG" >&2
+    exit 1
+fi
+assert_export_succeeded "$COMPILER_STALE_LOG" "the export over a stale native compiler identity"
+grep -qF "dn2cpp: stale build cache reset" "$COMPILER_STALE_LOG" \
+    || { echo "FAIL: the stale native compiler identity was not reported and reset" >&2
+         cat "$COMPILER_STALE_LOG" >&2; exit 1; }
+grep -qF "native compiler identity changed" "$COMPILER_STALE_LOG" \
+    || { echo "FAIL: the reset did not identify the native compiler change" >&2
+         cat "$COMPILER_STALE_LOG" >&2; exit 1; }
+[ ! -e "$COMPILER_RESET_WITNESS" ] \
+    || { echo "FAIL: the native compiler reset retained $COMPILER_RESET_WITNESS" >&2; exit 1; }
+[ -s "$COMPILER_STAMP" ] \
+    || { echo "FAIL: the reset did not record the current native compiler identity" >&2; exit 1; }
+RECORDED_COMPILER_HASH="$(first_line "$(sed -n '1p' "$COMPILER_STAMP")")"
+[ "$RECORDED_COMPILER_HASH" = "$COMPILER_HASH" ] \
+    || { echo "FAIL: the reset recorded native compiler identity '$RECORDED_COMPILER_HASH'," >&2
+         echo "      expected '$COMPILER_HASH' for the unchanged host compiler" >&2; exit 1; }
+COMPILER_CACHE_AFTER="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+[ "$COMPILER_CACHE_AFTER" = "$COMPILER_CACHE_BEFORE" ] \
+    || { echo "FAIL: the native compiler path changed during the identity test" >&2; exit 1; }
+COMPILER_EXPORTER_LOG="$(first_line "$(ls -t "$PROJ"/.godot/mono/temp/bin/dn2cpp/logs/export-*.log 2>/dev/null)")"
+[ -n "$COMPILER_EXPORTER_LOG" ] \
+    || { echo "FAIL: the stale-compiler export wrote no exporter log" >&2; exit 1; }
+grep -qF "using the prebuilt runtime" "$COMPILER_EXPORTER_LOG" \
+    || { echo "FAIL: the compiler reset build did not recover prebuilt runtime adoption" >&2
+         grep -i "prebuilt" "$COMPILER_EXPORTER_LOG" >&2 \
+             || echo "  (the configure said nothing about a prebuilt at all)" >&2
+         exit 1; }
+
+# On POSIX hosts, also replace a compiler executable at the exact path cached
+# by CMake. Each wrapper delegates every invocation to the real compiler, so
+# CMake still detects the bundled prebuilt's compiler ID and version. Its bytes
+# change between exports while its path, behavior and packaged toolchain do not.
+if [ "$DN2CPP_OS" != windows ]; then
+    REAL_C_COMPILER="$(sed -n 's/^CMAKE_C_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+    REAL_CXX_COMPILER="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+    [ -f "$REAL_C_COMPILER" ] && [ -f "$REAL_CXX_COMPILER" ] \
+        || { echo "FAIL: the current CMake cache does not name usable host compilers" >&2; exit 1; }
+    WRAPPER_DIR="$PWD/$OUT/native-compiler-wrapper"
+    mkdir -p "$WRAPPER_DIR"
+    printf '%s\n' "$REAL_C_COMPILER" > "$WRAPPER_DIR/real-c"
+    printf '%s\n' "$REAL_CXX_COMPILER" > "$WRAPPER_DIR/real-cxx"
+    C_WRAPPER="$WRAPPER_DIR/cc"
+    CXX_WRAPPER="$WRAPPER_DIR/cxx"
+    cat > "$C_WRAPPER" <<'SH'
+#!/bin/sh
+compiler=$(cat "$(dirname "$0")/real-c")
+exec "$compiler" "$@"
+SH
+    cat > "$CXX_WRAPPER" <<'SH'
+#!/bin/sh
+compiler=$(cat "$(dirname "$0")/real-cxx")
+exec "$compiler" "$@"
+SH
+    chmod +x "$C_WRAPPER" "$CXX_WRAPPER"
+
+    # A cold slot lets CMake select the wrappers from CC/CXX. The next export
+    # keeps that slot and changes only the executable at its cached C++ path.
+    rm -rf "$BUILD_DIR" "$APP" "$DATA_DIR"
+    WRAPPER_BASELINE_LOG="$OUT/export-native-compiler-wrapper-baseline.log"
+    if ! godot_export_step 2400 "$WRAPPER_BASELINE_LOG" "$APP" \
+        env CC="$C_WRAPPER" CXX="$CXX_WRAPPER" \
+        "$FORK_EDITOR" --headless --path "$PWD/$PROJ" \
+        --export-release "$PRESET" "$APP"; then
+        echo "FAIL: the export with host compiler wrappers failed (see below)" >&2
+        cat "$WRAPPER_BASELINE_LOG" >&2
+        exit 1
+    fi
+    assert_export_succeeded "$WRAPPER_BASELINE_LOG" "the wrapped-compiler baseline export"
+    WRAPPER_CXX_BEFORE="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+    [ "$WRAPPER_CXX_BEFORE" = "$CXX_WRAPPER" ] \
+        || { echo "FAIL: CMake did not cache the gate's C++ wrapper: $WRAPPER_CXX_BEFORE" >&2; exit 1; }
+    [ -s "$COMPILER_STAMP" ] \
+        || { echo "FAIL: wrapped-compiler export wrote no native compiler identity" >&2; exit 1; }
+    WRAPPER_HASH_BEFORE="$(first_line "$(sed -n '1p' "$COMPILER_STAMP")")"
+    WRAPPER_EXPORTER_LOG="$(first_line "$(ls -t "$PROJ"/.godot/mono/temp/bin/dn2cpp/logs/export-*.log 2>/dev/null)")"
+    grep -qF "using the prebuilt runtime" "$WRAPPER_EXPORTER_LOG" \
+        || { echo "FAIL: wrapped-compiler baseline did not adopt the prebuilt runtime" >&2
+             grep -i "prebuilt" "$WRAPPER_EXPORTER_LOG" >&2; exit 1; }
+
+    printf '%s\n' '# compiler upgraded in place' >> "$CXX_WRAPPER"
+    WRAPPER_RESET_WITNESS="$BUILD_DIR/dn2cpp-gate-wrapper-reset-witness"
+    : > "$WRAPPER_RESET_WITNESS"
+    WRAPPER_STALE_LOG="$OUT/export-native-compiler-wrapper-upgraded.log"
+    rm -rf "$APP" "$DATA_DIR"
+    if ! godot_export_step 2400 "$WRAPPER_STALE_LOG" "$APP" \
+        env CC="$C_WRAPPER" CXX="$CXX_WRAPPER" \
+        "$FORK_EDITOR" --headless --path "$PWD/$PROJ" \
+        --export-release "$PRESET" "$APP"; then
+        echo "FAIL: the export after replacing the compiler wrapper failed (see below)" >&2
+        cat "$WRAPPER_STALE_LOG" >&2
+        exit 1
+    fi
+    assert_export_succeeded "$WRAPPER_STALE_LOG" "the same-path compiler replacement export"
+    grep -qF "dn2cpp: stale build cache reset" "$WRAPPER_STALE_LOG" \
+        || { echo "FAIL: the same-path compiler replacement did not reset the build slot" >&2
+             cat "$WRAPPER_STALE_LOG" >&2; exit 1; }
+    grep -qF "native compiler identity changed" "$WRAPPER_STALE_LOG" \
+        || { echo "FAIL: the same-path reset did not identify the native compiler change" >&2
+             cat "$WRAPPER_STALE_LOG" >&2; exit 1; }
+    [ ! -e "$WRAPPER_RESET_WITNESS" ] \
+        || { echo "FAIL: the same-path compiler reset retained $WRAPPER_RESET_WITNESS" >&2; exit 1; }
+    [ -s "$COMPILER_STAMP" ] \
+        || { echo "FAIL: the replaced compiler identity was not recorded" >&2; exit 1; }
+    WRAPPER_HASH_AFTER="$(first_line "$(sed -n '1p' "$COMPILER_STAMP")")"
+    [ "$WRAPPER_HASH_AFTER" != "$WRAPPER_HASH_BEFORE" ] \
+        || { echo "FAIL: the compiler identity ignored changed executable bytes" >&2; exit 1; }
+    WRAPPER_CXX_AFTER="$(sed -n 's/^CMAKE_CXX_COMPILER:[A-Z]*=//p' "$CMAKE_CACHE")"
+    [ "$WRAPPER_CXX_AFTER" = "$WRAPPER_CXX_BEFORE" ] \
+        || { echo "FAIL: the compiler path moved during the same-path upgrade test" >&2; exit 1; }
+    WRAPPER_EXPORTER_LOG="$(first_line "$(ls -t "$PROJ"/.godot/mono/temp/bin/dn2cpp/logs/export-*.log 2>/dev/null)")"
+    grep -qF "using the prebuilt runtime" "$WRAPPER_EXPORTER_LOG" \
+        || { echo "FAIL: the same-path compiler reset did not adopt the prebuilt runtime" >&2
+             grep -i "prebuilt" "$WRAPPER_EXPORTER_LOG" >&2; exit 1; }
+fi
+RECORDED_CONTENT_HASH="$(first_line "$(sed -n '1p' "$CONTENT_HASH_STAMP")")"
+[ "$RECORDED_CONTENT_HASH" = "$TOOLCHAIN_CONTENT_HASH" ] \
+    || { echo "FAIL: the compiler identity test also changed the toolchain content stamp" >&2; exit 1; }
+
+# The independent path half stays covered too. The persisting build tree is
+# keyed on the export TARGET (platform, config, RID), not on where the runtime
+# sources it was configured from live. So every way the toolchain's path can
+# move leaves a cache that names a tree cmake will not accept:
 # a re-pointed dotnet/export/dn2cpp_toolchain_path, an editor whose
 # GodotSharp/Dn2Cpp landed elsewhere than last time (which has happened for real, to
 # every Windows work dir at once), a project copied off another machine. cmake then
