@@ -58,7 +58,8 @@ internal sealed partial class MethodCompiler
         Emit($"{other} = ({compareCt})({Cast(Pop(), CppTypes.Of(prim))});");
         string self = NewTemp(compareCt);
         Emit($"{self} = ({compareCt})({DerefReceiver(receiverCt)});");
-        Push(StackKind.I4, "int32_t", PrimitiveCompareToExpr(code, self, other));
+        Push(StackKind.I4, "int32_t", CompareExpr(prim,
+            new StackEntry(self, CppTypes.KindOf(prim), compareCt), new StackEntry(other, CppTypes.KindOf(prim), compareCt)));
         return true;
     }
 
@@ -88,7 +89,9 @@ internal sealed partial class MethodCompiler
         else
         {
             Emit($"    {otherObj} = ({compareCt})(*({CppTypes.Of(prim)}*)({boxed} + 1));");
-            Emit($"    {result} = {PrimitiveCompareToExpr(prim.Primitive, selfObj, otherObj)};");
+            string ordered = CompareExpr(prim, new StackEntry(selfObj, CppTypes.KindOf(prim), compareCt),
+                new StackEntry(otherObj, CppTypes.KindOf(prim), compareCt));
+            Emit($"    {result} = {ordered};");
         }
         Emit("}");
         return result;
@@ -103,23 +106,6 @@ internal sealed partial class MethodCompiler
         PrimitiveTypeCode.Boolean or PrimitiveTypeCode.Char => "int32_t",
         _ => CppTypes.Of(prim),
     };
-
-    private static string PrimitiveCompareToExpr(PrimitiveTypeCode code, string self, string other) =>
-        code switch
-        {
-            // Sub-word integer and Char CompareTo return the raw widened difference,
-            // not its sign. The range always fits Int32.
-            PrimitiveTypeCode.Byte or PrimitiveTypeCode.SByte
-                or PrimitiveTypeCode.Int16 or PrimitiveTypeCode.UInt16
-                or PrimitiveTypeCode.Char => $"({self} - {other})",
-            PrimitiveTypeCode.Boolean =>
-                $"(({self} != 0) < ({other} != 0) ? -1 : (({self} != 0) > ({other} != 0) ? 1 : 0))",
-            // Floating CompareTo defines a total order in which NaN sorts below numbers.
-            PrimitiveTypeCode.Single or PrimitiveTypeCode.Double =>
-                $"({self} < {other} ? -1 : ({self} > {other} ? 1 : ({self} == {other} ? 0 : "
-                + $"({self} != {self} ? ({other} != {other} ? 0 : -1) : 1))))",
-            _ => $"({self} < {other} ? -1 : ({self} > {other} ? 1 : 0))",
-        };
 
     private bool TryEmitNumbersIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {

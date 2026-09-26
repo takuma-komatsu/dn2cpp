@@ -5174,20 +5174,22 @@ int32_t dn2cpp_object_gethashcode(Dn2CppObject* obj);
 // Clone paths never call it.
 Dn2CppObject* dn2cpp_object_memberwise_clone(Dn2CppObject* obj);
 int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b);
-// Three-way ordering (-1/0/+1) of two boxed values by runtime type — the object-element
-// counterpart of dn2cpp_object_equals, for the non-generic Array.Sort/BinarySearch(Array, …)
-// lowerings whose element type is unknown until run time (MethodCompiler.EmitIntrinsic.EnumArray).
-// .NET Comparer.Default null order: null sorts first. Boxed primitive/enum/string compare INLINE
-// because the inline arms are tried FIRST (not for want of a map) — each integer at its own width
-// AND signedness, since ordering cannot lump widths the way equality does, and float/double on the
-// NaN-aware TOTAL order the sole static comparison window (MethodCompiler.TryCompareLValue) emits,
-// so a value ordered here and one ordered inline agree. Decimal and the date/time value types are
-// inline too, through that same window's intrinsic three-ways — this is the ladder the
-// boxed-built-in IComparable thunk delegates to, and it may not refuse a type whose type test
-// claims IComparable. A user reference type dispatches the non-generic
-// System.IComparable.CompareTo(object) through the closed type-info the caller supplies
-// (icomparable_ti — nullptr if the transpiler could not resolve System.IComparable). A value that is
-// neither is refused with a catchable PlatformNotSupportedException naming the type, never a silent 0.
+// Three-way ordering of two boxed values by runtime type, whose sign is the order — the
+// object-element counterpart of dn2cpp_object_equals, for Comparer.Default and the non-generic
+// Array.Sort/BinarySearch(Array, …) lowerings whose element type is unknown until run time
+// (MethodCompiler.EmitIntrinsic.EnumArray). The value is the one .NET's Comparer.Default returns:
+// a sub-word integer, Char or sub-word enum answers the raw difference its CompareTo returns.
+// Null sorts first. Boxed primitive/enum/string compare INLINE because the inline arms are tried
+// FIRST (not for want of a map) — each integer at its own width AND signedness, since ordering
+// cannot lump widths the way equality does, and float/double on the NaN-aware TOTAL order the
+// sole static comparison window (MethodCompiler.TryCompareLValue) emits, so a value ordered here
+// and one ordered inline agree. Decimal and the date/time value types are inline too, through
+// that same window's intrinsic three-ways — this is the ladder the boxed-built-in IComparable
+// thunk delegates to, and it may not refuse a type whose type test claims IComparable. A user
+// reference type dispatches the non-generic System.IComparable.CompareTo(object) through the
+// closed type-info the caller supplies (icomparable_ti — nullptr if the transpiler could not
+// resolve System.IComparable). A value that is neither is refused with a catchable
+// PlatformNotSupportedException naming the type, never a silent 0.
 // String order is ORDINAL (dn2cpp_str_compare(…,4)) — the same deliberate divergence from
 // culture-sensitive Comparer<string>.Default the generic sort/search path already makes.
 int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppTypeInfo* icomparable_ti);

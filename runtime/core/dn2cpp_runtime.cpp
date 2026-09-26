@@ -640,6 +640,12 @@ int32_t dn2cpp_object_equals(Dn2CppObject* a, Dn2CppObject* b)
 namespace {
 // Signed/unsigned three-way over machine scalars — the sign is the operand type's.
 template <typename T> inline int32_t dn2cpp_cmp3(T x, T y) { return x < y ? -1 : (x > y ? 1 : 0); }
+// A sub-word integer's or Char's CompareTo: the raw difference, not its sign. Read at the
+// natural width, two in-range values cannot overflow Int32.
+template <typename T> inline int32_t dn2cpp_cmp_diff(const void* pa, const void* pb)
+{
+    return static_cast<int32_t>(*static_cast<const T*>(pa)) - static_cast<int32_t>(*static_cast<const T*>(pb));
+}
 // Floating TOTAL order, byte-for-byte the expression MethodCompiler.TryCompareLValue emits:
 // a NaN sorts below every number (including -inf) and compares equal to NaN, so `<`/`>` alone
 // (both false for a NaN) cannot leave a sort's result dependent on visit order.
@@ -672,11 +678,12 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
     if (t == &dn2cpp_string_type && b->type == &dn2cpp_string_type)
         return dn2cpp_cmp3<int32_t>(dn2cpp_str_compare(reinterpret_cast<Dn2CppString*>(a),
                                                        reinterpret_cast<Dn2CppString*>(b), 4), 0);
-    // Boxed enum: compare at the backing width + signedness (read from enumUnderlying, exactly as
-    // dn2cpp_pinned_data_addr reads it). A 64-bit-backed enum orders on all 64 bits, matching
-    // TryCompareLValue's CppTypes.Of. Same enum type required (payload read is width-exact, so a
-    // cross-type read would be unsound); an enum backed by something outside the eight legal integer
-    // bases (or an absent enumUnderlying) is refused rather than read at a guessed width.
+    // Boxed enum: Enum.CompareTo is the underlying type's CompareTo, read at the backing width +
+    // signedness (from enumUnderlying, exactly as dn2cpp_pinned_data_addr reads it). A 64-bit-backed
+    // enum orders on all 64 bits and a sub-word one answers the raw difference, matching
+    // TryCompareLValue. Same enum type required (payload read is width-exact, so a cross-type read
+    // would be unsound); an enum backed by anything but an integer, Boolean or Char (or an absent
+    // enumUnderlying) is refused rather than read at a guessed width.
     if (t->base == &dn2cpp_enum_type && b->type == t)
     {
         const void* pa = a + 1;
@@ -686,10 +693,10 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
         if (u == &dn2cpp_uint32_type) return dn2cpp_cmp3<uint32_t>(*static_cast<const uint32_t*>(pa), *static_cast<const uint32_t*>(pb));
         if (u == &dn2cpp_int64_type)  return dn2cpp_cmp3<int64_t>(*static_cast<const int64_t*>(pa),  *static_cast<const int64_t*>(pb));
         if (u == &dn2cpp_uint64_type) return dn2cpp_cmp3<uint64_t>(*static_cast<const uint64_t*>(pa), *static_cast<const uint64_t*>(pb));
-        if (u == &dn2cpp_byte_type)   return dn2cpp_cmp3<uint8_t>(*static_cast<const uint8_t*>(pa),   *static_cast<const uint8_t*>(pb));
-        if (u == &dn2cpp_sbyte_type)  return dn2cpp_cmp3<int8_t>(*static_cast<const int8_t*>(pa),     *static_cast<const int8_t*>(pb));
-        if (u == &dn2cpp_int16_type)  return dn2cpp_cmp3<int16_t>(*static_cast<const int16_t*>(pa),   *static_cast<const int16_t*>(pb));
-        if (u == &dn2cpp_uint16_type) return dn2cpp_cmp3<uint16_t>(*static_cast<const uint16_t*>(pa), *static_cast<const uint16_t*>(pb));
+        if (u == &dn2cpp_byte_type || u == &dn2cpp_bool_type) return dn2cpp_cmp_diff<uint8_t>(pa, pb);
+        if (u == &dn2cpp_sbyte_type)  return dn2cpp_cmp_diff<int8_t>(pa, pb);
+        if (u == &dn2cpp_int16_type)  return dn2cpp_cmp_diff<int16_t>(pa, pb);
+        if (u == &dn2cpp_uint16_type || u == &dn2cpp_char_type) return dn2cpp_cmp_diff<uint16_t>(pa, pb);
         dn2cpp_throw_platform_not_supported(
             (std::string("Array.Sort/BinarySearch: enum '") + (t->name ? t->name : "<unknown>")
              + "' has an unsupported underlying type").c_str());
@@ -702,11 +709,11 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
         const void* pa = a + 1;
         const void* pb = b + 1;
         if (t == &dn2cpp_bool_type)   return dn2cpp_cmp3<uint8_t>(*static_cast<const uint8_t*>(pa),   *static_cast<const uint8_t*>(pb));
-        if (t == &dn2cpp_sbyte_type)  return dn2cpp_cmp3<int8_t>(*static_cast<const int8_t*>(pa),     *static_cast<const int8_t*>(pb));
-        if (t == &dn2cpp_byte_type)   return dn2cpp_cmp3<uint8_t>(*static_cast<const uint8_t*>(pa),   *static_cast<const uint8_t*>(pb));
-        if (t == &dn2cpp_int16_type)  return dn2cpp_cmp3<int16_t>(*static_cast<const int16_t*>(pa),   *static_cast<const int16_t*>(pb));
-        if (t == &dn2cpp_uint16_type) return dn2cpp_cmp3<uint16_t>(*static_cast<const uint16_t*>(pa), *static_cast<const uint16_t*>(pb));
-        if (t == &dn2cpp_char_type)   return dn2cpp_cmp3<uint16_t>(*static_cast<const uint16_t*>(pa), *static_cast<const uint16_t*>(pb));
+        if (t == &dn2cpp_sbyte_type)  return dn2cpp_cmp_diff<int8_t>(pa, pb);
+        if (t == &dn2cpp_byte_type)   return dn2cpp_cmp_diff<uint8_t>(pa, pb);
+        if (t == &dn2cpp_int16_type)  return dn2cpp_cmp_diff<int16_t>(pa, pb);
+        if (t == &dn2cpp_uint16_type) return dn2cpp_cmp_diff<uint16_t>(pa, pb);
+        if (t == &dn2cpp_char_type)   return dn2cpp_cmp_diff<uint16_t>(pa, pb);
         if (t == &dn2cpp_int32_type)  return dn2cpp_cmp3<int32_t>(*static_cast<const int32_t*>(pa),   *static_cast<const int32_t*>(pb));
         if (t == &dn2cpp_uint32_type) return dn2cpp_cmp3<uint32_t>(*static_cast<const uint32_t*>(pa), *static_cast<const uint32_t*>(pb));
         if (t == &dn2cpp_int64_type)  return dn2cpp_cmp3<int64_t>(*static_cast<const int64_t*>(pa),   *static_cast<const int64_t*>(pb));
@@ -771,11 +778,11 @@ int32_t dn2cpp_object_compare(Dn2CppObject* a, Dn2CppObject* b, const Dn2CppType
 }
 
 // System.Enum::CompareTo(object) — the synthesized value body (CoreIntrinsics.BrEnumInstanceFormat)
-// and a constrained call on an enum value call this. Enum.CompareTo orders by the underlying value
-// and returns the -1/0/1 sign: a null target sorts first (this > null -> 1), a box of any other type
-// is the ArgumentException .NET raises naming both types, and same type delegates to
-// dn2cpp_object_compare's boxed-enum arm so the width+signedness ladder (byte..ulong) lives in
-// exactly one place. The receiver `a` is `this`, never null for an instance call.
+// and a constrained call on an enum value call this. Enum.CompareTo answers the underlying type's
+// CompareTo (the raw difference for a sub-word underlying type): a null target sorts first
+// (this > null -> 1), a box of any other type is the ArgumentException .NET raises naming both
+// types, and same type delegates to dn2cpp_object_compare's boxed-enum arm so the width+signedness
+// ladder lives in exactly one place. The receiver `a` is `this`, never null for an instance call.
 int32_t dn2cpp_enum_compareto(Dn2CppObject* a, Dn2CppObject* b)
 {
     if (b == nullptr)

@@ -3639,9 +3639,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>The devirtualized Comparer&lt;T&gt;.Default.Compare /
     /// IComparable&lt;T&gt;.CompareTo for a closed key type — ordinal string
-    /// compare, numeric three-way, or enum-as-int. The intrinsic primitive/string
-    /// types have no generated interface map, so real dispatch can't resolve a
-    /// comparer; this is the type-specialized op the JIT would devirtualize to.
+    /// compare, the numeric CompareTo, or the enum's underlying CompareTo. The intrinsic
+    /// primitive/string types have no generated interface map, so real dispatch can't
+    /// resolve a comparer; this is the type-specialized op the JIT would devirtualize to.
     /// Throws for unsupported key types — loud, never silent.</summary>
     private string CompareExpr(TypeDesc keyType, StackEntry a, StackEntry b) =>
         TryCompareLValue(keyType, a, b)
@@ -3677,31 +3677,61 @@ internal sealed partial class MethodCompiler
             return keyType.IsCanonPlaceholder
                 ? null
                 : $"dn2cpp_object_compare({Cast(a, "Dn2CppObject*")}, {Cast(b, "Dn2CppObject*")}, &{NonGenericIComparableTiName()})";
-        // A primitive scalar orders by </> (Object was handled just above, so the
-        // scalar branch never silently pointer-compares a reference).
+        // A primitive scalar answers its own CompareTo, which is also what the direct
+        // call lowers to (Object was handled just above, so the scalar branch never
+        // silently pointer-compares a reference).
         if (keyType.Kind == TypeKind.Primitive && !keyType.IsObject)
         {
             string ct = CppTypes.Of(keyType);
             string x = Cast(a, ct), y = Cast(b, ct);
-            // Float ordering is a TOTAL order, not the raw three-way: a NaN sorts
-            // below every number (including -inf) and compares 0 to itself, so
-            // `<`/`>` alone — both false for a NaN — would call it equal to
-            // everything and leave a sort's result dependent on the visit order.
-            // The same expression Double/Single.CompareTo emits (the direct-call
-            // intrinsic), so a value ordered here and one ordered through a
-            // CompareTo call agree, and the ordering agrees with the equality that
-            // already says NaN == NaN (TryEqualityEqualsLValue).
-            if (keyType.Primitive is PrimitiveTypeCode.Double or PrimitiveTypeCode.Single)
-                return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : (({x}) == ({y}) ? 0 "
-                     + $": (({x}) != ({x}) ? (({y}) != ({y}) ? 0 : -1) : 1))))";
+            switch (keyType.Primitive)
+            {
+                // Float ordering is a TOTAL order, not the raw three-way: a NaN sorts
+                // below every number (including -inf) and compares 0 to itself, so
+                // `<`/`>` alone — both false for a NaN — would call it equal to
+                // everything and leave a sort's result dependent on the visit order.
+                // It agrees with the equality that already says NaN == NaN
+                // (TryEqualityEqualsLValue).
+                case PrimitiveTypeCode.Double or PrimitiveTypeCode.Single:
+                    return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : (({x}) == ({y}) ? 0 "
+                         + $": (({x}) != ({x}) ? (({y}) != ({y}) ? 0 : -1) : 1))))";
+                case PrimitiveTypeCode.SByte or PrimitiveTypeCode.Byte or PrimitiveTypeCode.Int16
+                    or PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char:
+                    return SubWordDifference(CppTypes.StorageOf(keyType), x, y);
+                case PrimitiveTypeCode.Boolean:
+                    (x, y) = ($"(({x}) != 0)", $"(({y}) != 0)");
+                    break;
+                // UIntPtr rides the signed pointer-sized model but orders unsigned.
+                case PrimitiveTypeCode.UIntPtr:
+                    (x, y) = ($"((uintptr_t)({x}))", $"((uintptr_t)({y}))");
+                    break;
+            }
             return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : 0))";
         }
-        if (keyType is { Kind: TypeKind.Class, Class.IsEnum: true })
+        if (keyType is { Kind: TypeKind.Class, Class: { IsEnum: true } ec })
         {
-            // Same width rule as the equality arm: a 64-bit-backed enum orders on
-            // all 64 bits, not on a truncated low half.
+            // Enum.CompareTo is its underlying type's CompareTo. A 64-bit-backed enum
+            // orders on all 64 bits, not on a truncated low half, and an unsigned one
+            // orders unsigned although it rides the signed int32/int64 model.
             string ect = CppTypes.Of(keyType);
             string x = Cast(a, ect), y = Cast(b, ect);
+            switch (ec.EnumUnderlying)
+            {
+                case PrimitiveTypeCode.SByte:
+                    return SubWordDifference("int8_t", x, y);
+                case PrimitiveTypeCode.Byte or PrimitiveTypeCode.Boolean:
+                    return SubWordDifference("uint8_t", x, y);
+                case PrimitiveTypeCode.Int16:
+                    return SubWordDifference("int16_t", x, y);
+                case PrimitiveTypeCode.UInt16 or PrimitiveTypeCode.Char:
+                    return SubWordDifference("uint16_t", x, y);
+                case PrimitiveTypeCode.UInt32:
+                    (x, y) = ($"((uint32_t)({x}))", $"((uint32_t)({y}))");
+                    break;
+                case PrimitiveTypeCode.UInt64:
+                    (x, y) = ($"((uint64_t)({x}))", $"((uint64_t)({y}))");
+                    break;
+            }
             return $"(({x}) < ({y}) ? -1 : (({x}) > ({y}) ? 1 : 0))";
         }
         // An intrinsic value type (Decimal/TimeSpan/DateTime/…) orders by the same
@@ -3714,6 +3744,12 @@ internal sealed partial class MethodCompiler
         }
         return null;
     }
+
+    /// <summary>The CompareTo of a sub-word integer or Char: the raw difference, not its
+    /// sign. Both operands are narrowed to <paramref name="storage"/> first, so the
+    /// difference of two in-range values cannot overflow Int32.</summary>
+    private static string SubWordDifference(string storage, string x, string y) =>
+        $"((int32_t)({storage})({x}) - (int32_t)({storage})({y}))";
 
     /// <summary>If <paramref name="t"/> is a closed <c>System.IComparable&lt;T&gt;</c>
     /// whose argument is a primitive, string or enum (a key type CompareExpr can

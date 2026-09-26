@@ -422,16 +422,6 @@ static int32_t dn2cpp_bbi_compareto(Dn2CppObject* box, Dn2CppObject* other)
         return 1;
     if (other->type != box->type)
         dn2cpp_throw_compareto_type_mismatch(box->type);
-    // Sub-word integer and Char CompareTo preserve the widened value difference rather
-    // than clamping it to -1/0/1. The payload is four-byte stack form, so this one read
-    // serves their signed and unsigned storage widths after the exact type check above.
-    if (box->type == &dn2cpp_byte_type || box->type == &dn2cpp_sbyte_type
-        || box->type == &dn2cpp_int16_type || box->type == &dn2cpp_uint16_type)
-        return *reinterpret_cast<const int32_t*>(box + 1)
-             - *reinterpret_cast<const int32_t*>(other + 1);
-    if (box->type == &dn2cpp_char_type)
-        return static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(box + 1))
-             - static_cast<int32_t>(*reinterpret_cast<const uint16_t*>(other + 1));
     return dn2cpp_object_compare(box, other, nullptr);
 }
 
