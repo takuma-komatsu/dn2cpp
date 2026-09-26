@@ -827,6 +827,26 @@ internal static partial class CoreIntrinsics
         && name is "Find" or "FindLast" or "FindAll" or "FindIndex" or "FindLastIndex"
             or "Exists" or "TrueForAll" or "ConvertAll" or "ForEach" or "AsReadOnly";
 
+    /// <summary>System.Array's non-generic members routed like
+    /// <see cref="IsArrayRealBodyGeneric"/>: the 64-bit index and length overloads, whose
+    /// bodies range-check and call the Int32 overload, GetLongLength, and the constant
+    /// ICollection/IList properties.</summary>
+    public static bool IsArrayRealBodyMember(string declType, string name, MethodSignature<TypeDesc> sig)
+    {
+        if (declType != "System.Array")
+            return false;
+        if (name is "get_IsFixedSize" or "get_IsReadOnly" or "get_IsSynchronized" or "get_SyncRoot"
+            or "GetLongLength")
+            return true;
+        if (name is not ("Copy" or "CopyTo" or "GetValue" or "SetValue" or "CreateInstance"))
+            return false;
+        foreach (var p in sig.ParameterTypes)
+            if (p is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 }
+                or { Kind: TypeKind.SZArray, Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } })
+                return true;
+        return false;
+    }
+
     /// <summary>Primitive members lowered inline despite their declaring type not always
     /// being intrinsic: the sub-word integers' format/parse family, plus both
     /// <c>CompareTo</c> overloads of every scalar primitive. The latter is one sibling
