@@ -4367,9 +4367,10 @@ internal sealed partial class Compilation
     private readonly HashSet<ClassInfo> _userReflConstructed = new();
     private readonly HashSet<ClassInfo> _userReflSurface = new();
 
-    // Set when a reached body calls GetCustomAttributes/IsDefined. Triggers the
-    // reflection-attribute route: reach each app-module attribute's ctor + named-property
-    // setters and allocate the attribute types so their instances can be materialized.
+    // Set when a reached body calls GetCustomAttributes/IsDefined or reads a
+    // CustomAttributeData view. Triggers the reflection-attribute route: reach each
+    // app-module attribute's ctor + named-property setters and allocate the attribute
+    // types so their instances can be materialized.
     private bool _reflectionAttrUsed;
 
     // The full names of FRAMEWORK-module classes a reachable USER-module body names
@@ -4716,11 +4717,12 @@ internal sealed partial class Compilation
             }
         }
 
-        // Reflection-attribute reachability route: if the program calls
-        // GetCustomAttributes/IsDefined, reach every reflectable attribute's ctor + named
-        // property setters and allocate the attribute types so GetCustomAttributes can
-        // materialize fresh instances. Elements scanned are user-module (app + referenced
-        // libraries), so an attribute on a library-declared class is reachable too;
+        // Reflection-attribute reachability route: if the program reads attributes
+        // (GetCustomAttributes/IsDefined/CustomAttributeData), reach every reflectable
+        // attribute's ctor + named property setters and allocate the attribute types so
+        // GetCustomAttributes can materialize fresh instances. Elements scanned are
+        // user-module (app + referenced libraries), so an attribute on a library-declared
+        // class is reachable too;
         // attribute types are bounded to non-framework modules plus the user-typeof-named
         // framework attributes (per DecodeCustomAttributes) so a real CoreLib pulled in
         // with -r is not force-reached. Framework modules are skipped rather than merely

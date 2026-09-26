@@ -5218,11 +5218,15 @@ internal sealed partial class Compilation
                             else if (mrName == "MakeGenericType" && mrParent == "System.Type")
                                 _makeGenericTypeUsed = true;
                             // MemberInfo/ParameterInfo/Assembly.GetCustomAttributes /
-                            // IsDefined -> reach attribute ctors + named setters.
+                            // IsDefined, and the CustomAttributeData views, whose rows
+                            // render the same factories -> reach attribute ctors + named
+                            // setters.
                             else if (mrName is "GetCustomAttributes" or "GetCustomAttribute" or "IsDefined"
+                                    or "GetCustomAttributesData" or "get_CustomAttributes"
                                 && mrParent is "System.Reflection.MemberInfo"
                                     or "System.Reflection.ParameterInfo" or "System.Attribute"
                                     or "System.Reflection.CustomAttributeExtensions"
+                                    or "System.Reflection.CustomAttributeData"
                                     or "System.Type" or "System.Reflection.MethodInfo"
                                     or "System.Reflection.FieldInfo" or "System.Reflection.PropertyInfo"
                                     or "System.Reflection.Assembly")
