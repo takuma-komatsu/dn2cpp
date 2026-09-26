@@ -73,10 +73,10 @@
 #     primitive, enum or struct, a string and an array. Its extra asserts pin that
 #     the output before the section is unchanged.
 #   * ConstrainedObjectCompareSubset — IComparable.CompareTo(object) on every scalar
-#     primitive and string through a `constrained. !T` call, a boxed receiver and the
-#     direct overload: the order, a null argument, and a box of another type
-#     rejected with .NET's "Object must be of type X." message. Its extra asserts pin
-#     that the output before the section is unchanged.
+#     primitive, string, decimal and date/time type through a `constrained. !T` call,
+#     a boxed receiver and the direct overload: the order, a null argument, and a box
+#     of another type rejected with .NET's "Object must be of type X." message. Its
+#     extra asserts pin that the output before the section is unchanged.
 #
 # The culture pin is the driver's first two statements, NOT an InvariantGlobalization
 # property — that one pins only the oracle and drops ICU (stated at the
