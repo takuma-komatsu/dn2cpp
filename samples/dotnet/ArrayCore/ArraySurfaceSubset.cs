@@ -52,6 +52,13 @@ namespace ArraySurfaceSubset
             public Gen() { V = default; K = 9; }
         }
 
+        private struct Nest<TVal>
+        {
+            public int K;
+            public Nest() { K = 5; }
+            public Nest(Nest<Nest<TVal>> inner) { K = inner.K + 1; }
+        }
+
         private sealed class Ref
         {
             public int X = 4;
@@ -283,6 +290,12 @@ namespace ArraySurfaceSubset
             Action dynGroup = dynGroupTarget.Initialize;
             dynGroup();
             Console.WriteLine("initialize-dyn-group: " + ((WithCtor[])dynGroupTarget)[0].X);
+            // Another constructor naming a deeper instantiation of its own type must not
+            // mint one per level while the parameterless constructors are reached.
+            var dynNest = new Nest<int>[2];
+            Init(dynNest);
+            Console.WriteLine("initialize-dyn-nest: " + dynNest[1].K + " "
+                + new Nest<string>(new Nest<Nest<string>>()).K);
         }
     }
 }

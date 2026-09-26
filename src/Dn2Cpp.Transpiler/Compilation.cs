@@ -3918,14 +3918,15 @@ internal sealed partial class Compilation
             if (!cls.ShapeReady)
                 throw new InvalidOperationException($"{cls.FullName} is in Classes but was never queued for its shape");
             _runtimeArrayInitializeCursor++;
-            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null
-                || !IsUserModule(cls.Module) || !DeclaresParameterlessCtor(cls))
+            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null || !IsUserModule(cls.Module))
+                continue;
+            var ctor = ParameterlessCtorHandle(cls);
+            if (ctor.IsNil)
                 continue;
             EnsureCompleted(cls);
             foreach (var m in cls.Methods)
             {
-                if (m.Name != ".ctor" || m.IsStatic || m.Rva == 0 || Reachable.Contains(m)
-                    || m.Signature.ParameterTypes.Length != 0 || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                if (m.Handle != ctor || Reachable.Contains(m) || _backend?.ShouldSkipMethodBody(cls, m) == true)
                     continue;
                 Reach(m);
                 reached = true;
@@ -3935,13 +3936,15 @@ internal sealed partial class Compilation
             DrainReachability();
     }
 
-    /// <summary>Whether <paramref name="cls"/>'s definition declares a parameterless instance
-    /// constructor with a body. Read from metadata, so a specialization's members are
-    /// decoded only when it does.</summary>
-    private static bool DeclaresParameterlessCtor(ClassInfo cls)
+    /// <summary>The parameterless instance constructor with a body that
+    /// <paramref name="cls"/>'s definition declares, or a nil handle. Read from metadata:
+    /// a specialization's members are completed only when it has one, and no other
+    /// constructor's signature is decoded, since one naming a deeper instantiation of its
+    /// own type would feed this walk forever.</summary>
+    private static MethodDefinitionHandle ParameterlessCtorHandle(ClassInfo cls)
     {
         if (cls.Handle.IsNil)
-            return false;
+            return default;
         var reader = cls.Module.Reader;
         foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
         {
@@ -3953,9 +3956,9 @@ internal sealed partial class Compilation
             if (blob.ReadSignatureHeader().IsGeneric)
                 blob.ReadCompressedInteger();
             if (blob.ReadCompressedInteger() == 0)
-                return true;
+                return handle;
         }
-        return false;
+        return default;
     }
 
     /// <summary>The members user bodies name on a type token: <c>typeof(T)</c> followed
