@@ -2511,6 +2511,18 @@ static Dn2CppObject* dn2cpp_field_literal(const Dn2CppFieldInfo* row)
         dn2cpp_sr_message(DN2CPP_SR_FIELD_INITONLY_STATIC, args, 2), 0x80131507u);
 }
 
+// A getter on a literal row boxes at the constant's own type already: it serves a
+// string or a constant encoded at another type than the field's.
+Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f)
+{
+    const auto row = dn2cpp_fieldref_require(f).operator->();
+    if ((row->attrs & DN2CPP_FLDA_LITERAL) == 0)
+        dn2cpp_throw_reflection_fault(&dn2cpp_invalid_operation_exception_type, nullptr, 0x80131509u);
+    if (row->getter != nullptr)
+        return row->getter(nullptr);
+    return dn2cpp_field_literal_as(row.operator->(), dn2cpp_enum_underlying_or_self(row->fieldType));
+}
+
 // ECMA-335 MethodAttributes bits consumed below (II.23.1.10).
 #define DN2CPP_MA_FINAL    0x20
 #define DN2CPP_MA_VIRTUAL  0x40

@@ -13,7 +13,8 @@ using System.Reflection;
 // read-only field refuses SetValue once the value checks; a Nullable<T> field
 // reads back as null or a boxed T. An enum that only a reflected member row or a
 // closed generic argument names reports its own type, and SetValue on a boxed
-// enum's value__ writes the box.
+// enum's value__ writes the box. GetRawConstantValue answers a constant at its
+// encoded type and refuses any other field.
 namespace ReflectFieldValidationSubset;
 
 enum Level { Low, Mid, High }
@@ -373,6 +374,21 @@ static class Program
         FieldInfo levelValue = Field(typeof(Level), "value__");
         Show("enum value__ set", () => { levelValue.SetValue(boxedLevel, 2); return boxedLevel; });
         Show("enum value__ set, wrong value", () => { levelValue.SetValue(boxedLevel, 2L); return null; });
+
+        Show("raw const", () => answer.GetRawConstantValue());
+        Show("raw enum const", () => Field(typeof(Constants), "Grade").GetRawConstantValue());
+        Show("raw long enum const", () => Field(typeof(Constants), "Span").GetRawConstantValue());
+        Show("raw unnamed enum const", () => fixedField.GetRawConstantValue());
+        Show("raw enum member", () => Field(typeof(Level), "High").GetRawConstantValue());
+        Show("raw string const", () => Field(typeof(Constants), "Word").GetRawConstantValue());
+        Show("raw null const", () => Field(typeof(Constants), "Nothing").GetRawConstantValue());
+        Show("raw nint const", () => Field(typeof(Constants), "Native").GetRawConstantValue());
+        Show("raw primitive const", () => Field(typeof(int), "MaxValue").GetRawConstantValue());
+        Show("raw decimal const", () => Field(typeof(Constants), "Money").GetRawConstantValue());
+        Show("raw readonly static", () => readOnlyCount.GetRawConstantValue());
+        Show("raw instance field", () => number.GetRawConstantValue());
+        Show("raw enum value__", () => levelValue.GetRawConstantValue());
+        Show("raw primitive readonly static", () => Field(typeof(string), "Empty").GetRawConstantValue());
 
         Console.WriteLine("field validation end");
     }

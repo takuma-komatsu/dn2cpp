@@ -821,6 +821,12 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.I4, "int32_t", $"dn2cpp_fieldref_is_literal((Dn2CppFieldRef*)({f.Expr}))");
                 return true;
             }
+            case ("System.Reflection.FieldInfo", "GetRawConstantValue") when sig.ParameterTypes.Length == 0:
+            {
+                var f = Pop();
+                Push(StackKind.Ref, "Dn2CppObject*", $"dn2cpp_fieldref_get_raw_constant_value((Dn2CppFieldRef*)({f.Expr}))");
+                return true;
+            }
             case ("System.Reflection.FieldInfo", "get_IsPublic"):
             {
                 var f = Pop();

@@ -1507,6 +1507,9 @@ int32_t dn2cpp_methodref_is_specialname(Dn2CppMethodRef* m);
 // emitter-generated thunks; reference fields pass the object reference through.
 Dn2CppObject* dn2cpp_fieldref_get_value(Dn2CppFieldRef* f, Dn2CppObject* obj);
 void dn2cpp_fieldref_set_value(Dn2CppFieldRef* f, Dn2CppObject* obj, Dn2CppObject* value);
+// FieldInfo.GetRawConstantValue: a constant at its encoded type (an enum's
+// underlying primitive); any other field throws InvalidOperationException.
+Dn2CppObject* dn2cpp_fieldref_get_raw_constant_value(Dn2CppFieldRef* f);
 // MemberInfo.Name / DeclaringType — shared by FieldInfo, MethodInfo and Type;
 // dispatch on the managed object header (a FieldRef carries dn2cpp_fieldinfo_type,
 // a MethodRef dn2cpp_methodinfo_type).
