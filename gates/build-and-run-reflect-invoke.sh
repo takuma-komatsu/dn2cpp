@@ -148,7 +148,9 @@
 # from GetMethod and GetMethods while a new slot or a new method stays a second
 # method, and GetBaseDefinition answers the definition that introduces the chain. A
 # binding closed over null runs the row's own body, a bodiless row faulting as bad
-# IL, and an open binding runs a non-virtual row over a null receiver.
+# IL, and an open binding runs a non-virtual row over a null receiver. A call
+# through System.Object runs the override of Object's member past a non-virtual
+# or new-slot redeclaration.
 # ReflectFieldValidationSubset asserts that FieldInfo.GetValue/SetValue check the
 # receiver, then the value, with .NET's exceptions, HResults and messages: an
 # instance field refuses a null or foreign receiver and takes a derived instance, a
@@ -365,6 +367,7 @@ gate_extra_asserts() {
     grep -Fxq 'static abstract row: TargetInvocationException 0x80131604/BadImageFormatException 0x8007000B' "$out/metadata-layout.stdout"
     grep -Fxq 'static virtual delegate: IFactory.Virt/True/EntryPointNotFoundException 0x80131523' "$out/metadata-layout.stdout"
     grep -Fxq 'static abstract row, typed catch: caught:True' "$out/metadata-layout.stdout"
+    grep -Fxq 'object callvirt past new slots: ReflectVirtualInvokeSubset.HiddenText/ReflectVirtualInvokeSubset.SlotTextLeaf/slot-leaf' "$out/metadata-layout.stdout"
     grep -Fxq 'virtual invoke end' "$out/metadata-layout.stdout"
     DN2CPP_BEFORE_VIRTUAL_INVOKE=1 run_bounded "$out/ReflectInvoke$EXE_EXT" > "$out/before-virtual-invoke.stdout"
     sed '/^== virtual invoke ==/,$d' "$out/metadata-layout.stdout" > "$out/virtual-invoke-prefix.stdout"

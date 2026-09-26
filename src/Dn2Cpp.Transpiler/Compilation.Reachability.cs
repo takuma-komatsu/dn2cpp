@@ -546,35 +546,40 @@ internal sealed partial class Compilation
     /// with a body) that an instance of <paramref name="c"/> dispatches — its own
     /// or the nearest base's — or null when none overrides Object.ToString (or the
     /// nearest override is an intrinsic type's, see <see cref="NonIntrinsic"/>).</summary>
-    internal static MethodInfo? EffectiveToString(ClassInfo c)
+    internal static MethodInfo? EffectiveToString(ClassInfo c) =>
+        NonIntrinsic(ObjectVirtualOverride(c, "ToString",
+            static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsString));
+
+    /// <summary>The override of a System.Object virtual that a call through Object runs on
+    /// an instance of <paramref name="c"/>: walking up to (not into) Object, the most
+    /// derived instance virtual with a body, the name and the signature
+    /// <paramref name="shape"/> accepts, unless a new slot above it redeclares the member —
+    /// the rows below a new slot override that slot, not Object's member. A non-virtual
+    /// method of the name hides nothing such a call dispatches.</summary>
+    private static MethodInfo? ObjectVirtualOverride(ClassInfo c, string name, Func<MethodInfo, bool> shape)
     {
-        for (var b = c; b is not null; b = b.BaseClass)
+        MethodInfo? found = null;
+        for (var b = c; b is not null && b.FullName != "System.Object"; b = b.BaseClass)
         {
             b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "ToString"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType.IsString) is { } ts)
-                return NonIntrinsic(ts);
+            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.IsVirtual && m.Name == name && shape(m)) is not { } m)
+                continue;
+            if ((m.Attributes & MethodAttributes.NewSlot) != 0)
+                found = null;
+            else if (found is null && m.Rva != 0)
+                found = m;
         }
-        return null;
+        return found;
     }
 
     /// <summary>The GetHashCode() override (a 0-arg, int-returning instance method
     /// with a body) an instance of <paramref name="c"/> dispatches — its own or the
     /// nearest base's — or null when none overrides Object.GetHashCode (or the
     /// nearest override is an intrinsic type's, see <see cref="NonIntrinsic"/>).</summary>
-    internal static MethodInfo? EffectiveGetHashCode(ClassInfo c)
-    {
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "GetHashCode"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }) is { } gh)
-                return NonIntrinsic(gh);
-        }
-        return null;
-    }
+    internal static MethodInfo? EffectiveGetHashCode(ClassInfo c) =>
+        NonIntrinsic(ObjectVirtualOverride(c, "GetHashCode",
+            static m => m.Signature.ParameterTypes.Length == 0
+                && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }));
 
     /// <summary>The Equals(object) override (a 1-arg method taking System.Object and
     /// returning bool, with a body) an instance of <paramref name="c"/> dispatches —
@@ -592,44 +597,23 @@ internal sealed partial class Compilation
     /// body, the cut says "nothing overrides it". Callers want the cut answer — an
     /// uncallable body is not an override you can dispatch — which is why this is the
     /// private half and EffectiveEquals the public one.</summary>
-    internal static MethodInfo? DeclaredEquals(ClassInfo c)
-    {
-        for (var b = c; b is not null; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Equals"
-                    && m.Rva != 0 && m.Signature.ParameterTypes is [{ IsObject: true }]
-                    && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }) is { } eq)
-                return eq;
-        }
-        return null;
-    }
+    internal static MethodInfo? DeclaredEquals(ClassInfo c) =>
+        ObjectVirtualOverride(c, "Equals",
+            static m => m.Signature.ParameterTypes is [{ IsObject: true }]
+                && m.Signature.ReturnType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean });
 
     /// <summary>The Finalize() override (a 0-arg, void-returning instance method
     /// with a body — what a C# <c>~T()</c> destructor compiles down to) that an
     /// instance of <paramref name="c"/> dispatches — its own or the nearest
-    /// base's — or null when none overrides Object.Finalize. Same shape as
-    /// <see cref="EffectiveToString"/>, with one difference: the walk stops
-    /// before reaching System.Object itself. Unlike ToString/GetHashCode/Equals
-    /// (whose Object-level bodies are meaningful defaults worth dispatching to),
-    /// real CoreLib's <c>Object</c> declares its own empty <c>~Object() {}</c>
-    /// (Rva != 0, just an empty body) — walking into it would make EVERY
-    /// reference type register a finalizer that does nothing, defeating the
-    /// whole point of gating dn2cpp_register_finalizer on "has one". Used to
-    /// wire Dn2CppTypeInfo.finalize and to decide whether newobj must call
-    /// dn2cpp_register_finalizer.</summary>
-    internal static MethodInfo? EffectiveFinalize(ClassInfo c)
-    {
-        for (var b = c; b is not null && b.FullName != "System.Object"; b = b.BaseClass)
-        {
-            b.EnsureMembers();
-            if (b.Methods.FirstOrDefault(m => !m.IsStatic && m.Name == "Finalize"
-                    && m.Rva != 0 && m.Signature.ParameterTypes.Length == 0
-                    && m.Signature.ReturnType.IsVoid) is { } fin)
-                return fin;
-        }
-        return null;
-    }
+    /// base's — or null when none overrides Object.Finalize. The walk never enters
+    /// System.Object, whose real CoreLib declaration is an empty <c>~Object() {}</c>
+    /// (Rva != 0): answering it would make EVERY reference type register a finalizer
+    /// that does nothing, defeating the whole point of gating
+    /// dn2cpp_register_finalizer on "has one". Used to wire Dn2CppTypeInfo.finalize and
+    /// to decide whether newobj must call dn2cpp_register_finalizer.</summary>
+    internal static MethodInfo? EffectiveFinalize(ClassInfo c) =>
+        ObjectVirtualOverride(c, "Finalize",
+            static m => m.Signature.ParameterTypes.Length == 0 && m.Signature.ReturnType.IsVoid);
 
     /// <summary>The <c>ToString(string format)</c> overload of a value type (a
     /// 1-arg instance method taking string, returning string, with a body). The

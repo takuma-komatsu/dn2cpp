@@ -27,7 +27,9 @@ using System.Reflection;
 // delegate. An open binding of a generic virtual row is refused. An override
 // hides the generic virtual method it overrides from GetMethod and GetMethods, and
 // GetBaseDefinition answers the definition that introduces the chain. A binding
-// closed over null runs the row's own body.
+// closed over null runs the row's own body. A call through System.Object runs the
+// override of Object's member, which a non-virtual or new-slot redeclaration does not
+// replace.
 namespace ReflectVirtualInvokeSubset;
 
 class Base
@@ -409,6 +411,21 @@ class NullHost
     public string Plain() => "plain";
 }
 
+class HiddenText
+{
+    public new string ToString() => "hidden";
+}
+
+class SlotText
+{
+    public new virtual string ToString() => "slot";
+}
+
+class SlotTextLeaf : SlotText
+{
+    public override string ToString() => "slot-leaf";
+}
+
 static class Program
 {
     private static void Try(string label, Func<object?> invoke)
@@ -751,6 +768,15 @@ static class Program
             {
                 return "caught:" + (ex is SystemException);
             }
+        });
+
+        // A call through Object runs the override of Object's member, which neither a
+        // non-virtual redeclaration nor a new virtual slot provides.
+        Try("object callvirt past new slots", () =>
+        {
+            object hidden = new HiddenText();
+            object slot = new SlotTextLeaf();
+            return hidden.ToString() + "/" + slot.ToString() + "/" + ((SlotText)slot).ToString();
         });
 
         Console.WriteLine("virtual invoke end");
