@@ -456,7 +456,8 @@ internal sealed partial class AssemblyDiet : IDisposable
     }
 
     // Array.Initialize runs a value-type element's parameterless constructor, which no
-    // IL names, so once the program calls it every stripped value type keeps its own.
+    // IL names, so once the program calls it, directly or through a method group, every
+    // stripped value type keeps its own.
     private void ArmArrayInitialize()
     {
         if (_initializesArrays) return;
@@ -679,7 +680,7 @@ internal sealed partial class AssemblyDiet : IDisposable
                         && target.MetadataToken.TokenType == TokenType.MemberRef
                         && PreservationReader.ConstructsFromRuntimeType(target.DeclaringType.FullName, target.Name))
                         ArmRuntimeTypeConstruction();
-                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt
+                    if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Ldftn or Code.Ldvirtftn
                         && target.Name == "Initialize" && target.Parameters.Count == 0
                         && target.DeclaringType.FullName == "System.Array")
                         ArmArrayInitialize();

@@ -41,6 +41,12 @@ internal static class Program
         Console.WriteLine("attribute-array=" + Construct(listed[0]) + ":" + Construct(listed[1]));
         Console.WriteLine("attribute-object="
             + Construct((Type)typeof(Holder).GetCustomAttribute<BoxedAttribute>()!.Value));
+        // The program's only Array.Initialize is a method group, and it runs a
+        // constructor no IL names.
+        Array cells = new Cell[2];
+        Action initialize = cells.Initialize;
+        initialize();
+        Console.WriteLine("array-initialize-group=" + ((Cell[])cells)[1].Value);
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
@@ -56,6 +62,13 @@ public static class UnusedAppType
 internal abstract class Shape
 {
     public abstract string Who();
+}
+
+internal struct Cell
+{
+    public int Value;
+
+    public Cell() { Value = 3; }
 }
 
 internal sealed class Loose : Shape
