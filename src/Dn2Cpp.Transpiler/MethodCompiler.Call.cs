@@ -2086,7 +2086,7 @@ internal sealed partial class MethodCompiler
         // A direct call to a body-less method (InternalCall/extern/abstract that
         // wasn't intrinsic-mapped) would link against a missing symbol; surface
         // it as a precise, actionable error instead.
-        if (callee.Rva == 0 && !(isCallvirt && (callee.IsVirtual || callee.DeclaringClass.IsInterface)))
+        if (callee.Rva == 0 && !(isCallvirt && callee.IsVirtual))
             throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: {callee.DeclaringClass.FullName}::{callee.Name} " +
                 $"is an InternalCall/extern method with no IL body and no intrinsic mapping [chain: {_c.ReachChain(_method)}]");
@@ -2158,8 +2158,12 @@ internal sealed partial class MethodCompiler
                 NoteReferencedType(callee.DeclaringClass);
             call = $"{Compilation.GvmDispatchName(callee)}({string.Join(", ", args)})";
         }
-        else if (isCallvirt && callee.DeclaringClass.IsInterface)
+        else if (isCallvirt && callee.DeclaringClass.IsInterface && callee.IsVirtual)
         {
+            // A sealed or private interface member is not virtual: .NET runs its own
+            // body, never a class method of the same signature, so it takes the
+            // direct call below.
+            //
             // The call names the interface's ti_ (for dn2cpp_resolve_interface) and casts
             // the receiver to its struct pointer in FnPtrType. An interface specialization
             // reached only through this site — e.g. IEquatable<Byte> from a generic

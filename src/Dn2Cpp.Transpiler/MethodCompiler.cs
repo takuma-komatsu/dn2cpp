@@ -3503,7 +3503,8 @@ internal sealed partial class MethodCompiler : IEvalStack
                 // emitted, so note it, and register the canonical dispatch. This is the
                 // interface twin of the vtable lookup below — reachability already treats
                 // ldvirtftn like callvirt (ReachUsedVirtual covers both), so every
-                // implementation the delegate can bind to is in the tree.
+                // implementation the delegate can bind to is in the tree. A non-virtual
+                // interface member names its own body, like any non-virtual target.
                 // Checked after the GVM case: an interface-declared generic virtual has no
                 // interface-table slot either (its VtableSlot is unassigned), and its
                 // dispatcher is the right target.
@@ -3560,7 +3561,7 @@ internal sealed partial class MethodCompiler : IEvalStack
                     // helper (dn2cpp_object_dispatch_member).
                     expr = $"((void)dn2cpp_null_check({obj.Expr}), (void*)&{helper})";
                 }
-                else if (m.DeclaringClass.IsInterface)
+                else if (m.DeclaringClass.IsInterface && m.IsVirtual)
                 {
                     if (m.DeclaringClass.IntrinsicCppName is null)
                         NoteReferencedType(m.DeclaringClass);

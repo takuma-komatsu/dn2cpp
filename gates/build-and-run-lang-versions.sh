@@ -5,17 +5,18 @@
 # CoreLib and diffed byte-for-byte — stdout and exit status — against real .NET.
 #
 # The driver (samples/dotnet/LangVersions/Program.cs) is written as C# 9 top-level
-# Five feature sections folded in from their own gates are driven from the
-# TAIL of that driver rather than from inside the Cs0N section they belong to:
-# IteratorSubset (C# 2), NullableValueSubset (C# 2), TupleSubset (C# 7),
-# DefaultInterfaceMethodSubset (C# 8), RecordSubset (C# 9). Appending is what keeps
-# the output-order change at the end of the diff; the version each covers is named
-# beside its call.
-#
 # statements on purpose: a compilation may hold at most one such file and it
 # becomes the entry point, so the driver is the only place in the bucket where the
 # feature can be exercised, and it doubles as the assertion that the transpiler
 # finds the synthesized `<Program>$::<Main>$`.
+#
+# Feature sections are driven from the TAIL of that driver rather than from inside
+# the Cs0N section they belong to: IteratorSubset (C# 2), NullableValueSubset
+# (C# 2), TupleSubset (C# 7), DefaultInterfaceMethodSubset (C# 8), RecordSubset
+# (C# 9), and InterfaceSealedMemberSubset (C# 8), whose sealed and private
+# interface members run their own bodies through an interface, a delegate and a
+# constrained call on a class or struct. Appending is what keeps the output-order
+# change at the end of the diff; the version each covers is named beside its call.
 #
 # A project has ONE LangVersion, so every section is compiled by the C# 14
 # compiler. What this asserts is that the FEATURE's IL shape transpiles — not that

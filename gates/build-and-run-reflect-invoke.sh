@@ -125,7 +125,8 @@
 # receiver, a boxed enum, compiled framework overrides of abstract rows, framework
 # overrides only reflection reaches, which a string literal after typeof names, and
 # interface rows whose declaration has a default body, beside a non-virtual
-# interface member that runs its own body, and an application interface's static,
+# interface member that runs its own body, called, invoked or bound, where a class
+# declares a virtual of its signature, and an application interface's static,
 # non-virtual and private members that only reflection calls. A closed binding
 # reports the body it runs as its Method, and a boxed value binds as the receiver of
 # an interface or System.Enum row, or as a static method's first argument, each call
@@ -367,6 +368,8 @@ gate_extra_asserts() {
     grep -Fxq 'closed delegate method: Leaf.Who' "$out/metadata-layout.stdout"
     grep -Fxq 'default row, class body: custom-hello' "$out/metadata-layout.stdout"
     grep -Fxq 'sealed interface row, class: CUSTOM-HELLO' "$out/metadata-layout.stdout"
+    grep -Fxq 'sealed interface direct, class: CUSTOM-HELLO' "$out/metadata-layout.stdout"
+    grep -Fxq 'closed delegate, sealed interface row: CUSTOM-HELLO/IGreeting.Shout' "$out/metadata-layout.stdout"
     grep -Fxq 'interface static row: made' "$out/metadata-layout.stdout"
     grep -Fxq 'interface non-virtual row: stamp:box' "$out/metadata-layout.stdout"
     grep -Fxq 'interface private row: secret:box' "$out/metadata-layout.stdout"

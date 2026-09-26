@@ -3171,8 +3171,7 @@ static Dn2CppObject* dn2cpp_invoke_row(Dn2CppMetadataHandle<Dn2CppMethodInfo> mi
     // sealed, and a receiver without a vtable (a boxed value, a runtime-owned
     // handle) runs the row's own body: System.Object's and System.ValueType's rows
     // are metadata-answered above and an enum declares no methods. A static or
-    // non-virtual interface member
-    // runs its own body: its row carries a map index no receiver's map fills for it.
+    // non-virtual interface member runs its own body: .NET never dispatches it.
     // A closed generic virtual row has no slot; it runs through the dispatcher a
     // callvirt of the same instantiation calls, which takes the row's signature and
     // selects on the receiver's type, boxes included. Reachability cannot fill every

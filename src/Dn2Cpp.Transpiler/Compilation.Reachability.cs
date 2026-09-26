@@ -3148,7 +3148,8 @@ internal sealed partial class Compilation
     /// a level's MethodImpl wins, then a public virtual name-and-signature match
     /// on a level that lists the interface; a level that does not list it
     /// contributes only by overriding the class slot the selected body occupies.
-    /// With no class body, the most specific interface override applies.</summary>
+    /// With no class body, the most specific interface override applies. A
+    /// non-virtual member is never overridden: its slot holds its own body.</summary>
     internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod) =>
         ResolveItfImplOrNull(c, itfMethod, out _);
 
@@ -3160,6 +3161,8 @@ internal sealed partial class Compilation
     internal MethodInfo? ResolveItfImplOrNull(ClassInfo c, MethodInfo itfMethod, out bool ambiguous)
     {
         ambiguous = false;
+        if (!itfMethod.IsVirtual)
+            return itfMethod.IsStatic || itfMethod.Rva == 0 ? null : itfMethod;
         var declaring = itfMethod.DeclaringClass;
         List<ClassInfo>? listing = null;
         MethodInfo? hit = null;
@@ -5496,7 +5499,7 @@ internal sealed partial class Compilation
                             // reference canon placeholder) keep the cross-product:
                             // those deref to a real dispatch.
                             if ((insn.OpCode == ILOpCode.Callvirt || insn.OpCode == ILOpCode.Ldvirtftn)
-                                && (t.IsVirtual || t.DeclaringClass.IsInterface)
+                                && t.IsVirtual
                                 && !(insn.OpCode == ILOpCode.Callvirt
                                      && constrained is { Kind: TypeKind.Primitive, Primitive: not (PrimitiveTypeCode.Object or PrimitiveTypeCode.String) }))
                                 ReachUsedVirtual(t);

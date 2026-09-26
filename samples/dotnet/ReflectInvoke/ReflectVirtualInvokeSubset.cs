@@ -974,6 +974,11 @@ static class Program
             + " " + Access(typeof(object).GetMethod("MemberwiseClone", BindingFlags.NonPublic | BindingFlags.Instance)!)
             + " " + Access(typeof(object).GetMethod("Finalize", BindingFlags.NonPublic | BindingFlags.Instance)!)
             + " " + Access(typeof(object).GetMethod("ReferenceEquals")!));
+        // A class virtual of the same shape answers for the non-virtual interface
+        // member neither through the interface nor through a delegate bound to it.
+        IGreeting custom = new CustomGreeting();
+        Try("sealed interface direct, class", () => custom.Shout());
+        Try("closed delegate, sealed interface row", () => Bound(new CustomGreeting(), shout));
 
         Console.WriteLine("virtual invoke end");
     }
