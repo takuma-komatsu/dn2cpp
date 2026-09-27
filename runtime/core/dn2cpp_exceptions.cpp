@@ -709,8 +709,9 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     // System.Exception's base ctor default (COR_E_EXCEPTION). A derived ctor that
     // runs (the AOT/interp newobj paths) overwrites this with its per-type value via
     // set_HResult; a runtime-RAISED exception (no ctor body) keeps the base default
-    // rather than the per-type COR_E_* — the same documented divergence as its null
-    // paramName, and honest (the runtime carries no per-type HResult to seed).
+    // rather than the per-type COR_E_*: the runtime carries no per-type HResult to seed,
+    // unlike the argument family's ParamName and ActualValue, which
+    // dn2cpp_raise_argument stores.
     e->hresult = static_cast<int32_t>(0x80131500);
     return e;
 }
