@@ -582,9 +582,7 @@ Dn2CppObject* intrinsic_string_concat_array(Dn2CppString* arr)
 // scanned against the frame's EH records like an interpreted `throw`.
 [[noreturn]] void throw_delegate_null_this()
 {
-    const char* msg = "Delegate to an instance method cannot have null 'this'.";
-    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
-        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+    dn2cpp_throw_delegate_null_this();
 }
 
 // The patch-target half of that refusal. Dn2CppBpiMethod carries no static bit

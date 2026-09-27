@@ -2645,6 +2645,9 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // NullReferenceException for the instance call it stands in for) — catchable,
 // where the dereference it replaces was a SIGSEGV.
 [[noreturn]] void dn2cpp_throw_null_reference();
+// A closed delegate constructed over an instance method with a null target: .NET's
+// constructor raises ArgumentException with this message instead of binding it.
+[[noreturn]] void dn2cpp_throw_delegate_null_this();
 // An integer division or remainder whose divisor is zero, matching .NET's
 // DivideByZeroException. Out of line and [[noreturn]] so the inline guards below
 // carry no code on the taken-never path.

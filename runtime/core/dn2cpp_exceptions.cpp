@@ -540,6 +540,12 @@ void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_except
 void dn2cpp_throw_ambiguous_match() { dn2cpp_throw_of(&dn2cpp_ambiguous_match_exception_type); }
 void dn2cpp_throw_rank() { dn2cpp_throw_of(&dn2cpp_rank_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
+void dn2cpp_throw_delegate_null_this()
+{
+    const char* msg = "Delegate to an instance method cannot have null 'this'.";
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
+        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+}
 void dn2cpp_throw_divide_by_zero() { dn2cpp_throw_of(&dn2cpp_divide_by_zero_exception_type); }
 void dn2cpp_throw_format() { dn2cpp_throw_of(&dn2cpp_format_exception_type); }
 void dn2cpp_throw_format_value(Dn2CppString* value)
