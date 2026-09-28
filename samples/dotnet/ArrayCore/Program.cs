@@ -49,6 +49,7 @@ namespace ArrayCore
             NonArrayOperandSubset.Program.Run();
             ArrayPredicateSubset.Program.Run();
             ArraySurfaceSubset.Program.Run();
+            ArrayResizeSubset.Program.RunSameLength();
         }
     }
 }

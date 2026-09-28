@@ -130,6 +130,11 @@
 # only pairs that need no per-element conversion, CreateInstanceFromArrayType's
 # lengths forms check the type's rank, and Initialize runs a struct's explicit
 # parameterless constructor, which ILDiet must keep although no IL names it.
+#
+# ArrayResizeSubset's RunSameLength tail asserts that Array.Resize to the array's
+# own length keeps the instance — in a local, a field, a generic body and behind a
+# covariant slot — while another length, or a null slot, gets a new array of the
+# static element type.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore
