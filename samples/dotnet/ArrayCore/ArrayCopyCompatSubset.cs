@@ -34,6 +34,14 @@ namespace ArrayCopyCompatSubset
 
         private class Der : Base { public override string ToString() => "Der"; }
 
+        private interface ILeft { }
+
+        private interface IRight { }
+
+        private class Both : ILeft, IRight { public override string ToString() => "Both"; }
+
+        private class LeftOnly : ILeft { public override string ToString() => "LeftOnly"; }
+
         private static void Try(string label, Action a)
         {
             try { a(); }
@@ -177,6 +185,11 @@ namespace ArrayCopyCompatSubset
             Try("list copyto object->string[]", () => { var l = new System.Collections.Generic.List<object> { new object() }; l.CopyTo(Objects(new string[1]), 0); });
             try { Array.ConstrainedCopy(Objects(new object[] { 1 }), 0, Objects(new string[1]), 0, 1); }
             catch (ArrayTypeMismatchException e) { Console.WriteLine("constrained refusal: " + e.Message); }
+            Try("copy sibling interfaces", () => { object[] d = Objects(new IRight[1]); Array.Copy(Objects(new ILeft[] { new Both() }), d, 1); Show("copy sibling interfaces", d); });
+            Try("copy sibling interfaces invalid", () => { object[] d = Objects(new IRight[] { new Both() }); try { Array.Copy(Objects(new ILeft[] { new LeftOnly() }), d, 1); } finally { Show("copy sibling interfaces invalid after", d); } });
+            Try("copy sibling interfaces partial", () => { object[] d = Objects(new IRight[] { null, new Both() }); try { Array.Copy(Objects(new ILeft[] { new Both(), new LeftOnly() }), d, 2); } finally { Show("copy sibling interfaces partial after", d); } });
+            Try("copy sealed class to interface", () => { object[] d = Objects(new IRight[1]); Array.Copy(Objects(new string[] { "x" }), d, 1); });
+            Try("constrained sibling interfaces", () => { object[] d = Objects(new IRight[] { new Both() }); try { Array.ConstrainedCopy(Objects(new ILeft[] { new Both() }), 0, d, 0, 1); } finally { Show("constrained sibling interfaces after", d); } });
         }
     }
 }

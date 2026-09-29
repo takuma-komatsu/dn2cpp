@@ -83,7 +83,8 @@
 # under the source's rep (which was a heap overrun — the pre-fix binary
 # SIGSEGVed in this very section).
 # RunCovariant checks the inline copy path when a reference array's runtime
-# element type is narrower than its static element type.
+# element type is narrower than its static element type, including sibling
+# interfaces that require per-element casts.
 #
 # ArrayDataRefMdSubset is about the ADDRESS an array hands out, not about ranks.
 # MemoryMarshal.GetArrayDataReference(Array) states no rank, so the answer comes from the
