@@ -460,6 +460,13 @@ void dn2cpp_overflow()
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
 }
 
+[[noreturn]] void dn2cpp_throw_sr0(const Dn2CppTypeInfo* ti, const char* key)
+{
+    Dn2CppString* msg = dn2cpp_sr_format(key, nullptr, 0);
+    dn2cpp_throw(dn2cpp_exception_new(ti,
+        msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
+}
+
 // ArgumentOutOfRangeException as real .NET assembles it: the resource's own sentence,
 // then the " (Parameter 'x')" ArgumentException.Message appends, then the newline +
 // "Actual value was v." ArgumentOutOfRangeException.Message appends. A runtime-raised

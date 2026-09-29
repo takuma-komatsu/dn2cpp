@@ -64,8 +64,11 @@ internal static class BclMessages
         "Argument_AddingDuplicateWithKey",
         "Arg_KeyNotFoundWithKey",
         "ArgumentOutOfRange_Generic_MustBeNonNegative",
+        "ArgumentOutOfRange_NeedNonNegNum",
         "ArgumentOutOfRange_StartIndexLargerThanLength",
         "ArgumentOutOfRange_IndexLength",
+        "Argument_InvalidOffLen",
+        "Argument_SpansMustHaveSameLength",
         // The two suffixes ArgumentException.Message / ArgumentOutOfRangeException.Message
         // append; a runtime-raised one has no managed _paramName/_actualValue field to
         // dispatch through, so the site that knows them bakes them into the stored text.

@@ -750,6 +750,8 @@ internal sealed partial class MethodCompiler
                 var arr = Pop();
                 string tmpArr = NewTemp("Dn2CppObject*");
                 Emit($"{tmpArr} = {Cast(arr, "Dn2CppObject*")};");
+                // Checked before the length read: .NET's whole-array Reverse names "array".
+                Emit($"if ({tmpArr} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
                 Emit($"dn2cpp_array_reverse_dyn({tmpArr}, 0, dn2cpp_array_length_dyn({tmpArr}));");
                 return true;
             }
@@ -1106,7 +1108,12 @@ internal sealed partial class MethodCompiler
             lengthT = ct;
         }
         else
+        {
+            // The whole-array forms check "array" before reading its length; the range
+            // forms leave the null to the helper, which names "keys" as .NET's do.
+            Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
             lengthT = $"dn2cpp_array_length_dyn({arrT})";
+        }
         string cmpArgs;
         if (comparer is { } cmp)
         {
