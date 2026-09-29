@@ -190,6 +190,7 @@ namespace ArraySurfaceSubset
             setValue2(80, 1L, 0L);
             Console.WriteLine("group-getvalue-long: " + getValue(1L) + " " + md[1, 0] + " "
                 + copyGroup(ia, new int[4], 2L));
+
         }
     }
 }

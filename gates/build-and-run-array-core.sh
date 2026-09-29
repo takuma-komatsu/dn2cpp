@@ -135,6 +135,10 @@
 # own length keeps the instance — in a local, a field, a generic body and behind a
 # covariant slot — while another length, or a null slot, gets a new array of the
 # static element type.
+# ArrayConstrainedCovarianceSubset pins ConstrainedCopy's runtime array type
+# verdict when both operands are statically object[]: an actual string[]
+# destination must reject an object[] source before writing, while compatible
+# same-type and upcast pairs still copy.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore
