@@ -184,6 +184,8 @@ namespace ArrayArgumentCheckSubset
             Check("Array sort past end", () => Array.Sort(boxed, 1, 5));
             Check("Array reverse rank", () => Array.Reverse(grid));
             Check("Array reverse past end", () => Array.Reverse(boxed, 2, 2));
+            Check("Array reverse empty", () => Array.Reverse((Array)empty));
+            Check("Array reverse empty end", () => Array.Reverse(boxed, 3, 0));
             Check("Array copy rank mismatch", () => Array.Copy(grid, a, 1));
             Check("copy to a grid", () => Array.Copy(a, grid, 1));
             Console.WriteLine("untouched by the rejected searches: " + string.Join(",", a)

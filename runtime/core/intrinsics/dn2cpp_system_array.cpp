@@ -633,6 +633,8 @@ void dn2cpp_array_reverse_dyn(Dn2CppObject* a, int32_t index, int32_t length)
         dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
     if (v.rank != 1)
         dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_SINGLE_DIM_ONLY);
+    if (length <= 1)
+        return;
     char tmp[64];
     int32_t w = v.elemSize;
     if (w > 64)
