@@ -898,8 +898,8 @@ internal sealed partial class MethodCompiler
         string p = SortCbParam(elem, byAddr), ct = CppTypes.Of(elem), load = SortCbLoad(elem, byAddr);
         if (ccls.IsDelegate)
         {
-            // Names dginvoke_<CppName> — record it like the Invoke call site does
-            // (Compilation.DelegateInvokerUses).
+            // A null-only call still spells the delegate receiver type and invoker.
+            _c.NoteForceEmit(ccls);
             _c.DelegateInvokerUses.Add(ccls);
             return $"[](void* _ctx, {p} _x, {p} _y) -> int32_t {{ {load} "
                  + $"return dginvoke_{ccls.CppName}(({ccls.CppStructName}*)_ctx, _a, _b); }}";
@@ -1024,9 +1024,10 @@ internal sealed partial class MethodCompiler
     ///   Sort&lt;TKey,TValue&gt; (K[],V[]) (K[],V[],cmp) (K[],V[],int,int) (K[],V[],int,int,cmp)
     ///   Reverse&lt;T&gt;      (T[]) (T[],int,int)
     /// </code>
-    /// A comparer argument may be null at run time (<c>List&lt;T&gt;.Sort()</c> reaches
+    /// An IComparer argument may be null at run time (<c>List&lt;T&gt;.Sort()</c> reaches
     /// <c>Array.Sort(…, (IComparer&lt;T&gt;)null)</c> — that IS the default-order path), so
-    /// every comparer arm carries the default order in its else branch.</summary>
+    /// every IComparer arm carries the default order in its else branch; a null
+    /// Comparison&lt;T&gt; throws.</summary>
     private void EmitArraySort(MethodSpecificationHandle msh, string name, TypeDesc[] methodArgs)
     {
         var ms = _reader.GetMethodSpecification(msh);
@@ -1061,9 +1062,21 @@ internal sealed partial class MethodCompiler
         string arrCt = ArrayCppPtr(t);
         string arrT = NewTemp(arrCt);
         Emit($"{arrT} = {Cast(arrE, arrCt)};");
+        // .NET's argument checks, in its order: the array, then index, length and the
+        // range (the key+value range also bounds the items array, checked below). The
+        // helpers trust the range they are given.
+        Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"{(pair ? "keys" : "array")}\");");
         string startT = NewTemp("int32_t"), countT = NewTemp("int32_t");
         Emit($"{startT} = {(startE is null ? "0" : Cast(startE, "int32_t"))};");
         Emit($"{countT} = {(countE is null ? $"((Dn2CppArray*){arrT})->length" : Cast(countE, "int32_t"))};");
+        string outOfRange = $"((Dn2CppArray*){arrT})->length - {startT} < {countT}";
+        if (rangeParams == 2)
+        {
+            Emit($"if ({startT} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"index\");");
+            Emit($"if ({countT} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"length\");");
+            if (!pair)
+                Emit($"if ({outOfRange}) dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);");
+        }
 
         if (name == "Reverse")
         {
@@ -1087,6 +1100,8 @@ internal sealed partial class MethodCompiler
             string itemsCt = ArrayCppPtr(tv);
             string itemsT = NewTemp(itemsCt);
             Emit($"{itemsT} = {Cast(itemsE!, itemsCt)};");
+            Emit($"if ({outOfRange} || ({itemsT} != nullptr && {startT} > ((Dn2CppArray*){itemsT})->length - {countT})) "
+                + "dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);");
             var (kd, kst) = ArrayDataStride(t, arrT);
             var (vd, vst) = ArrayDataStride(tv, itemsT);
             string call = $"dn2cpp_sort_pair({kd}, {kst}, "
@@ -1129,6 +1144,14 @@ internal sealed partial class MethodCompiler
         var ccls = ps[^1].Class
             ?? throw new NotSupportedException(
                 $"{_method.DeclaringClass.FullName}.{_method.Name}: Array.Sort comparer parameter is not a class type");
+        if (ccls.IsDelegate)
+        {
+            // A Comparison<T> has no default order to fall back on: null is .NET's
+            // ArgumentNullException.
+            Emit($"if ({cmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
+            Emit($"{cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});");
+            return;
+        }
         Emit($"if ({cmpT} != nullptr) {{");
         Emit($"    {cmpFn}({arrT}, {startT}, {countT}, (void*){cmpT}, {ComparerThunk(t, ccls)});");
         Emit("} else {");

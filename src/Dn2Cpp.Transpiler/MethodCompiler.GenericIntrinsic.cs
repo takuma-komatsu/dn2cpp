@@ -658,8 +658,14 @@ internal sealed partial class MethodCompiler
             var t = methodArgs[0];
             // Spill the Range into a typed temp so we can take its address and read the
             // two Index._value words regardless of how the popped expression was formed.
+            // The source is read twice (its length, then the copy); a null one is .NET's
+            // ArgumentNullException, raised before the range is resolved.
+            string source = NewTemp(arr.CppType);
+            Emit($"{source} = {arr.Expr};");
             string rg = NewTemp(range.CppType);
             Emit($"{rg} = {range.Expr};");
+            Emit($"if ({source} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+            arr = arr with { Expr = source };
             string startVal = $"((int32_t*)&{rg})[0]";
             string endVal = $"((int32_t*)&{rg})[1]";
             string srcLen = $"((Dn2CppArray*)({arr.Expr}))->length";
@@ -1173,7 +1179,7 @@ internal sealed partial class MethodCompiler
         // points straight at the elements (no array header), so this is the Array.Sort emit
         // over a raw pointer + length: the same element-ordering machinery
         // (ComparerThunk / DefaultOrderCallback), the same key+value helper, the same
-        // null-comparer-means-default rule.
+        // null-IComparer-means-default rule (a null Comparison<T> throws).
         if (declType == "System.MemoryExtensions" && name == "Sort")
         {
             var ctx = new GenericContext(System.Array.Empty<TypeDesc>(), methodArgs);
@@ -1209,6 +1215,10 @@ internal sealed partial class MethodCompiler
                 string kvCall = $"dn2cpp_sort_pair((void*)({keysSp}.f__reference), {SortElemSize(t)}, "
                               + $"(void*)({itemsSp}.f__reference), {SortElemSize(tv)}, "
                               + $"0, {keysSp}.f__length";
+                // .NET checks a Comparison<TKey> for null first, then that the two spans
+                // match in length; the helper permutes both over the keys' length.
+                string sameLength = $"if ({keysSp}.f__length != {itemsSp}.f__length) "
+                    + "dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH);";
                 if (cmpE is { } kvc)
                 {
                     string kvCmpT = NewTemp("Dn2CppObject*");
@@ -1216,6 +1226,14 @@ internal sealed partial class MethodCompiler
                     var kvCls = ps[^1].Class
                         ?? throw new NotSupportedException(
                             $"MemoryExtensions.Sort<{t}>: comparer parameter is not a class type");
+                    if (kvCls.IsDelegate)
+                    {
+                        Emit($"if ({kvCmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
+                        Emit(sameLength);
+                        Emit($"{kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});");
+                        return;
+                    }
+                    Emit(sameLength);
                     Emit($"if ({kvCmpT} != nullptr) {{");
                     Emit($"    {kvCall}, (void*){kvCmpT}, {ComparerThunk(t, kvCls, byAddr: true)});");
                     Emit("} else {");
@@ -1223,6 +1241,7 @@ internal sealed partial class MethodCompiler
                     Emit("}");
                     return;
                 }
+                Emit(sameLength);
                 EmitDefaultSortPair(t, kvCall);
                 return;
             }
@@ -1254,6 +1273,13 @@ internal sealed partial class MethodCompiler
             var sCls = ps[^1].Class
                 ?? throw new NotSupportedException(
                     $"MemoryExtensions.Sort<{t}>: comparer parameter is not a class type");
+            if (sCls.IsDelegate)
+            {
+                // A Comparison<T> has no default order to fall back on.
+                Emit($"if ({sCmpT} == nullptr) dn2cpp_throw_argument_null_param(\"comparison\");");
+                Emit($"{rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});");
+                return;
+            }
             Emit($"if ({sCmpT} != nullptr) {{");
             Emit($"    {rep.Fn}({cmpArgs}, (void*){sCmpT}, {ComparerThunk(t, sCls)});");
             Emit("} else {");

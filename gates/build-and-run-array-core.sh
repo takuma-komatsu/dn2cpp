@@ -139,6 +139,9 @@
 # verdict when both operands are statically object[]: an actual string[]
 # destination must reject an object[] source before writing, while compatible
 # same-type and upcast pairs still copy.
+#
+# ArrayArgumentCheckSubset pins Sort and Reverse range checks, a null
+# Comparison<T>, and unequal span lengths before their unchecked loops.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore

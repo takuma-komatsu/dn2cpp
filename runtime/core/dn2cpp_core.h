@@ -1458,8 +1458,11 @@ inline constexpr const char* DN2CPP_SR_PATH_TOO_LONG_PATH = "IO_PathTooLong_Path
 inline constexpr const char* DN2CPP_SR_ADDING_DUPLICATE_WITH_KEY = "Argument_AddingDuplicateWithKey";
 inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND_WITH_KEY = "Arg_KeyNotFoundWithKey";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE = "ArgumentOutOfRange_Generic_MustBeNonNegative";
+inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
+inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
+inline constexpr const char* DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH = "Argument_SpansMustHaveSameLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
@@ -2695,6 +2698,7 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // holding the operand .NET's own sentence names (the string that failed to parse, the
 // duplicate dictionary key). Falls back to `ti`'s default text if the key is absent.
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0);
+[[noreturn]] void dn2cpp_throw_sr0(const Dn2CppTypeInfo* ti, const char* key);
 // ArgumentOutOfRangeException with the paramName/actual-value tail real .NET's Message
 // overrides append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
