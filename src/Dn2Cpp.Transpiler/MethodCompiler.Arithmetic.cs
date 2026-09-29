@@ -623,12 +623,15 @@ internal sealed partial class MethodCompiler
     /// refuse with ArrayTypeMismatchException. The inline ref-element arm keeps
     /// the raw memmove for statically-equal elements even though a COVARIANT
     /// receiver could demand per-element checks (Base[] holding a Der[]) — the
-    /// same documented carve-out as the stelem helpers.</summary>
+    /// same documented carve-out as the stelem helpers. Array.ConstrainedCopy
+    /// needs the runtime verdict for reference arrays: covariance can make equal
+    /// static element types differ at runtime.</summary>
     private void EmitArrayCopy(StackEntry src, string srcIdx, StackEntry dst, string dstIdx, string len,
                                ArrayOperandKind srcKind = ArrayOperandKind.Argument,
                                ArrayOperandKind dstKind = ArrayOperandKind.CopyDest,
                                bool sameElementByConstruction = false,
-                               TypeDesc? elementType = null)
+                               TypeDesc? elementType = null,
+                               bool reliable = false)
     {
         ArrRep? rep = ArrayRepOfCppTypeOrNull(src.CppType);
         ArrRep? dstRep = ArrayRepOfCppTypeOrNull(dst.CppType);
@@ -637,9 +640,10 @@ internal sealed partial class MethodCompiler
                 && dst.StaticType is { Kind: TypeKind.SZArray } sb
                 && SameCopyElement(sa.Element, sb.Element))
             || (rep == ArrRep.I4 && dstRep == ArrRep.I4);
-        if (rep is null || !proven)
+        if (rep is null || !proven || (reliable && rep == ArrRep.Ref))
         {
-            Emit($"dn2cpp_array_copy_dyn({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
+            string helper = reliable ? "dn2cpp_array_constrained_copy_dyn" : "dn2cpp_array_copy_dyn";
+            Emit($"{helper}({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
                  $"{Cast(dst, "Dn2CppObject*")}, (int32_t)({dstIdx}), (int32_t)({len}));");
             return;
         }
@@ -1944,7 +1948,14 @@ internal sealed partial class MethodCompiler
     private void NoteFtnTargetBody(MethodInfo target)
     {
         if (CoreIntrinsics.IsIntrinsicType(target.DeclaringClass.FullName))
+        {
+            // The real-body members' canonical counterpart is never reached (see the
+            // matching guard in TranslateGenericIntrinsic).
+            if (CoreIntrinsics.IsArrayRealBodyGeneric(target.DeclaringClass.FullName, target.Name))
+                foreach (var arg in target.Context.MethodArgs)
+                    TaintIfCanonical(arg, "array-real-body");
             _c.NoteIntrinsicFtnTarget(target);
+        }
         else if (CoreIntrinsics.TryFindCutRow(target, out _))
             _c.NoteInterceptFtnTarget(target);
     }

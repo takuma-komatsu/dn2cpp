@@ -47,6 +47,10 @@ namespace ArrayCore
             ArrayDataRefMdSubset.Program.Run();
             InterfaceElementArraySubset.Program.Run();
             NonArrayOperandSubset.Program.Run();
+            ArrayPredicateSubset.Program.Run();
+            ArraySurfaceSubset.Program.Run();
+            ArrayResizeSubset.Program.RunSameLength();
+            ArrayConstrainedCovarianceSubset.Program.Run();
         }
     }
 }

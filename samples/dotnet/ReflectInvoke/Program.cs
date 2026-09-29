@@ -62,6 +62,7 @@ namespace ReflectInvoke
             if (Environment.GetEnvironmentVariable("DN2CPP_BEFORE_RUNTIME_HANDLE_RELATIONS") == "1")
                 return;
             RuntimeHandleRelationSubset.Program.Run();
+            NullDelegateTargetSubset.Program.Run();
         }
     }
 }

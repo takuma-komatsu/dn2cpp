@@ -79,7 +79,7 @@ internal sealed class Module
     /// reason <see cref="TemplateDescs"/> is, and per module because System.ThrowHelper,
     /// its enums and its SR are all per-assembly polyfills.</summary>
     public TypeDefinitionHandle? ThrowHelperType;
-    public Dictionary<(string, int), (ThrowHelperResources.Source? Res, ThrowHelperResources.Source? Arg)>? ThrowHelperSinks;
+    public Dictionary<(string, int), ThrowHelperResources.Sink>? ThrowHelperSinks;
     public Dictionary<string, Dictionary<int, string>>? ExceptionEnums;
 }
 
@@ -3243,6 +3243,48 @@ internal sealed partial class Compilation
         return m;
     }
 
+    /// <summary>The generic counterpart of <see cref="ReachStringStaticMethod"/>: resolves
+    /// the closed instantiation a MethodSpec names on an intrinsic-mapped type
+    /// (<see cref="CoreIntrinsics.IsArrayRealBodyGeneric"/>) and reaches its real body for
+    /// the intercepted call site to call.</summary>
+    internal MethodInfo ReachIntrinsicTypeMethodSpec(Module module, MethodSpecificationHandle msh, GenericContext ctx)
+    {
+        var m = ResolveMethodSpec(module, msh, ctx);
+        ReachIntrinsicTypeMethod(m);
+        DrainReachability();
+        return m;
+    }
+
+    /// <summary>The non-generic counterpart of <see cref="ReachIntrinsicTypeMethodSpec"/>:
+    /// System.Array's own CoreLib method <paramref name="name"/> with exactly
+    /// <paramref name="sig"/>'s parameter types
+    /// (<see cref="CoreIntrinsics.IsArrayRealBodyMember"/>), reached for the intercepted
+    /// call site to call. Null without a CoreLib. Only same-named overloads have their
+    /// signatures decoded.</summary>
+    internal MethodInfo? ReachArrayMethod(string name, MethodSignature<TypeDesc> sig)
+    {
+        if (FindClassByFullName("System.Array") is not { } arr)
+            return null;
+        var want = sig.ParameterTypes;
+        foreach (var m in arr.EnsureMembers().Methods)
+        {
+            if (m.Name != name || m.Rva == 0 || m.IsStatic == sig.Header.IsInstance)
+                continue;
+            var have = m.Signature.ParameterTypes;
+            if (have.Length != want.Length)
+                continue;
+            bool same = true;
+            for (int i = 0; i < have.Length && same; i++)
+                same = have[i].ToString() == want[i].ToString();
+            if (!same)
+                continue;
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return m;
+        }
+        return null;
+    }
+
     /// <summary>Resolves and reaches an ordinary (non-intrinsic-mapped) loaded
     /// class's instance method or ctor so an intrinsic call site can allocate the
     /// object and delegate to the real transpiled body — the bridge from a
@@ -3338,6 +3380,14 @@ internal sealed partial class Compilation
     {
         if (_intrinsicTypeTranspiled.Contains(m))
             return; // real body transpiled — the symbol already exists
+        // Its calls already delegate to the real body, which serves the address too.
+        if (CoreIntrinsics.IsArrayRealBodyGeneric(m.DeclaringClass.FullName, m.Name)
+            || CoreIntrinsics.IsArrayRealBodyMember(m.DeclaringClass.FullName, m.Name, m.Signature))
+        {
+            ReachIntrinsicTypeMethod(m);
+            DrainReachability();
+            return;
+        }
         if (IntrinsicFtnTargets.Add(m))
             Reachable.Add(m.EnsureSignature()); // reached => decoded, as in Reach
     }

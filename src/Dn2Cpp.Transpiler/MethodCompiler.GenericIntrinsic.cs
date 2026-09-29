@@ -1328,9 +1328,11 @@ internal sealed partial class MethodCompiler
         if (TryTokenFreeGenericIntrinsic(declType, name, methodArgs))
             return;
 
-        // Array.Resize<T>(ref T[] array, int newSize): allocate a new array, copy the
-        // overlap, and write it back through the ref. The BCL growable-collection
-        // path (Stack/Queue/etc. Grow). A null source counts as length 0.
+        // Array.Resize<T>(ref T[] array, int newSize): as .NET, read the slot once and
+        // leave it untouched when the array already has newSize elements; otherwise
+        // allocate a T[newSize], copy the overlap, and write it back through the ref.
+        // The BCL growable-collection path (Stack/Queue/etc. Grow). A null source
+        // counts as length 0 but is always replaced.
         if (declType == "System.Array" && name == "Resize")
         {
             var t = methodArgs[0];
@@ -1347,20 +1349,23 @@ internal sealed partial class MethodCompiler
             // Resize screens newSize itself: the newarr below answers a negative
             // one with OverflowException, .NET with ArgumentOutOfRangeException.
             Emit($"{nsz} = dn2cpp_array_resize_size((int32_t)({newSize.Expr}));");
+            string old = NewTemp(arrCpp);
+            Emit($"{old} = {slot};");
+            string oldLen = $"((Dn2CppArray*){old})->length";
+            Emit($"if ({old} == nullptr || {oldLen} != {nsz}) {{");
             EmitNewarr(t, nsz);
             var allocated = Pop();
             string nw = NewTemp(arrCpp);
             Emit($"{nw} = ({arrCpp})({allocated.Expr});");
-            string oldLen = $"((Dn2CppArray*){slot})->length";
             string cnt = $"({oldLen} < {nsz} ? {oldLen} : {nsz})";
             // Both operands are already known non-null inside this guard — the
-            // source by the test on the line above (Array.Resize accepts a null
-            // slot and simply allocates), the destination because it was just
+            // source by the test below, the destination because it was just
             // allocated — so the copy takes no operand guard.
-            Emit($"if ({slot} != nullptr) {{");
-            // Same element by construction: the destination was just allocated
-            // with the source's own element type.
-            EmitArrayCopy(new StackEntry(slot, StackKind.Ref, arrCpp), "0",
+            Emit($"if ({old} != nullptr) {{");
+            // Same element by construction: the destination was just allocated as
+            // T[], and whatever array a T[] slot holds (a U[] with U : T, an int[]
+            // behind a uint[]) stores elements a T[] holds bit for bit.
+            EmitArrayCopy(new StackEntry(old, StackKind.Ref, arrCpp), "0",
                 new StackEntry(nw, StackKind.Ref, arrCpp), "0", cnt,
                 ArrayOperandKind.Unchecked, ArrayOperandKind.Unchecked,
                 sameElementByConstruction: true, elementType: t);
@@ -1369,6 +1374,7 @@ internal sealed partial class MethodCompiler
             // The ref may name a heap field; the conditional helper also accepts
             // local and static slots.
             Emit($"dn2cpp_gc_write_barrier_if_heap((void*)({arrRef.Expr}));");
+            Emit("}");
             return;
         }
 
@@ -1406,6 +1412,19 @@ internal sealed partial class MethodCompiler
         if (declType == "System.Array" && name == "BinarySearch")
         {
             EmitArrayBinarySearch(msh, methodArgs);
+            return;
+        }
+
+        // Find/FindAll/FindIndex/Exists/ConvertAll/ForEach/AsReadOnly and kin: call the
+        // real transpiled body. Their nested calls to each other land back here.
+        if (CoreIntrinsics.IsArrayRealBodyGeneric(declType, name))
+        {
+            // Only a closed instantiation is reached as a real body: Reach cuts the
+            // canonical counterpart of an intrinsic type's member, so a shared caller
+            // has no body to call and each instantiation compiles its own.
+            foreach (var arg in methodArgs)
+                TaintIfCanonical(arg, "array-real-body");
+            EmitManagedCall(Comp.ReachIntrinsicTypeMethodSpec(_module, msh, Method.Context), isCallvirt: false);
             return;
         }
 

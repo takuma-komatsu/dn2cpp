@@ -120,6 +120,8 @@
 # Disabling compression forces native metadata even for explicit packed selectors.
 # NoCompressMetadata and derived attributes select native owner/member metadata
 # through class inheritance without changing containing types or interface users.
+# NullDelegateTargetSubset checks delegate construction over a nonvirtual
+# instance method: a null receiver faults when bound, before invocation.
 # Former gates: reflect-invoke, reflect-dispatch, reflect-field-value,
 # reflect-serializer, activator-subset, event-subset.
 source "$(dirname "$0")/_common.sh"

@@ -1909,27 +1909,40 @@ internal sealed partial class MethodCompiler
     /// <c>ExceptionArgument</c> operand is the paramName, which ArgumentException.Message
     /// appends — baked in, since a runtime-raised exception has no managed _paramName field
     /// for the override to read. The other half bakes its resource into its own body, which
-    /// <see cref="ThrowHelperResources"/> reads off the metadata. Either way an unrecovered
-    /// resource keeps the bare trap, whose message is the exception type's real .NET
-    /// default.</summary>
+    /// <see cref="ThrowHelperResources"/> reads off the metadata. A sink that passes only the
+    /// argument (<c>ThrowArgumentNullException(ExceptionArgument.array)</c>) raises the
+    /// type's default message with the paramName appended. Otherwise an unrecovered resource
+    /// keeps the bare trap, whose message is the exception type's real .NET default.</summary>
     private void EmitThrowHelperSink(string name, MethodSignature<TypeDesc> sig)
     {
         int n = sig.ParameterTypes.Length;
         var popped = new StackEntry[n];
         for (int i = n - 1; i >= 0; i--)
             popped[i] = Pop();
-        var (resSrc, argSrc) = ThrowHelperResources.Sources(Module, name, n);
+        var (resSrc, argSrc, argumentOnly) = ThrowHelperResources.Sources(Module, name, n);
         string? key = ValueOf(resSrc, popped) is { } rv
             ? ThrowHelperResources.ResourceKey(Module, rv) : null;
         string? text = key is null ? null : Comp.SrResourceText(Module, key);
+        // An exception built from the paramName alone carries its type's default message,
+        // which CoreLib's constructor supplies whichever assembly's ThrowHelper raised it.
+        string? defaultKey = (argumentOnly, ThrowHelperTypeInfo(name)) switch
+        {
+            ("System.ArgumentNullException", "dn2cpp_argument_null_exception_type") => "ArgumentNull_Generic",
+            ("System.ArgumentOutOfRangeException", "dn2cpp_argument_out_of_range_exception_type")
+                => "Arg_ArgumentOutOfRangeException",
+            _ => null,
+        };
+        if (text is null && defaultKey is not null)
+            text = Comp.CoreLibSrText(defaultKey);
         if (text is null)
         {
             Emit(ThrowHelperTrap(name));
             return;
         }
+        // ArgumentException.Message appends the paramName with CoreLib's own resource.
         if (ValueOf(argSrc, popped) is { } av
             && ThrowHelperResources.ArgumentName(Module, av) is { } paramName
-            && Comp.SrResourceText(Module, "Arg_ParamName_Name") is { } tail)
+            && (Comp.CoreLibSrText("Arg_ParamName_Name") ?? Comp.SrResourceText(Module, "Arg_ParamName_Name")) is { } tail)
             text += " " + tail.Replace("{0}", paramName);
         Emit($"dn2cpp_throw_of_msg(&{ThrowHelperTypeInfo(name)}, \"{CppLiteralBody(text)}\");");
     }

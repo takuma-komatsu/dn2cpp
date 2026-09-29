@@ -582,9 +582,7 @@ Dn2CppObject* intrinsic_string_concat_array(Dn2CppString* arr)
 // scanned against the frame's EH records like an interpreted `throw`.
 [[noreturn]] void throw_delegate_null_this()
 {
-    const char* msg = "Delegate to an instance method cannot have null 'this'.";
-    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
-        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+    dn2cpp_throw_delegate_null_this();
 }
 
 // The patch-target half of that refusal. Dn2CppBpiMethod carries no static bit
@@ -4121,10 +4119,10 @@ ExecResult interp_run(InterpFrame& f, uint32_t pc)
 }
 
 // The register-format arm generators (interp_run_reg only). They evaluate
-// through the v1 helpers (interp_binary / interp_cmp) with the operand kind and
-// signedness promoted from the opcode, so the div/rem guards, wraparound, f32
-// widening and unordered float semantics are shared with the stack loop rather
-// than re-implemented.
+// through the stack loop's helpers (interp_binary / interp_cmp) with the
+// operand kind and signedness promoted from the opcode, so the div/rem guards,
+// wraparound, f32 widening and unordered float semantics are shared with the
+// stack loop rather than re-implemented.
 #define DN2CPP_REG_BIN(name, ilop, kind) \
     case name: \
         regs[r0] = interp_binary(ilop, kind, regs[r1], regs[r2]); \
@@ -4238,8 +4236,9 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                     }
                     case R_LDSTR: // a Dn2CppString aliasing the blob (zero-copy)
                     {
-                        // As the v1 arm: widened and pointer-tested, because the
-                        // uint32_t form of this compare wraps at 0xFFFFFFFC.
+                        // As the stack loop's arm: widened and pointer-tested,
+                        // because the uint32_t form of this compare wraps at
+                        // 0xFFFFFFFC.
                         if (img->userStrings == nullptr
                             || static_cast<uint64_t>(insn.a) + 4 > img->userStringsLen)
                             interp_fail("BPI: user string out of bounds");
@@ -4283,7 +4282,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                     DN2CPP_REG_BIN(R_DIV_F64, 0x5B, kKindF64)
                     DN2CPP_REG_BIN(R_REM_F32, 0x5D, kKindF32)
                     DN2CPP_REG_BIN(R_REM_F64, 0x5D, kKindF64)
-                    // Shifts: the amount masks to the operand width, as v1.
+                    // Shifts: the amount masks to the operand width, as in
+                    // the stack loop.
                     case R_SHL_I32:
                     case R_SHR_I32:
                     case R_SHR_UN_I32:
@@ -4331,10 +4331,11 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                     case R_NOT_I64:
                         regs[r0].i = ~regs[r1].i;
                         break;
-                    // Conversions: the v1 conv arms with the source-kind hint
-                    // promoted into the opcode (target-major; _FROM_F covers
-                    // both float widths — the slot is a widened double either
-                    // way). conv.i4/conv.u4 share one body per source, as v1.
+                    // Conversions: the stack loop's conv arms with the
+                    // source-kind hint promoted into the opcode (target-major;
+                    // _FROM_F covers both float widths — the slot is a widened
+                    // double either way). conv.i4/conv.u4 share one body per
+                    // source, as in the stack loop.
                     case R_CONV_I4_FROM_I32:
                     case R_CONV_I4_FROM_I64:
                     case R_CONV_U4_FROM_I32:
@@ -4431,8 +4432,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             next = branch_target(insn.a);
                         break;
                     // Compare-branches: r0/r1 = operands; the _UN float forms
-                    // take the branch on an unordered pair (v1 semantics via
-                    // interp_cmp).
+                    // take the branch on an unordered pair (the stack loop's
+                    // semantics via interp_cmp).
                     DN2CPP_REG_BRCMP(R_BEQ_I32, kKindI32, CmpOp::Eq, false)
                     DN2CPP_REG_BRCMP(R_BEQ_I64, kKindI64, CmpOp::Eq, false)
                     DN2CPP_REG_BRCMP(R_BEQ_F32, kKindF32, CmpOp::Eq, false)
@@ -4476,7 +4477,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                     DN2CPP_REG_BRCMP(R_BEQ_REF, kKindRef, CmpOp::Eq, false)
                     DN2CPP_REG_BRCMP(R_BNE_UN_REF, kKindRef, CmpOp::Ne, true)
                     case R_LDFTN: // the delegate-method closure for the following
-                                  // delegate newobj — the v1 ldftn arm, dst = regs[r0]
+                                  // delegate newobj — the stack loop's ldftn arm,
+                                  // dst = regs[r0]
                     {
                         auto* c = static_cast<Dn2CppInterpDgFtn*>(
                             dn2cpp_alloc(sizeof(Dn2CppInterpDgFtn)));
@@ -4493,7 +4495,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         }
                         else
                         {
-                            // As the v1 arm.
+                            // As the stack loop's arm.
                             dg_ftn_bind_aot(c,
                                 import_at(img, insn.a, DN2CPP_BPI_IMPORT_METHOD));
                         }
@@ -4502,8 +4504,9 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                     }
                     case R_CALL:     // r0 = window base; a = method EntityRef; b bit0 =
                     case R_CALLVIRT: // hasResult (into regs[r0]), bit1 = null-check —
-                                     // the v1 call/callvirt arms over a contiguous
-                                     // register window instead of the eval stack
+                                     // the stack loop's call/callvirt arms over a
+                                     // contiguous register window instead of the
+                                     // eval stack
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -4516,18 +4519,18 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             // instance: window[0] is the receiver, null-checked
                             // here (the C# callvirt contract).
                             Slot* window = &regs[r0];
-                            // As the v1 arm: the instance bit OR the opcode, so
-                            // the virtual-dispatch read of self->type below
-                            // cannot be reached with a null receiver by an image
-                            // that clears the bit.
+                            // As the stack loop's arm: the instance bit OR the
+                            // opcode, so the virtual-dispatch read of self->type
+                            // below cannot be reached with a null receiver by an
+                            // image that clears the bit.
                             if (((insn.b & 2) || insn.op == R_CALLVIRT) && window[0].ref == nullptr)
                                 dn2cpp_throw_null_reference();
                             uint32_t target = idx;
                             if (insn.op == R_CALLVIRT)
                             {
-                                // Interpreted virtual dispatch: as v1, the baked
-                                // method's frozen slot re-resolves down the
-                                // receiver's patch chain.
+                                // Interpreted virtual dispatch: as in the stack
+                                // loop, the baked method's frozen slot re-resolves
+                                // down the receiver's patch chain.
                                 auto* self = static_cast<Dn2CppObject*>(window[0].ref);
                                 const auto* iti = reinterpret_cast<const InterpTypeInfo*>(self->type);
                                 if (self->type == nullptr || iti->magic != kInterpTypeInfoMagic
@@ -4567,7 +4570,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         {
                             case kShapeVoidStr:
                             {
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 auto* a0 = static_cast<Dn2CppObject*>(window[0].ref);
                                 if (!intrinsic_arg_ok(b.argKinds[0], a0))
                                     interp_fail(kIntrinsicArgFail);
@@ -4594,7 +4597,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 auto* self = static_cast<Dn2CppObject*>(window[0].ref);
                                 if (self == nullptr)
                                     dn2cpp_throw_null_reference();
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 if (!intrinsic_receiver_ok(b.recvKind, self))
                                     interp_fail("interp: intrinsic call receiver is not an instance of the import's declared type");
                                 Slot v{};
@@ -4605,7 +4608,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             }
                             case kShapeRefRetStr: // static intrinsic (e.g. Type.GetType)
                             {
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 auto* a0 = static_cast<Dn2CppObject*>(window[0].ref);
                                 if (!intrinsic_arg_ok(b.argKinds[0], a0))
                                     interp_fail(kIntrinsicArgFail);
@@ -4621,7 +4624,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 Dn2CppObject* refArgs[kMaxImportArgs];
                                 for (uint32_t j = 0; j < b.argCount; j++)
                                     refArgs[j] = static_cast<Dn2CppObject*>(window[j].ref);
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 for (uint32_t j = 0; j < b.argCount; j++)
                                     if (!intrinsic_arg_ok(b.argKinds[j], refArgs[j]))
                                         interp_fail(kIntrinsicArgFail);
@@ -4636,11 +4639,11 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             {
                                 // Invoke on a delegate: the window is [dg, args...];
                                 // the raw argument slots feed the pre-emitted M2N
-                                // invoke bridge exactly as in v1.
+                                // invoke bridge exactly as in the stack loop.
                                 auto* dg = static_cast<Dn2CppObject*>(window[0].ref);
                                 if (dg == nullptr)
                                     dn2cpp_throw_null_reference();
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 if (!import_receiver_ok(b, dg))
                                     interp_fail(kImportRecvFail);
                                 using DgBridge = Dn2CppInterpSlot (*)(
@@ -4653,8 +4656,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             }
                             case kShapeInvoker:
                             {
-                                // The generic path — v1's invoker arm over the
-                                // window: [this,] args in parameter order.
+                                // The generic path — the stack loop's invoker arm
+                                // over the window: [this,] args in parameter order.
                                 if (b.isCtor && insn.op == R_CALLVIRT)
                                     interp_fail("interp: a constructor import is not a callvirt target");
                                 uint32_t argBase = b.isInstance ? 1u : 0u;
@@ -4668,7 +4671,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     self = static_cast<Dn2CppObject*>(window[0].ref);
                                     if (self == nullptr)
                                         dn2cpp_throw_null_reference();
-                                    // As the v1 arm above.
+                                    // As the stack loop's arm above.
                                     if (!import_receiver_ok(b, self))
                                         interp_fail(kImportRecvFail);
                                     if (b.isInterface)
@@ -4711,7 +4714,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 auto* self = static_cast<Dn2CppObject*>(window[0].ref);
                                 if (self == nullptr)
                                     dn2cpp_throw_null_reference();
-                                // As the v1 arm above.
+                                // As the stack loop's arm above.
                                 if (!import_receiver_ok(b, self))
                                     interp_fail(kImportRecvFail);
                                 exc_seed_and_run_base_ctor(b, self, callArgs);
@@ -4723,7 +4726,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         break;
                     }
                     case R_NEWOBJ: // r0 = window base; the constructed reference lands
-                                   // in regs[r0] — the v1 newobj arm over the window
+                                   // in regs[r0] — the stack loop's newobj arm over
+                                   // the window
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -4743,7 +4747,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 ? static_cast<size_t>(ti->instanceSize)
                                 : sizeof(Dn2CppObject);
                             // External allocation hook + finalizer registration,
-                            // exactly as in the v1 arm.
+                            // exactly as in the stack loop's arm.
                             Dn2CppObject* obj = dn2cpp_interp_alloc_hook != nullptr
                                 ? dn2cpp_interp_alloc_hook(ti, sz)
                                 : nullptr;
@@ -4763,8 +4767,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                             break;
                         }
                         // A Type import operand is a delegate construction; the
-                        // window is [target, ftn] (the v1 arm popped ftn, then
-                        // target).
+                        // window is [target, ftn] (the stack loop's arm pops
+                        // ftn, then target).
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_IMPORT)
                         {
                             uint32_t ti = DN2CPP_BPI_REF_INDEX(insn.a);
@@ -4802,7 +4806,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                 }
                                 else
                                 {
-                                    // As the v1 arm: a kDgFtnAot target is a
+                                    // As the stack loop's arm: a kDgFtnAot target is a
                                     // bound instance method, so null is never
                                     // legitimate — refuse at construction,
                                     // like real .NET (throw_delegate_null_this).
@@ -4813,7 +4817,7 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                                     // legitimately mean.
                                     if (targetSlot.ref == nullptr)
                                         throw_delegate_null_this();
-                                    // As the v1 arm above.
+                                    // As the stack loop's arm above.
                                     if (!dg_aot_target_ok(c,
                                             static_cast<Dn2CppObject*>(targetSlot.ref)))
                                         interp_fail(kImportRecvFail);
@@ -4871,7 +4875,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         regs[r0].ref = obj;
                         break;
                     }
-                    case R_LDFLD: // r0 = dst, r1 = obj; a/b = v1's field operands
+                    case R_LDFLD: // r0 = dst, r1 = obj; a/b = the stack encoding's
+                                  // field operands
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -4929,7 +4934,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         regs[r0] = marshal_object_to_slot(b.fieldVal, fi->getter(obj));
                         break;
                     }
-                    case R_STFLD: // r0 = obj, r1 = value; a/b = v1's field operands
+                    case R_STFLD: // r0 = obj, r1 = value; a/b = the stack encoding's
+                                  // field operands
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -4984,7 +4990,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         fi->setter(obj, marshal_slot_to_object(b.fieldVal, regs[r1]));
                         break;
                     }
-                    case R_LDSFLD: // r0 = dst; a/b = v1's static-field operands
+                    case R_LDSFLD: // r0 = dst; a/b = the stack encoding's static-field
+                                   // operands
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -5000,7 +5007,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         regs[r0] = marshal_object_to_slot(b.fieldVal, fi->getter(nullptr));
                         break;
                     }
-                    case R_STSFLD: // r0 = value; a/b = v1's static-field operands
+                    case R_STSFLD: // r0 = value; a/b = the stack encoding's
+                                   // static-field operands
                     {
                         if (DN2CPP_BPI_REF_TAG(insn.a) == DN2CPP_BPI_TAG_PATCH)
                         {
@@ -5028,7 +5036,8 @@ ExecResult interp_run_reg(InterpFrame& f, uint32_t pc)
                         break;
                     }
                     case R_NEWARR: // r0 = dst, r1 = length; a = SZArray type EntityRef,
-                                   // b = element storage kind — the v1 newarr arm
+                                   // b = element storage kind — the stack loop's
+                                   // newarr arm
                     {
                         const Dn2CppTypeInfo* ti = type_ref_at(img, insn.a);
                         if ((ti->flags & DN2CPP_TF_ARRAY) == 0)
@@ -5397,8 +5406,8 @@ Slot interp_call(const Dn2CppInterpImage* img, uint32_t methodIdx, const Slot* a
     {
         // Register-format frame: one flat register file — args, locals, then
         // the eval-temp region (regCount = slotCount + maxStack ≤ 128, both
-        // limits checked above and at load). Zero-initialized like the v1
-        // frame (IL initlocals) and native-stack-resident, so reference
+        // limits checked above and at load). Zero-initialized like the stack
+        // loop's frame (IL initlocals) and native-stack-resident, so reference
         // registers stay visible to the conservative collector; the frame's
         // stack/sp members are unused under this format.
         Slot regs[kMaxFrame + kMaxStack] = {};

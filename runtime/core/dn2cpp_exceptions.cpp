@@ -540,6 +540,12 @@ void dn2cpp_throw_key_not_found() { dn2cpp_throw_of(&dn2cpp_key_not_found_except
 void dn2cpp_throw_ambiguous_match() { dn2cpp_throw_of(&dn2cpp_ambiguous_match_exception_type); }
 void dn2cpp_throw_rank() { dn2cpp_throw_of(&dn2cpp_rank_exception_type); }
 void dn2cpp_throw_null_reference() { dn2cpp_throw_of(&dn2cpp_null_reference_exception_type); }
+void dn2cpp_throw_delegate_null_this()
+{
+    const char* msg = "Delegate to an instance method cannot have null 'this'.";
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
+        dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+}
 void dn2cpp_throw_divide_by_zero() { dn2cpp_throw_of(&dn2cpp_divide_by_zero_exception_type); }
 void dn2cpp_throw_format() { dn2cpp_throw_of(&dn2cpp_format_exception_type); }
 void dn2cpp_throw_format_value(Dn2CppString* value)
@@ -703,8 +709,9 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     // System.Exception's base ctor default (COR_E_EXCEPTION). A derived ctor that
     // runs (the AOT/interp newobj paths) overwrites this with its per-type value via
     // set_HResult; a runtime-RAISED exception (no ctor body) keeps the base default
-    // rather than the per-type COR_E_* — the same documented divergence as its null
-    // paramName, and honest (the runtime carries no per-type HResult to seed).
+    // rather than the per-type COR_E_*: the runtime carries no per-type HResult to seed,
+    // unlike the argument family's ParamName and ActualValue, which
+    // dn2cpp_raise_argument stores.
     e->hresult = static_cast<int32_t>(0x80131500);
     return e;
 }

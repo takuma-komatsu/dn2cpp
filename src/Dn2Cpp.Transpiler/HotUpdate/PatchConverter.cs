@@ -1023,8 +1023,9 @@ internal static class PatchConverter
 
     /// <summary>The width-specialized register opcode of a binary arithmetic
     /// IL opcode over operands of kind <paramref name="k"/> (the same kind the
-    /// v1 hint bakes). The int groups are laid out in I32/I64 pairs and the
-    /// float groups in F32/F64 pairs, in the opcode table's order.</summary>
+    /// stack encoding's operand-kind hint bakes). The int groups are laid out
+    /// in I32/I64 pairs and the float groups in F32/F64 pairs, in the opcode
+    /// table's order.</summary>
     private static RegOp RegBinOp(ILOpCode op, SlotKind k)
     {
         if (k is SlotKind.F32 or SlotKind.F64)
@@ -1099,9 +1100,9 @@ internal static class PatchConverter
     }
 
     /// <summary>The register opcode of a conv.* over a source of kind
-    /// <paramref name="src"/>: target-major, source order I32/I64/F — the v1
-    /// source-kind hint promoted into the opcode. F covers both float widths
-    /// (the slot holds a widened double either way).</summary>
+    /// <paramref name="src"/>: target-major, source order I32/I64/F — the stack
+    /// encoding's source-kind hint promoted into the opcode. F covers both
+    /// float widths (the slot holds a widened double either way).</summary>
     private static RegOp RegConvOp(ILOpCode op, SlotKind src)
     {
         RegOp baseOp = op switch

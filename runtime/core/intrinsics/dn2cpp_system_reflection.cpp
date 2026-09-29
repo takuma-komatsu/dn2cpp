@@ -5692,6 +5692,19 @@ static void dn2cpp_read_prim_storage(const void* p, int32_t code, int64_t* i, do
         dn2cpp_string_from_utf8(m, static_cast<int32_t>(std::strlen(m))), nullptr));
 }
 
+// Array.ConstrainedCopy's refusal of any pair that is not a plain move, .NET's own
+// message.
+[[noreturn]] static void dn2cpp_throw_constrained_copy_mismatch()
+{
+    const char* m = "Array.ConstrainedCopy will only work on array types that are provably compatible, "
+                    "without any form of boxing, unboxing, widening, or casting of each array element.  "
+                    "Change the array types (i.e., copy a Derived[] to a Base[]), or use a mitigation "
+                    "strategy in the CER for Array.Copy's less powerful reliability contract, such as "
+                    "cloning the array or throwing away the potentially corrupt destination array.";
+    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_array_type_mismatch_exception_type,
+        dn2cpp_string_from_utf8(m, static_cast<int32_t>(std::strlen(m))), nullptr));
+}
+
 // The per-element cast/unbox arms' fault, .NET's own message. Elements copied
 // before the faulting one stay copied, as on .NET.
 [[noreturn]] static void dn2cpp_throw_array_copy_elem_cast()
@@ -5788,8 +5801,15 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
 // that same array, memory-safe (the boxes are real; a later cast faults catchably), and
 // not distinguishable from a true object[] at this site.
 void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
-                               Dn2CppObject* dst, int32_t dstIdx, int32_t len)
+                               Dn2CppObject* dst, int32_t dstIdx, int32_t len, bool reliable)
 {
+    // ConstrainedCopy checks this ahead of CopySlow, so its refusal replaces every other
+    // one, the incompatible pair's included.
+    auto refuse = [reliable]() {
+        if (reliable)
+            dn2cpp_throw_constrained_copy_mismatch();
+        dn2cpp_throw_array_copy_mismatch();
+    };
     Dn2CppArrCopyView s = dn2cpp_array_copy_view(src);
     Dn2CppArrCopyView d = dn2cpp_array_copy_view(dst);
     char* sp = s.data + static_cast<size_t>(srcIdx) * s.stride;
@@ -5803,7 +5823,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
             dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
             return;
         }
-        dn2cpp_throw_array_copy_mismatch();
+        refuse();
     }
     if (se == de)
     {
@@ -5836,6 +5856,8 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
             }
             if (dn2cpp_prim_widens(cs, cd))
             {
+                if (reliable)
+                    refuse();
                 for (int32_t k = 0; k < len; k++)
                 {
                     int64_t i;
@@ -5845,7 +5867,7 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
                 }
                 return;
             }
-            dn2cpp_throw_array_copy_mismatch();
+            refuse();
         }
         // IntPtr/UIntPtr: one normalization class of their own, with no widening
         // row — nint[] <-> nuint[] copies raw; nint[] -> long[] refuses.
@@ -5855,13 +5877,15 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
             dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
             return;
         }
-        dn2cpp_throw_array_copy_mismatch();
+        refuse();
     }
     if (sv)
     {
+        if (reliable)
+            refuse();
         // Boxing copy: value elements into a compatible reference-element array.
         if (!dn2cpp_array_copy_box_ok(se, de))
-            dn2cpp_throw_array_copy_mismatch();
+            refuse();
         for (int32_t k = 0; k < len; k++)
         {
             Dn2CppObject* b = dn2cpp_array_box_element(
@@ -5874,12 +5898,14 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
     }
     if (dv)
     {
+        if (reliable)
+            refuse();
         // Unboxing copy: exact element type per element (dn2cpp_array_store_boxed
         // is NOT reused for the primitive case — its SetValue contract widens,
         // and Copy's unbox arm does not); only the Nullable<U> element shares its
         // arm, whose exact-U-or-null rule IS the Copy rule.
         if (!dn2cpp_array_copy_box_ok(de, se))
-            dn2cpp_throw_array_copy_mismatch();
+            refuse();
         const Dn2CppTypeInfo* u = dn2cpp_nullable_underlying_ti(de);
         const Dn2CppTypeInfo* eff = (de->flags & DN2CPP_TF_ENUM) != 0
             ? (de->enumUnderlying != nullptr ? de->enumUnderlying : &dn2cpp_int32_type)
@@ -5919,8 +5945,8 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
     }
-    if (dn2cpp_typeinfo_assignable(de, se) == 0)
-        dn2cpp_throw_array_copy_mismatch();
+    if (reliable || dn2cpp_typeinfo_assignable(de, se) == 0)
+        refuse();
     for (int32_t k = 0; k < len; k++)
     {
         Dn2CppObject* v;

@@ -2052,9 +2052,17 @@ internal sealed partial class MethodCompiler
             Emit($"((Dn2CppObject*){dg})->type = &{cls.CppTypeInfoName};");
             Emit($"{dg}->f_target = {Cast(target, "Dn2CppObject*")};");
             Emit($"{dg}->f_method = {Cast(fnPtr, "void*")};");
+            // .NET's constructor of a delegate closed over an instance method refuses a
+            // null target; a virtual slot load has already refused it.
+            var invokeRow = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
+            bool ClosesOverInstance(MethodInfo bound) => !bound.IsStatic && invokeRow is not null
+                && invokeRow.Signature.ParameterTypes.Length == bound.Signature.ParameterTypes.Length;
+            string nullTargetCheck = $"if ({dg}->f_target == nullptr) dn2cpp_throw_delegate_null_this();";
             bool identityEmitted = false;
+            bool originsSelected = false;
             if (!fnPtr.DelegateAddressReady && fnPtr.DelegateTag is { } tag)
             {
+                originsSelected = true;
                 if (tag == UntrackedDelegateTag)
                     throw new NotSupportedException(
                         $"{_method.DeclaringClass.FullName}.{_method.Name}: a delegate target loaded from an address-taken local cannot preserve delegate identity");
@@ -2063,15 +2071,14 @@ internal sealed partial class MethodCompiler
                 bool literal = tag.All(char.IsAsciiDigit);
                 if (!literal)
                     Emit($"if ({tag} < 0) dn2cpp_throw_not_supported_msg(\"a delegate target loaded from an address-taken local cannot preserve delegate identity\");");
-                var invoke = cls.Methods.FirstOrDefault(candidate => candidate.Name == "Invoke");
                 foreach (var origin in _ftnOrigins.OrderBy(pair => pair.Key))
                 {
                     if (literal && origin.Key.ToString() != tag)
                         continue;
                     var (method, isVirtual, fromVirtFtn) = origin.Value;
-                    if (invoke is not null)
+                    if (invokeRow is not null)
                     {
-                        int invokeArity = invoke.Signature.ParameterTypes.Length;
+                        int invokeArity = invokeRow.Signature.ParameterTypes.Length;
                         int targetArity = method.Signature.ParameterTypes.Length;
                         if (invokeArity != targetArity
                             && (!method.IsStatic || invokeArity != targetArity - 1
@@ -2099,6 +2106,8 @@ internal sealed partial class MethodCompiler
                         adapterExpr = $"(void*)&{adapter.CppName}";
                     }
                     Emit(literal ? "{" : $"if ({tag} == {origin.Key}) {{");
+                    if (ClosesOverInstance(method))
+                        Emit("    " + nullTargetCheck);
                     if (adapterExpr is not null)
                         Emit($"    {dg}->f_method = {adapterExpr};");
                     if (!method.Handle.IsNil)
@@ -2111,6 +2120,8 @@ internal sealed partial class MethodCompiler
                     Emit("}");
                 }
             }
+            if (!originsSelected && fnPtr.DelegateMethod is { } boundMethod && ClosesOverInstance(boundMethod))
+                Emit(nullTargetCheck);
             // The identity is emitted with the method rows, spelled as they spell the
             // declaring type and arguments; the arguments only need type-infos. A
             // canonical target has already tainted at its ldftn/ldvirtftn.
