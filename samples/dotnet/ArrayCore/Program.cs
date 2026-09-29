@@ -53,6 +53,7 @@ namespace ArrayCore
             ArrayConstrainedCovarianceSubset.Program.Run();
             ArrayArgumentCheckSubset.Program.Run();
             ArrayArgumentCheckSubset.Program.RunSearch();
+            ArrayCopyCompatSubset.Program.RunCovariant();
         }
     }
 }

@@ -34,6 +34,14 @@ namespace ArrayCopyCompatSubset
 
         private class Der : Base { public override string ToString() => "Der"; }
 
+        private interface ILeft { }
+
+        private interface IRight { }
+
+        private class Both : ILeft, IRight { public override string ToString() => "Both"; }
+
+        private class LeftOnly : ILeft { public override string ToString() => "LeftOnly"; }
+
         private static void Try(string label, Action a)
         {
             try { a(); }
@@ -153,6 +161,35 @@ namespace ArrayCopyCompatSubset
             Try("static copyto int->long", () => { int[] s = { 1 }; long[] d = new long[1]; s.CopyTo(d, 0); });
             Try("static copyto int->int", () => { int[] s = { 4, 5 }; int[] d = new int[3]; s.CopyTo(d, 1); Show("static copyto int->int", d); });
             Try("self-overlap", () => { Array s = new int[] { 1, 2, 3, 4 }; Array.Copy(s, 0, s, 1, 3); Show("self-overlap", s); });
+        }
+
+        private static object[] Objects(object[] array) => array;
+
+        private static Base[] Bases(Base[] array) => array;
+
+        // A common static element type does not establish runtime array identity.
+        public static void RunCovariant()
+        {
+            Console.WriteLine("-- copycompat: covariant operands behind one static element type --");
+            Try("copy object->string[]", () => { object[] d = Objects(new string[] { "p" }); try { Array.Copy(Objects(new object[] { new object() }), d, 1); } finally { Show("copy object->string[] after", d); } });
+            Try("copy object(mixed)->string[]", () => { object[] d = Objects(new string[] { "p", "q" }); try { Array.Copy(Objects(new object[] { "a", 1 }), 0, d, 0, 2); } finally { Show("copy object(mixed)->string[] partial", d); } });
+            Try("copy object(string)->string[]", () => { object[] d = Objects(new string[2]); Array.Copy(Objects(new object[] { "a", "b" }), d, 2); Show("copy object(string)->string[]", d); });
+            Try("copy string[]->object", () => { object[] d = Objects(new object[1]); Array.Copy(Objects(new string[] { "s" }), d, 1); Show("copy string[]->object", d); });
+            Try("copy Base->Der[]", () => { Base[] d = Bases(new Der[1]); Array.Copy(Bases(new Base[] { new Base() }), d, 1); });
+            Try("copy Base(Der)->Der[]", () => { Base[] d = Bases(new Der[1]); Array.Copy(Bases(new Base[] { new Der() }), d, 1); Show("copy Base(Der)->Der[]", d); });
+            Try("constrained object->string[]", () => { object[] d = Objects(new string[] { "p" }); try { Array.ConstrainedCopy(Objects(new object[] { new object() }), 0, d, 0, 1); } finally { Show("constrained object->string[] after", d); } });
+            Try("constrained object(string)->string[]", () => { object[] d = Objects(new string[1]); Array.ConstrainedCopy(Objects(new object[] { "a" }), 0, d, 0, 1); Show("constrained object(string)->string[]", d); });
+            Try("constrained string[]->object", () => { object[] d = Objects(new object[1]); Array.ConstrainedCopy(Objects(new string[] { "s" }), 0, d, 0, 1); Show("constrained string[]->object", d); });
+            Try("constrained Der[]->Der[]", () => { Base[] d = Bases(new Der[1]); Array.ConstrainedCopy(Bases(new Der[] { new Der() }), 0, d, 0, 1); Show("constrained Der[]->Der[]", d); });
+            Try("constrained Base(Der)->Der[]", () => { Base[] d = Bases(new Der[1]); Array.ConstrainedCopy(Bases(new Base[] { new Der() }), 0, d, 0, 1); });
+            Try("list copyto object->string[]", () => { var l = new System.Collections.Generic.List<object> { new object() }; l.CopyTo(Objects(new string[1]), 0); });
+            try { Array.ConstrainedCopy(Objects(new object[] { 1 }), 0, Objects(new string[1]), 0, 1); }
+            catch (ArrayTypeMismatchException e) { Console.WriteLine("constrained refusal: " + e.Message); }
+            Try("copy sibling interfaces", () => { object[] d = Objects(new IRight[1]); Array.Copy(Objects(new ILeft[] { new Both() }), d, 1); Show("copy sibling interfaces", d); });
+            Try("copy sibling interfaces invalid", () => { object[] d = Objects(new IRight[] { new Both() }); try { Array.Copy(Objects(new ILeft[] { new LeftOnly() }), d, 1); } finally { Show("copy sibling interfaces invalid after", d); } });
+            Try("copy sibling interfaces partial", () => { object[] d = Objects(new IRight[] { null, new Both() }); try { Array.Copy(Objects(new ILeft[] { new Both(), new LeftOnly() }), d, 2); } finally { Show("copy sibling interfaces partial after", d); } });
+            Try("copy sealed class to interface", () => { object[] d = Objects(new IRight[1]); Array.Copy(Objects(new string[] { "x" }), d, 1); });
+            Try("constrained sibling interfaces", () => { object[] d = Objects(new IRight[] { new Both() }); try { Array.ConstrainedCopy(Objects(new ILeft[] { new Both() }), 0, d, 0, 1); } finally { Show("constrained sibling interfaces after", d); } });
         }
     }
 }

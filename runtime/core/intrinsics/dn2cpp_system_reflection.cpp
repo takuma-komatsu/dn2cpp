@@ -5787,8 +5787,8 @@ static Dn2CppArrCopyView dn2cpp_array_copy_view(Dn2CppObject* a)
 //     int[] is InvalidCastException — no widening at unbox), null faulting too
 //     except into a Nullable<U> element (which takes exactly a boxed U or null);
 //   - reference -> reference: raw memmove when the source element is assignable
-//     to the destination's, a per-element cast check when only the reverse
-//     holds, so a Base into Der[] faults after the castable prefix copied;
+//     to the destination's, a per-element cast check when the reverse holds or
+//     either element type is an interface;
 //   - anything else: ArrayTypeMismatchException — including at length 0, the
 //     verdict being about the PAIR, not the elements.
 // An element-UNKNOWN side (an imprecise array handle: the Godot packed arrays, the
@@ -5945,7 +5945,9 @@ void dn2cpp_array_copy_checked(Dn2CppObject* src, int32_t srcIdx,
         dn2cpp_gc_memmove_refs(dp, sp, static_cast<size_t>(len) * s.stride);
         return;
     }
-    if (reliable || dn2cpp_typeinfo_assignable(de, se) == 0)
+    if (reliable || (dn2cpp_typeinfo_assignable(de, se) == 0
+        && (se->flags & DN2CPP_TF_INTERFACE) == 0
+        && (de->flags & DN2CPP_TF_INTERFACE) == 0))
         refuse();
     for (int32_t k = 0; k < len; k++)
     {
