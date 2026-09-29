@@ -54,6 +54,7 @@ namespace ArrayCore
             ArrayArgumentCheckSubset.Program.Run();
             ArrayArgumentCheckSubset.Program.RunSearch();
             ArrayCopyCompatSubset.Program.RunCovariant();
+            ArraySurfaceSubset.Program.RunDynamicInitialize();
         }
     }
 }

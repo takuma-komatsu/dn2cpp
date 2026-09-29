@@ -2121,6 +2121,8 @@ internal sealed partial class CppEmitter
             // reaching the wrapper support so the next batch compiles it. Runs each round
             // because the noted-array / cast-target sets keep growing as bodies compile.
             _c.ExpandArrayEnumerableMaps();
+            // Array.Initialize can invoke a constructor reached only through its row.
+            _c.ReachRuntimeArrayInitializeCtors();
             // Shared-generics planning: instantiations discovered by the bodies
             // just compiled are linked to canonical owners and their grouped
             // methods' owner counterparts reached, so the next batch trial-

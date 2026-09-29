@@ -3554,6 +3554,86 @@ internal sealed partial class Compilation
         return added;
     }
 
+    /// <summary>Set once a compiled body lowers Array.Initialize to
+    /// <c>dn2cpp_array_initialize</c>, which runs the element's parameterless constructor
+    /// through the element type's constructor row.</summary>
+    private bool _runtimeArrayInitialize;
+
+    /// <summary>How much of <see cref="Classes"/>, which only grows,
+    /// <see cref="ReachRuntimeArrayInitializeCtors"/> has visited.</summary>
+    private int _runtimeArrayInitializeCursor;
+
+    /// <summary>Arms <see cref="ReachRuntimeArrayInitializeCtors"/>: an Array.Initialize
+    /// receiver that states no element type can hold any value type at run time.</summary>
+    internal void NoteRuntimeArrayInitialize()
+    {
+        if (_runtimeArrayInitialize)
+            return;
+        _runtimeArrayInitialize = true;
+        ReachRuntimeArrayInitializeCtors();
+    }
+
+    /// <summary>Reach user value-type constructors invoked by dynamic
+    /// Array.Initialize. Walk <see cref="Classes"/> by index because compiling
+    /// a constructor can add specializations.</summary>
+    public void ReachRuntimeArrayInitializeCtors()
+    {
+        if (!_runtimeArrayInitialize)
+            return;
+        bool reached = false;
+        while (_runtimeArrayInitializeCursor < Classes.Count)
+        {
+            var cls = Classes[_runtimeArrayInitializeCursor];
+            // A specialization minted by this walk is still pending, and only its shape
+            // says whether it is a value type.
+            if (!cls.ShapeReady)
+                CompletePendingSpecializations();
+            if (!cls.ShapeReady)
+                throw new InvalidOperationException($"{cls.FullName} is in Classes but was never queued for its shape");
+            _runtimeArrayInitializeCursor++;
+            if (!cls.IsValueType || cls.IsEnum || cls.IntrinsicCppName is not null || !IsUserModule(cls.Module))
+                continue;
+            var ctor = ParameterlessCtorHandle(cls);
+            if (ctor.IsNil)
+                continue;
+            EnsureCompleted(cls);
+            foreach (var m in cls.Methods)
+            {
+                if (m.Handle != ctor || Reachable.Contains(m) || _backend?.ShouldSkipMethodBody(cls, m) == true)
+                    continue;
+                Reach(m);
+                reached = true;
+            }
+        }
+        if (reached)
+            DrainReachability();
+    }
+
+    /// <summary>The parameterless instance constructor with a body that
+    /// <paramref name="cls"/>'s definition declares, or a nil handle. Read from metadata:
+    /// a specialization's members are completed only when it has one, and no other
+    /// constructor's signature is decoded, since one naming a deeper instantiation of its
+    /// own type would feed this walk forever.</summary>
+    private static MethodDefinitionHandle ParameterlessCtorHandle(ClassInfo cls)
+    {
+        if (cls.Handle.IsNil)
+            return default;
+        var reader = cls.Module.Reader;
+        foreach (var handle in reader.GetTypeDefinition(cls.Handle).GetMethods())
+        {
+            var md = reader.GetMethodDefinition(handle);
+            if ((md.Attributes & MethodAttributes.Static) != 0 || md.RelativeVirtualAddress == 0
+                || !reader.StringComparer.Equals(md.Name, ".ctor"))
+                continue;
+            var blob = reader.GetBlobReader(md.Signature);
+            if (blob.ReadSignatureHeader().IsGeneric)
+                blob.ReadCompressedInteger();
+            if (blob.ReadCompressedInteger() == 0)
+                return handle;
+        }
+        return default;
+    }
+
     /// <summary>Wires the <c>object</c>-element SZArray map once any REFERENCE-element
     /// array is noted — the shared fallback dispatch table. A collection-
     /// interface call on an array reached through an <c>object</c>-typed variable (or on
