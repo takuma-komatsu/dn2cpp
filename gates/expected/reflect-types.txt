@@ -1488,3 +1488,7 @@ arg-metadata ref=True struct=True enum=True array=True mdarray=True
 shared-arg ref=True nested=True
 == metadata-answer invoke flags ==
 SemaphoreSlim unwrapped -> PlatformNotSupportedException
+null-type-attribute-count=1
+null-type-positional=True
+null-type-elements=2/String/True
+null-type-named=True

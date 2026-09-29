@@ -299,6 +299,9 @@
 # (intrinsic levels are shape-ineligible), so the transpile completes and the
 # mint throws the catchable NotSupportedException where real .NET constructs.
 #
+# ReflectAttrNullTypeSubset verifies that a null Type attribute argument survives
+# decoding in a positional value, a Type[] element, and a named value.
+#
 # Every other line matches real .NET (verified against `dotnet run` at capture
 # time).
 source "$(dirname "$0")/_common.sh"
