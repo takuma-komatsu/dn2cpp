@@ -620,12 +620,11 @@ internal sealed partial class MethodCompiler
     /// which checks null, rank and range itself (why only the inline arms carry
     /// the operand guards below) and runs the CLR's type-compatibility verdict:
     /// widening/boxing/unboxing pairs convert per element, incompatible pairs
-    /// refuse with ArrayTypeMismatchException. The inline ref-element arm keeps
-    /// the raw memmove for statically-equal elements even though a COVARIANT
-    /// receiver could demand per-element checks (Base[] holding a Der[]) — the
-    /// same documented carve-out as the stelem helpers. Array.ConstrainedCopy
-    /// needs the runtime verdict for reference arrays: covariance can make equal
-    /// static element types differ at runtime.</summary>
+    /// refuse with ArrayTypeMismatchException. Reference arrays with the same
+    /// static element type can still differ at runtime through covariance.
+    /// Only an identical runtime pair moves raw; other pairs use the runtime
+    /// verdict. A destination allocated for the source element type is safe
+    /// without that check.</summary>
     private void EmitArrayCopy(StackEntry src, string srcIdx, StackEntry dst, string dstIdx, string len,
                                ArrayOperandKind srcKind = ArrayOperandKind.Argument,
                                ArrayOperandKind dstKind = ArrayOperandKind.CopyDest,
@@ -640,9 +639,9 @@ internal sealed partial class MethodCompiler
                 && dst.StaticType is { Kind: TypeKind.SZArray } sb
                 && SameCopyElement(sa.Element, sb.Element))
             || (rep == ArrRep.I4 && dstRep == ArrRep.I4);
-        if (rep is null || !proven || (reliable && rep == ArrRep.Ref))
+        string helper = reliable ? "dn2cpp_array_constrained_copy_dyn" : "dn2cpp_array_copy_dyn";
+        if (rep is null || !proven)
         {
-            string helper = reliable ? "dn2cpp_array_constrained_copy_dyn" : "dn2cpp_array_copy_dyn";
             Emit($"{helper}({Cast(src, "Dn2CppObject*")}, (int32_t)({srcIdx}), " +
                  $"{Cast(dst, "Dn2CppObject*")}, (int32_t)({dstIdx}), (int32_t)({len}));");
             return;
@@ -661,9 +660,16 @@ internal sealed partial class MethodCompiler
         Emit($"{cd} = {GuardArray(Cast(dst, cpp), dstKind)};");
         Emit($"dn2cpp_array_copy_range({cs}->length, {si}, {cd}->length, {di}, {n});");
         string move = CopyMovesRefs(rep.Value, src, elementType) ? "dn2cpp_gc_memmove_refs" : "std::memmove";
-        Emit(rep == ArrRep.N
+        string moveStmt = rep == ArrRep.N
             ? $"{move}({cd}->data + (size_t){di} * {cd}->elemSize, {cs}->data + (size_t){si} * {cs}->elemSize, (size_t){n} * {cs}->elemSize);"
-            : $"{move}(&{cd}->data[{di}], &{cs}->data[{si}], (size_t){n} * sizeof({(rep == ArrRep.I4 ? "int32_t" : "Dn2CppObject*")}));");
+            : $"{move}(&{cd}->data[{di}], &{cs}->data[{si}], (size_t){n} * sizeof({(rep == ArrRep.I4 ? "int32_t" : "Dn2CppObject*")}));";
+        if (rep != ArrRep.Ref || sameElementByConstruction)
+        {
+            Emit(moveStmt);
+            return;
+        }
+        Emit($"if ({cs}->type == {cd}->type) {{ {moveStmt} }} " +
+             $"else {{ {helper}((Dn2CppObject*){cs}, {si}, (Dn2CppObject*){cd}, {di}, {n}); }}");
     }
 
     /// <summary>Whether an inline Array.Copy arm moves GC references, so the move must

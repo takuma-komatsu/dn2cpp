@@ -290,10 +290,10 @@ internal sealed partial class MethodCompiler
                 EmitArrayCopy(src, srcIdx.Expr, dst, dstIdx.Expr, len.Expr, reliable: true);
                 return true;
             }
-            // Array.Copy: the real body checks array covariance via MethodTable
-            // internals we don't model. Element repr is tracked statically (an
-            // element-sized array reuses the ref type-info at runtime), so emit a
-            // typed memmove keyed on the source array's static C++ type.
+            // Array.Copy: the real body reads MethodTable internals we don't model.
+            // Element repr is tracked statically (an element-sized array reuses the ref
+            // type-info at runtime), so emit a typed move keyed on the source array's
+            // static C++ type, with the runtime verdict for any pair it cannot prove.
             case ("System.Array", "Copy") when sig.ParameterTypes.Length == 3:
             {
                 var len = Pop();
