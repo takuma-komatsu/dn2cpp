@@ -20,7 +20,12 @@
 
   <!-- Gives LdftnLocalSubset's stubs the IL bodies C# cannot express. -->
   <Target Name="RewriteLdftnLocalFixture" AfterTargets="Build">
-    <Exec Command="dotnet exec &quot;$(MSBuildProjectDirectory)/../../../gates/fixtures/ldftn-local/bin/$(Configuration)/$(TargetFramework)/LdftnLocalFixture.dll&quot; &quot;$(TargetPath)&quot;" />
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../../../gates/fixtures/ldftn-local/LdftnLocalFixture.csproj"
+             Targets="GetTargetPath"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" PropertyName="LdftnLocalFixturePath" />
+    </MSBuild>
+    <Exec Command="dotnet exec &quot;$(LdftnLocalFixturePath)&quot; &quot;$(TargetPath)&quot;" />
   </Target>
 
 </Project>
