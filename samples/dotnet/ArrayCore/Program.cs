@@ -52,6 +52,7 @@ namespace ArrayCore
             ArrayResizeSubset.Program.RunSameLength();
             ArrayConstrainedCovarianceSubset.Program.Run();
             ArrayArgumentCheckSubset.Program.Run();
+            ArrayArgumentCheckSubset.Program.RunSearch();
         }
     }
 }

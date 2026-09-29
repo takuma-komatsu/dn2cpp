@@ -201,7 +201,14 @@ void dn2cpp_array_sort_object(Dn2CppObject* arr, int32_t index, int32_t length,
                               const Dn2CppTypeInfo* icomparer_ti, int32_t comparer_slot)
 {
     if (arr == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("keys");
+    dn2cpp_array_require_rank1(arr);
+    if (index < 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "index");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "length");
+    if (dn2cpp_array_length_dyn(arr) - index < length)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
     if (length <= 1)
         return;
     // Box the [index, index+length) window into a managed (GC-scanned) ref buffer, so the boxes
@@ -611,20 +618,23 @@ int32_t dn2cpp_array_get_upper_bound_dyn(Dn2CppObject* a, int32_t dim)
     return dn2cpp_array_get_lower_bound_dyn(a, dim) + dn2cpp_array_get_length_dyn(a, dim) - 1;
 }
 
-// Array.Reverse(Array[, int index, int length]) — the non-generic form, over
-// the runtime element view (byte-wise element swaps; reference elements swap
-// pointers). Real .NET: a multi-dimensional receiver throws Rank-flavored
-// ArgumentException; bad (index, length) windows throw like the generic form.
+// Array.Reverse(Array[, int index, int length]) checks the range before the rank.
 void dn2cpp_array_reverse_dyn(Dn2CppObject* a, int32_t index, int32_t length)
 {
+    if (a == nullptr)
+        dn2cpp_throw_argument_null_param("array");
     Dn2CppArrayViewRT v;
     dn2cpp_array_view_rt(a, &v);
-    if (v.rank != 1)
-        dn2cpp_throw_argument();
-    if (index < 0 || length < 0)
-        dn2cpp_throw_argument_out_of_range();
+    if (index < 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "index");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, "length");
     if (v.length - index < length)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);
+    if (v.rank != 1)
+        dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_SINGLE_DIM_ONLY);
+    if (length <= 1)
+        return;
     char tmp[64];
     int32_t w = v.elemSize;
     if (w > 64)

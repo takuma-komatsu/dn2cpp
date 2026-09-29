@@ -770,7 +770,10 @@ internal sealed partial class MethodCompiler
             // Array.IndexOf<T> intrinsic, and the only one whose element type is
             // unknown until run time: box each element through the same accessor
             // Array.GetValue uses and compare with Object.Equals(object) — which is
-            // what the real body's ObjectEqualityComparer does.
+            // what the real body's ObjectEqualityComparer does. The operands are
+            // spilled in IL push order before .NET's checks run in its order: IndexOf
+            // tests the rank before the range, LastIndexOf answers an empty array
+            // before testing anything and the rank after the range.
             case ("System.Array", "IndexOf") when sig.ParameterTypes.Length is 2 or 3 or 4
                 && sig.ParameterTypes[1].IsObject:
             case ("System.Array", "LastIndexOf") when sig.ParameterTypes.Length is 2 or 3 or 4
@@ -785,23 +788,52 @@ internal sealed partial class MethodCompiler
                 Emit($"{arr} = {Cast(array, "Dn2CppObject*")};");
                 string val = NewTemp("Dn2CppObject*");
                 Emit($"{val} = {Cast(value, "Dn2CppObject*")};");
-                string len = $"dn2cpp_array_length_dyn({arr})";
-                string first = NewTemp("int32_t");
-                Emit($"{first} = {(start is null ? (last ? $"{len} - 1" : "0") : Cast(start, "int32_t"))};");
-                string cnt = NewTemp("int32_t");
-                Emit($"{cnt} = {(count is not null ? Cast(count, "int32_t")
-                    : last ? (start is null ? len : $"({len} == 0 ? 0 : {first} + 1)")
-                    : $"{len} - {first}")};");
+                string first = NewTemp("int32_t"), cnt = NewTemp("int32_t");
+                if (start is not null)
+                    Emit($"{first} = {Cast(start, "int32_t")};");
+                if (count is not null)
+                    Emit($"{cnt} = {Cast(count, "int32_t")};");
+                Emit($"if ({arr} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+                string len = NewTemp("int32_t");
+                Emit($"{len} = dn2cpp_array_length_dyn({arr});");
+                // A derived count wraps as .NET's int arithmetic does; the startIndex
+                // check rejects every start that wraps it.
+                if (start is null)
+                    Emit($"{first} = {(last ? $"{len} - 1" : "0")};");
+                if (count is null)
+                    Emit($"{cnt} = {(last
+                        ? (start is null ? len : $"(int32_t)((uint32_t){first} + 1u)")
+                        : $"(int32_t)((uint32_t){len} - (uint32_t){first})")};");
                 string res = NewTemp("int32_t");
+                Emit($"{res} = -1;");
+                if (last)
+                {
+                    Emit($"if ({len} != 0) {{");
+                    Emit($"    if ({first} < 0 || {first} >= {len}) "
+                        + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, \"startIndex\");");
+                    Emit($"    if ({cnt} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\");");
+                    Emit($"    if ({cnt} > {first} + 1) "
+                        + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_END_INDEX_START_INDEX, \"endIndex\");");
+                    Emit($"    dn2cpp_array_require_rank1({arr});");
+                }
+                else
+                {
+                    Emit($"dn2cpp_array_require_rank1({arr});");
+                    Emit($"if ({first} < 0 || {first} > {len}) "
+                        + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, \"startIndex\");");
+                    Emit($"if ({cnt} < 0 || {cnt} > {len} - {first}) "
+                        + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\");");
+                }
                 string ix = NewTemp("int32_t");
                 string end = NewTemp("int32_t");
-                Emit($"{res} = -1;");
                 Emit($"{end} = {(last ? $"{first} - {cnt}" : $"{first} + {cnt}")};");
                 Emit(last
                     ? $"for ({ix} = {first}; {ix} > {end}; {ix}--) {{"
                     : $"for ({ix} = {first}; {ix} < {end}; {ix}++) {{");
                 Emit($"    if (dn2cpp_object_equals(dn2cpp_array_get_value({arr}, (int64_t){ix}), {val})) {{ {res} = {ix}; break; }}");
                 Emit("}");
+                if (last)
+                    Emit("}");
                 Push(StackKind.I4, "int32_t", res);
                 return true;
             }
@@ -1155,19 +1187,11 @@ internal sealed partial class MethodCompiler
         string arrT = NewTemp("Dn2CppObject*");
         Emit($"{arrT} = {Cast(arrE, "Dn2CppObject*")};");
         string lo = NewTemp("int32_t"), hi = NewTemp("int32_t");
+        string ct = range ? NewTemp("int32_t") : "";
         if (range)
         {
-            string it = NewTemp("int32_t");
-            Emit($"{it} = {Cast(indexE!, "int32_t")};");
-            string ct = NewTemp("int32_t");
+            Emit($"{lo} = {Cast(indexE!, "int32_t")};");
             Emit($"{ct} = {Cast(countE!, "int32_t")};");
-            Emit($"{lo} = {it};");
-            Emit($"{hi} = {it} + {ct} - 1;");
-        }
-        else
-        {
-            Emit($"{lo} = 0;");
-            Emit($"{hi} = dn2cpp_array_length_dyn({arrT}) - 1;");
         }
         string valT = NewTemp("Dn2CppObject*");
         Emit($"{valT} = {Cast(valueE, "Dn2CppObject*")};");
@@ -1179,6 +1203,23 @@ internal sealed partial class MethodCompiler
             Emit($"{cmpT} = {Cast(cmp, "Dn2CppObject*")};");
             (icmpTi, slot) = NonGenericIComparerDispatch();
         }
+        // .NET's checks, in its order, once every operand is evaluated: the array, the
+        // range, then the rank.
+        Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+        if (range)
+        {
+            Emit($"if ({lo} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"index\");");
+            Emit($"if ({ct} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"length\");");
+            Emit($"if (dn2cpp_array_length_dyn({arrT}) - {lo} < {ct}) "
+                + "dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);");
+            Emit($"{hi} = {lo} + {ct} - 1;");
+        }
+        else
+        {
+            Emit($"{lo} = 0;");
+            Emit($"{hi} = dn2cpp_array_length_dyn({arrT}) - 1;");
+        }
+        Emit($"dn2cpp_array_require_rank1({arrT});");
         // .NET's Array.BinarySearch loop, exactly: mid = lo + ((hi-lo)>>1); compare(element, value) in
         // that direction; return the found index or ~lo. Default compare = dn2cpp_object_compare
         // (non-generic IComparable); an explicit comparer (null at run time IS Comparer.Default) =

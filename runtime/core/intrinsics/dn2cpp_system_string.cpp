@@ -2066,7 +2066,7 @@ static void dn2cpp_array_copy_dyn_impl(Dn2CppObject* src, int32_t srcIdx,
     // verdict — which is why the checked delegation sits last.
     int32_t rank = dn2cpp_array_rank_of(src);
     if (rank != dn2cpp_array_rank_of(dst))
-        dn2cpp_throw_rank();
+        dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_MUST_MATCH);
     dn2cpp_array_copy_range(dn2cpp_array_total_length(src), srcIdx,
                             dn2cpp_array_total_length(dst), dstIdx, len);
     if (src->type != dst->type || src->type == nullptr)

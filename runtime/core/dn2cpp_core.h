@@ -1465,6 +1465,12 @@ inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen
 inline constexpr const char* DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH = "Argument_SpansMustHaveSameLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
+inline constexpr const char* DN2CPP_SR_COUNT = "ArgumentOutOfRange_Count";
+inline constexpr const char* DN2CPP_SR_END_INDEX_START_INDEX = "ArgumentOutOfRange_EndIndexStartIndex";
+inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS = "ArgumentOutOfRange_IndexMustBeLess";
+inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_IndexMustBeLessOrEqual";
+inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
+inline constexpr const char* DN2CPP_SR_RANK_MUST_MATCH = "Rank_MustMatch";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
 // no embedded resources, or a key outside Dn2Cpp.BclMessages).
 const char* dn2cpp_sr_text(const char* key);
@@ -2637,8 +2643,6 @@ void dn2cpp_require_layout(const Dn2CppTypeInfo* ti);
 // Reflection member lookup with several undecidable matches (Type.GetMethod /
 // GetProperty), matching .NET's AmbiguousMatchException.
 [[noreturn]] void dn2cpp_throw_ambiguous_match();
-// An array block move whose two operands disagree on rank.
-[[noreturn]] void dn2cpp_throw_rank();
 // Constructor resolution with no invokable match (Activator.CreateInstance and
 // friends), matching .NET's MissingMethodException; the message carries the
 // diagnosable reason (like the dynamic-codegen PNSE trap).
@@ -5908,8 +5912,14 @@ inline TArray* dn2cpp_array_require_copy_dest(TArray* arr)
     if (arr == nullptr)
         dn2cpp_throw_argument_null();
     if (dn2cpp_array_rank_of(reinterpret_cast<Dn2CppObject*>(arr)) > 1)
-        dn2cpp_throw_rank();
+        dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_MUST_MATCH);
     return arr;
+}
+
+inline void dn2cpp_array_require_rank1(Dn2CppObject* arr)
+{
+    if (dn2cpp_array_rank_of(arr) != 1)
+        dn2cpp_throw_sr0(&dn2cpp_rank_exception_type, DN2CPP_SR_RANK_SINGLE_DIM_ONLY);
 }
 
 // Array.CopyTo's destination is the SAME refusal in a different family, because

@@ -47,7 +47,9 @@ barrier_follows() {
         END { if (pending) print FILENAME ":" pendingline }
     ' "$OUT"/generated*.cpp)
     local hits
-    hits=$(grep -cE -e "$pattern" "$OUT"/generated*.cpp | awk -F: '{ n += $NF } END { print n + 0 }')
+    hits=$(PAT="$pattern" awk 'BEGIN { pat = ENVIRON["PAT"] }
+        $0 ~ pat { n++ }
+        END { print n + 0 }' "$OUT"/generated*.cpp)
     if [ "$hits" -eq 0 ]; then
         echo "FAIL: the $what store is gone from the generated output (pattern: $pattern)" >&2
         exit 1
@@ -64,7 +66,7 @@ barrier_follows 'external-typed field'          '->f_ExField = '
 barrier_follows 'external-typed struct field'   '->f_Value = '
 barrier_follows 'whole-struct field'            '->f_Pair = '
 barrier_follows 'reference-bearing struct elem' '^ *\*\(t_ExternalWriteBarrierSubset_Program_ExPair\*\)dn2cpp_elem_addr\('
-barrier_follows 'Array.Fill of a reference'     '->data\[__fi\] = '
+barrier_follows 'Array.Fill of a reference'     'for .*->data\[[^]]+\] = '
 barrier_follows 'rank-2 accessor Set'           '^ *\*\(Dn2CppObject\*\*\)dn2cpp_md_elem_addr2\('
 
 ctx="external_ref_barrier|runs:DN2CPP_GC_INCREMENTAL=0+1|DN2CPP_GC_STATS=1"
