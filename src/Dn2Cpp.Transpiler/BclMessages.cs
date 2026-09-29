@@ -74,5 +74,11 @@ internal static class BclMessages
         // dispatch through, so the site that knows them bakes them into the stored text.
         "Arg_ParamName_Name",
         "ArgumentOutOfRange_ActualValue",
+        "ArgumentOutOfRange_Count",
+        "ArgumentOutOfRange_EndIndexStartIndex",
+        "ArgumentOutOfRange_IndexMustBeLess",
+        "ArgumentOutOfRange_IndexMustBeLessOrEqual",
+        "Rank_MultiDimNotSupported",
+        "Rank_MustMatch",
     ];
 }

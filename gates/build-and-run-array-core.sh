@@ -142,6 +142,9 @@
 #
 # ArrayArgumentCheckSubset pins Sort and Reverse range checks, a null
 # Comparison<T>, and unequal span lengths before their unchecked loops.
+# ArrayArgumentCheckSubset.RunSearch checks IndexOf, LastIndexOf, Fill and
+# BinarySearch ranges before their loops and the non-generic Array
+# Sort, Reverse and Copy rank and range messages.
 source "$(dirname "$0")/_common.sh"
 
 corelib_diff_gate ArrayCore

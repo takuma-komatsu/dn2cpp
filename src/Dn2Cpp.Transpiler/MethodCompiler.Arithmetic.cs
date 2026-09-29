@@ -748,7 +748,8 @@ internal sealed partial class MethodCompiler
     ///
     /// Every operand is spilled first, in IL push order: they are arbitrary
     /// expressions (an <c>xs.ToArray()</c> receiver, a <c>Next()</c> search value),
-    /// and the loop reads each once per iteration.</summary>
+    /// and the loop reads each once per iteration. .NET's argument checks follow, in
+    /// its order, ahead of a loop that trusts its range.</summary>
     private void EmitArrayIndexOf(MethodSpecificationHandle msh, string name, TypeDesc elem)
     {
         var ms = _reader.GetMethodSpecification(msh);
@@ -777,19 +778,49 @@ internal sealed partial class MethodCompiler
         Emit($"{arrT} = {Cast(array, arrCt)};");
         var valT = new StackEntry(NewTemp(elemCt), CppTypes.KindOf(elem), elemCt);
         Emit($"{valT.Expr} = {Cast(value, elemCt)};");
+        string startT = NewTemp("int32_t"), countT = NewTemp("int32_t");
+        if (start is not null)
+            Emit($"{startT} = {Cast(start, "int32_t")};");
+        if (count is not null)
+            Emit($"{countT} = {Cast(count, "int32_t")};");
+        Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
         string len = $"((Dn2CppArray*){arrT})->length";
-        string startT = NewTemp("int32_t");
         // Defaults, straight from the real overload chain: a forward scan starts at 0
         // and runs to the end; a backward one starts at the LAST element and runs to
         // the start. An empty array makes that startIndex -1 — which is why the
         // 1-argument LastIndexOf must not derive its count as `startIndex + 1`
         // (it would be 0 there, but the 2-argument form's caller-supplied 0 start
-        // would give 1 and read data[0] of an empty buffer).
-        Emit($"{startT} = {(start is null ? (last ? $"{len} - 1" : "0") : Cast(start, "int32_t"))};");
-        string countT = NewTemp("int32_t");
-        Emit($"{countT} = {(count is not null ? Cast(count, "int32_t")
-            : last ? (start is null ? len : $"({len} == 0 ? 0 : {startT} + 1)")
-            : $"{len} - {startT}")};");
+        // would give 1 and read data[0] of an empty buffer). A derived count wraps as
+        // .NET's int arithmetic does; the startIndex check rejects every start that
+        // wraps it.
+        if (start is null)
+            Emit($"{startT} = {(last ? $"{len} - 1" : "0")};");
+        if (count is null)
+            Emit($"{countT} = {(last
+                ? (start is null ? len : $"({len} == 0 ? 0 : (int32_t)((uint32_t){startT} + 1u))")
+                : $"(int32_t)((uint32_t){len} - (uint32_t){startT})")};");
+        // The range checks of the (array, value, startIndex, count) overload every
+        // shorter one forwards to; the whole-array defaults always pass them.
+        const string badCount = "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\")";
+        if (start is not null && !last)
+        {
+            Emit($"if ((uint32_t){startT} > (uint32_t){len}) "
+                + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, \"startIndex\");");
+            if (count is not null)
+                Emit($"if ((uint32_t){countT} > (uint32_t)({len} - {startT})) {badCount};");
+        }
+        else if (start is not null)
+        {
+            // An empty array accepts a startIndex of -1 or 0 and only a count of 0.
+            const string badStart = "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, \"startIndex\")";
+            Emit($"if ({len} == 0) {{");
+            Emit($"    if ({startT} != -1 && {startT} != 0) {badStart};");
+            Emit($"    if ({countT} != 0) {badCount};");
+            Emit("} else {");
+            Emit($"    if ((uint32_t){startT} >= (uint32_t){len}) {badStart};");
+            Emit($"    if ({countT} < 0 || {startT} - {countT} + 1 < 0) {badCount};");
+            Emit("}");
+        }
 
         string r = NewTemp("int32_t");
         string i = NewTemp("int32_t");
@@ -809,7 +840,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Array.Fill&lt;T&gt;(array, value [, startIndex, count]) as a scalar
     /// element-store loop (the BCL vectorizes via SpanHelpers/Unsafe.BitCast). Whole-
-    /// array (2 args) or the index/count range (4 args); all element reps.</summary>
+    /// array (2 args) or the index/count range (4 args); all element reps. The operands
+    /// are spilled in IL push order and .NET's argument checks run before the first
+    /// store, because the loop indexes the element buffer unchecked.</summary>
     private void EmitArrayFill(MethodSpecificationHandle msh, TypeDesc elem)
     {
         var ms = _reader.GetMethodSpecification(msh);
@@ -818,26 +851,48 @@ internal sealed partial class MethodCompiler
             ? _reader.GetMemberReference((MemberReferenceHandle)ms.Method).DecodeMethodSignature(_c.SigProvider, ctx).ParameterTypes.Length
             : _reader.GetMethodDefinition((MethodDefinitionHandle)ms.Method).DecodeSignature(_c.SigProvider, ctx).ParameterTypes.Length;
 
-        string? countExpr = argc >= 4 ? Pop().Expr : null;
-        string startExpr = argc >= 4 ? Pop().Expr : "0";
+        var count = argc >= 4 ? Pop() : null;
+        var start = argc >= 4 ? Pop() : null;
         var value = Pop();
         var array = Pop();
-        string len = $"((Dn2CppArray*)({array.Expr}))->length";
-        countExpr ??= len;
-        string elemCt = CppTypes.Of(elem);
+        string arrCt = ArrayCppPtr(elem), elemCt = CppTypes.Of(elem);
+        string arrT = NewTemp(arrCt);
+        Emit($"{arrT} = {Cast(array, arrCt)};");
         string vt = NewTemp(elemCt);
         Emit($"{vt} = {Cast(value, elemCt)};");
+        string startT = NewTemp("int32_t"), countT = NewTemp("int32_t");
+        if (start is not null)
+        {
+            Emit($"{startT} = {Cast(start, "int32_t")};");
+            Emit($"{countT} = {Cast(count!, "int32_t")};");
+        }
+        Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+        string len = $"((Dn2CppArray*){arrT})->length";
+        if (start is null)
+        {
+            Emit($"{startT} = 0;");
+            Emit($"{countT} = {len};");
+        }
+        else
+        {
+            Emit($"if ((uint32_t){startT} > (uint32_t){len}) "
+                + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, \"startIndex\");");
+            Emit($"if ((uint32_t){countT} > (uint32_t)({len} - {startT})) "
+                + "dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_COUNT, \"count\");");
+        }
+        string i = NewTemp("int32_t");
+        string st = CppTypes.StorageOf(elem);
         string store = RepOf(elem) switch
         {
-            ArrRep.I4 => $"((Dn2CppArrayI4*)({array.Expr}))->data[__fi] = (int32_t)({vt})",
-            ArrRep.Ref => $"((Dn2CppArrayRef*)({array.Expr}))->data[__fi] = (Dn2CppObject*)({vt})",
-            _ => $"*({CppTypes.StorageOf(elem)}*)dn2cpp_elem_addr(({Cast(array, "Dn2CppArrayN*")}), __fi) = ({CppTypes.StorageOf(elem)})({vt})",
+            ArrRep.I4 => $"{arrT}->data[{i}] = (int32_t)({vt})",
+            ArrRep.Ref => $"{arrT}->data[{i}] = (Dn2CppObject*)({vt})",
+            _ => $"*({st}*)({arrT}->data + (size_t){i} * {arrT}->elemSize) = ({st})({vt})",
         };
-        Emit($"for (int32_t __fi = ({startExpr}); __fi < ({startExpr}) + ({countExpr}); __fi++) {{ {store}; }}");
+        Emit($"for ({i} = {startT}; {i} < {startT} + {countT}; {i}++) {{ {store}; }}");
         // Dirtying the array dirties every slot the loop wrote; an empty range
         // costs one no-op call.
         if (elem.ContainsGcReferences())
-            Emit($"dn2cpp_gc_write_barrier((void*)({array.Expr}));");
+            Emit($"dn2cpp_gc_write_barrier((void*){arrT});");
     }
 
     // ---- element ordering: Array.Sort / Array.BinarySearch / MemoryExtensions.Sort ----
@@ -1278,21 +1333,48 @@ internal sealed partial class MethodCompiler
         var startE = hasRange ? Pop() : null;
         var arrE = Pop();
 
+        // Every operand is spilled in IL push order before .NET's argument checks run,
+        // in its order: the array, then index, length and the range the search loop
+        // trusts.
         string arrCt = ArrayCppPtr(t), elemCt = CppTypes.Of(t);
         string arrT = NewTemp(arrCt);
         Emit($"{arrT} = {Cast(arrE, arrCt)};");
+        string lo = NewTemp("int32_t"), hi = NewTemp("int32_t");
+        string n = hasRange ? NewTemp("int32_t") : "";
+        if (hasRange)
+        {
+            Emit($"{lo} = {Cast(startE!, "int32_t")};");
+            Emit($"{n} = {Cast(countE!, "int32_t")};");
+        }
         var valT = new StackEntry(NewTemp(elemCt), CppTypes.KindOf(t), elemCt);
         Emit($"{valT.Expr} = {Cast(valueE, elemCt)};");
-        string lo = NewTemp("int32_t"), hi = NewTemp("int32_t");
-        Emit($"{lo} = {(startE is null ? "0" : Cast(startE, "int32_t"))};");
-        Emit($"{hi} = {lo} + {(countE is null ? $"((Dn2CppArray*){arrT})->length" : Cast(countE, "int32_t"))} - 1;");
+        string? cmpT = null;
+        if (comparer is { } cmpE)
+        {
+            cmpT = NewTemp("Dn2CppObject*");
+            Emit($"{cmpT} = {Cast(cmpE, "Dn2CppObject*")};");
+        }
+        Emit($"if ({arrT} == nullptr) dn2cpp_throw_argument_null_param(\"array\");");
+        string len = $"((Dn2CppArray*){arrT})->length";
+        if (hasRange)
+        {
+            Emit($"if ({lo} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"index\");");
+            Emit($"if ({n} < 0) dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_NEED_NON_NEG_NUM, \"length\");");
+            Emit($"if ({len} - {lo} < {n}) dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_OFF_LEN);");
+            Emit($"{hi} = {lo} + {n} - 1;");
+        }
+        else
+        {
+            Emit($"{lo} = 0;");
+            Emit($"{hi} = {len} - 1;");
+        }
 
         // The compare of one element against the search value, as an expression over two
         // lvalues. Three sources, in the order Comparer<T>.Default resolves them.
         var e = new StackEntry(NewTemp(elemCt), CppTypes.KindOf(t), elemCt);
         string? inlineCmp = TryDefaultCompareLValue(t, e, valT);
         string? cmpExpr = inlineCmp;
-        if (comparer is { } cmp)
+        if (cmpT is not null)
         {
             // A supplied IComparer<T> — dispatched through the interface. It may still be
             // null at run time (that is Comparer<T>.Default), so the else arm stands: the
@@ -1301,8 +1383,6 @@ internal sealed partial class MethodCompiler
                 ?? throw new NotSupportedException(
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: "
                     + "Array.BinarySearch comparer parameter is not a class type");
-            string cmpT = NewTemp("Dn2CppObject*");
-            Emit($"{cmpT} = {Cast(cmp, "Dn2CppObject*")};");
             if (inlineCmp is null && _c.DefaultComparerFor(t) is { } dgc)
             {
                 // No inline order for T, but it has a real comparer: materialize
