@@ -38,6 +38,7 @@
 # Array CopyTo preserves the rejected Int32 and the bound in its argument faults.
 # Insert and ToCharArray preserve unsigned start faults and signed window precedence.
 # Array string constructors copy UTF-16, validate windows and share String.Empty.
+# Remove overloads preserve distinct fault fields and padding rejects named widths.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -124,6 +125,29 @@ gate_extra_asserts() {
         'slice throwing array evaluation=A' 'string array constructors end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: string array constructor witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-remove-padding)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string remove and padding faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string remove and padding faults ==' \
+        'remove-tail-negative actual=null' 'remove-tail-past-end param=startIndex' \
+        'remove-start-before-count actual=Int32:-1' \
+        'remove-start-minimum actual=Int32:-2147483648' \
+        'remove-count-before-window param=count' 'remove-window actual=Int32:2' \
+        'remove-past-end-zero actual=Int32:0' 'remove-count-maximum actual=Int32:2147483647' \
+        'pad-left-default param=totalWidth' 'pad-left-explicit actual=Int32:-2147483648' \
+        'pad-right-default param=totalWidth' 'pad-right-explicit actual=Int32:-1' \
+        'remove unchanged=True:True:True' 'remove empty identities=True:True:True:True' \
+        'constructed empty 0=True:True' 'constructed empty 1=True:True' \
+        'pad unchanged=True:True:True:True' 'remove-copy result=ac' 'remove-fresh result=False' \
+        'remove-utf16 result=0041 0000 DC00 005A ' \
+        'remove identity after GC=True:True' 'remove null evaluation=SIC' \
+        'remove copy evaluation=SIC' 'remove throwing count evaluation=SIC' \
+        'pad null evaluation=SWP' 'pad throwing padding evaluation=SWP' \
+        'string remove and padding faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: string remove/padding witness missing: $line" >&2; exit 1; }
     done
 }
 

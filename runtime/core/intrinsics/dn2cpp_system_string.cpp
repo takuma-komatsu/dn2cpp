@@ -60,7 +60,7 @@ Dn2CppString* dn2cpp_str_pad(Dn2CppString* s, int32_t totalWidth, char16_t pad, 
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (totalWidth < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "totalWidth", totalWidth);
     if (totalWidth <= s->length)
         return s;
     int32_t fill = totalWidth - s->length;
@@ -87,9 +87,18 @@ Dn2CppString* dn2cpp_str_remove(Dn2CppString* s, int32_t start, int32_t count)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
-    if (start < 0 || count < 0 || start > s->length - count)
-        dn2cpp_throw_argument_out_of_range();
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+    int32_t room = s->length - start;
+    if (count > room)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "count", count, room);
+    if (count == 0)
+        return s;
     int32_t newLen = s->length - count;
+    if (newLen == 0)
+        return dn2cpp_string_literal(u"", 0);
     char16_t* buf;
     Dn2CppString* r = dn2cpp_string_alloc(&buf, newLen);
     std::memcpy(buf, s->chars, static_cast<size_t>(start) * sizeof(char16_t));
@@ -103,6 +112,12 @@ Dn2CppString* dn2cpp_str_remove_to_end(Dn2CppString* s, int32_t start)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_START_INDEX, "startIndex");
+    if (start > s->length)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH, "startIndex");
+    if (start == 0)
+        return dn2cpp_string_literal(u"", 0);
     return dn2cpp_str_remove(s, start, s->length - start);
 }
 
