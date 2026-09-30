@@ -1465,6 +1465,7 @@ inline constexpr const char* DN2CPP_SR_PATH_TOO_LONG_PATH = "IO_PathTooLong_Path
 inline constexpr const char* DN2CPP_SR_ADDING_DUPLICATE_WITH_KEY = "Argument_AddingDuplicateWithKey";
 inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND_WITH_KEY = "Arg_KeyNotFoundWithKey";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE = "ArgumentOutOfRange_Generic_MustBeNonNegative";
+inline constexpr const char* DN2CPP_SR_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeLessOrEqual";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
@@ -2730,6 +2731,10 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
     const char* paramName, int32_t value);
+// A "{0} ('{1}') ... '{2}'." sentence over (paramName, value, bound), with
+// the rejected Int32 value stored as ActualValue.
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
+    const char* paramName, int32_t value, int32_t bound);
 // The same without an actual-value tail: `key` is a plain sentence, and only the
 // " (Parameter 'x')" ArgumentException.Message appends is added.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
