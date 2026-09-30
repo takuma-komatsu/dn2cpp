@@ -34,6 +34,7 @@
 # string-create, join-callresult-subset, ordinal-culture-comparer-subset, plus
 # the String-as-interface sections (LINQ over a string / CharEnumerator /
 # IComparable-family dispatch / Intern), which need System.Linq.
+# Indexed culture comparisons validate clamped windows before null ordering and options.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -58,6 +59,17 @@ gate_extra_asserts() {
         'null receiver empty span: NullReferenceException'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-indexed-compare)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== indexed culture compare ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== indexed culture compare ==' 'bool fold=0' 'bool clamp=-1' \
+        'options ordinal=-32' 'options ordinal-ci=0' \
+        'bool evaluation=AIBJLFC' 'options evaluation=AIBJLCO' \
+        'throwing culture evaluation=AIBJLC' 'indexed culture compare end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: indexed compare witness missing: $line" >&2; exit 1; }
     done
 }
 

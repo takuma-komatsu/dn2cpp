@@ -1476,6 +1476,9 @@ inline constexpr const char* DN2CPP_SR_COUNT = "ArgumentOutOfRange_Count";
 inline constexpr const char* DN2CPP_SR_END_INDEX_START_INDEX = "ArgumentOutOfRange_EndIndexStartIndex";
 inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS = "ArgumentOutOfRange_IndexMustBeLess";
 inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_IndexMustBeLessOrEqual";
+inline constexpr const char* DN2CPP_SR_OFFSET_LENGTH = "ArgumentOutOfRange_OffsetLength";
+inline constexpr const char* DN2CPP_SR_COMPARE_OPTION_ORDINAL = "Argument_CompareOptionOrdinal";
+inline constexpr const char* DN2CPP_SR_INVALID_FLAG = "Argument_InvalidFlag";
 inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MUST_MATCH = "Rank_MustMatch";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
@@ -4075,7 +4078,10 @@ int32_t dn2cpp_str_comparison_fold(int32_t comparisonType);
 // ordinally — the invariant-globalization posture).
 int32_t dn2cpp_str_compare(Dn2CppString* a, Dn2CppString* b, int32_t comparisonType);
 int32_t dn2cpp_str_compare_sub(Dn2CppString* a, int32_t indexA, Dn2CppString* b,
-                               int32_t indexB, int32_t length, int32_t comparisonType);
+                               int32_t indexB, int32_t length, int32_t comparisonType,
+                               int32_t viaCompareInfo);
+int32_t dn2cpp_str_compare_sub_options(Dn2CppString* a, int32_t indexA, Dn2CppString* b,
+                                       int32_t indexB, int32_t length, int32_t options);
 // Deterministic content hash for string keys (devirtualized
 // EqualityComparer<string>.Default.GetHashCode). Not the BCL's randomized Marvin
 // hash — we only need it stable + well-distributed within a run.

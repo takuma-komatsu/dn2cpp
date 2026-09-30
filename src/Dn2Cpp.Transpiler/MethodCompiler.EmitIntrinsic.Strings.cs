@@ -1505,7 +1505,7 @@ internal sealed partial class MethodCompiler
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
                     $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, "
-                    + $"{Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, 4)");
+                    + $"{Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, 4, 0)");
                 return true;
             }
             // Compare(a, b, StringComparison): Ordinal/OrdinalIgnoreCase honored at
@@ -1533,7 +1533,68 @@ internal sealed partial class MethodCompiler
                 var ia = Pop();
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, {Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, {ct.Expr})");
+                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, {Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, {ct.Expr}, 0)");
+                return true;
+            }
+            // The indexed culture overloads validate both CompareInfo windows before
+            // ordering null strings. The bool forms choose IgnoreCase; the options form
+            // also validates the flags after the windows, including for null strings.
+            case ("System.String", "Compare")
+                when sig.ParameterTypes is [{ IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, { IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean }]:
+            {
+                var ign = Pop();
+                var len = Pop();
+                var ib = Pop();
+                var b = Pop();
+                var ia = Pop();
+                var a = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, "
+                    + $"{Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, ({ign.Expr}) != 0 ? 5 : 4, 1)");
+                return true;
+            }
+            case ("System.String", "Compare")
+                when sig.ParameterTypes is [{ IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, { IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Boolean },
+                    { Kind: TypeKind.Class, Class.FullName: "System.Globalization.CultureInfo" }]:
+            {
+                Pop(); // null culture uses CurrentCulture; comparison is invariant here
+                var ign = Pop();
+                var len = Pop();
+                var ib = Pop();
+                var b = Pop();
+                var ia = Pop();
+                var a = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, "
+                    + $"{Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, ({ign.Expr}) != 0 ? 5 : 4, 1)");
+                return true;
+            }
+            case ("System.String", "Compare")
+                when sig.ParameterTypes is [{ IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, { IsString: true },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                    { Kind: TypeKind.Class, Class.FullName: "System.Globalization.CultureInfo" },
+                    { Kind: TypeKind.Class, Class.FullName: "System.Globalization.CompareOptions" }]:
+            {
+                var options = Pop();
+                Pop(); // null culture uses CurrentCulture; comparison is invariant here
+                var len = Pop();
+                var ib = Pop();
+                var b = Pop();
+                var ia = Pop();
+                var a = Pop();
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_str_compare_sub_options({Cast(a, "Dn2CppString*")}, {ia.Expr}, "
+                    + $"{Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, {options.Expr})");
                 return true;
             }
             // Compare(a, b, CultureInfo, CompareOptions) — the culture operand is dropped
@@ -1556,7 +1617,7 @@ internal sealed partial class MethodCompiler
             // Compare(strA, indexA, strB, indexB, length) — no StringComparison, so
             // real .NET defaults to the current culture; here it is the ordinal
             // approximation (comparisonType 4), sharing the substring helper with
-            // the 6-arg form above (same per-side clamp and null/range order).
+            // the indexed culture forms (same per-side clamp and window validation).
             case ("System.String", "Compare")
                 when sig.ParameterTypes is [{ IsString: true },
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }, { IsString: true },
@@ -1569,7 +1630,7 @@ internal sealed partial class MethodCompiler
                 var ia = Pop();
                 var a = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, {Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, 4)");
+                    $"dn2cpp_str_compare_sub({Cast(a, "Dn2CppString*")}, {ia.Expr}, {Cast(b, "Dn2CppString*")}, {ib.Expr}, {len.Expr}, 4, 1)");
                 return true;
             }
             // Compare(a, b, bool ignoreCase, CultureInfo) — the culture operand is

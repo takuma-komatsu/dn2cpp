@@ -42,6 +42,9 @@ namespace StringCore
             StringJoinSubset.Program.RunSequences();
             StringJoinSubset.Program.RunOperandShapes();
             StringJoinSubset.Program.RunAppendFaults();
+            if (args.Length > 0 && args[0] == "before-indexed-compare")
+                return;
+            IndexedCultureCompareSubset.Program.Run();
         }
     }
 }
