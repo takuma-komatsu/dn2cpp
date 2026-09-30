@@ -625,6 +625,8 @@ internal static class Program
         FourFaults();
         DelegateNullFaults();
 
+        Counter.ConcatProbe = InterpretedConcatSubset.Run;
+
         // An exception no patch handler consumes escapes the interpreter into
         // the base program's own try/catch (see HotUpdateBase.Program.Main).
         throw new InvalidOperationException("escaped to base");

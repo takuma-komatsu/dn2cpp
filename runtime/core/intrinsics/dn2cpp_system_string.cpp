@@ -1603,21 +1603,9 @@ Dn2CppString* dn2cpp_string_format_spanobjs_c(const Dn2CppNumberFormatInfo* nfi,
     return dn2cpp_string_format_impl(fmt, const_cast<Dn2CppObject**>(args), n < 0 ? 0 : n, nfi);
 }
 
-// Concat over the first `n` elements of a ref array (a List<T>'s backing
-// array, whose allocated length is the capacity ≥ Count, so iterate `n` = Count).
-Dn2CppString* dn2cpp_string_concat_objects_n(Dn2CppArrayRef* objs, int32_t n)
-{
-    if (objs == nullptr || n < 0)
-        n = 0;
-    auto** parts = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (n > 0 ? n : 1)));
-    for (int32_t i = 0; i < n; i++)
-        dn2cpp_gc_store_ref(&parts[i], dn2cpp_object_tostring(objs->data[i]));
-    return dn2cpp_string_concat_n(parts, n);
-}
-
 Dn2CppString* dn2cpp_string_concat_objects(Dn2CppArrayRef* objs)
 {
-    return dn2cpp_string_concat_objects_n(objs, objs != nullptr ? objs->length : 0);
+    return dn2cpp_string_concat_objs(objs->data, objs->length);
 }
 
 // string.Join: interleave the element strings with `sep` (no trailing

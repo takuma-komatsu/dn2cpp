@@ -5127,9 +5127,8 @@ int32_t dn2cpp_double_equals(double a, double b);
 int32_t dn2cpp_single_equals(float a, float b);
 int32_t dn2cpp_double_hash(double v);
 int32_t dn2cpp_single_hash(float v);
+// Concat over a non-null ref array, each element via Object.ToString.
 Dn2CppString* dn2cpp_string_concat_objects(Dn2CppArrayRef* objs);
-// Concat over the first `n` elements (a List<T>'s live prefix).
-Dn2CppString* dn2cpp_string_concat_objects_n(Dn2CppArrayRef* objs, int32_t n);
 
 // string.Join over an array of T, separated by `sep` (no trailing separator).
 // Element formatting matches Object.ToString per kind. The `_n` forms join
