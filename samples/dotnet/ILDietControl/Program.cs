@@ -33,6 +33,11 @@ internal static class Program
         Console.WriteLine("ctor-info=" + ((Shape)empty.Invoke(null)).Who() + ":"
             + ((Shape)sized.Invoke(new object[] { 5 })).Who());
         Console.WriteLine("called-only=" + CalledOnly.Name());
+        // The method group must keep the element constructor even though no IL names it.
+        Array cells = new Cell[2];
+        Action initialize = cells.Initialize;
+        initialize();
+        Console.WriteLine("array-initialize-group=" + ((Cell[])cells)[1].Value);
     }
 
     private static int RunStatic<T>(int value) where T : IStatic<T> => T.Evaluate(value);
@@ -46,6 +51,13 @@ public static class UnusedAppType
 internal abstract class Shape
 {
     public abstract string Who();
+}
+
+internal struct Cell
+{
+    public int Value;
+
+    public Cell() { Value = 3; }
 }
 
 internal sealed class Loose : Shape

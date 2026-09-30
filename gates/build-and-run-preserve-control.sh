@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Managed DLL stripping and explicit preservation: unreachable metadata is removed,
 # while PreserveAttribute and merged Unity-format link.xml keep selected bodies.
+# ILDietControl also checks Array.Initialize constructors reached through method groups.
 source "$(dirname "$0")/_common.sh"
 PYTHON=$(resolve_python) || gate_skip "no working Python 3 interpreter for ILDiet validation"
 

@@ -133,6 +133,8 @@
 # only pairs that need no per-element conversion, CreateInstanceFromArrayType's
 # lengths forms check the type's rank, and Initialize runs a struct's explicit
 # parameterless constructor, which ILDiet must keep although no IL names it.
+# RunDynamicInitialize finds that constructor from a System.Array receiver or
+# a method group at runtime.
 #
 # ArrayResizeSubset's RunSameLength tail asserts that Array.Resize to the array's
 # own length keeps the instance — in a local, a field, a generic body and behind a
