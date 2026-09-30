@@ -345,19 +345,19 @@ internal sealed partial class MethodCompiler
             }
             // AppendJoin(string|char separator, object[]/string[]) — compose via the
             // string.Join ref-array helper (null elements contribute nothing), then
-            // append. The generic AppendJoin<T>(sep, IEnumerable<T>) binds in
-            // TranslateGenericIntrinsic.
+            // append; a null array throws ArgumentNullException. The generic
+            // AppendJoin<T>(sep, IEnumerable<T>) binds in TranslateGenericIntrinsic.
             case ("System.Text.StringBuilder", "AppendJoin")
                 when sig.ParameterTypes is [_, { Kind: TypeKind.SZArray }]:
             {
-                var arr = Pop();
+                string a = PopNonNullRefArray("values");
                 var sep = Pop();
                 string sepStr = sep.Kind == StackKind.Ref
                     ? Cast(sep, "Dn2CppString*")
                     : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
                 string sb = Cast(Pop(), "Dn2CppStringBuilder*");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                    $"dn2cpp_sb_append_str({sb}, dn2cpp_string_join_ref({sepStr}, (Dn2CppArrayRef*)({arr.Expr})))");
+                    $"dn2cpp_sb_append_str({sb}, dn2cpp_string_join_ref({sepStr}, {a}))");
                 return true;
             }
             // AppendJoin(string|char, params ReadOnlySpan<object|string>) — the

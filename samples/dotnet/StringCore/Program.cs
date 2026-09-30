@@ -7,7 +7,7 @@ namespace StringCore
     // stay identical to the standalone samples.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -37,6 +37,10 @@ namespace StringCore
             StringNullFaultSubset.Program.Run();
             JoinCallResultSubset.Program.Run();
             OrdinalCultureComparerSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-join-sequences")
+                return;
+            StringJoinSubset.Program.RunSequences();
+            StringJoinSubset.Program.RunOperandShapes();
         }
     }
 }

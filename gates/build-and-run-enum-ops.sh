@@ -20,8 +20,35 @@
 # which is what sizes the allocation.
 # Generic Enum.Parse/TryParse cover all four ReadOnlySpan<char> overloads; each
 # must honor the active slice bounds before consulting the enum member table.
+# EnumJoinSubset: string.Join<T>, StringBuilder.AppendJoin<T> and string.Concat<T>
+# over enum elements from an array and a List<T> — each element by name, at every
+# underlying width — and the ArgumentNullException a null sequence raises; then
+# over an IEnumerable<T> (an array, a List<T> or an iterator behind it) and other
+# collections, disposing the enumerator when the join ends or an element read throws.
+# Undefined unsigned values keep their sign through array and enumeration joins,
+# including flags and enums with no declared members.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/EnumOps")
+    before=$(dotnet "$_CG_APP" before-enum-join)
+    prefix=$(awk '/^== enum Join ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== enum Join ==' \
+        '== enum Concat ==' \
+        '== enum Join over enumerables ==' \
+        'throwing cursor: cursor 2 3' \
+        'ushort: B,A,40000' \
+        'ulong: BA18446744073709551615' \
+        'uint undefined: 4000000000 4000000000' \
+        'unsigned flags: 4294967295 18446744073709551615' \
+        'empty enums: 4294967295 18446744073709551615'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate EnumOps

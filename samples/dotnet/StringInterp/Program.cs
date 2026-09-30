@@ -7,7 +7,7 @@ namespace StringInterp
     // stay identical to the standalone samples.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -22,6 +22,9 @@ namespace StringInterp
             AppendFormatSubset.Program.__GateEntry();
             CustomFormatSubset.Program.__GateEntry();
             InterpHandlerSubset.Program.__ToStringGate();
+            if (args.Length > 0 && args[0] == "before-concat-sequences")
+                return;
+            ConcatSequenceSubset.Program.__GateEntry();
         }
     }
 }

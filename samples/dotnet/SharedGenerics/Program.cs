@@ -48,6 +48,9 @@ namespace SharedGenerics
             if (args.Length > 0 && args[0] == "before-gvm-hider")
                 return;
             GvmHiderSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-width-join")
+                return;
+            WidthJoinSubset.Program.Run();
         }
     }
 }

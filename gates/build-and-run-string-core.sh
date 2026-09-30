@@ -11,6 +11,16 @@
 # a FIELD rather than a local (JoinCallResultSubset), and the
 # StringComparer.CurrentCulture -> ordinal interception
 # (OrdinalCultureComparerSubset).
+# StringJoinSubset.RunSequences asserts string.Join and string.Concat over
+# IEnumerable<string>: the ArgumentNullException a null List, collection or bare
+# interface raises, Concat(object) formatting a collection argument as itself
+# rather than joining its elements, and the enumerator disposed once the join
+# ends; then the ArgumentNullException, with .NET's parameter name, that a null
+# array raises in the array overloads of Join, Concat and StringBuilder.AppendJoin.
+# StringJoinSubset.RunOperandShapes asserts that Join, Concat and AppendJoin take
+# an IEnumerable<T> operand of any static type: a null literal's
+# ArgumentNullException raised when the call runs, a conditional over an array
+# and a list, a LINQ grouping, and a set seen through ISet<T> or IReadOnlySet<T>.
 # This project's reference set is deliberately NARROW: android-gdext,
 # emit-order-stability, ios-sim-console and wasm-console each re-transpile
 # StringCore with their own hand-written copy of it, so a fourth `-r` here is a
@@ -23,5 +33,20 @@
 # the String-as-interface sections (LINQ over a string / CharEnumerator /
 # IComparable-family dispatch / Intern), which need System.Linq.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/StringCore")
+    before=$(dotnet "$_CG_APP" before-join-sequences)
+    prefix=$(awk '/^== string sequences ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string sequences ==' \
+        '== string sequence operands ==' \
+        'disposed: w1++w3 w1w3 2' \
+        'sets: x,y pq 7|8 9 p+q'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate StringCore System.Linq

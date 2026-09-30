@@ -201,6 +201,10 @@ Dn2CppString* dn2cpp_object_tostring(Dn2CppObject* obj)
                 return dn2cpp_string_from_utf8(t->reflection().enumMembers[i]->name,
                     static_cast<int32_t>(std::strlen(t->reflection().enumMembers[i]->name)));
         }
+        if (t->enumUnderlying == &dn2cpp_uint64_type)
+            return dn2cpp_format_uint(static_cast<uint64_t>(ev), 8, nullptr);
+        if (t->enumUnderlying == &dn2cpp_uint32_type)
+            return dn2cpp_format_uint(static_cast<uint32_t>(ev), 4, nullptr);
         return wide ? dn2cpp_long_to_string(ev) : dn2cpp_int_to_string(static_cast<int32_t>(ev));
     }
     // A System.Type object formats as the wrapped type's name (Type.ToString),

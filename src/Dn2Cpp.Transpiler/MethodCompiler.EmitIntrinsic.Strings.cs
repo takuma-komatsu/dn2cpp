@@ -161,17 +161,17 @@ internal sealed partial class MethodCompiler
             // string.Join(separator, string[]/object[]) — the non-generic array
             // overloads (string[]/object[] bind here rather than the IEnumerable<T>
             // generic). Separator is a string or char; elements via Object.ToString
-            // (works for both string[] and object[]).
+            // (works for both string[] and object[]). A null array throws
+            // ArgumentNullException naming .NET's parameter: `value` for string[].
             case ("System.String", "Join")
-                when sig.ParameterTypes is [_, { Kind: TypeKind.SZArray }]:
+                when sig.ParameterTypes is [_, { Kind: TypeKind.SZArray, Element: var jel }]:
             {
-                var arr = Pop();
+                string a = PopNonNullRefArray(jel is { IsString: true } ? "value" : "values");
                 var sep = Pop();
                 string sepStr = sep.Kind == StackKind.Ref
                     ? Cast(sep, "Dn2CppString*")
                     : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_join_ref({sepStr}, (Dn2CppArrayRef*)({arr.Expr}))");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_join_ref({sepStr}, {a})");
                 return true;
             }
             // string.Join(string|char, params ReadOnlySpan<object|string>) — the
@@ -200,103 +200,26 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_string_concat_objs((Dn2CppObject* const*){sp}.f__reference, {sp}.f__length)");
                 return true;
             }
-            // string.Join(separator, IEnumerable<string>) over a List<string> — the
-            // non-generic overload binds here (preferred over the Join<T> generic)
-            // for a List<string> argument; materialize the live prefix and join via
-            // the count-aware ref helper. Value-element lists (List<int>, …)
-            // have no such non-generic overload and bind to Join<T> instead, handled
-            // in TranslateGenericIntrinsic.
-            case ("System.String", "Join")
-                when sig.ParameterTypes.Length == 2 && StackDepth > 0
-                     && TryListBacking(Top) is { Elem: { } jel } && RepOf(jel) == ArrRep.Ref:
+            // string.Join(separator, IEnumerable<string>): the Join<T> lowering over
+            // string elements, whatever the operand's static type. The non-generic
+            // overload binds here in preference to Join<T>.
+            case ("System.String", "Join") when sig.ParameterTypes is [_, var jseq] && IsStringEnumerable(jseq):
+                EmitStringJoinGeneric(TypeDesc.MakePrimitive(PrimitiveTypeCode.String));
+                return true;
+            // Concat over an object[]/string[] (params) — each element via ToString. A
+            // null array throws ArgumentNullException naming .NET's parameter.
+            case ("System.String", "Concat") when sig.ParameterTypes is [{ Kind: TypeKind.SZArray, Element: var cel }]:
             {
-                var lb = TryListBacking(Pop())!.Value;
-                var sep = Pop();
-                string sepStr = sep.Kind == StackKind.Ref
-                    ? Cast(sep, "Dn2CppString*")
-                    : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_join_ref_n({sepStr}, (Dn2CppArrayRef*)({lb.Items}), {lb.Count})");
+                string a = PopNonNullRefArray(cel is { IsString: true } ? "values" : "args");
+                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_concat_objects({a})");
                 return true;
             }
-            // string.Join(separator, IEnumerable<string>) over a concrete non-List
-            // collection (SortedSet<string>, a Sorted* Keys/Values view): the element
-            // type of this non-generic overload is always string. Enumerate via the
-            // interface. Guarded before pop so a non-match falls through clean.
-            case ("System.String", "Join")
-                when sig.ParameterTypes.Length == 2 && StackDepth > 0
-                     && IsConcreteEnumerableOperand(Top)
-                     && CanEmitEnumerableJoin(TypeDesc.MakePrimitive(PrimitiveTypeCode.String)):
-            {
-                var col = Pop();
-                var sep = Pop();
-                string sepStr = sep.Kind == StackKind.Ref
-                    ? Cast(sep, "Dn2CppString*")
-                    : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                TryEmitEnumerableJoin(col, TypeDesc.MakePrimitive(PrimitiveTypeCode.String), sepStr);
+            // string.Concat(IEnumerable<string>): the Concat<T> lowering over string
+            // elements. Keyed on the parameter, not the operand: a collection handed to
+            // Concat(object) formats as itself below.
+            case ("System.String", "Concat") when sig.ParameterTypes is [var cseq] && IsStringEnumerable(cseq):
+                EmitSequenceJoin(TypeDesc.MakePrimitive(PrimitiveTypeCode.String), Pop(), null);
                 return true;
-            }
-            // string.Join(separator, IEnumerable<string>) over a bare interface
-            // operand (a string[] or a managed collection at runtime) — runtime-
-            // discriminated dual path; element type is string.
-            case ("System.String", "Join")
-                when sig.ParameterTypes.Length == 2 && StackDepth > 0
-                     && IsBareCollectionInterface(Top)
-                     && CanEmitEnumerableJoin(TypeDesc.MakePrimitive(PrimitiveTypeCode.String)):
-            {
-                var col = Pop();
-                var sep = Pop();
-                string sepStr = sep.Kind == StackKind.Ref
-                    ? Cast(sep, "Dn2CppString*")
-                    : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                TryEmitBareInterfaceJoin(col, TypeDesc.MakePrimitive(PrimitiveTypeCode.String), sepStr);
-                return true;
-            }
-            // Concat over an object[]/string[] (params) — each element via ToString.
-            case ("System.String", "Concat") when sig.ParameterTypes is [{ Kind: TypeKind.SZArray }]:
-            {
-                var arr = Pop();
-                Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_string_concat_objects((Dn2CppArrayRef*)({arr.Expr}))");
-                return true;
-            }
-            // string.Concat(IEnumerable<string>) over a List<string> — the
-            // non-generic overload binds here for a List<string> argument; without
-            // this guard the single-object fallback below would ToString the List
-            // itself (silently wrong). Restricted to reference-element Lists, whose
-            // elements concat_objects formats via Object.ToString.
-            case ("System.String", "Concat")
-                when sig.ParameterTypes.Length == 1 && StackDepth > 0
-                     && TryListBacking(Top) is { Elem: { } cel } && RepOf(cel) == ArrRep.Ref:
-            {
-                var lb = TryListBacking(Pop())!.Value;
-                Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_concat_objects_n((Dn2CppArrayRef*)({lb.Items}), {lb.Count})");
-                return true;
-            }
-            // string.Concat(IEnumerable<string>) over a concrete non-List collection
-            // (SortedSet<string>, a Sorted* Keys/Values view): element type is string.
-            // Enumerate with an empty separator. MUST precede the single-object Concat
-            // fallback below, which would otherwise ToString the collection itself
-            // (silently wrong). Guarded before pop so a non-match falls through.
-            case ("System.String", "Concat")
-                when sig.ParameterTypes.Length == 1 && StackDepth > 0
-                     && IsConcreteEnumerableOperand(Top)
-                     && CanEmitEnumerableJoin(TypeDesc.MakePrimitive(PrimitiveTypeCode.String)):
-            {
-                TryEmitEnumerableJoin(Pop(), TypeDesc.MakePrimitive(PrimitiveTypeCode.String), null);
-                return true;
-            }
-            // string.Concat(IEnumerable<string>) over a bare interface operand (a
-            // string[] or a managed collection at runtime). MUST precede the single-
-            // object fallback below. Runtime-discriminated dual path.
-            case ("System.String", "Concat")
-                when sig.ParameterTypes.Length == 1 && StackDepth > 0
-                     && IsBareCollectionInterface(Top)
-                     && CanEmitEnumerableJoin(TypeDesc.MakePrimitive(PrimitiveTypeCode.String)):
-            {
-                TryEmitBareInterfaceJoin(Pop(), TypeDesc.MakePrimitive(PrimitiveTypeCode.String), null);
-                return true;
-            }
             // Concat with object/mixed operands (value + string lowers to these):
             // each operand is formatted via Object.ToString, then concatenated.
             case ("System.String", "Concat") when sig.ParameterTypes.Length is >= 1 and <= 4:
