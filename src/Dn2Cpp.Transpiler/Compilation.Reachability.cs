@@ -188,6 +188,8 @@ internal sealed partial class Compilation
             // by SyncSharedGenerics.)
             if (SharedGenericsEnabled)
                 ReachSharedCounterpart(m);
+            if (!m.IsStatic && m.Name != ".ctor")
+                NoteRuntimeRaisedHeirs(m.DeclaringClass);
         }
     }
 
@@ -1387,6 +1389,7 @@ internal sealed partial class Compilation
     {
         if (!_usedVirtualDecls.Add(decl))
             return;
+        NoteRuntimeRaisedHeirs(decl.DeclaringClass);
         foreach (var c in _allocatedRefTypes)
             ReachVirtualImpl(c, decl);
         // String's interface map (when wired) dispatches like an allocated type,
@@ -1396,6 +1399,69 @@ internal sealed partial class Compilation
         // _allocatedRefTypes (boxes are minted under the concrete enum's own ti_),
         // so its interface impls cross in here too.
         ReachEnumVirtualImpl(decl);
+    }
+
+    /// <summary>The classes <see cref="NoteRuntimeRaisedHeirs"/> has already seen.</summary>
+    private readonly HashSet<ClassInfo> _runtimeRaisedHeirOwners = new();
+
+    /// <summary>The exception owners <see cref="ReachRuntimeRaisedHeirs"/> answers for at
+    /// the next drain step, never inside the reach call that notes one: allocating a type
+    /// adds to the allocated and used-virtual sets that call may be enumerating.</summary>
+    private readonly Queue<ClassInfo> _pendingRuntimeRaisedOwners = new();
+
+    /// <summary>The exception classes the runtime raises itself, loaded on first use.</summary>
+    private List<ClassInfo>? _runtimeRaisedExceptions;
+
+    /// <summary>Queues <paramref name="owner"/> for <see cref="ReachRuntimeRaisedHeirs"/>
+    /// when it is an exception class below System.Exception.</summary>
+    private void NoteRuntimeRaisedHeirs(ClassInfo owner)
+    {
+        if (!_runtimeRaisedHeirOwners.Add(owner) || owner.IsInterface || owner.IsValueType
+            || CoreIntrinsics.IsIntrinsicType(owner.FullName) || !DerivesFromException(owner))
+            return;
+        _pendingRuntimeRaisedOwners.Enqueue(owner);
+    }
+
+    /// <summary>Answers every queued owner; true when one was queued.</summary>
+    private bool ReachPendingRuntimeRaisedHeirs()
+    {
+        if (_pendingRuntimeRaisedOwners.Count == 0)
+            return false;
+        while (_pendingRuntimeRaisedOwners.Count > 0)
+            ReachRuntimeRaisedHeirs(_pendingRuntimeRaisedOwners.Dequeue());
+        return true;
+    }
+
+    /// <summary>Allocates and emits every exception type the runtime raises itself that
+    /// inherits the instance members of <paramref name="owner"/>. The runtime mints those
+    /// objects without a newobj, so nothing else marks them allocated or emits their layout,
+    /// and a handle the startup bind never fills carries no vtable or size: a virtual the
+    /// owner declares (ArgumentException.ParamName) would dispatch through a null table,
+    /// and a field read would run past the object. System.Exception's own members are
+    /// intrinsic and read the runtime's prefix, so they allocate nothing.</summary>
+    private void ReachRuntimeRaisedHeirs(ClassInfo owner)
+    {
+        _runtimeRaisedExceptions ??= CoreIntrinsics.RuntimeExceptionTypeNames()
+            .Where(n => !CoreIntrinsics.IsIntrinsicType(n))
+            .Select(n => FindClassByFullName(n))
+            .OfType<ClassInfo>()
+            .ToList();
+        foreach (var raised in _runtimeRaisedExceptions)
+            for (var level = raised; level is not null; level = level.BaseClass)
+                if (level == owner)
+                {
+                    NoteForceEmit(raised);
+                    ReachAllocatedType(raised);
+                    break;
+                }
+    }
+
+    private static bool DerivesFromException(ClassInfo cls)
+    {
+        for (var level = cls.BaseClass; level is not null; level = level.BaseClass)
+            if (level.FullName == "System.Exception")
+                return true;
+        return false;
     }
 
     // ---- Generic virtual method (GVM) dispatch ----

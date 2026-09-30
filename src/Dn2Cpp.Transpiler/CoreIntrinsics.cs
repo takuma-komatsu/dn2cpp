@@ -1284,6 +1284,11 @@ internal static partial class CoreIntrinsics
     public static string? RuntimeExceptionTypeInfo(string? fullTypeName) =>
         fullTypeName is not null && s_runtimeExceptionTypeInfo.TryGetValue(fullTypeName, out var h) ? h : null;
 
+    /// <summary>The CLR names of the exception types the runtime raises itself (<see
+    /// cref="s_runtimeExceptionTypeInfo"/>), ordinally ordered.</summary>
+    public static IEnumerable<string> RuntimeExceptionTypeNames() =>
+        s_runtimeExceptionTypeInfo.Keys.OrderBy(n => n, StringComparer.Ordinal);
+
     /// <summary>The CLR types whose <c>Dn2CppTypeInfo</c> the C++ runtime OWNS: it
     /// hand-writes the object, stamps it on every instance it allocates, and knows things
     /// about it the transpiled image does not (System.Int32's <c>DN2CPP_TF_PRIMITIVE</c>

@@ -70,8 +70,8 @@ internal static class BclMessages
         "Argument_InvalidOffLen",
         "Argument_SpansMustHaveSameLength",
         // The two suffixes ArgumentException.Message / ArgumentOutOfRangeException.Message
-        // append; a runtime-raised one has no managed _paramName/_actualValue field to
-        // dispatch through, so the site that knows them bakes them into the stored text.
+        // append, which the runtime bakes into a raised exception's stored text when its
+        // handle dispatches neither override.
         "Arg_ParamName_Name",
         "ArgumentOutOfRange_ActualValue",
         "ArgumentOutOfRange_Count",

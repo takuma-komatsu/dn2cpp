@@ -26,18 +26,14 @@ Dn2CppString* dn2cpp_str_substring(Dn2CppString* s, int32_t start, int32_t lengt
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
-    // The four refusals String.Substring(int,int) makes, each with real .NET's message
-    // and paramName. The order is .NET's and it is observable: Substring(5, 0) on "abc"
-    // takes the third, not the fourth.
+    // Start bounds fault before length, including the implicit length of Substring(start).
     if (start < 0)
-        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex",
-            dn2cpp_format_int(start, 4, nullptr));
-    if (length < 0)
-        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length",
-            dn2cpp_format_int(length, 4, nullptr));
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
     if (start > s->length)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH,
             "startIndex");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
     if (start > s->length - length)
         dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_LENGTH, "length");
     char16_t* buf;

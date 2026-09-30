@@ -4836,9 +4836,51 @@ internal sealed partial class CppEmitter
         // a corelib-less build (no Exception type to slot). Defined only in generated output,
         // like dn2cpp_type_binds above — every consumer of the runtime links generated code.
         sb.AppendLine($"const int32_t dn2cpp_exception_get_message_slot = {_c.ExceptionGetMessageSlot()};");
+        EmitArgumentExceptionStore(sb);
         sb.AppendLine();
         EmitBclMessages(sb);
     }
+
+    /// <summary>Defines <c>dn2cpp_argument_exception_store</c>, which writes what a
+    /// runtime-raised argument exception names into the fields ArgumentException
+    /// (<c>_paramName</c>) and ArgumentOutOfRangeException (<c>_actualValue</c>) declare.
+    /// Only this image's layout places them. An object whose handle the startup bind did
+    /// not size for that layout keeps the bare prefix, so the store writes nothing and
+    /// says so.</summary>
+    private void EmitArgumentExceptionStore(StringBuilder sb)
+    {
+        var param = BoundInstanceField("System.ArgumentException", "_paramName");
+        var actual = BoundInstanceField("System.ArgumentOutOfRangeException", "_actualValue");
+        sb.AppendLine("bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName, Dn2CppObject* actualValue)");
+        sb.AppendLine("{");
+        if (param is var (pcls, pf))
+        {
+            sb.AppendLine($"    if (e->type->instanceSize < (int32_t)sizeof({pcls.CppStructName}))");
+            sb.AppendLine("        return false;");
+            sb.AppendLine($"    dn2cpp_gc_store_ref(&(({pcls.CppStructName}*)e)->{pf.CppName}, paramName);");
+            if (actual is var (acls, af))
+            {
+                sb.AppendLine($"    if (actualValue != nullptr && e->type->instanceSize >= (int32_t)sizeof({acls.CppStructName}))");
+                sb.AppendLine($"        dn2cpp_gc_store_ref(&(({acls.CppStructName}*)e)->{af.CppName}, actualValue);");
+            }
+            sb.AppendLine("    return true;");
+        }
+        else
+        {
+            sb.AppendLine("    (void)e; (void)paramName; (void)actualValue;");
+            sb.AppendLine("    return false;");
+        }
+        sb.AppendLine("}");
+    }
+
+    /// <summary>The instance field <paramref name="field"/> of the runtime-raised type
+    /// <paramref name="type"/> when this emission binds that type's layout into the
+    /// runtime's handle, else null.</summary>
+    private (ClassInfo Class, FieldInfo Field)? BoundInstanceField(string type, string field) =>
+        _typeBinds.FirstOrDefault(c => c.FullName == type) is { } cls
+            && cls.Fields.FirstOrDefault(f => !f.IsStatic && f.Name == field) is { } fi
+            ? (cls, fi)
+            : null;
 
     /// <summary>The SR texts the C++ runtime's own throw sites raise, folded in
     /// here for the reason every other SR read is: at run time the table they live in may

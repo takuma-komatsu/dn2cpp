@@ -43,6 +43,70 @@
 # constant: a non-virtual callee whose body is `ldc; ret` never touches its
 # receiver, so without the check kept at the fold a null receiver answers the
 # constant instead of raising NullReferenceException.
+#
+# Runtime-raised argument fields and the shared-source whitespace guard are compared
+# with .NET. Separate fixtures cover layouts without explicit exception constructors
+# and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
 source "$(dirname "$0")/_common.sh"
+
+fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
+fallback_app="gates/fixtures/runtime-argument-fallback/bin/$CONFIG/$TFM/RuntimeArgumentFallback.dll"
+build_gate_proj gates/fixtures/runtime-argument-fields/RuntimeArgumentFields.csproj
+build_gate_proj gates/fixtures/runtime-argument-fallback/RuntimeArgumentFallback.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-argument-fixtures|cli:$(_gate_cli_hash)"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line app name fixture expected actual
+    native=$(run_bounded "./$out/ExceptionMessageSubset")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-runtime-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^-- runtime-raised argument fields --$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '-- runtime-raised argument fields --' \
+        'dictionary null key: ArgumentNullException param=key' \
+        'builder repeat: ArgumentOutOfRangeException param=repeatCount actual=-1 actual-type=Int32' \
+        'builder window null: ArgumentNullException param=value' \
+        '-- runtime-raised parameter names --' \
+        'polyfill blank NUL message: ArgumentException param=Argument is whitespace' \
+        'polyfill blank surrogate message: ArgumentException param=Argument is whitespace'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: runtime argument witness missing: $line" >&2; exit 1; }
+    done
+    for app in "$fields_app" "$fallback_app"; do
+        name=$(basename "${app%.dll}")
+        fixture="$out/$name"
+        invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
+        compile_console "$fixture" "$name"
+        expected=$(run_bounded dotnet "$app")
+        actual=$(run_bounded "./$fixture/$name")
+        actual=$(strip_cr_win "$actual")
+        assert_output "$actual" "$(strip_cr_win "$expected")"
+        if [ "$app" = "$fields_app" ]; then
+            for line in '-- argument fields without constructors --' \
+                'substring negative start: ArgumentOutOfRangeException:startIndex' \
+                'actual=-1:Int32' \
+                'builder count: ArgumentOutOfRangeException:repeatCount' \
+                'join null: ArgumentNullException:value' \
+                'dictionary null: ArgumentNullException:key' \
+                'ilist null: ArgumentNullException:item'; do
+                grep -Fxq -- "$line" <<< "$actual" \
+                    || { echo "FAIL: constructor-free argument witness missing: $line" >&2; exit 1; }
+            done
+        else
+            grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
+                || { echo 'FAIL: fallback fixture reached a managed exception layout' >&2; exit 1; }
+            for line in '-- argument Message fallback --' \
+                "Value cannot be null. (Parameter 'a<nul>b')" \
+                "Value cannot be null. (Parameter 'a<sur>b')" \
+                "a<nul>b (Parameter 'Argument is whitespace')" \
+                "a<sur>b (Parameter 'Argument is whitespace')"; do
+                grep -Fxq -- "$line" <<< "$actual" \
+                    || { echo "FAIL: fallback argument witness missing: $line" >&2; exit 1; }
+            done
+        fi
+    done
+}
 
 corelib_diff_gate ExceptionMessageSubset

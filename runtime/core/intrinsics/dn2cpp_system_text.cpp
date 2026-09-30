@@ -72,11 +72,9 @@ Dn2CppStringBuilder* dn2cpp_sb_append_str_range(Dn2CppStringBuilder* sb, Dn2CppS
                                             int32_t startIndex, int32_t count)
 {
     if (startIndex < 0)
-        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex",
-            dn2cpp_format_int(startIndex, 4, nullptr));
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", startIndex);
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count",
-            dn2cpp_format_int(count, 4, nullptr));
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     if (value == nullptr)
     {
         if (startIndex == 0 && count == 0)

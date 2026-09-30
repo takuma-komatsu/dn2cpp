@@ -467,70 +467,112 @@ void dn2cpp_overflow()
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
 }
 
-// ArgumentOutOfRangeException as real .NET assembles it: the resource's own sentence,
-// then the " (Parameter 'x')" ArgumentException.Message appends, then the newline +
-// "Actual value was v." ArgumentOutOfRangeException.Message appends. A runtime-raised
-// exception has no managed _paramName/_actualValue field for those overrides to read, so
-// the site that knows them bakes the whole text in (ParamName itself stays null).
-[[noreturn]] static void dn2cpp_throw_aoor(const char* key, const std::string* args,
-    int32_t argc, const char* paramName, const std::string* actual)
+// Whether `ti`'s get_Message slot holds a real override, which dn2cpp_exception_message
+// calls in place of reading the stored message.
+static bool dn2cpp_exception_overrides_message(const Dn2CppTypeInfo* ti)
 {
-    Dn2CppString* head = dn2cpp_sr_format(key, args, argc);
-    if (head == nullptr)
-        dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);
-    std::string s = dn2cpp_sr_arg(head);
-    std::string one[1] = { std::string(paramName) };
-    if (Dn2CppString* p = dn2cpp_sr_format(DN2CPP_SR_PARAM_NAME, one, 1); p != nullptr)
+    int32_t slot = dn2cpp_exception_get_message_slot;
+    if (slot < 0 || ti == nullptr || ti->vtable == nullptr)
+        return false;
+    const void* fn = ti->vtable[slot];
+    return fn != nullptr && !dn2cpp_is_vcall_trap(fn);
+}
+
+// The suffix resources take one literal operand. Keep it in UTF-16 so names containing
+// NUL or unpaired surrogates survive even when the image has no managed Message override.
+static Dn2CppString* dn2cpp_argument_tail(const char* key, Dn2CppString* value)
+{
+    const char* text = dn2cpp_sr_text(key);
+    if (text == nullptr)
+        return nullptr;
+    Dn2CppString* pattern = dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
+    return dn2cpp_str_replace_str(pattern, dn2cpp_string_literal(u"{0}", 3), value);
+}
+
+// Managed overrides append the parameter/value tails from the stored fields. Without
+// that layout and dispatch, bake the same tails into the stored UTF-16 message once.
+[[noreturn]] static void dn2cpp_raise_argument(const Dn2CppTypeInfo* ti, Dn2CppString* sentence,
+    Dn2CppString* paramName, Dn2CppObject* actualValue, const std::string* actualText)
+{
+    Dn2CppObject* e = dn2cpp_exception_new(ti, nullptr, nullptr);
+    bool stored = dn2cpp_argument_exception_store(e, paramName, actualValue);
+    Dn2CppString* message = sentence != nullptr ? sentence : dn2cpp_default_message(ti);
+    if (message != nullptr && (!stored || !dn2cpp_exception_overrides_message(ti)))
     {
-        s += ' ';
-        s += dn2cpp_sr_arg(p);
-    }
-    if (actual != nullptr)
-    {
-        one[0] = *actual;
-        if (Dn2CppString* a = dn2cpp_sr_format(DN2CPP_SR_ACTUAL_VALUE, one, 1); a != nullptr)
+        if (paramName != nullptr && paramName->length != 0)
         {
-            // Environment.NewLine, which is what AOORE.Message concatenates.
+            if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_PARAM_NAME, paramName); tail != nullptr)
+            {
+                message = dn2cpp_string_concat3(message, dn2cpp_string_literal(u" ", 1), tail);
+            }
+        }
+        if (actualText != nullptr)
+        {
+            Dn2CppString* value = dn2cpp_string_from_utf8(actualText->data(), static_cast<int32_t>(actualText->size()));
+            if (Dn2CppString* tail = dn2cpp_argument_tail(DN2CPP_SR_ACTUAL_VALUE, value); tail != nullptr)
+            {
 #ifdef _WIN32
-            s += "\r\n";
+                Dn2CppString* newline = dn2cpp_string_literal(u"\r\n", 2);
 #else
-            s += '\n';
+                Dn2CppString* newline = dn2cpp_string_literal(u"\n", 1);
 #endif
-            s += dn2cpp_sr_arg(a);
+                message = dn2cpp_string_concat3(message, newline, tail);
+            }
         }
     }
-    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_out_of_range_exception_type,
-        dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size())), nullptr));
+    dn2cpp_gc_store_ref(&reinterpret_cast<Dn2CppExceptionObject*>(e)->message, message);
+    dn2cpp_throw(e);
+}
+
+static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
+{
+    return dn2cpp_string_from_utf8(paramName, static_cast<int32_t>(std::strlen(paramName)));
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
-    const char* paramName, Dn2CppString* value)
+    const char* paramName, int32_t value)
 {
-    std::string args[2] = { std::string(paramName), dn2cpp_sr_arg(value) };
-    dn2cpp_throw_aoor(key, args, 2, paramName, &args[1]);
+    Dn2CppString* text = dn2cpp_format_int(value, 4, nullptr);
+    std::string args[2] = { std::string(paramName), dn2cpp_sr_arg(text) };
+    Dn2CppString* sentence = dn2cpp_sr_format(key, args, 2);
+    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
+        sentence,
+        dn2cpp_param_name_string(paramName),
+        dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)), &args[1]);
 }
 
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
     const char* paramName)
 {
-    dn2cpp_throw_aoor(key, nullptr, 0, paramName, nullptr);
+    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type, dn2cpp_sr_format(key, nullptr, 0),
+        dn2cpp_param_name_string(paramName), nullptr, nullptr);
 }
 
-// ArgumentNullException as real .NET assembles it: the resource's sentence plus the
-// " (Parameter 'x')" tail ArgumentException.Message appends. ParamName itself stays null
-// for the same reason it does on every runtime-raised trap (see dn2cpp_exception_new).
 [[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName)
 {
-    const char* head = dn2cpp_sr_text(DN2CPP_SR_ARGUMENT_NULL);
-    std::string one[1] = { std::string(paramName) };
-    Dn2CppString* tail = dn2cpp_sr_format(DN2CPP_SR_PARAM_NAME, one, 1);
-    if (head == nullptr || tail == nullptr)
-        dn2cpp_throw_argument_null();
-    std::string s = head;
-    s += ' ';
-    s += dn2cpp_sr_arg(tail);
-    dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_null_exception_type,
-        dn2cpp_string_from_utf8(s.c_str(), static_cast<int32_t>(s.size())), nullptr));
+    dn2cpp_raise_argument(&dn2cpp_argument_null_exception_type,
+        dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0), dn2cpp_param_name_string(paramName), nullptr, nullptr);
+}
+
+[[noreturn]] void dn2cpp_throw_argument_null_name(Dn2CppString* paramName)
+{
+    dn2cpp_raise_argument(&dn2cpp_argument_null_exception_type,
+        dn2cpp_sr_format(DN2CPP_SR_ARGUMENT_NULL, nullptr, 0), paramName, nullptr, nullptr);
+}
+
+[[noreturn]] void dn2cpp_throw_argument_text(const Dn2CppTypeInfo* ti, const char* sentence,
+    const char* paramName)
+{
+    Dn2CppString* message = sentence != nullptr
+        ? dn2cpp_string_from_utf8(sentence, static_cast<int32_t>(std::strlen(sentence)))
+        : nullptr;
+    dn2cpp_raise_argument(ti, message, dn2cpp_param_name_string(paramName), nullptr, nullptr);
+}
+
+[[noreturn]] void dn2cpp_throw_argument_message(Dn2CppString* message, const char* paramName)
+{
+    dn2cpp_raise_argument(&dn2cpp_argument_exception_type, message,
+        dn2cpp_param_name_string(paramName), nullptr, nullptr);
 }
 
 void dn2cpp_throw_index_out_of_range() { dn2cpp_throw_of(&dn2cpp_index_out_of_range_exception_type); }
@@ -695,10 +737,8 @@ Dn2CppObject* dn2cpp_exception_new(const Dn2CppTypeInfo* ti, Dn2CppString* messa
     // Size by the type, not by the prefix: a runtime-RAISED ArgumentNullException is
     // allocated here, but the type declares a field of its own (_paramName), and after
     // the startup bind the handle says so (instanceSize > 0). Allocating the bare prefix
-    // would put that field past the end of the object, where reading .ParamName on a
-    // caught trap exception reads whatever follows it. The GC zeroes, so the field reads
-    // back null — the runtime carries no paramName to seed it with, a divergence from
-    // real .NET, but a quiet null instead of a wild read.
+    // would put that field past the end of the object. The GC zeroes, so a field no site
+    // names (dn2cpp_raise_argument stores the argument family's) reads back null.
     size_t size = ti->instanceSize > static_cast<int32_t>(sizeof(Dn2CppExceptionObject))
         ? static_cast<size_t>(ti->instanceSize) : sizeof(Dn2CppExceptionObject);
     auto* e = static_cast<Dn2CppExceptionObject*>(dn2cpp_alloc(size));
@@ -813,13 +853,9 @@ Dn2CppString* dn2cpp_exception_message(Dn2CppObject* ex)
 {
     if (ex == nullptr)
         dn2cpp_throw_null_reference();
-    int32_t slot = dn2cpp_exception_get_message_slot;
-    if (slot >= 0 && ex->type != nullptr && ex->type->vtable != nullptr)
-    {
-        const void* fn = ex->type->vtable[slot];
-        if (fn != nullptr && !dn2cpp_is_vcall_trap(fn))
-            return reinterpret_cast<Dn2CppString* (*)(Dn2CppObject*)>(const_cast<void*>(fn))(ex);
-    }
+    if (dn2cpp_exception_overrides_message(ex->type))
+        return reinterpret_cast<Dn2CppString* (*)(Dn2CppObject*)>(
+            const_cast<void*>(ex->type->vtable[dn2cpp_exception_get_message_slot]))(ex);
     return dn2cpp_exception_message_stored(ex);
 }
 

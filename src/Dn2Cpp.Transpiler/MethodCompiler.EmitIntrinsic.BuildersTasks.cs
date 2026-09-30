@@ -202,7 +202,7 @@ internal sealed partial class MethodCompiler
                 string sbr = PopBuilderReceiver();
                 string tmp = NewTemp("Dn2CppStringBuilder*");
                 Emit($"{tmp} = {sbr};");
-                Emit($"if ({count} < 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, \"repeatCount\", dn2cpp_format_int({count}, 4, nullptr));");
+                Emit($"if ({count} < 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, \"repeatCount\", {count});");
                 Emit($"for (int32_t __rep = 0; __rep < {count}; __rep++) dn2cpp_sb_append_char({tmp}, {charValue});");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", tmp);
                 return true;
@@ -785,30 +785,36 @@ internal sealed partial class MethodCompiler
             // body to fall back to and a fall-through would name a deleted symbol at C++
             // link time. Cut by name, lower by shape (docs/ARCHITECTURE.md §4-B).
             //
-            // The paramName operand is dropped: the trap raises a correctly-TYPED
-            // ArgumentNullException carrying its real .NET default text, but `.ParamName`
-            // is null — a runtime-raised exception has no managed field for it.
+            // Both raise the ArgumentNullException the polyfill constructs from its
+            // paramName operand, which the runtime stores as ParamName.
             case ("System.ThrowHelper", "ThrowIfNull") when sig.ParameterTypes.Length == 2:
             {
-                Pop();                                  // paramName — see above
+                var tinName = Pop();
                 var tinArg = Pop();                     // the argument under test
                 string tinTmp = NewTemp("Dn2CppObject*");
                 Emit($"{tinTmp} = {Cast(tinArg, "Dn2CppObject*")};");
-                Emit($"if ({tinTmp} == nullptr) dn2cpp_throw_argument_null();");
+                string tinNameTmp = NewTemp("Dn2CppString*");
+                Emit($"{tinNameTmp} = {Cast(tinName, "Dn2CppString*")};");
+                Emit($"if ({tinTmp} == nullptr) dn2cpp_throw_argument_null_name({tinNameTmp});");
                 return true;
             }
             // The polyfill's other guard — not named Throw* at all, so excluding `ThrowIf*`
             // from the sink arm would not have covered it. It RETURNS its argument, and
-            // both of its faults are real: null is an ArgumentNullException, blank is an
-            // ArgumentException.
+            // both of its faults are real: null is an ArgumentNullException naming the
+            // parameter; blank is `new ArgumentException(paramName, "Argument is
+            // whitespace")` — the polyfill passes the parameter name as the MESSAGE and
+            // that fixed text as ParamName, and the lowering raises exactly that.
             case ("System.ThrowHelper", "IfNullOrWhitespace") when sig.ParameterTypes.Length == 2:
             {
-                Pop();                                  // paramName — see above
+                var wsName = Pop();
                 var wsArg = Pop();
                 string wsTmp = NewTemp("Dn2CppString*");
                 Emit($"{wsTmp} = {Cast(wsArg, "Dn2CppString*")};");
-                Emit($"if ({wsTmp} == nullptr) dn2cpp_throw_argument_null();");
-                Emit($"else if (dn2cpp_str_is_null_or_whitespace({wsTmp})) dn2cpp_throw_argument();");
+                string wsNameTmp = NewTemp("Dn2CppString*");
+                Emit($"{wsNameTmp} = {Cast(wsName, "Dn2CppString*")};");
+                Emit($"if ({wsTmp} == nullptr) dn2cpp_throw_argument_null_name({wsNameTmp});");
+                Emit($"else if (dn2cpp_str_is_null_or_whitespace({wsTmp})) " +
+                     $"dn2cpp_throw_argument_message({wsNameTmp}, \"Argument is whitespace\");");
                 Push(StackKind.Ref, "Dn2CppString*", wsTmp);
                 return true;
             }
