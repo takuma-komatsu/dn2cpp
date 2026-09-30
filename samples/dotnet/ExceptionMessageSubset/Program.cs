@@ -87,7 +87,7 @@ namespace ExceptionMessageSubset
             }
         }
 
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -276,6 +276,10 @@ namespace ExceptionMessageSubset
 
             // The one null-receiver fault a call site folded to a constant must still raise.
             ConstBodyNullFaultSubset.Run();
+            if (args.Length > 0 && args[0] == "before-runtime-fields")
+                return;
+            RuntimeArgumentFieldsSubset.Run();
+            RuntimeArgumentFieldsSubset.RunNamedSites();
         }
     }
 }

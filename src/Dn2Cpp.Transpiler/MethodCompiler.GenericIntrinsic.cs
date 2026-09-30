@@ -1585,13 +1585,19 @@ internal sealed partial class MethodCompiler
         // ThrowHelper.IfNullAndNullsAreIllegalThenThrow<T>(object value, argName):
         // the List<T> IList.Add null gate. Nulls are illegal exactly when T is a
         // non-nullable value type; T is closed here, so fold the gate and keep
-        // only the null check when it matters.
+        // only the null check when it matters. The ExceptionArgument names the
+        // parameter the ArgumentNullException reports.
         if (declType == "System.ThrowHelper" && name == "IfNullAndNullsAreIllegalThenThrow")
         {
-            Pop(); // the ExceptionArgument name enum
+            var argName = Pop();
             var nullGated = Pop();
             if (IsValueTypeStatic(methodArgs[0]) && NullableLayout(methodArgs[0]) is null)
-                Emit($"if ({Cast(nullGated, "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null();");
+            {
+                string raise = ConstIntOf(argName) is { } av && ThrowHelperResources.ArgumentName(Module, av) is { } pn
+                    ? $"dn2cpp_throw_argument_null_param(\"{CppLiteralBody(pn)}\")"
+                    : "dn2cpp_throw_argument_null()";
+                Emit($"if ({Cast(nullGated, "Dn2CppObject*")} == nullptr) {raise};");
+            }
             return;
         }
 

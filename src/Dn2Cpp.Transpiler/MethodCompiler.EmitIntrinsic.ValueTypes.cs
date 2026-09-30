@@ -1906,9 +1906,9 @@ internal sealed partial class MethodCompiler
     /// .InvalidOperation_EmptyStack)</c> — so the constant is on our own evaluation stack
     /// here, and the enum member's NAME is the SR key, resolved against the ThrowHelper
     /// copy's own module (the type is a per-assembly polyfill, and so is its SR). A sibling
-    /// <c>ExceptionArgument</c> operand is the paramName, which ArgumentException.Message
-    /// appends — baked in, since a runtime-raised exception has no managed _paramName field
-    /// for the override to read. The other half bakes its resource into its own body, which
+    /// <c>ExceptionArgument</c> operand is the paramName: the runtime stores it as
+    /// ParamName, which ArgumentException.Message appends. The other half bakes its
+    /// resource into its own body, which
     /// <see cref="ThrowHelperResources"/> reads off the metadata. A sink that passes only the
     /// argument (<c>ThrowArgumentNullException(ExceptionArgument.array)</c>) raises the
     /// type's default message with the paramName appended. Otherwise an unrecovered resource
@@ -1939,12 +1939,22 @@ internal sealed partial class MethodCompiler
             Emit(ThrowHelperTrap(name));
             return;
         }
-        // ArgumentException.Message appends the paramName with CoreLib's own resource.
+        string ti = ThrowHelperTypeInfo(name);
         if (ValueOf(argSrc, popped) is { } av
-            && ThrowHelperResources.ArgumentName(Module, av) is { } paramName
-            && (Comp.CoreLibSrText("Arg_ParamName_Name") ?? Comp.SrResourceText(Module, "Arg_ParamName_Name")) is { } tail)
-            text += " " + tail.Replace("{0}", paramName);
-        Emit($"dn2cpp_throw_of_msg(&{ThrowHelperTypeInfo(name)}, \"{CppLiteralBody(text)}\");");
+            && ThrowHelperResources.ArgumentName(Module, av) is { } paramName)
+        {
+            // An argument exception names the parameter as its constructor would: the
+            // runtime stores it in ParamName, and the Message override appends it.
+            if (ti is "dn2cpp_argument_exception_type" or "dn2cpp_argument_null_exception_type"
+                or "dn2cpp_argument_out_of_range_exception_type")
+            {
+                Emit($"dn2cpp_throw_argument_text(&{ti}, \"{CppLiteralBody(text)}\", \"{CppLiteralBody(paramName)}\");");
+                return;
+            }
+            if ((Comp.CoreLibSrText("Arg_ParamName_Name") ?? Comp.SrResourceText(Module, "Arg_ParamName_Name")) is { } tail)
+                text += " " + tail.Replace("{0}", paramName);
+        }
+        Emit($"dn2cpp_throw_of_msg(&{ti}, \"{CppLiteralBody(text)}\");");
     }
 
     /// <summary>The int a source names: its own constant, or the constant the call site

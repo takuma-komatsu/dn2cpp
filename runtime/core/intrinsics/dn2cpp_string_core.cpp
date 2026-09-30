@@ -141,7 +141,7 @@ Dn2CppString* dn2cpp_string_from_mbs(const char* value)
 Dn2CppString* dn2cpp_string_repeat_char(char16_t c, int32_t count)
 {
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     char16_t* buf;
     Dn2CppString* s = dn2cpp_string_alloc(&buf, count);
     for (int32_t i = 0; i < count; i++)

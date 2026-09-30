@@ -5375,6 +5375,8 @@ internal sealed partial class Compilation
                     { ReachabilityDiagnostics.Add((m, ex)); }
                 progress = true;
             }
+            if (ReachPendingRuntimeRaisedHeirs())
+                progress = true;
             if (ActivateConditionalPreservationPolicies())
                 progress = true;
         }

@@ -1405,6 +1405,13 @@ extern const int32_t dn2cpp_type_bind_count;
 // Defined only in generated output (like dn2cpp_type_binds); the runtime is never linked
 // without generated code.
 extern const int32_t dn2cpp_exception_get_message_slot;
+// Stores the paramName and, when non-null, the actual value an ArgumentException-family
+// exception the runtime raises carries into the _paramName / _actualValue fields its
+// managed constructor would have set. Only this image's layout places them, so it is
+// defined in generated output; false when the object's handle was not bound to that
+// layout and nothing was stored.
+bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName,
+    Dn2CppObject* actualValue);
 // The BCL exception messages this runtime raises, folded in from the CoreLib's own
 // Strings.resources at transpile time. A runtime resource read is not an option:
 // --no-manifest-resources may have emptied that table, and a fault that faults while
@@ -2592,10 +2599,19 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 [[noreturn]] void dn2cpp_throw_index_out_of_range();
 [[noreturn]] void dn2cpp_throw_argument_out_of_range();
 [[noreturn]] void dn2cpp_throw_argument_null();
-// The same with the " (Parameter 'x')" tail ArgumentException.Message appends, for the
-// entry points whose rejection real .NET attributes to a named parameter.
+// The same naming the parameter .NET attributes the rejection to: ParamName reads it,
+// and Message carries the " (Parameter 'x')" tail ArgumentException.Message appends.
 [[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName);
+// The same for a parameter name only known at run time; null or empty adds no tail.
+[[noreturn]] void dn2cpp_throw_argument_null_name(Dn2CppString* paramName);
 [[noreturn]] void dn2cpp_throw_argument();
+// An ArgumentException, ArgumentNullException or ArgumentOutOfRangeException (`ti`)
+// whose resource sentence the emitter resolved, naming `paramName` as above.
+[[noreturn]] void dn2cpp_throw_argument_text(const Dn2CppTypeInfo* ti, const char* sentence,
+    const char* paramName);
+// `new ArgumentException(message, paramName)` over a message only known at run time; a
+// null message keeps the type's default text.
+[[noreturn]] void dn2cpp_throw_argument_message(Dn2CppString* message, const char* paramName);
 [[noreturn]] void dn2cpp_throw_argument_msg(const char* message);
 [[noreturn]] void dn2cpp_throw_invalid_operation();
 // The same catchable InvalidOperationException, carrying a diagnosable reason.
@@ -2706,10 +2722,11 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // duplicate dictionary key). Falls back to `ti`'s default text if the key is absent.
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0);
 [[noreturn]] void dn2cpp_throw_sr0(const Dn2CppTypeInfo* ti, const char* key);
-// ArgumentOutOfRangeException with the paramName/actual-value tail real .NET's Message
-// overrides append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
+// ArgumentOutOfRangeException naming `paramName` with `value` as its ActualValue, the
+// " (Parameter 'x')" and "Actual value was v." tails real .NET's Message overrides
+// append; `key` is a "{0} ('{1}')…" resource taking (paramName, value).
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_value(const char* key,
-    const char* paramName, Dn2CppString* value);
+    const char* paramName, int32_t value);
 // The same without an actual-value tail: `key` is a plain sentence, and only the
 // " (Parameter 'x')" ArgumentException.Message appends is added.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
