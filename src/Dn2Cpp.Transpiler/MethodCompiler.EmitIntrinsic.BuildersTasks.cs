@@ -187,7 +187,7 @@ internal sealed partial class MethodCompiler
             }
             // Append(char, int repeatCount) — the run-of-one-char overload
             // (e.g. the "[,,]" array-rank suffix a type-name formatter
-            // builds). Loop the single-char append.
+            // builds). Loop the single-char append after checking repeatCount.
             case ("System.Text.StringBuilder", "Append")
                 when sig.ParameterTypes is [
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char },
@@ -195,10 +195,15 @@ internal sealed partial class MethodCompiler
             {
                 var n = Pop();
                 var ch = Pop();
+                string charValue = NewTemp("char16_t");
+                string count = NewTemp("int32_t");
+                Emit($"{charValue} = (char16_t)({ch.Expr});");
+                Emit($"{count} = {Cast(n, "int32_t")};");
                 string sbr = PopBuilderReceiver();
                 string tmp = NewTemp("Dn2CppStringBuilder*");
                 Emit($"{tmp} = {sbr};");
-                Emit($"for (int32_t __rep = 0, __repN = {Cast(n, "int32_t")}; __rep < __repN; __rep++) dn2cpp_sb_append_char({tmp}, (char16_t)({ch.Expr}));");
+                Emit($"if ({count} < 0) dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, \"repeatCount\", dn2cpp_format_int({count}, 4, nullptr));");
+                Emit($"for (int32_t __rep = 0; __rep < {count}; __rep++) dn2cpp_sb_append_char({tmp}, {charValue});");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", tmp);
                 return true;
             }
@@ -231,11 +236,8 @@ internal sealed partial class MethodCompiler
                     $"dn2cpp_sb_append_str({sb}, dn2cpp_sb_char_arr_str((Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {cnt.Expr}))");
                 return true;
             }
-            // Append(string, int startIndex, int count) — the substring window
-            // (IdnMapping's Punycode decoder copies each label's basic run with
-            // it). A null value appends nothing (dn2cpp_str_substring's bounds
-            // check stands in for .NET's ArgumentNull on a nonzero window —
-            // both only fire on invalid input).
+            // A null string requires a zero start and count. A non-null string
+            // permits a zero count even when startIndex is past its end.
             case ("System.Text.StringBuilder", "Append")
                 when sig.ParameterTypes is [{ IsString: true },
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
@@ -245,10 +247,8 @@ internal sealed partial class MethodCompiler
                 var start = Pop();
                 var val = Pop();
                 string sb = PopBuilderReceiver();
-                string vs = NewTemp("Dn2CppString*");
-                Emit($"{vs} = {Cast(val, "Dn2CppString*")};");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                    $"({vs} != nullptr ? dn2cpp_sb_append_str({sb}, dn2cpp_str_substring({vs}, {start.Expr}, {cnt.Expr})) : {sb})");
+                    $"dn2cpp_sb_append_str_range({sb}, {Cast(val, "Dn2CppString*")}, {start.Expr}, {cnt.Expr})");
                 return true;
             }
             // Append(StringBuilder) — a null value appends nothing; self-append
@@ -551,6 +551,14 @@ internal sealed partial class MethodCompiler
                 var arg = Pop();
                 var index = Pop();
                 string sb = PopBuilderReceiver();
+                if (sig.ParameterTypes[1].IsObject)
+                {
+                    string value = NewTemp("Dn2CppObject*");
+                    Emit($"{value} = {Cast(arg, "Dn2CppObject*")};");
+                    Push(StackKind.Ref, "Dn2CppStringBuilder*",
+                        $"({value} == nullptr ? {sb} : dn2cpp_sb_insert_str({sb}, {index.Expr}, dn2cpp_object_tostring({value})))");
+                    return true;
+                }
                 string call = sig.ParameterTypes[1] switch
                 {
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }

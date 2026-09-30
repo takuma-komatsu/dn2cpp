@@ -5,7 +5,8 @@
 # String.Format (index/alignment/format specifiers, the params-span overloads, and
 # the net8+ System.Text.CompositeFormat overload family) and StringBuilder
 # (Append/AppendFormat/Insert/Remove/Replace and edit operations), including null
-# receiver fault precedence and argument evaluation for calls and interpolation.
+# receiver fault precedence, repeat and string-window validation, null object
+# insertion, and argument evaluation for calls and interpolation.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
 source "$(dirname "$0")/_common.sh"
 
@@ -44,6 +45,38 @@ gate_extra_asserts() {
         'recovery: ok!'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: null receiver witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-builder-ranges)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder ranges ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder ranges ==' \
+        'repeat negative: ArgumentOutOfRangeException' \
+        'repeat minimum: ArgumentOutOfRangeException' \
+        'repeat evaluation: CN' \
+        'repeat null receiver: NullReferenceException' \
+        'repeat null evaluation: CN' \
+        'repeat content: abxx' \
+        'window null start: ArgumentNullException' \
+        'window null count: ArgumentNullException' \
+        'window zero beyond end: ok' \
+        'window maximum count: ArgumentOutOfRangeException' \
+        'window evaluation: SIN' \
+        'window null receiver: NullReferenceException' \
+        'window null evaluation: SIN' \
+        'failed window content: abxx' \
+        'window content: abxxcdexx' \
+        'insert null identity: True' \
+        'insert null maximum index: ok' \
+        'insert evaluation: I' \
+        'insert throwing formatter: InvalidOperationException' \
+        'insert null receiver formatter: NullReferenceException' \
+        'insert formatters: 2' \
+        'final content: abxxcdexx' \
+        'recovery identity: True' \
+        'recovery content: abxxcdexx!'; do
+        grep -Fxq "$line" <<< "$native" \
+            || { echo "FAIL: builder range witness missing: $line" >&2; exit 1; }
     done
 }
 
