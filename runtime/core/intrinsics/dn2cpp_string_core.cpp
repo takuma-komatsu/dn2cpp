@@ -149,12 +149,14 @@ Dn2CppString* dn2cpp_string_repeat_char(char16_t c, int32_t count)
     return s;
 }
 
-// String.ToCharArray() — a fresh packed char[]. `ti` is the precise char[]
-// type-info so result.GetType() == typeof(char[]).
+// Nonempty ToCharArray results are fresh; empty results share Array.Empty<char>().
+// `ti` keeps both shapes tagged as the precise char[] type.
 Dn2CppArrayN* dn2cpp_string_to_chararray(Dn2CppString* s, const Dn2CppTypeInfo* ti)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
+    if (s->length == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(char16_t)));
     Dn2CppArrayN* arr = dn2cpp_newarr_n_t(s->length, static_cast<int32_t>(sizeof(char16_t)), ti);
     std::memcpy(arr->data, s->chars, static_cast<size_t>(s->length) * sizeof(char16_t));
     return arr;

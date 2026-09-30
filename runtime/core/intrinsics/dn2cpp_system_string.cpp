@@ -112,9 +112,14 @@ Dn2CppString* dn2cpp_str_insert(Dn2CppString* s, int32_t start, Dn2CppString* va
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (value == nullptr)
-        dn2cpp_throw_argument_null();
-    if (start < 0 || start > s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_null_param("value");
+    if (static_cast<uint32_t>(start) > static_cast<uint32_t>(s->length))
+        dn2cpp_throw_argument_out_of_range_bound_u32(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "startIndex", static_cast<uint32_t>(start), static_cast<uint32_t>(s->length));
+    if (s->length == 0)
+        return value;
+    if (value->length == 0)
+        return s;
     int32_t newLen = s->length + value->length;
     char16_t* buf;
     Dn2CppString* r = dn2cpp_string_alloc(&buf, newLen);
@@ -770,20 +775,24 @@ int32_t dn2cpp_str_is_normalized(Dn2CppString* s, int32_t form)
     return 1;
 }
 
-// String.ToCharArray(startIndex, length) — the substring form of the copy in
-// dn2cpp_string_to_chararray, with .NET's checks (both bad start and bad
-// length raise a catchable ArgumentOutOfRangeException; a zero-length slice
-// at any valid position — including startIndex == Length — is an empty
-// array).
+// ToCharArray checks the unsigned start, then the signed room from an unchecked
+// subtraction, before testing length's sign. A negative length can wrap the room.
 Dn2CppArrayN* dn2cpp_string_to_chararray_range(Dn2CppString* s, int32_t startIndex,
                                                int32_t length, const Dn2CppTypeInfo* ti)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
+    if (static_cast<uint32_t>(startIndex) > static_cast<uint32_t>(s->length))
+        dn2cpp_throw_argument_out_of_range_bound_u32(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "startIndex", static_cast<uint32_t>(startIndex), static_cast<uint32_t>(s->length));
+    int32_t room = static_cast<int32_t>(static_cast<uint32_t>(s->length) - static_cast<uint32_t>(length));
+    if (startIndex > room)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "startIndex", startIndex, room);
     if (length < 0)
-        dn2cpp_throw_argument_out_of_range();
-    if (startIndex < 0 || startIndex > s->length || startIndex > s->length - length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    if (length == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(char16_t)));
     Dn2CppArrayN* arr = dn2cpp_newarr_n_t(length, static_cast<int32_t>(sizeof(char16_t)), ti);
     if (length > 0)
         std::memcpy(arr->data, s->chars + startIndex,

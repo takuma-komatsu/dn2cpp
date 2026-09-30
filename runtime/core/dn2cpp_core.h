@@ -2735,6 +2735,9 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // the rejected Int32 value stored as ActualValue.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
     const char* paramName, int32_t value, int32_t bound);
+// An unsigned bound check formats both operands as UInt32 and boxes that type.
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,
+    const char* paramName, uint32_t value, uint32_t bound);
 // The same without an actual-value tail: `key` is a plain sentence, and only the
 // " (Parameter 'x')" ArgumentException.Message appends is added.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
