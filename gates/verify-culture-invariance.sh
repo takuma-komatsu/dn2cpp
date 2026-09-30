@@ -257,6 +257,19 @@ echo "locales: $LOCALES"
 probe_locales
 echo
 
+# ProjectReference builds share obj directories even when -o differs. Serialize
+# builders, then let each subject run its private oracle output in parallel.
+culture_build() {
+    perl -e '
+        use Fcntl qw(LOCK_EX);
+        open my $lock, ">>", shift or die "cannot open build lock: $!\n";
+        flock($lock, LOCK_EX) or die "cannot take build lock: $!\n";
+        my $status = system @ARGV;
+        die "cannot start builder: $!\n" if $status == -1;
+        exit(($status & 127) ? 128 + ($status & 127) : $status >> 8);
+    ' "$WORK/_build.lock" dotnet build "$@"
+}
+
 check_subject() {
     local p="$1" VF csproj o dll first same rc L why
     VF="$WORK/_verdict/$p"
@@ -288,12 +301,16 @@ check_subject() {
     if [ "$p" = AmbiguousDefault ]; then
         # Its two referenced projects emit the same assembly name. Keep their
         # outputs separate so the app can copy the next version after building.
-        if ! dotnet build "$csproj" -c "$CONFIG" >"$o/build.log" 2>&1 ||
+        if ! culture_build "$csproj" -c "$CONFIG" >"$o/build.log" 2>&1 ||
            ! cp -R "$REPO/samples/dotnet/$p/bin/$CONFIG/net10.0/." "$o/bin/" >>"$o/build.log" 2>&1; then
-            bad "$p (build failed; see $o/build.log)"; return
+            bad "$p (build failed)"
+            LC_ALL=C sed 's/^/2    /' "$o/build.log" >>"$VF"
+            return
         fi
-    elif ! dotnet build "$csproj" -c "$CONFIG" -o "$o/bin" >"$o/build.log" 2>&1; then
-        bad "$p (build failed; see $o/build.log)"; return
+    elif ! culture_build "$csproj" -c "$CONFIG" -o "$o/bin" >"$o/build.log" 2>&1; then
+        bad "$p (build failed)"
+        LC_ALL=C sed 's/^/2    /' "$o/build.log" >>"$VF"
+        return
     fi
     dll="$o/bin/$p.dll"
     [ -f "$dll" ] || { bad "$p (no $p.dll)"; return; }
@@ -371,7 +388,7 @@ check_subject() {
 }
 
 mkdir -p "$WORK/_verdict"
-export -f check_subject run_bounded_locale good bad skip say sayerr
+export -f culture_build check_subject run_bounded_locale good bad skip say sayerr
 export REPO WORK CONFIG LOCALES RUN_SECS
 printf '%s\n' $SUBJECTS | xargs -P "$JOBS" -I{} bash -c 'check_subject "$@"' _ {}
 
