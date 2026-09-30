@@ -343,37 +343,29 @@ internal sealed partial class MethodCompiler
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_str({sb}, {fmt})");
                 return true;
             }
-            // AppendJoin(string|char separator, object[]/string[]) — compose via the
-            // string.Join ref-array helper (null elements contribute nothing), then
-            // append; a null array throws ArgumentNullException. The generic
-            // AppendJoin<T>(sep, IEnumerable<T>) binds in TranslateGenericIntrinsic.
+            // Array overloads share AppendJoin's incremental updates and null checks.
             case ("System.Text.StringBuilder", "AppendJoin")
-                when sig.ParameterTypes is [_, { Kind: TypeKind.SZArray }]:
+                when sig.ParameterTypes is [_, { Kind: TypeKind.SZArray, Element: { } elem }]:
             {
-                string a = PopNonNullRefArray("values");
+                var values = Pop();
                 var sep = Pop();
-                string sepStr = sep.Kind == StackKind.Ref
-                    ? Cast(sep, "Dn2CppString*")
-                    : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
-                Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                    $"dn2cpp_sb_append_str({sb}, dn2cpp_string_join_ref({sepStr}, {a}))");
+                EmitAppendJoin(elem, values, sep, Pop());
                 return true;
             }
-            // AppendJoin(string|char, params ReadOnlySpan<object|string>) — the
-            // net10 params-span overloads; join over the span's data pointer +
-            // length, then append.
+            // The params spans expose the same partial prefix on formatting failure.
             case ("System.Text.StringBuilder", "AppendJoin")
                 when sig.ParameterTypes is [_, var ajsp] && (IsObjectSpan(ajsp) || IsStringSpan(ajsp)):
             {
                 string sp = PopSpanTemp(sig.ParameterTypes[1]);
                 var sep = Pop();
-                string sepStr = sep.Kind == StackKind.Ref
-                    ? Cast(sep, "Dn2CppString*")
-                    : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
-                Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                    $"dn2cpp_sb_append_str({sb}, dn2cpp_string_join_objs({sepStr}, (Dn2CppObject* const*){sp}.f__reference, {sp}.f__length))");
+                string sb = AppendJoinReceiver(Pop());
+                string sepStr = AppendJoinSeparator(sep);
+                string index = NewTemp("int32_t");
+                Emit($"for ({index} = 0; {index} < {sp}.f__length; ++{index}) {{");
+                Emit($"    if ({index} != 0) dn2cpp_sb_append_str({sb}, {sepStr});");
+                Emit($"    dn2cpp_sb_append_str({sb}, dn2cpp_object_tostring(((Dn2CppObject* const*){sp}.f__reference)[{index}]));");
+                Emit("}");
+                Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
                 return true;
             }
             // AppendLine(ref AppendInterpolatedStringHandler) — `sb.AppendLine($"...")`.

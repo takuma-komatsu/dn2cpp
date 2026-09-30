@@ -112,6 +112,38 @@ namespace EnumJoinSubset
                 + string.Concat((IEnumerable<BigPerm>)new List<BigPerm> { (BigPerm)ulong.MaxValue }));
             Console.WriteLine("empty enums: " + string.Join(",", new[] { (Empty32)uint.MaxValue }) + " "
                 + string.Concat(new[] { (EmptyWide)ulong.MaxValue }));
+            Console.WriteLine("== enum cursor AppendJoin ==");
+            // CursorTone is only used through a cursor, without array/typeof/box roots.
+            Console.WriteLine("cursor identity: " + string.Join(",", new Faults(0, false)) + " "
+                + string.Concat(new Faults(0, false)));
+            Faults.Disposals = 0;
+            AppendFault("current", 2, false);
+            AppendFault("current and dispose", 2, true);
+            AppendFault("dispose", 0, true);
+            AppendFault("first current", 1, false);
+            StringBuilder noBuilder = null;
+            IEnumerable<CursorTone> noValues = null;
+            try
+            {
+                noBuilder.AppendJoin(',', noValues);
+            }
+            catch (NullReferenceException ex)
+            {
+                Console.WriteLine("null enum receiver: " + ex.GetType().Name);
+            }
+        }
+
+        private static void AppendFault(string label, int failAt, bool failDispose)
+        {
+            var builder = new StringBuilder("prefix:");
+            try
+            {
+                builder.AppendJoin(",", new Faults(failAt, failDispose));
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine(label + ": " + ex.Message + " " + builder + " " + Faults.Disposals);
+            }
         }
 
         private static IEnumerable<Perm> Perms()
@@ -119,6 +151,55 @@ namespace EnumJoinSubset
             yield return Perm.Write;
             yield return Perm.Read | Perm.Write;
             yield return (Perm)8;
+        }
+    }
+
+    internal enum CursorTone { Low = 1, High = 2 }
+
+    internal sealed class Faults : IEnumerable<CursorTone>
+    {
+        internal static int Disposals;
+        private readonly int _failAt;
+        private readonly bool _failDispose;
+
+        internal Faults(int failAt, bool failDispose)
+        {
+            _failAt = failAt;
+            _failDispose = failDispose;
+        }
+
+        public IEnumerator<CursorTone> GetEnumerator() => new Cursor(_failAt, _failDispose);
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        private sealed class Cursor : IEnumerator<CursorTone>
+        {
+            private readonly int _failAt;
+            private readonly bool _failDispose;
+            private int _index;
+
+            internal Cursor(int failAt, bool failDispose)
+            {
+                _failAt = failAt;
+                _failDispose = failDispose;
+            }
+
+            public CursorTone Current => _index == _failAt
+                ? throw new InvalidOperationException("current")
+                : (CursorTone)_index;
+
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext() => ++_index <= 2;
+
+            public void Reset() => _index = 0;
+
+            public void Dispose()
+            {
+                Disposals++;
+                if (_failDispose)
+                    throw new InvalidOperationException("dispose");
+            }
         }
     }
 

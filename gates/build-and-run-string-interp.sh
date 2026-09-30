@@ -19,7 +19,9 @@ source "$(dirname "$0")/_common.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/StringInterp")
+    native=$(strip_cr_win "$native")
     before=$(dotnet "$_CG_APP" before-concat-sequences)
+    before=$(strip_cr_win "$before")
     prefix=$(awk '/^== Concat<T> and Join<T> sequence shapes ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
     for line in '== Concat<T> and Join<T> sequence shapes ==' \

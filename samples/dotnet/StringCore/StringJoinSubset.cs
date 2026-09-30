@@ -113,6 +113,55 @@ namespace StringJoinSubset
         private static string EitherInts(bool first, int[] ints, List<int> list) =>
             string.Join("-", first ? (IEnumerable<int>)ints : list);
 
+        internal static void RunAppendFaults()
+        {
+            Console.WriteLine("== AppendJoin failures ==");
+            object[] objects = { "one", new BadTag() };
+            AppendFault("array", b => b.AppendJoin(',', objects));
+            AppendFault("span", b => b.AppendJoin("/", (ReadOnlySpan<object>)objects));
+            IEnumerable<object> array = objects;
+            AppendFault("ienum array", b => b.AppendJoin("+", array));
+            AppendFault("list", b => b.AppendJoin("-", new List<object>(objects)));
+            var changing = new List<object>();
+            changing.Add(new MutatingTag(changing));
+            changing.Add("last");
+            AppendFault("changed list", b => b.AppendJoin(",", changing));
+            StringBuilder noBuilder = null;
+            string[] noStrings = null;
+            object[] noObjects = null;
+            IEnumerable<string> noValues = null;
+            NullReceiver("strings", () => noBuilder.AppendJoin(",", noStrings));
+            NullReceiver("objects", () => noBuilder.AppendJoin(',', noObjects));
+            NullReceiver("ienum", () => noBuilder.AppendJoin(",", noValues));
+            NullReceiver("empty array", () => noBuilder.AppendJoin(',', Array.Empty<string>()));
+            NullReceiver("empty span", () => noBuilder.AppendJoin(",", ReadOnlySpan<string>.Empty));
+        }
+
+        private static void AppendFault(string label, Action<StringBuilder> append)
+        {
+            var builder = new StringBuilder("prefix:");
+            try
+            {
+                append(builder);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine(label + ": " + ex.GetType().Name + " " + builder);
+            }
+        }
+
+        private static void NullReceiver(string label, Action append)
+        {
+            try
+            {
+                append();
+            }
+            catch (NullReferenceException ex)
+            {
+                Console.WriteLine("null receiver " + label + ": " + ex.GetType().Name);
+            }
+        }
+
         private static void Report(string what, Func<string> join)
         {
             try
@@ -129,6 +178,24 @@ namespace StringJoinSubset
     internal sealed class Tag
     {
         public override string ToString() => "tag";
+    }
+
+    internal sealed class BadTag
+    {
+        public override string ToString() => throw new InvalidOperationException("format");
+    }
+
+    internal sealed class MutatingTag
+    {
+        private readonly List<object> _values;
+
+        internal MutatingTag(List<object> values) => _values = values;
+
+        public override string ToString()
+        {
+            _values.Add("added");
+            return "first";
+        }
     }
 
     // Counts enumerator disposals; yields "w1", null, "w3".

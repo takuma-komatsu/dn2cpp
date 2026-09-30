@@ -21,6 +21,8 @@
 # an IEnumerable<T> operand of any static type: a null literal's
 # ArgumentNullException raised when the call runs, a conditional over an array
 # and a list, a LINQ grouping, and a set seen through ISet<T> or IReadOnlySet<T>.
+# AppendJoin preserves the partial builder on formatting failure, checks its
+# receiver before values, and detects a List modified during enumeration.
 # This project's reference set is deliberately NARROW: android-gdext,
 # emit-order-stability, ios-sim-console and wasm-console each re-transpile
 # StringCore with their own hand-written copy of it, so a fourth `-r` here is a
@@ -37,13 +39,23 @@ source "$(dirname "$0")/_common.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/StringCore")
+    native=$(strip_cr_win "$native")
     before=$(dotnet "$_CG_APP" before-join-sequences)
+    before=$(strip_cr_win "$before")
     prefix=$(awk '/^== string sequences ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
     for line in '== string sequences ==' \
         '== string sequence operands ==' \
         'disposed: w1++w3 w1w3 2' \
-        'sets: x,y pq 7|8 9 p+q'; do
+        'sets: x,y pq 7|8 9 p+q' \
+        '== AppendJoin failures ==' \
+        'array: InvalidOperationException prefix:one,' \
+        'span: InvalidOperationException prefix:one/' \
+        'ienum array: InvalidOperationException prefix:one+' \
+        'list: InvalidOperationException prefix:one-' \
+        'changed list: InvalidOperationException prefix:first' \
+        'null receiver strings: NullReferenceException' \
+        'null receiver empty span: NullReferenceException'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
     done

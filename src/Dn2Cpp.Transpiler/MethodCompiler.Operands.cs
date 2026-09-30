@@ -258,27 +258,30 @@ internal sealed partial class MethodCompiler
     }
 
     /// <summary>Emits the interface-enumeration loop appending each formatted element
-    /// to a fresh <c>StringBuilder</c> and returns the builder's temp — what the real
-    /// Join body's loop over the enumerator does. Returns null (emitting nothing) when
-    /// the element type is unsupported or the enumeration interfaces aren't loaded.
+    /// to a fresh builder or <paramref name="target"/> and returns its temp.
+    /// Returns null when the element type or enumeration interfaces are unsupported.
     /// <paramref name="sepStr"/> null ⇒ no separator (<c>Concat</c>).</summary>
-    private string? EmitEnumerationToSb(StackEntry src, TypeDesc elem, string? sepStr)
+    private string? EmitEnumerationToSb(StackEntry src, TypeDesc elem, string? sepStr, string? target = null)
     {
         if (_c.EnumerationDispatch(elem) is not { } ed || !CanFormatElement(elem))
             return null;
-        string sb = NewTemp("Dn2CppStringBuilder*");
-        Emit($"{sb} = dn2cpp_sb_new();");
+        string sb = target ?? NewTemp("Dn2CppStringBuilder*");
+        if (target is null)
+            Emit($"{sb} = dn2cpp_sb_new();");
         string first = sepStr is null ? "" : NewTemp("int32_t");
         if (sepStr is not null)
             Emit($"{first} = 1;");
         EmitForEach(src, ed, elem, cur =>
         {
+            Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, cur)});");
+        }, () =>
+        {
+            // AppendJoin exposes the separator even when the next Current throws.
             if (sepStr is not null)
             {
                 Emit($"    if (!{first}) dn2cpp_sb_append_str({sb}, {sepStr});");
                 Emit($"    {first} = 0;");
             }
-            Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, cur)});");
         });
         return sb;
     }
@@ -288,7 +291,8 @@ internal sealed partial class MethodCompiler
     /// MoveNext and get_Current into a temp that <paramref name="body"/> consumes, then
     /// Dispose — also when the loop throws, as the foreach's finally does. The caller
     /// reaches the dispatched methods (<see cref="Compilation.EnumerationDispatch"/>).</summary>
-    private void EmitForEach(StackEntry src, Compilation.EnumerationMethods ed, TypeDesc elem, Action<string> body)
+    private void EmitForEach(StackEntry src, Compilation.EnumerationMethods ed, TypeDesc elem,
+        Action<string> body, Action? beforeCurrent = null)
     {
         string e = NewTemp(CppTypes.Of(ed.GetEnumerator.Signature.ReturnType)); // IEnumerator<T>*
         // A null enumerator faults at its first MoveNext, before anything could dispose it.
@@ -297,6 +301,7 @@ internal sealed partial class MethodCompiler
         string dispose = EmitIfaceDispatch(ed.Dispose, e);
         Emit("try {");
         Emit($"while ({EmitIfaceDispatch(ed.MoveNext, e)}) {{");
+        beforeCurrent?.Invoke();
         Emit($"    {cur} = {EmitIfaceDispatch(ed.GetCurrent, e)};");
         body(cur);
         Emit("}");

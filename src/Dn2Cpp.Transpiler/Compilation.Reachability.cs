@@ -5476,9 +5476,15 @@ internal sealed partial class Compilation
                             // (use-site gated on the spec).
                             if ((MethodSpecParentTypeName(module, fms), MethodSpecMethodName(module, fms)) is
                                     ("System.String", "Join" or "Concat") or ("System.Text.StringBuilder", "AppendJoin")
-                                && fms.DecodeSignature(SigProvider, m.Context).ToArray() is [{ } jt]
-                                && EnumerationDispatch(jt) is { } ed)
-                                ReachForEach(ed);
+                                && fms.DecodeSignature(SigProvider, m.Context).ToArray() is [{ } jt])
+                            {
+                                // Formatting boxes an enum even when no array, typeof or box
+                                // instruction independently roots its runtime identity.
+                                if (jt is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                    NoteTypeIdentityClosure(jt);
+                                if (EnumerationDispatch(jt) is { } ed)
+                                    ReachForEach(ed);
+                            }
                         }
                         // The string-element non-generic overloads — Join(string,
                         // IEnumerable<string>) / Concat(IEnumerable<string>) — are a

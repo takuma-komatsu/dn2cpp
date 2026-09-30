@@ -1464,16 +1464,12 @@ internal sealed partial class MethodCompiler
             return;
         }
 
-        // StringBuilder.AppendJoin<T>(string|char separator, IEnumerable<T>) —
-        // the same composition as string.Join<T> (the shared emitter below),
-        // then appended to the builder (fluent).
+        // Append directly so enumeration or formatting failures preserve the prefix.
         if (declType == "System.Text.StringBuilder" && name == "AppendJoin")
         {
-            EmitStringJoinGeneric(methodArgs[0]);
-            var joined = Pop();
-            string ajsb = Cast(Pop(), "Dn2CppStringBuilder*");
-            Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                $"dn2cpp_sb_append_str({ajsb}, {Cast(joined, "Dn2CppString*")})");
+            var values = Pop();
+            var sep = Pop();
+            EmitAppendJoin(methodArgs[0], values, sep, Pop());
             return;
         }
 
@@ -2267,8 +2263,8 @@ internal sealed partial class MethodCompiler
         Emit("}");
     }
 
-    /// <summary>The <c>string.Join&lt;T&gt;(separator, IEnumerable&lt;T&gt;)</c> lowering,
-    /// shared with <c>StringBuilder.AppendJoin&lt;T&gt;</c>: pops the values operand and
+    /// <summary>The <c>string.Join&lt;T&gt;(separator, IEnumerable&lt;T&gt;)</c> lowering:
+    /// pops the values operand and
     /// the string-or-char separator, pushes the joined <c>Dn2CppString*</c>.</summary>
     private void EmitStringJoinGeneric(TypeDesc t)
     {
@@ -2295,11 +2291,7 @@ internal sealed partial class MethodCompiler
     /// element formats as its ToString does, an enum by name.</summary>
     private void EmitSequenceJoin(TypeDesc t, StackEntry arr, string? sepStr)
     {
-        // A width placeholder stands for integers and same-width enums alike, and an enum
-        // element joins by name, so a shared body cannot pick the element's formatter.
-        if (t.IsCanonPlaceholder && !t.IsObject)
-            TaintIfCanonical(t, "enum-join");
-        TaintIfCanonAnyValue(t, "join");
+        RequireSequenceFormatter(t);
         string op = sepStr is null ? "string.Concat" : "string.Join";
         // A null sequence is .NET's ArgumentNullException, not an empty join.
         string values = NewTemp(arr.CppType);
@@ -2324,6 +2316,77 @@ internal sealed partial class MethodCompiler
         Push(StackKind.Ref, "Dn2CppString*", call ?? throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: {op}<{t}> element type is not supported yet "
             + "(enum / int / uint / long / ulong / double / char / reference only)"));
+    }
+
+    private void RequireSequenceFormatter(TypeDesc t)
+    {
+        // A width placeholder can represent an integer or an enum that formats by name.
+        if (t.IsCanonPlaceholder && !t.IsObject)
+            TaintIfCanonical(t, "enum-join");
+        TaintIfCanonAnyValue(t, "join");
+    }
+
+    /// <summary>AppendJoin updates its receiver before Current/ToString/Dispose can
+    /// throw. Lists enumerate through their version-checked cursor.</summary>
+    private void EmitAppendJoin(TypeDesc elem, StackEntry values, StackEntry separator, StackEntry receiver)
+    {
+        RequireSequenceFormatter(elem);
+        string sb = AppendJoinReceiver(receiver);
+        string src = NewTemp(values.CppType);
+        Emit($"{src} = {Cast(values, values.CppType)};");
+        Emit($"if ({src} == nullptr) dn2cpp_throw_argument_null_param(\"values\");");
+        if (!values.KnownNull)
+        {
+            values = values with { Expr = src };
+            string sep = AppendJoinSeparator(separator);
+            if (!CanFormatElement(elem)
+                || (!values.CppType.StartsWith("Dn2CppArray") && _c.EnumerationDispatch(elem) is null))
+                throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: AppendJoin<{elem}> element type is not supported");
+            if (values.CppType.StartsWith("Dn2CppArray"))
+                EmitArrayAppendJoin(values, elem, sb, sep);
+            else if (MayBeArray(values))
+            {
+                Emit($"if ((((Dn2CppObject*){src})->type->flags & DN2CPP_TF_ARRAY) != 0) {{");
+                EmitArrayAppendJoin(values, elem, sb, sep);
+                Emit("} else {");
+                EmitEnumerationToSb(values, elem, sep, sb);
+                Emit("}");
+            }
+            else
+                EmitEnumerationToSb(values, elem, sep, sb);
+        }
+        Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
+    }
+
+    private string AppendJoinReceiver(StackEntry receiver)
+    {
+        string sb = NewTemp("Dn2CppStringBuilder*");
+        string value = Cast(receiver, "Dn2CppStringBuilder*");
+        // callvirt checks the receiver before the method can validate values.
+        Emit($"{sb} = {(_callIsVirtual ? $"dn2cpp_null_check({value})" : value)};");
+        return sb;
+    }
+
+    private string AppendJoinSeparator(StackEntry separator)
+    {
+        if (separator.Kind == StackKind.Ref)
+            return Cast(separator, "Dn2CppString*");
+        string sep = NewTemp("Dn2CppString*");
+        Emit($"{sep} = dn2cpp_char_to_string((char16_t)({separator.Expr}));");
+        return sep;
+    }
+
+    private void EmitArrayAppendJoin(StackEntry values, TypeDesc elem, string sb, string sep)
+    {
+        string array = NewTemp(ArrayCppPtr(elem));
+        Emit($"{array} = {Cast(values, ArrayCppPtr(elem))};");
+        string index = NewTemp("int32_t");
+        string current = NewTemp(CppTypes.Of(elem));
+        Emit($"for ({index} = 0; {index} < {array}->length; ++{index}) {{");
+        Emit($"    if ({index} != 0) dn2cpp_sb_append_str({sb}, {sep});");
+        Emit($"    {current} = {ArrayElemLoad(elem, array, index)};");
+        Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, current)});");
+        Emit("}");
     }
 
 }

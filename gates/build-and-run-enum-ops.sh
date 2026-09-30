@@ -27,6 +27,8 @@
 # collections, disposing the enumerator when the join ends or an element read throws.
 # Undefined unsigned values keep their sign through array and enumeration joins,
 # including flags and enums with no declared members.
+# A cursor-only enum retains its metadata, and AppendJoin keeps the partial
+# builder when Current or Dispose throws, including Dispose replacing Current's fault.
 # Former gates: enum-flags, enum-interp, enum-tostring, enum-value-tostring,
 # external-enum.
 source "$(dirname "$0")/_common.sh"
@@ -34,7 +36,9 @@ source "$(dirname "$0")/_common.sh"
 gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/EnumOps")
+    native=$(strip_cr_win "$native")
     before=$(dotnet "$_CG_APP" before-enum-join)
+    before=$(strip_cr_win "$before")
     prefix=$(awk '/^== enum Join ==$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$before"
     for line in '== enum Join ==' \
@@ -45,7 +49,14 @@ gate_extra_asserts() {
         'ulong: BA18446744073709551615' \
         'uint undefined: 4000000000 4000000000' \
         'unsigned flags: 4294967295 18446744073709551615' \
-        'empty enums: 4294967295 18446744073709551615'; do
+        'empty enums: 4294967295 18446744073709551615' \
+        '== enum cursor AppendJoin ==' \
+        'cursor identity: Low,High LowHigh' \
+        'current: current prefix:Low, 1' \
+        'current and dispose: dispose prefix:Low, 2' \
+        'dispose: dispose prefix:Low,High 3' \
+        'first current: current prefix: 4' \
+        'null enum receiver: NullReferenceException'; do
         grep -Fxq "$line" <<< "$native" \
             || { echo "FAIL: sequence witness missing: $line" >&2; exit 1; }
     done

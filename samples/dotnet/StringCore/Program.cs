@@ -41,6 +41,7 @@ namespace StringCore
                 return;
             StringJoinSubset.Program.RunSequences();
             StringJoinSubset.Program.RunOperandShapes();
+            StringJoinSubset.Program.RunAppendFaults();
         }
     }
 }
