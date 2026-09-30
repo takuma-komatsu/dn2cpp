@@ -5448,6 +5448,10 @@ internal sealed partial class Compilation
                         if (handle.Kind == HandleKind.MethodSpecification)
                         {
                             var fms = module.Reader.GetMethodSpecification((MethodSpecificationHandle)handle);
+                            if (MethodSpecParentTypeName(module, fms) == "AppendInterpolatedStringHandler"
+                                && MethodSpecMethodName(module, fms) is "AppendFormatted" or "AppendFormattedWithTempSpace"
+                                && FindClassByFullName("System.ISpanFormattable") is { } spanFormattable)
+                                NoteTypeIdentityClosure(new TypeDesc { Kind = TypeKind.Class, Class = spanFormattable });
                             // Both interpolated-string handlers — the top-level
                             // DefaultInterpolatedStringHandler and the StringBuilder nested
                             // AppendInterpolatedStringHandler (bare name) —
