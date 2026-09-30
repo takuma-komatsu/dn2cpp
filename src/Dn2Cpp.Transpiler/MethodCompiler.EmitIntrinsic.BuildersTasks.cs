@@ -150,7 +150,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Class, Class.IntrinsicCppName: "Dn2CppStringBuilder*" } }]:
             {
                 Pop(); // the handler ref (its contents are already in the builder)
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
                 return true;
             }
@@ -168,7 +168,7 @@ internal sealed partial class MethodCompiler
             {
                 Pop(); // the handler ref
                 Pop(); // the IFormatProvider (dn2cpp formats the holes invariantly at construction)
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
                 return true;
             }
@@ -178,7 +178,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ } spt0] && IsCharSpan(spt0):
             {
                 var sp = Pop();
-                string sbsp = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sbsp = PopBuilderReceiver();
                 string sptmp = NewTemp(CppTypes.Of(sig.ParameterTypes[0]));
                 Emit($"{sptmp} = {sp.Expr};");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
@@ -195,7 +195,7 @@ internal sealed partial class MethodCompiler
             {
                 var n = Pop();
                 var ch = Pop();
-                string sbr = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sbr = PopBuilderReceiver();
                 string tmp = NewTemp("Dn2CppStringBuilder*");
                 Emit($"{tmp} = {sbr};");
                 Emit($"for (int32_t __rep = 0, __repN = {Cast(n, "int32_t")}; __rep < __repN; __rep++) dn2cpp_sb_append_char({tmp}, (char16_t)({ch.Expr}));");
@@ -208,7 +208,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ Kind: TypeKind.SZArray, Element.Primitive: PrimitiveTypeCode.Char }]:
             {
                 var arr = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string at = NewTemp("Dn2CppArrayN*");
                 Emit($"{at} = (Dn2CppArrayN*)({arr.Expr});");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
@@ -226,7 +226,7 @@ internal sealed partial class MethodCompiler
                 var cnt = Pop();
                 var start = Pop();
                 var arr = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_append_str({sb}, dn2cpp_sb_char_arr_str((Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {cnt.Expr}))");
                 return true;
@@ -244,7 +244,7 @@ internal sealed partial class MethodCompiler
                 var cnt = Pop();
                 var start = Pop();
                 var val = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string vs = NewTemp("Dn2CppString*");
                 Emit($"{vs} = {Cast(val, "Dn2CppString*")};");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
@@ -257,7 +257,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ Kind: TypeKind.Class, Class.FullName: "System.Text.StringBuilder" }]:
             {
                 var v = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_append_sb({sb}, {Cast(v, "Dn2CppStringBuilder*")})");
                 return true;
@@ -271,7 +271,7 @@ internal sealed partial class MethodCompiler
                 var cnt = Pop();
                 var start = Pop();
                 var v = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_append_sb_range({sb}, {Cast(v, "Dn2CppStringBuilder*")}, {start.Expr}, {cnt.Expr})");
                 return true;
@@ -284,7 +284,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ } pt] && pt.Kind != TypeKind.SZArray:
             {
                 var arg = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string call = pt switch
                 {
                     { IsString: true } => $"dn2cpp_sb_append_str({sb}, {Cast(arg, "Dn2CppString*")})",
@@ -313,7 +313,7 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "AppendFormat") when IsConsoleFormatOverload(sig):
             {
                 string fmt = BuildStringFormatExpr(sig);
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_str({sb}, {fmt})");
                 return true;
             }
@@ -322,7 +322,7 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "AppendFormat") when IsProviderFormatOverload(sig):
             {
                 string fmt = BuildStringFormatExprC(sig);
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_str({sb}, {fmt})");
                 return true;
             }
@@ -332,14 +332,14 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "AppendFormat") when IsSpanFormatOverload(sig):
             {
                 string fmt = BuildStringFormatExprSpan(sig);
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_str({sb}, {fmt})");
                 return true;
             }
             case ("System.Text.StringBuilder", "AppendFormat") when IsProviderSpanFormatOverload(sig):
             {
                 string fmt = BuildStringFormatExprSpanC(sig);
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_str({sb}, {fmt})");
                 return true;
             }
@@ -375,7 +375,7 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ Kind: TypeKind.ByRef, Element: { Kind: TypeKind.Class, Class.IntrinsicCppName: "Dn2CppStringBuilder*" } }]:
             {
                 Pop(); // the handler ref (its contents are already in the builder)
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_newline({sb})");
                 return true;
             }
@@ -383,19 +383,19 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ } alpt] && alpt.IsString:
             {
                 string s = Cast(Pop(), "Dn2CppString*");
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_newline(dn2cpp_sb_append_str({sb}, {s}))");
                 return true;
             }
             case ("System.Text.StringBuilder", "AppendLine") when sig.ParameterTypes.Length == 0:
             {
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_append_newline({sb})");
                 return true;
             }
             case ("System.Text.StringBuilder", "ToString") when sig.ParameterTypes.Length == 0:
             {
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_sb_tostring({sb})");
                 return true;
             }
@@ -407,7 +407,7 @@ internal sealed partial class MethodCompiler
             {
                 var len = Pop();
                 var start = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppString*",
                     $"dn2cpp_str_substring(dn2cpp_sb_tostring({sb}), {Cast(start, "int32_t")}, {Cast(len, "int32_t")})");
                 return true;
@@ -425,7 +425,7 @@ internal sealed partial class MethodCompiler
                 var destIndex = Pop();
                 var dest = Pop();
                 var srcIndex = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Emit($"dn2cpp_sb_copy_to({sb}, {Cast(srcIndex, "int32_t")}, {Cast(dest, "Dn2CppArrayN*")}, " +
                      $"{Cast(destIndex, "int32_t")}, {Cast(count, "int32_t")});");
                 return true;
@@ -437,7 +437,7 @@ internal sealed partial class MethodCompiler
             // reaching consumer.
             case ("System.Text.StringBuilder", "GetChunks"):
             {
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string en = NewTemp("Dn2CppSbChunkEnum");
                 Emit($"{en} = Dn2CppSbChunkEnum{{ dn2cpp_sb_tostring({sb}), 0 }};");
                 Push(StackKind.Struct, "Dn2CppSbChunkEnum", en);
@@ -477,7 +477,7 @@ internal sealed partial class MethodCompiler
             }
             case ("System.Text.StringBuilder", "get_Length"):
             {
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_sb_length({sb})");
                 return true;
             }
@@ -485,13 +485,13 @@ internal sealed partial class MethodCompiler
             {
                 // The current buffer size; seeded by the ctor and grown on demand. A
                 // P/Invoke StringBuilder passes this as the native buffer length (4h).
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_sb_capacity({sb})");
                 return true;
             }
             case ("System.Text.StringBuilder", "Clear"):
             {
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*", $"dn2cpp_sb_clear({sb})");
                 return true;
             }
@@ -503,7 +503,7 @@ internal sealed partial class MethodCompiler
             {
                 var arr = Pop();
                 var index = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string at = NewTemp("Dn2CppArrayN*");
                 Emit($"{at} = (Dn2CppArrayN*)({arr.Expr});");
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
@@ -523,7 +523,7 @@ internal sealed partial class MethodCompiler
                 var start = Pop();
                 var arr = Pop();
                 var index = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_insert_str({sb}, {index.Expr}, dn2cpp_sb_char_arr_str((Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {cnt.Expr}))");
                 return true;
@@ -538,7 +538,7 @@ internal sealed partial class MethodCompiler
                 var cnt = Pop();
                 var val = Pop();
                 var index = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_insert_str_count({sb}, {index.Expr}, {Cast(val, "Dn2CppString*")}, {cnt.Expr})");
                 return true;
@@ -550,7 +550,7 @@ internal sealed partial class MethodCompiler
             {
                 var arg = Pop();
                 var index = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 string call = sig.ParameterTypes[1] switch
                 {
                     { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char }
@@ -586,7 +586,7 @@ internal sealed partial class MethodCompiler
             {
                 var count = Pop();
                 var start = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_remove({sb}, {start.Expr}, {count.Expr})");
                 return true;
@@ -599,7 +599,7 @@ internal sealed partial class MethodCompiler
             {
                 var newv = Pop();
                 var oldv = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_replace_str({sb}, {Cast(oldv, "Dn2CppString*")}, {Cast(newv, "Dn2CppString*")})");
                 return true;
@@ -613,7 +613,7 @@ internal sealed partial class MethodCompiler
                 var start = Pop();
                 var newv = Pop();
                 var oldv = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_replace_str_range({sb}, {Cast(oldv, "Dn2CppString*")}, {Cast(newv, "Dn2CppString*")}, {start.Expr}, {cnt.Expr})");
                 return true;
@@ -628,7 +628,7 @@ internal sealed partial class MethodCompiler
                 var start = Pop();
                 var newc = Pop();
                 var oldc = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_replace_char_range({sb}, (char16_t)({oldc.Expr}), (char16_t)({newc.Expr}), {start.Expr}, {cnt.Expr})");
                 return true;
@@ -638,7 +638,7 @@ internal sealed partial class MethodCompiler
             {
                 var newc = Pop();
                 var oldc = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
                     $"dn2cpp_sb_replace_char({sb}, (char16_t)({oldc.Expr}), (char16_t)({newc.Expr}))");
                 return true;
@@ -647,7 +647,7 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "set_Length"):
             {
                 var v = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Emit($"dn2cpp_sb_set_length({sb}, {v.Expr});");
                 return true;
             }
@@ -656,7 +656,7 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "get_Chars"):
             {
                 var idx = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.I4, "int32_t", $"(int32_t)dn2cpp_sb_get_char({sb}, {idx.Expr})");
                 return true;
             }
@@ -664,7 +664,7 @@ internal sealed partial class MethodCompiler
             {
                 var v = Pop();
                 var idx = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Emit($"dn2cpp_sb_set_char({sb}, {idx.Expr}, (char16_t)({v.Expr}));");
                 return true;
             }
@@ -673,7 +673,7 @@ internal sealed partial class MethodCompiler
             case ("System.Text.StringBuilder", "EnsureCapacity"):
             {
                 var cap = Pop();
-                string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+                string sb = PopBuilderReceiver();
                 Push(StackKind.I4, "int32_t", $"dn2cpp_sb_ensure_capacity({sb}, {cap.Expr})");
                 return true;
             }
@@ -1458,5 +1458,14 @@ internal sealed partial class MethodCompiler
                 options = $"(int32_t)({popped.Expr})";
         }
         return options;
+    }
+
+    // Callvirt faults after argument evaluation and before the helper validates them.
+    private string PopBuilderReceiver()
+    {
+        string sb = Cast(Pop(), "Dn2CppStringBuilder*");
+        if (CallIsVirtual)
+            Emit($"dn2cpp_null_check({sb});");
+        return sb;
     }
 }

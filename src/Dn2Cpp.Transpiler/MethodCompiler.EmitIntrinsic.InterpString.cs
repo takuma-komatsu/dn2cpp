@@ -182,7 +182,7 @@ internal sealed partial class MethodCompiler
             {
                 var s = Pop();
                 var self = Pop();
-                Emit($"dn2cpp_sb_append_str(*((Dn2CppStringBuilder**)({self.Expr})), {Cast(s, "Dn2CppString*")});");
+                Emit($"dn2cpp_sb_append_str(dn2cpp_null_check(*((Dn2CppStringBuilder**)({self.Expr}))), {Cast(s, "Dn2CppString*")});");
                 return true;
             }
             // Non-generic AppendFormatted(string [, int alignment, string format]) — a
@@ -201,13 +201,13 @@ internal sealed partial class MethodCompiler
                 string s = Cast(Pop(), "Dn2CppString*");
                 var self = Pop();
                 if (alignExpr == "0")
-                    Emit($"dn2cpp_sb_append_str(*((Dn2CppStringBuilder**)({self.Expr})), {s});");
+                    Emit($"dn2cpp_sb_append_str(dn2cpp_null_check(*((Dn2CppStringBuilder**)({self.Expr}))), {s});");
                 else
                 {
                     string isb = NewTemp("Dn2CppISB");
                     Emit($"{isb} = dn2cpp_isb_new(0, 1);");
                     Emit($"dn2cpp_isb_append_aligned(&{isb}, {s}, {alignExpr});");
-                    Emit($"dn2cpp_sb_append_str(*((Dn2CppStringBuilder**)({self.Expr})), dn2cpp_isb_to_string(&{isb}));");
+                    Emit($"dn2cpp_sb_append_str(dn2cpp_null_check(*((Dn2CppStringBuilder**)({self.Expr}))), dn2cpp_isb_to_string(&{isb}));");
                 }
                 return true;
             }

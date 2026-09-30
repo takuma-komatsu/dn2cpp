@@ -1676,19 +1676,33 @@ internal sealed partial class MethodCompiler
             var val = Pop();
             var self = Pop(); // managed pointer to the handler local (a Dn2CppStringBuilder*)
             var t = methodArgs[0];
-            string valStr = FormatInterpolationHole(t, val, formatExpr);
+            string builder = $"*((Dn2CppStringBuilder**)({self.Expr}))";
+            string present = "true";
+            if (CppTypes.KindOf(t) == StackKind.Ref)
+                present = $"{Cast(val, "Dn2CppObject*")} != nullptr";
+            else if (NullableLayout(t) is (_, var hasValue, _))
+                present = $"({Cast(val, CppTypes.Of(t))}).{hasValue}";
+            // A null generic hole leaves the builder untouched unless alignment pads it.
+            Emit($"if (({present}) || {alignExpr} != 0) {{");
+            string spanFormattable = BuilderHoleSpanFormattable(t, val);
+            // An unaligned span formatter reads the builder's current chunk first.
+            Emit($"if ({alignExpr} == 0 && {builder} == nullptr && ({present}) && ({spanFormattable})) dn2cpp_null_check({builder});");
+            string valStr = NewTemp("Dn2CppString*");
+            string formatted = FormatInterpolationHole(t, val, formatExpr);
+            Emit($"{valStr} = {formatted};");
             // The handler local holds the StringBuilder pointer; `self` is its address.
             // For a 0 alignment we append directly; a non-zero alignment pads through a
             // throwaway DISH (the BCL pads the value before appending — same result).
             if (alignExpr == "0")
-                Emit($"dn2cpp_sb_append_str(*((Dn2CppStringBuilder**)({self.Expr})), {valStr});");
+                Emit($"dn2cpp_sb_append_str(dn2cpp_null_check({builder}), {valStr});");
             else
             {
                 string isb = NewTemp("Dn2CppISB");
                 Emit($"{isb} = dn2cpp_isb_new(0, 1);");
                 Emit($"dn2cpp_isb_append_aligned(&{isb}, {valStr}, {alignExpr});");
-                Emit($"dn2cpp_sb_append_str(*((Dn2CppStringBuilder**)({self.Expr})), dn2cpp_isb_to_string(&{isb}));");
+                Emit($"dn2cpp_sb_append_str(dn2cpp_null_check({builder}), dn2cpp_isb_to_string(&{isb}));");
             }
+            Emit("}");
             return;
         }
 
@@ -2356,6 +2370,28 @@ internal sealed partial class MethodCompiler
                 EmitEnumerationToSb(values, elem, sep, sb);
         }
         Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
+    }
+
+    private string BuilderHoleSpanFormattable(TypeDesc t, StackEntry value)
+    {
+        var itf = _c.FindClassByFullName("System.ISpanFormattable")
+            ?? throw new NotSupportedException("StringBuilder interpolation requires System.ISpanFormattable");
+        if (CppTypes.KindOf(t) == StackKind.Ref)
+        {
+            string ti = TypeInfoExpr(new TypeDesc { Kind = TypeKind.Class, Class = itf })
+                ?? throw new InvalidOperationException("ISpanFormattable has no type identity");
+            return $"dn2cpp_isinst({Cast(value, "Dn2CppObject*")}, {ti}) != nullptr";
+        }
+        if (NullableLayout(t) is (var underlying, _, _))
+            t = underlying;
+        TaintIfCanonical(t, "builder-span-formatter");
+        var cls = t.Class ?? (t.Kind == TypeKind.Primitive
+            ? _c.FindClassByFullName("System." + t.Primitive)
+            : null);
+        if (cls is null)
+            return "false";
+        _c.EnsureCompleted(cls);
+        return _c.ImplementsInterface(cls, itf) ? "true" : "false";
     }
 
     private string AppendJoinReceiver(StackEntry receiver)

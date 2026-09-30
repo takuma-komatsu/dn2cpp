@@ -7,7 +7,7 @@ namespace StringBuild
     // stay identical to the standalone samples.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -24,6 +24,9 @@ namespace StringBuild
             // Append new sections LAST: the previous output must stay an unchanged
             // prefix, or a perturbation of an earlier section reads as intentional.
             CompositeFormatSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-null-receivers")
+                return;
+            StringBuilderNullReceiverSubset.Program.Run();
         }
     }
 }
