@@ -346,7 +346,14 @@ internal sealed partial class MethodCompiler
         if (members.Count == 0)
             return null;
         string cty = wide ? "int64_t" : "int32_t";
-        string toStr = wide ? "dn2cpp_long_to_string" : "dn2cpp_int_to_string";
+        // The model stores unsigned enums in signed slots; numeric formatting must
+        // reinterpret their bits at the underlying width.
+        string numeric = enumClass.EnumUnderlying switch
+        {
+            PrimitiveTypeCode.UInt64 => "dn2cpp_format_uint((uint64_t)v, 8, nullptr)",
+            PrimitiveTypeCode.UInt32 => "dn2cpp_format_uint((uint32_t)v, 4, nullptr)",
+            _ => wide ? "dn2cpp_long_to_string(v)" : "dn2cpp_int_to_string(v)",
+        };
         var sb = new StringBuilder();
         sb.AppendLine($"static Dn2CppString* {fnName}(Dn2CppObject* o) {{");
         sb.AppendLine($"    {cty} v = *({cty}*)(o + 1);");
@@ -362,7 +369,7 @@ internal sealed partial class MethodCompiler
             sb.AppendLine($"    static const {cty} fv[] = {{ {vals} }};");
             sb.AppendLine($"    static Dn2CppString* const fn[] = {{ {names} }};");
             sb.AppendLine($"    Dn2CppString* r = {flagsFn}(v, fv, fn, {ordered.Count});");
-            sb.AppendLine($"    return r != nullptr ? r : {toStr}(v);");
+            sb.AppendLine($"    return r != nullptr ? r : {numeric};");
         }
         else
         {
@@ -370,7 +377,7 @@ internal sealed partial class MethodCompiler
             foreach (var (value, name) in members)
                 sb.AppendLine($"        case {EnumMemberLit(value, wide)}: return {literals.GetOrAdd(name)};");
             sb.AppendLine("    }");
-            sb.AppendLine($"    return {toStr}(v);");
+            sb.AppendLine($"    return {numeric};");
         }
         sb.AppendLine("}");
         return sb.ToString();

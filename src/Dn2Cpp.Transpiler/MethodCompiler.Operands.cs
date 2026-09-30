@@ -184,8 +184,8 @@ internal sealed partial class MethodCompiler
     /// (<c>_size</c>) plus the element type T. The array's allocated length is the
     /// capacity (≥ Count), so callers must iterate <c>Count</c>, not the array
     /// length — the count-aware <c>_n</c> string helpers do exactly that. Returns
-    /// null when the operand has no tracked List&lt;T&gt; type (e.g. a call result),
-    /// letting callers fall back to their existing diagnostic.</summary>
+    /// null when the tracked type is not a List&lt;T&gt; — another type, or none
+    /// after predecessors of different types join.</summary>
     private (string Items, string Count, TypeDesc Elem)? TryListBacking(StackEntry op)
     {
         // A closed generic's ClassInfo carries a *mangled* Name (e.g. "List_int32"),
@@ -207,145 +207,175 @@ internal sealed partial class MethodCompiler
         return (FieldAccess(cls, items, op), FieldAccess(cls, size, op), elem);
     }
 
-    /// <summary>True if <paramref name="op"/>'s tracked static type is a concrete
-    /// (instantiable) class — i.e. not the bare interface or a value type. Used to
-    /// gate the enumerator-path Join/Concat: a concrete operand is a real
-    /// managed object with an interface map, so dispatching IEnumerable&lt;T&gt;
-    /// on it is sound; a bare <c>IEnumerable&lt;T&gt;</c> static type could be a raw
-    /// array (no managed interface map), so it stays out of scope.</summary>
-    private static bool IsConcreteEnumerableOperand(StackEntry op) =>
-        op.StaticType is { Kind: TypeKind.Class, Class: { IsInterface: false, IsValueType: false } };
-
-    /// <summary>True if <paramref name="op"/>'s static type is a bare generic
-    /// collection *interface* (<c>IEnumerable&lt;T&gt;</c>, <c>IReadOnlyList</c>,
-    /// <c>IReadOnlyCollection</c>, <c>ICollection</c>, <c>IList</c>) or a LINQ
-    /// enumerable-result interface (<c>IOrderedEnumerable&lt;T&gt;</c>, the static
-    /// type <c>OrderBy</c>/<c>ThenBy</c> return — <c>string.Join(sep,
-    /// seq.Select(...).OrderBy(...))</c> hands one straight to <c>Join&lt;T&gt;</c>).
-    /// All guarantee <c>IEnumerable&lt;T&gt;</c>, so the enumeration dispatch is sound.
-    /// The runtime object behind such a type could be EITHER a raw array (no managed
-    /// interface map) OR a managed collection, so the Join/Concat dual path
-    /// discriminates at runtime by the array type-info.</summary>
-    private bool IsBareCollectionInterface(StackEntry op) =>
-        op.StaticType is { Kind: TypeKind.Class, Class: { IsInterface: true } ic }
-        && _c.GenericDefFullName(ic) is "System.Collections.Generic.IEnumerable"
-            or "System.Collections.Generic.IReadOnlyList"
-            or "System.Collections.Generic.IReadOnlyCollection"
-            or "System.Collections.Generic.ICollection"
-            or "System.Collections.Generic.IList"
-            or "System.Linq.IOrderedEnumerable";
-
-    /// <summary>Whether the enumerator-path Join/Concat supports element type
-    /// <paramref name="elem"/> — checked before popping the operand so a Concat
-    /// fallthrough leaves the stack intact.</summary>
-    private bool CanEmitEnumerableJoin(TypeDesc elem) =>
-        _c.EnumerationDispatch(elem) is not null && FormatElement(elem) is not null;
-
-    /// <summary>Emits <c>string.Join</c>/<c>Concat</c> over a concrete
-    /// <c>IEnumerable&lt;T&gt;</c> collection (e.g. <c>SortedSet&lt;T&gt;</c>, a
-    /// <c>SortedDictionary</c> <c>Keys</c>/<c>Values</c> view) as an inline
-    /// interface-enumeration loop, then pushes the result. <paramref name="sepStr"/>
-    /// is the lowered separator, or null for <c>Concat</c>. Returns false (emitting
-    /// nothing, consuming nothing) when the element type is unsupported.</summary>
-    private bool TryEmitEnumerableJoin(StackEntry src, TypeDesc elem, string? sepStr)
+    /// <summary>Whether the object behind <paramref name="op"/> may be a raw array, which
+    /// has no managed interface map to enumerate through: its tracked static type is
+    /// unknown, object, System.Array, an array type, or a collection interface arrays
+    /// implement. Any other class, a box, or another interface (ISet&lt;T&gt;,
+    /// IGrouping&lt;K,T&gt;, IOrderedEnumerable&lt;T&gt;, …) is a managed object.</summary>
+    private bool MayBeArray(StackEntry op) => op.StaticType switch
     {
-        if (EmitEnumerationToSb(src, elem, sepStr) is not { } sb)
-            return false;
-        Push(StackKind.Ref, "Dn2CppString*", $"dn2cpp_sb_tostring({sb})");
-        return true;
-    }
+        null or { Kind: TypeKind.SZArray } or { IsObject: true } => true,
+        { Kind: TypeKind.Class, Class: { } c } => c.FullName is "System.Array" or "System.Object"
+            || (c.IsInterface && (c.FullName is "System.Collections.IEnumerable"
+                    or "System.Collections.ICollection" or "System.Collections.IList"
+                || _c.GenericDefFullName(c) is "System.Collections.Generic.IEnumerable"
+                    or "System.Collections.Generic.IReadOnlyList"
+                    or "System.Collections.Generic.IReadOnlyCollection"
+                    or "System.Collections.Generic.ICollection"
+                    or "System.Collections.Generic.IList")),
+        _ => false,
+    };
 
-    /// <summary>Emits <c>string.Join</c>/<c>Concat</c> over a bare collection
-    /// <em>interface</em> operand, which could be a raw array or a managed collection
-    /// at runtime. Branches on the array type-info: an array uses the count-aware
-    /// array Join/Concat helper; anything else is a managed collection and enumerates
-    /// via the interface. Closes the array-as-<c>IEnumerable&lt;T&gt;</c> + bare
-    /// arbitrary-<c>IEnumerable&lt;T&gt;</c> shapes. Returns false (emitting nothing)
-    /// when either branch can't be built for the element type.</summary>
-    private bool TryEmitBareInterfaceJoin(StackEntry src, TypeDesc elem, string? sepStr)
+    /// <summary>The join of a managed <c>IEnumerable&lt;T&gt;</c> collection (a
+    /// <c>HashSet&lt;T&gt;</c>, a Dictionary key view, a LINQ grouping, …) through an
+    /// inline interface-enumeration loop, or null (emitting nothing) when the element
+    /// type is unsupported. <paramref name="sepStr"/> is the lowered separator, or null
+    /// for <c>Concat</c>.</summary>
+    private string? EnumerationJoin(StackEntry src, TypeDesc elem, string? sepStr) =>
+        EmitEnumerationToSb(src, elem, sepStr) is { } sb ? $"dn2cpp_sb_tostring({sb})" : null;
+
+    /// <summary>The join of an operand that could be a raw array or a managed collection
+    /// at run time (<see cref="MayBeArray"/>): an array takes the array helper, anything
+    /// else enumerates through the interface. Null (emitting nothing) when either branch
+    /// cannot format the element type.</summary>
+    private string? ArrayOrEnumerationJoin(StackEntry src, TypeDesc elem, string? sepStr)
     {
-        if (!CanEmitEnumerableJoin(elem) || ArrayJoinExpr(elem, "$", sepStr) is null)
-            return false;
+        if (_c.EnumerationDispatch(elem) is null || !CanFormatElement(elem) || !CanJoinArray(elem))
+            return null;
         string result = NewTemp("Dn2CppString*");
         // An array carries DN2CPP_TF_ARRAY in its type-info (whether the shared
         // array_{ref,i4} handle or a precise per-element ti_arr_<T>); a managed
         // collection carries its own class type-info, never an array one — so the flag
         // test discriminates "array vs managed collection" regardless of which handle.
         Emit($"if ((((Dn2CppObject*)({src.Expr}))->type->flags & DN2CPP_TF_ARRAY) != 0) {{");
-        Emit($"    {result} = {ArrayJoinExpr(elem, src.Expr, sepStr)};");
+        string arrayJoin = ArrayJoinCall(elem, src.Expr, null, sepStr)!;
+        Emit($"    {result} = {arrayJoin};");
         Emit("} else {");
-        string sb = EmitEnumerationToSb(src, elem, sepStr)!; // support pre-checked
+        string sb = EmitEnumerationToSb(src, elem, sepStr)!;
         Emit($"    {result} = dn2cpp_sb_tostring({sb});");
         Emit("}");
-        _stack.Add(new StackEntry(result, StackKind.Ref, "Dn2CppString*"));
-        return true;
+        return result;
     }
 
-    /// <summary>Emits the interface-enumeration loop (cast to <c>IEnumerable&lt;T&gt;</c>,
-    /// callvirt <c>GetEnumerator</c>, loop <c>MoveNext</c>/<c>get_Current</c>
-    /// appending each formatted element) and returns the <c>StringBuilder</c> temp
-    /// holding the accumulation — exactly what a hand-written <c>foreach</c> lowers
-    /// to. Returns null (emitting nothing) when the element type is unsupported or the
-    /// enumeration interfaces aren't loaded. <paramref name="sepStr"/> null ⇒ no
-    /// separator (<c>Concat</c>).</summary>
-    private string? EmitEnumerationToSb(StackEntry src, TypeDesc elem, string? sepStr)
+    /// <summary>Emits the interface-enumeration loop appending each formatted element
+    /// to a fresh builder or <paramref name="target"/> and returns its temp.
+    /// Returns null when the element type or enumeration interfaces are unsupported.
+    /// <paramref name="sepStr"/> null ⇒ no separator (<c>Concat</c>).</summary>
+    private string? EmitEnumerationToSb(StackEntry src, TypeDesc elem, string? sepStr, string? target = null)
     {
-        if (_c.EnumerationDispatch(elem) is not { } ed || FormatElement(elem) is null)
+        if (_c.EnumerationDispatch(elem) is not { } ed || !CanFormatElement(elem))
             return null;
-
-        string enumCpp = CppTypes.Of(ed.GetEnumerator.Signature.ReturnType); // IEnumerator<T>*
-        string e = NewTemp(enumCpp);
-        Emit($"{e} = {EmitIfaceDispatch(ed.GetEnumerator, src.Expr)};");
-        string sb = NewTemp("Dn2CppStringBuilder*");
-        Emit($"{sb} = dn2cpp_sb_new();");
+        string sb = target ?? NewTemp("Dn2CppStringBuilder*");
+        if (target is null)
+            Emit($"{sb} = dn2cpp_sb_new();");
         string first = sepStr is null ? "" : NewTemp("int32_t");
         if (sepStr is not null)
             Emit($"{first} = 1;");
-        string cur = NewTemp(CppTypes.Of(elem));
-        Emit($"while ({EmitIfaceDispatch(ed.MoveNext, e)}) {{");
-        if (sepStr is not null)
+        EmitForEach(src, ed, elem, cur =>
         {
-            Emit($"    if (!{first}) dn2cpp_sb_append_str({sb}, {sepStr});");
-            Emit($"    {first} = 0;");
-        }
-        Emit($"    {cur} = {EmitIfaceDispatch(ed.GetCurrent, e)};");
-        Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, cur)});");
-        Emit("}");
+            Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, cur)});");
+        }, () =>
+        {
+            // AppendJoin exposes the separator even when the next Current throws.
+            if (sepStr is not null)
+            {
+                Emit($"    if (!{first}) dn2cpp_sb_append_str({sb}, {sepStr});");
+                Emit($"    {first} = 0;");
+            }
+        });
         return sb;
+    }
+
+    /// <summary>Emits a C# <c>foreach</c> over the <c>IEnumerable&lt;T&gt;</c> in
+    /// <paramref name="src"/>, dispatched through the interfaces: GetEnumerator, then
+    /// MoveNext and get_Current into a temp that <paramref name="body"/> consumes, then
+    /// Dispose — also when the loop throws, as the foreach's finally does. The caller
+    /// reaches the dispatched methods (<see cref="Compilation.EnumerationDispatch"/>).</summary>
+    private void EmitForEach(StackEntry src, Compilation.EnumerationMethods ed, TypeDesc elem,
+        Action<string> body, Action? beforeCurrent = null)
+    {
+        string e = NewTemp(CppTypes.Of(ed.GetEnumerator.Signature.ReturnType)); // IEnumerator<T>*
+        // A null enumerator faults at its first MoveNext, before anything could dispose it.
+        Emit($"{e} = dn2cpp_null_check({EmitIfaceDispatch(ed.GetEnumerator, src.Expr)});");
+        string cur = NewTemp(CppTypes.Of(elem));
+        string dispose = EmitIfaceDispatch(ed.Dispose, e);
+        Emit("try {");
+        Emit($"while ({EmitIfaceDispatch(ed.MoveNext, e)}) {{");
+        beforeCurrent?.Invoke();
+        Emit($"    {cur} = {EmitIfaceDispatch(ed.GetCurrent, e)};");
+        body(cur);
+        Emit("}");
+        Emit("} catch (...) {");
+        Emit($"    {dispose};");
+        Emit("    throw;");
+        Emit("}");
+        Emit($"{dispose};");
     }
 
     /// <summary>An interface-method callvirt: resolve <paramref name="mth"/>'s slot in
     /// the receiver's runtime type-info via <c>dn2cpp_resolve_interface</c> and call
-    /// through it. Used by the inline enumeration loops.</summary>
+    /// through it. A shared loop uses the same canonical interface identity as an
+    /// ordinary interface call and records possible alias collisions.</summary>
     private string EmitIfaceDispatch(MethodInfo mth, string recvExpr)
     {
         NoteDispatchSignatureTypes(mth);
+        NoteCanonicalItfDispatch(mth.DeclaringClass);
         return $"(({FnPtrType(mth)})(dn2cpp_resolve_interface(((Dn2CppObject*){recvExpr})->type, "
-            + $"&{mth.DeclaringClass.CppTypeInfoName})[{mth.VtableSlot}]))"
+            + $"&{ItfDispatchTi(mth.DeclaringClass).CppTypeInfoName})[{mth.VtableSlot}]))"
             + $"(({mth.DeclaringClass.CppStructName}*){recvExpr})";
     }
 
-    /// <summary>The array Join (with <paramref name="sepStr"/>) or Concat
-    /// (<paramref name="sepStr"/> null ⇒ empty separator) helper call for an array of
-    /// <paramref name="t"/> at <paramref name="arrExpr"/>, or null for an unsupported
-    /// element type. Used by the bare-interface dual path's array branch.</summary>
-    private static string? ArrayJoinExpr(TypeDesc t, string arrExpr, string? sepStr)
+    /// <summary>Whether <see cref="ArrayJoinCall"/> formats an array of
+    /// <paramref name="t"/>.</summary>
+    private static bool CanJoinArray(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class.IsEnum: true } || ArrayJoinHelper(t) is not null;
+
+    /// <summary>The runtime call joining the <paramref name="t"/>[] at
+    /// <paramref name="arrExpr"/> — its first <paramref name="count"/> elements, or all
+    /// of them when that is null (a List&lt;T&gt;'s backing array is longer than the
+    /// list) — with <paramref name="sepStr"/>, or concatenating it when that is null.
+    /// Null when no helper formats the element type. An enum element is boxed under its
+    /// own type-info, so it formats by name as Enum.ToString does.</summary>
+    private string? ArrayJoinCall(TypeDesc t, string arrExpr, string? count, string? sepStr)
     {
         string sep = sepStr ?? "dn2cpp_string_literal(u\"\", 0)";
-        return RepOf(t) switch
+        if (t is { Kind: TypeKind.Class, Class.IsEnum: true })
         {
-            ArrRep.I4 => $"dn2cpp_string_join_i4({sep}, (Dn2CppArrayI4*)({arrExpr}))",
-            ArrRep.Ref when sepStr is null => $"dn2cpp_string_concat_objects((Dn2CppArrayRef*)({arrExpr}))",
-            ArrRep.Ref => $"dn2cpp_string_join_ref({sepStr}, (Dn2CppArrayRef*)({arrExpr}))",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 } =>
-                $"dn2cpp_string_join_i8({sep}, (Dn2CppArrayN*)({arrExpr}))",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double } =>
-                $"dn2cpp_string_join_r8({sep}, (Dn2CppArrayN*)({arrExpr}))",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } =>
-                $"dn2cpp_string_join_ch({sep}, (Dn2CppArrayN*)({arrExpr}))",
-            _ => null,
-        };
+            string eti = TypeInfoExpr(t)
+                ?? throw new NotSupportedException(
+                    $"{Method.DeclaringClass.FullName}.{Method.Name}: joining {t} has no emitted type-info");
+            string arrCt = ArrayCppPtr(t);
+            string arrT = NewTemp(arrCt);
+            Emit($"{arrT} = ({arrCt})({arrExpr});");
+            var (data, stride) = ArrayDataStride(t, arrT);
+            return $"dn2cpp_string_join_enum_n({sep}, {data}, {stride}, {count ?? arrT + "->length"}, {eti})";
+        }
+        if (ArrayJoinHelper(t) is not { } h)
+            return null;
+        return count is null
+            ? $"{h.Helper}({sep}, ({h.ArrayType})({arrExpr}))"
+            : $"{h.Helper}_n({sep}, ({h.ArrayType})({arrExpr}), {count})";
     }
+
+    /// <summary>The runtime helper joining an array of the non-enum
+    /// <paramref name="t"/>, and the array representation it reads, or null.</summary>
+    private static (string Helper, string ArrayType)? ArrayJoinHelper(TypeDesc t) => t switch
+    {
+        { Kind: TypeKind.Class, Class.IsEnum: true } => null,
+        // Unsigned elements format unsigned: the signed helpers would print
+        // uint.MaxValue as -1, and uint shares int's array representation.
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 } => ("dn2cpp_string_join_u4", "Dn2CppArrayI4*"),
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 } => ("dn2cpp_string_join_u8", "Dn2CppArrayN*"),
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } => ("dn2cpp_string_join_i8", "Dn2CppArrayN*"),
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double } => ("dn2cpp_string_join_r8", "Dn2CppArrayN*"),
+        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } => ("dn2cpp_string_join_ch", "Dn2CppArrayN*"),
+        _ => RepOf(t) switch
+        {
+            ArrRep.I4 => ("dn2cpp_string_join_i4", "Dn2CppArrayI4*"),
+            ArrRep.Ref => ("dn2cpp_string_join_ref", "Dn2CppArrayRef*"),
+            _ => null,
+        },
+    };
 
     /// <summary>The precise per-element array type-info handle for <c>element[]</c>
     ///: <c>&amp;ti_arr_&lt;mangle&gt;</c>, where the mangle matches CppEmitter's
@@ -490,17 +520,31 @@ internal sealed partial class MethodCompiler
         return token != 0 ? TypeInfoExpr(target, token) : TypeInfoExpr(target);
     }
 
-    /// <summary>The runtime call that formats a single enumerated element to its
-    /// invariant string, or null when the element type is unsupported (the
-    /// int/long/double/reference set of the array Join helpers, plus bool/char).
-    /// Enums are excluded — their invariant ToString is the member name, not the
-    /// integer, which this path does not yet produce. <paramref name="cur"/> defaults
-    /// to a placeholder so null-ness can be probed for supportedness before a temp
-    /// exists.</summary>
-    private static string? FormatElement(TypeDesc elem, string cur = "$")
+    /// <summary>Whether <see cref="FormatElement"/> formats an element of
+    /// <paramref name="elem"/>.</summary>
+    private static bool CanFormatElement(TypeDesc elem) =>
+        elem is { Kind: TypeKind.Class, Class.IsEnum: true } || ScalarFormat(elem, "$") is not null;
+
+    /// <summary>The runtime call that formats the enumerated element in the temp
+    /// <paramref name="cur"/> as its ToString does: an enum boxed under its own type-info,
+    /// so it formats by name, a reference or primitive through
+    /// <see cref="ScalarFormat"/>.</summary>
+    private string FormatElement(TypeDesc elem, string cur)
     {
-        if (elem is { Kind: TypeKind.Class, Class.IsEnum: true })
-            return null;
+        if (elem is not { Kind: TypeKind.Class, Class.IsEnum: true })
+            return ScalarFormat(elem, cur)
+                ?? throw new InvalidOperationException($"{elem} elements are not formattable");
+        string eti = TypeInfoExpr(elem)
+            ?? throw new NotSupportedException(
+                $"{Method.DeclaringClass.FullName}.{Method.Name}: joining {elem} has no emitted type-info");
+        return $"dn2cpp_object_tostring(dn2cpp_box({eti}, &{cur}, sizeof({CppTypes.Of(elem)})))";
+    }
+
+    /// <summary>The runtime call that formats a reference or primitive element to its
+    /// invariant string, or null when the element type is unsupported (the
+    /// int/long/double/reference set of the array Join helpers, plus bool/char).</summary>
+    private static string? ScalarFormat(TypeDesc elem, string cur)
+    {
         if (CppTypes.KindOf(elem) == StackKind.Ref)
             return $"dn2cpp_object_tostring((Dn2CppObject*)({cur}))";
         if (elem.Kind != TypeKind.Primitive)

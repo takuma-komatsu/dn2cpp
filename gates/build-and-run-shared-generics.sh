@@ -47,6 +47,11 @@
 # A class generic virtual hidden by a subclass `new virtual` (or plain `new`)
 # dispatches a base-typed call to the base body, never to the hider's override.
 # Same-name generic overloads with equal arity and parameter count keep distinct slots.
+# string.Join<T>, string.Concat<T> and StringBuilder.AppendJoin<T> in a generic
+# method called over int and an int-backed enum, or over uint and a uint-backed
+# enum, format each element by its real type: the enum by name.
+# Reference-element joins use fully canonical interfaces and keep distinct
+# IEnumerable<string> and IEnumerable<object> views of one receiver.
 #
 # The last section (GenericMethodSubset, folded from the retired
 # build-and-run-generic-method-subset.sh) is NOT about sharing: it is the
@@ -393,5 +398,15 @@ for line in 'gvm hider base=base:Int32' 'gvm hider hider=leaf:Int32' \
     'gvm hider covariant=True'; do
     grep -Fxq "$line" <<< "$native" \
         || { echo "FAIL: generic-virtual hider dispatch witness missing: $line" >&2; exit 1; }
+done
+before_width_join=$(strip_cr_win "$(dotnet "$app" before-width-join)")
+prefix=$(awk '/^width join array=/ { exit } { print }' <<< "$native")
+assert_output "$prefix" "$before_width_join"
+for line in 'width join array=1,2/Red,Green,7' 'width join uint=3,4000000000/On,Off' \
+    'width join list=5|6/Blue|Red' 'width concat=78/GreenBlue' 'width append=[9]/[Red;Blue]' \
+    'reference nested join=tag+tag/tag' 'reference join views=string/object' \
+    'reference concat views=string/object' 'reference append views=[string]/[object]'; do
+    grep -Fxq "$line" <<< "$native" \
+        || { echo "FAIL: width-placeholder join witness missing: $line" >&2; exit 1; }
 done
 gate_cache_commit

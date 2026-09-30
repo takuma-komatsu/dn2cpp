@@ -174,6 +174,23 @@ internal sealed partial class MethodCompiler
         && Comp.GenericDefFullName(c) == "System.ReadOnlySpan"
         && c.Context.TypeArgs is [{ IsString: true }];
 
+    /// <summary>IEnumerable&lt;string&gt; — the sequence parameter of the non-generic
+    /// string.Join/Concat overloads.</summary>
+    private bool IsStringEnumerable(TypeDesc t) =>
+        t is { Kind: TypeKind.Class, Class: { } c }
+        && Comp.GenericDefFullName(c) == "System.Collections.Generic.IEnumerable"
+        && c.Context.TypeArgs is [{ IsString: true }];
+
+    /// <summary>Pops a reference array operand into a temp and returns it, throwing
+    /// ArgumentNullException for <paramref name="param"/> when it is null.</summary>
+    private string PopNonNullRefArray(string param)
+    {
+        string a = NewTemp("Dn2CppArrayRef*");
+        Emit($"{a} = (Dn2CppArrayRef*)({Pop().Expr});");
+        Emit($"if ({a} == nullptr) dn2cpp_throw_argument_null_param(\"{param}\");");
+        return a;
+    }
+
     /// <summary>The (string format, params ReadOnlySpan&lt;object&gt;) composite-format
     /// shape shared by string.Format / Console.Write(Line) / AppendFormat.</summary>
     private bool IsSpanFormatOverload(MethodSignature<TypeDesc> sig) =>

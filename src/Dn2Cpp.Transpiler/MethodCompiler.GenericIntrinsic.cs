@@ -1456,86 +1456,28 @@ internal sealed partial class MethodCompiler
 
         // string.Join<T>(separator, IEnumerable<T>) — the form `string.Join(",", arr)`
         // binds to when the elements are a value type (int[] -> IEnumerable<int>).
-        // Supported over arrays (the dominant case) and over a List<T>: a
-        // List<T> isn't a Dn2CppArray, so materialize the live prefix of its backing
-        // array (_items, same repr; iterate _size via the count-aware `_n` helpers).
-        // The element kind picks the formatting; the separator may be string or char.
+        // The operand shape and the element kind pick the lowering (EmitSequenceJoin);
+        // the separator may be string or char.
         if (declType == "System.String" && name == "Join")
         {
             EmitStringJoinGeneric(methodArgs[0]);
             return;
         }
 
-        // StringBuilder.AppendJoin<T>(string|char separator, IEnumerable<T>) —
-        // the same composition as string.Join<T> (the shared emitter below),
-        // then appended to the builder (fluent).
+        // Append directly so enumeration or formatting failures preserve the prefix.
         if (declType == "System.Text.StringBuilder" && name == "AppendJoin")
         {
-            EmitStringJoinGeneric(methodArgs[0]);
-            var joined = Pop();
-            string ajsb = Cast(Pop(), "Dn2CppStringBuilder*");
-            Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                $"dn2cpp_sb_append_str({ajsb}, {Cast(joined, "Dn2CppString*")})");
+            var values = Pop();
+            var sep = Pop();
+            EmitAppendJoin(methodArgs[0], values, sep, Pop());
             return;
         }
 
-        // string.Concat<T>(IEnumerable<T>) over a List<T>. Reference
-        // elements (e.g. List<string>) format each via Object.ToString. Value
-        // elements (List<int>/<long>/<double>) reuse the count-aware Join helpers
-        // with an EMPTY separator — concatenation is Join(""), and each element's
-        // invariant formatting equals its ToString, so no per-element boxing is
-        // needed. The non-generic Concat(IEnumerable<string>) binding is intercepted
-        // in EmitIntrinsic's switch.
-        if (declType == "System.String" && name == "Concat"
-            && StackDepth > 0 && TryListBacking(Top) is { Elem: { } cElem })
+        // string.Concat<T>(IEnumerable<T>) is Join<T> with no separator: the same
+        // operand shapes, element formatting and null-sequence rejection.
+        if (declType == "System.String" && name == "Concat" && methodArgs.Length == 1)
         {
-            var lb = TryListBacking(Pop())!.Value;
-            string concat = RepOf(cElem) switch
-            {
-                // Unsigned 32/64-bit elements format unsigned, like the Join
-                // lowering above (matched before the ArrRep buckets).
-                _ when cElem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 } =>
-                    $"dn2cpp_string_join_u4_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayI4*)({lb.Items}), {lb.Count})",
-                _ when cElem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 } =>
-                    $"dn2cpp_string_join_u8_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayN*)({lb.Items}), {lb.Count})",
-                ArrRep.Ref => $"dn2cpp_string_concat_objects_n((Dn2CppArrayRef*)({lb.Items}), {lb.Count})",
-                ArrRep.I4 => $"dn2cpp_string_join_i4_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayI4*)({lb.Items}), {lb.Count})",
-                _ when cElem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } =>
-                    $"dn2cpp_string_join_i8_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayN*)({lb.Items}), {lb.Count})",
-                _ when cElem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double } =>
-                    $"dn2cpp_string_join_r8_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayN*)({lb.Items}), {lb.Count})",
-                _ when cElem is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } =>
-                    $"dn2cpp_string_join_ch_n(dn2cpp_string_literal(u\"\", 0), (Dn2CppArrayN*)({lb.Items}), {lb.Count})",
-                _ => throw new NotSupportedException(
-                    $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Concat<{cElem}> " +
-                    "element type is not supported yet (reference / int / long / double / char only)"),
-            };
-            Push(StackKind.Ref, "Dn2CppString*", concat);
-            return;
-        }
-
-        // string.Concat<T>(IEnumerable<T>) over a concrete collection that is not a
-        // List<T> backing (SortedSet, Sorted*.Keys/.Values): enumerate via the
-        // interface with an EMPTY separator (Concat == Join("")). Gated AFTER the
-        // List fast path above so List<T> keeps its backing-array materialization,
-        // and pre-checked so a fallthrough doesn't pop the operand.
-        if (declType == "System.String" && name == "Concat"
-            && methodArgs.Length == 1 && StackDepth > 0
-            && IsConcreteEnumerableOperand(Top)
-            && CanEmitEnumerableJoin(methodArgs[0]))
-        {
-            TryEmitEnumerableJoin(Pop(), methodArgs[0], null);
-            return;
-        }
-
-        // string.Concat<T>(IEnumerable<T>) over a bare interface operand (array or
-        // managed collection at runtime) — runtime-discriminated dual path.
-        if (declType == "System.String" && name == "Concat"
-            && methodArgs.Length == 1 && StackDepth > 0
-            && IsBareCollectionInterface(Top)
-            && CanEmitEnumerableJoin(methodArgs[0]) && ArrayJoinExpr(methodArgs[0], "$", null) is not null)
-        {
-            TryEmitBareInterfaceJoin(Pop(), methodArgs[0], null);
+            EmitSequenceJoin(methodArgs[0], Pop(), null);
             return;
         }
 
@@ -2321,61 +2263,130 @@ internal sealed partial class MethodCompiler
         Emit("}");
     }
 
-    /// <summary>The <c>string.Join&lt;T&gt;(separator, IEnumerable&lt;T&gt;)</c> lowering,
-    /// shared with <c>StringBuilder.AppendJoin&lt;T&gt;</c>: pops the values operand and
-    /// the string-or-char separator, pushes the joined <c>Dn2CppString*</c>. Supported
-    /// over arrays (the dominant case), a List&lt;T&gt; (materialize the live prefix of
-    /// its backing array — _items, same repr; iterate _size via the count-aware
-    /// <c>_n</c> helpers), a concrete IEnumerable&lt;T&gt; collection (enumerated via
-    /// its interface), or a bare collection-interface static type (runtime-
-    /// discriminated). The element kind picks the formatting.</summary>
+    /// <summary>The <c>string.Join&lt;T&gt;(separator, IEnumerable&lt;T&gt;)</c> lowering:
+    /// pops the values operand and
+    /// the string-or-char separator, pushes the joined <c>Dn2CppString*</c>.</summary>
     private void EmitStringJoinGeneric(TypeDesc t)
     {
         var arr = Pop();
         var sep = Pop();
-        string sepStr = sep.Kind == StackKind.Ref
-            ? Cast(sep, "Dn2CppString*")
-            : $"dn2cpp_char_to_string((char16_t)({sep.Expr}))";
-        string arrExpr, countArg, suffix;
-        if (arr.CppType.StartsWith("Dn2CppArray"))
-            (arrExpr, countArg, suffix) = (arr.Expr, "", "");
-        else if (TryListBacking(arr) is { } lb)
-            (arrExpr, countArg, suffix) = (lb.Items, $", {lb.Count}", "_n");
-        // A concrete IEnumerable<T> collection (SortedSet, Sorted*.Keys/.Values)
-        // that is neither a Dn2CppArray nor a List<T> backing: enumerate it via
-        // its interface. Pushes the result itself, so return early.
-        else if (IsConcreteEnumerableOperand(arr) && TryEmitEnumerableJoin(arr, t, sepStr))
-            return;
-        // A bare IEnumerable<T>/IList<T>/... static type: the runtime value is an
-        // array or a managed collection — discriminate at runtime.
-        else if (IsBareCollectionInterface(arr) && TryEmitBareInterfaceJoin(arr, t, sepStr))
-            return;
+        string sepStr;
+        if (sep.Kind == StackKind.Ref)
+            sepStr = Cast(sep, "Dn2CppString*");
         else
-            throw new NotSupportedException(
-                $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join is only " +
-                "supported over arrays, List<T>, or an IEnumerable<T> collection yet");
-        string call = RepOf(t) switch
         {
-            // Unsigned 32/64-bit elements format unsigned — the signed
-            // join_i4/join_i8 would print uint.MaxValue as -1. Matched
-            // before the ArrRep buckets (uint is I4-backed).
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt32 } =>
-                $"dn2cpp_string_join_u4{suffix}({sepStr}, (Dn2CppArrayI4*)({arrExpr}){countArg})",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.UInt64 } =>
-                $"dn2cpp_string_join_u8{suffix}({sepStr}, (Dn2CppArrayN*)({arrExpr}){countArg})",
-            ArrRep.I4 => $"dn2cpp_string_join_i4{suffix}({sepStr}, (Dn2CppArrayI4*)({arrExpr}){countArg})",
-            ArrRep.Ref => $"dn2cpp_string_join_ref{suffix}({sepStr}, (Dn2CppArrayRef*)({arrExpr}){countArg})",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } =>
-                $"dn2cpp_string_join_i8{suffix}({sepStr}, (Dn2CppArrayN*)({arrExpr}){countArg})",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Double } =>
-                $"dn2cpp_string_join_r8{suffix}({sepStr}, (Dn2CppArrayN*)({arrExpr}){countArg})",
-            _ when t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } =>
-                $"dn2cpp_string_join_ch{suffix}({sepStr}, (Dn2CppArrayN*)({arrExpr}){countArg})",
-            _ => throw new NotSupportedException(
-                $"{Method.DeclaringClass.FullName}.{Method.Name}: string.Join<{t}> " +
-                "element type is not supported yet (int / long / double / char / string only)"),
-        };
-        Push(StackKind.Ref, "Dn2CppString*", call);
+            // Converted once: the enumeration loop reads the separator per element.
+            sepStr = NewTemp("Dn2CppString*");
+            Emit($"{sepStr} = dn2cpp_char_to_string((char16_t)({sep.Expr}));");
+        }
+        EmitSequenceJoin(t, arr, sepStr);
+    }
+
+    /// <summary>Joins the sequence <paramref name="arr"/> of <paramref name="t"/> with
+    /// <paramref name="sepStr"/>, or concatenates it when that is null
+    /// (<c>string.Concat</c>), and pushes the <c>Dn2CppString*</c>. An array or a
+    /// List&lt;T&gt; (the live prefix of its backing array — _items, same repr, _size
+    /// elements) joins in one runtime call; an operand that may be an array
+    /// discriminates at run time; any other enumerates through its interface. Each
+    /// element formats as its ToString does, an enum by name.</summary>
+    private void EmitSequenceJoin(TypeDesc t, StackEntry arr, string? sepStr)
+    {
+        RequireSequenceFormatter(t);
+        string op = sepStr is null ? "string.Concat" : "string.Join";
+        // A null sequence is .NET's ArgumentNullException, not an empty join.
+        string values = NewTemp(arr.CppType);
+        Emit($"{values} = {Cast(arr, arr.CppType)};");
+        Emit($"if ({values} == nullptr) dn2cpp_throw_argument_null_param(\"values\");");
+        // A null literal names no sequence type: the throw above is all it lowers to.
+        if (arr.KnownNull)
+        {
+            Push(StackKind.Ref, "Dn2CppString*", "nullptr");
+            return;
+        }
+        arr = arr with { Expr = values };
+        string? call;
+        if (arr.CppType.StartsWith("Dn2CppArray"))
+            call = ArrayJoinCall(t, arr.Expr, null, sepStr);
+        else if (TryListBacking(arr) is { } lb)
+            call = ArrayJoinCall(t, lb.Items, lb.Count, sepStr);
+        else if (MayBeArray(arr))
+            call = ArrayOrEnumerationJoin(arr, t, sepStr);
+        else
+            call = EnumerationJoin(arr, t, sepStr);
+        Push(StackKind.Ref, "Dn2CppString*", call ?? throw new NotSupportedException(
+            $"{Method.DeclaringClass.FullName}.{Method.Name}: {op}<{t}> element type is not supported yet "
+            + "(enum / int / uint / long / ulong / double / char / reference only)"));
+    }
+
+    private void RequireSequenceFormatter(TypeDesc t)
+    {
+        // A width placeholder can represent an integer or an enum that formats by name.
+        if (t.IsCanonPlaceholder && !t.IsObject)
+            TaintIfCanonical(t, "enum-join");
+        TaintIfCanonAnyValue(t, "join");
+    }
+
+    /// <summary>AppendJoin updates its receiver before Current/ToString/Dispose can
+    /// throw. Lists enumerate through their version-checked cursor.</summary>
+    private void EmitAppendJoin(TypeDesc elem, StackEntry values, StackEntry separator, StackEntry receiver)
+    {
+        RequireSequenceFormatter(elem);
+        string sb = AppendJoinReceiver(receiver);
+        string src = NewTemp(values.CppType);
+        Emit($"{src} = {Cast(values, values.CppType)};");
+        Emit($"if ({src} == nullptr) dn2cpp_throw_argument_null_param(\"values\");");
+        if (!values.KnownNull)
+        {
+            values = values with { Expr = src };
+            string sep = AppendJoinSeparator(separator);
+            if (!CanFormatElement(elem)
+                || (!values.CppType.StartsWith("Dn2CppArray") && _c.EnumerationDispatch(elem) is null))
+                throw new NotSupportedException($"{Method.DeclaringClass.FullName}.{Method.Name}: AppendJoin<{elem}> element type is not supported");
+            if (values.CppType.StartsWith("Dn2CppArray"))
+                EmitArrayAppendJoin(values, elem, sb, sep);
+            else if (MayBeArray(values))
+            {
+                Emit($"if ((((Dn2CppObject*){src})->type->flags & DN2CPP_TF_ARRAY) != 0) {{");
+                EmitArrayAppendJoin(values, elem, sb, sep);
+                Emit("} else {");
+                EmitEnumerationToSb(values, elem, sep, sb);
+                Emit("}");
+            }
+            else
+                EmitEnumerationToSb(values, elem, sep, sb);
+        }
+        Push(StackKind.Ref, "Dn2CppStringBuilder*", sb);
+    }
+
+    private string AppendJoinReceiver(StackEntry receiver)
+    {
+        string sb = NewTemp("Dn2CppStringBuilder*");
+        string value = Cast(receiver, "Dn2CppStringBuilder*");
+        // callvirt checks the receiver before the method can validate values.
+        Emit($"{sb} = {(_callIsVirtual ? $"dn2cpp_null_check({value})" : value)};");
+        return sb;
+    }
+
+    private string AppendJoinSeparator(StackEntry separator)
+    {
+        if (separator.Kind == StackKind.Ref)
+            return Cast(separator, "Dn2CppString*");
+        string sep = NewTemp("Dn2CppString*");
+        Emit($"{sep} = dn2cpp_char_to_string((char16_t)({separator.Expr}));");
+        return sep;
+    }
+
+    private void EmitArrayAppendJoin(StackEntry values, TypeDesc elem, string sb, string sep)
+    {
+        string array = NewTemp(ArrayCppPtr(elem));
+        Emit($"{array} = {Cast(values, ArrayCppPtr(elem))};");
+        string index = NewTemp("int32_t");
+        string current = NewTemp(CppTypes.Of(elem));
+        Emit($"for ({index} = 0; {index} < {array}->length; ++{index}) {{");
+        Emit($"    if ({index} != 0) dn2cpp_sb_append_str({sb}, {sep});");
+        Emit($"    {current} = {ArrayElemLoad(elem, array, index)};");
+        Emit($"    dn2cpp_sb_append_str({sb}, {FormatElement(elem, current)});");
+        Emit("}");
     }
 
 }

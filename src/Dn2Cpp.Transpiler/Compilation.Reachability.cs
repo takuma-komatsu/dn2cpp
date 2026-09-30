@@ -2287,15 +2287,16 @@ internal sealed partial class Compilation
             || i.Interfaces.Any(Comparable);
     }
 
-    /// <summary>Resolves the three interface methods needed to enumerate an
+    /// <summary>Resolves the interface methods needed to enumerate an
     /// arbitrary <c>IEnumerable&lt;T&gt;</c> for <c>string.Join</c>/<c>Concat</c>:
     /// the closed <c>IEnumerable&lt;T&gt;.GetEnumerator</c>, the boxed
     /// <c>IEnumerator&lt;T&gt;.get_Current</c>, and the non-generic
-    /// <c>IEnumerator.MoveNext</c> (inherited by <c>IEnumerator&lt;T&gt;</c>).
+    /// <c>IEnumerator.MoveNext</c> and <c>IDisposable.Dispose</c> (inherited by
+    /// <c>IEnumerator&lt;T&gt;</c>).
     /// Each is dispatched on its declaring *interface* type-info, so only the
     /// element type T is needed — the concrete operand class never appears here.
     /// Returns null if the BCL enumeration interfaces are not loaded (no CoreLib).</summary>
-    internal (MethodInfo GetEnumerator, MethodInfo GetCurrent, MethodInfo MoveNext)? EnumerationDispatch(TypeDesc elem)
+    internal EnumerationMethods? EnumerationDispatch(TypeDesc elem)
     {
         // Any IEnumerable<char> enumeration can receive a string at runtime (a
         // full-length string-backed ReadOnlyMemory<char> surfaces the string object
@@ -2322,19 +2323,27 @@ internal sealed partial class Compilation
         var moveNext = ienumerator.Interfaces
             .FirstOrDefault(i => i.FullName == "System.Collections.IEnumerator")
             ?.Methods.FirstOrDefault(m => m.Name == "MoveNext" && m.Signature.ParameterTypes.Length == 0);
+        var dispose = ienumerator.Interfaces
+            .FirstOrDefault(i => i.FullName == "System.IDisposable")
+            ?.Methods.FirstOrDefault(m => m.Name == "Dispose" && m.Signature.ParameterTypes.Length == 0);
 
-        if (getEnum is null || getCur is null || moveNext is null)
+        if (getEnum is null || getCur is null || moveNext is null || dispose is null)
             return null;
-        return (getEnum, getCur, moveNext);
+        return new EnumerationMethods(getEnum, getCur, moveNext, dispose);
     }
+
+    /// <summary>The interface methods an inline enumeration loop dispatches; see
+    /// <see cref="EnumerationDispatch"/>.</summary>
+    internal readonly record struct EnumerationMethods(
+        MethodInfo GetEnumerator, MethodInfo GetCurrent, MethodInfo MoveNext, MethodInfo Dispose);
 
     /// <summary>Marks the three enumeration interface methods used so each allocated
     /// IEnumerable&lt;T&gt; collection's enumerator impl is emitted, and notes the
     /// three interface types referenced so their C++ struct typedefs exist — the
-    /// bare-interface Join/Concat dual path names <c>IEnumerator&lt;T&gt;*</c> in its
-    /// (runtime-dead-for-arrays but still compiled) enumerate branch even when no
-    /// managed enumerator is ever allocated.</summary>
-    private void ReachEnumeration((MethodInfo GetEnumerator, MethodInfo GetCurrent, MethodInfo MoveNext) ed)
+    /// Join/Concat dual path over an operand that may be an array names
+    /// <c>IEnumerator&lt;T&gt;*</c> in its (runtime-dead-for-arrays but still compiled)
+    /// enumerate branch even when no managed enumerator is ever allocated.</summary>
+    private void ReachEnumeration(EnumerationMethods ed)
     {
         ReachUsedVirtual(ed.GetEnumerator);
         ReachUsedVirtual(ed.GetCurrent);
@@ -2342,6 +2351,15 @@ internal sealed partial class Compilation
         NoteReferencedType(ed.GetEnumerator.DeclaringClass);
         NoteReferencedType(ed.GetCurrent.DeclaringClass);
         NoteReferencedType(ed.MoveNext.DeclaringClass);
+    }
+
+    /// <summary><see cref="ReachEnumeration"/> for a lowered Join/Concat/AppendJoin
+    /// loop, which also disposes its enumerator.</summary>
+    private void ReachForEach(EnumerationMethods ed)
+    {
+        ReachEnumeration(ed);
+        ReachUsedVirtual(ed.Dispose);
+        NoteReferencedType(ed.Dispose.DeclaringClass);
     }
 
     /// <summary>Resolves the non-generic <c>System.Collections.IEnumerable</c> + its
@@ -5449,17 +5467,24 @@ internal sealed partial class Compilation
                                     Reach(ftsf);
                             }
                             // string.Join<T>(sep, IEnumerable<T>) / Concat<T>(IEnumerable<T>)
-                            // over a concrete collection (SortedSet, Sorted*.Keys/.Values)
-                            // emits an interface-enumeration loop, not an IL callvirt — so
-                            // the intrinsic GetEnumerator/MoveNext/Current edges are invisible
-                            // to ResolveCallTarget above. Reach those interface methods so
-                            // each *allocated* IEnumerable<T> collection's enumerator impl is
-                            // emitted (use-site gated on the Join/Concat<T> spec).
-                            if (MethodSpecParentTypeName(module, fms) == "System.String"
-                                && MethodSpecMethodName(module, fms) is "Join" or "Concat"
-                                && fms.DecodeSignature(SigProvider, m.Context).ToArray() is [{ } jt]
-                                && EnumerationDispatch(jt) is { } ed)
-                                ReachEnumeration(ed);
+                            // and StringBuilder.AppendJoin<T> over an operand not statically
+                            // an array or a List<T> emit an interface-enumeration loop, not an
+                            // IL callvirt — so the intrinsic GetEnumerator/MoveNext/Current/
+                            // Dispose edges are invisible to ResolveCallTarget above.
+                            // Reach those interface methods so each *allocated*
+                            // IEnumerable<T> collection's enumerator impl is emitted
+                            // (use-site gated on the spec).
+                            if ((MethodSpecParentTypeName(module, fms), MethodSpecMethodName(module, fms)) is
+                                    ("System.String", "Join" or "Concat") or ("System.Text.StringBuilder", "AppendJoin")
+                                && fms.DecodeSignature(SigProvider, m.Context).ToArray() is [{ } jt])
+                            {
+                                // Formatting boxes an enum even when no array, typeof or box
+                                // instruction independently roots its runtime identity.
+                                if (jt is { Kind: TypeKind.Class, Class.IsEnum: true })
+                                    NoteTypeIdentityClosure(jt);
+                                if (EnumerationDispatch(jt) is { } ed)
+                                    ReachForEach(ed);
+                            }
                         }
                         // The string-element non-generic overloads — Join(string,
                         // IEnumerable<string>) / Concat(IEnumerable<string>) — are a
@@ -5476,7 +5501,7 @@ internal sealed partial class Compilation
                                 && smr.DecodeMethodSignature(SigProvider, m.Context).ParameterTypes
                                        .Any(p => p is { Kind: TypeKind.Class, Class.GenericArity: > 0 })
                                 && EnumerationDispatch(TypeDesc.MakePrimitive(PrimitiveTypeCode.String)) is { } sed)
-                                ReachEnumeration(sed);
+                                ReachForEach(sed);
                         }
                         // Task.WhenAll/WhenAny over an IEnumerable<Task<T>> (List, a
                         // LINQ result, …) emits an inline interface-enumeration loop to

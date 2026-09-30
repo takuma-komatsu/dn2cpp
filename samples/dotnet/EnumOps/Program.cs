@@ -8,7 +8,7 @@ namespace EnumOps
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
@@ -27,8 +27,10 @@ namespace EnumOps
             EnumUnboxCompatSubset.Program.__GateEntry();
             EnumCctorRuntimeTypeSubset.Program.__GateEntry();
             EnumWide64Subset.Program.__GateEntry();
-            // APPENDED LAST: the preceding output remains an unchanged prefix.
             EnumParseSpanSubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-enum-join")
+                return;
+            EnumJoinSubset.Program.__GateEntry();
         }
     }
 }
