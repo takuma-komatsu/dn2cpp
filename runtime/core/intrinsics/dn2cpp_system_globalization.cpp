@@ -936,29 +936,84 @@ int32_t dn2cpp_str_compare(Dn2CppString* a, Dn2CppString* b, int32_t comparisonT
     return a->length - b->length;
 }
 
+static int32_t dn2cpp_compare_info_length(Dn2CppString* s, int32_t index, int32_t length)
+{
+    if (s == nullptr)
+        return length;
+    int32_t room = static_cast<int32_t>(
+        static_cast<uint32_t>(s->length) - static_cast<uint32_t>(index));
+    return room < length ? room : length;
+}
+
+// Whether CompareInfo.Compare accepts one side's window: a null string only at offset 0
+// and length 0, a string where offset and count are non-negative and end within it.
+static bool dn2cpp_compare_info_window_ok(Dn2CppString* s, int32_t offset, int32_t count)
+{
+    if (s == nullptr)
+        return offset == 0 && count == 0;
+    return offset >= 0 && count >= 0
+        && static_cast<int64_t>(offset) + count <= s->length;
+}
+
+// CompareInfo.Compare(string1, offset1, length1, string2, offset2, length2)'s bounds
+// check, which runs before it orders a null. A rejected window names the first negative
+// of length1, length2, offset1 and offset2, else string1 if its window is rejected, else
+// string2.
+static void dn2cpp_compare_info_check_windows(Dn2CppString* a, int32_t offset1,
+    Dn2CppString* b, int32_t offset2, int32_t length)
+{
+    int32_t length1 = dn2cpp_compare_info_length(a, offset1, length);
+    int32_t length2 = dn2cpp_compare_info_length(b, offset2, length);
+    if (dn2cpp_compare_info_window_ok(a, offset1, length1)
+        && dn2cpp_compare_info_window_ok(b, offset2, length2))
+        return;
+    if (length1 < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length1", length1);
+    if (length2 < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length2", length2);
+    if (offset1 < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offset1", offset1);
+    if (offset2 < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offset2", offset2);
+    int32_t lengthOfA = a != nullptr ? a->length : 0;
+    dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_OFFSET_LENGTH,
+        offset1 > lengthOfA - length1 ? "string1" : "string2");
+}
+
 // The (strA, indexA, strB, indexB, length, comparisonType) substring form —
 // each side contributes at most `length` code units starting at its index
 // (fewer when its string ends first), then compares like dn2cpp_str_compare:
 // signed gap of the first differing unit, else the contributed-length gap.
+// `viaCompareInfo` selects the validation of the culture overload, which hands
+// CompareInfo.Compare each side's clamped length and so names that callee's
+// length1/length2/offset1/offset2/string1/string2 instead of length/indexA/indexB.
 int32_t dn2cpp_str_compare_sub(Dn2CppString* a, int32_t indexA, Dn2CppString* b,
-                               int32_t indexB, int32_t length, int32_t comparisonType)
+                               int32_t indexB, int32_t length, int32_t comparisonType,
+                               int32_t viaCompareInfo)
 {
     comparisonType = dn2cpp_str_comparison_fold(comparisonType);
+    // CompareInfo.Compare checks both windows before it orders a null; the ordinal
+    // overloads order a null first and check the arguments of two present operands.
+    if (viaCompareInfo != 0)
+        dn2cpp_compare_info_check_windows(a, indexA, b, indexB, length);
     if (a == nullptr)
         return b == nullptr ? 0 : -1;
     if (b == nullptr)
         return 1;
-    // Range checks run only once both operands are present: .NET's null
-    // short-circuit precedes its argument validation. A negative length, a
-    // negative index, or an index past the end each raise a catchable
-    // ArgumentOutOfRangeException; an index equal to Length, and an index whose
-    // span overruns the end, are valid and clamp below.
-    if (length < 0)
-        dn2cpp_throw_argument_out_of_range();
-    if (indexA < 0 || indexB < 0)
-        dn2cpp_throw_argument_out_of_range();
-    if (indexA > a->length || indexB > b->length)
-        dn2cpp_throw_argument_out_of_range();
+    // Ordinal: a negative length, a negative index, or an index past the end each
+    // raise a catchable ArgumentOutOfRangeException; an index equal to Length, and
+    // an index whose span overruns the end, are valid and clamp below.
+    if (viaCompareInfo == 0)
+    {
+        if (length < 0)
+            dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+        if (indexA < 0 || indexB < 0)
+            dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL,
+                indexA < 0 ? "indexA" : "indexB");
+        if (indexA > a->length || indexB > b->length)
+            dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL,
+                indexA > a->length ? "indexA" : "indexB");
+    }
     int32_t la = a->length - indexA;
     if (la > length)
         la = length;
@@ -979,6 +1034,22 @@ int32_t dn2cpp_str_compare_sub(Dn2CppString* a, int32_t indexA, Dn2CppString* b,
             return static_cast<int32_t>(static_cast<uint16_t>(ca)) - static_cast<int32_t>(static_cast<uint16_t>(cb));
     }
     return la - lb;
+}
+
+int32_t dn2cpp_str_compare_sub_options(Dn2CppString* a, int32_t indexA, Dn2CppString* b,
+                                       int32_t indexB, int32_t length, int32_t options)
+{
+    dn2cpp_compare_info_check_windows(a, indexA, b, indexB, length);
+    constexpr uint32_t validLinguistic = 0x2000003fu;
+    constexpr uint32_t ordinalIgnoreCase = 0x10000000u;
+    constexpr uint32_t ordinal = 0x40000000u;
+    uint32_t flags = static_cast<uint32_t>(options);
+    if ((flags & ~validLinguistic) != 0 && flags != ordinalIgnoreCase && flags != ordinal)
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            dn2cpp_sr_text((flags & ordinal) != 0
+                ? DN2CPP_SR_COMPARE_OPTION_ORDINAL : DN2CPP_SR_INVALID_FLAG), "options");
+    int32_t comparisonType = ((flags & 1u) != 0 || flags == ordinalIgnoreCase) ? 5 : 4;
+    return dn2cpp_str_compare_sub(a, indexA, b, indexB, length, comparisonType, 1);
 }
 
 // OrdinalIgnoreCase equality over `length` UTF-16 code units of two raw buffers

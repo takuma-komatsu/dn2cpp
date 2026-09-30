@@ -78,6 +78,9 @@ internal static class BclMessages
         "ArgumentOutOfRange_EndIndexStartIndex",
         "ArgumentOutOfRange_IndexMustBeLess",
         "ArgumentOutOfRange_IndexMustBeLessOrEqual",
+        "ArgumentOutOfRange_OffsetLength",
+        "Argument_CompareOptionOrdinal",
+        "Argument_InvalidFlag",
         "Rank_MultiDimNotSupported",
         "Rank_MustMatch",
     ];
