@@ -36,6 +36,7 @@
 # IComparable-family dispatch / Intern), which need System.Linq.
 # Indexed culture comparisons validate clamped windows before null ordering and options.
 # Array CopyTo preserves the rejected Int32 and the bound in its argument faults.
+# Insert and ToCharArray preserve unsigned start faults and signed window precedence.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -85,6 +86,23 @@ gate_extra_asserts() {
         'throwing count evaluation=SIDJC' 'string array copy faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: array CopyTo witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-window-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string window faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string window faults ==' 'insert-negative actual=UInt32:4294967295' \
+        'insert-minimum actual=UInt32:2147483648' 'insert-null-before-index param=value' \
+        'array-negative-start actual=UInt32:4294967295' 'array-window actual=Int32:1' \
+        'array-minimum-length actual=Int32:0' 'array-negative-length actual=Int32:-1' \
+        'insert-empty-identity result=True' 'insert-empty-source-identity result=True' \
+        'array-empty-at-end result=0' 'independent array=abc:Qbc' \
+        'empty array identities=True:True:True' 'empty array after GC=True:True' \
+        'insert null evaluation=SIV' 'insert throwing value evaluation=SIV' \
+        'array null evaluation=SIL' 'array throwing length evaluation=SIL' \
+        'string window faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: string window witness missing: $line" >&2; exit 1; }
     done
 }
 

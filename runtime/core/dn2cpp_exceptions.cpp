@@ -548,15 +548,29 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
         dn2cpp_param_name_string(paramName), nullptr, nullptr);
 }
 
+[[noreturn]] static void dn2cpp_raise_out_of_range_bound(const char* key,
+    const char* paramName, Dn2CppString* valueText, Dn2CppString* boundText,
+    Dn2CppObject* actual)
+{
+    std::string args[3] = { std::string(paramName),
+        dn2cpp_sr_arg(valueText), dn2cpp_sr_arg(boundText) };
+    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
+        dn2cpp_sr_format(key, args, 3), dn2cpp_param_name_string(paramName),
+        actual, &args[1]);
+}
+
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
     const char* paramName, int32_t value, int32_t bound)
 {
-    std::string args[3] = { std::string(paramName),
-        dn2cpp_sr_arg(dn2cpp_format_int(value, 4, nullptr)),
-        dn2cpp_sr_arg(dn2cpp_format_int(bound, 4, nullptr)) };
-    dn2cpp_raise_argument(&dn2cpp_argument_out_of_range_exception_type,
-        dn2cpp_sr_format(key, args, 3), dn2cpp_param_name_string(paramName),
-        dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)), &args[1]);
+    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_int(value, 4, nullptr),
+        dn2cpp_format_int(bound, 4, nullptr), dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)));
+}
+
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,
+    const char* paramName, uint32_t value, uint32_t bound)
+{
+    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_uint(value, 4, nullptr),
+        dn2cpp_format_uint(bound, 4, nullptr), dn2cpp_box(&dn2cpp_uint32_type, &value, sizeof(value)));
 }
 
 [[noreturn]] void dn2cpp_throw_argument_null_param(const char* paramName)

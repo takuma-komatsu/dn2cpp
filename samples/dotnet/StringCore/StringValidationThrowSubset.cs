@@ -3,12 +3,121 @@ using System;
 
 namespace StringValidationThrowSubset
 {
-    // The String argument-validation faults, observed from a catch handler. The point
-    // is that execution continues afterwards: a runtime that aborted the process here
-    // would print nothing past the first case. Type name only — the messages are
-    // localized and carry parameter names that are not part of the contract.
+    // String argument faults must unwind normally. Window probes distinguish the
+    // unsigned start check's UInt32 value from the signed room and length checks.
     internal static class Program
     {
+        private static string _evaluation = "";
+
+        private static string Text(string step, string value)
+        {
+            _evaluation += step;
+            return value;
+        }
+
+        private static int Number(string step, int value)
+        {
+            _evaluation += step;
+            return value;
+        }
+
+        private static string ThrowingValue()
+        {
+            _evaluation += "V";
+            throw new InvalidOperationException();
+        }
+
+        private static int ThrowingLength()
+        {
+            _evaluation += "L";
+            throw new InvalidOperationException();
+        }
+
+        private static string Units(string value)
+        {
+            string result = "";
+            foreach (char c in value)
+                result += ((int)c).ToString("X4") + " ";
+            return result;
+        }
+
+        private static void ProbeWindow(string label, Func<string> body)
+        {
+            try
+            {
+                Console.WriteLine(label + " result=" + body());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(label + " " + ex.GetType().Name);
+                if (ex is ArgumentException argument)
+                {
+                    Console.WriteLine(label + " param=" + argument.ParamName);
+                    Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+                    if (ex is ArgumentOutOfRangeException range && range.ActualValue is not null)
+                        Console.WriteLine(label + " actual=" + range.ActualValue.GetType().Name + ":" + range.ActualValue);
+                }
+            }
+        }
+
+        internal static void RunWindows()
+        {
+            Console.WriteLine("== string window faults ==");
+            ProbeWindow("insert-negative", () => "abc".Insert(-1, "x"));
+            ProbeWindow("insert-minimum", () => "abc".Insert(int.MinValue, "x"));
+            ProbeWindow("insert-maximum", () => "abc".Insert(int.MaxValue, "x"));
+            ProbeWindow("insert-past-end", () => "abc".Insert(4, "x"));
+            ProbeWindow("insert-null-before-index", () => "abc".Insert(-1, null));
+            ProbeWindow("insert-empty-bad-index", () => "abc".Insert(-1, ""));
+            ProbeWindow("insert-null-receiver", () => ((string)null).Insert(-1, null));
+            ProbeWindow("insert-start", () => "abc".Insert(0, ">"));
+            ProbeWindow("insert-end", () => "abc".Insert(3, "<"));
+            ProbeWindow("insert-empty-identity", () => ReferenceEquals("abc".Insert(1, ""), "abc").ToString());
+            ProbeWindow("insert-empty-source-identity", () => ReferenceEquals("".Insert(0, "abc"), "abc").ToString());
+            ProbeWindow("insert-utf16", () => Units("\u0000\uD800Z".Insert(2, "\uDC00")));
+
+            ProbeWindow("array-negative-start", () => new string("abc".ToCharArray(-1, -1)));
+            ProbeWindow("array-minimum-start", () => new string("abc".ToCharArray(int.MinValue, int.MinValue)));
+            ProbeWindow("array-maximum-start", () => new string("abc".ToCharArray(int.MaxValue, -1)));
+            ProbeWindow("array-past-end-before-length", () => new string("abc".ToCharArray(4, -1)));
+            ProbeWindow("array-window", () => new string("abc".ToCharArray(1, 4)));
+            ProbeWindow("array-maximum-length", () => new string("abc".ToCharArray(0, int.MaxValue)));
+            ProbeWindow("array-negative-length", () => new string("abc".ToCharArray(0, -1)));
+            ProbeWindow("array-minimum-length", () => new string("abc".ToCharArray(0, int.MinValue)));
+            ProbeWindow("array-wrapped-room", () => new string("abc".ToCharArray(0, int.MinValue + 1)));
+            ProbeWindow("array-end-negative-length", () => new string("abc".ToCharArray(3, -1)));
+            ProbeWindow("array-null-receiver", () => new string(((string)null).ToCharArray(-1, -1)));
+            ProbeWindow("array-empty-at-end", () => "abc".ToCharArray(3, 0).Length.ToString());
+            ProbeWindow("array-empty-source", () => "".ToCharArray(0, 0).Length.ToString());
+            char[] empty = Array.Empty<char>();
+            Console.WriteLine("empty array identities=" + ReferenceEquals(empty, "abc".ToCharArray(3, 0))
+                + ":" + ReferenceEquals(empty, "".ToCharArray(0, 0))
+                + ":" + ReferenceEquals(empty, "".ToCharArray()));
+            GC.Collect();
+            Console.WriteLine("empty array after GC=" + ReferenceEquals(empty, "abc".ToCharArray(1, 0))
+                + ":" + (empty.GetType() == typeof(char[])));
+            ProbeWindow("array-window-copy", () => new string("abcde".ToCharArray(1, 3)));
+            ProbeWindow("array-utf16", () => Units(new string("A\u0000\uD800\uDC00Z".ToCharArray(1, 3))));
+            string source = "abc";
+            char[] copy = source.ToCharArray(0, 3);
+            copy[0] = 'Q';
+            Console.WriteLine("independent array=" + source + ":" + new string(copy));
+
+            _evaluation = "";
+            ProbeWindow("insert evaluated null", () => Text("S", null).Insert(Number("I", -1), Text("V", null)));
+            Console.WriteLine("insert null evaluation=" + _evaluation);
+            _evaluation = "";
+            ProbeWindow("insert throwing value", () => Text("S", null).Insert(Number("I", -1), ThrowingValue()));
+            Console.WriteLine("insert throwing value evaluation=" + _evaluation);
+            _evaluation = "";
+            ProbeWindow("array evaluated null", () => new string(Text("S", null).ToCharArray(Number("I", -1), Number("L", -1))));
+            Console.WriteLine("array null evaluation=" + _evaluation);
+            _evaluation = "";
+            ProbeWindow("array throwing length", () => new string(Text("S", null).ToCharArray(Number("I", -1), ThrowingLength())));
+            Console.WriteLine("array throwing length evaluation=" + _evaluation);
+            Console.WriteLine("string window faults end");
+        }
+
         private static void Catches(string what, Action body)
         {
             try

@@ -47,6 +47,7 @@
 # Runtime-raised argument fields and the shared-source whitespace guard are compared
 # with .NET. Separate fixtures cover layouts without explicit exception constructors
 # and Message-only fallback, including NUL and unpaired UTF-16 surrogates.
+# UInt32 and Int32 bound messages retain their suffixes after a collection.
 source "$(dirname "$0")/_common.sh"
 
 fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
@@ -101,7 +102,10 @@ gate_extra_asserts() {
                 "Value cannot be null. (Parameter 'a<nul>b')" \
                 "Value cannot be null. (Parameter 'a<sur>b')" \
                 "a<nul>b (Parameter 'Argument is whitespace')" \
-                "a<sur>b (Parameter 'Argument is whitespace')"; do
+                "a<sur>b (Parameter 'Argument is whitespace')" \
+                '-- bound Message fallback --' 'bound Message fallback end' \
+                "insert unsigned: startIndex ('4294967295') must be less than or equal to '3'. (Parameter 'startIndex')|Actual value was 4294967295." \
+                "array wrapped room: startIndex ('0') must be less than or equal to '-2147483645'. (Parameter 'startIndex')|Actual value was 0."; do
                 grep -Fxq -- "$line" <<< "$actual" \
                     || { echo "FAIL: fallback argument witness missing: $line" >&2; exit 1; }
             done
