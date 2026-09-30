@@ -1752,20 +1752,24 @@ internal sealed partial class MethodCompiler
                 return;
             }
             // new string(char[]) / new string(char[], int start, int length)
-            if (sps is [{ Kind: TypeKind.SZArray }] or [{ Kind: TypeKind.SZArray }, _, _])
+            if (sps is [{ Kind: TypeKind.SZArray,
+                         Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } }])
             {
-                string start = "0";
-                string length = null!;
-                if (sps.Length == 3)
-                {
-                    length = Pop().Expr;
-                    start = Pop().Expr;
-                }
                 var arr = Pop();
-                if (sps.Length == 1)
-                    length = $"((Dn2CppArray*)({arr.Expr}))->length";
                 Push(StackKind.Ref, "Dn2CppString*",
-                    $"dn2cpp_string_from_chars((char16_t*)dn2cpp_elem_addr((Dn2CppArrayN*)({arr.Expr}), {start}), {length})");
+                    $"dn2cpp_string_from_chararray((Dn2CppArrayN*)({arr.Expr}))");
+                return;
+            }
+            if (sps is [{ Kind: TypeKind.SZArray,
+                         Element: { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Char } },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
+                        { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }])
+            {
+                var length = Pop();
+                var start = Pop();
+                var arr = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_string_from_chararray_slice((Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {length.Expr})");
                 return;
             }
             // new string(char* value) — a single NUL-terminated pointer (no explicit

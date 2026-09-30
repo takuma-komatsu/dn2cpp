@@ -51,6 +51,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-window-faults")
                 return;
             StringValidationThrowSubset.Program.RunWindows();
+            if (args.Length > 0 && args[0] == "before-array-ctors")
+                return;
+            StringFromCharsSubset.Program.RunArrays();
         }
     }
 }

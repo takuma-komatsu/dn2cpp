@@ -37,6 +37,7 @@
 # Indexed culture comparisons validate clamped windows before null ordering and options.
 # Array CopyTo preserves the rejected Int32 and the bound in its argument faults.
 # Insert and ToCharArray preserve unsigned start faults and signed window precedence.
+# Array string constructors copy UTF-16, validate windows and share String.Empty.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -103,6 +104,26 @@ gate_extra_asserts() {
         'string window faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: string window witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-array-ctors)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string array constructors ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string array constructors ==' \
+        'whole-utf16 result=0041 0000 D800 DC00 005A ' \
+        'slice-utf16 result=0000 D800 DC00 ' \
+        'whole empties=True:True:True:True:True' 'slice empties=True:True:True' \
+        'ctor empty after GC=True:True' 'ctor fresh=False:False' \
+        'ctor independent=abc:bc:aQc' 'null-before-bounds param=value' \
+        'start-before-length actual=Int32:-1' 'start-minimum actual=Int32:-2147483648' \
+        'length-before-window param=length' 'length-minimum actual=Int32:-2147483648' \
+        'start-maximum actual=Int32:2147483647' 'length-maximum actual=Int32:0' \
+        'slice-window param=startIndex' 'empty-bad-start actual=Int32:1' \
+        'whole null evaluation=A' 'slice null evaluation=AIL' \
+        'slice copy evaluation=AIL' 'slice throwing length evaluation=AIL' \
+        'slice throwing array evaluation=A' 'string array constructors end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: string array constructor witness missing: $line" >&2; exit 1; }
     done
 }
 

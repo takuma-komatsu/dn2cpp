@@ -3663,6 +3663,8 @@ char16_t dn2cpp_convert_i32_to_char(int32_t v);
 // alias or be mutated later, so unlike _literal these copy). _repeat_char fills the
 // `new string(char, count)` form.
 Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length);
+Dn2CppString* dn2cpp_string_from_chararray(Dn2CppArrayN* value);
+Dn2CppString* dn2cpp_string_from_chararray_slice(Dn2CppArrayN* value, int32_t start, int32_t length);
 // ISpanFormattable write of a formatted string into a char span (the .NET TryFormat
 // contract): fits -> copy + *written = length + 1; too short -> untouched + *written = 0 + 0.
 int32_t dn2cpp_string_try_copy_to_span(Dn2CppString* s, char16_t* dest, int32_t destLen, int32_t* written);
