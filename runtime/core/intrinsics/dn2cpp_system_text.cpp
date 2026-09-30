@@ -68,6 +68,28 @@ Dn2CppStringBuilder* dn2cpp_sb_append_str(Dn2CppStringBuilder* sb, Dn2CppString*
     return sb;
 }
 
+Dn2CppStringBuilder* dn2cpp_sb_append_str_range(Dn2CppStringBuilder* sb, Dn2CppString* value,
+                                            int32_t startIndex, int32_t count)
+{
+    if (startIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex",
+            dn2cpp_format_int(startIndex, 4, nullptr));
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count",
+            dn2cpp_format_int(count, 4, nullptr));
+    if (value == nullptr)
+    {
+        if (startIndex == 0 && count == 0)
+            return sb;
+        dn2cpp_throw_argument_null_param("value");
+    }
+    if (count == 0)
+        return sb;
+    if (startIndex > value->length - count)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
+    return dn2cpp_sb_append_str(sb, dn2cpp_str_substring(value, startIndex, count));
+}
+
 // new StringBuilder(string): .NET seeds Capacity = max(16, value.Length), so
 // allocate that up front (not via the growth path, which would round up by
 // doubling and overshoot) and copy the content in.

@@ -7395,6 +7395,8 @@ Dn2CppStringBuilder* dn2cpp_sb_new_cap(int32_t capacity);
 Dn2CppStringBuilder* dn2cpp_sb_new_str(Dn2CppString* s);
 Dn2CppStringBuilder* dn2cpp_sb_new_str_cap(Dn2CppString* s, int32_t capacity);
 Dn2CppStringBuilder* dn2cpp_sb_append_str(Dn2CppStringBuilder* sb, Dn2CppString* s);
+Dn2CppStringBuilder* dn2cpp_sb_append_str_range(Dn2CppStringBuilder* sb, Dn2CppString* value,
+                                            int32_t startIndex, int32_t count);
 Dn2CppStringBuilder* dn2cpp_sb_append_char(Dn2CppStringBuilder* sb, char16_t c);
 // Appends Environment.NewLine ("\r\n" on Windows, "\n" elsewhere) — used by the
 // AppendLine() family instead of a single append_char('\n'), so StringBuilder's
