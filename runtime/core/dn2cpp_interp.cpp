@@ -566,9 +566,12 @@ Dn2CppObject* intrinsic_string_concat4(Dn2CppObject* const* a)
 }
 // String.Concat(string[]) — the params fallback for 5+ operands. Elements go
 // through the same ToString-formatting helper the AOT lowering uses (a string
-// element passes through unchanged, nulls contribute nothing).
+// element passes through unchanged, nulls contribute nothing); a null array is
+// .NET's ArgumentNullException, as the AOT lowering raises it.
 Dn2CppObject* intrinsic_string_concat_array(Dn2CppString* arr)
 {
+    if (arr == nullptr)
+        dn2cpp_throw_argument_null_param("values");
     return reinterpret_cast<Dn2CppObject*>(
         dn2cpp_string_concat_objects(reinterpret_cast<Dn2CppArrayRef*>(arr)));
 }
@@ -751,8 +754,9 @@ bool intrinsic_receiver_ok(uint32_t recvKind, const Dn2CppObject* self)
 //
 // A NULL argument passes every kind: `Console.WriteLine((string)null)`,
 // `String.Concat(null, s)` and `String.Concat((string[])null)` are all
-// legitimate, and each helper handles null itself. The null test sits INSIDE
-// each case, not ahead of the switch, so it cannot launder kArgUnspecified.
+// legitimate calls, and each helper answers null as .NET does. The null test
+// sits INSIDE each case, not ahead of the switch, so it cannot launder
+// kArgUnspecified.
 bool intrinsic_arg_ok(uint32_t argKind, const Dn2CppObject* a)
 {
     switch (argKind)

@@ -81,6 +81,9 @@ public class Counter
     public static Counter FirstProbe;
     public static Counter LastProbe;
 
+    // Invoked after the main transcript to compare patch Concat with a managed oracle.
+    public static Describer? ConcatProbe;
+
     // Hands a QuotaEx to the HotUpdateInvokerPatch / HotUpdateFtnPatch fixtures
     // through a well-known static on a DIFFERENT type: those patches must leave
     // "HotUpdateBase.QuotaEx" with exactly ONE user in their baked image (a
@@ -544,6 +547,8 @@ internal static class Program
         Type patched = Type.GetType("HotUpdatePatch.TaggedCounter");
         Console.WriteLine(patched != null ? patched.FullName : "patch type not registered");
         Console.WriteLine("base: done");
+        if (Counter.ConcatProbe is not null)
+            Console.WriteLine(Counter.ConcatProbe());
     }
 
     // The AOT half of the interleave chain, kept out of Main so the trace

@@ -54,6 +54,9 @@
 #     import (bound signature vs the delegate's Invoke row). Both sit at the
 #     `newobj` / frame boundary rather than at the dereference, because the
 #     receiver tests presume a reference slot holds an object.
+#   - String.Concat rejects a null string[] and accepts empty arrays and null
+#     elements. These patch cases run after the original transcript and match
+#     a live managed oracle compiled from the same source, through both encodings.
 #
 # The expected output is fixed (not a real-.NET diff): on real .NET,
 # Dn2Cpp.Runtime.HotUpdate.Run has no interpreter to run a BPI against — the
@@ -130,6 +133,7 @@ field_native='HotUpdateBase.Counter=native'
 echo "== 1/5 Building base + patch C# assemblies =="
 build_proj samples/dotnet/HotUpdateBase/HotUpdateBase.csproj
 build_proj samples/dotnet/HotUpdatePatch/HotUpdatePatch.csproj
+build_gate_proj gates/fixtures/interpreted-concat-oracle/InterpretedConcatOracle.csproj
 build_proj samples/dotnet/HotUpdateBadPatch/HotUpdateBadPatch.csproj
 build_proj samples/dotnet/HotUpdateBadPatchItf/HotUpdateBadPatchItf.csproj
 build_proj samples/dotnet/HotUpdateBadPatchDelegate/HotUpdateBadPatchDelegate.csproj
@@ -152,6 +156,7 @@ build_proj samples/dotnet/HotUpdateCoreLibBadPatch/HotUpdateCoreLibBadPatch.cspr
 build_proj samples/dotnet/InterpBench/InterpBench.csproj
 base_app="samples/dotnet/HotUpdateBase/bin/$CONFIG/$TFM/HotUpdateBase.dll"
 patch_app="samples/dotnet/HotUpdatePatch/bin/$CONFIG/$TFM/HotUpdatePatch.dll"
+concat_oracle_app="gates/fixtures/interpreted-concat-oracle/bin/$CONFIG/$TFM/InterpretedConcatOracle.dll"
 bad_app="samples/dotnet/HotUpdateBadPatch/bin/$CONFIG/$TFM/HotUpdateBadPatch.dll"
 baditf_app="samples/dotnet/HotUpdateBadPatchItf/bin/$CONFIG/$TFM/HotUpdateBadPatchItf.dll"
 baddg_app="samples/dotnet/HotUpdateBadPatchDelegate/bin/$CONFIG/$TFM/HotUpdateBadPatchDelegate.dll"
@@ -191,6 +196,7 @@ tenv="tenv:${DN2CPP_MAX_GENERIC_DEPTH:-}/${DN2CPP_MAX_INSTANTIATIONS:-}/${DN2CPP
 # not be served a green recorded against the previous one.
 if gate_cache_check "$OUT" "hotupdate-subset|cli:$(_gate_cli_hash)|$tenv|field-metadata:$field_packed/$field_native|corelib:$(resolve_net10_corelib)" \
         "$base_app" "$patch_app" "$bad_app" "$baditf_app" "$baddg_app" \
+        "$concat_oracle_app" \
         "$badmc_app" "$dir1_app" "$dir2_app" "$dgrecv_app" "$dgsig_app" \
         samples/dotnet/HotUpdateCoreLibBase/bin/$CONFIG/$TFM/HotUpdateCoreLibBase.dll \
         samples/dotnet/HotUpdateCoreLibPatch/bin/$CONFIG/$TFM/HotUpdateCoreLibPatch.dll \
@@ -470,6 +476,13 @@ delegate GetType: HotUpdateBase.Counter
 base caught: escaped to base
 HotUpdatePatch.TaggedCounter
 base: done"
+expected_prefix="$expected"
+concat_oracle=$(dotnet "$concat_oracle_app")
+concat_oracle=$(strip_cr_win "$concat_oracle")
+grep -Fxq 'null: ArgumentNullException' <<< "$concat_oracle" \
+    || { echo "FAIL: managed null Concat witness missing" >&2; exit 1; }
+expected="$expected
+$concat_oracle"
 # Exit status captured explicitly (`$(...)` inline would swallow it): a base
 # that aborts in teardown AFTER printing the full transcript must not pass.
 set +e
@@ -477,6 +490,9 @@ hu_out=$("./$OUT/HotUpdateBase" "$OUT/HotUpdatePatch.bpi"); hu_rc=$?
 set -e
 assert_output "$(strip_cr_win "$hu_out")" "$expected"
 assert_exit_code "$hu_rc" 0
+normalized=$(strip_cr_win "$hu_out")
+prefix=${normalized%%$'\n== interpreted Concat arrays =='*}
+assert_output "$prefix" "$expected_prefix"
 
 echo "-- stack format: --patch-stackcode bake replays the identical transcript --"
 # The same patch baked in the v1 stack code format (Header.flags bit0 clear):
