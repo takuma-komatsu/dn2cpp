@@ -791,21 +791,28 @@ Dn2CppArrayN* dn2cpp_string_to_chararray_range(Dn2CppString* s, int32_t startInd
     return arr;
 }
 
-// String.CopyTo(sourceIndex, char[], destinationIndex, count) — the legacy
-// array form. .NET's validation order: a null destination is an
-// ArgumentNullException first (even alongside a bad count), then the range
-// checks raise a catchable ArgumentOutOfRangeException.
+// CopyTo's source-window check names sourceIndex but reports count as the
+// actual value against Length - sourceIndex. Destination room precedes its sign.
 void dn2cpp_str_copyto_chararray(Dn2CppString* s, int32_t sourceIndex, Dn2CppArrayN* destination,
                                  int32_t destinationIndex, int32_t count)
 {
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (destination == nullptr)
-        dn2cpp_throw_argument_null();
-    if (count < 0 || sourceIndex < 0 || count > s->length - sourceIndex)
-        dn2cpp_throw_argument_out_of_range();
-    if (destinationIndex < 0 || destinationIndex > destination->length - count)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_null_param("destination");
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+    if (sourceIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "sourceIndex", sourceIndex);
+    if (count > s->length - sourceIndex)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "sourceIndex", count, s->length - sourceIndex);
+    if (destinationIndex > destination->length - count)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "destinationIndex", destinationIndex, destination->length - count);
+    if (destinationIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE,
+            "destinationIndex", destinationIndex);
     if (count > 0)
         std::memcpy(reinterpret_cast<char16_t*>(destination->data) + destinationIndex,
                     s->chars + sourceIndex, static_cast<size_t>(count) * sizeof(char16_t));

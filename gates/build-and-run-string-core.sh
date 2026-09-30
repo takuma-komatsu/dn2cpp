@@ -35,6 +35,7 @@
 # the String-as-interface sections (LINQ over a string / CharEnumerator /
 # IComparable-family dispatch / Intern), which need System.Linq.
 # Indexed culture comparisons validate clamped windows before null ordering and options.
+# Array CopyTo preserves the rejected Int32 and the bound in its argument faults.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -70,6 +71,20 @@ gate_extra_asserts() {
         'throwing culture evaluation=AIBJLC' 'indexed culture compare end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: indexed compare witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-copyto-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string array copy faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string array copy faults ==' 'source-window actual=Int32:4' \
+        'source-past-end actual=Int32:0' 'destination-window actual=Int32:1' \
+        'destination-room-before-sign actual=Int32:-1' \
+        'count-minimum actual=Int32:-2147483648' \
+        'source-window destination=....' 'copy-window destination=.bcd.' \
+        'empty-at-end copied' 'null receiver evaluation=SIDJC' \
+        'throwing count evaluation=SIDJC' 'string array copy faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: array CopyTo witness missing: $line" >&2; exit 1; }
     done
 }
 

@@ -45,6 +45,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-indexed-compare")
                 return;
             IndexedCultureCompareSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-copyto-faults")
+                return;
+            StringCopyToSubset.Program.RunFaults();
         }
     }
 }
