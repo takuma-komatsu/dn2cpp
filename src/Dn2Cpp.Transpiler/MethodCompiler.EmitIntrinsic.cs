@@ -291,7 +291,7 @@ internal sealed partial class MethodCompiler
     /// on.</para></summary>
     private bool TryEmitIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
-        if (CallIsVirtual && sig.Header.IsInstance && name != ".ctor" && ChecksBlockingCallvirtReceiver(declType))
+        if (CallIsVirtual && sig.Header.IsInstance && name != ".ctor" && ChecksCallvirtReceiver(declType))
             NullCheckReceiverUnder(sig.ParameterTypes.Length);
         if (s_intrinsicProbesByType.TryGetValue(declType, out var chain))
         {
@@ -309,14 +309,19 @@ internal sealed partial class MethodCompiler
         return false;
     }
 
-    private static bool ChecksBlockingCallvirtReceiver(string declType) => declType is
+    private static bool ChecksCallvirtReceiver(string declType) => declType is
         "System.Threading.Thread"
         or "System.Threading.SemaphoreSlim"
         or "System.Threading.ManualResetEventSlim"
         or "System.Threading.WaitHandle"
         or "System.Threading.CountdownEvent"
         or "System.Threading.Barrier"
-        or "System.Threading.ReaderWriterLockSlim";
+        or "System.Threading.ReaderWriterLockSlim"
+        or "System.Threading.Tasks.Task"
+        or "System.Threading.Tasks.TaskCompletionSource"
+        or "System.Threading.Tasks.ParallelLoopState"
+        or "System.Threading.Tasks.ParallelOptions"
+        or "System.Collections.Concurrent.BlockingCollection";
 
     // callvirt checks after argument evaluation and before the callee converts a timeout.
     private void NullCheckReceiverUnder(int argCount)

@@ -95,6 +95,26 @@ static Dn2CppObject* dn2cpp_blockingcoll_dequeue_locked(Dn2CppBlockingCollection
     return v;
 }
 
+// Real .NET's texts, from System.Collections.Concurrent's resources rather than the
+// CoreLib message table the emitter folds in.
+static const char* const kBlockingTimeout =
+    "The specified timeout must represent a value between -1 and 2147483647, inclusive.";
+static const char* const kBlockingCompleted =
+    "The collection has been marked as complete with regards to additions.";
+static const char* const kBlockingCompletedWhileAdding =
+    "CompleteAdding may not be used concurrently with additions to the collection.";
+static const char* const kBlockingCantTakeWhenDone =
+    "The collection argument is empty and has been marked as complete with regards to additions.";
+
+// The timeout check precedes every state check, the completed one included.
+static void dn2cpp_blockingcoll_require_timeout(int32_t timeoutMs)
+{
+    if (timeoutMs < -1)
+        dn2cpp_throw_argument_out_of_range_actual(kBlockingTimeout, "millisecondsTimeout",
+            dn2cpp_box(&dn2cpp_int32_type, &timeoutMs, sizeof(timeoutMs)),
+            dn2cpp_format_int(timeoutMs, 4, nullptr));
+}
+
 Dn2CppObject* dn2cpp_blockingcoll_new(int32_t boundedCapacity)
 {
     auto* c = static_cast<Dn2CppBlockingCollection*>(dn2cpp_alloc(sizeof(Dn2CppBlockingCollection)));
@@ -117,25 +137,27 @@ void dn2cpp_blockingcoll_add(Dn2CppObject* coll, Dn2CppObject* boxedOrRef)
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
     if (ctl->boundedCapacity > 0)
         ctl->notFull.wait(lk, [&] { return ctl->count < ctl->boundedCapacity || ctl->addingCompleted; });
+    // The lock was released only inside the wait, so a completion seen now came during it.
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_invalid_operation_msg(kBlockingCompletedWhileAdding);
     dn2cpp_blockingcoll_enqueue_locked(c, boxedOrRef);
     ctl->notEmpty.notify_one();
 }
 
 // TryAdd(item [, timeout]): like Add but bounded, returns 0 instead of blocking past
-// the timeout (0 = single immediate attempt, negative = infinite). Still throws
+// the timeout (0 = single immediate attempt, -1 = infinite). Still throws
 // InvalidOperationException when adding is completed.
 int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef, int32_t timeoutMs)
 {
+    dn2cpp_blockingcoll_require_timeout(timeoutMs);
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);
     if (ctl->addingCompleted)
-        dn2cpp_throw_invalid_operation();
+        dn2cpp_throw_invalid_operation_msg(kBlockingCompleted);
     if (ctl->boundedCapacity > 0 && ctl->count >= ctl->boundedCapacity)
     {
         if (timeoutMs == 0)
@@ -146,7 +168,7 @@ int32_t dn2cpp_blockingcoll_tryadd(Dn2CppObject* coll, Dn2CppObject* boxedOrRef,
             ctl->notFull.wait_for(lk, std::chrono::milliseconds(timeoutMs),
                 [&] { return ctl->count < ctl->boundedCapacity || ctl->addingCompleted; });
         if (ctl->addingCompleted)
-            dn2cpp_throw_invalid_operation();
+            dn2cpp_throw_invalid_operation_msg(kBlockingCompletedWhileAdding);
         if (ctl->count >= ctl->boundedCapacity)
             return 0; // timed out, still full
     }
@@ -164,16 +186,17 @@ Dn2CppObject* dn2cpp_blockingcoll_take(Dn2CppObject* coll)
     std::unique_lock<std::mutex> lk(ctl->mtx);
     ctl->notEmpty.wait(lk, [&] { return ctl->count > 0 || ctl->addingCompleted; });
     if (ctl->count == 0)
-        dn2cpp_throw_invalid_operation(); // completed && empty
+        dn2cpp_throw_invalid_operation_msg(kBlockingCantTakeWhenDone);
     Dn2CppObject* v = dn2cpp_blockingcoll_dequeue_locked(c);
     ctl->notFull.notify_one();
     return v;
 }
 
 // TryTake(out item [, timeout]): 1 + *out set on success; 0 + *out = nullptr on
-// timeout or completed-empty (0 = single immediate attempt, negative = infinite).
+// timeout or completed-empty (0 = single immediate attempt, -1 = infinite).
 int32_t dn2cpp_blockingcoll_trytake(Dn2CppObject* coll, int32_t timeoutMs, Dn2CppObject** out)
 {
+    dn2cpp_blockingcoll_require_timeout(timeoutMs);
     auto* c = static_cast<Dn2CppBlockingCollection*>(coll);
     auto* ctl = c->ctl;
     std::unique_lock<std::mutex> lk(ctl->mtx);

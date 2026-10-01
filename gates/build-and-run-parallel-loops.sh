@@ -25,6 +25,14 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ParallelLoops validation witness missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-callback-validation)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== argument checks ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== argument checks ==' 'actions run: 0' 'argument checks end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: Parallel callback validation witness missing: $line" >&2; exit 1; }
+    done
 }
 
 corelib_diff_gate ParallelLoops
