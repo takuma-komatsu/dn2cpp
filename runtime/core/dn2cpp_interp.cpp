@@ -5582,11 +5582,12 @@ namespace
 {
 
 // UTF-8 copy of a managed path string, NUL-terminated. Atomic GC memory: the
-// copy holds no pointers and dies with the call.
-char* hotupdate_path_utf8(Dn2CppString* path)
+// copy holds no pointers and dies with the call. A null path is the
+// ArgumentNullException naming the HotUpdate parameter `paramName`.
+char* hotupdate_path_utf8(Dn2CppString* path, const char* paramName)
 {
     if (path == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param(paramName);
     int32_t utf8Len = dn2cpp_string_to_utf8(path, nullptr, 0);
     char* buf = static_cast<char*>(dn2cpp_alloc_atomic(static_cast<size_t>(utf8Len) + 1));
     if (utf8Len > 0)
@@ -5653,7 +5654,7 @@ uint8_t* hotupdate_read_file(const char* path, size_t* outLen, const char** err)
 // other loader failure.
 Dn2CppInterpImage* hotupdate_load_path(Dn2CppString* bpiPath)
 {
-    char* path = hotupdate_path_utf8(bpiPath);
+    char* path = hotupdate_path_utf8(bpiPath, "bpiPath");
     size_t len = 0;
     const char* err = nullptr;
     uint8_t* blob = hotupdate_read_file(path, &len, &err);
@@ -5683,7 +5684,7 @@ void dn2cpp_hotupdate_load(Dn2CppString* bpiPath)
 
 int32_t dn2cpp_hotupdate_load_dir(Dn2CppString* dirPath)
 {
-    char* dir = hotupdate_path_utf8(dirPath);
+    char* dir = hotupdate_path_utf8(dirPath, "dirPath");
 
     // A missing or unopenable patch directory is the normal fresh-install
     // state — nothing deployed yet — not an error.

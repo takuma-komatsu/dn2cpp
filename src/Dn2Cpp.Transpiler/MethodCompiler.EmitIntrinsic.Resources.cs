@@ -14,7 +14,9 @@ internal sealed partial class MethodCompiler
     /// the alternative to a loud miss is a call to a C++ symbol nothing defines.</para>
     ///
     /// <para>The ctors are intercepted at <c>newobj</c>
-    /// (<see cref="MethodCompiler"/>'s Newobj arm), not here.</para></summary>
+    /// (<see cref="MethodCompiler"/>'s Newobj arm), not here. A callvirt receiver
+    /// arrives null-checked (<see cref="ChecksCallvirtReceiver"/>), so a null one faults
+    /// in ReleaseAllResources and GetStream too, which never read it.</para></summary>
     private bool TryEmitResourcesIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         if (declType != "System.Resources.ResourceManager")

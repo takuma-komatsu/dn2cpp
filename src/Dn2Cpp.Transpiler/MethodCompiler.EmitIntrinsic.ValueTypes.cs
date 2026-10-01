@@ -261,7 +261,8 @@ internal sealed partial class MethodCompiler
                 Emit($"{vt} = {DecVal(v)};");
                 Emit($"{lot} = {DecVal(lo)};");
                 Emit($"{hit} = {DecVal(hi)};");
-                Emit($"if (dn2cpp_decimal_cmp({hit}, {lot}) < 0) dn2cpp_throw_argument();");
+                Emit($"if (dn2cpp_decimal_cmp({hit}, {lot}) < 0) "
+                    + $"dn2cpp_throw_min_max(dn2cpp_decimal_to_string({lot}), dn2cpp_decimal_to_string({hit}));");
                 Push(StackKind.Struct, "Dn2CppDecimal",
                     $"(dn2cpp_decimal_cmp({vt}, {lot}) < 0 ? {lot} : (dn2cpp_decimal_cmp({vt}, {hit}) > 0 ? {hit} : {vt}))");
                 return true;
@@ -1892,6 +1893,18 @@ internal sealed partial class MethodCompiler
         : name.Contains("NotSupported") ? "dn2cpp_throw_not_supported();"
         : "dn2cpp_throw_invalid_operation();";
 
+    /// <summary>The argument-family trap of <see cref="ThrowHelperTrap"/> naming
+    /// <paramref name="paramName"/>, over the type's default sentence; null for a name that
+    /// method maps outside the family. Same arm order as that method.</summary>
+    private static string? ThrowHelperNamedTrap(string name, string paramName) =>
+        name.Contains("IndexOutOfRange") ? null
+        : name.Contains("ArgumentOutOfRange")
+            ? $"dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, \"{CppLiteralBody(paramName)}\");"
+        : name.Contains("ArgumentNull") ? $"dn2cpp_throw_argument_null_param(\"{CppLiteralBody(paramName)}\");"
+        : name.Contains("Argument")
+            ? $"dn2cpp_throw_argument_param(DN2CPP_SR_ARGUMENT, \"{CppLiteralBody(paramName)}\");"
+        : null;
+
     /// <summary>The runtime type-info handle the same name selects, for the message-carrying
     /// trap. Kept beside <see cref="ThrowHelperTrap"/> and in the same order for the reason
     /// stated there — a name that lands on the wrong arm here lands on the wrong catch.</summary>
@@ -1959,7 +1972,11 @@ internal sealed partial class MethodCompiler
             text = Comp.CoreLibSrText(defaultKey);
         if (text is null)
         {
-            Emit(ThrowHelperTrap(name));
+            // The type's default sentence still names the parameter the call site states.
+            string? named = ValueOf(argSrc, popped) is { } nv
+                && ThrowHelperResources.ArgumentName(Module, nv) is { } np
+                ? ThrowHelperNamedTrap(name, np) : null;
+            Emit(named ?? ThrowHelperTrap(name));
             return;
         }
         string ti = ThrowHelperTypeInfo(name);

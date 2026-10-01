@@ -559,9 +559,10 @@ internal sealed partial class MethodCompiler
                 when sig.ParameterTypes is [{ IsString: true }]:
             {
                 var n = Pop();
-                string helper = name == "Load"
-                    ? "dn2cpp_assembly_load" : "dn2cpp_assembly_load_partial";
-                Push(StackKind.Ref, "const char*", $"{helper}({Cast(n, "Dn2CppString*")})");
+                string call = name == "Load"
+                    ? $"dn2cpp_assembly_load({Cast(n, "Dn2CppString*")}, \"assemblyName\")"
+                    : $"dn2cpp_assembly_load_partial({Cast(n, "Dn2CppString*")})";
+                Push(StackKind.Ref, "const char*", call);
                 return true;
             }
             // Assembly.Load(AssemblyName): the same registry lookup keyed on the
@@ -583,7 +584,7 @@ internal sealed partial class MethodCompiler
                 Emit($"{recv} = {Cast(an, anCls.CppStructName + "*")};");
                 string nm = NewTemp("Dn2CppString*");
                 Emit($"{nm} = ({recv} == nullptr) ? nullptr : {DirectCall(getName, new List<string> { recv })};");
-                Push(StackKind.Ref, "const char*", $"dn2cpp_assembly_load({nm})");
+                Push(StackKind.Ref, "const char*", $"dn2cpp_assembly_load({nm}, \"assemblyRef\")");
                 return true;
             }
             // Assembly loading from a file path or a raw IL image is the definitional
@@ -636,15 +637,15 @@ internal sealed partial class MethodCompiler
                     return false;
                 Comp.NoteManifestResourceUse();
                 var resName = Pop();
-                string scope = "nullptr";
-                if (sig.ParameterTypes.Length == 2)
-                    scope = Cast(Pop(), "Dn2CppType*");
+                bool scoped = sig.ParameterTypes.Length == 2;
+                string scope = scoped ? Cast(Pop(), "Dn2CppType*") : "nullptr";
                 var asm = Pop();
                 var byteElem = TypeDesc.MakePrimitive(PrimitiveTypeCode.Byte);
                 Comp.NoteArrayElementType(byteElem); // emit ti_arr_Byte — GetType() is Byte[]
                 string bytes = NewTemp("Dn2CppArrayN*");
                 Emit($"{bytes} = dn2cpp_assembly_get_manifest_resource_bytes("
-                    + $"{Cast(asm, "const char*")}, {scope}, {Cast(resName, "Dn2CppString*")}, "
+                    + $"{Cast(asm, "const char*")}, {scope}, {(scoped ? "true" : "false")}, "
+                    + $"{Cast(resName, "Dn2CppString*")}, "
                     + $"{PreciseArrayTypeInfoExpr(byteElem)});");
                 var msCls = msCtor.DeclaringClass;
                 string ms = NewTemp(msCls.CppStructName + "*");

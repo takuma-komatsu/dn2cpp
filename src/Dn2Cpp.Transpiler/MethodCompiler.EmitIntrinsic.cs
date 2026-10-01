@@ -316,6 +316,12 @@ internal sealed partial class MethodCompiler
         or "System.Threading.SemaphoreSlim"
         or "System.Threading.ManualResetEventSlim"
         or "System.Threading.WaitHandle"
+        or "System.Threading.EventWaitHandle"
+        or "Microsoft.Win32.SafeHandles.SafeWaitHandle"
+        or "System.Threading.Timer"
+        or "System.TimeProvider"
+        or "System.TimeProvider+SystemTimeProviderTimer"
+        or "System.Threading.ThreadLocal"
         or "System.Threading.CountdownEvent"
         or "System.Threading.Barrier"
         or "System.Threading.ReaderWriterLockSlim"
@@ -323,7 +329,8 @@ internal sealed partial class MethodCompiler
         or "System.Threading.Tasks.TaskCompletionSource"
         or "System.Threading.Tasks.ParallelLoopState"
         or "System.Threading.Tasks.ParallelOptions"
-        or "System.Collections.Concurrent.BlockingCollection";
+        or "System.Collections.Concurrent.BlockingCollection"
+        or "System.Resources.ResourceManager";
 
     // callvirt checks after argument evaluation and before the callee converts a timeout.
     private void NullCheckReceiverUnder(int argCount)
@@ -525,6 +532,14 @@ internal sealed partial class MethodCompiler
             Emit($"{tmp} = {CppTypes.ZeroInitExpr(ct)};");
             return tmp;
         }
+        // The eventSourceType operand of the static identity helpers, null-checked.
+        string EventSourceTypeArgument()
+        {
+            string ty = NewTemp("Dn2CppType*");
+            Emit($"{ty} = (Dn2CppType*)({Pop().Expr});");
+            Emit($"if ({ty} == nullptr) dn2cpp_throw_argument_null_param(\"eventSourceType\");");
+            return ty;
+        }
         switch (name)
         {
             // Every write/dispose path -> a no-op (see the summary: this is what real .NET
@@ -586,20 +601,21 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             // The static (Type)-keyed identity helpers, which never consult an instance —
-            // neither does .NET's GetName/GetGuid.
+            // neither does .NET's GetName/GetGuid. A null Type is .NET's
+            // ArgumentNullException naming eventSourceType.
             case "GetName" when sig.ParameterTypes.Length == 1:
             {
-                var ty = Pop();
+                string ty = EventSourceTypeArgument();
                 NoteReferenceClass(sig.ReturnType);
                 Push(StackKind.Ref, CppTypes.Of(sig.ReturnType),
-                    $"dn2cpp_eventsource_type_name(((Dn2CppType*)({ty.Expr}))->typeInfo)");
+                    $"dn2cpp_eventsource_type_name({ty}->typeInfo)");
                 return true;
             }
             case "GetGuid" when sig.ParameterTypes.Length == 1:
             {
-                var ty = Pop();
+                string ty = EventSourceTypeArgument();
                 string tmp = GuidOutTemp(sig.ReturnType);
-                Emit($"dn2cpp_eventsource_type_guid(((Dn2CppType*)({ty.Expr}))->typeInfo, &{tmp});");
+                Emit($"dn2cpp_eventsource_type_guid({ty}->typeInfo, &{tmp});");
                 Push(CppTypes.KindOf(sig.ReturnType), CppTypes.Of(sig.ReturnType), tmp);
                 return true;
             }

@@ -95,7 +95,7 @@ Dn2CppString* dn2cpp_string_fast_allocate(int32_t length)
 Dn2CppString* dn2cpp_string_create_buffer(int32_t length, char16_t** outBuf)
 {
     if (length < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "length");
     Dn2CppString* s = dn2cpp_string_alloc(outBuf, length);
     std::memset(*outBuf, 0, static_cast<size_t>(length) * sizeof(char16_t));
     return s;

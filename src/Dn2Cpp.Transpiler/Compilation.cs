@@ -507,6 +507,7 @@ internal sealed partial class Compilation
         _linkFeatures = new HashSet<string>(options.LinkFeatures, StringComparer.Ordinal);
         _noManifestResources = new HashSet<string>(
             options.NoManifestResources ?? Array.Empty<string>(), StringComparer.Ordinal);
+        _bclResourceDirectory = options.BclResourceDirectory;
         _manifestResourceRoots = new HashSet<string>(
             options.ManifestResourceRoots ?? Array.Empty<string>(), StringComparer.Ordinal);
         _directPInvokes = new HashSet<string>(
@@ -1208,6 +1209,7 @@ internal sealed partial class Compilation
     /// environment variable for the <see cref="_trimReflection"/> reason: it changes
     /// the C++ a *successful* transpile emits.</summary>
     private readonly HashSet<string> _noManifestResources;
+    private readonly string? _bclResourceDirectory;
 
     /// <summary>Manifest resource names kept under <c>--no-manifest-resources</c>
     /// (<c>--manifest-resource-root</c>): the escape hatch, matched by exact manifest

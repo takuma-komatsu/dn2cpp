@@ -93,15 +93,15 @@ static inline void dn2cpp_vec_copy_array_check(
         dn2cpp_throw_null_reference();
     if (hasStartIndex != 0
         && static_cast<uint32_t>(startIndex) >= static_cast<uint32_t>(destination->length))
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "startIndex");
     if (destination->length - startIndex < count)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_param(DN2CPP_SR_DESTINATION_TOO_SHORT, "destination");
 }
 
 static inline void dn2cpp_vec_copy_span_check(int32_t destinationLength, int32_t count)
 {
     if (destinationLength < count)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_param(DN2CPP_SR_DESTINATION_TOO_SHORT, "destination");
 }
 
 // Render one portable-vector lane through the same culture-aware scalar

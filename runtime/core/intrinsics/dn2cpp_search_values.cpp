@@ -107,7 +107,7 @@ Dn2CppSearchValues* dn2cpp_search_values_create_str(Dn2CppString** vals, int32_t
     for (int32_t i = 0; i < n; i++)
     {
         if (vals[i] == nullptr)
-            dn2cpp_throw_argument_null();
+            dn2cpp_throw_argument_null_param("values");
         dn2cpp_gc_store_ref(&sv->strs[i], vals[i]);
     }
     sv->strCount = n;

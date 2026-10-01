@@ -1,6 +1,8 @@
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 
 namespace Dn2Cpp;
 
@@ -11,6 +13,31 @@ namespace Dn2Cpp;
 /// CLI share this one implementation.</summary>
 public static class TranspileDriver
 {
+    private static string? BclResourceDirectory(IReadOnlyList<string> paths)
+    {
+        foreach (string path in paths)
+        {
+            try
+            {
+                using var pe = new PEReader(
+                    ImmutableCollectionsMarshal.AsImmutableArray(File.ReadAllBytes(path)));
+                var reader = pe.GetMetadataReader();
+                foreach (var handle in reader.TypeDefinitions)
+                {
+                    var type = reader.GetTypeDefinition(handle);
+                    if (reader.GetString(type.Name) == "Object"
+                        && reader.GetString(type.Namespace) == "System")
+                        return Path.GetDirectoryName(Path.GetFullPath(path));
+                }
+            }
+            catch (Exception e) when (!Compilation.IsMustEscape(e))
+            {
+                // A non-PE input still receives the normal load-set diagnostic.
+            }
+        }
+        return null;
+    }
+
     /// <summary>Console entry: always runs the pure-.NET <see cref="ConsoleBackend"/>
     /// (no Godot dependency). The Godot-free console CLI calls this, and cannot set
     /// the internal <see cref="TranspileOptions.Backend"/> member — so this path
@@ -168,7 +195,11 @@ public static class TranspileDriver
             Timing.Mark("setup");
             var loadSet = AssemblyLoadSet.Resolve(paths, options);
             paths = loadSet.Paths;
-            options = options with { ResolvedLoadSet = loadSet };
+            options = options with
+            {
+                ResolvedLoadSet = loadSet,
+                BclResourceDirectory = BclResourceDirectory(paths),
+            };
             if (options.UseILDiet && options.IsaSurfaceDump is null)
             {
                 paths = ILDietPreprocessor.Run(paths, options, backend,

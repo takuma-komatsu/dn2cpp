@@ -280,6 +280,9 @@ namespace ExceptionMessageSubset
                 return;
             RuntimeArgumentFieldsSubset.Run();
             RuntimeArgumentFieldsSubset.RunNamedSites();
+            if (args.Length > 0 && args[0] == "before-general-argument-fields")
+                return;
+            GeneralBclArgumentFieldsSubset.Run();
         }
     }
 }

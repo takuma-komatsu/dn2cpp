@@ -402,6 +402,24 @@ internal sealed partial class MethodCompiler
                 return true;
             }
             case ("System.Convert", "ToString")
+                when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Byte }, { Primitive: PrimitiveTypeCode.Int32 }]:
+            {
+                var toBase = Pop();
+                var v = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_convert_to_string_base_i32((int32_t)(uint8_t)({v.Expr}), {toBase.Expr})");
+                return true;
+            }
+            case ("System.Convert", "ToString")
+                when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int16 }, { Primitive: PrimitiveTypeCode.Int32 }]:
+            {
+                var toBase = Pop();
+                var v = Pop();
+                Push(StackKind.Ref, "Dn2CppString*",
+                    $"dn2cpp_convert_to_string_base_i16((int32_t)(int16_t)({v.Expr}), {toBase.Expr})");
+                return true;
+            }
+            case ("System.Convert", "ToString")
                 when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int64 or PrimitiveTypeCode.UInt64 }, { Primitive: PrimitiveTypeCode.Int32 }]:
             {
                 var toBase = Pop();

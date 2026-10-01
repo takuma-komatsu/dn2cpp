@@ -476,6 +476,10 @@ internal sealed partial class MethodCompiler
                 + $"({sig.ParameterTypes.Length} args) is not supported "
                 + "(only GetString(byte[]), GetString(byte[], int, int), GetString(byte*, int) and GetString(ReadOnlySpan<byte>) are intercepted)");
         }
+        // A callvirt faults on a null encoding before GetString checks its bytes, and the
+        // typed arms below never read the receiver at all.
+        if (CallIsVirtual)
+            NullCheckReceiverUnder(sig.ParameterTypes.Length);
         // The span form GetString(ReadOnlySpan<byte>): decode the span's referenced
         // bytes, exactly like the byte* form but reading the span's reference + length.
         if (spanArg)
@@ -487,13 +491,14 @@ internal sealed partial class MethodCompiler
             string spanCall = parentType switch
             {
                 "System.Text.ASCIIEncoding" =>
-                    $"dn2cpp_string_decode_ascii((const char*){sv}.f__reference, {sv}.f__length)",
+                    $"dn2cpp_encoding_decode_span((const char*){sv}.f__reference, {sv}.f__length, dn2cpp_string_decode_ascii)",
                 "System.Text.UTF8Encoding" =>
-                    $"dn2cpp_string_decode_utf8((const char*){sv}.f__reference, {sv}.f__length)",
+                    $"dn2cpp_encoding_decode_span((const char*){sv}.f__reference, {sv}.f__length, dn2cpp_string_decode_utf8)",
                 "System.Text.UnicodeEncoding" =>
-                    $"dn2cpp_string_decode_utf16le((const char*){sv}.f__reference, {sv}.f__length)",
+                    $"dn2cpp_encoding_decode_span((const char*){sv}.f__reference, {sv}.f__length, dn2cpp_string_decode_utf16le)",
                 _ =>
-                    $"dn2cpp_encoding_get_string_ptr({Cast(sEnc, "Dn2CppObject*")}, (const char*){sv}.f__reference, {sv}.f__length)",
+                    $"dn2cpp_encoding_get_string_span({Cast(sEnc, "Dn2CppObject*")}, "
+                    + $"(const char*){sv}.f__reference, {sv}.f__length)",
             };
             Push(StackKind.Ref, "Dn2CppString*", spanCall);
             return true;
@@ -507,10 +512,12 @@ internal sealed partial class MethodCompiler
             var pEnc = Pop();
             string ptrCall = parentType switch
             {
+                "System.Text.ASCIIEncoding" =>
+                    $"dn2cpp_encoding_decode_ptr((const char*)({ptr.Expr}), {ptrCount}, dn2cpp_string_decode_ascii)",
                 "System.Text.UTF8Encoding" =>
-                    $"dn2cpp_string_decode_utf8((const char*)({ptr.Expr}), {ptrCount})",
+                    $"dn2cpp_encoding_decode_ptr((const char*)({ptr.Expr}), {ptrCount}, dn2cpp_string_decode_utf8)",
                 "System.Text.UnicodeEncoding" =>
-                    $"dn2cpp_string_decode_utf16le((const char*)({ptr.Expr}), {ptrCount})",
+                    $"dn2cpp_encoding_decode_ptr((const char*)({ptr.Expr}), {ptrCount}, dn2cpp_string_decode_utf16le)",
                 _ =>
                     $"dn2cpp_encoding_get_string_ptr({Cast(pEnc, "Dn2CppObject*")}, (const char*)({ptr.Expr}), {ptrCount})",
             };
@@ -530,9 +537,10 @@ internal sealed partial class MethodCompiler
         {
             bytes = Pop();
             index = "0";
-            // count = the whole array length; the range helper handles null (which it
-            // checks before reading ->length, matching.NET's ArgumentNullException).
-            count = $"(({Cast(bytes, "Dn2CppArrayN*")}) != nullptr ? ({Cast(bytes, "Dn2CppArrayN*")})->length : 0)";
+            // count = the whole array length. A null array is the ArgumentNullException
+            // Encoding.GetString(byte[]) raises before the range overload's own check.
+            count = $"(({Cast(bytes, "Dn2CppArrayN*")}) != nullptr ? ({Cast(bytes, "Dn2CppArrayN*")})->length "
+                + ": (dn2cpp_throw_argument_null_param(\"bytes\"), 0))";
         }
         var enc = Pop(); // encoding receiver
         string byteArr = Cast(bytes, "Dn2CppArrayN*");

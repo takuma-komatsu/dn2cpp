@@ -2339,6 +2339,7 @@ internal sealed partial class MethodCompiler
         var src = Pop();    // IValueTaskSource(<T>) receiver
         string vts = NewTemp("Dn2CppObject*");
         Emit($"{vts} = {Cast(src, "Dn2CppObject*")};");
+        Emit($"if ({vts} == nullptr) dn2cpp_throw_argument_null_param(\"source\");");
         string slots = NewTemp("const void**");
         Emit($"{slots} = dn2cpp_resolve_interface({vts}->type, &{itf.CppTypeInfoName});");
         TypeDesc taskType = rt.IsVoid

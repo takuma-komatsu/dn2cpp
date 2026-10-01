@@ -28,6 +28,9 @@ namespace CharText
             if (args.Length > 0 && args[0] == "before-argument-fields")
                 return;
             CharValidationSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-encoding-receivers")
+                return;
+            EncodingReceiverSubset.Program.__GateEntry();
         }
     }
 }

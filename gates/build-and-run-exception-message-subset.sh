@@ -52,15 +52,27 @@ source "$(dirname "$0")/_common.sh"
 
 fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
 fallback_app="gates/fixtures/runtime-argument-fallback/bin/$CONFIG/$TFM/RuntimeArgumentFallback.dll"
+fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
+general_app="gates/fixtures/general-argument-fallback/bin/$CONFIG/$TFM/GeneralArgumentFallback.dll"
 build_gate_proj gates/fixtures/runtime-argument-fields/RuntimeArgumentFields.csproj
 build_gate_proj gates/fixtures/runtime-argument-fallback/RuntimeArgumentFallback.csproj
-DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json"
+build_gate_proj gates/fixtures/general-argument-fallback/GeneralArgumentFallback.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $fields_app ${fields_app%.dll}.runtimeconfig.json ${fields_app%.dll}.deps.json $fallback_app ${fallback_app%.dll}.runtimeconfig.json ${fallback_app%.dll}.deps.json $fallback_bcl $general_app ${general_app%.dll}.runtimeconfig.json ${general_app%.dll}.deps.json"
 DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|runtime-argument-fixtures|cli:$(_gate_cli_hash)"
 
 gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-general-argument-fields)
+    prefix=$(awk '/^-- general BCL argument fields --$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    for line in '-- general BCL argument fields --' \
+        'console null array pair=[<><>]' \
+        'general BCL argument fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: general BCL argument witness missing: $line" >&2; exit 1; }
+    done
     before=$(dotnet "$_CG_APP" before-runtime-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^-- runtime-raised argument fields --$/ { exit } { print }' <<< "$native")
@@ -75,10 +87,14 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: runtime argument witness missing: $line" >&2; exit 1; }
     done
-    for app in "$fields_app" "$fallback_app"; do
+    for app in "$fields_app" "$fallback_app" "$general_app"; do
         name=$(basename "${app%.dll}")
         fixture="$out/$name"
-        invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
+        if [ "$name" = GeneralArgumentFallback ]; then
+            invoke_cli "$app" -r "$_CG_CORELIB" -r "$fallback_bcl" -o "$fixture"
+        else
+            invoke_cli "$app" -r "$_CG_CORELIB" -o "$fixture"
+        fi
         compile_console "$fixture" "$name"
         expected=$(run_bounded dotnet "$app")
         actual=$(run_bounded "./$fixture/$name")
@@ -95,6 +111,17 @@ gate_extra_asserts() {
                 grep -Fxq -- "$line" <<< "$actual" \
                     || { echo "FAIL: constructor-free argument witness missing: $line" >&2; exit 1; }
             done
+        elif [ "$name" = GeneralArgumentFallback ]; then
+            local binds
+            binds=$(rg '^const Dn2CppTypeBind dn2cpp_type_binds' "$fixture/generated.cpp")
+            if [[ "$binds" == *'&dn2cpp_argument_exception_type'* ||
+                "$binds" == *'&dn2cpp_argument_null_exception_type'* ||
+                "$binds" == *'&dn2cpp_argument_out_of_range_exception_type'* ]]; then
+                echo 'FAIL: general Message-only fixture bound an argument exception layout' >&2
+                exit 1
+            fi
+            grep -Fxq 'general BCL Message fallback end' <<< "$actual" \
+                || { echo 'FAIL: general Message-only fixture did not run' >&2; exit 1; }
         else
             grep -Fxq 'const int32_t dn2cpp_type_bind_count = 0;' "$fixture/generated.cpp" \
                 || { echo 'FAIL: fallback fixture reached a managed exception layout' >&2; exit 1; }

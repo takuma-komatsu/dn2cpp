@@ -5750,7 +5750,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"void* dn2cpp_fnptr_for_delegate_{cls.CppName}(Dn2CppObject* dg)");
             sb.AppendLine("{");
             sb.AppendLine("    if (dg == nullptr)");
-            sb.AppendLine("        dn2cpp_throw_argument_null();");
+            sb.AppendLine("        dn2cpp_throw_argument_null_param(\"d\");");
             sb.AppendLine("    // A callback can arrive on a native executor thread as soon as the pointer");
             sb.AppendLine("    // is published. Enable its collector-registration prologue before publishing.");
             sb.AppendLine("    dn2cpp_enable_native_delegate_callback_gc_registration();");
@@ -5802,7 +5802,7 @@ internal sealed partial class CppEmitter
             sb.AppendLine($"Dn2CppObject* dn2cpp_delegate_for_fnptr_{cls.CppName}(void* p)");
             sb.AppendLine("{");
             sb.AppendLine("    if (p == nullptr)");
-            sb.AppendLine("        dn2cpp_throw_argument_null();");
+            sb.AppendLine("        dn2cpp_throw_argument_null_param(\"ptr\");");
             sb.AppendLine("    // A pointer minted by GetFunctionPointerForDelegate round-trips to the");
             sb.AppendLine("    // ORIGINAL parked delegate (the .NET managed round-trip identity).");
             sb.AppendLine($"    for (int32_t i = 0; i < {poolSize}; i++)");

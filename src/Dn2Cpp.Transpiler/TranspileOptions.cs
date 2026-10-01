@@ -35,6 +35,10 @@ public sealed record TranspileOptions
     /// <summary>A closed load set must never resolve references beside its rewritten DLLs.</summary>
     internal AssemblyLoadSet? ResolvedLoadSet { get; init; }
 
+    /// <summary>Original directory of System.Object's assembly, for reading resource-only
+    /// sibling assemblies after ILDiet has rewritten the loaded module paths.</summary>
+    internal string? BclResourceDirectory { get; init; }
+
     /// <summary>ILDiet validated cut selectors against the original metadata.</summary>
     internal bool CutMethodsValidated { get; init; }
 

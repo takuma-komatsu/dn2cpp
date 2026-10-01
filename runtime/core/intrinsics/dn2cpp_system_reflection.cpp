@@ -4442,19 +4442,23 @@ Dn2CppArrayRef* dn2cpp_assembly_get_manifest_resource_names(const char* name)
 }
 
 Dn2CppArrayN* dn2cpp_assembly_get_manifest_resource_bytes(const char* name, Dn2CppType* scope,
-    Dn2CppString* resourceName, const Dn2CppTypeInfo* byteArrayType)
+    bool scoped, Dn2CppString* resourceName, const Dn2CppTypeInfo* byteArrayType)
 {
-    // .NET: a null name is ArgumentNullException, an empty one ArgumentException
-    // ("String cannot have zero length"). The (Type, string) overload allows a null
-    // NAME when the type supplies the whole key, so the null check is on the composed
-    // key's source, not on the argument alone.
-    if (resourceName == nullptr && scope == nullptr)
-        dn2cpp_throw_argument_null();
-    if (resourceName != nullptr && resourceName->length == 0)
-        dn2cpp_throw_argument();
+    // .NET: the (string) overload rejects a null name without naming a parameter; the
+    // (Type, string) overload allows a null NAME when the type supplies the key and
+    // otherwise names `type`. An empty composed key is "String cannot have zero length."
+    if (resourceName == nullptr)
+    {
+        if (!scoped)
+            dn2cpp_throw_sr0(&dn2cpp_argument_null_exception_type, DN2CPP_SR_ARGUMENT_NULL_STRING);
+        if (scope == nullptr)
+            dn2cpp_throw_argument_null_param("type");
+    }
+    const std::string key = dn2cpp_manifest_resource_key(scope, resourceName);
+    if (key.empty())
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_STRING_ZERO_LENGTH);
     const Dn2CppAssemblyRegEntry* e = dn2cpp_assembly_reg_find(name);
-    const Dn2CppManifestResource* r =
-        dn2cpp_manifest_resource_find(e, dn2cpp_manifest_resource_key(scope, resourceName));
+    const Dn2CppManifestResource* r = dn2cpp_manifest_resource_find(e, key);
     if (r == nullptr)
     {
         // Miss-path only: a kept (rooted) resource of a dropped assembly hit above
@@ -4476,9 +4480,9 @@ Dn2CppArrayN* dn2cpp_assembly_get_manifest_resource_bytes(const char* name, Dn2C
 int32_t dn2cpp_assembly_has_manifest_resource(const char* name, Dn2CppString* resourceName)
 {
     if (resourceName == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_sr0(&dn2cpp_argument_null_exception_type, DN2CPP_SR_ARGUMENT_NULL_STRING);
     if (resourceName->length == 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_STRING_ZERO_LENGTH);
     const Dn2CppAssemblyRegEntry* e = dn2cpp_assembly_reg_find(name);
     if (dn2cpp_manifest_resource_find(e, dn2cpp_utf8_of(resourceName)) != nullptr)
         return 1;
@@ -4586,13 +4590,17 @@ Dn2CppArrayRef* dn2cpp_assembly_get_modules(const char* name)
 // .NET refuses a requested Version above the loaded one — the static image has exactly
 // one candidate per name, and handing it back beats failing a "Type, Assembly"
 // round-trip over the very assembly the caller is linked against. Null name ->
-// ArgumentNullException, empty/blank -> ArgumentException. Returns the registry's own
+// ArgumentNullException and empty -> ArgumentException (sentence `emptyKey`), both
+// naming `paramName`; blank -> ArgumentException. Returns the registry's own
 // name pointer — the canonical Assembly handle, so op_Equality's pointer-or-strcmp
 // compare holds against Type.Assembly / GetEntryAssembly handles.
-static const char* dn2cpp_assembly_lookup_by_name(Dn2CppString* name)
+static const char* dn2cpp_assembly_lookup_by_name(Dn2CppString* name, const char* paramName,
+    const char* emptyKey)
 {
     if (name == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param(paramName);
+    if (name->length == 0)
+        dn2cpp_throw_argument_param(emptyKey, paramName);
     int32_t b = 0, e = name->length;
     for (int32_t i = 0; i < name->length; i++)
         if (name->chars[i] == u',') { e = i; break; }
@@ -4618,9 +4626,9 @@ static const char* dn2cpp_assembly_lookup_by_name(Dn2CppString* name)
     return nullptr;
 }
 
-const char* dn2cpp_assembly_load(Dn2CppString* name)
+const char* dn2cpp_assembly_load(Dn2CppString* name, const char* paramName)
 {
-    const char* found = dn2cpp_assembly_lookup_by_name(name);
+    const char* found = dn2cpp_assembly_lookup_by_name(name, paramName, DN2CPP_SR_EMPTY_STRING);
     if (found == nullptr)
     {
         static constexpr char prefix[] = "Could not load file or assembly '";
@@ -4640,7 +4648,7 @@ const char* dn2cpp_assembly_load(Dn2CppString* name)
 const char* dn2cpp_assembly_load_partial(Dn2CppString* name)
 {
     // The obsolete partial-name form reports a miss as null, never a throw.
-    return dn2cpp_assembly_lookup_by_name(name);
+    return dn2cpp_assembly_lookup_by_name(name, "partialName", DN2CPP_SR_STRING_ZERO_LENGTH);
 }
 
 Dn2CppString* dn2cpp_module_name(const char* name)

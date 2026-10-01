@@ -13,6 +13,11 @@ gate_extra_asserts() {
     local out="$1" native before prefix line
     native=$(run_bounded "./$out/CharText")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded dotnet "$_CG_APP" before-encoding-receivers)
+    prefix=$(awk '/^== encoding receivers ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'encoding receivers end' <<< "$native" \
+        || { echo "FAIL: Encoding receiver section did not run" >&2; exit 1; }
     before=$(dotnet "$_CG_APP" before-argument-fields)
     before=$(strip_cr_win "$before")
     prefix=$(awk '/^== Char indexed validation fields ==$/ { exit } { print }' <<< "$native")

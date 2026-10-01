@@ -20,6 +20,26 @@ internal static class BclMessages
     /// no embedded resources) is emitted with a null text and read as "no message".</summary>
     internal static readonly string[] Keys =
     [
+        "Argument_AlignmentMustBePow2",
+        "ArgumentNull_Array",
+        "ArgumentNull_String",
+        "System.Collections.Concurrent:BlockingCollection_Add_ConcurrentCompleteAdd",
+        "System.Collections.Concurrent:BlockingCollection_CantTakeWhenDone",
+        "System.Collections.Concurrent:BlockingCollection_Completed",
+        "System.Collections.Concurrent:BlockingCollection_TimeoutInvalid",
+        "ArgumentOutOfRange_DecimalRound",
+        "Argument_DestinationTooShort",
+        "Arg_HexBinaryStylesNotSupported",
+        "ArgumentOutOfRange_IndexCountBuffer",
+        "Argument_InvalidEnumValue",
+        "Arg_InvalidHexBinaryStyle",
+        "Argument_InvalidNumberStyles",
+        "System.Threading.Tasks.Parallel:Parallel_Invoke_ActionNull",
+        "ArgumentOutOfRange_RoundingDigits",
+        "ArgumentOutOfRange_RoundingDigits_MathF",
+        "Format_StringZeroLength",
+        "Argument_WrongSizeArrayInNativeStruct",
+
         // Parameterless defaults — what `new X()` gives in real .NET, and what a runtime
         // trap of the same type must therefore give.
         "Arg_OverflowException",
@@ -98,6 +118,7 @@ internal static class BclMessages
         "Arg_InvalidBase",
         "Arg_CannotHaveNegativeValue",
         "Overflow_NegativeUnsigned",
+        "Overflow_Decimal",
         "Overflow_SByte",
         "Overflow_Byte",
         "Overflow_Int16",

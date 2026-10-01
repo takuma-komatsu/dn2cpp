@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Immutable;
 using System.Reflection;
 using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
 using SRME = System.Reflection.Metadata.Ecma335.MetadataTokens;
 
 namespace Dn2Cpp;
@@ -469,6 +471,8 @@ internal sealed partial class Compilation
     /// <summary>Per-module cache of the embedded <c>.resources</c> string table (null once
     /// read for a module that carries none), so a blob is parsed at most once per assembly.</summary>
     private readonly Dictionary<Module, Dictionary<string, string>?> _srResourceCache = new();
+    private readonly Dictionary<string, Dictionary<string, string>?> _siblingSrResourceCache =
+        new(StringComparer.Ordinal);
 
     /// <summary>The English text of a BCL <c>SR.*</c> resource key, read from the calling
     /// assembly's own embedded <c>.resources</c> blob, or null when the module carries no
@@ -497,18 +501,59 @@ internal sealed partial class Compilation
         FindClassByFullName("System.Object")?.Module is { } m ? SrResourceText(m, key) : null;
 
     /// <summary>The text a <see cref="BclMessages"/> key names: a CoreLib resource, or for
-    /// an "Assembly:Key" entry that library's own resource; null when the program loads no
-    /// such assembly or it carries no such key.</summary>
+    /// an "Assembly:Key" entry that library's own resource. A referenced sibling of the
+    /// original CoreLib supplies only its resource text when its code is outside the load
+    /// set, so an intrinsic still raises that library's sentence.</summary>
     internal string? BclMessageText(string key)
     {
         int colon = key.IndexOf(':');
         if (colon < 0)
             return CoreLibSrText(key);
         string assembly = key.Substring(0, colon);
+        string resourceKey = key.Substring(colon + 1);
         foreach (var m in Modules)
             if (m.AssemblyName == assembly)
-                return SrResourceText(m, key.Substring(colon + 1));
-        return null;
+                return SrResourceText(m, resourceKey);
+        if (_bclResourceDirectory is null)
+            return null;
+        bool referenced = false;
+        foreach (var m in Modules)
+        {
+            foreach (var handle in m.Reader.AssemblyReferences)
+            {
+                if (m.Reader.GetString(m.Reader.GetAssemblyReference(handle).Name) == assembly)
+                {
+                    referenced = true;
+                    break;
+                }
+            }
+            if (referenced)
+                break;
+        }
+        if (!referenced)
+            return null;
+        if (!_siblingSrResourceCache.TryGetValue(assembly, out var table))
+        {
+            table = null;
+            string path = Path.Combine(_bclResourceDirectory, assembly + ".dll");
+            if (File.Exists(path))
+            {
+                try
+                {
+                    using var pe = new PEReader(
+                        ImmutableCollectionsMarshal.AsImmutableArray(File.ReadAllBytes(path)));
+                    var reader = pe.GetMetadataReader();
+                    if (reader.GetString(reader.GetAssemblyDefinition().Name) == assembly)
+                        table = ResourceStrings.ReadStrings(pe, reader);
+                }
+                catch (Exception e) when (!IsMustEscape(e))
+                {
+                    table = null;
+                }
+            }
+            _siblingSrResourceCache[assembly] = table;
+        }
+        return table is not null && table.TryGetValue(resourceKey, out var text) ? text : null;
     }
 
     /// <summary>Drops a base-chain resolution that landed on an intrinsic-mapped type
@@ -2130,7 +2175,10 @@ internal sealed partial class Compilation
         ClassInfo? itf = ccls.IsInterface && GenericDefFullName(ccls) == "System.Collections.Generic.IComparer"
             ? ccls
             : FindComparerInterface(ccls);
-        if (itf is not null && itf.Methods.FirstOrDefault(mm => mm.Name == "Compare") is { } cmpDecl)
+        if (itf is null)
+            return;
+        EnsureCompleted(itf);
+        if (itf.Methods.FirstOrDefault(mm => mm.Name == "Compare") is { } cmpDecl)
             ReachUsedVirtual(cmpDecl);
     }
 

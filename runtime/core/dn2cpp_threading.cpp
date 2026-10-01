@@ -404,11 +404,8 @@ void dn2cpp_parallel_invoke(Dn2CppArrayRef* actions, int32_t maxDop)
     for (int32_t i = 0; i < actions->length; i++)
     {
         if (actions->data[i] == nullptr)
-        {
-            const char* msg = "One of the actions was null.";
-            dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
-                dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
-        }
+            dn2cpp_throw_sr0(&dn2cpp_argument_exception_type,
+                DN2CPP_SR_PARALLEL_INVOKE_ACTION_NULL);
     }
     dn2cpp_parallel_run(actions->length, actions, [](void* p, int64_t k) {
         auto* a = static_cast<Dn2CppArrayRef*>(p);
