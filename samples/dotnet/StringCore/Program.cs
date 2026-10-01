@@ -60,6 +60,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-empty-char-sources")
                 return;
             StringFromCharsSubset.Program.RunEmptySources();
+            if (args.Length > 0 && args[0] == "before-comparison-faults")
+                return;
+            StringComparisonFoldSubset.Program.RunFaults();
         }
     }
 }

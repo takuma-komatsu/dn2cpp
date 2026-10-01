@@ -100,5 +100,110 @@ namespace StringComparisonFoldSubset
             try { "a".StartsWith("a", (StringComparison)7); Console.WriteLine("no-throw"); }
             catch (ArgumentException) { Console.WriteLine("AE"); }        // AE
         }
+
+        private static string _faultEvaluation = "";
+
+        private static string Text(string step, string value)
+        {
+            _faultEvaluation += step;
+            return value;
+        }
+
+        private static StringComparison Comparison(bool fail)
+        {
+            _faultEvaluation += "C";
+            if (fail)
+                throw new InvalidOperationException();
+            return (StringComparison)6;
+        }
+
+        private static void Fault(string label, Func<int> call)
+        {
+            try
+            {
+                Console.WriteLine(label + " result=" + call());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(label + " type=" + ex.GetType().Name);
+                Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+                Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            }
+        }
+
+        internal static void RunFaults()
+        {
+            Console.WriteLine("== string comparison faults ==");
+            string missing = null;
+            foreach (int raw in new[] { -1, 6, int.MinValue, int.MaxValue })
+            {
+                StringComparison cmp = (StringComparison)raw;
+                string tag = raw.ToString();
+                Fault("starts " + tag, () => "abc".StartsWith("", cmp) ? 1 : 0);
+                Fault("ends " + tag, () => "abc".EndsWith("", cmp) ? 1 : 0);
+                Fault("contains " + tag, () => "".Contains("", cmp) ? 1 : 0);
+                Fault("index " + tag, () => "".IndexOf("", cmp));
+                Fault("last " + tag, () => "".LastIndexOf("", cmp));
+                Fault("char index " + tag, () => "".IndexOf('a', cmp));
+                Fault("index start " + tag, () => "abc".IndexOf("a", 0, cmp));
+                Fault("last start " + tag, () => "abc".LastIndexOf("a", 2, cmp));
+                Fault("null starts " + tag, () => "abc".StartsWith(null, cmp) ? 1 : 0);
+                Fault("null ends " + tag, () => "abc".EndsWith(null, cmp) ? 1 : 0);
+                Fault("null contains " + tag, () => "abc".Contains(null, cmp) ? 1 : 0);
+                Fault("null index " + tag, () => "abc".IndexOf(null, cmp));
+                Fault("null last " + tag, () => "abc".LastIndexOf(null, cmp));
+                Fault("null index start " + tag, () => "abc".IndexOf(null, -1, cmp));
+                Fault("null last start " + tag, () => "abc".LastIndexOf(null, -1, cmp));
+                Fault("receiver starts " + tag, () => missing.StartsWith(null, cmp) ? 1 : 0);
+                Fault("receiver ends " + tag, () => missing.EndsWith(null, cmp) ? 1 : 0);
+                Fault("receiver contains " + tag, () => missing.Contains(null, cmp) ? 1 : 0);
+                Fault("receiver index " + tag, () => missing.IndexOf(null, cmp));
+                Fault("receiver last " + tag, () => missing.LastIndexOf(null, cmp));
+                Fault("receiver char " + tag, () => missing.IndexOf('a', cmp));
+                Fault("compare null " + tag, () => string.Compare(null, null, cmp));
+                Fault("compare window " + tag, () => string.Compare(null, -1, null, -1, -1, cmp));
+                Fault("equals null " + tag, () => string.Equals(null, null, cmp) ? 1 : 0);
+                Fault("equals same " + tag, () => "abc".Equals("abc", cmp) ? 1 : 0);
+                Fault("equals receiver " + tag, () => missing.Equals(null, cmp) ? 1 : 0);
+                Fault("replace null " + tag, () => "abc".Replace(null, null, cmp).Length);
+                Fault("replace empty " + tag, () => "abc".Replace("", null, cmp).Length);
+                Fault("replace receiver " + tag, () => missing.Replace(null, null, cmp).Length);
+                Fault("hash empty " + tag, () => string.GetHashCode(ReadOnlySpan<char>.Empty, cmp));
+                Fault("span equals " + tag, () => MemoryExtensions.Equals("a".AsSpan(), "a".AsSpan(), cmp) ? 1 : 0);
+            }
+            Fault("plain starts", () => "abc".StartsWith(null) ? 1 : 0);
+            Fault("plain ends", () => "abc".EndsWith(null) ? 1 : 0);
+            Fault("plain contains", () => "abc".Contains((string)null) ? 1 : 0);
+            Fault("plain index", () => "abc".IndexOf((string)null));
+            Fault("plain last", () => "abc".LastIndexOf((string)null));
+            Fault("plain index range", () => "abc".IndexOf(null, -1, -1));
+            Fault("plain last range", () => "abc".LastIndexOf(null, -1, -1));
+            Fault("valid equals receiver", () => missing.Equals(null, StringComparison.Ordinal) ? 1 : 0);
+            for (int raw = 0; raw <= 5; raw++)
+            {
+                StringComparison cmp = (StringComparison)raw;
+                Console.WriteLine("valid " + raw + "=" + "abc".StartsWith("a", cmp) + ":"
+                    + "abc".EndsWith("c", cmp) + ":" + "abc".Contains("b", cmp) + ":"
+                    + "abc".IndexOf("b", cmp) + ":" + "abc".LastIndexOf("b", cmp));
+                Console.WriteLine("empty " + raw + "=" + "".StartsWith("", cmp) + ":"
+                    + "".EndsWith("", cmp) + ":" + "".Contains("", cmp) + ":"
+                    + "".IndexOf("", cmp) + ":" + "".LastIndexOf("", cmp));
+            }
+            Console.WriteLine("ordinal unicode=" + "\u00c4\0\ud800".IndexOf("\u00e4\0", StringComparison.OrdinalIgnoreCase)
+                + ":" + "\u00c4\0\ud800".IndexOf("\u00e4\0", StringComparison.Ordinal));
+            _faultEvaluation = "";
+            Fault("null evaluation", () => Text("S", null).StartsWith(Text("V", null), Comparison(false)) ? 1 : 0);
+            Console.WriteLine("null evaluation=" + _faultEvaluation);
+            _faultEvaluation = "";
+            Fault("throwing comparison", () => Text("S", null).StartsWith(Text("V", null), Comparison(true)) ? 1 : 0);
+            Console.WriteLine("throwing comparison evaluation=" + _faultEvaluation);
+            _faultEvaluation = "";
+            Fault("equals evaluation", () => Text("S", null).Equals(Text("V", null), Comparison(false)) ? 1 : 0);
+            Console.WriteLine("equals evaluation=" + _faultEvaluation);
+            _faultEvaluation = "";
+            Fault("equals throwing comparison", () => Text("S", null).Equals(Text("V", null), Comparison(true)) ? 1 : 0);
+            Console.WriteLine("equals throwing comparison evaluation=" + _faultEvaluation);
+            Console.WriteLine("string comparison faults end");
+        }
     }
 }

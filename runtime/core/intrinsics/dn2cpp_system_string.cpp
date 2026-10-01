@@ -188,7 +188,7 @@ int32_t dn2cpp_str_indexof_str(Dn2CppString* s, Dn2CppString* sub)
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     // .NET: an empty search string is found at index 0.
     if (sub->length == 0)
         return 0;
@@ -200,7 +200,7 @@ int32_t dn2cpp_str_startswith(Dn2CppString* s, Dn2CppString* prefix)
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (prefix == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     if (prefix->length > s->length)
         return 0;
     // Ordinal prefix test: a bulk memcmp (byte-equality == code-unit equality) in
@@ -214,7 +214,7 @@ int32_t dn2cpp_str_endswith(Dn2CppString* s, Dn2CppString* suffix)
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (suffix == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     if (suffix->length > s->length)
         return 0;
     int32_t off = s->length - suffix->length;
@@ -228,7 +228,7 @@ int32_t dn2cpp_str_endswith(Dn2CppString* s, Dn2CppString* suffix)
 // culture-sensitive values fold onto those two via dn2cpp_str_comparison_fold.
 
 // THE single StringComparison map: every helper that dispatches on a
-// StringComparison operand folds it through here first (this file's *_cmp
+// StringComparison operand folds it through here (this file's *_cmp
 // family, dn2cpp_str_compare/_sub in dn2cpp_system_globalization.cpp, and
 // the emitted GetHashCode(ReadOnlySpan<char>, StringComparison) dispatch).
 // Do not re-derive the mapping at a call site.
@@ -249,12 +249,13 @@ int32_t dn2cpp_str_endswith(Dn2CppString* s, Dn2CppString* suffix)
 // InvariantCultureIgnoreCase, not under OrdinalIgnoreCase). ASCII input agrees
 // except for ordering (linguistic orders "a" < "B"; ordinal compares code units).
 //
-// An out-of-range value ((uint)v > 5) throws a catchable ArgumentException,
-// .NET's String.CheckStringComparison contract.
+// Invalid values name comparisonType. Search entry points validate their
+// receiver and value first; Compare and Replace retain their own ordering.
 int32_t dn2cpp_str_comparison_fold(int32_t comparisonType)
 {
     if ((uint32_t)comparisonType > 5u)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            dn2cpp_sr_text(DN2CPP_SR_STRING_COMPARISON), "comparisonType");
     return 4 | (comparisonType & 1);
 }
 
@@ -302,11 +303,11 @@ static int dn2cpp_str_char_eq_cmp(char16_t a, char16_t b, int32_t comparison)
 
 int32_t dn2cpp_str_startswith_cmp(Dn2CppString* s, Dn2CppString* prefix, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (prefix == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (prefix->length > s->length)
         return 0;
     for (int32_t i = 0; i < prefix->length; i++)
@@ -317,11 +318,11 @@ int32_t dn2cpp_str_startswith_cmp(Dn2CppString* s, Dn2CppString* prefix, int32_t
 
 int32_t dn2cpp_str_endswith_cmp(Dn2CppString* s, Dn2CppString* suffix, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (suffix == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (suffix->length > s->length)
         return 0;
     int32_t off = s->length - suffix->length;
@@ -333,11 +334,11 @@ int32_t dn2cpp_str_endswith_cmp(Dn2CppString* s, Dn2CppString* suffix, int32_t c
 
 int32_t dn2cpp_str_contains_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (sub->length == 0)
         return 1;
     for (int32_t i = 0; i + sub->length <= s->length; i++)
@@ -353,11 +354,11 @@ int32_t dn2cpp_str_contains_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t comp
 
 int32_t dn2cpp_str_indexof_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     // .NET: an empty search string is found at index 0.
     if (sub->length == 0)
         return 0;
@@ -376,11 +377,11 @@ int32_t dn2cpp_str_indexof_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t compa
 
 int32_t dn2cpp_str_indexof_str_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t startIndex, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null(); // catchable, like .NET's null-needle check
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (startIndex < 0 || startIndex > s->length)
         dn2cpp_throw_argument_out_of_range(); // catchable, like .NET's range check
     // .NET: an empty search string is found at the (clamped) start index.
@@ -414,11 +415,11 @@ int32_t dn2cpp_str_indexof_str_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t s
 int32_t dn2cpp_str_lastindexof_str_range(Dn2CppString* s, Dn2CppString* sub, int32_t startIndex,
                                          int32_t count, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s->length == 0 && (startIndex == -1 || startIndex == 0))
         return sub->length == 0 ? 0 : -1;
     if (startIndex < 0 || startIndex > s->length)
@@ -458,11 +459,11 @@ int32_t dn2cpp_str_lastindexof_str_cmp(Dn2CppString* s, Dn2CppString* sub, int32
 // Length (the .NET 5+ contract), otherwise the last full ordinal match.
 int32_t dn2cpp_str_lastindexof_cmp(Dn2CppString* s, Dn2CppString* sub, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (sub->length == 0)
         return s->length;
     for (int32_t i = s->length - sub->length; i >= 0; i--)
@@ -534,9 +535,9 @@ int32_t dn2cpp_str_indexof_char_to_end(Dn2CppString* s, char16_t c, int32_t star
 // fold onto those two (dn2cpp_str_comparison_fold).
 int32_t dn2cpp_str_indexof_char_cmp(Dn2CppString* s, char16_t c, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
+    comparison = dn2cpp_str_comparison_fold(comparison);
     for (int32_t i = 0; i < s->length; i++)
         if (dn2cpp_str_char_eq_cmp(s->chars[i], c, comparison))
             return i;
@@ -850,11 +851,11 @@ void dn2cpp_str_copyto_chararray(Dn2CppString* s, int32_t sourceIndex, Dn2CppArr
 int32_t dn2cpp_str_indexof_str_range(Dn2CppString* s, Dn2CppString* sub, int32_t startIndex,
                                      int32_t count, int32_t comparison)
 {
-    comparison = dn2cpp_str_comparison_fold(comparison);
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (sub == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
+    comparison = dn2cpp_str_comparison_fold(comparison);
     if (startIndex < 0 || startIndex > s->length)
         dn2cpp_throw_argument_out_of_range();
     if (count < 0 || startIndex > s->length - count)
