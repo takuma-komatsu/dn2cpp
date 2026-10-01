@@ -7466,11 +7466,11 @@ Dn2CppStringBuilder* dn2cpp_sb_replace_str_range(Dn2CppStringBuilder* sb, Dn2Cpp
 Dn2CppStringBuilder* dn2cpp_sb_replace_char_range(Dn2CppStringBuilder* sb, char16_t oldc, char16_t newc,
                                                   int32_t startIndex, int32_t count);
 Dn2CppStringBuilder* dn2cpp_sb_append_chars(Dn2CppStringBuilder* sb, const char16_t* chars, int32_t count);
-// (char[] value, int startIndex, int charCount) slice validation shared by the
-// Append/Insert array-slice overloads, materialized as a string: null is valid
-// only as (null, 0, 0) (else ArgumentNullException), a bad slice is
-// ArgumentOutOfRangeException.
+// Append validates slice signs before a null array; (null, 0, 0) is valid.
 Dn2CppString* dn2cpp_sb_char_arr_str(Dn2CppArrayN* arr, int32_t startIndex, int32_t charCount);
+// Insert validates the index and a null array before slice signs.
+Dn2CppStringBuilder* dn2cpp_sb_insert_char_arr(Dn2CppStringBuilder* sb, int32_t index, Dn2CppArrayN* arr,
+                                               int32_t startIndex, int32_t charCount);
 Dn2CppStringBuilder* dn2cpp_sb_append_sb(Dn2CppStringBuilder* sb, Dn2CppStringBuilder* value);
 Dn2CppStringBuilder* dn2cpp_sb_append_sb_range(Dn2CppStringBuilder* sb, Dn2CppStringBuilder* value,
                                                int32_t startIndex, int32_t count);

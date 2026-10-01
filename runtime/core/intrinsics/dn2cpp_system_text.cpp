@@ -181,7 +181,7 @@ Dn2CppStringBuilder* dn2cpp_sb_clear(Dn2CppStringBuilder* sb)
 Dn2CppStringBuilder* dn2cpp_sb_insert_str(Dn2CppStringBuilder* sb, int32_t index, Dn2CppString* value)
 {
     if (index < 0 || index > sb->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "index");
     if (value == nullptr || value->length == 0)
         return sb;
     int32_t vlen = value->length;
@@ -196,7 +196,7 @@ Dn2CppStringBuilder* dn2cpp_sb_insert_str(Dn2CppStringBuilder* sb, int32_t index
 Dn2CppStringBuilder* dn2cpp_sb_insert_char(Dn2CppStringBuilder* sb, int32_t index, char16_t c)
 {
     if (index < 0 || index > sb->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "index");
     dn2cpp_sb_ensure(sb, 1);
     std::memmove(sb->buf + index + 1, sb->buf + index,
                  static_cast<size_t>(sb->length - index) * sizeof(char16_t));
@@ -321,21 +321,44 @@ Dn2CppStringBuilder* dn2cpp_sb_append_chars(Dn2CppStringBuilder* sb, const char1
     return sb;
 }
 
-// The shared (char[] value, int startIndex, int charCount) validation for the
-// Append/Insert array-slice overloads, materialized as a string: a null array
-// is valid only as the (null, 0, 0) no-op (ArgumentNullException otherwise,
-// probe-confirmed even for (null, 1, 0)); a bad slice is ArgumentOutOfRange.
+// Append validates slice signs before a null array.
 Dn2CppString* dn2cpp_sb_char_arr_str(Dn2CppArrayN* arr, int32_t startIndex, int32_t charCount)
 {
+    if (startIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", startIndex);
+    if (charCount < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "charCount", charCount);
     if (arr == nullptr)
     {
         if (startIndex == 0 && charCount == 0)
             return dn2cpp_string_from_chars(nullptr, 0);
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     }
-    if (startIndex < 0 || charCount < 0 || startIndex > arr->length - charCount)
-        dn2cpp_throw_argument_out_of_range();
+    if (charCount > arr->length - startIndex)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "charCount");
     return dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(arr->data) + startIndex, charCount);
+}
+
+// Insert validates the index and a null array before slice signs.
+Dn2CppStringBuilder* dn2cpp_sb_insert_char_arr(Dn2CppStringBuilder* sb, int32_t index, Dn2CppArrayN* arr,
+                                               int32_t startIndex, int32_t charCount)
+{
+    if (index < 0 || index > sb->length)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "index");
+    if (arr == nullptr)
+    {
+        if (startIndex == 0 && charCount == 0)
+            return sb;
+        dn2cpp_throw_argument_null_param("value");
+    }
+    if (startIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", startIndex);
+    if (charCount < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "charCount", charCount);
+    if (startIndex > arr->length - charCount)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
+    return dn2cpp_sb_insert_str(sb, index,
+        dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(arr->data) + startIndex, charCount));
 }
 
 // Append(StringBuilder): a null value appends nothing. Self-append is legal
@@ -357,18 +380,20 @@ Dn2CppStringBuilder* dn2cpp_sb_append_sb(Dn2CppStringBuilder* sb, Dn2CppStringBu
 Dn2CppStringBuilder* dn2cpp_sb_append_sb_range(Dn2CppStringBuilder* sb, Dn2CppStringBuilder* value,
                                                int32_t startIndex, int32_t count)
 {
-    if (startIndex < 0 || count < 0)
-        dn2cpp_throw_argument_out_of_range();
+    if (startIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", startIndex);
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     if (value == nullptr)
     {
         if (startIndex == 0 && count == 0)
             return sb;
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("value");
     }
     if (count == 0)
         return sb;
     if (count > value->length - startIndex)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
     dn2cpp_sb_ensure(sb, count);
     std::memcpy(sb->buf + sb->length, value->buf + startIndex, static_cast<size_t>(count) * sizeof(char16_t));
     sb->length += count;
@@ -382,9 +407,9 @@ Dn2CppStringBuilder* dn2cpp_sb_insert_str_count(Dn2CppStringBuilder* sb, int32_t
                                                 Dn2CppString* value, int32_t count)
 {
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     if (index < 0 || index > sb->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "index");
     if (value == nullptr || value->length == 0 || count == 0)
         return sb;
     // Real .NET raises a CATCHABLE OutOfMemoryException here, not the
@@ -414,7 +439,7 @@ Dn2CppStringBuilder* dn2cpp_sb_insert_str_count(Dn2CppStringBuilder* sb, int32_t
 void dn2cpp_sb_set_length(Dn2CppStringBuilder* sb, int32_t value)
 {
     if (value < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "value", value);
     if (value > sb->length)
     {
         dn2cpp_sb_ensure(sb, value - sb->length);
@@ -436,7 +461,7 @@ char16_t dn2cpp_sb_get_char(Dn2CppStringBuilder* sb, int32_t index)
 void dn2cpp_sb_set_char(Dn2CppStringBuilder* sb, int32_t index, char16_t value)
 {
     if (static_cast<uint32_t>(index) >= static_cast<uint32_t>(sb->length))
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS, "index");
     sb->buf[index] = value;
 }
 
@@ -445,7 +470,7 @@ void dn2cpp_sb_set_char(Dn2CppStringBuilder* sb, int32_t index, char16_t value)
 int32_t dn2cpp_sb_ensure_capacity(Dn2CppStringBuilder* sb, int32_t capacity)
 {
     if (capacity < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "capacity", capacity);
     if (capacity > sb->capacity)
     {
         auto* newBuf = static_cast<char16_t*>(dn2cpp_alloc_atomic(static_cast<size_t>(capacity) * sizeof(char16_t)));
