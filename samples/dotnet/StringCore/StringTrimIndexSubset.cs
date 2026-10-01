@@ -143,5 +143,98 @@ namespace StringTrimIndexSubset
                 + $"/{"abcABC".LastIndexOf("BC", 3, StringComparison.OrdinalIgnoreCase)}"
                 + $"/{"abcabc".LastIndexOf("bc", 4, StringComparison.Ordinal)}");
         }
+
+        private static string _rangeEvaluation = "";
+
+        private static string Source(string value)
+        {
+            _rangeEvaluation += "S";
+            return value;
+        }
+
+        private static char[] Set(char[] value)
+        {
+            _rangeEvaluation += "A";
+            return value;
+        }
+
+        private static int Number(string step, int value, bool fail)
+        {
+            _rangeEvaluation += step;
+            if (fail)
+                throw new InvalidOperationException();
+            return value;
+        }
+
+        private static void RangeFault(string label, Func<int> call)
+        {
+            try
+            {
+                Console.WriteLine(label + " result=" + call());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(label + " type=" + ex.GetType().Name);
+                Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+                Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+                object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+                Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+            }
+        }
+
+        internal static void RunFaults()
+        {
+            Console.WriteLine("== string search range faults ==");
+            string[] sources = { "abca", "", null };
+            int[] starts = { int.MinValue, -1, 0, 3, 4, 5, int.MaxValue };
+            int[] counts = { int.MinValue, -1, 0, 1, 4, int.MaxValue };
+            char[] set = { 'a' };
+            for (int i = 0; i < sources.Length; i++)
+            {
+                string source = sources[i];
+                foreach (int start in starts)
+                {
+                    string tag = i + ":" + start;
+                    RangeFault("index char start " + tag, () => source.IndexOf('a', start));
+                    RangeFault("last char start " + tag, () => source.LastIndexOf('a', start));
+                    RangeFault("index string start " + tag, () => source.IndexOf("a", start));
+                    RangeFault("last string start " + tag, () => source.LastIndexOf("a", start));
+                    RangeFault("index comparison start " + tag, () => source.IndexOf("a", start, StringComparison.Ordinal));
+                    RangeFault("last comparison start " + tag, () => source.LastIndexOf("a", start, StringComparison.Ordinal));
+                    RangeFault("index set start " + tag, () => source.IndexOfAny(set, start));
+                    RangeFault("last set start " + tag, () => source.LastIndexOfAny(set, start));
+                    foreach (int count in counts)
+                    {
+                        string window = tag + ":" + count;
+                        RangeFault("index char range " + window, () => source.IndexOf('a', start, count));
+                        RangeFault("last char range " + window, () => source.LastIndexOf('a', start, count));
+                        RangeFault("index string range " + window, () => source.IndexOf("a", start, count));
+                        RangeFault("last string range " + window, () => source.LastIndexOf("a", start, count));
+                        RangeFault("last empty range " + window, () => source.LastIndexOf("", start, count));
+                        RangeFault("index set range " + window, () => source.IndexOfAny(set, start, count));
+                        RangeFault("last set range " + window, () => source.LastIndexOfAny(set, start, count));
+                    }
+                }
+            }
+            RangeFault("index null set", () => "abc".IndexOfAny(null, int.MinValue));
+            RangeFault("index null set range", () => "abc".IndexOfAny(null, int.MinValue, int.MinValue));
+            RangeFault("last null set", () => "abc".LastIndexOfAny(null, int.MaxValue));
+            RangeFault("last null set range", () => "abc".LastIndexOfAny(null, int.MaxValue, int.MinValue));
+            RangeFault("empty last null set", () => "".LastIndexOfAny(null, -1, -1));
+            RangeFault("empty last set", () => "".LastIndexOfAny(Array.Empty<char>(), int.MaxValue, int.MinValue));
+            RangeFault("empty index set", () => "abc".IndexOfAny(Array.Empty<char>(), 3, 0));
+            RangeFault("empty index bad start", () => "abc".IndexOfAny(Array.Empty<char>(), 4, -1));
+            RangeFault("index null value", () => "abc".IndexOf(null, -1, -1));
+            RangeFault("last null value", () => "".LastIndexOf(null, -1, -1));
+            Console.WriteLine("range utf16=" + "A\0\ud800a".IndexOf('\ud800', 1, 2) + ":"
+                + "A\0\ud800a".LastIndexOf('\0', 2, 2));
+            _rangeEvaluation = "";
+            RangeFault("range null evaluation", () => Source(null).IndexOfAny(Set(null), Number("I", -1, false), Number("C", -1, false)));
+            Console.WriteLine("range null evaluation=" + _rangeEvaluation);
+            _rangeEvaluation = "";
+            RangeFault("range throwing count", () => Source(null).IndexOfAny(Set(null), Number("I", -1, false), Number("C", -1, true)));
+            Console.WriteLine("range throwing count evaluation=" + _rangeEvaluation);
+            Console.WriteLine("string search range faults end");
+        }
     }
 }
