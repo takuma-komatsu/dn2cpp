@@ -1456,6 +1456,24 @@ inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
+inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
+inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
+inline constexpr const char* DN2CPP_SR_BAD_BASE64_CHAR = "Format_BadBase64Char";
+inline constexpr const char* DN2CPP_SR_BAD_HEX_LENGTH = "Format_BadHexLength";
+inline constexpr const char* DN2CPP_SR_BAD_HEX_CHAR = "Format_BadHexChar";
+inline constexpr const char* DN2CPP_SR_INVALID_BASE = "Arg_InvalidBase";
+inline constexpr const char* DN2CPP_SR_NEGATIVE_NON_DECIMAL = "Arg_CannotHaveNegativeValue";
+inline constexpr const char* DN2CPP_SR_NEGATIVE_UNSIGNED = "Overflow_NegativeUnsigned";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_I8 = "Overflow_SByte";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_U8 = "Overflow_Byte";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_I16 = "Overflow_Int16";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_U16 = "Overflow_UInt16";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_I32 = "Overflow_Int32";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_U32 = "Overflow_UInt32";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_I64 = "Overflow_Int64";
+inline constexpr const char* DN2CPP_SR_OVERFLOW_U64 = "Overflow_UInt64";
+inline constexpr const char* DN2CPP_SR_NO_PARSIBLE_DIGITS = "Format_NoParsibleDigits";
+inline constexpr const char* DN2CPP_SR_EXTRA_JUNK_AT_END = "Format_ExtraJunkAtEnd";
 inline constexpr const char* DN2CPP_SR_BAD_DATEONLY = "Format_BadDateOnly";
 inline constexpr const char* DN2CPP_SR_BAD_TIMEONLY = "Format_BadTimeOnly";
 inline constexpr const char* DN2CPP_SR_BAD_TIMESPAN = "Format_BadTimeSpan";
@@ -4131,7 +4149,7 @@ int32_t dn2cpp_string_hashcode_oic(Dn2CppString* s);
 int32_t dn2cpp_string_get_char(Dn2CppString* s, int32_t index);
 // System.Char's (string, int) statics reject null and a bad index as argument errors,
 // unlike String.get_Chars, whose corresponding failures are null-reference/index errors.
-int32_t dn2cpp_char_get_string_char(Dn2CppString* s, int32_t index);
+int32_t dn2cpp_char_get_string_char(Dn2CppString* s, int32_t index, const char* indexKey);
 // char.GetUnicodeCategory(char) — the System.Globalization.UnicodeCategory
 // value (0..29) from a two-level BMP table generated from the real .NET
 // data (dn2cpp_unicode_category.cpp); exact for every BMP code point.

@@ -46,6 +46,9 @@ namespace ConvertParse
             if (args.Length > 0 && args[0] == "before-char-faults")
                 return;
             ConvertSubset.Program.RunCharFaults();
+            if (args.Length > 0 && args[0] == "before-conversion-fields")
+                return;
+            ConvertValidationSubset.Program.Run();
         }
     }
 }

@@ -1229,9 +1229,9 @@ int32_t dn2cpp_bool_tryparse(Dn2CppString* s, uint8_t* out)
     if (s == nullptr)
         return 0;
     int32_t a = 0, b = s->length;
-    while (a < b && dn2cpp_is_ws(s->chars[a]))
+    while (a < b && (dn2cpp_char_is_whitespace(s->chars[a]) || s->chars[a] == u'\0'))
         a++;
-    while (b > a && dn2cpp_is_ws(s->chars[b - 1]))
+    while (b > a && (dn2cpp_char_is_whitespace(s->chars[b - 1]) || s->chars[b - 1] == u'\0'))
         b--;
     int32_t n = b - a;
     auto matches = [&](const char* lit, int32_t litLen) {

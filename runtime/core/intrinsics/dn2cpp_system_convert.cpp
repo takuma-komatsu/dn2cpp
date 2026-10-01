@@ -143,35 +143,16 @@ Dn2CppDateTime dn2cpp_convert_str_to_datetime(Dn2CppString* s)
     return r;
 }
 
-// Convert.ToBoolean(string): accepts "true"/"false" (case-insensitive, with
+// Convert.ToBoolean(string): null is false; accepts "true"/"false" (case-insensitive, with
 // optional surrounding whitespace), else FormatException — matching Boolean.Parse.
 int32_t dn2cpp_convert_to_bool(Dn2CppString* s)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
-    int32_t i = 0, n = s->length;
-    while (i < n && dn2cpp_is_ws(s->chars[i]))
-        i++;
-    while (n > i && dn2cpp_is_ws(s->chars[n - 1]))
-        n--;
-    int32_t len = n - i;
-    auto ieq = [&](const char* lit, int32_t litLen) -> bool {
-        if (len != litLen)
-            return false;
-        for (int32_t k = 0; k < litLen; k++)
-        {
-            char16_t c = s->chars[i + k];
-            char16_t lc = (c >= u'A' && c <= u'Z') ? static_cast<char16_t>(c + 32) : c;
-            if (lc != static_cast<char16_t>(lit[k]))
-                return false;
-        }
-        return true;
-    };
-    if (ieq("true", 4))
-        return 1;
-    if (ieq("false", 5))
         return 0;
-    dn2cpp_throw_format();
+    uint8_t result;
+    if (!dn2cpp_bool_tryparse(s, &result))
+        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BOOLEAN, s);
+    return result;
 }
 
 // ---- Convert.ChangeType(object, Type) ----
@@ -619,15 +600,33 @@ Dn2CppString* dn2cpp_convert_to_string_base_i64(int64_t value, int32_t toBase)
 //  - a non-digit (or sign/prefix with nothing after it) is a catchable
 //    FormatException, out-of-range accumulation a catchable
 //    OverflowException.
+static const char* dn2cpp_radix_overflow_key(int32_t bits, bool isUnsigned)
+{
+    if (bits == 8)
+        return isUnsigned ? DN2CPP_SR_OVERFLOW_U8 : DN2CPP_SR_OVERFLOW_I8;
+    if (bits == 16)
+        return isUnsigned ? DN2CPP_SR_OVERFLOW_U16 : DN2CPP_SR_OVERFLOW_I16;
+    if (bits == 32)
+        return isUnsigned ? DN2CPP_SR_OVERFLOW_U32 : DN2CPP_SR_OVERFLOW_I32;
+    return isUnsigned ? DN2CPP_SR_OVERFLOW_U64 : DN2CPP_SR_OVERFLOW_I64;
+}
+
 int64_t dn2cpp_convert_from_base_any(Dn2CppString* s, int32_t fromBase, int32_t bits,
                                      int32_t isUnsigned)
 {
     if (fromBase != 2 && fromBase != 8 && fromBase != 10 && fromBase != 16)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_INVALID_BASE);
     if (s == nullptr)
         return 0;
     if (s->length == 0)
-        dn2cpp_throw_argument_out_of_range();
+    {
+        // ParseNumbers hands its sentence to the one-string constructor, which takes it
+        // as the paramName; the Message is the type's default sentence.
+        const char* quirk = dn2cpp_sr_text(DN2CPP_SR_INDEX_MUST_BE_LESS);
+        if (quirk == nullptr)
+            dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, quirk);
+    }
     int32_t i = 0;
     int neg = 0;
     if (s->chars[0] == u'+')
@@ -637,9 +636,9 @@ int64_t dn2cpp_convert_from_base_any(Dn2CppString* s, int32_t fromBase, int32_t 
     else if (s->chars[0] == u'-')
     {
         if (fromBase != 10)
-            dn2cpp_throw_argument();
+            dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_NEGATIVE_NON_DECIMAL);
         if (isUnsigned)
-            dn2cpp_overflow();
+            dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, DN2CPP_SR_NEGATIVE_UNSIGNED);
         neg = 1;
         i++;
     }
@@ -647,12 +646,14 @@ int64_t dn2cpp_convert_from_base_any(Dn2CppString* s, int32_t fromBase, int32_t 
         && (s->chars[i + 1] == u'x' || s->chars[i + 1] == u'X'))
         i += 2;
     if (i >= s->length)
-        dn2cpp_throw_format();
-    uint64_t limit;
-    if (fromBase == 10 && !isUnsigned)
-        limit = (bits == 64 ? (1ull << 63) : (1ull << (bits - 1))) - (neg ? 0 : 1);
-    else
-        limit = bits == 64 ? ~0ull : ((1ull << bits) - 1);
+        dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_NO_PARSIBLE_DIGITS);
+    int32_t firstDigit = i;
+    // Sub-word targets parse at 32 bits and reject trailing junk before narrowing.
+    int32_t parseBits = bits < 32 ? 32 : bits;
+    bool signedDecimal = fromBase == 10 && !isUnsigned;
+    uint64_t limit = signedDecimal ? (1ull << (parseBits - 1))
+        : parseBits == 64 ? ~0ull : ((1ull << parseBits) - 1);
+    const char* parseOverflow = dn2cpp_radix_overflow_key(parseBits, !signedDecimal);
     uint64_t b = static_cast<uint64_t>(fromBase);
     uint64_t acc = 0;
     for (; i < s->length; i++)
@@ -666,17 +667,28 @@ int64_t dn2cpp_convert_from_base_any(Dn2CppString* s, int32_t fromBase, int32_t 
         else if (c >= u'A' && c <= u'F')
             d = static_cast<uint32_t>(10 + (c - u'A'));
         else
-            dn2cpp_throw_format();
+            dn2cpp_throw_sr0(&dn2cpp_format_exception_type,
+                i == firstDigit ? DN2CPP_SR_NO_PARSIBLE_DIGITS : DN2CPP_SR_EXTRA_JUNK_AT_END);
         if (d >= static_cast<uint32_t>(fromBase))
-            dn2cpp_throw_format();
+            dn2cpp_throw_sr0(&dn2cpp_format_exception_type,
+                i == firstDigit ? DN2CPP_SR_NO_PARSIBLE_DIGITS : DN2CPP_SR_EXTRA_JUNK_AT_END);
         if (acc > (limit - d) / b)
-            dn2cpp_overflow();
+            dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, parseOverflow);
         acc = acc * b + d;
+    }
+    const char* targetOverflow = dn2cpp_radix_overflow_key(bits, isUnsigned != 0);
+    if (bits < 32 && acc > ((1ull << bits) - 1))
+        dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, targetOverflow);
+    if (signedDecimal)
+    {
+        uint64_t signedLimit = (1ull << (bits - 1)) - (neg ? 0 : 1);
+        if (acc > signedLimit)
+            dn2cpp_throw_sr0(&dn2cpp_overflow_exception_type, targetOverflow);
     }
     if (neg)
         return static_cast<int64_t>(0 - acc); // unsigned negation: INT64_MIN-safe
     if (!isUnsigned && fromBase != 10 && bits < 64 && (acc & (1ull << (bits - 1))) != 0)
-        return static_cast<int64_t>(acc | ~((1ull << bits) - 1)); // sign-extend the bit pattern
+        return static_cast<int64_t>(acc | ~((1ull << bits) - 1));
     return static_cast<int64_t>(acc);
 }
 
@@ -720,7 +732,10 @@ static bool dn2cpp_base64_is_ws(char16_t c)
 static void dn2cpp_base64_check_options(int32_t options)
 {
     if (options != 0 && options != 1)
-        dn2cpp_throw_argument();
+    {
+        Dn2CppString* args[] = { dn2cpp_int_to_string(options) };
+        dn2cpp_throw_argument_message(dn2cpp_sr_message(DN2CPP_SR_ENUM_ILLEGAL_VALUE, args, 1), "options");
+    }
 }
 
 // Encoded char count: 4 chars per 3-byte group, plus a CRLF after every full
@@ -763,10 +778,12 @@ static int32_t dn2cpp_base64_encode_core(const char* base, size_t stride, int32_
     return w;
 }
 
-// Encode a validated slice of a byte[] into a fresh string.
+// Encode a validated slice; an empty encoding shares String.Empty.
 static Dn2CppString* dn2cpp_base64_encode_alloc(const char* base, size_t stride, int32_t n,
                                                 int32_t options)
 {
+    if (n == 0)
+        return dn2cpp_string_literal(u"", 0);
     bool breaks = (options & 1) != 0;
     char16_t* buf;
     Dn2CppString* r = dn2cpp_string_alloc(&buf, dn2cpp_base64_encoded_len(n, breaks));
@@ -777,7 +794,7 @@ static Dn2CppString* dn2cpp_base64_encode_alloc(const char* base, size_t stride,
 Dn2CppString* dn2cpp_convert_to_base64(Dn2CppArrayN* inArray, int32_t options)
 {
     if (inArray == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("inArray");
     dn2cpp_base64_check_options(options);
     return dn2cpp_base64_encode_alloc(inArray->data, static_cast<size_t>(inArray->elemSize),
         inArray->length, options);
@@ -789,10 +806,15 @@ Dn2CppString* dn2cpp_convert_to_base64_offset(Dn2CppArrayN* inArray, int32_t off
                                               int32_t length, int32_t options)
 {
     if (inArray == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("inArray");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    if (offset < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offset", offset);
+    if (offset > inArray->length - length)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "offset",
+            offset, inArray->length - length);
     dn2cpp_base64_check_options(options);
-    if (offset < 0 || length < 0 || offset > inArray->length - length)
-        dn2cpp_throw_argument_out_of_range();
     size_t stride = static_cast<size_t>(inArray->elemSize);
     return dn2cpp_base64_encode_alloc(inArray->data + static_cast<size_t>(offset) * stride,
         stride, length, options);
@@ -812,16 +834,29 @@ int32_t dn2cpp_convert_to_base64_chararray(Dn2CppArrayN* inArray, int32_t offset
                                            int32_t length, Dn2CppArrayN* outArray,
                                            int32_t offsetOut, int32_t options)
 {
-    if (inArray == nullptr || outArray == nullptr)
-        dn2cpp_throw_argument_null();
+    if (inArray == nullptr)
+        dn2cpp_throw_argument_null_param("inArray");
+    if (outArray == nullptr)
+        dn2cpp_throw_argument_null_param("outArray");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    if (offsetIn < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offsetIn",
+            offsetIn);
+    if (offsetOut < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offsetOut",
+            offsetOut);
     dn2cpp_base64_check_options(options);
-    if (offsetIn < 0 || length < 0 || offsetOut < 0
-        || offsetIn > inArray->length - length)
-        dn2cpp_throw_argument_out_of_range();
+    if (offsetIn > inArray->length - length)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "offsetIn",
+            offsetIn, inArray->length - length);
+    if (length == 0)
+        return 0;
     bool breaks = (options & 1) != 0;
     int32_t need = dn2cpp_base64_encoded_len(length, breaks);
     if (offsetOut > outArray->length - need)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "offsetOut",
+            offsetOut, outArray->length - need);
     size_t inStride = static_cast<size_t>(inArray->elemSize);
     const char* src = inArray->data + static_cast<size_t>(offsetIn) * inStride;
     // char[] is packed UTF-16 (elemSize 2): encode straight into the slot.
@@ -849,12 +884,13 @@ int32_t dn2cpp_convert_try_to_base64(const uint8_t* data, int32_t n, char16_t* d
 // in the final quantum's last two slots; a completed padded quantum must end the
 // data). Each complete quantum's bytes are written atomically, so on a
 // too-short destination the earlier quanta are already in the buffer but
-// *written reports 0 — exactly the BCL's Try* semantics. `dest == nullptr`
-// counts without writing (the sizing pass for the throwing forms; destLen is
-// ignored). Returns 1 ok / 0 invalid-or-short.
+// *written reports 0 — exactly the BCL's Try* semantics. The throwing forms
+// explicitly request a sizing pass; a null public destination keeps its capacity
+// and throws only when a complete quantum would be written.
 static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* dest,
-                                         int32_t destLen, int32_t* written)
+                                         int32_t destLen, int32_t* written, bool measureOnly)
 {
+    *written = 0;
     int32_t w = 0;
     uint32_t acc = 0;
     int32_t dataInQ = 0, padsInQ = 0;
@@ -885,10 +921,12 @@ static int32_t dn2cpp_base64_decode_core(const char16_t* p, int32_t n, uint8_t* 
         {
             int32_t bytes = 3 - padsInQ;
             uint32_t v = acc << (6 * padsInQ);
-            if (dest != nullptr)
+            if (!measureOnly)
             {
                 if (w + bytes > destLen)
                     goto fail;
+                if (dest == nullptr)
+                    dn2cpp_throw_null_reference();
                 dest[w] = static_cast<uint8_t>(v >> 16);
                 if (bytes > 1)
                     dest[w + 1] = static_cast<uint8_t>(v >> 8);
@@ -918,17 +956,17 @@ static Dn2CppArrayN* dn2cpp_base64_decode_alloc(const char16_t* p, int32_t n,
                                                 const Dn2CppTypeInfo* ti)
 {
     int32_t outLen;
-    if (!dn2cpp_base64_decode_core(p, n, nullptr, 0, &outLen))
-        dn2cpp_throw_format();
+    if (!dn2cpp_base64_decode_core(p, n, nullptr, 0, &outLen, true))
+        dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BASE64_CHAR);
     Dn2CppArrayN* out = dn2cpp_newarr_n_t(outLen, static_cast<int32_t>(sizeof(uint8_t)), ti);
-    dn2cpp_base64_decode_core(p, n, reinterpret_cast<uint8_t*>(out->data), outLen, &outLen);
+    dn2cpp_base64_decode_core(p, n, reinterpret_cast<uint8_t*>(out->data), outLen, &outLen, false);
     return out;
 }
 
 Dn2CppArrayN* dn2cpp_convert_from_base64(Dn2CppString* s, const Dn2CppTypeInfo* ti)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("s");
     return dn2cpp_base64_decode_alloc(s->chars, s->length, ti);
 }
 
@@ -938,9 +976,16 @@ Dn2CppArrayN* dn2cpp_convert_from_base64_chararray(Dn2CppArrayN* inArray, int32_
                                                    int32_t length, const Dn2CppTypeInfo* ti)
 {
     if (inArray == nullptr)
-        dn2cpp_throw_argument_null();
-    if (offset < 0 || length < 0 || offset > inArray->length - length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_null_param("inArray");
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    if (offset < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offset", offset);
+    if (offset > inArray->length - length)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "offset",
+            offset, inArray->length - length);
+    if (length == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(uint8_t)));
     // char[] is packed UTF-16 (elemSize 2).
     return dn2cpp_base64_decode_alloc(
         reinterpret_cast<const char16_t*>(inArray->data) + offset, length, ti);
@@ -949,20 +994,22 @@ Dn2CppArrayN* dn2cpp_convert_from_base64_chararray(Dn2CppArrayN* inArray, int32_
 int32_t dn2cpp_convert_try_from_base64(const char16_t* p, int32_t n, uint8_t* dest,
                                        int32_t destLen, int32_t* written)
 {
-    return dn2cpp_base64_decode_core(p, n, dest, destLen, written);
+    return dn2cpp_base64_decode_core(p, n, dest, destLen, written, false);
 }
 
 int32_t dn2cpp_convert_try_from_base64_str(Dn2CppString* s, uint8_t* dest, int32_t destLen,
                                            int32_t* written)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
-    return dn2cpp_base64_decode_core(s->chars, s->length, dest, destLen, written);
+        dn2cpp_throw_argument_null_param("s");
+    return dn2cpp_convert_try_from_base64(s->chars, s->length, dest, destLen, written);
 }
 
 // Contiguous-bytes core (the ReadOnlySpan<byte> overload lowers here directly).
 Dn2CppString* dn2cpp_convert_to_hex_raw(const uint8_t* data, int32_t n, bool lower)
 {
+    if (n == 0)
+        return dn2cpp_string_literal(u"", 0);
     const char16_t* tbl = lower ? u"0123456789abcdef" : u"0123456789ABCDEF";
     char16_t* buf;
     Dn2CppString* r = dn2cpp_string_alloc(&buf, n * 2);
@@ -978,7 +1025,7 @@ Dn2CppString* dn2cpp_convert_to_hex_raw(const uint8_t* data, int32_t n, bool low
 Dn2CppString* dn2cpp_convert_to_hex(Dn2CppArrayN* inArray, bool lower)
 {
     if (inArray == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("inArray");
     size_t stride = static_cast<size_t>(inArray->elemSize);
     if (stride == 1)
         return dn2cpp_convert_to_hex_raw(reinterpret_cast<const uint8_t*>(inArray->data), inArray->length, lower);
@@ -1002,10 +1049,14 @@ Dn2CppString* dn2cpp_convert_to_hex(Dn2CppArrayN* inArray, bool lower)
 Dn2CppString* dn2cpp_convert_to_hex_offset(Dn2CppArrayN* inArray, int32_t offset, int32_t count, bool lower)
 {
     if (inArray == nullptr)
-        dn2cpp_throw_argument_null();
-    if (static_cast<uint32_t>(offset) > static_cast<uint32_t>(inArray->length)
-        || static_cast<uint32_t>(count) > static_cast<uint32_t>(inArray->length - offset))
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_null_param("inArray");
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", count);
+    if (offset < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "offset", offset);
+    if (offset > inArray->length - count)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "offset",
+            offset, inArray->length - count);
     size_t stride = static_cast<size_t>(inArray->elemSize);
     if (stride == 1)
         return dn2cpp_convert_to_hex_raw(
@@ -1037,9 +1088,11 @@ static int32_t dn2cpp_hex_decode_digit(char16_t c)
 Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("s");
+    if (s->length == 0)
+        return dn2cpp_array_empty_n_atomic(ti, static_cast<int32_t>(sizeof(uint8_t)));
     if (s->length % 2 != 0)
-        dn2cpp_throw_format();
+        dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_HEX_LENGTH);
     int32_t outLen = s->length / 2;
     Dn2CppArrayN* out = dn2cpp_newarr_n_t(outLen, static_cast<int32_t>(sizeof(uint8_t)), ti);
     char* od = out->data;
@@ -1049,7 +1102,7 @@ Dn2CppArrayN* dn2cpp_convert_from_hex(Dn2CppString* s, const Dn2CppTypeInfo* ti)
         int32_t hi = dn2cpp_hex_decode_digit(s->chars[i * 2]);
         int32_t lo = dn2cpp_hex_decode_digit(s->chars[i * 2 + 1]);
         if (hi < 0 || lo < 0)
-            dn2cpp_throw_format();
+            dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_HEX_CHAR);
         *reinterpret_cast<uint8_t*>(od + static_cast<size_t>(i) * stride) =
             static_cast<uint8_t>((hi << 4) | lo);
     }
