@@ -61,6 +61,7 @@
 # prints only content/bytes/results, never absolute paths (FileStream.Name IS one)
 # and never an exception Message (it embeds one). CoreLib only.
 source "$(dirname "$0")/_common.sh"
+unset DN2CPP_BEFORE_IO_VALIDATION
 
 project=FileReal
 out="artifacts/$(printf '%s' "$project" | tr '[:upper:]' '[:lower:]')"
@@ -185,6 +186,11 @@ native_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_filereal_native.XXXXXX")
 dotnet_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_filereal_dotnet.XXXXXX")
 inc_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_filereal_inc.XXXXXX")
 trap 'rm -rf "$native_dir" "$dotnet_dir" "$inc_dir"' EXIT
+if [ "$DN2CPP_OS" != windows ]; then
+    ln -s missing-target/child "$native_dir/dangling-io-error"
+    ln -s missing-target/child "$dotnet_dir/dangling-io-error"
+    ln -s missing-target/child "$inc_dir/dangling-io-error"
+fi
 
 # Real .NET is the oracle for the exit status too, not just the output (see
 # assert_exit_code in _common.sh). Both invocations are bracketed with
@@ -201,6 +207,23 @@ expected=$(dotnet "$app" "$dotnet_dir"); expected_code=$?
 set -e
 assert_output "$native_out" "$expected"
 assert_exit_code "$native_code" "$expected_code"
+validation_output=$(strip_cr_win "$native_out")
+grep -qxF '== io missing paths ==' <<< "$validation_output"
+grep -qxF 'io missing paths complete' <<< "$validation_output"
+grep -qF 'read parent: DirectoryNotFoundException |' <<< "$validation_output"
+grep -qxF 'delete leaf: no exception' <<< "$validation_output"
+grep -qF 'delete parent: DirectoryNotFoundException |' <<< "$validation_output"
+if [ "$DN2CPP_OS" != windows ]; then
+    [ -L "$native_dir/dangling-io-error" ] && [ -L "$dotnet_dir/dangling-io-error" ]
+    grep -qF 'write dangling link: FileNotFoundException |' <<< "$validation_output"
+fi
+before_dir=$(mktemp -d "${TMPDIR:-/tmp}/dn2cpp_filereal_before.XXXXXX")
+before=$(DN2CPP_BEFORE_IO_VALIDATION=1 run_bounded dotnet "$app" "$before_dir")
+rm -rf "$before_dir"
+before=$(strip_cr_win "$before")
+prefix=$(awk '$0 == "== io missing paths ==" { exit } { print }' <<< "$validation_output")
+assert_output "$prefix" "$before"
+
 
 echo "== 5/7 Asserting the PAL symbol set =="
 # The PalIdentitySubset section's failure mode is not wrong output, it is a C++

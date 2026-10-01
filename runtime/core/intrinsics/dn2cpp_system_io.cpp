@@ -4,20 +4,19 @@
 // System.Environment bodies, whose real IL pulls in the
 // ArrayPool / EventSource / Tracing / Sys.* P/Invoke cascade. Semantics probed
 // against real .NET — see the
-// build-and-run-{console-io,file-subset,directory-subset,env-subset}.sh gates.
+// build-and-run-{console-io,filesystem-enum,env-subset}.sh gates.
 //
-// All public declarations live in the shared dn2cpp.h; the file-local static
-// helpers (dn2cpp_path_last_sep / dn2cpp_path_to_utf8 / dn2cpp_file_read_all /
-// dn2cpp_directory_create_one) are used only within this translation unit.
+// The public declarations live in dn2cpp_core.h; the static helpers are used only
+// within this translation unit.
 
 #include "dn2cpp_core.h"
-#include "platform/dn2cpp_pal.h" // getcwd/unlink/mkdir/chdir/stat-kind/getenv via the PAL seam
+#include "platform/dn2cpp_pal.h" // getcwd/unlink/chdir/stat-kind/getenv via the PAL seam
 
 #include <string>     // managed path strings as NUL-terminated UTF-8 std::string
 #include <vector>     // Path.GetFullPath segment stack / Path.Combine buffer
 #include <cstring>    // std::memcpy / std::strlen
 #include <cstdio>     // File read/write (fopen/fread/fwrite/fclose)
-#include <cerrno>     // errno / ENOENT / EEXIST (preserved across the PAL fs calls)
+#include <cerrno>     // errno / ENOENT / EACCES / EISDIR (preserved across the PAL fs calls)
 #if defined(_WIN32)
 #include <windows.h>  // GetFullPathNameW/GetLongPathNameW — Windows Path.GetFullPath (drive/UNC-aware, 8.3 expansion); winreg.h — Environment's User/Machine registry read
 #include <algorithm>  // std::find — scan the normalized path for an 8.3 '~' component
@@ -208,6 +207,41 @@ Dn2CppString* dn2cpp_path_combine4(Dn2CppString* a, Dn2CppString* b, Dn2CppStrin
     return dn2cpp_path_combine2(dn2cpp_path_combine2(dn2cpp_path_combine2(a, b), c), d);
 }
 
+static bool dn2cpp_path_has_nul(const Dn2CppString* p)
+{
+    for (int32_t i = 0; i < p->length; i++)
+        if (p->chars[i] == u'\0')
+            return true;
+    return false;
+}
+
+// Path.GetFullPath's argument checks, which every File and Directory member runs on
+// the path it resolves: null (ArgumentNullException), empty (ArgumentException), then
+// an embedded NUL, which an OS call would silently truncate the name at. .NET's
+// PathInternal.IsEffectivelyEmpty counts an all-space path as empty on Windows and
+// only there, with its own sentence: measured, GetFullPath(" ") gives the same
+// ArgumentException as GetFullPath(""). Without that check the space case reaches
+// GetFullPathNameW, which refuses it, and an input fault reads as an IOException.
+// A member whose own ArgumentException.ThrowIfNullOrEmpty comes first refuses ""
+// with that sentence before calling this.
+void dn2cpp_path_check_resolvable(Dn2CppString* p)
+{
+    if (p == nullptr)
+        dn2cpp_throw_argument_null_param("path");
+#if defined(_WIN32)
+    int32_t nonSpace = 0;
+    while (nonSpace < p->length && p->chars[nonSpace] == u' ')
+        nonSpace++;
+    if (nonSpace == p->length)
+        dn2cpp_throw_argument_param(DN2CPP_SR_PATH_EMPTY, "path");
+#else
+    if (p->length == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "path");
+#endif
+    if (dn2cpp_path_has_nul(p))
+        dn2cpp_throw_argument_param(DN2CPP_SR_NULL_CHAR_IN_PATH, "path");
+}
+
 #if defined(_WIN32)
 // A GetFullPathNameW refusal, raised the way real .NET raises it: PathHelper hands
 // the Win32 error to Win32Marshal.GetExceptionForWin32Error, so the TYPE COMES FROM
@@ -241,20 +275,7 @@ Dn2CppString* dn2cpp_path_combine4(Dn2CppString* a, Dn2CppString* b, Dn2CppStrin
 // cannot be expanded — GetLongPathNameW needs the components on disk).
 Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 {
-    // .NET answers these two with DIFFERENT types (measured on CoreCLR):
-    // GetFullPath(null) is ArgumentNullException, GetFullPath("") is
-    // ArgumentException. One combined check cannot say both.
-    if (p == nullptr)
-        dn2cpp_throw_argument_null();
-    // .NET's PathInternal.IsEffectivelyEmpty counts an ALL-SPACE path as empty on
-    // Windows and only there: measured, GetFullPath(" ") gives the same
-    // ArgumentException as GetFullPath(""). Without the check the space case reaches
-    // GetFullPathNameW, which refuses it, and an input fault reads as an IOException.
-    int32_t nonSpace = 0;
-    while (nonSpace < p->length && p->chars[nonSpace] == u' ')
-        nonSpace++;
-    if (nonSpace == p->length)
-        dn2cpp_throw_argument();
+    dn2cpp_path_check_resolvable(p);
     std::vector<wchar_t> in(static_cast<size_t>(p->length) + 1);
     for (int32_t i = 0; i < p->length; i++)
         in[static_cast<size_t>(i)] = static_cast<wchar_t>(p->chars[i]);
@@ -305,13 +326,7 @@ Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 #else
 Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 {
-    // .NET answers these two with DIFFERENT types (measured on CoreCLR):
-    // GetFullPath(null) is ArgumentNullException, GetFullPath("") is
-    // ArgumentException. One combined check cannot say both.
-    if (p == nullptr)
-        dn2cpp_throw_argument_null();
-    if (p->length == 0)
-        dn2cpp_throw_argument();
+    dn2cpp_path_check_resolvable(p);
     // Work in UTF-8 ('/' and '.' are ASCII, never a UTF-8 continuation byte): the cwd
     // comes from getcwd as bytes, and GetFullPath is purely lexical (it collapses
     // '.'/'..'/'//', it does NOT resolve symlinks or require the path to exist).
@@ -371,38 +386,116 @@ Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p)
 // the matching .NET exception types so `catch`/GetType() agree.
 
 // A managed path string as a NUL-terminated UTF-8 std::string.
-static std::string dn2cpp_path_to_utf8(Dn2CppString* p)
+static std::string dn2cpp_path_to_utf8(Dn2CppString* p, const char* paramName = nullptr)
 {
-    if (p == nullptr) dn2cpp_throw_argument_null();
+    if (p == nullptr)
+    {
+        if (paramName != nullptr) dn2cpp_throw_argument_null_param(paramName);
+        dn2cpp_throw_argument_null();
+    }
     int32_t n = dn2cpp_string_to_utf8(p, nullptr, 0);
     std::string s(static_cast<size_t>(n), '\0');
     if (n > 0) dn2cpp_string_to_utf8(p, s.data(), n);
     return s;
 }
 
+// The path of a member that opens the file: ArgumentException.ThrowIfNullOrEmpty's
+// checks, then those of the Path.GetFullPath the open runs.
+static std::string dn2cpp_file_open_path(Dn2CppString* path)
+{
+    if (path != nullptr && path->length == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "path");
+    dn2cpp_path_check_resolvable(path);
+    return dn2cpp_path_to_utf8(path, "path");
+}
+
+static bool dn2cpp_file_parent_exists(Dn2CppString* full)
+{
+#if defined(_WIN32)
+    int32_t separator = full->length - 1;
+    while (separator >= 0 && full->chars[separator] != u'\\' && full->chars[separator] != u'/')
+        separator--;
+    std::vector<wchar_t> parent(static_cast<size_t>(separator + 2));
+    for (int32_t i = 0; i <= separator; i++)
+        parent[static_cast<size_t>(i)] = static_cast<wchar_t>(full->chars[i]);
+    parent[static_cast<size_t>(separator + 1)] = L'\0';
+    DWORD attributes = ::GetFileAttributesW(parent.data());
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+#else
+    std::string normalized = dn2cpp_path_to_utf8(full, "path");
+    size_t separator = normalized.find_last_of('/');
+    std::string parent = normalized.substr(0, separator + 1);
+    return dn2cpp_pal_path_kind(parent.c_str()) == DN2CPP_PAL_PATH_DIR;
+#endif
+}
+
+// An absent leaf differs from an absent parent; both messages name the normalized
+// full path, as the BCL's file-open path does before issuing the OS call.
+[[noreturn]] void dn2cpp_file_throw_open_failure(int err, Dn2CppString* path)
+{
+    if (err == EACCES || err == EPERM || err == EISDIR)
+        dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
+            DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
+    if (err == ENOENT || err == ENOTDIR)
+    {
+        Dn2CppString* full = dn2cpp_path_get_full_path(path);
+        if (err == ENOENT && dn2cpp_file_parent_exists(full))
+            dn2cpp_throw_sr1(&dn2cpp_file_not_found_exception_type,
+                DN2CPP_SR_FILE_NOT_FOUND_PATH, full);
+        dn2cpp_throw_sr1(&dn2cpp_directory_not_found_exception_type,
+            DN2CPP_SR_DIRECTORY_NOT_FOUND_PATH, full);
+    }
+    dn2cpp_throw_of(&dn2cpp_io_exception_type);
+}
+
 int32_t dn2cpp_file_exists(Dn2CppString* path)
 {
-    // .NET: false (never throws) for null/empty or a non-regular-file path.
-    if (path == nullptr || path->length == 0) return 0;
-    std::string p = dn2cpp_path_to_utf8(path);
-    return (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_FILE) ? 1 : 0;
+    // .NET: false (never throws) for null, empty, a path Path.GetFullPath refuses,
+    // or one that is missing or a directory (on Windows, a device too).
+    if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
+    std::string p = dn2cpp_path_to_utf8(path, "path");
+    int kind = dn2cpp_pal_path_kind(p.c_str());
+#if defined(_WIN32)
+    return kind == DN2CPP_PAL_PATH_FILE ? 1 : 0;
+#else
+    // Unix .NET counts anything that is not a directory: a device or a FIFO too.
+    return (kind == DN2CPP_PAL_PATH_FILE || kind == DN2CPP_PAL_PATH_OTHER) ? 1 : 0;
+#endif
 }
 
 void dn2cpp_file_delete(Dn2CppString* path)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
+    dn2cpp_path_check_resolvable(path);
+    std::string p = dn2cpp_path_to_utf8(path, "path");
     if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR)
-        dn2cpp_throw_of(&dn2cpp_unauthorized_access_exception_type); // .NET: dir -> UnauthorizedAccess
-    // A missing file is a no-op in .NET; any other failure is an IOException.
-    if (dn2cpp_pal_unlink(p.c_str()) != 0 && errno != ENOENT)
+        dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
+            DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
+    if (dn2cpp_pal_unlink(p.c_str()) != 0)
+    {
+        int err = errno;
+        if (err == ENOENT || err == ENOTDIR)
+        {
+            Dn2CppString* full = dn2cpp_path_get_full_path(path);
+            if (err == ENOENT && dn2cpp_file_parent_exists(full)) return;
+            dn2cpp_throw_sr1(&dn2cpp_directory_not_found_exception_type,
+                DN2CPP_SR_DIRECTORY_NOT_FOUND_PATH, full);
+        }
+        if (err == EACCES || err == EPERM)
+            dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
+                DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
         dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    }
 }
 
-// Slurp the whole file into `out`; throws FileNotFoundException when it can't open.
-static void dn2cpp_file_read_all(const std::string& p, std::string& out)
+// Slurp the whole file into `out`.
+static void dn2cpp_file_read_all(Dn2CppString* path, const std::string& p, std::string& out)
 {
+    // A read-only open of a directory succeeds on POSIX; .NET refuses it.
+    if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR)
+        dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
+            DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, dn2cpp_path_get_full_path(path));
     FILE* fp = std::fopen(p.c_str(), "rb");
-    if (fp == nullptr) dn2cpp_throw_of(&dn2cpp_file_not_found_exception_type);
+    if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
     // Heap, not stack: 8 KiB is more than a small-stack target (a console, an
     // engine worker thread) can spare for one frame, and this one nests under
     // whatever managed code called File.ReadAllText. The allocation is once per
@@ -418,9 +511,9 @@ static void dn2cpp_file_read_all(const std::string& p, std::string& out)
 
 Dn2CppString* dn2cpp_file_read_all_text(Dn2CppString* path)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
+    std::string p = dn2cpp_file_open_path(path);
     std::string data;
-    dn2cpp_file_read_all(p, data);
+    dn2cpp_file_read_all(path, p, data);
     // .NET strips a leading UTF-8 BOM (EF BB BF). UTF-16/32 BOM detection is a
     // carve-out — dn2cpp writes UTF-8 (no BOM), so reads round-trip.
     const char* s = data.data();
@@ -437,9 +530,9 @@ Dn2CppString* dn2cpp_file_read_all_text(Dn2CppString* path)
 
 Dn2CppArrayN* dn2cpp_file_read_all_bytes(Dn2CppString* path, const Dn2CppTypeInfo* ti)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
+    std::string p = dn2cpp_file_open_path(path);
     std::string data;
-    dn2cpp_file_read_all(p, data);
+    dn2cpp_file_read_all(path, p, data);
     Dn2CppArrayN* arr = dn2cpp_newarr_n_t(static_cast<int32_t>(data.size()), 1, ti);
     if (!data.empty())
         std::memcpy(arr->data, data.data(), data.size());
@@ -448,9 +541,9 @@ Dn2CppArrayN* dn2cpp_file_read_all_bytes(Dn2CppString* path, const Dn2CppTypeInf
 
 void dn2cpp_file_write_all_text(Dn2CppString* path, Dn2CppString* contents)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
+    std::string p = dn2cpp_file_open_path(path);
     FILE* fp = std::fopen(p.c_str(), "wb");
-    if (fp == nullptr) dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
     // .NET: UTF-8, no BOM. null contents writes an empty file.
     if (contents != nullptr && contents->length > 0)
     {
@@ -467,10 +560,12 @@ void dn2cpp_file_write_all_text(Dn2CppString* path, Dn2CppString* contents)
 
 void dn2cpp_file_write_all_bytes(Dn2CppString* path, Dn2CppArrayN* bytes)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
+    // .NET checks the bytes before the path.
+    if (bytes == nullptr) dn2cpp_throw_argument_null_param("bytes");
+    std::string p = dn2cpp_file_open_path(path);
     FILE* fp = std::fopen(p.c_str(), "wb");
-    if (fp == nullptr) dn2cpp_throw_of(&dn2cpp_io_exception_type);
-    if (bytes != nullptr && bytes->length > 0)
+    if (fp == nullptr) dn2cpp_file_throw_open_failure(errno, path);
+    if (bytes->length > 0)
         std::fwrite(bytes->data, 1, static_cast<size_t>(bytes->length), fp);
     std::fclose(fp);
 }
@@ -497,13 +592,32 @@ Dn2CppString* dn2cpp_env_get_current_directory()
     return dn2cpp_string_from_utf8(cwd.data(), static_cast<int32_t>(std::strlen(cwd.data())));
 }
 
-void dn2cpp_env_set_current_directory(Dn2CppString* path)
+void dn2cpp_env_set_current_directory(Dn2CppString* value)
 {
-    std::string p = dn2cpp_path_to_utf8(path);
-    // .NET raises DirectoryNotFoundException when the target is missing; we don't
-    // model that subtype, so a failed chdir surfaces as a catchable IOException.
+    if (value != nullptr && value->length == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "value");
+    // The name ends at an embedded NUL, as the string .NET marshals to chdir does.
+    std::string p = dn2cpp_path_to_utf8(value, "value");
     if (dn2cpp_pal_chdir(p.c_str()) != 0)
+    {
+        int err = errno;
+        if (err == ENOENT || err == ENOTDIR)
+            dn2cpp_throw_sr1(&dn2cpp_directory_not_found_exception_type,
+                DN2CPP_SR_DIRECTORY_NOT_FOUND_PATH, value);
+        if (err == EACCES || err == EPERM)
+            dn2cpp_throw_sr1(&dn2cpp_unauthorized_access_exception_type,
+                DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH, value);
         dn2cpp_throw_of(&dn2cpp_io_exception_type);
+    }
+}
+
+// Directory.SetCurrentDirectory refuses "" through its own ThrowIfNullOrEmpty, so on
+// Windows that sentence wins over GetFullPath's "The path is empty.".
+void dn2cpp_directory_set_current_directory(Dn2CppString* path)
+{
+    if (path != nullptr && path->length == 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_EMPTY_STRING, "path");
+    dn2cpp_env_set_current_directory(dn2cpp_path_get_full_path(path));
 }
 
 #if defined(_WIN32)
@@ -601,9 +715,10 @@ Dn2CppString* dn2cpp_env_get_variable_from_registry(Dn2CppString* /*name*/, int3
 
 int32_t dn2cpp_directory_exists(Dn2CppString* path)
 {
-    // .NET: false (never throws) for null/empty or a non-directory path.
-    if (path == nullptr || path->length == 0) return 0;
-    std::string p = dn2cpp_path_to_utf8(path);
+    // .NET: false (never throws) for null, empty, a path Path.GetFullPath refuses,
+    // or a non-directory path.
+    if (path == nullptr || path->length == 0 || dn2cpp_path_has_nul(path)) return 0;
+    std::string p = dn2cpp_path_to_utf8(path, "path");
     return (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR) ? 1 : 0;
 }
 
@@ -653,39 +768,6 @@ Dn2CppString* dn2cpp_app_base_directory()
     // empty string GetBaseDirectoryCore returns when it has no location to work from.
     if (sep == nullptr) return dn2cpp_string_from_utf8("", 0);
     return dn2cpp_string_from_utf8(exe.path, static_cast<int32_t>(sep - exe.path + 1));
-}
-
-// mkdir one component, treating "already a directory" as success
-// (the idempotent case). A pre-existing non-directory (a file) at the path is an
-// IOException, matching real .NET on the leaf; any other mkdir failure is also an
-// IOException (we don't model DirectoryNotFoundException — see the header note).
-static void dn2cpp_directory_create_one(const std::string& p)
-{
-    if (dn2cpp_pal_mkdir(p.c_str()) == 0) return;
-    if (errno == EEXIST)
-    {
-        if (dn2cpp_pal_path_kind(p.c_str()) == DN2CPP_PAL_PATH_DIR) return; // idempotent
-        dn2cpp_throw_of(&dn2cpp_io_exception_type); // a file sits where a dir is asked for
-    }
-    dn2cpp_throw_of(&dn2cpp_io_exception_type);
-}
-
-void dn2cpp_directory_create(Dn2CppString* path)
-{
-    if (path == nullptr) dn2cpp_throw_argument_null(); // .NET: ArgumentNullException
-    // .NET: an empty path is ArgumentException ("The path is empty.").
-    if (path->length == 0) dn2cpp_throw_of(&dn2cpp_argument_exception_type);
-    std::string p = dn2cpp_path_to_utf8(path);
-    // Recursive (mkdir -p): create every missing parent, then the leaf. We walk
-    // the path creating each prefix in turn so a fully-missing tree is built.
-    // Trailing '/' is harmless (an empty final component is skipped).
-    for (std::string::size_type i = 1; i < p.size(); ++i)
-    {
-        if (dn2cpp_is_dir_sep(p[i]))
-            dn2cpp_directory_create_one(p.substr(0, i));
-    }
-    if (!dn2cpp_is_dir_sep(p.back()))
-        dn2cpp_directory_create_one(p);
 }
 
 int32_t dn2cpp_tool_process_run(Dn2CppString* executable, Dn2CppArrayRef* arguments)

@@ -1,14 +1,8 @@
 using System;
 using System.IO;
 
-// System.IO.Directory.CreateDirectory(string) lowered to the
-// dn2cpp_directory_create runtime helper (recursive mkdir, idempotent on an
-// existing directory). The real BCL body pulls in the Path.GetFullPathInternal ->
-// Sys.GetCwd -> ArrayPool -> EventSource -> INumberBase cascade (the largest
-// remaining self-host gap subtree), so it is intercepted before real resolution
-// AND excluded from reachability (the three-point pattern)..NET returns a
-// DirectoryInfo we don't model; every caller (incl. dn2cpp's own code) discards
-// it, so the transpiler pushes a null placeholder.
+// Directory.CreateDirectory runs its real BCL body and returns DirectoryInfo.
+// Missing parents are created; existing directories and trailing separators work.
 //
 // `root` is the bucket's scratch directory (the gate hands each side a fresh
 // mktemp dir, so native and real .NET use separate roots); the output prints only
@@ -25,7 +19,6 @@ internal static class Program
 
         // Recursive: a nested path where NONE of the intermediate parents exist.
         // Every missing parent is created, then the leaf (matching `mkdir -p`).
-        // The DirectoryInfo return value is discarded (the dn2cpp-own-code shape).
         string nested = Path.Combine(root, "a", "b", "c");
         Directory.CreateDirectory(nested);
         Console.WriteLine($"leafCreated={Directory.Exists(nested)}");

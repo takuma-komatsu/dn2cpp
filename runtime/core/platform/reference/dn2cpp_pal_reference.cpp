@@ -42,7 +42,7 @@
 #include "platform/reference/dn2cpp_pal_reference.h"
 
 #include <atomic>     // atomic_thread_fence (the process-wide barrier's weakening)
-#include <cerrno>     // errno / EEXIST / ENOENT / ERANGE (the seam's error contract)
+#include <cerrno>     // errno / ENOENT / ERANGE (the seam's error contract)
 #include <cstdio>     // fwrite / fflush / fprintf (the default console sink)
 #include <cstdlib>    // getenv / abort
 #include <cstring>    // memcpy
@@ -79,10 +79,9 @@ namespace
     }
 
     // std::error_code -> errno. The seam's error contract is errno-shaped
-    // (ENOENT makes File.Delete a no-op, EEXIST makes CreateDirectory
-    // idempotent), and generic_category's values ARE the <cerrno> constants on
-    // every conforming implementation — which is what makes this portable rather
-    // than a POSIX assumption wearing a std:: name.
+    // (ENOENT makes File.Delete a no-op), and generic_category's values ARE the
+    // <cerrno> constants on every conforming implementation — which is what makes
+    // this portable rather than a POSIX assumption wearing a std:: name.
     int errno_of(const std::error_code& ec)
     {
         if (!ec)
@@ -149,29 +148,6 @@ int dn2cpp_pal_unlink(const char* path)
     }
     errno = 0;
     return std::remove(path) == 0 ? 0 : -1;
-}
-
-int dn2cpp_pal_mkdir(const char* path)
-{
-    if (path == nullptr)
-    {
-        errno = EINVAL;
-        return -1;
-    }
-    std::error_code ec;
-    if (fs::create_directory(fs::path(path), ec))
-        return 0;
-    if (ec)
-    {
-        errno = errno_of(ec);
-        return -1;
-    }
-    // No error and no creation means the path was already there. POSIX mkdir
-    // answers EEXIST for that, and Directory.CreateDirectory's idempotency is
-    // built on exactly this value — collapsing it to a generic failure is one of
-    // the three "wrong in a way that compiles" cases PORTING.md §2.1 names.
-    errno = EEXIST;
-    return -1;
 }
 
 int dn2cpp_pal_chdir(const char* path)

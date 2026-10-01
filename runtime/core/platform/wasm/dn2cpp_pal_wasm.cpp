@@ -26,7 +26,7 @@
 #include <ctime>      // localtime_r / mktime / std::tm / std::time_t
 #include <malloc.h>   // malloc_usable_size (dlmalloc)
 #include <unistd.h>   // getcwd / unlink / chdir
-#include <sys/stat.h> // stat / S_ISREG / S_ISDIR / mkdir
+#include <sys/stat.h> // stat / S_ISREG / S_ISDIR
 
 char* dn2cpp_pal_getcwd(char* buf, size_t size)
 {
@@ -36,11 +36,6 @@ char* dn2cpp_pal_getcwd(char* buf, size_t size)
 int dn2cpp_pal_unlink(const char* path)
 {
     return ::unlink(path);
-}
-
-int dn2cpp_pal_mkdir(const char* path)
-{
-    return ::mkdir(path, 0777);
 }
 
 int dn2cpp_pal_chdir(const char* path)

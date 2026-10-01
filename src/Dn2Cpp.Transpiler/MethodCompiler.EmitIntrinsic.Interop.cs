@@ -1743,7 +1743,7 @@ internal sealed partial class MethodCompiler
             case "SetCurrentDirectory" when ps is [{ } p] && p.IsString:
             {
                 var v = Pop();
-                Emit($"dn2cpp_env_set_current_directory({Cast(v, "Dn2CppString*")});");
+                Emit($"dn2cpp_directory_set_current_directory({Cast(v, "Dn2CppString*")});");
                 return true;
             }
         }

@@ -1235,6 +1235,7 @@ internal static partial class CoreIntrinsics
         ["System.FormatException"] = "&dn2cpp_format_exception_type",
         ["System.IO.IOException"] = "&dn2cpp_io_exception_type",
         ["System.IO.FileNotFoundException"] = "&dn2cpp_file_not_found_exception_type",
+        ["System.IO.DirectoryNotFoundException"] = "&dn2cpp_directory_not_found_exception_type",
         // Raised by the Windows Path.GetFullPath arm. Without this row a
         // `catch (PathTooLongException)` binds an emitted type-info the runtime
         // never raises, and only the IOException base clause would ever fire.

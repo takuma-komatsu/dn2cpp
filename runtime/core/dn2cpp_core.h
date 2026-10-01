@@ -1412,12 +1412,12 @@ extern const int32_t dn2cpp_exception_get_message_slot;
 // layout and nothing was stored.
 bool dn2cpp_argument_exception_store(Dn2CppObject* e, Dn2CppString* paramName,
     Dn2CppObject* actualValue);
-// The BCL exception messages this runtime raises, folded in from the CoreLib's own
-// Strings.resources at transpile time. A runtime resource read is not an option:
-// --no-manifest-resources may have emptied that table, and a fault that faults while
-// building its own message is uncatchable. `text` is null for a key the CoreLib did
-// not carry; the caller falls back to Exception.Message's type-name form. Defined
-// only in generated output.
+// The BCL exception messages this runtime raises, folded in at transpile time from the
+// CoreLib's own Strings.resources, or for an "Assembly:Key" entry from that library's.
+// A runtime resource read is not an option: --no-manifest-resources may have emptied
+// that table, and a fault that faults while building its own message is uncatchable.
+// `text` is null for a key the program's libraries do not carry; the caller falls back
+// to Exception.Message's type-name form. Defined only in generated output.
 struct Dn2CppBclMessage { const char* key; const char* text; };
 extern const Dn2CppBclMessage dn2cpp_bcl_messages[];
 extern const int32_t dn2cpp_bcl_message_count;
@@ -1550,8 +1550,34 @@ inline constexpr const char* DN2CPP_SR_STRING_COMPARISON = "NotSupported_StringC
 inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MULTI_DIM_NOT_SUPPORTED = "Arg_RankMultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MUST_MATCH = "Rank_MustMatch";
-// The text for a key, or null when this program carries none (no corelib, a corelib with
-// no embedded resources, or a key outside Dn2Cpp.BclMessages).
+inline constexpr const char* DN2CPP_SR_NOT_ENOUGH_BYTES_TO_READ = "Argument_NotEnoughBytesToRead";
+inline constexpr const char* DN2CPP_SR_NOT_ENOUGH_BYTES_TO_WRITE = "Argument_NotEnoughBytesToWrite";
+inline constexpr const char* DN2CPP_SR_NOT_SUPPORTED_READING = "NotSupported_Reading";
+inline constexpr const char* DN2CPP_SR_NOT_SUPPORTED_WRITING = "NotSupported_Writing";
+inline constexpr const char* DN2CPP_SR_ENUM_OUT_OF_RANGE = "ArgumentOutOfRange_Enum";
+inline constexpr const char* DN2CPP_SR_NULL_CHAR_IN_PATH = "Argument_NullCharInPath";
+inline constexpr const char* DN2CPP_SR_MMF_MAP_NAME_EMPTY = "System.IO.MemoryMappedFiles:Argument_MapNameEmptyString";
+inline constexpr const char* DN2CPP_SR_MMF_CAPACITY_NEGATIVE = "System.IO.MemoryMappedFiles:ArgumentOutOfRange_PositiveOrDefaultCapacityRequired";
+inline constexpr const char* DN2CPP_SR_MMF_APPEND_MODE = "System.IO.MemoryMappedFiles:Argument_NewMMFAppendModeNotAllowed";
+inline constexpr const char* DN2CPP_SR_MMF_TRUNCATE_MODE = "System.IO.MemoryMappedFiles:Argument_NewMMFTruncateModeNotAllowed";
+inline constexpr const char* DN2CPP_SR_MMF_WRITE_ACCESS = "System.IO.MemoryMappedFiles:Argument_NewMMFWriteAccessNotAllowed";
+inline constexpr const char* DN2CPP_SR_MMF_EMPTY_FILE = "System.IO.MemoryMappedFiles:Argument_EmptyFile";
+inline constexpr const char* DN2CPP_SR_MMF_READ_ACCESS_WITH_LARGE_CAPACITY = "System.IO.MemoryMappedFiles:Argument_ReadAccessWithLargeCapacity";
+inline constexpr const char* DN2CPP_SR_MMF_CAPACITY_BELOW_FILE_SIZE = "System.IO.MemoryMappedFiles:ArgumentOutOfRange_CapacityGEFileSizeRequired";
+inline constexpr const char* DN2CPP_SR_MMF_SIZE_NEGATIVE = "System.IO.MemoryMappedFiles:ArgumentOutOfRange_PositiveOrDefaultSizeRequired";
+inline constexpr const char* DN2CPP_SR_MMF_SIZE_PAST_ADDRESS_SPACE = "System.IO.MemoryMappedFiles:ArgumentOutOfRange_CapacityLargerThanLogicalAddressSpaceNotAllowed";
+inline constexpr const char* DN2CPP_SR_MMF_NOT_ENOUGH_MEMORY = "System.IO.MemoryMappedFiles:IO_NotEnoughMemory";
+inline constexpr const char* DN2CPP_SR_MMF_IO_DENIED = "System.IO.MemoryMappedFiles:UnauthorizedAccess_IODenied_NoPathName";
+// The text for a key, or null when this program carries none (no corelib, a library with
+// no embedded resources or not loaded at all, or a key outside Dn2Cpp.BclMessages).
+inline constexpr const char* DN2CPP_SR_FILE_NOT_FOUND_PATH = "IO_FileNotFound_FileName";
+inline constexpr const char* DN2CPP_SR_DIRECTORY_NOT_FOUND = "IO_PathNotFound_NoPathName";
+inline constexpr const char* DN2CPP_SR_DIRECTORY_NOT_FOUND_PATH = "IO_PathNotFound_Path";
+inline constexpr const char* DN2CPP_SR_UNAUTHORIZED_ACCESS_PATH = "UnauthorizedAccess_IODenied_Path";
+inline constexpr const char* DN2CPP_SR_MMF_NAMED_MAPS = "System.IO.MemoryMappedFiles:PlatformNotSupported_NamedMaps";
+inline constexpr const char* DN2CPP_SR_BUFFER_TOO_SMALL = "Arg_BufferTooSmall";
+inline constexpr const char* DN2CPP_SR_PATH_EMPTY = "Arg_PathEmpty";
+inline constexpr const char* DN2CPP_SR_POSITION_LESS_THAN_CAPACITY_REQUIRED = "ArgumentOutOfRange_PositionLessThanCapacityRequired";
 const char* dn2cpp_sr_text(const char* key);
 // The key's text with `{0}`..`{argc-1}` replaced by `args` (argc at most 2), or null
 // when the text is absent.
@@ -2328,6 +2354,7 @@ extern Dn2CppTypeInfo dn2cpp_platform_not_supported_exception_type;
 extern Dn2CppTypeInfo dn2cpp_format_exception_type;
 extern Dn2CppTypeInfo dn2cpp_io_exception_type;
 extern Dn2CppTypeInfo dn2cpp_file_not_found_exception_type;
+extern Dn2CppTypeInfo dn2cpp_directory_not_found_exception_type;
 // System.IO.PathTooLongException. The Windows Path.GetFullPath arm raises it for
 // the one Win32 error .NET's Win32Marshal maps to it; it derives from IOException
 // there as here, so `catch (IOException)` matches either way.
@@ -2677,6 +2704,7 @@ void dn2cpp_cctor_run_startup(void (*ensure)(), const char* type);
 // The same for a parameter name only known at run time; null or empty adds no tail.
 [[noreturn]] void dn2cpp_throw_argument_null_name(Dn2CppString* paramName);
 [[noreturn]] void dn2cpp_throw_argument();
+[[noreturn]] void dn2cpp_throw_argument_param(const char* key, const char* paramName);
 // An ArgumentException, ArgumentNullException or ArgumentOutOfRangeException (`ti`)
 // whose resource sentence the emitter resolved, naming `paramName` as above.
 [[noreturn]] void dn2cpp_throw_argument_text(const Dn2CppTypeInfo* ti, const char* sentence,
@@ -5475,11 +5503,18 @@ Dn2CppString* dn2cpp_path_combine2(Dn2CppString* a, Dn2CppString* b);
 Dn2CppString* dn2cpp_path_combine3(Dn2CppString* a, Dn2CppString* b, Dn2CppString* c);
 Dn2CppString* dn2cpp_path_combine4(Dn2CppString* a, Dn2CppString* b, Dn2CppString* c, Dn2CppString* d);
 Dn2CppString* dn2cpp_path_get_full_path(Dn2CppString* p);
+// Path.GetFullPath's argument checks alone, naming `path`, for a member that resolves
+// its path after checks of its own.
+void dn2cpp_path_check_resolvable(Dn2CppString* p);
+[[noreturn]] void dn2cpp_file_throw_open_failure(int err, Dn2CppString* path);
 
 // System.IO.File. UTF-8 with no BOM on write; a leading UTF-8 BOM is
-// stripped on read (matching .NET). Error paths throw the .NET exception types
-// (FileNotFoundException / UnauthorizedAccessException / IOException). ReadAllBytes
-// takes the precise ti_arr_Byte handle so the result's GetType() is Byte[].
+// stripped on read (matching .NET). Delete and the read and write helpers refuse a
+// null, empty or NUL-bearing path with .NET's ArgumentException before any OS call,
+// and Exists answers false for one; other error paths throw the .NET exception
+// types (FileNotFoundException / UnauthorizedAccessException / IOException).
+// ReadAllBytes takes the precise ti_arr_Byte handle so the result's GetType() is
+// Byte[].
 int32_t dn2cpp_file_exists(Dn2CppString* path);
 void dn2cpp_file_delete(Dn2CppString* path);
 Dn2CppString* dn2cpp_file_read_all_text(Dn2CppString* path);
@@ -5609,7 +5644,11 @@ void        dn2cpp_http2_call_free(Dn2CppHttp2Call* c);
 // Directory.Exists is true only for a directory (false for missing/file/null).
 Dn2CppString* dn2cpp_env_get_variable(Dn2CppString* name);
 Dn2CppString* dn2cpp_env_get_current_directory();
-void dn2cpp_env_set_current_directory(Dn2CppString* path);
+// The CurrentDirectory setter, whose checks name `value`, and
+// Directory.SetCurrentDirectory, which refuses a null or empty `path` before handing
+// the setter Path.GetFullPath's result, as .NET does.
+void dn2cpp_env_set_current_directory(Dn2CppString* value);
+void dn2cpp_directory_set_current_directory(Dn2CppString* path);
 int32_t dn2cpp_directory_exists(Dn2CppString* path);
 
 // The User/Machine target of Environment.GetEnvironmentVariable, whose Windows
@@ -5631,14 +5670,6 @@ Dn2CppString* dn2cpp_env_get_variable_from_registry(Dn2CppString* name, int32_t 
 // way NativeAOT resolves them.
 Dn2CppString* dn2cpp_process_path();
 Dn2CppString* dn2cpp_app_base_directory();
-
-// Directory.CreateDirectory — recursive mkdir (creates every
-// missing parent), idempotent on an existing directory (no throw). null throws
-// ArgumentNullException, "" throws ArgumentException, any other failure surfaces
-// a catchable IOException (DirectoryNotFoundException — when a path component is
-// a file — is not modelled, matching the cwd-set helper). The caller
-// discards the .NET DirectoryInfo return value, so no value is produced here.
-void dn2cpp_directory_create(Dn2CppString* path);
 
 // File-backed maps own one descriptor through a GC-managed reference. Views are
 // independent OS mappings and remain valid after the file wrapper is disposed.
@@ -5675,28 +5706,57 @@ extern Dn2CppTypeInfo dn2cpp_unmanaged_memory_accessor_type;
 Dn2CppMappedViewObject* dn2cpp_mmap_view_object_new(Dn2CppMappedView view);
 void dn2cpp_mmap_view_object_dispose(Dn2CppMappedViewObject* view);
 Dn2CppMappedView dn2cpp_mmap_view_data(Dn2CppMappedViewObject* view);
+// The address of a `size`-byte UnmanagedMemoryAccessor access, after .NET's checks: the
+// typed Read*/Write* test the view's state before the position, the generic
+// Read<T>/Write<T> (`positionFirst`) the sign of the position first.
+uint8_t* dn2cpp_mmap_view_at(Dn2CppMappedViewObject* view, int64_t position, int32_t size,
+                             bool write, bool positionFirst);
+// ReadArray<T>/WriteArray<T> check the managed run before the view, then transfer through
+// dn2cpp_mmap_read_into/dn2cpp_mmap_write_from.
+void dn2cpp_mmap_check_array_run(Dn2CppArray* array, int32_t offset, int32_t count);
+int32_t dn2cpp_mmap_read_array(Dn2CppMappedViewObject* view, int64_t position, void* dst,
+                               int32_t count, int32_t elemSize);
+void dn2cpp_mmap_write_array(Dn2CppMappedViewObject* view, int64_t position, const void* src,
+                             int32_t count, int32_t elemSize);
 
 // FileMode (System.IO): Open=3 / OpenOrCreate=4 supported. MemoryMappedFileAccess:
-// ReadWrite=0 / Read=1 supported. mapName must be null. Any other value throws
-// NotSupportedException; a missing file throws FileNotFoundException; an mmap/io
-// failure throws IOException.
+// ReadWrite=0 / Read=1 supported. mapName must be null. Any other valid value throws
+// NotSupportedException; a missing file throws FileNotFoundException, a directory
+// UnauthorizedAccessException; an mmap/io failure throws IOException. A capacity the
+// file's size refuses deletes the file the call created, as .NET does.
 Dn2CppMappedFile* dn2cpp_mmap_create_from_file(Dn2CppString* path, Dn2CppString* mapName,
                                               int32_t fileMode, int32_t access, int64_t capacity);
-void dn2cpp_mmap_validate_create(Dn2CppObject* source, Dn2CppString* mapName,
-                                int64_t capacity, int32_t access);
-void dn2cpp_mmap_validate_capacity(int64_t length, int64_t capacity, int32_t access);
+// `sourceName` is the factory's parameter a null `source` is reported under.
+void dn2cpp_mmap_validate_create(Dn2CppObject* source, const char* sourceName,
+                                Dn2CppString* mapName, int64_t capacity, int32_t access);
+void dn2cpp_mmap_validate_stream_prerequisites(int64_t length, int64_t capacity,
+                                               int32_t inheritability);
+void dn2cpp_mmap_validate_named_stream(Dn2CppString* mapName, int64_t length,
+                                      int64_t capacity, int32_t access, int32_t inheritability);
+// The rejections that need the source's size, in .NET's order; a path factory passes
+// inheritability 0 (None).
+void dn2cpp_mmap_validate_capacity(int64_t length, int64_t capacity, int32_t access,
+                                   int32_t inheritability);
+// CreateFromFile(path, mode, mapName, capacity, access)'s argument checks and those of
+// the File.OpenHandle it opens through, run by dn2cpp_mmap_create_from_file before its
+// carve-outs.
+void dn2cpp_mmap_validate_path_create(Dn2CppString* path, int32_t fileMode, Dn2CppString* mapName,
+                                      int64_t capacity, int32_t access);
 // The caller holds a SafeHandle lease while the OS handle is duplicated.
-Dn2CppMappedFile* dn2cpp_mmap_create_from_handle(intptr_t handle, int32_t access,
-                                                int64_t capacity, int32_t inheritability);
+Dn2CppMappedFile* dn2cpp_mmap_create_from_handle(intptr_t handle, Dn2CppString* mapName, int32_t access,
+                                                int64_t capacity, int32_t inheritability,
+                                                int64_t validationLength, int32_t hasValidationLength);
 void dn2cpp_mmap_dispose_source(Dn2CppMappedFile* f);
 void dn2cpp_mmap_file_dispose(Dn2CppMappedFile* f);
 // CreateViewAccessor: mmap [offset, offset+size) (size 0 = rest of file from offset).
+// The range is refused as each OS's .NET refuses it: Unix checks it against the map's
+// capacity, even after Dispose; Windows leaves it to the OS mapping call.
 Dn2CppMappedView dn2cpp_mmap_create_view(Dn2CppMappedFile* f, int64_t offset, int64_t size, int32_t access);
 void dn2cpp_mmap_view_flush(Dn2CppMappedView v);   // msync(MS_SYNC)
 void dn2cpp_mmap_view_dispose(Dn2CppMappedView v); // munmap
-// ReadArray<T>/WriteArray<T>: bulk copy between the view and a managed array's
-// element buffer (the transpiler passes element-0+offset). ReadArray returns the
-// element count actually transferred (clamped to the view capacity).
+// ReadArray<T>/WriteArray<T>'s bulk copy between the view and a managed array's
+// element buffer at element `offset`. ReadArray returns the element count actually
+// transferred (clamped to the view capacity).
 int32_t dn2cpp_mmap_read_into(Dn2CppMappedView v, int64_t pos, void* dst, int32_t count, int32_t elemSize);
 void dn2cpp_mmap_write_from(Dn2CppMappedView v, int64_t pos, const void* src, int32_t count, int32_t elemSize);
 

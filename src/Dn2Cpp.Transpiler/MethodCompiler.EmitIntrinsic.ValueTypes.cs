@@ -2256,6 +2256,17 @@ internal sealed partial class MethodCompiler
     private string MmvRef(StackEntry e) => $"((Dn2CppMappedViewObject*)dn2cpp_null_check({Cast(e, "Dn2CppMappedViewObject*")}))";
     private string MmvVal(StackEntry e) => $"dn2cpp_mmap_view_data({MmvRef(e)})";
 
+    // An accessor call's receiver and position, spilled in IL order; the receiver is
+    // null-checked where the call uses it, after every argument.
+    private (string View, string Position) MmvSpill(StackEntry view, StackEntry position)
+    {
+        string vt = NewTemp("Dn2CppMappedViewObject*");
+        Emit($"{vt} = {Cast(view, "Dn2CppMappedViewObject*")};");
+        string pt = NewTemp("int64_t");
+        Emit($"{pt} = {Cast(position, "int64_t")};");
+        return ($"((Dn2CppMappedViewObject*)dn2cpp_null_check({vt}))", pt);
+    }
+
     /// <summary>The packed C++ storage type a MemoryMappedViewAccessor named primitive
     /// reader (ReadInt32/ReadByte/…) loads from, keyed on the type suffix, or null when the
     /// suffix is not a modeled primitive (ReadDecimal and the generic Read/ReadArray fall
@@ -2280,8 +2291,8 @@ internal sealed partial class MethodCompiler
 
     /// <summary>System.IO.MemoryMappedFiles file-backed map subset (POSIX mmap).
     /// Files and views have managed reference identity; SafeBuffer uses real BCL IL.
-    /// The view's Read*/Write* primitive accessors are inline typed
-    /// loads/stores over the mapped bytes. The generic Read/Write/ReadArray/WriteArray&lt;T&gt;
+    /// The view's Read*/Write* primitive accessors are typed loads/stores over the
+    /// mapped bytes behind .NET's position checks. The generic Read/Write/ReadArray/WriteArray&lt;T&gt;
     /// forms are handled in TranslateGenericIntrinsic. Unmodeled members (named maps,
     /// CreateViewStream, ReadDecimal, the CreateNew/Truncate file modes, …) raise
     /// NotSupportedException.</summary>
@@ -2406,21 +2417,24 @@ internal sealed partial class MethodCompiler
                         return true;
                     }
                 }
-                // Read<suffix>(long position) — an inline typed load over the mapped bytes.
+                // Read<suffix>(long position) — a checked typed load over the mapped bytes.
                 if (name.StartsWith("Read", StringComparison.Ordinal)
                     && MmapPrimStorage(name.Substring(4)) is { } rst && ps.Length == 1)
                 {
                     var pos = Pop();
-                    var view = Pop();
-                    string vbase = $"(({MmvVal(view)}).addr + ({pos.Expr}))";
-                    if (name.Substring(4) == "Boolean")
-                        Push(StackKind.I4, "int32_t", $"((*(uint8_t*){vbase}) != 0 ? 1 : 0)");
-                    else if (rst is "int64_t" or "uint64_t")
-                        Push(StackKind.I8, "int64_t", $"(int64_t)(*({rst}*){vbase})");
-                    else if (rst is "float" or "double")
-                        Push(StackKind.R8, "double", $"(double)(*({rst}*){vbase})");
-                    else
-                        Push(StackKind.I4, "int32_t", $"(int32_t)(*({rst}*){vbase})");
+                    var (vt, pt) = MmvSpill(Pop(), pos);
+                    string vbase = NewTemp("uint8_t*");
+                    Emit($"{vbase} = dn2cpp_mmap_view_at({vt}, {pt}, (int32_t)sizeof({rst}), false, false);");
+                    var (kind, type, load) = name.Substring(4) == "Boolean"
+                        ? (StackKind.I4, "int32_t", $"((*(uint8_t*){vbase}) != 0 ? 1 : 0)")
+                        : rst is "int64_t" or "uint64_t"
+                            ? (StackKind.I8, "int64_t", $"(int64_t)(*({rst}*){vbase})")
+                            : rst is "float" or "double"
+                                ? (StackKind.R8, "double", $"(double)(*({rst}*){vbase})")
+                                : (StackKind.I4, "int32_t", $"(int32_t)(*({rst}*){vbase})");
+                    string value = NewTemp(type);
+                    Emit($"{value} = {load};");
+                    Push(kind, type, value);
                     return true;
                 }
                 // Write(long position, <prim> value) — an inline typed store. The non-generic
@@ -2432,12 +2446,12 @@ internal sealed partial class MethodCompiler
                     string wst = CppTypes.StorageOf(vp);
                     var value = Pop();
                     var pos = Pop();
-                    var view = Pop();
-                    string vbase = $"(({MmvVal(view)}).addr + ({pos.Expr}))";
-                    string rhs = vp.Primitive == PrimitiveTypeCode.Boolean
-                        ? $"(uint8_t)(({value.Expr}) != 0 ? 1 : 0)"
-                        : $"({wst})({value.Expr})";
-                    Emit($"*({wst}*){vbase} = {rhs};");
+                    var (vt, pt) = MmvSpill(Pop(), pos);
+                    string rhs = NewTemp(wst);
+                    Emit(vp.Primitive == PrimitiveTypeCode.Boolean
+                        ? $"{rhs} = (uint8_t)(({value.Expr}) != 0 ? 1 : 0);"
+                        : $"{rhs} = ({wst})({value.Expr});");
+                    Emit($"*({wst}*)dn2cpp_mmap_view_at({vt}, {pt}, (int32_t)sizeof({wst}), true, false) = {rhs};");
                     return true;
                 }
                 break;
@@ -2523,8 +2537,13 @@ internal sealed partial class MethodCompiler
         var capacity = Pop();
         var mapName = Pop();
         var source = Pop();
-        Emit($"dn2cpp_mmap_validate_create({Cast(source, "Dn2CppObject*")}, {Cast(mapName, "Dn2CppString*")}, {Cast(capacity, "int64_t")}, {access.Expr});");
+        string sourceName = streamSource ? "fileStream" : "fileHandle";
+        string named = NewTemp("Dn2CppString*");
+        Emit($"{named} = {Cast(mapName, "Dn2CppString*")};");
+        Emit($"dn2cpp_mmap_validate_create({Cast(source, "Dn2CppObject*")}, \"{sourceName}\", "
+            + $"{named}, {Cast(capacity, "int64_t")}, {access.Expr});");
         StackEntry handle = source;
+        string validationLength = streamSource ? NewTemp("int64_t") : "0";
         if (streamSource)
         {
             // Flush and expose the real handle through virtual BCL methods; a path
@@ -2536,18 +2555,20 @@ internal sealed partial class MethodCompiler
                     ?? throw new InvalidOperationException($"FileStream::{member} is unavailable");
                 Push(source.Kind, source.CppType, source.Expr);
                 EmitManagedCall(method, isCallvirt: true);
+                // Length rejects a closed stream; empty-file and inheritability checks
+                // precede Flush, while the remaining capacity checks follow it.
                 if (member == "get_Length")
                 {
-                    var length = Pop();
-                    Emit($"if ({length.Expr} == 0 && {capacity.Expr} == 0) dn2cpp_throw_of(&dn2cpp_argument_exception_type);");
-                    Emit($"if ({inheritability.Expr} < 0 || {inheritability.Expr} > 1) dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);");
+                    Emit($"{validationLength} = (int64_t)({Pop().Expr});");
+                    Emit($"dn2cpp_mmap_validate_stream_prerequisites({validationLength}, "
+                        + $"{Cast(capacity, "int64_t")}, {inheritability.Expr});");
                 }
                 else if (member == "get_SafeFileHandle")
                     handle = Pop();
             }
+            Emit($"dn2cpp_mmap_validate_named_stream({named}, {validationLength}, "
+                + $"{Cast(capacity, "int64_t")}, {access.Expr}, {inheritability.Expr});");
         }
-        else
-            Emit($"if ({inheritability.Expr} < 0 || {inheritability.Expr} > 1) dn2cpp_throw_of(&dn2cpp_argument_out_of_range_exception_type);");
 
         string safe = NewTemp(getHandle.DeclaringClass.CppStructName + "*");
         Emit($"{safe} = {Cast(handle, getHandle.DeclaringClass.CppStructName + "*")};");
@@ -2556,7 +2577,7 @@ internal sealed partial class MethodCompiler
         Emit(DirectCall(addRef, new List<string> { safe, "&" + added }) + ";");
         string result = NewTemp("Dn2CppMappedFile*");
         Emit("try {");
-        Emit($"{result} = dn2cpp_mmap_create_from_handle((intptr_t){DirectCall(getHandle, new List<string> { safe })}, {access.Expr}, {Cast(capacity, "int64_t")}, {inheritability.Expr});");
+        Emit($"{result} = dn2cpp_mmap_create_from_handle((intptr_t){DirectCall(getHandle, new List<string> { safe })}, {named}, {access.Expr}, {Cast(capacity, "int64_t")}, {inheritability.Expr}, {validationLength}, {(streamSource ? 1 : 0)});");
         Emit("} catch (...) {");
         Emit($"if ({added}) {DirectCall(release, new List<string> { safe })};");
         Emit("throw;");

@@ -58,7 +58,7 @@ portable C++17 that names no operating system, and that compiles, links and runs
 Copy the directory, add the CMake arm (§3.3), and replace bodies one at a time. The
 `PAL_REFERENCE=1` axis of `gates/build-and-run-pal-reference.sh` keeps it working.
 
-The seam declares **nineteen** functions and two enums. Re-derive the function count:
+The seam declares **eighteen** functions and two enums. Re-derive the function count:
 
 ```bash
 grep -cE '^[A-Za-z_].*\bdn2cpp_pal_[a-z_0-9]+\(' runtime/core/platform/dn2cpp_pal.h
@@ -77,7 +77,7 @@ declaration in `dn2cpp_pal.h` carries a `// PAL-CONTRACT: MUST` or
 `// PAL-CONTRACT: MAY-DEGRADE <sentinel>` line, that marker is the source of truth,
 and `gates/build-and-run-doc-claims.sh` diffs it against the table below.
 
-**Fifteen of the nineteen must answer truly.** The remaining entries have a
+**Fourteen of the eighteen must answer truly.** The remaining entries have a
 documented "unavailable" answer that their callers handle:
 
 | may degrade | the sentinel | who handles it |
@@ -87,15 +87,14 @@ documented "unavailable" answer that their callers handle:
 | `dn2cpp_pal_backtrace` | returns `0` | `runtime/core/dn2cpp_exceptions.cpp` stamps no trace and `Exception.StackTrace` stays null. The wasm arm returns `0` because `-fwasm-exceptions` exposes no unwinder and a release build carries no name section. |
 | `dn2cpp_pal_default_locale_name` | returns `0` | The caller reads it as the invariant culture. The wasm and reference arms return `0` unconditionally — neither has a user to ask. dn2cpp models no ICU, so an invariant default is correct behaviour, merely not localised. |
 
-Everything else — the five file-system calls, `getenv`, the three ANSI transforms,
+Everything else — the four file-system calls, `getenv`, the three ANSI transforms,
 the process-wide barrier, the two time conversions, the usable-size query, and the
 two console entries — is a **correctness** obligation. Three are easy to implement
 wrongly in a way that compiles:
 
-- **`dn2cpp_pal_unlink` / `dn2cpp_pal_mkdir` must preserve `errno`.** `ENOENT` is
-  how "delete a missing file" becomes a no-op and `EEXIST` is how
-  `Directory.CreateDirectory` is idempotent. Collapse failure to `-1` and clear
-  `errno` and both become exceptions.
+- **`dn2cpp_pal_unlink` must preserve `errno`.** `ENOENT` is how "delete a
+  missing file" becomes a no-op. Collapse failure to `-1` and clear `errno` and it
+  becomes an exception.
 - **`dn2cpp_pal_membarrier_processwide` has no degradation handling at its
   caller.** Implementations may weaken (Linux falls from `membarrier(2)` to an
   mprotect-IPI bounce to a plain seq_cst fence; wasm is a plain fence), but the

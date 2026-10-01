@@ -496,6 +496,21 @@ internal sealed partial class Compilation
     internal string? CoreLibSrText(string key) =>
         FindClassByFullName("System.Object")?.Module is { } m ? SrResourceText(m, key) : null;
 
+    /// <summary>The text a <see cref="BclMessages"/> key names: a CoreLib resource, or for
+    /// an "Assembly:Key" entry that library's own resource; null when the program loads no
+    /// such assembly or it carries no such key.</summary>
+    internal string? BclMessageText(string key)
+    {
+        int colon = key.IndexOf(':');
+        if (colon < 0)
+            return CoreLibSrText(key);
+        string assembly = key.Substring(0, colon);
+        foreach (var m in Modules)
+            if (m.AssemblyName == assembly)
+                return SrResourceText(m, key.Substring(colon + 1));
+        return null;
+    }
+
     /// <summary>Drops a base-chain resolution that landed on an intrinsic-mapped type
     /// (System.Object, System.ValueType, System.Attribute, …). Every method of such a
     /// type is emitted inline and never transpiled — <see cref="Reach"/> cuts it — so a

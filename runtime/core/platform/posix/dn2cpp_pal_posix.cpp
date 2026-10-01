@@ -22,7 +22,7 @@
 #include <unwind.h>   // _Unwind_Backtrace / _Unwind_GetIP / _Unwind_GetRegionStart (backtrace capture)
 #include <dlfcn.h>    // dladdr — the image holding the runtime (frame-entry derivation)
 #include <sys/mman.h> // mmap / mprotect (membarrier fallback)
-#include <sys/stat.h> // stat / S_ISREG / S_ISDIR / mkdir
+#include <sys/stat.h> // stat / S_ISREG / S_ISDIR
 
 // macOS exposes malloc_size; glibc/musl/BSD expose malloc_usable_size.
 #if defined(__APPLE__)
@@ -50,11 +50,6 @@ char* dn2cpp_pal_getcwd(char* buf, size_t size)
 int dn2cpp_pal_unlink(const char* path)
 {
     return ::unlink(path);
-}
-
-int dn2cpp_pal_mkdir(const char* path)
-{
-    return ::mkdir(path, 0777);
 }
 
 int dn2cpp_pal_chdir(const char* path)
