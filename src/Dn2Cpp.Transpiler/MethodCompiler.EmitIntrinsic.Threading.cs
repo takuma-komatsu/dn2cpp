@@ -21,10 +21,10 @@ internal sealed partial class MethodCompiler
                 {
                     var taken = Pop(); // ref bool lockTaken
                     var obj = Pop();   // obj
-                    Emit($"dn2cpp_monitor_enter((Dn2CppObject*)({obj.Expr}));");
-                    // Low-byte write: the bool local is zero-initialised, so this yields
-                    // the value 1 whether its storage is 1- or 4-byte (little-endian).
-                    Emit($"*(uint8_t*)({taken.Expr}) = 1;");
+                    // The runtime reads and writes lockTaken's low byte: a false bool is
+                    // all zero, so the write yields 1 whether its storage is 1- or 4-byte
+                    // (little-endian).
+                    Emit($"dn2cpp_monitor_enter_taken((Dn2CppObject*)({obj.Expr}), (uint8_t*)({taken.Expr}));");
                 }
                 else
                 {
@@ -42,29 +42,28 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Monitor", "TryEnter"):
             {
                 // TryEnter(obj [, timeout] [, ref taken]). A timeout (int ms or TimeSpan) is
-                // a real timed acquire (try_enter_timeout); the bare TryEnter and the
-                // zero-ms form reduce to a non-blocking attempt (ms == 0 is one immediate
-                // check). The ref-bool forms write the byte result; the others push a bool.
+                // a real timed acquire (dn2cpp_monitor_try_enter_timeout), and a zero timeout
+                // one immediate check, as the bare TryEnter is. The ref-bool forms go
+                // through dn2cpp_monitor_try_enter_taken, which also refuses a lockTaken
+                // already true, and write the byte result; the others push a bool.
                 var ps = sig.ParameterTypes;
                 bool hasRef = ps[^1].Kind == TypeKind.ByRef;
                 bool timed = ps.Length > 1 && IsTimeoutParam(ps[1]);
                 StackEntry? takenRef = hasRef ? Pop() : null; // ref bool result (last arg)
-                string acquired;
-                if (timed)
-                {
-                    var to = Pop();                  // timeout (int ms or TimeSpan)
-                    var obj = Pop();                 // obj (first arg)
-                    acquired = $"dn2cpp_monitor_try_enter_timeout((Dn2CppObject*)({obj.Expr}), {TimeoutMs(to, ps[1])})";
-                }
-                else
-                {
-                    var obj = Pop();                 // obj (first arg)
-                    acquired = $"dn2cpp_monitor_try_enter((Dn2CppObject*)({obj.Expr}))";
-                }
+                string? ms = timed ? TimeoutMs(Pop(), ps[1]) : null;
+                var obj = Pop();                     // obj (first arg)
                 if (hasRef)
-                    Emit($"*(uint8_t*)({takenRef!.Expr}) = (uint8_t)({acquired});");
+                    Emit($"dn2cpp_monitor_try_enter_taken((Dn2CppObject*)({obj.Expr}), {ms ?? "0"}, (uint8_t*)({takenRef!.Expr}));");
+                else if (ms is not null)
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_monitor_try_enter_timeout((Dn2CppObject*)({obj.Expr}), {ms})");
                 else
-                    Push(StackKind.I4, "int32_t", acquired);
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_monitor_try_enter((Dn2CppObject*)({obj.Expr}))");
+                return true;
+            }
+            case ("System.Threading.Monitor", "IsEntered"):
+            {
+                var obj = Pop(); // obj
+                Push(StackKind.I4, "int32_t", $"dn2cpp_monitor_is_entered((Dn2CppObject*)({obj.Expr}))");
                 return true;
             }
             case ("System.Threading.Monitor", "Wait"):
@@ -106,45 +105,57 @@ internal sealed partial class MethodCompiler
             }
             //.NET 9+ System.Threading.Lock. `lock(lockVar)` lowers to
             // `var s = lockVar.EnterScope(); try {…} finally { s.Dispose(); }`. Backed by
-            // the same per-object mutex table as Monitor (keyed on the Lock object). The
+            // a separate mutex table from Monitor (keyed on the Lock object). The
             // Scope carries the Lock so Dispose releases it.
             case ("System.Threading.Lock", "EnterScope"):
             {
                 var lk = Pop(); // this (the Lock)
-                Emit($"dn2cpp_monitor_enter((Dn2CppObject*)({lk.Expr}));");
+                Emit($"dn2cpp_lock_enter((Dn2CppObject*)({lk.Expr}));");
                 Push(StackKind.Struct, "Dn2CppLockScope", $"Dn2CppLockScope{{(Dn2CppObject*)({lk.Expr})}}");
                 return true;
             }
             case ("System.Threading.Lock", "Enter"):
             {
                 var lk = Pop(); // this
-                Emit($"dn2cpp_monitor_enter((Dn2CppObject*)({lk.Expr}));");
+                Emit($"dn2cpp_lock_enter((Dn2CppObject*)({lk.Expr}));");
                 return true;
             }
             case ("System.Threading.Lock", "Exit"):
             {
                 var lk = Pop(); // this
-                Emit($"dn2cpp_monitor_exit((Dn2CppObject*)({lk.Expr}));");
+                Emit($"dn2cpp_lock_exit(dn2cpp_null_check((Dn2CppObject*)({lk.Expr})));");
                 return true;
             }
             case ("System.Threading.Lock", "TryEnter"):
             {
-                for (int i = 0; i < sig.ParameterTypes.Length; i++)
-                    Pop(); // [timeout] (not honored — try_lock)
+                // callvirt checks the receiver before conversion; call validates first.
+                var ps = sig.ParameterTypes;
+                StackEntry? to = ps.Length == 1 ? Pop() : null; // timeout (int ms or TimeSpan)
                 var lk = Pop(); // this
-                Push(StackKind.I4, "int32_t", $"dn2cpp_monitor_try_enter((Dn2CppObject*)({lk.Expr}))");
+                if (to is null)
+                {
+                    Push(StackKind.I4, "int32_t", $"dn2cpp_lock_try_enter_timeout(dn2cpp_null_check((Dn2CppObject*)({lk.Expr})), 0)");
+                    return true;
+                }
+                if (CallIsVirtual)
+                    Emit($"(void)dn2cpp_null_check((Dn2CppObject*)({lk.Expr}));");
+                Push(StackKind.I4, "int32_t",
+                    $"dn2cpp_lock_try_enter_timeout((Dn2CppObject*)({lk.Expr}), {TimeoutMs(to, ps[0])})");
                 return true;
             }
-            // IsHeldByCurrentThread is intentionally NOT intrinsified: the monitor table
-            // does not track the owning thread, so it would have to return a constant.
-            // Leaving it unimplemented fails loudly rather than silently mismodeling.
+            case ("System.Threading.Lock", "get_IsHeldByCurrentThread"):
+            {
+                var lk = Pop(); // this
+                Push(StackKind.I4, "int32_t", $"dn2cpp_lock_is_held(dn2cpp_null_check((Dn2CppObject*)({lk.Expr})))");
+                return true;
+            }
             // Lock.Scope.Dispose — the `lock` body's finally; releases the lock the Scope
             // captured. The dispatch key is enclosing-qualified (see TranslateIntrinsic) so
             // it can't collide with another nested "Scope" type's Dispose.
             case ("System.Threading.Lock+Scope", "Dispose"):
             {
                 var scope = Pop(); // this (the Scope, by address)
-                Emit($"dn2cpp_monitor_exit(((Dn2CppLockScope*)({scope.Expr}))->lock);");
+                Emit($"dn2cpp_lock_scope_dispose((Dn2CppLockScope*)({scope.Expr}));");
                 return true;
             }
             // Thread.MemoryBarrier / Interlocked.MemoryBarrier — full fence.
@@ -218,19 +229,19 @@ internal sealed partial class MethodCompiler
             case ("System.Threading.Thread", "Join") when sig.ParameterTypes.Length == 1:
             {
                 // Join(int ms) / Join(TimeSpan): wait up to the timeout for the thread to
-                // finish, returning true if it terminated and false on timeout. A negative
-                // ms (Timeout.Infinite) waits indefinitely.
+                // finish, returning true if it terminated and false on timeout. -1
+                // (Timeout.Infinite) waits indefinitely.
                 var to = Pop(); // timeout (int ms or TimeSpan)
                 var th = Pop(); // this
                 Push(StackKind.I4, "int32_t",
                     $"dn2cpp_thread_join_timeout({Cast(th, "Dn2CppThread*")}, {TimeoutMs(to, sig.ParameterTypes[0])})");
                 return true;
             }
-            case ("System.Threading.Thread", "Sleep")
-                when sig.ParameterTypes is [{ Primitive: PrimitiveTypeCode.Int32 }]:
+            case ("System.Threading.Thread", "Sleep") when sig.ParameterTypes is [{ } sleepTimeout]
+                && IsTimeoutParam(sleepTimeout):
             {
-                var ms = Pop();
-                Emit($"dn2cpp_thread_sleep({ms.Expr});");
+                var to = Pop(); // timeout (int ms or TimeSpan)
+                Emit($"dn2cpp_thread_sleep({TimeoutMs(to, sleepTimeout)});");
                 return true;
             }
             case ("System.Threading.Thread", "Yield"):
@@ -304,7 +315,9 @@ internal sealed partial class MethodCompiler
             // Wait([timeout] [, CancellationToken]). A timeout (int ms or TimeSpan) is a
             // real timed acquire returning true if a token was taken / false on timeout;
             // Wait() and Wait(CancellationToken) block until a token is available. The
-            // CancellationToken is not honored (dropped).
+            // CancellationToken is not honored (dropped). The timeout checks are
+            // SemaphoreSlim's own: Wait(int) checks nothing, Wait(int, CancellationToken)
+            // refuses below -1, and a TimeSpan has no upper bound.
             case ("System.Threading.SemaphoreSlim", "Wait"):
             {
                 var ps = sig.ParameterTypes;
@@ -315,8 +328,11 @@ internal sealed partial class MethodCompiler
                         Pop();
                     var to = Pop(); // timeout (int ms or TimeSpan)
                     var o = Pop();
+                    string ms = TimeoutMs(to, ps[0], "dn2cpp_semaphore_timeout_ms_from_ticks");
+                    if (ps.Length == 2 && !IsTimeSpan(ps[0]))
+                        ms = $"dn2cpp_semaphore_timeout_ms({ms})";
                     Push(StackKind.I4, "int32_t",
-                        $"dn2cpp_semaphore_wait_timeout((Dn2CppObject*)({o.Expr}), {TimeoutMs(to, ps[0])})");
+                        $"dn2cpp_semaphore_wait_timeout((Dn2CppObject*)({o.Expr}), {ms})");
                 }
                 else
                 {
@@ -398,8 +414,11 @@ internal sealed partial class MethodCompiler
                         Pop();
                     var to = Pop(); // timeout (int ms or TimeSpan)
                     var o = Pop();
+                    string wait = declType == "System.Threading.ManualResetEventSlim" || ps.Length == 2
+                        ? "dn2cpp_event_wait_timeout_receiver_first"
+                        : "dn2cpp_event_wait_timeout";
                     Push(StackKind.I4, "int32_t",
-                        $"dn2cpp_event_wait_timeout((Dn2CppObject*)({o.Expr}), {TimeoutMs(to, ps[0])})");
+                        $"{wait}((Dn2CppObject*)({o.Expr}), {TimeoutMs(to, ps[0])})");
                 }
                 else
                 {
@@ -630,7 +649,8 @@ internal sealed partial class MethodCompiler
                     var to = Pop(); // timeout (int ms or TimeSpan)
                     var o = Pop();
                     Push(StackKind.I4, "int32_t",
-                        $"dn2cpp_barrier_signal_and_wait_timeout((Dn2CppObject*)({o.Expr}), {TimeoutMs(to, ps[0])})");
+                        $"dn2cpp_barrier_signal_and_wait_timeout((Dn2CppObject*)({o.Expr}), "
+                        + $"{TimeoutMs(to, ps[0], "dn2cpp_barrier_timeout_ms_from_ticks")})");
                 }
                 else
                 {

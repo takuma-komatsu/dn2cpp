@@ -17,5 +17,48 @@
 # same-thread HANG), the upgradeable holder's granted read/upgrade paths, the
 # per-thread Is*LockHeld queries, RecursionPolicy, and the
 # SynchronizationLockException release-without-hold checks.
+# Blocking timeout validation, receiver order, signal preservation and boxed fields.
 source "$(dirname "$0")/_common.sh"
+call_app="gates/fixtures/blocking-timeout-call/bin/$CONFIG/$TFM/BlockingTimeoutCall.dll"
+build_gate_proj gates/fixtures/blocking-timeout-call/BlockingTimeoutCall.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/blocking-timeout-call/patch-call.py"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|blocking-timeout-call|cli:$(_gate_cli_hash)"
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/SyncPrimitives")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-timeout-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== wait timeouts ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== wait timeouts ==' \
+        'Barrier phase=0 remaining=1' \
+        'held: False False False' \
+        'wait timeouts end' \
+        'blocking timeout fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: SyncPrimitives timeout witness missing: $line" >&2; exit 1; }
+    done
+    local oracle="$out/direct-call-oracle" fixture="$out/direct-call" expected actual
+    mkdir -p "$oracle"
+    cp "$call_app" "$oracle/BlockingTimeoutCall.dll"
+    cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
+    python3 gates/fixtures/blocking-timeout-call/patch-call.py "$oracle/BlockingTimeoutCall.dll"
+    invoke_cli "$oracle/BlockingTimeoutCall.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
+    compile_console "$fixture" BlockingTimeoutCall
+    expected=$(run_bounded dotnet "$oracle/BlockingTimeoutCall.dll")
+    actual=$(run_bounded "./$fixture/BlockingTimeoutCall")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    for line in 'Sem null int bad type=NullReferenceException' \
+        'Sem null span bad actual=TimeSpan:-00:00:00.0020000' \
+        'Mre null int bad type=NullReferenceException' \
+        'WaitOne null int bad type=ArgumentOutOfRangeException' \
+        'Barrier null int bad type=NullReferenceException' \
+        'Lock null int bad actual=Int32:-2' \
+        'Blocking timeout call faults end'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: blocking direct-call witness missing: $line" >&2; exit 1; }
+    done
+}
 corelib_diff_gate SyncPrimitives System.Threading

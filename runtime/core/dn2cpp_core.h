@@ -1491,6 +1491,11 @@ inline constexpr const char* DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL = "ArgumentOutOf
 inline constexpr const char* DN2CPP_SR_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeLessOrEqual";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
 inline constexpr const char* DN2CPP_SR_START_INDEX = "ArgumentOutOfRange_StartIndex";
+inline constexpr const char* DN2CPP_SR_MUST_BE_FALSE = "Argument_MustBeFalse";
+inline constexpr const char* DN2CPP_SR_LOCK_EXIT = "Lock_Exit_SynchronizationLockException";
+inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMEOUT = "SemaphoreSlim_Wait_TimeoutWrong";
+inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSlim_Wait_TimeSpanTimeoutWrong";
+inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1 = "ArgumentOutOfRange_NeedNonNegOrNegative1";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
@@ -2778,6 +2783,9 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // " (Parameter 'x')" ArgumentException.Message appends is added.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_param(const char* key,
     const char* paramName);
+// Uses the supplied box and text for a timeout rejected as a TimeSpan.
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_actual(const char* sentence,
+    const char* paramName, Dn2CppObject* actual, Dn2CppString* actualText);
 
 // Checked range conversion: trap unless the value fits the target range.
 template <typename TTo, typename TFrom>
@@ -4603,28 +4611,78 @@ int64_t dn2cpp_interlocked_and_i8(int64_t* loc, int64_t value);
 // returns 1/0. Wait releases the lock, blocks until pulsed, then reacquires; the
 // _timeout forms wait at most ms and return 0 on timeout (still re-acquiring the lock
 // before returning, per the .NET contract). Pulse wakes one waiter, PulseAll wakes all.
+// For int timeouts: a set lockTaken, a null object (Monitor's
+// ArgumentNullException, a synchronized method's prologue included), a timeout below
+// -1, then Exit, Wait, Pulse or PulseAll on a monitor the calling thread does not own
+// (SynchronizationLockException).
 void dn2cpp_monitor_enter(Dn2CppObject* o);
+void dn2cpp_monitor_enter_taken(Dn2CppObject* o, uint8_t* taken);     // Enter(obj, ref lockTaken)
 void dn2cpp_monitor_exit(Dn2CppObject* o);
 int32_t dn2cpp_monitor_try_enter(Dn2CppObject* o);
 int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms); // TryEnter(obj, int/TimeSpan)
+void dn2cpp_monitor_try_enter_taken(Dn2CppObject* o, int32_t ms, uint8_t* taken);
 int32_t dn2cpp_monitor_wait(Dn2CppObject* o);
 int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms);      // Wait(obj, int/TimeSpan)
 void dn2cpp_monitor_pulse(Dn2CppObject* o);
 void dn2cpp_monitor_pulse_all(Dn2CppObject* o);
+int32_t dn2cpp_monitor_is_entered(Dn2CppObject* o);
+// Releases a monitor the calling thread still owns, and nothing otherwise: a
+// destructor's release must not throw.
+void dn2cpp_monitor_guard_exit(Dn2CppObject* o) noexcept;
+// Lock ownership is independent of the object's Monitor ownership.
+void dn2cpp_lock_enter(Dn2CppObject* lock);
+void dn2cpp_lock_exit(Dn2CppObject* lock);
+int32_t dn2cpp_lock_is_held(Dn2CppObject* lock);
+int32_t dn2cpp_lock_try_enter_timeout(Dn2CppObject* lock, int32_t ms);
+// A TimeSpan timeout's milliseconds as WaitHandle.ToTimeoutMilliseconds converts
+// them: truncated, and refused outside [-1, Int32.MaxValue] naming `timeout`.
+int32_t dn2cpp_timeout_ms_from_ticks(int64_t ticks);
+void dn2cpp_timeout_require_ms(int32_t ms);
+int32_t dn2cpp_semaphore_timeout_ms(int32_t ms);
+int32_t dn2cpp_semaphore_timeout_ms_from_ticks(int64_t ticks);
+int32_t dn2cpp_barrier_timeout_ms_from_ticks(int64_t ticks);
 
-// RAII guard around a [MethodImpl(MethodImplOptions.Synchronized)] body: enters
-// the identity-keyed monitor on construction, exits on destruction — including
-// exceptional unwind (managed exceptions are C++ exceptions). The monitor table
-// never dereferences the key, so a static synchronized method may pass its
-// declaring type's ti_* address (stable, data segment) as the identity.
+// Internal runtime scopes release only their remaining ownership during unwind.
 struct Dn2CppMonitorGuard
 {
     Dn2CppObject* obj;
     explicit Dn2CppMonitorGuard(Dn2CppObject* o) : obj(o) { dn2cpp_monitor_enter(o); }
-    ~Dn2CppMonitorGuard() { dn2cpp_monitor_exit(obj); }
+    ~Dn2CppMonitorGuard() { dn2cpp_monitor_guard_exit(obj); }
     Dn2CppMonitorGuard(const Dn2CppMonitorGuard&) = delete;
     Dn2CppMonitorGuard& operator=(const Dn2CppMonitorGuard&) = delete;
 };
+
+// A synchronized method's exit runs after either return or throw. Keeping it outside
+// unwinding lets an unowned exit replace the body's exception without C++ terminate.
+template <typename F>
+auto dn2cpp_synchronized(Dn2CppObject* obj, F body) -> decltype(body())
+{
+    dn2cpp_monitor_enter(obj);
+    bool exiting = false;
+    try
+    {
+        if constexpr (std::is_void_v<decltype(body())>)
+        {
+            body();
+            exiting = true;
+            dn2cpp_monitor_exit(obj);
+            return;
+        }
+        else
+        {
+            auto result = body();
+            exiting = true;
+            dn2cpp_monitor_exit(obj);
+            return result;
+        }
+    }
+    catch (...)
+    {
+        if (!exiting)
+            dn2cpp_monitor_exit(obj);
+        throw;
+    }
+}
 
 // ---- Volatile.Read/Write for float/double (bit-cast through an integer atomic) ----
 // Integer/pointer Volatile.Read/Write are emitted inline as __atomic_load_n /
@@ -4939,6 +4997,7 @@ void dn2cpp_event_set(Dn2CppObject* e);                      // Set()
 void dn2cpp_event_reset(Dn2CppObject* e);                    // Reset()
 int32_t dn2cpp_event_wait(Dn2CppObject* e);                  // WaitOne()/Wait() (returns 1)
 int32_t dn2cpp_event_wait_timeout(Dn2CppObject* e, int32_t ms); // WaitOne/Wait(int/TimeSpan): 1=signaled, 0=timeout
+int32_t dn2cpp_event_wait_timeout_receiver_first(Dn2CppObject* e, int32_t ms);
 int32_t dn2cpp_event_is_set(Dn2CppObject* e);               // ManualResetEventSlim.IsSet
 int32_t dn2cpp_event_wait_any(Dn2CppArrayRef* handles);     // WaitHandle.WaitAny(WaitHandle[]): index of first signaled
 
@@ -6389,6 +6448,8 @@ struct Dn2CppYieldAwaiter { };
 // the `lock(lockVar)` body's finally disposes. It carries the Lock object so Dispose
 // can release the real per-object mutex acquired by EnterScope.
 struct Dn2CppLockScope { Dn2CppObject* lock; };
+// Lock.Scope.Dispose: releases once, so a second Dispose of the same scope is a no-op.
+void dn2cpp_lock_scope_dispose(Dn2CppLockScope* scope);
 
 // StringBuilder.ChunkEnumerator (sb.GetChunks()): the runtime StringBuilder is
 // one contiguous buffer, so enumeration yields exactly one chunk — a snapshot

@@ -785,16 +785,44 @@ void dn2cpp_semaphore_wait(Dn2CppObject* o)
     s->count--;
 }
 
+// ArgumentOutOfRangeException("timeout", timeout, sentence): a BCL TimeSpan overload
+// passes the span itself as the ActualValue.
+[[noreturn]] static void dn2cpp_throw_timeout_span(const char* sentence, int64_t ticks)
+{
+    Dn2CppTimeSpan span = { ticks };
+    dn2cpp_throw_argument_out_of_range_actual(sentence, "timeout",
+        dn2cpp_box(&dn2cpp_timespan_type, &span, sizeof(span)), dn2cpp_timespan_to_string(span));
+}
+
+int32_t dn2cpp_semaphore_timeout_ms(int32_t ms)
+{
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_SEMAPHORE_TIMEOUT, "millisecondsTimeout", ms);
+    return ms;
+}
+
+int32_t dn2cpp_semaphore_timeout_ms_from_ticks(int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(dn2cpp_timespan_total(Dn2CppTimeSpan{ticks}, 10000LL));
+    if (ms < -1)
+        dn2cpp_throw_timeout_span(dn2cpp_sr_text(DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT), ticks);
+    return ms > INT32_MAX ? INT32_MAX : static_cast<int32_t>(ms);
+}
+
 // SemaphoreSlim.Wait(int)/Wait(TimeSpan): wait up to ms for a token. Returns 1 if a token
-// was taken, 0 on timeout. ms == 0 is a single immediate check (wait_for(0)); a negative
-// ms (Timeout.Infinite) is an infinite wait.
+// was taken, 0 on timeout. ms == 0 is a single immediate check (wait_for(0)); -1
+// (Timeout.Infinite) is an infinite wait. Only the unchecked Wait(int) passes less, which
+// .NET's elapsed-time test answers at once, as for 0.
 int32_t dn2cpp_semaphore_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
-    if (ms < 0)
+    dn2cpp_null_check(o);
+    if (ms == -1)
     {
         dn2cpp_semaphore_wait(o);
         return 1;
     }
+    if (ms < 0)
+        ms = 0;
     auto* s = static_cast<Dn2CppSemaphore*>(o);
     std::unique_lock<std::mutex> lk(s->m);
     if (!s->cv.wait_for(lk, std::chrono::milliseconds(ms), [s] { return s->count > 0; }))
@@ -1198,9 +1226,12 @@ int32_t dn2cpp_event_wait(Dn2CppObject* o)
 
 // WaitOne(int)/Wait(int) (and the TimeSpan forms): wait up to ms for the signal. Returns 1
 // if signaled (applying the auto-reset consume), 0 on timeout. ms == 0 is a single
-// immediate check; a negative ms (Timeout.Infinite) is an infinite wait.
+// immediate check; -1 (Timeout.Infinite) is an infinite wait, and less is refused before
+// the handle is read.
 int32_t dn2cpp_event_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_timeout_require_ms(ms);
+    dn2cpp_null_check(o);
     if (ms < 0)
         return dn2cpp_event_wait(o);
     Dn2CppSafeWaitHandle* external = nullptr;
@@ -1216,6 +1247,13 @@ int32_t dn2cpp_event_wait_timeout(Dn2CppObject* o, int32_t ms)
     if (!e->manualReset)
         e->signaled = false;
     return 1;
+}
+
+// MRES.Wait and WaitOne(timeout, exitContext) read the receiver before int validation.
+int32_t dn2cpp_event_wait_timeout_receiver_first(Dn2CppObject* o, int32_t ms)
+{
+    dn2cpp_null_check(o);
+    return dn2cpp_event_wait_timeout(o, ms);
 }
 
 int32_t dn2cpp_event_is_set(Dn2CppObject* o)
@@ -1377,10 +1415,12 @@ void dn2cpp_countdown_wait(Dn2CppObject* o)
 }
 
 // CountdownEvent.Wait(int/TimeSpan): wait up to ms for the count to reach zero. Returns 1
-// if signaled, 0 on timeout. ms == 0 is a single immediate check; a negative ms
-// (Timeout.Infinite) is an infinite wait.
+// if signaled, 0 on timeout. ms == 0 is a single immediate check; -1 (Timeout.Infinite)
+// is an infinite wait, and less is refused.
 int32_t dn2cpp_countdown_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_timeout_require_ms(ms);
+    dn2cpp_null_check(o);
     if (ms < 0)
     {
         dn2cpp_countdown_wait(o);
@@ -1472,11 +1512,29 @@ int32_t dn2cpp_barrier_signal_and_wait(Dn2CppObject* o)
     return 1;
 }
 
+// Real .NET's text for Barrier's timeout rejection. It lives in System.Threading's
+// resources, outside the CoreLib message table the emitter folds in.
+static const char* const kBarrierTimeout =
+    "The specified timeout must represent a value between -1 and Int32.MaxValue, inclusive.";
+
+int32_t dn2cpp_barrier_timeout_ms_from_ticks(int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(dn2cpp_timespan_total(Dn2CppTimeSpan{ticks}, 10000LL));
+    if (ms < -1 || ms > INT32_MAX)
+        dn2cpp_throw_timeout_span(kBarrierTimeout, ticks);
+    return static_cast<int32_t>(ms);
+}
+
 // Barrier.SignalAndWait(int/TimeSpan): like the blocking form, but a non-last arriver waits
 // at most ms. On timeout it rolls back its own signal (waiting--) and returns 0, matching
-// .NET (the timed-out signal does not count). ms < 0 (Timeout.Infinite) blocks forever.
+// .NET (the timed-out signal does not count). -1 (Timeout.Infinite) blocks forever; less
+// is refused before the signal.
 int32_t dn2cpp_barrier_signal_and_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_null_check(o);
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_actual(kBarrierTimeout, "millisecondsTimeout",
+            dn2cpp_box(&dn2cpp_int32_type, &ms, sizeof(ms)), dn2cpp_format_int(ms, 4, nullptr));
     if (ms < 0)
         return dn2cpp_barrier_signal_and_wait(o);
     auto* b = static_cast<Dn2CppBarrier*>(o);
@@ -1831,12 +1889,14 @@ void dn2cpp_rwlock_exit_upgradeable(Dn2CppObject* o)
 }
 
 // TryEnter*(int ms / TimeSpan): a real timed acquire. Returns 1 if the lock was taken,
-// 0 on timeout. ms == 0 is a single immediate check; a negative ms (Timeout.Infinite) is
-// an infinite wait. The recursion verdict precedes the timed wait, exactly as in
-// Enter* — measured: real .NET's TryEnter* throws LockRecursionException rather than
-// returning false.
+// 0 on timeout. ms == 0 is a single immediate check; -1 (Timeout.Infinite) is an
+// infinite wait, and less is refused first. The recursion verdict precedes the timed
+// wait, exactly as in Enter* — measured: real .NET's TryEnter* throws
+// LockRecursionException rather than returning false.
 int32_t dn2cpp_rwlock_try_enter_read(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_timeout_require_ms(ms);
+    dn2cpp_null_check(o);
     auto* r = static_cast<Dn2CppRwLock*>(o);
     std::unique_lock<std::mutex> lk(r->m);
     std::thread::id self = std::this_thread::get_id();
@@ -1853,6 +1913,8 @@ int32_t dn2cpp_rwlock_try_enter_read(Dn2CppObject* o, int32_t ms)
 
 int32_t dn2cpp_rwlock_try_enter_write(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_timeout_require_ms(ms);
+    dn2cpp_null_check(o);
     auto* r = static_cast<Dn2CppRwLock*>(o);
     std::unique_lock<std::mutex> lk(r->m);
     std::thread::id self = std::this_thread::get_id();
@@ -1889,6 +1951,8 @@ int32_t dn2cpp_rwlock_try_enter_write(Dn2CppObject* o, int32_t ms)
 
 int32_t dn2cpp_rwlock_try_enter_upgradeable(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_timeout_require_ms(ms);
+    dn2cpp_null_check(o);
     auto* r = static_cast<Dn2CppRwLock*>(o);
     std::unique_lock<std::mutex> lk(r->m);
     std::thread::id self = std::this_thread::get_id();

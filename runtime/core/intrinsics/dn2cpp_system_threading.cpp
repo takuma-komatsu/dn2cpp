@@ -379,10 +379,13 @@ struct Dn2CppMonitorTable
 }
 
 static Dn2CppMonitorTable& g_monitor_table = dn2cpp_never_destroyed<Dn2CppMonitorTable>();
+// Monitor.Enter(lockObject) and Lock.Enter own independent recursive locks.
+struct Dn2CppLockTable : Dn2CppMonitorTable { };
+static Dn2CppMonitorTable& g_lock_table = dn2cpp_never_destroyed<Dn2CppLockTable>();
 
-static Dn2CppMonitor* dn2cpp_monitor_for(void* o)
+static Dn2CppMonitor* dn2cpp_monitor_for(void* o, Dn2CppMonitorTable& table = g_monitor_table)
 {
-    Dn2CppMonitorTable::Stripe& s = g_monitor_table.StripeFor(o);
+    Dn2CppMonitorTable::Stripe& s = table.StripeFor(o);
     std::lock_guard<std::mutex> lk(s.mtx);
     Dn2CppMonitor*& slot = s.map[o];
     if (slot == nullptr)
@@ -390,9 +393,96 @@ static Dn2CppMonitor* dn2cpp_monitor_for(void* o)
     return slot;
 }
 
-void dn2cpp_monitor_enter(Dn2CppObject* o)
+// The object's monitor, or null when nothing ever entered it; never creates one.
+static Dn2CppMonitor* dn2cpp_monitor_find(void* o, Dn2CppMonitorTable& table = g_monitor_table)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
+    Dn2CppMonitorTable::Stripe& s = table.StripeFor(o);
+    std::lock_guard<std::mutex> lk(s.mtx);
+    auto it = s.map.find(o);
+    return it != s.map.end() ? it->second : nullptr;
+}
+
+// Whether the calling thread owns `mon`; the caller holds mon->mtx.
+static bool dn2cpp_monitor_owned(const Dn2CppMonitor* mon)
+{
+    return mon->has_owner && mon->owner == std::this_thread::get_id();
+}
+
+// Monitor's argument checks: Enter, Exit and TryEnter raise a bare
+// ArgumentNullException for a null object, Wait, Pulse, PulseAll and IsEntered one
+// naming it.
+static void dn2cpp_monitor_require(Dn2CppObject* o)
+{
+    if (o == nullptr)
+        dn2cpp_throw_argument_null();
+}
+
+static void dn2cpp_monitor_require_obj(Dn2CppObject* o)
+{
+    if (o == nullptr)
+        dn2cpp_throw_argument_null_param("obj");
+}
+
+// A timeout below -1 (Timeout.Infinite) is refused as ThrowIfLessThan refuses it;
+// TryEnter(obj, int) names no parameter.
+static void dn2cpp_monitor_require_timeout(int32_t ms, const char* paramName)
+{
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL,
+            paramName, ms, -1, 4);
+}
+
+[[noreturn]] static void dn2cpp_monitor_throw_unowned(const char* lockKey)
+{
+    dn2cpp_throw_sr0(&dn2cpp_synchronization_lock_exception_type, lockKey);
+}
+
+// The monitor the calling thread owns, locked through `lk`; one it does not own raises
+// the SynchronizationLockException whose message `lockKey` names.
+static Dn2CppMonitor* dn2cpp_monitor_owned_or_throw(Dn2CppObject* o,
+    std::unique_lock<std::mutex>& lk, const char* lockKey,
+    Dn2CppMonitorTable& table = g_monitor_table)
+{
+    Dn2CppMonitor* mon = dn2cpp_monitor_find(o, table);
+    if (mon != nullptr)
+    {
+        lk = std::unique_lock<std::mutex>(mon->mtx);
+        if (dn2cpp_monitor_owned(mon))
+            return mon;
+        lk.unlock();
+    }
+    dn2cpp_monitor_throw_unowned(lockKey);
+}
+
+// Whether the calling thread owns o's monitor; never creates one.
+static int32_t dn2cpp_monitor_held(Dn2CppObject* o, Dn2CppMonitorTable& table = g_monitor_table)
+{
+    Dn2CppMonitor* mon = dn2cpp_monitor_find(o, table);
+    if (mon == nullptr)
+        return 0;
+    std::lock_guard<std::mutex> lk(mon->mtx);
+    return dn2cpp_monitor_owned(mon) ? 1 : 0;
+}
+
+int32_t dn2cpp_timeout_ms_from_ticks(int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(dn2cpp_timespan_total(Dn2CppTimeSpan{ticks}, 10000LL));
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL,
+            "timeout", ms, -1, 8);
+    if (ms > INT32_MAX)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL,
+            "timeout", ms, INT32_MAX, 8);
+    return static_cast<int32_t>(ms);
+}
+
+void dn2cpp_timeout_require_ms(int32_t ms)
+{
+    dn2cpp_monitor_require_timeout(ms, "millisecondsTimeout");
+}
+
+static void dn2cpp_monitor_acquire(Dn2CppMonitor* mon)
+{
     std::unique_lock<std::mutex> lk(mon->mtx);
     std::thread::id self = std::this_thread::get_id();
     if (mon->has_owner && mon->owner == self)
@@ -406,12 +496,29 @@ void dn2cpp_monitor_enter(Dn2CppObject* o)
     mon->count = 1;
 }
 
-void dn2cpp_monitor_exit(Dn2CppObject* o)
+void dn2cpp_monitor_enter(Dn2CppObject* o)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
-    std::unique_lock<std::mutex> lk(mon->mtx);
-    // Assume the caller owns it (matches the old recursive_mutex contract — no
-    // SynchronizationLockException is raised on a mismatched Exit).
+    dn2cpp_monitor_require(o);
+    dn2cpp_monitor_acquire(dn2cpp_monitor_for(o));
+}
+
+void dn2cpp_lock_enter(Dn2CppObject* lock)
+{
+    dn2cpp_null_check(lock);
+    dn2cpp_monitor_acquire(dn2cpp_monitor_for(lock, g_lock_table));
+}
+
+void dn2cpp_monitor_enter_taken(Dn2CppObject* o, uint8_t* taken)
+{
+    if (*taken != 0)
+        dn2cpp_throw_argument_message(dn2cpp_sr_message(DN2CPP_SR_MUST_BE_FALSE, nullptr, 0), "lockTaken");
+    dn2cpp_monitor_enter(o);
+    *taken = 1;
+}
+
+// Releases one recursion level; the caller owns `mon` and holds mon->mtx.
+static void dn2cpp_monitor_release_owned(Dn2CppMonitor* mon)
+{
     if (--mon->count == 0)
     {
         mon->has_owner = false;
@@ -419,32 +526,58 @@ void dn2cpp_monitor_exit(Dn2CppObject* o)
     }
 }
 
-int32_t dn2cpp_monitor_try_enter(Dn2CppObject* o)
+void dn2cpp_monitor_exit(Dn2CppObject* o)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
+    dn2cpp_monitor_require(o);
+    std::unique_lock<std::mutex> lk;
+    dn2cpp_monitor_release_owned(dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK));
+}
+
+void dn2cpp_monitor_guard_exit(Dn2CppObject* o) noexcept
+{
+    Dn2CppMonitor* mon = dn2cpp_monitor_find(o);
+    if (mon == nullptr)
+        return;
     std::unique_lock<std::mutex> lk(mon->mtx);
-    std::thread::id self = std::this_thread::get_id();
-    if (mon->has_owner && mon->owner == self)
-    {
-        mon->count++;
-        return 1;
-    }
-    if (!mon->has_owner)
-    {
-        mon->has_owner = true;
-        mon->owner = self;
-        mon->count = 1;
-        return 1;
-    }
-    return 0; // non-blocking — the bare TryEnter / TryEnter(obj, 0) form
+    if (dn2cpp_monitor_owned(mon))
+        dn2cpp_monitor_release_owned(mon);
+}
+
+int32_t dn2cpp_monitor_is_entered(Dn2CppObject* o)
+{
+    dn2cpp_monitor_require_obj(o);
+    return dn2cpp_monitor_held(o);
+}
+
+void dn2cpp_lock_exit(Dn2CppObject* lock)
+{
+    dn2cpp_null_check(lock);
+    std::unique_lock<std::mutex> lk;
+    dn2cpp_monitor_release_owned(dn2cpp_monitor_owned_or_throw(lock, lk, DN2CPP_SR_LOCK_EXIT, g_lock_table));
+}
+
+void dn2cpp_lock_scope_dispose(Dn2CppLockScope* scope)
+{
+    Dn2CppObject* lock = scope->lock;
+    if (lock == nullptr)
+        return;
+    scope->lock = nullptr;
+    dn2cpp_lock_exit(lock);
+}
+
+int32_t dn2cpp_lock_is_held(Dn2CppObject* lock)
+{
+    dn2cpp_null_check(lock);
+    return dn2cpp_monitor_held(lock, g_lock_table);
 }
 
 // Monitor.TryEnter(obj, int)/(obj, TimeSpan): like enter, but block at most ms for the
 // lock. Returns 1 if acquired (recursive re-entry by the owner always succeeds), 0 on
-// timeout. ms == 0 is a single immediate attempt; a negative ms is an infinite wait.
-int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms)
+// timeout. ms == 0 is a single immediate attempt; -1 is an infinite wait.
+static int32_t dn2cpp_monitor_acquire_timeout(Dn2CppObject* o, int32_t ms,
+    Dn2CppMonitorTable& table = g_monitor_table)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
+    Dn2CppMonitor* mon = dn2cpp_monitor_for(o, table);
     std::unique_lock<std::mutex> lk(mon->mtx);
     std::thread::id self = std::this_thread::get_id();
     if (mon->has_owner && mon->owner == self)
@@ -462,14 +595,42 @@ int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms)
     return 1;
 }
 
-// Monitor.Wait: the caller owns the monitor. Fully release the lock (saving the
+int32_t dn2cpp_monitor_try_enter(Dn2CppObject* o)
+{
+    dn2cpp_monitor_require(o);
+    return dn2cpp_monitor_acquire_timeout(o, 0);
+}
+
+int32_t dn2cpp_monitor_try_enter_timeout(Dn2CppObject* o, int32_t ms)
+{
+    dn2cpp_monitor_require(o);
+    dn2cpp_monitor_require_timeout(ms, nullptr);
+    return dn2cpp_monitor_acquire_timeout(o, ms);
+}
+
+void dn2cpp_monitor_try_enter_taken(Dn2CppObject* o, int32_t ms, uint8_t* taken)
+{
+    if (*taken != 0)
+        dn2cpp_throw_argument_message(dn2cpp_sr_message(DN2CPP_SR_MUST_BE_FALSE, nullptr, 0), "lockTaken");
+    *taken = static_cast<uint8_t>(dn2cpp_monitor_try_enter_timeout(o, ms));
+}
+
+int32_t dn2cpp_lock_try_enter_timeout(Dn2CppObject* lock, int32_t ms)
+{
+    dn2cpp_monitor_require_timeout(ms, "millisecondsTimeout");
+    dn2cpp_null_check(lock);
+    return dn2cpp_monitor_acquire_timeout(lock, ms, g_lock_table);
+}
+
+// Monitor.Wait: the caller must own the monitor. Fully release the lock (saving the
 // recursion depth), enqueue this waiter's identity for Pulse/PulseAll, then
 // re-acquire the lock to the saved depth. The no-timeout form always wakes on a
 // notification, so it reacquires and returns 1 (true).
 int32_t dn2cpp_monitor_wait(Dn2CppObject* o)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
-    std::unique_lock<std::mutex> lk(mon->mtx);
+    dn2cpp_monitor_require_obj(o);
+    std::unique_lock<std::mutex> lk;
+    Dn2CppMonitor* mon = dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK);
     std::thread::id self = std::this_thread::get_id();
     uint32_t saved = mon->count;
     Dn2CppMonitorWaiter waiter;
@@ -495,10 +656,12 @@ int32_t dn2cpp_monitor_wait(Dn2CppObject* o)
 // infinite wait.
 int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms)
 {
+    dn2cpp_monitor_require_obj(o);
+    dn2cpp_monitor_require_timeout(ms, "millisecondsTimeout");
     if (ms < 0)
         return dn2cpp_monitor_wait(o);
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
-    std::unique_lock<std::mutex> lk(mon->mtx);
+    std::unique_lock<std::mutex> lk;
+    Dn2CppMonitor* mon = dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK);
     std::thread::id self = std::this_thread::get_id();
     uint32_t saved = mon->count;
     Dn2CppMonitorWaiter waiter;
@@ -521,8 +684,9 @@ int32_t dn2cpp_monitor_wait_timeout(Dn2CppObject* o, int32_t ms)
 // Monitor.Pulse: wake at most one thread from the wait set that exists now.
 void dn2cpp_monitor_pulse(Dn2CppObject* o)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
-    std::unique_lock<std::mutex> lk(mon->mtx);
+    dn2cpp_monitor_require_obj(o);
+    std::unique_lock<std::mutex> lk;
+    Dn2CppMonitor* mon = dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK);
     if (mon->wait_head != nullptr)
         dn2cpp_monitor_release_waiter(mon, mon->wait_head);
 }
@@ -530,8 +694,9 @@ void dn2cpp_monitor_pulse(Dn2CppObject* o)
 // Monitor.PulseAll: detach and wake exactly the wait set that exists now.
 void dn2cpp_monitor_pulse_all(Dn2CppObject* o)
 {
-    Dn2CppMonitor* mon = dn2cpp_monitor_for(o);
-    std::unique_lock<std::mutex> lk(mon->mtx);
+    dn2cpp_monitor_require_obj(o);
+    std::unique_lock<std::mutex> lk;
+    Dn2CppMonitor* mon = dn2cpp_monitor_owned_or_throw(o, lk, DN2CPP_SR_SYNCHRONIZATION_LOCK);
     while (mon->wait_head != nullptr)
         dn2cpp_monitor_release_waiter(mon, mon->wait_head);
 }

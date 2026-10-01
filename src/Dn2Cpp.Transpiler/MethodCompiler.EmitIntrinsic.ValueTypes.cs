@@ -541,16 +541,13 @@ internal sealed partial class MethodCompiler
     private static bool IsTimeoutParam(TypeDesc t) =>
         t is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } || IsTimeSpan(t);
 
-    /// <summary>The C++ int32 millisecond expression for a blocking-call timeout argument:
-    /// an <c>int</c> passes through; a <c>TimeSpan</c> converts via its tick count
-    /// (TicksPerMillisecond = 10000), matching <c>(long)TimeSpan.TotalMilliseconds</c> — so
-    /// Timeout.InfiniteTimeSpan (-1 ms) maps to -1, which the runtime reads as an infinite
-    /// wait. Throws for any other parameter shape.</summary>
-    private string TimeoutMs(StackEntry arg, TypeDesc paramType) =>
+    /// <summary>Converts and validates a TimeSpan before the wait's own checks.</summary>
+    private string TimeoutMs(StackEntry arg, TypeDesc paramType,
+        string fromTicks = "dn2cpp_timeout_ms_from_ticks") =>
         paramType is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
             ? arg.Expr
             : IsTimeSpan(paramType)
-                ? $"(int32_t)(({TSVal(arg)}).ticks / 10000)"
+                ? $"{fromTicks}(({TSVal(arg)}).ticks)"
                 : throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: unsupported timeout " +
                     $"parameter type '{paramType}'");

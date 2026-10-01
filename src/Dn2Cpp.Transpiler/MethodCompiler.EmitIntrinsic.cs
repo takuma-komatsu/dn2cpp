@@ -291,6 +291,8 @@ internal sealed partial class MethodCompiler
     /// on.</para></summary>
     private bool TryEmitIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
+        if (CallIsVirtual && sig.Header.IsInstance && name != ".ctor" && ChecksBlockingCallvirtReceiver(declType))
+            NullCheckReceiverUnder(sig.ParameterTypes.Length);
         if (s_intrinsicProbesByType.TryGetValue(declType, out var chain))
         {
             foreach (var probe in chain)
@@ -305,6 +307,26 @@ internal sealed partial class MethodCompiler
                 return true;
         }
         return false;
+    }
+
+    private static bool ChecksBlockingCallvirtReceiver(string declType) => declType is
+        "System.Threading.Thread"
+        or "System.Threading.SemaphoreSlim"
+        or "System.Threading.ManualResetEventSlim"
+        or "System.Threading.WaitHandle"
+        or "System.Threading.CountdownEvent"
+        or "System.Threading.Barrier"
+        or "System.Threading.ReaderWriterLockSlim";
+
+    // callvirt checks after argument evaluation and before the callee converts a timeout.
+    private void NullCheckReceiverUnder(int argCount)
+    {
+        int at = _stack.Count - 1 - argCount;
+        var receiver = _stack[at];
+        if (receiver.NonNull)
+            return;
+        Emit($"(void)dn2cpp_null_check((Dn2CppObject*)({receiver.Expr}));");
+        _stack[at] = receiver with { NonNull = true, KnownNull = false };
     }
 
     /// <summary>The vector facades' hardware-acceleration constants. dn2cpp's vectors are
