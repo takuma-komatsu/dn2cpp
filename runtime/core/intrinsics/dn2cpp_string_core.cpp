@@ -115,6 +115,31 @@ Dn2CppString* dn2cpp_string_from_chars(const char16_t* chars, int32_t length)
     return s;
 }
 
+Dn2CppString* dn2cpp_string_from_chararray(Dn2CppArrayN* value)
+{
+    if (value == nullptr || value->length == 0)
+        return dn2cpp_string_literal(u"", 0);
+    return dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(value->data), value->length);
+}
+
+// The array window is validated before forming an element pointer. Empty windows
+// include the array's end and share String.Empty, without an element bounds check.
+Dn2CppString* dn2cpp_string_from_chararray_slice(Dn2CppArrayN* value, int32_t start, int32_t length)
+{
+    if (value == nullptr)
+        dn2cpp_throw_argument_null_param("value");
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
+    if (length < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", length);
+    int32_t room = value->length - length;
+    if (start > room)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "startIndex", start, room);
+    if (length == 0)
+        return dn2cpp_string_literal(u"", 0);
+    return dn2cpp_string_from_chars(reinterpret_cast<const char16_t*>(value->data) + start, length);
+}
+
 // `new string(char* value)` — extern/VM-implemented in the real BCL, so there is
 // no managed body to transpile. A null pointer yields Empty, not an exception.
 Dn2CppString* dn2cpp_string_from_wcs(const char16_t* value)
