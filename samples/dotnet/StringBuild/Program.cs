@@ -30,6 +30,9 @@ namespace StringBuild
             if (args.Length > 0 && args[0] == "before-builder-ranges")
                 return;
             StringBuilderRangeSubset.Program.Run();
+            if (args.Length > 0 && args[0] == "before-builder-copy-faults")
+                return;
+            StringBuilderCopyToSubset.Program.RunFaults();
         }
     }
 }

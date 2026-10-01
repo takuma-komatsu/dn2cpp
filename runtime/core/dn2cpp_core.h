@@ -1471,6 +1471,8 @@ inline constexpr const char* DN2CPP_SR_START_INDEX = "ArgumentOutOfRange_StartIn
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
+inline constexpr const char* DN2CPP_SR_OFFSET_OUT = "ArgumentOutOfRange_OffsetOut";
+inline constexpr const char* DN2CPP_SR_LONGER_THAN_SRC_STRING = "Arg_LongerThanSrcString";
 inline constexpr const char* DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH = "Argument_SpansMustHaveSameLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";
@@ -7441,9 +7443,7 @@ Dn2CppString* dn2cpp_sb_tostring(Dn2CppStringBuilder* sb);
 int32_t dn2cpp_sb_length(Dn2CppStringBuilder* sb);
 int32_t dn2cpp_sb_capacity(Dn2CppStringBuilder* sb);
 // StringBuilder.CopyTo(int sourceIndex, char[] destination, int destinationIndex,
-// int count): bounds-checked copy of `count` code units from the builder into the
-// caller char[]. Raises the BCL's catchable ArgumentOutOfRange (a negative index/count)
-// / ArgumentException (source or destination overrun) like the managed member.
+// int count): destination validation precedes the count's sign and source window.
 void dn2cpp_sb_copy_to(Dn2CppStringBuilder* sb, int32_t sourceIndex, Dn2CppArrayN* dest,
                        int32_t destinationIndex, int32_t count);
 Dn2CppStringBuilder* dn2cpp_sb_clear(Dn2CppStringBuilder* sb);

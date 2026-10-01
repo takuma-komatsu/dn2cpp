@@ -37,5 +37,111 @@ namespace StringBuilderCopyToSubset
             E("CopyTo destShort", () => sb.CopyTo(0, new char[3], 0, 5));
             E("CopyTo neg", () => sb.CopyTo(-1, new char[10], 0, 3));
         }
+
+        private static string _copyEvaluation = "";
+
+        private static string Units(char[] value)
+        {
+            if (value is null)
+                return "null";
+            string result = "";
+            foreach (char ch in value)
+                result += ((int)ch).ToString("X4") + " ";
+            return result;
+        }
+
+        private static void CopyFault(string label, Exception ex)
+        {
+            Console.WriteLine(label + " type=" + ex.GetType().Name);
+            Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+            Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+        }
+
+        private static StringBuilder Receiver(StringBuilder value)
+        {
+            _copyEvaluation += "R";
+            return value;
+        }
+
+        private static char[] Destination(char[] value)
+        {
+            _copyEvaluation += "A";
+            return value;
+        }
+
+        private static int Number(string step, int value, bool fail)
+        {
+            _copyEvaluation += step;
+            if (fail)
+                throw new InvalidOperationException();
+            return value;
+        }
+
+        internal static void RunFaults()
+        {
+            Console.WriteLine("== StringBuilder copy faults ==");
+            string[] sources = { "abca", "", null };
+            int[] sizes = { -1, 0, 4 };
+            int[] indices = { int.MinValue, -1, 0, 3, 4, 5, int.MaxValue };
+            int[] counts = { int.MinValue, -1, 0, 1, 4, int.MaxValue };
+            for (int i = 0; i < sources.Length; i++)
+                foreach (int size in sizes)
+                    foreach (int sourceIndex in indices)
+                        foreach (int destinationIndex in indices)
+                            foreach (int count in counts)
+                            {
+                                StringBuilder sb = sources[i] is null ? null : new StringBuilder(sources[i]);
+                                char[] destination = size < 0 ? null : new string('.', size).ToCharArray();
+                                string label = i + ":" + size + ":" + sourceIndex + ":" + destinationIndex + ":" + count;
+                                try
+                                {
+                                    sb.CopyTo(sourceIndex, destination, destinationIndex, count);
+                                    Console.WriteLine(label + " copied");
+                                }
+                                catch (Exception ex)
+                                {
+                                    CopyFault(label, ex);
+                                }
+                                Console.WriteLine(label + " destination=" + Units(destination));
+                            }
+            char[] utf16 = new char[4];
+            new StringBuilder("A\0\ud800Z").CopyTo(0, utf16, 0, 4);
+            Console.WriteLine("copy utf16=" + Units(utf16));
+            _copyEvaluation = "";
+            try
+            {
+                Receiver(null).CopyTo(Number("S", -1, false), Destination(null), Number("D", -1, false), Number("C", -1, false));
+            }
+            catch (Exception ex)
+            {
+                CopyFault("copy null evaluation", ex);
+            }
+            Console.WriteLine("copy null evaluation=" + _copyEvaluation);
+            _copyEvaluation = "";
+            try
+            {
+                Receiver(null).CopyTo(Number("S", -1, false), Destination(null), Number("D", -1, false), Number("C", -1, true));
+            }
+            catch (Exception ex)
+            {
+                CopyFault("copy throwing count", ex);
+            }
+            Console.WriteLine("copy throwing count evaluation=" + _copyEvaluation);
+            ArgumentOutOfRangeException saved = null;
+            try
+            {
+                new StringBuilder("abc").CopyTo(0, new char[3], -7, 0);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                saved = ex;
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            CopyFault("copy fault after GC", saved);
+            Console.WriteLine("StringBuilder copy faults end");
+        }
     }
 }

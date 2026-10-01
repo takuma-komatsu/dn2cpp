@@ -149,15 +149,23 @@ void dn2cpp_sb_copy_to(Dn2CppStringBuilder* sb, int32_t sourceIndex, Dn2CppArray
                        int32_t destinationIndex, int32_t count)
 {
     if (dest == nullptr)
-        dn2cpp_throw_argument_null();
-    // Negatives are ArgumentOutOfRange; the source/destination overruns are
-    // ArgumentException, matching the BCL's StringBuilder.CopyTo.
-    if (sourceIndex < 0 || count < 0 || destinationIndex < 0)
+        dn2cpp_throw_argument_null_param("destination");
+    // Destination bounds precede the count's sign and the source window. The
+    // subtraction wraps like .NET's unchecked room calculation.
+    if (destinationIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "destinationIndex",
+            destinationIndex);
+    int32_t room = static_cast<int32_t>(static_cast<uint32_t>(dest->length) - static_cast<uint32_t>(count));
+    if (destinationIndex > room)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_OFFSET_OUT);
+    if (destinationIndex > dest->length)
         dn2cpp_throw_argument_out_of_range();
-    if (sourceIndex + count > sb->length)
-        dn2cpp_throw_argument(); // .NET: ArgumentException, source index + count > Length
-    if (destinationIndex + count > dest->length)
-        dn2cpp_throw_argument(); // .NET: ArgumentException, destination array too short
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+    if (static_cast<uint32_t>(sourceIndex) > static_cast<uint32_t>(sb->length))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "sourceIndex");
+    if (sourceIndex > sb->length - count)
+        dn2cpp_throw_sr0(&dn2cpp_argument_exception_type, DN2CPP_SR_LONGER_THAN_SRC_STRING);
     char16_t* dd = reinterpret_cast<char16_t*>(dest->data);
     for (int32_t i = 0; i < count; i++)
         dd[destinationIndex + i] = sb->buf[sourceIndex + i];
