@@ -656,12 +656,13 @@ static Dn2CppObject* ReadBoxedPayload(BlobCursor& c, int32_t code,
             // ResourceWriter stores DateTime.ToBinary(): top two bits the Kind, the rest
             // ticks. ToBinary serializes a LOCAL value as UTC, so reconstructing one is a
             // timezone conversion, not a relabel (DateTime.FromBinary's own asymmetry).
+            // FromBinary tests only the Local bit, so the ambiguous-DST pair is Local too.
             int64_t raw = c.I64();
             if (c.bad)
                 return nullptr;
             int64_t ticks = raw & 0x3FFFFFFFFFFFFFFFLL;
             int32_t kind = static_cast<int32_t>((static_cast<uint64_t>(raw) >> 62) & 3u);
-            Dn2CppDateTime v = (kind == 2)
+            Dn2CppDateTime v = (kind & 2) != 0
                 ? dn2cpp_datetime_to_local(dn2cpp_datetime_from_ticks(ticks, 1))
                 : dn2cpp_datetime_from_ticks(ticks, kind);
             return dn2cpp_box(&dn2cpp_datetime_type, &v, sizeof(v));

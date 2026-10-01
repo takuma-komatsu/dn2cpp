@@ -283,6 +283,9 @@ namespace ExceptionMessageSubset
             if (args.Length > 0 && args[0] == "before-general-argument-fields")
                 return;
             GeneralBclArgumentFieldsSubset.Run();
+            if (args.Length > 0 && args[0] == "before-runtime-exception-chains")
+                return;
+            RuntimeExceptionChainSubset.Run();
         }
     }
 }

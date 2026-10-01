@@ -382,3 +382,25 @@ else
 fi
 
 echo "OK"
+
+# Binary DateTime kind 3 carries the Local bit and must survive strict validation.
+kind_app="gates/fixtures/runtime-resource-kind/bin/$CONFIG/$TFM/RuntimeResourceKind.dll"
+build_gate_proj gates/fixtures/runtime-resource-kind/RuntimeResourceKind.csproj
+kind_out=artifacts/runtime-resource-kind
+invoke_cli "$kind_app" -r "$CORELIB" -o "$kind_out"
+if gate_cache_check "$kind_out" "resource-kind3|$CORELIB|cli:$(_gate_cli_hash)" \
+        "$kind_app" "${kind_app%.dll}.runtimeconfig.json" "${kind_app%.dll}.deps.json" \
+        gates/fixtures/runtime-resource-kind/MixedKind3.resources; then
+    gate_cache_hit_msg
+else
+    compile_console "$kind_out" RuntimeResourceKind
+    expected=$(run_bounded dotnet "$kind_app")
+    native=$(run_bounded "./$kind_out/RuntimeResourceKind$EXE_EXT")
+    native=$(strip_cr_win "$native")
+    assert_output "$native" "$(strip_cr_win "$expected")"
+    for line in 'resource local kind=Local' 'resource local kind end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: resource Local-kind witness missing: $line" >&2; exit 1; }
+    done
+    gate_cache_commit
+fi

@@ -740,8 +740,9 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Pops a DateTime ctor's args (pushed left-to-right) and returns the
     /// C++ expression constructing the Dn2CppDateTime. A trailing DateTimeKind arg
-    /// disambiguates the 7-arg (…,Kind) form from the 7-int (…,millisecond) form;
-    /// Calendar/microsecond overloads are carve-outs (NotSupported).</summary>
+    /// disambiguates the 7-arg (…,Kind) form from the 7-int (…,millisecond) form, and
+    /// leading DateOnly/TimeOnly args the (date, time[, kind]) forms from the
+    /// integer ones; Calendar overloads are carve-outs (NotSupported).</summary>
     private string EmitDateTimeCtorExpr(MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
@@ -750,15 +751,25 @@ internal sealed partial class MethodCompiler
         string I(int i) => $"(int32_t)({args[i].Expr})";
         bool lastKind = ps.Length > 0 && IsDateTimeKind(ps[^1]);
         string kind = lastKind ? $"(int32_t)({args[^1].Expr})" : "0";
+        bool dateAndTime = ps.Length >= 2 && IsDateOnly(ps[0]) && IsTimeOnly(ps[1]);
+        string DateAndTimeTicks() =>
+            $"(int64_t)({DOnlyVal(args[0])}).dayNumber * 864000000000LL + ({TOnlyVal(args[1])}).ticks";
         return (ps.Length, lastKind) switch
         {
             (1, _) => $"dn2cpp_datetime_from_ticks((int64_t)({args[0].Expr}), 0)",
+            (2, false) when dateAndTime => $"dn2cpp_datetime_from_ticks({DateAndTimeTicks()}, 0)",
             (2, true) => $"dn2cpp_datetime_from_ticks((int64_t)({args[0].Expr}), {kind})",
-            (3, _) => $"dn2cpp_datetime_ymd({I(0)}, {I(1)}, {I(2)}, 0)",
+            (3, true) when dateAndTime => $"dn2cpp_datetime_from_ticks({DateAndTimeTicks()}, {kind})",
+            (3, false) => $"dn2cpp_datetime_ymd({I(0)}, {I(1)}, {I(2)}, 0)",
             (6, _) => $"dn2cpp_datetime_ymdhms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, 0)",
             (7, true) => $"dn2cpp_datetime_ymdhms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {kind})",
-            (7, false) => $"dn2cpp_datetime_ymdhmsms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, 0)",
-            (8, true) => $"dn2cpp_datetime_ymdhmsms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, {kind})",
+            (7, false) when ps[6] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } =>
+                $"dn2cpp_datetime_ymdhmsms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, 0)",
+            (8, true) when ps[6] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } => $"dn2cpp_datetime_ymdhmsms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, {kind})",
+            (8, false) when ps[7] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } =>
+                $"dn2cpp_datetime_ymdhmsmsus({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, {I(7)}, 0)",
+            (9, true) when ps[7] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } =>
+                $"dn2cpp_datetime_ymdhmsmsus({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, {I(7)}, {kind})",
             _ => throw new NotSupportedException(
                 $"{Method.DeclaringClass.FullName}.{Method.Name}: DateTime ctor with {ps.Length} args is not supported"),
         };
@@ -1088,15 +1099,15 @@ internal sealed partial class MethodCompiler
         switch (name)
         {
             case "AddTicks" when ps.Length == 1:
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, (int64_t)({b.Expr}))"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, (int64_t)({b.Expr}), \"value\")"); return true; }
             case "AddMonths" when ps.Length == 1:
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_months({DTVal(a)}, (int32_t)({b.Expr}))"); return true; }
             case "AddYears" when ps.Length == 1:
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_years({DTVal(a)}, (int32_t)({b.Expr}))"); return true; }
             case "Add" when ps.Length == 1 && IsTimeSpan(ps[0]):
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, ({TSVal(b)}).ticks)"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, ({TSVal(b)}).ticks, \"value\")"); return true; }
             case "Subtract" when ps.Length == 1 && IsTimeSpan(ps[0]):
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, -({TSVal(b)}).ticks)"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_subtract_ticks({DTVal(a)}, ({TSVal(b)}).ticks, \"value\")"); return true; }
             case "Subtract" when ps.Length == 1 && IsDateTime(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_from_ticks(({DTVal(a)}).ticks() - ({DTVal(b)}).ticks())"); return true; }
             case "CompareTo" when ps.Length == 1 && IsDateTime(ps[0]):
@@ -1195,9 +1206,9 @@ internal sealed partial class MethodCompiler
 
         // Operators.
         if (name == "op_Addition" && ps.Length == 2 && IsDateTime(ps[0]) && IsTimeSpan(ps[1]))
-        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, ({TSVal(b)}).ticks)"); return true; }
+        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, ({TSVal(b)}).ticks, \"t\")"); return true; }
         if (name == "op_Subtraction" && ps.Length == 2 && IsDateTime(ps[0]) && IsTimeSpan(ps[1]))
-        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_add_ticks({DTVal(a)}, -({TSVal(b)}).ticks)"); return true; }
+        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTime", $"dn2cpp_datetime_subtract_ticks({DTVal(a)}, ({TSVal(b)}).ticks, \"t\")"); return true; }
         if (name == "op_Subtraction" && ps.Length == 2 && IsDateTime(ps[0]) && IsDateTime(ps[1]))
         { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_from_ticks(({DTVal(a)}).ticks() - ({DTVal(b)}).ticks())"); return true; }
         string? dtCmp = name switch
@@ -1557,18 +1568,14 @@ internal sealed partial class MethodCompiler
 
     /// <summary>Builds the C++ expression for a System.DateTimeOffset constructor,
     /// popping the args. The clock ticks come from the date/time
-    /// components (or a DateTime/ticks operand) and the offset from the trailing
-    /// TimeSpan in whole minutes. The.NET Kind/offset consistency validation is a
-    /// carve-out (relaxed).</summary>
+    /// components (or a DateTime/ticks operand). The full TimeSpan reaches runtime
+    /// validation before its whole-minute offset is stored.</summary>
     private string EmitDateTimeOffsetCtorExpr(MethodSignature<TypeDesc> sig)
     {
         var ps = sig.ParameterTypes;
         var args = new StackEntry[ps.Length];
         for (int i = ps.Length - 1; i >= 0; i--) args[i] = Pop();
         string I(int i) => $"(int32_t)({args[i].Expr})";
-        // The trailing TimeSpan offset as whole minutes (600000000 ticks = 1 minute).
-        string OffMin(int i) => $"(int32_t)(({TSVal(args[i])}).ticks / 600000000LL)";
-
         // new DateTimeOffset(DateTime) — the offset is derived from the DateTime's Kind.
         if (ps.Length == 1 && IsDateTime(ps[0]))
             return $"dn2cpp_datetimeoffset_from_datetime({DTVal(args[0])})";
@@ -1577,13 +1584,13 @@ internal sealed partial class MethodCompiler
             return $"dn2cpp_datetimeoffset_from_dt_offset({DTVal(args[0])}, {TSVal(args[1])})";
         // new DateTimeOffset(long ticks, TimeSpan)
         if (ps.Length == 2 && ps[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 } && IsTimeSpan(ps[1]))
-            return $"dn2cpp_datetimeoffset_make((int64_t)({args[0].Expr}), {OffMin(1)})";
+            return $"dn2cpp_datetimeoffset_from_ticks((int64_t)({args[0].Expr}), {TSVal(args[1])})";
         // new DateTimeOffset(year, month, day, hour, minute, second, TimeSpan)
         if (ps.Length == 7 && IsTimeSpan(ps[6]))
-            return $"dn2cpp_datetimeoffset_make(dn2cpp_datetime_ymdhms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, 0).ticks(), {OffMin(6)})";
+            return $"dn2cpp_datetimeoffset_from_parts({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, 0, 0, {TSVal(args[6])})";
         // new DateTimeOffset(year, month, day, hour, minute, second, millisecond, TimeSpan)
-        if (ps.Length == 8 && IsTimeSpan(ps[7]))
-            return $"dn2cpp_datetimeoffset_make(dn2cpp_datetime_ymdhmsms({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, 0).ticks(), {OffMin(7)})";
+        if (ps.Length == 8 && ps[6] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 } && IsTimeSpan(ps[7]))
+            return $"dn2cpp_datetimeoffset_from_parts({I(0)}, {I(1)}, {I(2)}, {I(3)}, {I(4)}, {I(5)}, {I(6)}, 1, {TSVal(args[7])})";
         throw new NotSupportedException(
             $"{Method.DeclaringClass.FullName}.{Method.Name}: DateTimeOffset ctor with {ps.Length} args is not supported");
     }
@@ -1634,10 +1641,9 @@ internal sealed partial class MethodCompiler
             { var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_from_datetime({DTVal(a)})"); return true; }
         }
 
-        // Parse / TryParse / ParseExact / TryParseExact — static, string
-        // overloads only (the ReadOnlySpan<char> and format-array overloads stay carve-outs,
-        // guarded by IsString). The trailing IFormatProvider / DateTimeStyles args are dropped
-        // (invariant); the out result of the Try* forms is the last param (a ByRef).
+        // Parsing uses invariant formats; TryParseExact accepts string/span inputs and
+        // single/array formats. Provider/styles arguments retain the invariant subset.
+        // The out result of the Try* forms is the last param (a ByRef).
         if (name == "Parse" && ps.Length >= 1 && ps[0].IsString)
         {
             for (int x = ps.Length - 1; x >= 1; x--) Pop();
@@ -1683,18 +1689,24 @@ internal sealed partial class MethodCompiler
             Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact({sv}, {f}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
             return true;
         }
-        // Span input + string[] formats: try each in turn (a format set — RFC1123/RFC850/
-        // asctime — against one value).
-        if (name == "TryParseExact" && ps.Length >= 3 && IsReadOnlySpanChar(ps[0])
+        // String and span inputs share the same format-array validation and result reset.
+        if (name == "TryParseExact" && ps.Length >= 3 && (ps[0].IsString || IsReadOnlySpanChar(ps[0]))
             && ps[1] is { Kind: TypeKind.SZArray, Element.IsString: true })
         {
             var outAddr = Pop();
             for (int x = ps.Length - 2; x >= 2; x--) Pop(); // provider [, styles]
-            var formats = Pop();                            // string[] formats
-            string sPtr = SpanPtr(Pop(), CppTypes.Of(ps[0]));
-            string sv = NewTemp("Dn2CppString*");
-            Emit($"{sv} = dn2cpp_string_from_chars((const char16_t*){sPtr}->f__reference, {sPtr}->f__length);");
-            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact_multi({sv}, {Cast(formats, "Dn2CppArrayRef*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
+            var formats = Pop();
+            var input = Pop();
+            string value;
+            if (ps[0].IsString)
+                value = Cast(input, "Dn2CppString*");
+            else
+            {
+                string pointer = SpanPtr(input, CppTypes.Of(ps[0]));
+                value = NewTemp("Dn2CppString*");
+                Emit($"{value} = dn2cpp_string_from_chars((const char16_t*){pointer}->f__reference, {pointer}->f__length);");
+            }
+            Push(StackKind.I4, "int32_t", $"dn2cpp_datetimeoffset_try_parse_exact_multi({value}, {Cast(formats, "Dn2CppArrayRef*")}, {Cast(outAddr, "Dn2CppDateTimeOffset*")})");
             return true;
         }
 
@@ -1766,15 +1778,15 @@ internal sealed partial class MethodCompiler
             }
             // Arithmetic — keep the offset, act on the clock value.
             case "AddTicks" when ps.Length == 1:
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, (int64_t)({b.Expr}))"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, (int64_t)({b.Expr}), \"value\")"); return true; }
             case "AddMonths" when ps.Length == 1:
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_months({DTOVal(a)}, (int32_t)({b.Expr}))"); return true; }
             case "AddYears" when ps.Length == 1:
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_years({DTOVal(a)}, (int32_t)({b.Expr}))"); return true; }
             case "Add" when ps.Length == 1 && IsTimeSpan(ps[0]):
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, ({TSVal(b)}).ticks)"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, ({TSVal(b)}).ticks, \"value\")"); return true; }
             case "Subtract" when ps.Length == 1 && IsTimeSpan(ps[0]):
-            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, -({TSVal(b)}).ticks)"); return true; }
+            { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_subtract_ticks({DTOVal(a)}, ({TSVal(b)}).ticks, \"value\")"); return true; }
             case "Subtract" when ps.Length == 1 && IsDateTimeOffset(ps[0]):
             { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppTimeSpan", $"dn2cpp_timespan_from_ticks(dn2cpp_datetimeoffset_utc_ticks({DTOVal(a)}) - dn2cpp_datetimeoffset_utc_ticks({DTOVal(b)}))"); return true; }
             case "ToString":
@@ -1808,9 +1820,9 @@ internal sealed partial class MethodCompiler
         // Operators. DateTimeOffset - DateTimeOffset -> TimeSpan (UTC-instant difference);
         // DTO +/- TimeSpan keeps the offset; comparison is by the UTC instant.
         if (name == "op_Addition" && ps.Length == 2 && IsDateTimeOffset(ps[0]) && IsTimeSpan(ps[1]))
-        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, ({TSVal(b)}).ticks)"); return true; }
+        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, ({TSVal(b)}).ticks, \"t\")"); return true; }
         if (name == "op_Subtraction" && ps.Length == 2 && IsDateTimeOffset(ps[0]) && IsTimeSpan(ps[1]))
-        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_add_ticks({DTOVal(a)}, -({TSVal(b)}).ticks)"); return true; }
+        { var b = Pop(); var a = Pop(); Push(StackKind.Struct, "Dn2CppDateTimeOffset", $"dn2cpp_datetimeoffset_subtract_ticks({DTOVal(a)}, ({TSVal(b)}).ticks, \"t\")"); return true; }
         if (name == "op_Subtraction" && ps.Length == 2 && IsDateTimeOffset(ps[0]) && IsDateTimeOffset(ps[1]))
         {
             var b = Pop(); var a = Pop();

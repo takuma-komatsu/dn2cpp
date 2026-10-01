@@ -602,9 +602,10 @@ void dn2cpp_enum_set_interfaces(const Dn2CppInterfaceEntry* entries, int32_t cou
 // can name the SAME handle the trap helpers stamp. Each is based on its nearest CLR
 // ancestor that has a handle (forward-referenceable — declared in the header), so e.g.
 // a runtime-trapped ArgumentNullException is caught by `catch (ArgumentException)`. An
-// ancestor without one — SystemException, ExternalException, MissingMemberException —
-// is an emitted type-info only the image can name; the init prologue splices it in
-// (dn2cpp_intrinsic_set_base) when the image defines it.
+// ancestor without one — SystemException, ExternalException, MemberAccessException,
+// MissingMemberException — is an emitted type-info only the image can name; a CoreLib
+// image defines every one and its init prologue splices it in
+// (dn2cpp_intrinsic_set_base), so the chain is .NET's.
 extern const Dn2CppType dn2cpp_overflow_exception_type_obj;
 Dn2CppTypeInfo dn2cpp_overflow_exception_type =
     dn2cpp_ti_with_typeobject({ "System.OverflowException", &dn2cpp_arithmetic_exception_type, nullptr, nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, nullptr }, &dn2cpp_overflow_exception_type_obj);

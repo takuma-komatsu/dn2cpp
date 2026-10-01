@@ -28,26 +28,23 @@ static const int s_daysToMonth366[13] = { 0,31,60,91,121,152,182,213,244,274,305
 
 static bool dn2cpp_dt_isleap(int y) { return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0); }
 
-// Days in a month, with .NET's ArgumentOutOfRangeException for an out-of-range
-// month. The bound also guards the read: the cumulative tables are 13 entries,
-// so `days[mo]` at mo=13 would run one past the end and answer a
-// plausible-looking number.
+// Days in a month of a year every caller has range-checked. The cumulative tables
+// are 13 entries, so the month bound is what keeps `days[mo]` inside them.
 static int dn2cpp_dt_days_in_month_checked(int y, int mo)
 {
     if (mo < 1 || mo > 12)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_sr0(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_BAD_YEAR_MONTH_DAY);
     const int* days = dn2cpp_dt_isleap(y) ? s_daysToMonth366 : s_daysToMonth365;
     return days[mo] - days[mo - 1];
 }
 
-// Proleptic-Gregorian year/month/day -> ticks at midnight (matches .NET DateToTicks).
-// The YEAR is deliberately not checked here — an out-of-range year lands outside
-// [0, MaxTicks] and the packing choke point raises the same
-// ArgumentOutOfRangeException from there.
+// Proleptic-Gregorian year/month/day -> ticks at midnight (matches .NET DateToTicks):
+// any component out of range is the one ArgumentOutOfRangeException .NET raises for
+// the whole date, naming no parameter.
 static int64_t dn2cpp_dt_date_to_ticks(int y, int mo, int d)
 {
-    if (d < 1 || d > dn2cpp_dt_days_in_month_checked(y, mo))
-        dn2cpp_throw_argument_out_of_range();
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > dn2cpp_dt_days_in_month_checked(y, mo))
+        dn2cpp_throw_sr0(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_BAD_YEAR_MONTH_DAY);
     const int* days = dn2cpp_dt_isleap(y) ? s_daysToMonth366 : s_daysToMonth365;
     int yy = y - 1;
     int64_t n = (int64_t)yy * 365 + yy / 4 - yy / 100 + yy / 400 + days[mo - 1] + (d - 1);
@@ -64,8 +61,15 @@ static int64_t dn2cpp_dt_time_to_ticks(int h, int mi, int s, int ms)
 // `new TimeOnly(...)`, which real .NET bounds to a real wall-clock reading.
 static int64_t dn2cpp_dt_time_of_day_to_ticks(int h, int mi, int s, int ms)
 {
-    if (h < 0 || h > 23 || mi < 0 || mi > 59 || s < 0 || s > 59 || ms < 0 || ms > 999)
-        dn2cpp_throw_argument_out_of_range();
+    // .NET rejects the clock fields first and names only the millisecond.
+    if (h < 0 || h > 23 || mi < 0 || mi > 59 || s < 0 || s > 59)
+        dn2cpp_throw_sr0(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_BAD_HOUR_MINUTE_SECOND);
+    if (ms < 0 || ms > 999)
+    {
+        Dn2CppString* range[2] = { dn2cpp_format_int(0, 4, nullptr), dn2cpp_format_int(999, 4, nullptr) };
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_RANGE,
+            "millisecond", range, 2);
+    }
     return dn2cpp_dt_time_to_ticks(h, mi, s, ms);
 }
 
@@ -139,7 +143,22 @@ Dn2CppString* dn2cpp_timespan_to_string(Dn2CppTimeSpan a)
 }
 
 // ---- DateTime ----
-Dn2CppDateTime dn2cpp_datetime_from_ticks(int64_t ticks, int32_t kind) { return dn2cpp_datetime_pack(ticks, kind); }
+// A DateTimeKind argument other than Unspecified, Utc or Local, which .NET refuses
+// naming `kind` rather than letting it into the flag bits.
+static void dn2cpp_dt_check_kind(int32_t kind)
+{
+    if (static_cast<uint32_t>(kind) > 2u)
+        dn2cpp_throw_argument_param(DN2CPP_SR_INVALID_DATE_TIME_KIND, "kind");
+}
+// new DateTime(long ticks[, kind]) names "ticks", then "kind"; every other caller
+// passes a valid count, so at most its kind is refused.
+Dn2CppDateTime dn2cpp_datetime_from_ticks(int64_t ticks, int32_t kind)
+{
+    if (static_cast<uint64_t>(ticks) > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_TIME_BAD_TICKS, "ticks");
+    dn2cpp_dt_check_kind(kind);
+    return dn2cpp_datetime_pack(ticks, kind);
+}
 // Windows FILETIME (100ns intervals since 1601-01-01 UTC) <-> DateTime/DateTimeOffset ticks.
 // 504911232000000000 = ticks from 0001-01-01 to 1601-01-01 (DateTime.FileTimeOffset in the
 // real BCL); MaxTicks (DateTime.MaxValue.Ticks, 3155378975999999999) bounds FromFileTimeUtc's
@@ -153,7 +172,7 @@ static const int64_t DN2CPP_MAX_TICKS = 3155378975999999999LL;
 Dn2CppDateTime dn2cpp_datetime_from_file_time_utc(int64_t fileTime)
 {
     if ((uint64_t)fileTime > (uint64_t)(DN2CPP_MAX_TICKS - DN2CPP_FILETIME_OFFSET))
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_FILE_TIME_INVALID, "fileTime");
     return dn2cpp_datetime_pack(fileTime + DN2CPP_FILETIME_OFFSET, 1);
 }
 // DateTime.ToFileTimeUtc: only Kind=Local (2) is converted to universal first (Unspecified's
@@ -166,15 +185,41 @@ int64_t dn2cpp_datetime_to_file_time_utc(Dn2CppDateTime a)
     int64_t ticks = (a.kind() == 2) ? dn2cpp_datetime_to_universal(a).ticks() : a.ticks();
     ticks -= DN2CPP_FILETIME_OFFSET;
     if (ticks < 0)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_sr0(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_FILE_TIME_INVALID);
     return ticks;
 }
 Dn2CppDateTime dn2cpp_datetime_ymd(int32_t y, int32_t mo, int32_t d, int32_t kind)
-{ return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d), kind); }
+{
+    dn2cpp_dt_check_kind(kind);
+    return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d), kind);
+}
+// The kind is refused before the date and the date before the clock, as .NET does.
+// The date is its own statement because the operands of one `+` are unsequenced, and
+// MSVC evaluates the clock first.
 Dn2CppDateTime dn2cpp_datetime_ymdhms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t kind)
-{ return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d) + dn2cpp_dt_time_of_day_to_ticks(h, mi, s, 0), kind); }
+{
+    dn2cpp_dt_check_kind(kind);
+    int64_t date = dn2cpp_dt_date_to_ticks(y, mo, d);
+    return dn2cpp_datetime_pack(date + dn2cpp_dt_time_of_day_to_ticks(h, mi, s, 0), kind);
+}
 Dn2CppDateTime dn2cpp_datetime_ymdhmsms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t kind)
-{ return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d) + dn2cpp_dt_time_of_day_to_ticks(h, mi, s, ms), kind); }
+{
+    dn2cpp_dt_check_kind(kind);
+    int64_t date = dn2cpp_dt_date_to_ticks(y, mo, d);
+    return dn2cpp_datetime_pack(date + dn2cpp_dt_time_of_day_to_ticks(h, mi, s, ms), kind);
+}
+Dn2CppDateTime dn2cpp_datetime_ymdhmsmsus(int32_t y, int32_t mo, int32_t d, int32_t h,
+    int32_t mi, int32_t s, int32_t ms, int32_t us, int32_t kind)
+{
+    Dn2CppDateTime base = dn2cpp_datetime_ymdhmsms(y, mo, d, h, mi, s, ms, kind);
+    if (static_cast<uint32_t>(us) >= 1000u)
+    {
+        Dn2CppString* range[2] = { dn2cpp_format_int(0, 4, nullptr), dn2cpp_format_int(999, 4, nullptr) };
+        dn2cpp_throw_argument_sr(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_RANGE,
+            "microsecond", range, 2);
+    }
+    return dn2cpp_datetime_pack(base.ticks() + static_cast<int64_t>(us) * 10, kind);
+}
 int32_t dn2cpp_datetime_year(Dn2CppDateTime a) { int y; dn2cpp_dt_datepart(a.ticks(), &y, nullptr, nullptr, nullptr); return y; }
 int32_t dn2cpp_datetime_month(Dn2CppDateTime a) { int m; dn2cpp_dt_datepart(a.ticks(), nullptr, &m, nullptr, nullptr); return m; }
 int32_t dn2cpp_datetime_day(Dn2CppDateTime a) { int d; dn2cpp_dt_datepart(a.ticks(), nullptr, nullptr, &d, nullptr); return d; }
@@ -215,27 +260,79 @@ void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* 
     if (second) *second = (int32_t)((ticks / DN2CPP_TPS) % 60);
     if (tick) *tick = (int32_t)(ticks % DN2CPP_TPS);
 }
-Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks) { return dn2cpp_datetime_pack(a.ticks() + ticks, a.kind()); }
+// AddTicks/Add/Subtract name "value", the +/- operators "t". The sum wraps as .NET's
+// unchecked one does, so an overflow reads as out of range.
+Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName)
+{
+    uint64_t sum = static_cast<uint64_t>(a.ticks()) + static_cast<uint64_t>(ticks);
+    if (sum > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, paramName);
+    return dn2cpp_datetime_pack(static_cast<int64_t>(sum), a.kind());
+}
+// Negating TimeSpan.MinValue must raise a range fault before signed arithmetic.
+Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName)
+{
+    if (ticks == INT64_MIN)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, paramName);
+    return dn2cpp_datetime_add_ticks(a, -ticks, paramName);
+}
+// AddDays..AddMilliseconds (.NET's AddUnits): more whole units than the range holds is
+// "Value to add was out of range"; the integral and fractional parts convert separately,
+// which is the tick .NET lands on. NaN adds nothing (.NET's conversions saturate NaN to 0).
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit)
-{ return dn2cpp_datetime_pack(a.ticks() + (int64_t)(value * (double)ticksPerUnit), a.kind()); }
+{
+    if (std::fabs(value) > static_cast<double>(DN2CPP_DT_MAX_TICKS / ticksPerUnit))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ADD_VALUE, "value");
+    if (std::isnan(value))
+        return a;
+    double integral = std::trunc(value);
+    int64_t ticks = static_cast<int64_t>(integral) * ticksPerUnit
+        + static_cast<int64_t>((value - integral) * static_cast<double>(ticksPerUnit));
+    return dn2cpp_datetime_add_ticks(a, ticks, "value");
+}
+// AddMonths names "months" for both of its rejections.
 Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months)
 {
+    if (months < -120000 || months > 120000)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_TIME_BAD_MONTHS, "months");
     int y, mo, d; dn2cpp_dt_datepart(a.ticks(), &y, &mo, &d, nullptr);
     int64_t tod = a.ticks() % DN2CPP_TPD;
     int i = mo - 1 + months;
     if (i >= 0) { mo = i % 12 + 1; y += i / 12; }
     else { mo = 12 + (i + 1) % 12; y += (i - 11) / 12; }
+    if (y < 1 || y > 9999)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, "months");
     const int* days = dn2cpp_dt_isleap(y) ? s_daysToMonth366 : s_daysToMonth365;
     int dim = days[mo] - days[mo - 1];
     if (d > dim) d = dim; // clamp (e.g. Jan 31 + 1 month -> Feb 28)
     return dn2cpp_datetime_pack(dn2cpp_dt_date_to_ticks(y, mo, d) + tod, a.kind());
 }
-Dn2CppDateTime dn2cpp_datetime_add_years(Dn2CppDateTime a, int32_t years) { return dn2cpp_datetime_add_months(a, years * 12); }
+// AddYears names "value" for both of its rejections, so they precede the month walk.
+Dn2CppDateTime dn2cpp_datetime_add_years(Dn2CppDateTime a, int32_t years)
+{
+    if (years < -10000 || years > 10000)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_TIME_BAD_YEARS, "value");
+    int y; dn2cpp_dt_datepart(a.ticks(), &y, nullptr, nullptr, nullptr);
+    if (y + years < 1 || y + years > 9999)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, "value");
+    return dn2cpp_datetime_add_months(a, years * 12);
+}
 int32_t dn2cpp_datetime_cmp(Dn2CppDateTime a, Dn2CppDateTime b)
 { return a.ticks() < b.ticks() ? -1 : (a.ticks() > b.ticks() ? 1 : 0); }
-int32_t dn2cpp_datetime_is_leap_year(int32_t y) { return dn2cpp_dt_isleap(y) ? 1 : 0; }
+// IsLeapYear checks the year; DaysInMonth checks the month and then asks it.
+int32_t dn2cpp_datetime_is_leap_year(int32_t y)
+{
+    if (y < 1 || y > 9999)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_YEAR, "year");
+    return dn2cpp_dt_isleap(y) ? 1 : 0;
+}
 int32_t dn2cpp_datetime_days_in_month(int32_t y, int32_t mo)
-{ return dn2cpp_dt_days_in_month_checked(y, mo); }
+{
+    if (mo < 1 || mo > 12)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MONTH, "month", mo);
+    dn2cpp_datetime_is_leap_year(y);
+    return dn2cpp_dt_days_in_month_checked(y, mo);
+}
 int32_t dn2cpp_datetime_hash(Dn2CppDateTime a) { return (int32_t)a.ticks() ^ (int32_t)(a.ticks() >> 32); }
 
 Dn2CppString* dn2cpp_datetime_to_string(Dn2CppDateTime a)
@@ -309,7 +406,10 @@ Dn2CppDateTime dn2cpp_datetime_to_local(Dn2CppDateTime a)
     std::time_t secs = (std::time_t)((whole - DN2CPP_UNIX_EPOCH_TICKS) / DN2CPP_TPS);
     std::tm lt{};
     dn2cpp_pal_localtime((int64_t)secs, &lt);
-    int64_t date_ticks = dn2cpp_dt_date_to_ticks(lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday);
+    int year = lt.tm_year + 1900;
+    if (year < 1) return dn2cpp_datetime_pack(0, 2);
+    if (year > 9999) return dn2cpp_datetime_pack(DN2CPP_DT_MAX_TICKS, 2);
+    int64_t date_ticks = dn2cpp_dt_date_to_ticks(year, lt.tm_mon + 1, lt.tm_mday);
     int64_t time_ticks = dn2cpp_dt_time_to_ticks(lt.tm_hour, lt.tm_min, lt.tm_sec, 0);
     return dn2cpp_datetime_pack_clamped(date_ticks + time_ticks + frac, 2);
 }
@@ -349,25 +449,74 @@ static const int64_t DN2CPP_UNIX_EPOCH_MILLIS  = DN2CPP_UNIX_EPOCH_TICKS / DN2CP
 
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_make(int64_t clockTicks, int32_t offsetMinutes)
 { return Dn2CppDateTimeOffset{ clockTicks, offsetMinutes }; }
+static int32_t dn2cpp_dto_validate_offset(Dn2CppTimeSpan offset)
+{
+    int64_t minutes = offset.ticks / DN2CPP_TPM;
+    if (offset.ticks != minutes * DN2CPP_TPM)
+        dn2cpp_throw_argument_param(DN2CPP_SR_OFFSET_PRECISION, "offset");
+    if (minutes < -840 || minutes > 840)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_OFFSET_OUT_OF_RANGE, "offset");
+    return static_cast<int32_t>(minutes);
+}
+static Dn2CppDateTimeOffset dn2cpp_dto_validate_date(int64_t clockTicks, int32_t offsetMinutes)
+{
+    int64_t utcTicks = clockTicks - static_cast<int64_t>(offsetMinutes) * DN2CPP_TPM;
+    if (static_cast<uint64_t>(utcTicks) > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_UTC_OUT_OF_RANGE, "offset");
+    return Dn2CppDateTimeOffset{ clockTicks, offsetMinutes };
+}
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_ticks(int64_t clockTicks, Dn2CppTimeSpan offset)
+{
+    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    Dn2CppDateTime clock = dn2cpp_datetime_from_ticks(clockTicks, 0);
+    return dn2cpp_dto_validate_date(clock.ticks(), minutes);
+}
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int32_t d,
+    int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t hasMs, Dn2CppTimeSpan offset)
+{
+    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    Dn2CppDateTime clock = dn2cpp_datetime_ymdhms(y, mo, d, h, mi, s, 0);
+    Dn2CppDateTimeOffset result = dn2cpp_dto_validate_date(clock.ticks(), minutes);
+    if (hasMs != 0)
+    {
+        if (static_cast<uint32_t>(ms) >= 1000u)
+        {
+            Dn2CppString* range[2] = { dn2cpp_format_int(0, 4, nullptr), dn2cpp_format_int(999, 4, nullptr) };
+            dn2cpp_throw_argument_sr(&dn2cpp_argument_out_of_range_exception_type, DN2CPP_SR_RANGE,
+                "millisecond", range, 2);
+        }
+        result.ticks += static_cast<int64_t>(ms) * DN2CPP_TPMS;
+    }
+    return result;
+}
 // new DateTimeOffset(DateTime) / implicit operator: the offset comes from the Kind. Utc -> 0;
 // Local/Unspecified -> the host offset for that wall-clock instant. The clock ticks are the
 // DateTime's ticks as-is.
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_datetime(Dn2CppDateTime dt)
 {
     int32_t off = dt.kind() == 1 ? 0 : dn2cpp_local_offset_minutes(dt);
-    return Dn2CppDateTimeOffset{ dt.ticks(), off };
+    return dn2cpp_dto_validate_date(dt.ticks(), off);
 }
-// new DateTimeOffset(DateTime, TimeSpan): clock = the DateTime's ticks, offset = the TimeSpan
-// in whole minutes (carve-out: the .NET Kind/offset consistency validation is relaxed).
+// new DateTimeOffset(DateTime, TimeSpan): Kind consistency precedes offset precision and
+// range checks, then the UTC instant is validated against the DateTime tick range.
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_dt_offset(Dn2CppDateTime dt, Dn2CppTimeSpan offset)
-{ return Dn2CppDateTimeOffset{ dt.ticks(), (int32_t)(offset.ticks / DN2CPP_TPM) }; }
+{
+    if (dt.kind() == 1 && offset.ticks != 0)
+        dn2cpp_throw_argument_param(DN2CPP_SR_OFFSET_UTC_MISMATCH, "offset");
+    if (dt.kind() == 2
+        && offset.ticks != static_cast<int64_t>(dn2cpp_local_offset_minutes(dt)) * DN2CPP_TPM)
+        dn2cpp_throw_argument_param(DN2CPP_SR_OFFSET_LOCAL_MISMATCH, "offset");
+    int32_t minutes = dn2cpp_dto_validate_offset(offset);
+    return dn2cpp_dto_validate_date(dt.ticks(), minutes);
+}
 // ToOffset(TimeSpan): same instant, a new offset. The new clock is the UTC instant shifted
 // by the new offset.
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2CppTimeSpan offset)
 {
-    int32_t newOff = (int32_t)(offset.ticks / DN2CPP_TPM);
     int64_t utc = d.ticks - (int64_t)d.offsetMinutes * DN2CPP_TPM;
-    return Dn2CppDateTimeOffset{ utc + (int64_t)newOff * DN2CPP_TPM, newOff };
+    Dn2CppDateTime clock = dn2cpp_datetime_add_ticks(dn2cpp_datetime_pack(utc, 0), offset.ticks, "t");
+    int32_t newOff = dn2cpp_dto_validate_offset(offset);
+    return dn2cpp_dto_validate_date(clock.ticks(), newOff);
 }
 Dn2CppDateTime dn2cpp_datetimeoffset_clock(Dn2CppDateTimeOffset d) { return dn2cpp_datetime_pack(d.ticks, 0); }
 Dn2CppDateTime dn2cpp_datetimeoffset_utc(Dn2CppDateTimeOffset d)
@@ -988,7 +1137,7 @@ bool dn2cpp_timespan_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppT
 // here rather than through it.
 Dn2CppTimeSpan dn2cpp_timespan_parse(Dn2CppString* s)
 {
-    if (s == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("input");
     Dn2CppTimeSpan r;
     if (!dn2cpp_timespan_try_parse(s, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_TIMESPAN, s);
@@ -996,7 +1145,8 @@ Dn2CppTimeSpan dn2cpp_timespan_parse(Dn2CppString* s)
 }
 Dn2CppTimeSpan dn2cpp_timespan_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
-    if (s == nullptr || fmt == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("input");
+    if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     Dn2CppTimeSpan r;
     if (!dn2cpp_timespan_try_parse_exact(s, fmt, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_TIMESPAN, s);
@@ -1183,7 +1333,7 @@ bool dn2cpp_datetime_try_parse(Dn2CppString* s, Dn2CppDateTime* out)
 
 Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s)
 {
-    if (s == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     Dn2CppDateTime r;
     if (!dn2cpp_datetime_try_parse(s, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
@@ -1191,7 +1341,8 @@ Dn2CppDateTime dn2cpp_datetime_parse(Dn2CppString* s)
 }
 Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
-    if (s == nullptr || fmt == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
+    if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     Dn2CppDateTime r;
     if (!dn2cpp_datetime_try_parse_exact(s, fmt, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
@@ -1202,8 +1353,25 @@ Dn2CppDateTime dn2cpp_datetime_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 // General invariant parse: the DateTime general form plus an optional trailing UTC offset
 // ('Z' = UTC, or [+-]HH[:]mm). A missing offset falls back to the host local offset (like
 // DateTimeOffset.Parse on a no-offset string — non-deterministic, host zone only).
-bool dn2cpp_datetimeoffset_try_parse(Dn2CppString* s, Dn2CppDateTimeOffset* out)
+static bool dn2cpp_dto_parsed_valid(int64_t ticks, int32_t offsetMinutes, int* failure)
 {
+    int64_t utcTicks = ticks - static_cast<int64_t>(offsetMinutes) * DN2CPP_TPM;
+    if (static_cast<uint64_t>(utcTicks) > static_cast<uint64_t>(DN2CPP_DT_MAX_TICKS))
+    {
+        if (failure) *failure = 1;
+        return false;
+    }
+    if (offsetMinutes < -840 || offsetMinutes > 840)
+    {
+        if (failure) *failure = 2;
+        return false;
+    }
+    return true;
+}
+static bool dn2cpp_datetimeoffset_try_parse_core(Dn2CppString* s, Dn2CppDateTimeOffset* out, int* failure)
+{
+    if (out) *out = Dn2CppDateTimeOffset{ 0, 0 };
+    if (failure) *failure = 0;
     if (s == nullptr) return false;
     const char16_t* p = s->chars;
     int i = 0, e = s->length;
@@ -1233,12 +1401,18 @@ bool dn2cpp_datetimeoffset_try_parse(Dn2CppString* s, Dn2CppDateTimeOffset* out)
     int64_t ticks;
     if (!dn2cpp_dt_parse_general_range(p, i, e, &ticks)) return false;
     if (!hasOff) off = dn2cpp_local_offset_minutes(dn2cpp_datetime_pack(ticks, 0));
+    if (!dn2cpp_dto_parsed_valid(ticks, off, failure)) return false;
     out->ticks = ticks; out->offsetMinutes = off;
     return true;
 }
-bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out)
+bool dn2cpp_datetimeoffset_try_parse(Dn2CppString* s, Dn2CppDateTimeOffset* out)
+{ return dn2cpp_datetimeoffset_try_parse_core(s, out, nullptr); }
+static bool dn2cpp_datetimeoffset_try_parse_exact_core(Dn2CppString* s, Dn2CppString* fmt,
+    Dn2CppDateTimeOffset* out, int* failure)
 {
-    if (s == nullptr || fmt == nullptr) return false;
+    if (out) *out = Dn2CppDateTimeOffset{ 0, 0 };
+    if (failure) *failure = 0;
+    if (s == nullptr || fmt == nullptr || s->length == 0 || fmt->length == 0) return false;
     const char16_t* pat; int plen; char16_t patbuf[48];
     if (fmt->length == 1)
     {
@@ -1251,17 +1425,23 @@ bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, D
     Dn2CppDateTime dt; int32_t off = 0; bool hasOff = false;
     if (!dn2cpp_dt_parse_custom(pat, plen, s->chars, s->length, &dt, &off, &hasOff)) return false;
     if (!hasOff) off = dn2cpp_local_offset_minutes(dt); // no offset in the pattern -> host local
+    if (!dn2cpp_dto_parsed_valid(dt.ticks(), off, failure)) return false;
     out->ticks = dt.ticks(); out->offsetMinutes = off;
     return true;
 }
+bool dn2cpp_datetimeoffset_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppDateTimeOffset* out)
+{ return dn2cpp_datetimeoffset_try_parse_exact_core(s, fmt, out, nullptr); }
 // TryParseExact(input, string[] formats, ...): try each format in turn, first match wins —
 // the multi-format shape HttpDateParser.TryParse uses (RFC1123 / RFC850 / asctime).
 bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef* formats, Dn2CppDateTimeOffset* out)
 {
+    if (out) *out = Dn2CppDateTimeOffset{ 0, 0 };
     if (formats == nullptr) return false;
     for (int32_t i = 0; i < formats->length; i++)
     {
         auto* fmt = reinterpret_cast<Dn2CppString*>(formats->data[i]);
+        if (fmt == nullptr || fmt->length == 0)
+            return false;
         if (dn2cpp_datetimeoffset_try_parse_exact(s, fmt, out))
             return true;
     }
@@ -1269,30 +1449,54 @@ bool dn2cpp_datetimeoffset_try_parse_exact_multi(Dn2CppString* s, Dn2CppArrayRef
 }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s)
 {
-    if (s == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("input");
     Dn2CppDateTimeOffset r;
-    if (!dn2cpp_datetimeoffset_try_parse(s, &r))
+    int failure;
+    if (!dn2cpp_datetimeoffset_try_parse_core(s, &r, &failure))
+    {
+        if (failure == 1)
+            dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE, s);
+        if (failure == 2)
+            dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE, s);
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
+    }
     return r;
 }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
-    if (s == nullptr || fmt == nullptr) dn2cpp_throw_argument_null();
-    Dn2CppDateTimeOffset r;
-    if (!dn2cpp_datetimeoffset_try_parse_exact(s, fmt, &r))
+    if (s == nullptr) dn2cpp_throw_argument_null_param("input");
+    if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
+    if (s->length == 0)
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
+    if (fmt->length == 0)
+        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_FORMAT_SPECIFIER, fmt);
+    Dn2CppDateTimeOffset r;
+    int failure;
+    if (!dn2cpp_datetimeoffset_try_parse_exact_core(s, fmt, &r, &failure))
+    {
+        if (failure == 1)
+            dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE, s);
+        if (failure == 2)
+            dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE, s);
+        dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATETIME, s);
+    }
     return r;
 }
 // Arithmetic keeps the offset and acts on the clock value (= new DateTimeOffset(ClockDateTime
 // +/- delta, Offset)). The UTC instant therefore shifts by the same delta.
-Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks)
-{ return Dn2CppDateTimeOffset{ d.ticks + ticks, d.offsetMinutes }; }
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName)
+{ Dn2CppDateTime c = dn2cpp_datetime_add_ticks(dn2cpp_datetime_pack(d.ticks, 0), ticks, paramName); return dn2cpp_dto_validate_date(c.ticks(), d.offsetMinutes); }
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_subtract_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName)
+{
+    Dn2CppDateTime c = dn2cpp_datetime_subtract_ticks(dn2cpp_datetime_pack(d.ticks, 0), ticks, paramName);
+    return dn2cpp_dto_validate_date(c.ticks(), d.offsetMinutes);
+}
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_unit(Dn2CppDateTimeOffset d, double value, int64_t ticksPerUnit)
-{ Dn2CppDateTime c = dn2cpp_datetime_add_unit(dn2cpp_datetime_pack(d.ticks, 0), value, ticksPerUnit); return Dn2CppDateTimeOffset{ c.ticks(), d.offsetMinutes }; }
+{ Dn2CppDateTime c = dn2cpp_datetime_add_unit(dn2cpp_datetime_pack(d.ticks, 0), value, ticksPerUnit); return dn2cpp_dto_validate_date(c.ticks(), d.offsetMinutes); }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_months(Dn2CppDateTimeOffset d, int32_t months)
-{ Dn2CppDateTime c = dn2cpp_datetime_add_months(dn2cpp_datetime_pack(d.ticks, 0), months); return Dn2CppDateTimeOffset{ c.ticks(), d.offsetMinutes }; }
+{ Dn2CppDateTime c = dn2cpp_datetime_add_months(dn2cpp_datetime_pack(d.ticks, 0), months); return dn2cpp_dto_validate_date(c.ticks(), d.offsetMinutes); }
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_years(Dn2CppDateTimeOffset d, int32_t years)
-{ Dn2CppDateTime c = dn2cpp_datetime_add_years(dn2cpp_datetime_pack(d.ticks, 0), years); return Dn2CppDateTimeOffset{ c.ticks(), d.offsetMinutes }; }
+{ Dn2CppDateTime c = dn2cpp_datetime_add_years(dn2cpp_datetime_pack(d.ticks, 0), years); return dn2cpp_dto_validate_date(c.ticks(), d.offsetMinutes); }
 // Now: local clock + the host local offset. UtcNow: the UTC instant at offset 0. Both are
 // non-deterministic (host clock + zone) — gates assert invariants only.
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_now()
@@ -1321,19 +1525,38 @@ int32_t dn2cpp_dateonly_day(Dn2CppDateOnly dd) { int d; dn2cpp_dt_datepart((int6
 // 0=Sunday..6=Saturday. 0001-01-01 (dayNumber 0) is a Monday, matching dn2cpp_datetime_dayofweek.
 int32_t dn2cpp_dateonly_dayofweek(Dn2CppDateOnly dd) { return (int32_t)((dd.dayNumber + 1) % 7); }
 int32_t dn2cpp_dateonly_dayofyear(Dn2CppDateOnly dd) { int doy; dn2cpp_dt_datepart((int64_t)dd.dayNumber * DN2CPP_TPD, nullptr, nullptr, nullptr, &doy); return doy; }
-Dn2CppDateOnly dn2cpp_dateonly_add_days(Dn2CppDateOnly dd, int32_t days) { return Dn2CppDateOnly{ dd.dayNumber + days }; }
+// The DateOnly adds reject what DateTime's reject, under the same parameter names.
+Dn2CppDateOnly dn2cpp_dateonly_add_days(Dn2CppDateOnly dd, int32_t days)
+{
+    int64_t n = static_cast<int64_t>(dd.dayNumber) + days;
+    if (n < 0 || n > DN2CPP_DT_MAX_TICKS / DN2CPP_TPD)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ADD_VALUE, "value");
+    return Dn2CppDateOnly{ static_cast<int32_t>(n) };
+}
 Dn2CppDateOnly dn2cpp_dateonly_add_months(Dn2CppDateOnly dd, int32_t months)
 {
+    if (months < -120000 || months > 120000)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_TIME_BAD_MONTHS, "months");
     int y, mo, d; dn2cpp_dt_datepart((int64_t)dd.dayNumber * DN2CPP_TPD, &y, &mo, &d, nullptr);
     int i = mo - 1 + months;
     if (i >= 0) { mo = i % 12 + 1; y += i / 12; }
     else { mo = 12 + (i + 1) % 12; y += (i - 11) / 12; }
+    if (y < 1 || y > 9999)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, "months");
     const int* days = dn2cpp_dt_isleap(y) ? s_daysToMonth366 : s_daysToMonth365;
     int dim = days[mo] - days[mo - 1];
     if (d > dim) d = dim; // clamp (Jan 31 + 1 month -> Feb 28), like DateTime
     return Dn2CppDateOnly{ (int32_t)(dn2cpp_dt_date_to_ticks(y, mo, d) / DN2CPP_TPD) };
 }
-Dn2CppDateOnly dn2cpp_dateonly_add_years(Dn2CppDateOnly dd, int32_t years) { return dn2cpp_dateonly_add_months(dd, years * 12); }
+Dn2CppDateOnly dn2cpp_dateonly_add_years(Dn2CppDateOnly dd, int32_t years)
+{
+    if (years < -10000 || years > 10000)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_TIME_BAD_YEARS, "value");
+    int y; dn2cpp_dt_datepart((int64_t)dd.dayNumber * DN2CPP_TPD, &y, nullptr, nullptr, nullptr);
+    if (y + years < 1 || y + years > 9999)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_DATE_ARITHMETIC, "value");
+    return dn2cpp_dateonly_add_months(dd, years * 12);
+}
 int32_t dn2cpp_dateonly_cmp(Dn2CppDateOnly a, Dn2CppDateOnly b)
 { return a.dayNumber < b.dayNumber ? -1 : (a.dayNumber > b.dayNumber ? 1 : 0); }
 int32_t dn2cpp_dateonly_hash(Dn2CppDateOnly dd) { return dd.dayNumber; }
@@ -1408,7 +1631,7 @@ bool dn2cpp_dateonly_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppD
 // be raised here rather than inherited from the DateTime parser it borrows.
 Dn2CppDateOnly dn2cpp_dateonly_parse(Dn2CppString* s)
 {
-    if (s == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     Dn2CppDateOnly r;
     if (!dn2cpp_dateonly_try_parse(s, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATEONLY, s);
@@ -1416,7 +1639,8 @@ Dn2CppDateOnly dn2cpp_dateonly_parse(Dn2CppString* s)
 }
 Dn2CppDateOnly dn2cpp_dateonly_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
-    if (s == nullptr || fmt == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
+    if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     Dn2CppDateOnly r;
     if (!dn2cpp_dateonly_try_parse_exact(s, fmt, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_DATEONLY, s);
@@ -1572,7 +1796,7 @@ bool dn2cpp_timeonly_try_parse_exact(Dn2CppString* s, Dn2CppString* fmt, Dn2CppT
 }
 Dn2CppTimeOnly dn2cpp_timeonly_parse(Dn2CppString* s)
 {
-    if (s == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
     Dn2CppTimeOnly r;
     if (!dn2cpp_timeonly_try_parse(s, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_TIMEONLY, s);
@@ -1580,7 +1804,8 @@ Dn2CppTimeOnly dn2cpp_timeonly_parse(Dn2CppString* s)
 }
 Dn2CppTimeOnly dn2cpp_timeonly_parse_exact(Dn2CppString* s, Dn2CppString* fmt)
 {
-    if (s == nullptr || fmt == nullptr) dn2cpp_throw_argument_null();
+    if (s == nullptr) dn2cpp_throw_argument_null_param("s");
+    if (fmt == nullptr) dn2cpp_throw_argument_null_param("format");
     Dn2CppTimeOnly r;
     if (!dn2cpp_timeonly_try_parse_exact(s, fmt, &r))
         dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_TIMEONLY, s);

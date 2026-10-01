@@ -1448,6 +1448,25 @@ inline constexpr const char* DN2CPP_SR_WRONG_SIZE_ARRAY_IN_NATIVE_STRUCT = "Argu
 inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
 inline constexpr const char* DN2CPP_SR_INDEX_OUT_OF_RANGE = "Arg_IndexOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_ARGUMENT = "Arg_ArgumentException";
+inline constexpr const char* DN2CPP_SR_ADD_VALUE = "ArgumentOutOfRange_AddValue";
+inline constexpr const char* DN2CPP_SR_BAD_HOUR_MINUTE_SECOND = "ArgumentOutOfRange_BadHourMinuteSecond";
+inline constexpr const char* DN2CPP_SR_BAD_YEAR_MONTH_DAY = "ArgumentOutOfRange_BadYearMonthDay";
+inline constexpr const char* DN2CPP_SR_DATE_ARITHMETIC = "ArgumentOutOfRange_DateArithmetic";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_MONTHS = "ArgumentOutOfRange_DateTimeBadMonths";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_TICKS = "ArgumentOutOfRange_DateTimeBadTicks";
+inline constexpr const char* DN2CPP_SR_DATE_TIME_BAD_YEARS = "ArgumentOutOfRange_DateTimeBadYears";
+inline constexpr const char* DN2CPP_SR_FILE_TIME_INVALID = "ArgumentOutOfRange_FileTimeInvalid";
+inline constexpr const char* DN2CPP_SR_FORMAT_OFFSET_OUT_OF_RANGE = "Format_OffsetOutOfRange";
+inline constexpr const char* DN2CPP_SR_FORMAT_UTC_OUT_OF_RANGE = "Format_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_INVALID_DATE_TIME_KIND = "Argument_InvalidDateTimeKind";
+inline constexpr const char* DN2CPP_SR_MONTH = "ArgumentOutOfRange_Month";
+inline constexpr const char* DN2CPP_SR_OFFSET_LOCAL_MISMATCH = "Argument_OffsetLocalMismatch";
+inline constexpr const char* DN2CPP_SR_OFFSET_OUT_OF_RANGE = "Argument_OffsetOutOfRange";
+inline constexpr const char* DN2CPP_SR_OFFSET_PRECISION = "Argument_OffsetPrecision";
+inline constexpr const char* DN2CPP_SR_OFFSET_UTC_MISMATCH = "Argument_OffsetUtcMismatch";
+inline constexpr const char* DN2CPP_SR_RANGE = "ArgumentOutOfRange_Range";
+inline constexpr const char* DN2CPP_SR_UTC_OUT_OF_RANGE = "Argument_UTCOutOfRange";
+inline constexpr const char* DN2CPP_SR_YEAR = "ArgumentOutOfRange_Year";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_OUT_OF_RANGE = "Arg_ArgumentOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED = "CancellationTokenSource_Disposed";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonZero";
@@ -1482,6 +1501,7 @@ inline constexpr const char* DN2CPP_SR_UNBOUND_GENERIC = "Arg_UnboundGenParam";
 inline constexpr const char* DN2CPP_SR_OBJECT_CONVERSION = "Arg_ObjObjEx";
 inline constexpr const char* DN2CPP_SR_FORMAT_INVALID_STRING_WITH_VALUE = "Format_InvalidStringWithValue";
 inline constexpr const char* DN2CPP_SR_BAD_DATETIME = "Format_BadDateTime";
+inline constexpr const char* DN2CPP_SR_BAD_FORMAT_SPECIFIER = "Format_BadFormatSpecifier";
 inline constexpr const char* DN2CPP_SR_BAD_BOOLEAN = "Format_BadBoolean";
 inline constexpr const char* DN2CPP_SR_ENUM_ILLEGAL_VALUE = "Arg_EnumIllegalVal";
 inline constexpr const char* DN2CPP_SR_BAD_BASE64_CHAR = "Format_BadBase64Char";
@@ -7520,8 +7540,9 @@ Dn2CppTimeSpan dn2cpp_timespan_parse(Dn2CppString* s);
 Dn2CppTimeSpan dn2cpp_timespan_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
 
 // DateTime ctors. The ymd* forms compute ticks from the proleptic Gregorian
-// calendar; `kind` is the DateTimeKind int. Range validation is loose
-// (no throw on an out-of-range field — a carve-out).
+// calendar; `kind` is the DateTimeKind int. Each raises .NET's exception for the
+// argument .NET refuses first: the ticks, then the kind; or the kind, the date, the
+// clock, then the millisecond.
 Dn2CppDateTime dn2cpp_datetime_from_ticks(int64_t ticks, int32_t kind);
 // Windows FILETIME (100ns since 1601-01-01 UTC) <-> DateTime.ticks. FromFileTimeUtc validates
 // fileTime's range (throws ArgumentOutOfRangeException like the real BCL); ToFileTimeUtc
@@ -7533,6 +7554,8 @@ int64_t dn2cpp_datetime_to_file_time_utc(Dn2CppDateTime a);
 Dn2CppDateTime dn2cpp_datetime_ymd(int32_t y, int32_t mo, int32_t d, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t kind);
 Dn2CppDateTime dn2cpp_datetime_ymdhmsms(int32_t y, int32_t mo, int32_t d, int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t kind);
+Dn2CppDateTime dn2cpp_datetime_ymdhmsmsus(int32_t y, int32_t mo, int32_t d, int32_t h,
+    int32_t mi, int32_t s, int32_t ms, int32_t us, int32_t kind);
 int32_t dn2cpp_datetime_year(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_month(Dn2CppDateTime a);
 int32_t dn2cpp_datetime_day(Dn2CppDateTime a);
@@ -7548,7 +7571,8 @@ void dn2cpp_datetime_get_time_ms(Dn2CppDateTime a, int32_t* hour, int32_t* minut
 void dn2cpp_datetime_get_time_precise(Dn2CppDateTime a, int32_t* hour, int32_t* minute, int32_t* second, int32_t* tick);
 // AddTicks is exact; Add*(double) truncates value*ticksPerUnit toward zero (no
 // millisecond rounding); AddMonths/AddYears clamp the day to the target month.
-Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks);
+Dn2CppDateTime dn2cpp_datetime_add_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
+Dn2CppDateTime dn2cpp_datetime_subtract_ticks(Dn2CppDateTime a, int64_t ticks, const char* paramName);
 Dn2CppDateTime dn2cpp_datetime_add_unit(Dn2CppDateTime a, double value, int64_t ticksPerUnit);
 Dn2CppDateTime dn2cpp_datetime_add_months(Dn2CppDateTime a, int32_t months);
 Dn2CppDateTime dn2cpp_datetime_add_years(Dn2CppDateTime a, int32_t years);
@@ -7602,6 +7626,9 @@ int32_t dn2cpp_local_offset_minutes(Dn2CppDateTime localClock);
 // ordering/equality/Unix time read the UTC instant. InvariantCulture only; named /
 // historical time zones stay a carve-out (host local zone only).
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_make(int64_t clockTicks, int32_t offsetMinutes);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_ticks(int64_t clockTicks, Dn2CppTimeSpan offset);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_parts(int32_t y, int32_t mo, int32_t d,
+    int32_t h, int32_t mi, int32_t s, int32_t ms, int32_t hasMs, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_datetime(Dn2CppDateTime dt);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_from_dt_offset(Dn2CppDateTime dt, Dn2CppTimeSpan offset);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_to_offset(Dn2CppDateTimeOffset d, Dn2CppTimeSpan offset);
@@ -7637,7 +7664,8 @@ Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_month_names(const Dn2CppTypeInfo* a
 Dn2CppArrayRef* dn2cpp_dtfi_invariant_abbrev_day_names(const Dn2CppTypeInfo* arrType);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse(Dn2CppString* s);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_parse_exact(Dn2CppString* s, Dn2CppString* fmt);
-Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
+Dn2CppDateTimeOffset dn2cpp_datetimeoffset_subtract_ticks(Dn2CppDateTimeOffset d, int64_t ticks, const char* paramName);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_unit(Dn2CppDateTimeOffset d, double value, int64_t ticksPerUnit);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_months(Dn2CppDateTimeOffset d, int32_t months);
 Dn2CppDateTimeOffset dn2cpp_datetimeoffset_add_years(Dn2CppDateTimeOffset d, int32_t years);

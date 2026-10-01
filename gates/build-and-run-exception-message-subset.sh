@@ -50,6 +50,9 @@
 # UInt32 and Int32 bound messages retain their suffixes after a collection.
 source "$(dirname "$0")/_common.sh"
 
+ancestry_app="gates/fixtures/runtime-exception-ancestry/bin/$CONFIG/$TFM/RuntimeExceptionAncestry.dll"
+build_gate_proj gates/fixtures/runtime-exception-ancestry/RuntimeExceptionAncestry.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $ancestry_app ${ancestry_app%.dll}.runtimeconfig.json ${ancestry_app%.dll}.deps.json"
 fields_app="gates/fixtures/runtime-argument-fields/bin/$CONFIG/$TFM/RuntimeArgumentFields.dll"
 fallback_app="gates/fixtures/runtime-argument-fallback/bin/$CONFIG/$TFM/RuntimeArgumentFallback.dll"
 fallback_bcl="$(dirname "$(resolve_net10_corelib)")/System.Collections.Concurrent.dll"
@@ -64,6 +67,24 @@ gate_extra_asserts() {
     local out="$1" native before prefix line app name fixture expected actual
     native=$(run_bounded "./$out/ExceptionMessageSubset")
     native=$(strip_cr_win "$native")
+    before=$(run_bounded "./$out/ExceptionMessageSubset" before-runtime-exception-chains)
+    prefix=$(awk '/^== runtime exception ancestry ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$(strip_cr_win "$before")"
+    grep -Fxq 'runtime exception ancestry end' <<< "$native" \
+        || { echo 'FAIL: runtime exception ancestry section did not run' >&2; exit 1; }
+    fixture="$out/RuntimeExceptionAncestry"
+    DN2CPP_STRICT_COMPLETION=1 invoke_cli "$ancestry_app" -r "$_CG_CORELIB" -o "$fixture"
+    compile_console "$fixture" RuntimeExceptionAncestry
+    expected=$(run_bounded dotnet "$ancestry_app")
+    actual=$(run_bounded "./$fixture/RuntimeExceptionAncestry")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    for line in 'array index: IndexOutOfRangeException > SystemException > Exception > Object' \
+        'no parameterless ctor: MissingMethodException > MissingMemberException > MemberAccessException > SystemException > Exception > Object' \
+        'HRESULT E_FAIL: COMException > ExternalException > SystemException > Exception > Object'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: runtime exception chain missing: $line" >&2; exit 1; }
+    done
     before=$(run_bounded dotnet "$_CG_APP" before-general-argument-fields)
     prefix=$(awk '/^-- general BCL argument fields --$/ { exit } { print }' <<< "$native")
     assert_output "$prefix" "$(strip_cr_win "$before")"
