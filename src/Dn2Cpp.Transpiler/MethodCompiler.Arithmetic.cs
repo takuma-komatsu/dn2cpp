@@ -577,9 +577,9 @@ internal sealed partial class MethodCompiler
     /// <summary>Wraps an array operand's cast in the guard <paramref name="kind"/>
     /// names, so the check is sequenced BEFORE the member address is formed —
     /// which splicing a test beside the dereference would not be.</summary>
-    private static string GuardArray(string castExpr, ArrayOperandKind kind) => kind switch
+    private static string GuardArray(string castExpr, ArrayOperandKind kind, string argName) => kind switch
     {
-        ArrayOperandKind.Argument => $"dn2cpp_array_require_arg({castExpr})",
+        ArrayOperandKind.Argument => $"dn2cpp_array_require_arg({castExpr}, \"{argName}\")",
         ArrayOperandKind.Receiver => $"dn2cpp_array_require_receiver({castExpr})",
         ArrayOperandKind.CopyDest => $"dn2cpp_array_require_copy_dest({castExpr})",
         _ => castExpr,
@@ -656,8 +656,8 @@ internal sealed partial class MethodCompiler
         Emit($"{di} = (int32_t)({dstIdx});");
         Emit($"{n} = (int32_t)({len});");
         string cs = NewTemp(cpp), cd = NewTemp(cpp);
-        Emit($"{cs} = {GuardArray(Cast(src, cpp), srcKind)};");
-        Emit($"{cd} = {GuardArray(Cast(dst, cpp), dstKind)};");
+        Emit($"{cs} = {GuardArray(Cast(src, cpp), srcKind, "sourceArray")};");
+        Emit($"{cd} = {GuardArray(Cast(dst, cpp), dstKind, "destinationArray")};");
         Emit($"dn2cpp_array_copy_range({cs}->length, {si}, {cd}->length, {di}, {n});");
         string move = CopyMovesRefs(rep.Value, src, elementType) ? "dn2cpp_gc_memmove_refs" : "std::memmove";
         string moveStmt = rep == ArrRep.N
@@ -700,7 +700,7 @@ internal sealed partial class MethodCompiler
         Emit($"{i} = (int32_t)({idx});");
         Emit($"{n} = (int32_t)({len});");
         string ca = NewTemp(cpp);
-        Emit($"{ca} = {GuardArray(Cast(arr, cpp), kind)};");
+        Emit($"{ca} = {GuardArray(Cast(arr, cpp), kind, "array")};");
         Emit($"dn2cpp_array_clear_range({ca}->length, {i}, {n});");
         Emit(rep == ArrRep.N
             ? $"std::memset({ca}->data + (size_t){i} * {ca}->elemSize, 0, (size_t){n} * {ca}->elemSize);"

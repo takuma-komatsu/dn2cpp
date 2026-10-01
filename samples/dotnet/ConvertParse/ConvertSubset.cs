@@ -56,5 +56,43 @@ namespace ConvertSubset
             Console.WriteLine(Convert.ToSingle("1.5") == 1.5f);  // True
             Console.WriteLine(Convert.ToSingle(2.5) == 2.5f);    // True
         }
+
+        private static void CharFault(string label, Exception ex)
+        {
+            Console.WriteLine(label + " type=" + ex.GetType().Name);
+            Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+            Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+        }
+
+        private static void CharObserve(string label, Action action)
+        {
+            try { action(); Console.WriteLine(label + " success"); }
+            catch (Exception ex) { CharFault(label, ex); }
+        }
+
+        internal static void RunCharFaults()
+        {
+            Console.WriteLine("== Convert string char faults ==");
+            string[] values = { null, "", "a", "ab", "\0", "\ud800" };
+            for (int i = 0; i < values.Length; i++)
+            {
+                CharObserve("char:" + i, () => Console.WriteLine("unit=" + (int)Convert.ToChar(values[i])));
+                CharObserve("char provider:" + i, () => Console.WriteLine("unit=" + (int)Convert.ToChar(values[i], System.Globalization.CultureInfo.InvariantCulture)));
+            }
+            ArgumentException saved = null;
+            try { Convert.ToChar((string)null); } catch (ArgumentException ex) { saved = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            CharFault("char after GC", saved);
+            object[] boxed = { null, "", "a", "7", "ab", "\0", "\ud800", "\ud83d\ude42" };
+            for (int i = 0; i < boxed.Length; i++)
+            {
+                CharObserve("char object:" + i, () => Console.WriteLine("object unit=" + (int)Convert.ToChar(boxed[i])));
+                CharObserve("char object provider:" + i, () => Console.WriteLine("object unit=" + (int)Convert.ToChar(boxed[i], System.Globalization.CultureInfo.InvariantCulture)));
+            }
+            Console.WriteLine("Convert string char faults end");
+        }
     }
 }

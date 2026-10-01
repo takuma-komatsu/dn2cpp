@@ -150,6 +150,40 @@
 # ArrayArgumentCheckSubset.RunSearch checks IndexOf, LastIndexOf, Fill and
 # BinarySearch ranges before their loops and the non-generic Array
 # Sort, Reverse and Copy rank and range messages.
+# Array copy, clear, resize and slices preserve fault fields and validation precedence.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/ArrayCore")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-validation-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Array validation fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Array validation fields ==' \
+        'copy:0:0:-1:-1:-1 param=sourceArray' \
+        'copy:2:0:-1:-1:-1 param=destinationArray' \
+        'copy:1:1:0:-1:1 type=ArgumentException' \
+        'copy:1:1:0:-1:1 param=sourceArray' \
+        'copy:2:2:-1:0:0 param=sourceIndex' \
+        'copy:2:2:0:0:-1 param=length' \
+        'clear:0:-1:-1 param=array' \
+        'slice:2:0:4:int param=length' \
+        'copyto:1:0:0 param=destinationArray' \
+        'copyto:1:2:0 type=ArgumentException' \
+        'resize int null:-1 param=newSize' \
+        'after GC:0 param=sourceArray' \
+        'after GC:3 param=length' \
+        'int zero slice canonical=True' \
+        'byte zero slice canonical=True' \
+        'string zero slice canonical=True' \
+        'covariant empty canonical=False' \
+        'covariant zero slice fresh=True' \
+        'Array validation fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ArrayCore validation witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate ArrayCore

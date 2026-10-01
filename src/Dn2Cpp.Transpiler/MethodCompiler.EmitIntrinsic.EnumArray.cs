@@ -865,12 +865,12 @@ internal sealed partial class MethodCompiler
                 if (ArrayRepOfCppTypeOrNull(arr.CppType) is null)
                 {
                     string tl = NewTemp("int32_t");
-                    Emit($"{tl} = dn2cpp_array_total_length(dn2cpp_array_require_arg((Dn2CppObject*)({arr.Expr})));");
+                    Emit($"{tl} = dn2cpp_array_total_length(dn2cpp_array_require_arg((Dn2CppObject*)({arr.Expr}), \"array\"));");
                     EmitArrayClear(arr, "0", tl, ArrayOperandKind.Unchecked);
                     return true;
                 }
                 string al = NewTemp("Dn2CppArray*");
-                Emit($"{al} = dn2cpp_array_require_arg((Dn2CppArray*)({arr.Expr}));");
+                Emit($"{al} = dn2cpp_array_require_arg((Dn2CppArray*)({arr.Expr}), \"array\");");
                 EmitArrayClear(arr, "0", $"{al}->length", ArrayOperandKind.Unchecked);
                 return true;
             }

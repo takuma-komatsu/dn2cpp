@@ -649,8 +649,8 @@ internal sealed partial class MethodCompiler
         // _value words from the by-value Range (standard-layout, no padding: word [0] is
         // Start._value, word [1] is End._value), resolve (offset, length) + bounds-check
         // via dn2cpp_range_offset_length (== Range.GetOffsetAndLength), then a per-rep
-        // helper allocates a fresh array of the source's precise type-info + slice length
-        // and shallow-copies the [offset, offset+length) element run. Result is T[].
+        // helper shallow-copies the slice with the source's precise type-info.
+        // An empty slice of an exact T[] shares Array.Empty<T>(); covariant arrays stay fresh.
         if (declType == "System.Runtime.CompilerServices.RuntimeHelpers" && name == "GetSubArray")
         {
             var range = Pop();   // System.Range (by value)
@@ -672,6 +672,9 @@ internal sealed partial class MethodCompiler
             string off = NewTemp("int32_t");
             string len = NewTemp("int32_t");
             Emit($"{len} = dn2cpp_range_offset_length({startVal}, {endVal}, {srcLen}, &{off});");
+            EmitEmptyArray(t);
+            var empty = Pop();
+            string arrayType = PreciseArrayTypeInfoExpr(t);
             string sub = RepOf(t) switch
             {
                 ArrRep.I4 => $"dn2cpp_array_subarray_i4({Cast(arr, "Dn2CppArrayI4*")}, {off}, {len})",
@@ -679,7 +682,8 @@ internal sealed partial class MethodCompiler
                 _ => $"dn2cpp_array_subarray_n({Cast(arr, "Dn2CppArrayN*")}, {off}, {len})",
             };
             string retCpp = CppTypes.Of(TypeDesc.MakeSZArray(t));
-            Push(StackKind.Ref, retCpp, $"({retCpp})({sub})", TypeDesc.MakeSZArray(t));
+            string result = $"({len} == 0 && ((Dn2CppObject*){source})->type == {arrayType} ? {empty.Expr} : {sub})";
+            Push(StackKind.Ref, retCpp, $"({retCpp})({result})", TypeDesc.MakeSZArray(t));
             return;
         }
 

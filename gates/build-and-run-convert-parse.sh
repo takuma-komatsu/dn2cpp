@@ -41,6 +41,32 @@
 # Former gates: convert, convert-base, convert-base64, convert-object,
 # convert-changetype, convert-changetype-ext, convert-changetype-uint64, parse,
 # try-format-subset, float-parse-format-info.
+# Convert.ToChar(string) preserves named null faults and UTF-16 code units.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/ConvertParse")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-char-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Convert string char faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Convert string char faults ==' \
+        'char:0 param=value' \
+        'char provider:0 param=value' \
+        'char:1 type=FormatException' \
+        'char:4 success' \
+        'char:5 success' \
+        'char after GC param=value' \
+        'char object:2 success' \
+        'object unit=97' \
+        'object unit=55' \
+        'char object:4 type=FormatException' \
+        'Convert string char faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter
