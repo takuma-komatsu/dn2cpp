@@ -66,6 +66,7 @@ internal static class BclMessages
         "ArgumentOutOfRange_Generic_MustBeNonNegative",
         "ArgumentOutOfRange_Generic_MustBeLessOrEqual",
         "ArgumentOutOfRange_NeedNonNegNum",
+        "ArgumentOutOfRange_StartIndex",
         "ArgumentOutOfRange_StartIndexLargerThanLength",
         "ArgumentOutOfRange_IndexLength",
         "Argument_InvalidOffLen",

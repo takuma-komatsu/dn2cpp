@@ -1467,6 +1467,7 @@ inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND_WITH_KEY = "Arg_KeyNotFound
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE = "ArgumentOutOfRange_Generic_MustBeNonNegative";
 inline constexpr const char* DN2CPP_SR_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeLessOrEqual";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
+inline constexpr const char* DN2CPP_SR_START_INDEX = "ArgumentOutOfRange_StartIndex";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";

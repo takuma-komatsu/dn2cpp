@@ -54,6 +54,9 @@ namespace StringCore
             if (args.Length > 0 && args[0] == "before-array-ctors")
                 return;
             StringFromCharsSubset.Program.RunArrays();
+            if (args.Length > 0 && args[0] == "before-remove-padding")
+                return;
+            StringPadSubset.Program.RunFaults();
         }
     }
 }
