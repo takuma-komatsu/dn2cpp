@@ -658,9 +658,9 @@ Dn2CppString* dn2cpp_str_replace_str(Dn2CppString* s, Dn2CppString* oldValue, Dn
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (oldValue == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("oldValue");
     if (oldValue->length == 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_EMPTY_STRING), "oldValue");
     const char16_t* newChars = newValue != nullptr ? newValue->chars : nullptr;
     int32_t newLen = newValue != nullptr ? newValue->length : 0;
 
@@ -719,9 +719,9 @@ Dn2CppString* dn2cpp_str_replace_str_cmp(Dn2CppString* s, Dn2CppString* oldValue
     if (comparison == 4)
         return dn2cpp_str_replace_str(s, oldValue, newValue);
     if (oldValue == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("oldValue");
     if (oldValue->length == 0)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_EMPTY_STRING), "oldValue");
     const char16_t* newChars = newValue != nullptr ? newValue->chars : nullptr;
     int32_t newLen = newValue != nullptr ? newValue->length : 0;
 
@@ -781,7 +781,7 @@ Dn2CppString* dn2cpp_str_normalize(Dn2CppString* s, int32_t form)
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (form != 1 && form != 2 && form != 5 && form != 6)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_INVALID_NORMALIZATION_FORM), "normalizationForm");
     return s;
 }
 
@@ -790,7 +790,7 @@ int32_t dn2cpp_str_is_normalized(Dn2CppString* s, int32_t form)
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (form != 1 && form != 2 && form != 5 && form != 6)
-        dn2cpp_throw_argument();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_INVALID_NORMALIZATION_FORM), "normalizationForm");
     return 1;
 }
 
@@ -990,9 +990,9 @@ Dn2CppArrayRef* dn2cpp_str_split(Dn2CppString* s, const char16_t* sepChars, int3
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range(); // catchable, like .NET's count check
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     if (static_cast<uint32_t>(opts) > 3u)
-        dn2cpp_throw_argument(); // catchable, like .NET's CheckStringSplitOptions
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_INVALID_FLAG), "options");
     bool removeEmpty = (opts & 1) != 0;
     bool trim = (opts & 2) != 0;
     if (count == 0)
@@ -1134,9 +1134,9 @@ Dn2CppArrayRef* dn2cpp_str_split_str(Dn2CppString* s, Dn2CppString* sep, int32_t
     if (s == nullptr)
         dn2cpp_throw_null_reference();
     if (count < 0)
-        dn2cpp_throw_argument_out_of_range(); // catchable, like .NET's count check
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
     if (static_cast<uint32_t>(opts) > 3u)
-        dn2cpp_throw_argument(); // catchable, like .NET's CheckStringSplitOptions
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type, dn2cpp_sr_text(DN2CPP_SR_INVALID_FLAG), "options");
     if (count == 0)
         return dn2cpp_newarr_ref(0);
     if (sep == nullptr || sep->length == 0)
@@ -1497,7 +1497,7 @@ static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject**
                                               const Dn2CppNumberFormatInfo* nfi)
 {
     if (fmt == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("format");
     Dn2CppISB h = dn2cpp_isb_new(fmt->length, argc);
     const char16_t* p = fmt->chars;
     int32_t n = fmt->length;
@@ -1548,7 +1548,7 @@ static Dn2CppString* dn2cpp_string_format_impl(Dn2CppString* fmt, Dn2CppObject**
             i++; // past '}'
             runStart = i;
             if (index >= argc)
-                dn2cpp_throw_format();
+                dn2cpp_throw_sr0(&dn2cpp_format_exception_type, DN2CPP_SR_FORMAT_INDEX_OUT_OF_RANGE);
             dn2cpp_isb_append_aligned(&h, dn2cpp_format_hole_value(args[index], spec, nfi), alignment);
         }
         else if (c == u'}')
@@ -1592,7 +1592,7 @@ Dn2CppString* dn2cpp_string_format3(Dn2CppString* fmt, Dn2CppObject* a0, Dn2CppO
 Dn2CppString* dn2cpp_string_format_arr(Dn2CppString* fmt, Dn2CppArrayRef* args)
 {
     if (args == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param(fmt == nullptr ? "format" : "args");
     return dn2cpp_string_format_impl(fmt, args->data, args->length, nullptr);
 }
 
@@ -1617,7 +1617,7 @@ Dn2CppString* dn2cpp_string_format3_c(const Dn2CppNumberFormatInfo* n, Dn2CppStr
 Dn2CppString* dn2cpp_string_format_arr_c(const Dn2CppNumberFormatInfo* n, Dn2CppString* fmt, Dn2CppArrayRef* args)
 {
     if (args == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param(fmt == nullptr ? "format" : "args");
     return dn2cpp_string_format_impl(fmt, args->data, args->length, n);
 }
 
@@ -1833,8 +1833,13 @@ Dn2CppString* dn2cpp_string_join_ref_range(Dn2CppString* sep, Dn2CppArrayRef* a,
 {
     if (a == nullptr)
         dn2cpp_throw_argument_null_param("value");
-    if (startIndex < 0 || count < 0 || startIndex > a->length - count)
-        dn2cpp_throw_argument_out_of_range();
+    if (startIndex < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", startIndex);
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "count", count);
+    if (startIndex > a->length - count)
+        dn2cpp_throw_argument_out_of_range_bound(DN2CPP_SR_MUST_BE_LESS_OR_EQUAL, "startIndex",
+            startIndex, a->length - count);
     auto** e = static_cast<Dn2CppString**>(dn2cpp_alloc(sizeof(Dn2CppString*) * (count > 0 ? count : 1)));
     for (int32_t i = 0; i < count; i++)
         dn2cpp_gc_store_ref(&e[i], dn2cpp_object_tostring(a->data[startIndex + i]));
@@ -2432,7 +2437,7 @@ std::u16string_view dn2cpp_string_intern_key(Dn2CppString* s)
 Dn2CppString* dn2cpp_string_intern(Dn2CppString* s)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("str");
     auto& pool = dn2cpp_string_intern_pool();
     std::lock_guard<std::mutex> lk(pool.mutex);
     auto it = pool.entries.find(dn2cpp_string_intern_key(s));
@@ -2447,7 +2452,7 @@ Dn2CppString* dn2cpp_string_intern(Dn2CppString* s)
 Dn2CppString* dn2cpp_string_is_interned(Dn2CppString* s)
 {
     if (s == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("str");
     auto& pool = dn2cpp_string_intern_pool();
     std::lock_guard<std::mutex> lk(pool.mutex);
     auto it = pool.entries.find(dn2cpp_string_intern_key(s));

@@ -232,5 +232,94 @@ namespace StringValidationThrowSubset
                 Console.WriteLine("finally ran " + ran + " time(s) before the catch");
             }
         }
+
+        private static void ArgumentFault(string label, Exception ex)
+        {
+            Console.WriteLine(label + " type=" + ex.GetType().Name);
+            Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+            Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+        }
+
+        private static void ArgumentObserve(string label, Action action)
+        {
+            try { action(); Console.WriteLine(label + " success"); }
+            catch (Exception ex) { ArgumentFault(label, ex); }
+        }
+
+        private static void ArgumentDump(string value) { Console.WriteLine("value=" + Units(value)); }
+
+        private static void ArgumentDump(string[] values)
+        {
+            Console.WriteLine("array length=" + values.Length);
+            foreach (string value in values)
+                ArgumentDump(value);
+        }
+
+        internal static void RunArgumentFields()
+        {
+            Console.WriteLine("== String argument fields ==");
+            string[] sources = { "a,b,,a", "", null };
+            string[] olds = { null, "", "a" };
+            string[] news = { null, "", "X\0\ud800" };
+            int[] comparisons = { 4, 5, -1, 6, int.MinValue, int.MaxValue };
+            for (int s = 0; s < sources.Length; s++)
+                for (int o = 0; o < olds.Length; o++)
+                    for (int n = 0; n < news.Length; n++)
+                    {
+                        string label = "replace:" + s + ":" + o + ":" + n;
+                        ArgumentObserve(label, () => ArgumentDump(sources[s].Replace(olds[o], news[n])));
+                        foreach (int comparison in comparisons)
+                            ArgumentObserve(label + ":" + comparison, () => ArgumentDump(sources[s].Replace(olds[o], news[n], (StringComparison)comparison)));
+                    }
+            int[] counts = { int.MinValue, -1, 0, 1, 2, 4, int.MaxValue };
+            int[] options = { int.MinValue, -1, 0, 1, 2, 3, 4, int.MaxValue };
+            char[][] charSeparators = { null, Array.Empty<char>(), new[] { ',' } };
+            string[] stringSeparators = { null, "", "," };
+            string[][] arraySeparators = { null, Array.Empty<string>(), new[] { null, "", "," } };
+            for (int s = 0; s < sources.Length; s++)
+                foreach (int count in counts)
+                    foreach (int option in options)
+                    {
+                        string label = "split:" + s + ":" + count + ":" + option;
+                        ArgumentObserve(label + ":char", () => ArgumentDump(sources[s].Split(',', count, (StringSplitOptions)option)));
+                        for (int sep = 0; sep < 3; sep++)
+                        {
+                            ArgumentObserve(label + ":chars:" + sep, () => ArgumentDump(sources[s].Split(charSeparators[sep], count, (StringSplitOptions)option)));
+                            ArgumentObserve(label + ":string:" + sep, () => ArgumentDump(sources[s].Split(stringSeparators[sep], count, (StringSplitOptions)option)));
+                            ArgumentObserve(label + ":strings:" + sep, () => ArgumentDump(sources[s].Split(arraySeparators[sep], count, (StringSplitOptions)option)));
+                        }
+                    }
+            string[] normalSources = { "abc", "", null };
+            int[] forms = { int.MinValue, -1, 0, 1, 2, 5, 6, 7, int.MaxValue };
+            for (int s = 0; s < normalSources.Length; s++)
+                foreach (int form in forms)
+                {
+                    ArgumentObserve("normalize:" + s + ":" + form, () => ArgumentDump(normalSources[s].Normalize((System.Text.NormalizationForm)form)));
+                    ArgumentObserve("is normalized:" + s + ":" + form, () => Console.WriteLine("normalized=" + normalSources[s].IsNormalized((System.Text.NormalizationForm)form)));
+                }
+            string[][] arrays = { null, Array.Empty<string>(), new[] { null, "a", "" }, new[] { "X\0\ud800", "b" } };
+            string[] separators = { null, "|" };
+            int[] bounds = { int.MinValue, -1, 0, 1, 2, 3, int.MaxValue };
+            for (int a = 0; a < arrays.Length; a++)
+                for (int sep = 0; sep < separators.Length; sep++)
+                    foreach (int start in bounds)
+                        foreach (int count in bounds)
+                            ArgumentObserve("join:" + a + ":" + sep + ":" + start + ":" + count, () => ArgumentDump(string.Join(separators[sep], arrays[a], start, count)));
+            ArgumentObserve("intern null", () => ArgumentDump(string.Intern(null)));
+            ArgumentObserve("is interned null", () => ArgumentDump(string.IsInterned(null)));
+            ArgumentException[] saved = new ArgumentException[5];
+            try { "abc".Replace((string)null, "x"); } catch (ArgumentException ex) { saved[0] = ex; }
+            try { "abc".Split(',', -7, (StringSplitOptions)(-1)); } catch (ArgumentException ex) { saved[1] = ex; }
+            try { "abc".Normalize((System.Text.NormalizationForm)(-1)); } catch (ArgumentException ex) { saved[2] = ex; }
+            try { string.Join("|", new[] { "a" }, 0, -7); } catch (ArgumentException ex) { saved[3] = ex; }
+            try { string.Intern(null); } catch (ArgumentException ex) { saved[4] = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            for (int i = 0; i < saved.Length; i++)
+                ArgumentFault("fault after GC:" + i, saved[i]);
+            Console.WriteLine("String argument fields end");
+        }
     }
 }
