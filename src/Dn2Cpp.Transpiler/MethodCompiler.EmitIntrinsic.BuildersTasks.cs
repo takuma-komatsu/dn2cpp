@@ -511,8 +511,7 @@ internal sealed partial class MethodCompiler
                     + $"? dn2cpp_string_from_chars((const char16_t*){at}->data, {at}->length) : (Dn2CppString*)nullptr)");
                 return true;
             }
-            // Insert(index, char[], int startIndex, int charCount) — the shared
-            // slice helper validates and materializes, then the string inserts.
+            // Insert validates the index before its array slice.
             case ("System.Text.StringBuilder", "Insert")
                 when sig.ParameterTypes is [{ Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 },
                     { Kind: TypeKind.SZArray, Element.Primitive: PrimitiveTypeCode.Char },
@@ -525,7 +524,7 @@ internal sealed partial class MethodCompiler
                 var index = Pop();
                 string sb = PopBuilderReceiver();
                 Push(StackKind.Ref, "Dn2CppStringBuilder*",
-                    $"dn2cpp_sb_insert_str({sb}, {index.Expr}, dn2cpp_sb_char_arr_str((Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {cnt.Expr}))");
+                    $"dn2cpp_sb_insert_char_arr({sb}, {index.Expr}, (Dn2CppArrayN*)({arr.Expr}), {start.Expr}, {cnt.Expr})");
                 return true;
             }
             // Insert(index, string, int count) — count repetitions; a null/empty

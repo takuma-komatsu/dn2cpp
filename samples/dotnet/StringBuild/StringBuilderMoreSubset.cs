@@ -163,5 +163,220 @@ namespace StringBuilderMoreSubset
             oom.Insert(0, "x", 3);
             Console.WriteLine("oom-survivor: " + oom.ToString()); // xxxseed
         }
+
+        private static string _stateEvaluation = "";
+
+        private static string StateUnits(string value)
+        {
+            if (value is null)
+                return "null";
+            string result = "";
+            foreach (char ch in value)
+                result += ((int)ch).ToString("X4") + " ";
+            return result;
+        }
+
+        private static void StateFault(string label, Exception ex)
+        {
+            Console.WriteLine(label + " type=" + ex.GetType().Name);
+            Console.WriteLine(label + " param=" + (ex is ArgumentException arg ? arg.ParamName : null));
+            Console.WriteLine(label + " message=" + ex.Message.Replace("\r", "").Replace("\n", "|"));
+            object actual = ex is ArgumentOutOfRangeException range ? range.ActualValue : null;
+            Console.WriteLine(label + " actual=" + (actual is null ? "null" : actual.GetType().Name + ":" + actual));
+        }
+
+        private static void StateResult(string label, StringBuilder sb, Action action)
+        {
+            try { action(); Console.WriteLine(label + " success"); }
+            catch (Exception ex) { StateFault(label, ex); }
+            Console.WriteLine(label + " content=" + StateUnits(sb is null ? null : sb.ToString()));
+        }
+
+        private static StringBuilder StateReceiver(StringBuilder value)
+        {
+            _stateEvaluation += "R";
+            return value;
+        }
+
+        private static int StateNumber(string step, int value, bool fail)
+        {
+            _stateEvaluation += step;
+            if (fail)
+                throw new InvalidOperationException();
+            return value;
+        }
+
+        internal static void RunFaults()
+        {
+            Console.WriteLine("== StringBuilder state faults ==");
+            string[] sources = { "ab\0\ud800", "", null };
+            int[] lengths = { int.MinValue, -1, 0, 1, 4, 7, 17 };
+            int[] indices = { int.MinValue, -1, 0, 1, 3, 4, 7, int.MaxValue };
+            for (int i = 0; i < sources.Length; i++)
+            {
+                foreach (int value in lengths)
+                {
+                    StringBuilder length = sources[i] is null ? null : new StringBuilder(sources[i]);
+                    StateResult("length:" + i + ":" + value, length, () => length.Length = value);
+                    StringBuilder capacity = sources[i] is null ? null : new StringBuilder(sources[i]);
+                    StateResult("ensure:" + i + ":" + value, capacity,
+                        () => Console.WriteLine("ensure value=" + capacity.EnsureCapacity(value)));
+                }
+                foreach (int index in indices)
+                {
+                    StringBuilder setter = sources[i] is null ? null : new StringBuilder(sources[i]);
+                    StateResult("set index:" + i + ":" + index, setter, () => setter[index] = '\ud800');
+                    StringBuilder getter = sources[i] is null ? null : new StringBuilder(sources[i]);
+                    StateResult("get index:" + i + ":" + index, getter,
+                        () => Console.WriteLine("get unit=" + ((int)getter[index]).ToString("X4")));
+                }
+            }
+            _stateEvaluation = "";
+            try { StateReceiver(null).Length = StateNumber("V", -1, false); }
+            catch (Exception ex) { StateFault("length null evaluation", ex); }
+            Console.WriteLine("length null evaluation=" + _stateEvaluation);
+            _stateEvaluation = "";
+            try { StateReceiver(null)[StateNumber("I", -1, false)] = (char)StateNumber("V", 1, true); }
+            catch (Exception ex) { StateFault("index throwing evaluation", ex); }
+            Console.WriteLine("index throwing evaluation=" + _stateEvaluation);
+            ArgumentOutOfRangeException saved = null;
+            try { new StringBuilder("abc").EnsureCapacity(-7); }
+            catch (ArgumentOutOfRangeException ex) { saved = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            StateFault("state fault after GC", saved);
+            Console.WriteLine("StringBuilder state faults end");
+        }
+        private static void InsertFaultResult(string label, StringBuilder sb, Func<StringBuilder> action)
+        {
+            try { Console.WriteLine(label + " identity=" + ReferenceEquals(sb, action())); }
+            catch (Exception ex) { StateFault(label, ex); }
+            Console.WriteLine(label + " content=" + StateUnits(sb is null ? null : sb.ToString()));
+        }
+
+        private static string InsertFaultValue(string value)
+        {
+            _stateEvaluation += "V";
+            return value;
+        }
+
+        internal static void RunInsertFaults()
+        {
+            Console.WriteLine("== StringBuilder insert faults ==");
+            string[] sources = { "ab\0\ud800", "", null };
+            string[] values = { null, "", "X\0\ud800", "yz" };
+            int[] indices = { int.MinValue, -1, 0, 1, 3, 4, 5, int.MaxValue };
+            int[] counts = { int.MinValue, -1, 0, 1, 2, 3 };
+            for (int i = 0; i < sources.Length; i++)
+                foreach (int index in indices)
+                {
+                    StringBuilder chars = sources[i] is null ? null : new StringBuilder(sources[i]);
+                    InsertFaultResult("insert char:" + i + ":" + index, chars, () => chars.Insert(index, '\ud800'));
+                    for (int v = 0; v < values.Length; v++)
+                    {
+                        StringBuilder strings = sources[i] is null ? null : new StringBuilder(sources[i]);
+                        InsertFaultResult("insert string:" + i + ":" + v + ":" + index, strings, () => strings.Insert(index, values[v]));
+                        foreach (int count in counts)
+                        {
+                            StringBuilder repeats = sources[i] is null ? null : new StringBuilder(sources[i]);
+                            InsertFaultResult("insert repeat:" + i + ":" + v + ":" + index + ":" + count, repeats,
+                                () => repeats.Insert(index, values[v], count));
+                        }
+                    }
+                }
+            StringBuilder overflow = new StringBuilder("seed");
+            InsertFaultResult("insert overflow", overflow, () => overflow.Insert(0, "ab", int.MaxValue));
+            InsertFaultResult("insert null maximum count", overflow, () => overflow.Insert(0, (string)null, int.MaxValue));
+            InsertFaultResult("insert empty maximum count", overflow, () => overflow.Insert(0, "", int.MaxValue));
+            _stateEvaluation = "";
+            try { StateReceiver(null).Insert(StateNumber("I", -1, false), InsertFaultValue(null), StateNumber("C", -1, false)); }
+            catch (Exception ex) { StateFault("insert null evaluation", ex); }
+            Console.WriteLine("insert null evaluation=" + _stateEvaluation);
+            _stateEvaluation = "";
+            try { StateReceiver(null).Insert(StateNumber("I", -1, false), InsertFaultValue(null), StateNumber("C", -1, true)); }
+            catch (Exception ex) { StateFault("insert throwing evaluation", ex); }
+            Console.WriteLine("insert throwing evaluation=" + _stateEvaluation);
+            ArgumentOutOfRangeException saved = null;
+            try { new StringBuilder("abc").Insert(-1, (string)null, -7); }
+            catch (ArgumentOutOfRangeException ex) { saved = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            StateFault("insert fault after GC", saved);
+            Console.WriteLine("StringBuilder insert faults end");
+        }
+        private static char[] CollectionArrayValue(char[] value)
+        {
+            _stateEvaluation += "A";
+            return value;
+        }
+
+        private static StringBuilder CollectionBuilderValue(StringBuilder value)
+        {
+            _stateEvaluation += "B";
+            return value;
+        }
+
+        internal static void RunCollectionFaults()
+        {
+            Console.WriteLine("== StringBuilder collection faults ==");
+            string[] sources = { "ab\0\ud800", "", null };
+            char[][] arrays = { new[] { 'X', '\0', '\ud800', 'Y' }, Array.Empty<char>(), new[] { 'z' }, null };
+            int[] bounds = { int.MinValue, -1, 0, 1, 4, int.MaxValue };
+            for (int i = 0; i < sources.Length; i++)
+                for (int a = 0; a < arrays.Length; a++)
+                    foreach (int start in bounds)
+                        foreach (int count in bounds)
+                        {
+                            StringBuilder append = sources[i] is null ? null : new StringBuilder(sources[i]);
+                            InsertFaultResult("array append:" + i + ":" + a + ":" + start + ":" + count, append,
+                                () => append.Append(arrays[a], start, count));
+                            foreach (int index in bounds)
+                            {
+                                StringBuilder insert = sources[i] is null ? null : new StringBuilder(sources[i]);
+                                InsertFaultResult("array insert:" + i + ":" + a + ":" + index + ":" + start + ":" + count, insert,
+                                    () => insert.Insert(index, arrays[a], start, count));
+                            }
+                        }
+            _stateEvaluation = "";
+            try { StateReceiver(null).Append(CollectionArrayValue(null), StateNumber("S", -1, false), StateNumber("C", -1, false)); }
+            catch (Exception ex) { StateFault("array append null evaluation", ex); }
+            Console.WriteLine("array append null evaluation=" + _stateEvaluation);
+            _stateEvaluation = "";
+            try { StateReceiver(null).Insert(StateNumber("I", -1, false), CollectionArrayValue(null), StateNumber("S", -1, false), StateNumber("C", -1, true)); }
+            catch (Exception ex) { StateFault("array insert throwing evaluation", ex); }
+            Console.WriteLine("array insert throwing evaluation=" + _stateEvaluation);
+            StringBuilder[] builders = { new StringBuilder("XY\0\ud800"), new StringBuilder(), null };
+            for (int i = 0; i < sources.Length; i++)
+                for (int v = 0; v < builders.Length; v++)
+                    foreach (int start in bounds)
+                        foreach (int count in bounds)
+                        {
+                            StringBuilder append = sources[i] is null ? null : new StringBuilder(sources[i]);
+                            InsertFaultResult("builder append:" + i + ":" + v + ":" + start + ":" + count, append,
+                                () => append.Append(builders[v], start, count));
+                        }
+            StringBuilder self = new StringBuilder("ab\0\ud800");
+            InsertFaultResult("builder self append", self, () => self.Append(self, 1, 3));
+            InsertFaultResult("builder zero count large start", self, () => self.Append(self, int.MaxValue, 0));
+            _stateEvaluation = "";
+            try { StateReceiver(null).Append(CollectionBuilderValue(null), StateNumber("S", -1, false), StateNumber("C", -1, false)); }
+            catch (Exception ex) { StateFault("builder append null evaluation", ex); }
+            Console.WriteLine("builder append null evaluation=" + _stateEvaluation);
+            ArgumentException builderSaved = null;
+            try { new StringBuilder("abc").Append((StringBuilder)null, -7, -1); }
+            catch (ArgumentException ex) { builderSaved = ex; }
+            ArgumentException appendSaved = null;
+            ArgumentException insertSaved = null;
+            try { new StringBuilder("abc").Append((char[])null, -7, -1); }
+            catch (ArgumentException ex) { appendSaved = ex; }
+            try { new StringBuilder("abc").Insert(0, new char[1], 0, -7); }
+            catch (ArgumentException ex) { insertSaved = ex; }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            StateFault("builder append fault after GC", builderSaved);
+            StateFault("array append fault after GC", appendSaved);
+            StateFault("array insert fault after GC", insertSaved);
+            Console.WriteLine("StringBuilder collection faults end");
+        }
     }
 }

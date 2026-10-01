@@ -36,6 +36,15 @@ namespace StringBuild
             if (args.Length > 0 && args[0] == "before-builder-edit-faults")
                 return;
             StringBuilderEditSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-builder-state-faults")
+                return;
+            StringBuilderMoreSubset.Program.RunFaults();
+            if (args.Length > 0 && args[0] == "before-builder-insert-faults")
+                return;
+            StringBuilderMoreSubset.Program.RunInsertFaults();
+            if (args.Length > 0 && args[0] == "before-builder-collection-faults")
+                return;
+            StringBuilderMoreSubset.Program.RunCollectionFaults();
         }
     }
 }

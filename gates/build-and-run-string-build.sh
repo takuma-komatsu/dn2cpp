@@ -9,6 +9,10 @@
 # insertion, and argument evaluation for calls and interpolation.
 # CopyTo preserves destination-first fault fields and unchecked room arithmetic.
 # StringBuilder.Remove and Replace preserve named faults and validation order.
+# StringBuilder.Length, EnsureCapacity and indexer preserve distinct fault fields.
+# StringBuilder.Insert preserves named index/count faults and count-first validation.
+# Array Insert validates its index before the slice; Append validates slice signs first.
+# StringBuilder range Append preserves value faults and zero-count shortcuts.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
 source "$(dirname "$0")/_common.sh"
 
@@ -126,6 +130,68 @@ gate_extra_asserts() {
         'StringBuilder edit faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: builder edit fault witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-builder-state-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder state faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder state faults ==' \
+        'length:0:-2147483648 param=value' 'length:0:-2147483648 actual=Int32:-2147483648' \
+        'ensure:0:-1 param=capacity' 'ensure:0:-1 actual=Int32:-1' \
+        'set index:0:-1 param=index' 'set index:0:-1 actual=null' \
+        'get index:0:-1 type=IndexOutOfRangeException' 'get index:0:-1 param=' \
+        'length:0:1 content=0061 ' 'length:0:7 content=0061 0062 0000 D800 0000 0000 0000 ' \
+        'set index:0:1 content=0061 D800 0000 D800 ' 'get unit=D800' 'ensure value=17' \
+        'length null evaluation type=NullReferenceException' 'length null evaluation=RV' \
+        'index throwing evaluation type=InvalidOperationException' 'index throwing evaluation=RIV' \
+        'state fault after GC param=capacity' 'state fault after GC actual=Int32:-7' \
+        'StringBuilder state faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: builder state fault witness missing: $line" >&2; exit 1; }
+    done
+
+    before=$(dotnet "$_CG_APP" before-builder-insert-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder insert faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder insert faults ==' \
+        'insert char:0:-2147483648 param=index' 'insert char:0:-2147483648 actual=null' \
+        'insert string:0:0:-1 param=index' 'insert string:0:0:4 identity=True' \
+        'insert repeat:0:0:-1:-1 param=count' 'insert repeat:0:0:-1:-1 actual=Int32:-1' \
+        'insert repeat:0:0:-1:0 param=index' 'insert repeat:0:2:1:2 identity=True' \
+        'insert repeat:0:2:1:2 content=0061 0058 0000 D800 0058 0000 D800 0062 0000 D800 ' \
+        'insert overflow type=OutOfMemoryException' \
+        'insert null maximum count identity=True' 'insert empty maximum count identity=True' \
+        'insert null evaluation type=NullReferenceException' 'insert null evaluation=RIVC' \
+        'insert throwing evaluation type=InvalidOperationException' 'insert throwing evaluation=RIVC' \
+        'insert fault after GC param=count' 'insert fault after GC actual=Int32:-7' \
+        'StringBuilder insert faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: builder insert fault witness missing: $line" >&2; exit 1; }
+    done
+
+    before=$(dotnet "$_CG_APP" before-builder-collection-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== StringBuilder collection faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== StringBuilder collection faults ==' \
+        'array append:0:3:-1:-1 param=startIndex' 'array append:0:3:-1:-1 actual=Int32:-1' \
+        'array append:0:3:0:-1 param=charCount' 'array append:0:3:1:0 param=value' \
+        'array append:0:0:1:2147483647 param=charCount' \
+        'array insert:0:3:-1:-1:-1 param=index' 'array insert:0:3:0:-1:-1 param=value' \
+        'array insert:0:0:0:-1:-1 param=startIndex' 'array insert:0:0:0:0:-1 param=charCount' \
+        'array insert:0:0:0:4:1 param=startIndex' \
+        'array insert:0:0:1:1:1 content=0061 0000 0062 0000 D800 ' \
+        'builder append:0:2:-1:-1 param=startIndex' 'builder append:0:2:0:-1 param=count' \
+        'builder append:0:2:1:0 param=value' 'builder append:0:0:2147483647:0 identity=True' \
+        'builder self append content=0061 0062 0000 D800 0062 0000 D800 ' \
+        'array append null evaluation type=NullReferenceException' 'array append null evaluation=RASC' \
+        'array insert throwing evaluation type=InvalidOperationException' 'array insert throwing evaluation=RIASC' \
+        'builder append null evaluation type=NullReferenceException' 'builder append null evaluation=RBSC' \
+        'array append fault after GC param=startIndex' 'array insert fault after GC param=charCount' \
+        'builder append fault after GC actual=Int32:-7' 'StringBuilder collection faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: builder collection fault witness missing: $line" >&2; exit 1; }
     done
 
 }
