@@ -1191,12 +1191,11 @@ internal sealed partial class MethodCompiler
                         $"dn2cpp_str_is_normalized({Cast(s, "Dn2CppString*")}, {form})");
                 return true;
             }
-            // String.CheckStringComparison(comparisonType) — the five-value StringComparison
-            // range guard ((uint)value > 5 throws ArgumentException).
+            // String.CheckStringComparison shares the runtime comparison guard.
             case ("System.String", "CheckStringComparison"):
             {
                 var cmp = Pop();
-                Emit($"if ((uint32_t)({cmp.Expr}) > 5u) dn2cpp_throw_argument();");
+                Emit($"dn2cpp_str_comparison_fold((int32_t)({cmp.Expr}));");
                 return true;
             }
             // String.GetCaseCompareOfComparisonCulture(comparisonType) —
@@ -1667,8 +1666,15 @@ internal sealed partial class MethodCompiler
                 var ct = Pop();
                 var b = Pop();
                 var a = Pop();
+                string receiver = Cast(a, "Dn2CppString*");
+                if (sig.Header.IsInstance && CallIsVirtual)
+                {
+                    receiver = NewTemp("Dn2CppString*");
+                    Emit($"{receiver} = {Cast(a, "Dn2CppString*")};");
+                    Emit($"if ({receiver} == nullptr) dn2cpp_throw_null_reference();");
+                }
                 Push(StackKind.I4, "int32_t",
-                    $"(dn2cpp_str_compare({Cast(a, "Dn2CppString*")}, {Cast(b, "Dn2CppString*")}, {ct.Expr}) == 0)");
+                    $"(dn2cpp_str_compare({receiver}, {Cast(b, "Dn2CppString*")}, {ct.Expr}) == 0)");
                 return true;
             }
 

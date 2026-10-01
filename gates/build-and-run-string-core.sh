@@ -40,10 +40,17 @@
 # Array string constructors copy UTF-16, validate windows and share String.Empty.
 # Remove overloads preserve distinct fault fields and padding rejects named widths.
 # Empty repeat/span string constructors and char-span ToString share String.Empty.
+# StringComparison faults preserve named messages and each overload's null precedence.
+# Equals guards callvirt receivers while a direct IL call enters the real method.
 source "$(dirname "$0")/_common.sh"
 
+call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
+build_gate_proj gates/fixtures/string-comparison-call/StringComparisonCall.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/string-comparison-call/patch-call.py"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|string-comparison-call|cli:$(_gate_cli_hash)"
+
 gate_extra_asserts() {
-    local out="$1" native before prefix line
+    local out="$1" native before prefix line oracle fixture expected actual
     native=$(run_bounded "./$out/StringCore")
     native=$(strip_cr_win "$native")
     before=$(dotnet "$_CG_APP" before-join-sequences)
@@ -169,6 +176,50 @@ gate_extra_asserts() {
         'span empty evaluation=S' 'empty string char sources end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: empty char source witness missing: $line" >&2; exit 1; }
+    done
+    before=$(dotnet "$_CG_APP" before-comparison-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== string comparison faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== string comparison faults ==' \
+        'starts -1 param=comparisonType' 'char index 6 param=comparisonType' \
+        'index start -2147483648 param=comparisonType' \
+        'last start 2147483647 param=comparisonType' \
+        'null starts -1 type=ArgumentNullException' 'null starts -1 param=value' \
+        'null index start 6 param=value' 'null last start 6 param=value' \
+        'receiver char 6 type=NullReferenceException' \
+        'equals receiver 6 type=NullReferenceException' \
+        'valid equals receiver type=NullReferenceException' \
+        'compare null 6 param=comparisonType' 'equals null 6 param=comparisonType' \
+        'replace null 6 param=comparisonType' 'hash empty 6 param=comparisonType' \
+        'span equals 6 param=comparisonType' 'plain contains param=value' \
+        'valid 0=True:True:True:1:1' 'valid 5=True:True:True:1:1' \
+        'empty 5=True:True:True:0:0' 'ordinal unicode=0:-1' \
+        'null evaluation=SVC' 'throwing comparison evaluation=SVC' \
+        'equals evaluation=SVC' 'equals throwing comparison evaluation=SVC' \
+        'string comparison faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: string comparison fault witness missing: $line" >&2; exit 1; }
+    done
+    oracle="$out/direct-call-oracle"
+    fixture="$out/direct-call"
+    mkdir -p "$oracle"
+    cp "$call_app" "$oracle/StringComparisonCall.dll"
+    cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
+    python3 gates/fixtures/string-comparison-call/patch-call.py "$oracle/StringComparisonCall.dll"
+    invoke_cli "$oracle/StringComparisonCall.dll" -r "$_CG_CORELIB" -o "$fixture"
+    compile_console "$fixture" StringComparisonCall
+    expected=$(run_bounded dotnet "$oracle/StringComparisonCall.dll")
+    actual=$(run_bounded "./$fixture/StringComparisonCall")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    for line in 'direct both null valid=True' 'direct ignore case=True' \
+        "direct both null invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
+        "direct same invalid=ArgumentException:The string comparison type passed in is currently not supported. (Parameter 'comparisonType')" \
+        'virtual both null valid=NullReferenceException:Object reference not set to an instance of an object.' \
+        'virtual both null invalid=NullReferenceException:Object reference not set to an instance of an object.'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: direct comparison call witness missing: $line" >&2; exit 1; }
     done
 }
 

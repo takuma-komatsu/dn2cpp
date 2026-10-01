@@ -1481,6 +1481,7 @@ inline constexpr const char* DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL = "ArgumentOu
 inline constexpr const char* DN2CPP_SR_OFFSET_LENGTH = "ArgumentOutOfRange_OffsetLength";
 inline constexpr const char* DN2CPP_SR_COMPARE_OPTION_ORDINAL = "Argument_CompareOptionOrdinal";
 inline constexpr const char* DN2CPP_SR_INVALID_FLAG = "Argument_InvalidFlag";
+inline constexpr const char* DN2CPP_SR_STRING_COMPARISON = "NotSupported_StringComparison";
 inline constexpr const char* DN2CPP_SR_RANK_SINGLE_DIM_ONLY = "Rank_MultiDimNotSupported";
 inline constexpr const char* DN2CPP_SR_RANK_MUST_MATCH = "Rank_MustMatch";
 // The text for a key, or null when this program carries none (no corelib, a corelib with
