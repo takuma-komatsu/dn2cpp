@@ -41,8 +41,48 @@
 # handler's async fault stays unobserved in its own task, while its synchronous throw
 # stops the chain and faults the outer, one handler may return a task settled only by a
 # later handler without deadlocking, and a null task unwraps into a cancellation.
+# Task duration, receiver, continuation and exception-argument validation.
 # Former gates: whenall, whenany, when-enumerable, configure-await, delay-order,
 # cancellation, custom-awaitable, multi-awaiter.
 source "$(dirname "$0")/_common.sh"
+call_app="gates/fixtures/task-call-validation/bin/$CONFIG/$TFM/TaskCallValidation.dll"
+build_gate_proj gates/fixtures/task-call-validation/TaskCallValidation.csproj
+DN2CPP_GATE_EXTRA_INPUTS="${DN2CPP_GATE_EXTRA_INPUTS:-} $call_app ${call_app%.dll}.runtimeconfig.json ${call_app%.dll}.deps.json gates/fixtures/task-call-validation/patch-call.py"
+DN2CPP_GATE_EXTRA_CONTEXT="${DN2CPP_GATE_EXTRA_CONTEXT:-}|task-call-validation|cli:$(_gate_cli_hash)"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/AsyncCombinators")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-task-validation)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== delay arguments ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== delay arguments ==' \
+        'delay arguments end' \
+        '== task receivers ==' \
+        'sources still pending: WaitingForActivation WaitingForActivation' \
+        'task receivers end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: AsyncCombinators validation witness missing: $line" >&2; exit 1; }
+    done
+    local oracle="$out/direct-call-oracle" fixture="$out/direct-call" expected actual
+    mkdir -p "$oracle"
+    cp "$call_app" "$oracle/TaskCallValidation.dll"
+    cp "${call_app%.dll}.runtimeconfig.json" "${call_app%.dll}.deps.json" "$oracle/"
+    python3 gates/fixtures/task-call-validation/patch-call.py "$oracle/TaskCallValidation.dll"
+    invoke_cli "$oracle/TaskCallValidation.dll" -r "$_CG_CORELIB" --auto-ref -o "$fixture"
+    compile_console "$fixture" TaskCallValidation
+    expected=$(run_bounded dotnet "$oracle/TaskCallValidation.dll")
+    actual=$(run_bounded "./$fixture/TaskCallValidation")
+    actual=$(strip_cr_win "$actual")
+    assert_output "$actual" "$(strip_cr_win "$expected")"
+    for line in 'direct-get-awaiter-null|ok:constructed' \
+        'direct-configure-null|ok:constructed' \
+        'task direct-call validation end'; do
+        grep -Fxq -- "$line" <<< "$actual" \
+            || { echo "FAIL: Task direct-call witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate AsyncCombinators

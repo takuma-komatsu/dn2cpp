@@ -54,6 +54,8 @@ internal static class BclMessages
         "Lock_Exit_SynchronizationLockException",
         "SemaphoreSlim_Wait_TimeoutWrong",
         "SemaphoreSlim_Wait_TimeSpanTimeoutWrong",
+        "Task_Delay_InvalidMillisecondsDelay",
+        "Task_InvalidTimerTimeSpan",
         "ArgumentOutOfRange_NeedNonNegOrNegative1",
         // Composite formats a runtime throw site fills from what it already holds.
         "RFLCT_Targ_ITargMismatch_WithType",
@@ -87,6 +89,7 @@ internal static class BclMessages
         "Argument_AddingDuplicateWithKey",
         "Arg_KeyNotFoundWithKey",
         "ArgumentOutOfRange_Generic_MustBeNonNegative",
+        "ArgumentOutOfRange_Generic_MustBeNonNegativeNonZero",
         "ArgumentOutOfRange_Generic_MustBeNonZero",
         "Argument_EmptyWaithandleArray",
         "ArgumentNull_ArrayElement",

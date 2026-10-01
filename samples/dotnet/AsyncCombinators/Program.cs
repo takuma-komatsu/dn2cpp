@@ -8,7 +8,7 @@ namespace AsyncCombinators
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             CultureInfo.CurrentUICulture = CultureInfo.InvariantCulture;
@@ -31,6 +31,10 @@ namespace AsyncCombinators
             SettledCombinatorsSubset.Program.__GateEntry();
             WhenAllFaultSetSubset.Program.__GateEntry();
             TaskDelegateContractSubset.Program.__GateEntry();
+            if (args.Length == 1 && args[0] == "before-task-validation")
+                return;
+            TaskDurationValidationSubset.Program.__GateEntry();
+            TaskReceiverValidationSubset.Program.__GateEntry();
         }
     }
 }

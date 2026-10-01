@@ -1487,6 +1487,7 @@ inline constexpr const char* DN2CPP_SR_PATH_TOO_LONG_PATH = "IO_PathTooLong_Path
 inline constexpr const char* DN2CPP_SR_ADDING_DUPLICATE_WITH_KEY = "Argument_AddingDuplicateWithKey";
 inline constexpr const char* DN2CPP_SR_KEY_NOT_FOUND_WITH_KEY = "Arg_KeyNotFoundWithKey";
 inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE = "ArgumentOutOfRange_Generic_MustBeNonNegative";
+inline constexpr const char* DN2CPP_SR_MUST_BE_NON_NEGATIVE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonNegativeNonZero";
 inline constexpr const char* DN2CPP_SR_MUST_BE_GREATER_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeGreaterOrEqual";
 inline constexpr const char* DN2CPP_SR_MUST_BE_LESS_OR_EQUAL = "ArgumentOutOfRange_Generic_MustBeLessOrEqual";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_NUM = "ArgumentOutOfRange_NeedNonNegNum";
@@ -1495,6 +1496,8 @@ inline constexpr const char* DN2CPP_SR_MUST_BE_FALSE = "Argument_MustBeFalse";
 inline constexpr const char* DN2CPP_SR_LOCK_EXIT = "Lock_Exit_SynchronizationLockException";
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMEOUT = "SemaphoreSlim_Wait_TimeoutWrong";
 inline constexpr const char* DN2CPP_SR_SEMAPHORE_TIMESPAN_TIMEOUT = "SemaphoreSlim_Wait_TimeSpanTimeoutWrong";
+inline constexpr const char* DN2CPP_SR_TASK_DELAY_MS = "Task_Delay_InvalidMillisecondsDelay";
+inline constexpr const char* DN2CPP_SR_TASK_DELAY_SPAN = "Task_InvalidTimerTimeSpan";
 inline constexpr const char* DN2CPP_SR_NEED_NON_NEG_OR_NEGATIVE1 = "ArgumentOutOfRange_NeedNonNegOrNegative1";
 inline constexpr const char* DN2CPP_SR_START_INDEX_LARGER_THAN_LENGTH = "ArgumentOutOfRange_StartIndexLargerThanLength";
 inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexLength";
@@ -6516,8 +6519,11 @@ void dn2cpp_task_on_completed_action(Dn2CppTask* t, Dn2CppObject* action);
 // Task.Delay(ms): a task that completes after `ms` of virtual time. There is no
 // wall clock — a logical clock advances only when no work is runnable, so concurrent
 // delays complete in duration order, deterministically and without real sleeping.
-// ms <= 0 completes immediately (like Task.Yield).
+// Zero returns a completed task; -1 arms no timer and remains pending until canceled.
 Dn2CppTask* dn2cpp_task_delay(int64_t ms);
+int64_t dn2cpp_task_delay_ms(int32_t ms);
+int64_t dn2cpp_task_delay_ms_from_ticks(int64_t ticks);
+void dn2cpp_task_wait_require_timeout(int64_t ticks);
 // Task.WhenAll<TResult>(Task<TResult>[]): a task whose result is a TResult[] of
 // each input task's result, completing once every input completes (or faulting
 // with the first input's fault). `kind` selects how each input's raw result slot

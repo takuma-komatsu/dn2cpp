@@ -1894,6 +1894,9 @@ internal sealed partial class MethodCompiler
                 throw new NotSupportedException(
                     $"{Method.DeclaringClass.FullName}.{Method.Name}: Task.ContinueWith<{tnew}> " +
                     "with a state argument (Func<Task, object?, TNewResult>) is not supported yet");
+            // The antecedent's callvirt check precedes the continuation's.
+            if (CallIsVirtual)
+                NullCheckReceiverUnder(cwsig.ParameterTypes.Length);
             string cwOpts = PopContinuationHints(cwsig.ParameterTypes, 1);
             // A value-type continuation result rides the boxing trampoline (the ContinueWith
             // mirror of Task.Run<TStruct>); the delegate takes the settled antecedent.
@@ -1901,6 +1904,7 @@ internal sealed partial class MethodCompiler
             {
                 var cwds = Pop(); // Func<Task(<T>), TNewResult>
                 var cwts = Pop(); // the antecedent task receiver
+                EmitArgumentRequired(cwds, "continuationFunction");
                 PushStampedTask(
                     $"dn2cpp_task_continue_with_struct((Dn2CppTask*)({cwts.Expr}), " +
                     $"(Dn2CppObject*)({cwds.Expr}), {TaskStructContWithThunk(CppTypes.Of(tnew))}, {cwOpts})",
@@ -1920,6 +1924,7 @@ internal sealed partial class MethodCompiler
             };
             var cwd = Pop(); // Func<Task(<T>), TNewResult>
             var cwt = Pop(); // the antecedent task receiver
+            EmitArgumentRequired(cwd, "continuationFunction");
             PushStampedTask(
                 $"dn2cpp_task_continue_with((Dn2CppTask*)({cwt.Expr}), (Dn2CppObject*)({cwd.Expr}), "
                 + $"nullptr, {cwKind}, {cwOpts})", cwsig.ReturnType);
@@ -2030,16 +2035,32 @@ internal sealed partial class MethodCompiler
             var feBodyArg = Pop();
             var feOptions = hasOptions ? Pop() : null;
             var feSrc = Pop();
+            // .NET's order: source, then parallelOptions, then body. The source check
+            // also precedes the List<T> backing-field reads below.
+            EmitArgumentRequired(feSrc, "source");
+            // A null constant has no concrete collection shape; the guard always throws.
+            if (feSrc.KnownNull)
+            {
+                Push(StackKind.Struct, "Dn2CppParallelLoopResult", "Dn2CppParallelLoopResult{}");
+                return;
+            }
+            string maxDop = feOptions is { } fo ? ParallelOptionsMaxDop(fo) : "-1";
+            EmitArgumentRequired(feBodyArg, "body");
+            // A branch spill (a cached lambda body's null test) widens an array source's
+            // C++ type to the object slot, so its StaticType is what still says T[].
             string srcExpr, countArg, suffix;
-            if (feSrc.CppType.StartsWith("Dn2CppArray", StringComparison.Ordinal))
+            if (feSrc.StaticType is { Kind: TypeKind.SZArray }
+                || feSrc.CppType.StartsWith("Dn2CppArray", StringComparison.Ordinal))
                 (srcExpr, countArg, suffix) = (feSrc.Expr, "", "");
             else if (TryListBacking(feSrc) is { } lb)
                 (srcExpr, countArg, suffix) = (lb.Items, $", {lb.Count}", "_n");
             else
-                throw new NotSupportedException(
-                    $"{Method.DeclaringClass.FullName}.{Method.Name}: Parallel.ForEach source must be a " +
-                    $"concrete array or List<{elem}> (got {feSrc.CppType}); a non-array, non-List<T> " +
-                    $"IEnumerable<{elem}> source is a follow-up");
+            {
+                // A spilled null can lose KnownNull; its source guard must still run.
+                Emit("dn2cpp_throw_not_supported_msg(\"Parallel.ForEach requires a concrete array or List<T> source.\");");
+                Push(StackKind.Struct, "Dn2CppParallelLoopResult", "Dn2CppParallelLoopResult{}");
+                return;
+            }
             (string fn, string arrType) = RepOf(elem) switch
             {
                 ArrRep.Ref => ("dn2cpp_parallel_foreach_ref", "Dn2CppArrayRef*"),
@@ -2058,7 +2079,6 @@ internal sealed partial class MethodCompiler
                         "double element arrays are supported; sub-word, value-struct and IntPtr are not)"),
                 },
             };
-            string maxDop = feOptions is { } fo ? ParallelOptionsMaxDop(fo) : "-1";
             string srcCast = $"({arrType})({srcExpr}){countArg}";
             if (withState)
             {

@@ -396,10 +396,20 @@ void dn2cpp_parallel_for_i8(int64_t from, int64_t to, Dn2CppObject* body, int32_
     }, maxDop, nullptr);
 }
 
+// Every action is screened before the first one runs, as in .NET.
 void dn2cpp_parallel_invoke(Dn2CppArrayRef* actions, int32_t maxDop)
 {
     if (actions == nullptr)
-        return;
+        dn2cpp_throw_argument_null_param("actions");
+    for (int32_t i = 0; i < actions->length; i++)
+    {
+        if (actions->data[i] == nullptr)
+        {
+            const char* msg = "One of the actions was null.";
+            dn2cpp_throw(dn2cpp_exception_new(&dn2cpp_argument_exception_type,
+                dn2cpp_string_from_utf8(msg, static_cast<int32_t>(std::strlen(msg))), nullptr));
+        }
+    }
     dn2cpp_parallel_run(actions->length, actions, [](void* p, int64_t k) {
         auto* a = static_cast<Dn2CppArrayRef*>(p);
         dn2cpp_action_invoke(a->data[k]);

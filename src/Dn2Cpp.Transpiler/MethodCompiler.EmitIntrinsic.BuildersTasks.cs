@@ -939,7 +939,7 @@ internal sealed partial class MethodCompiler
             // Task.Delay(ms | TimeSpan [, CancellationToken]) — a task completing after
             // the given virtual-time duration. The scheduler advances a logical clock
             // (no wall clock), so concurrent delays complete in duration order without
-            // real sleeping. A trailing CancellationToken is unmodeled.
+            // real sleeping. Validate the duration before inspecting cancellation.
             case ("System.Threading.Tasks.Task", "Delay"):
             {
                 // A trailing CancellationToken makes the delay cancellable: if the
@@ -954,9 +954,9 @@ internal sealed partial class MethodCompiler
                 var dur = Pop();
                 var dt = sig.ParameterTypes[0];
                 string ms = dt is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 }
-                    ? $"(int64_t)({dur.Expr})"
+                    ? $"dn2cpp_task_delay_ms({dur.Expr})"
                     : dt is { Kind: TypeKind.Class, Class.FullName: "System.TimeSpan" }
-                        ? $"(({TSVal(dur)}).ticks / 10000)" // 100ns ticks -> ms
+                        ? $"dn2cpp_task_delay_ms_from_ticks(({TSVal(dur)}).ticks)"
                         : throw new NotSupportedException(
                             $"{Method.DeclaringClass.FullName}.{Method.Name}: Task.Delay duration " +
                             $"type '{dt}' is not supported (expected int milliseconds or TimeSpan)");
@@ -1075,14 +1075,15 @@ internal sealed partial class MethodCompiler
             }
             // Wait(TimeSpan) -> bool: dn2cpp_task_block_wait drains this thread's
             // scheduler until the task settles, so the wait always completes and
-            // the timeout bound is never consulted — the result is constant true
-            // (a settled fault still throws the AggregateException, as in .NET).
-            // Wait(int) / Wait(CancellationToken) stay loud unmapped errors.
+            // the timeout bound is never consulted past its range check — the result
+            // is constant true (a settled fault still throws the AggregateException,
+            // as in .NET). Wait(int) / Wait(CancellationToken) stay loud unmapped errors.
             case ("System.Threading.Tasks.Task", "Wait") when sig.ParameterTypes is [{ } waitTimeout]
                 && IsTimeSpan(waitTimeout):
             {
-                Pop(); // TimeSpan timeout — never hit (the drain runs to completion)
+                var to = Pop(); // TimeSpan timeout — checked, then never hit
                 var t = Pop();
+                Emit($"dn2cpp_task_wait_require_timeout(({TSVal(to)}).ticks);");
                 Emit($"dn2cpp_task_block_wait((Dn2CppTask*)({t.Expr}));");
                 Push(StackKind.I4, "int32_t", "1"); // completed within the timeout
                 return true;
@@ -1176,6 +1177,7 @@ internal sealed partial class MethodCompiler
                 var cwState = cwHasState ? Pop() : null;
                 var cwD = Pop();
                 var cwT = Pop();
+                EmitArgumentRequired(cwD, "continuationAction");
                 string stateExpr = cwState is null ? "nullptr" : Cast(cwState, "Dn2CppObject*");
                 string kind = cwHasState ? "DN2CPP_CONTWITH_VOID_STATE" : "DN2CPP_CONTWITH_VOID";
                 PushStampedTask(
@@ -1217,6 +1219,9 @@ internal sealed partial class MethodCompiler
             {
                 var ex = Pop();
                 var t = Pop();
+                EmitArgumentRequired(ex, "exception");
+                if (!t.NonNull)
+                    Emit($"(void)dn2cpp_null_check((Dn2CppObject*)({t.Expr}));");
                 if (name == "SetException")
                     Emit($"dn2cpp_tcs_set_exception(((Dn2CppTaskCompletionSource*)({t.Expr}))->task, {Cast(ex, "Dn2CppObject*")});");
                 else
@@ -1473,6 +1478,9 @@ internal sealed partial class MethodCompiler
         }
         return options;
     }
+
+    private void EmitArgumentRequired(StackEntry argument, string paramName) =>
+        Emit($"if ({Cast(argument, "Dn2CppObject*")} == nullptr) dn2cpp_throw_argument_null_param(\"{paramName}\");");
 
     // Callvirt faults after argument evaluation and before the helper validates them.
     private string PopBuilderReceiver()

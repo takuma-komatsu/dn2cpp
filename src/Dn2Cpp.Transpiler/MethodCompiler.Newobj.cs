@@ -1337,7 +1337,13 @@ internal sealed partial class MethodCompiler
                 capacity = "0"; // unbounded
             else if (bcSig.ParameterTypes.Length == 1
                 && bcSig.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int32 })
-                capacity = $"(int32_t)({Pop().Expr})"; // boundedCapacity
+            {
+                // The runtime reads 0 as unbounded, so the refusal of 0 and below is here.
+                capacity = NewTemp("int32_t");
+                Emit($"{capacity} = (int32_t)({Pop().Expr});");
+                Emit($"if ({capacity} <= 0) dn2cpp_throw_argument_out_of_range_value("
+                    + $"DN2CPP_SR_MUST_BE_NON_NEGATIVE_NON_ZERO, \"boundedCapacity\", {capacity});");
+            }
             else
                 throw new NotSupportedException(
                     $"{_method.DeclaringClass.FullName}.{_method.Name}: only new BlockingCollection<T>() " +

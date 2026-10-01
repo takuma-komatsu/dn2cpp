@@ -675,11 +675,6 @@ void dn2cpp_sched_post_action(Dn2CppObject* action)
     dn2cpp_sched_post(&dn2cpp_action_continuation, action);
 }
 
-static void dn2cpp_complete_delay(void* p)
-{
-    dn2cpp_task_set_result(static_cast<Dn2CppTask*>(p), 0);
-}
-
 // Virtual-time timer queue for Task.Delay (per-thread, in the scheduler). There is no
 // wall clock; instead a logical clock (virtual_now) advances only when the run
 // queue is empty, jumping to the earliest pending timer. This makes concurrent delays
@@ -773,15 +768,35 @@ static bool dn2cpp_sched_advance_timers(int64_t limit)
     return true;
 }
 
+int64_t dn2cpp_task_delay_ms(int32_t ms)
+{
+    if (ms < -1)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_TASK_DELAY_MS, "millisecondsDelay");
+    return ms;
+}
+
+int64_t dn2cpp_task_delay_ms_from_ticks(int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(static_cast<double>(ticks) / 10000.0);
+    if (ms < -1 || ms > INT64_C(0xFFFFFFFE))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_TASK_DELAY_SPAN, "delay");
+    return ms;
+}
+
+void dn2cpp_task_wait_require_timeout(int64_t ticks)
+{
+    int64_t ms = static_cast<int64_t>(static_cast<double>(ticks) / 10000.0);
+    if (ms < -1 || ms > INT32_MAX)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_ARGUMENT_OUT_OF_RANGE, "timeout");
+}
+
 Dn2CppTask* dn2cpp_task_delay(int64_t ms)
 {
+    if (ms == 0)
+        return dn2cpp_task_completed();
     Dn2CppTask* t = dn2cpp_task_alloc();
-    if (ms <= 0)
-    {
-        // Delay(0)/negative: ready immediately, like Task.Yield (no clock advance).
-        dn2cpp_sched_post(&dn2cpp_complete_delay, t);
+    if (ms < 0)
         return t;
-    }
     Dn2CppScheduler* s = dn2cpp_sched_self();
     auto* e = static_cast<Dn2CppTimer*>(dn2cpp_alloc(sizeof(Dn2CppTimer)));
     dn2cpp_gc_store_ref(&e->task, t);
@@ -1869,7 +1884,8 @@ Dn2CppTask* dn2cpp_task_delay_ct(int64_t ms, Dn2CppCancelSource* src)
         return t;
     }
     Dn2CppTask* t = dn2cpp_task_delay(ms);
-    if (src != nullptr)
+    // Delay(0) is already complete, and .NET registers nothing for it.
+    if (src != nullptr && ms != 0)
     {
         auto* r = static_cast<Dn2CppCancelReg*>(dn2cpp_alloc(sizeof(Dn2CppCancelReg)));
         r->source = src;
@@ -2048,6 +2064,7 @@ Dn2CppTask* dn2cpp_task_block(Dn2CppTask* t)
 // InvalidOperationException: it is a diagnosis of THIS wait, not a task failure.
 Dn2CppTask* dn2cpp_task_block_wait(Dn2CppTask* t)
 {
+    dn2cpp_null_check(t);
     if (!dn2cpp_task_drain_settle(t))
         dn2cpp_task_throw_deadlock();
     if (t->status == DN2CPP_TASK_FAULTED || t->status == DN2CPP_TASK_CANCELED)
@@ -3450,6 +3467,7 @@ static void dn2cpp_cont_with_run(void* p)
 Dn2CppTask* dn2cpp_task_continue_with(Dn2CppTask* t, Dn2CppObject* del, Dn2CppObject* state,
                                       int32_t kind, int32_t options)
 {
+    dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc();
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);
@@ -3562,6 +3580,7 @@ Dn2CppTask* dn2cpp_task_continue_with_struct(Dn2CppTask* t, Dn2CppObject* del,
                                              uint64_t (*invoke)(Dn2CppObject*, Dn2CppObject*),
                                              int32_t options)
 {
+    dn2cpp_null_check(t);
     Dn2CppTask* ct = dn2cpp_task_alloc();
     // A caller holding the continuation task also keeps its delegate reachable.
     dn2cpp_gc_store_ref(&ct->workerKeepAlive, del);

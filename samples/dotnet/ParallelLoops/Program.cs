@@ -283,5 +283,8 @@ static class Program
         if (args.Length != 0 && args[0] == "before-argument-fields")
             return;
         ParallelOptionsValidationSubset.__GateEntry();
+        if (args.Length == 1 && args[0] == "before-callback-validation")
+            return;
+        ParallelCallbackValidationSubset.RunChecks();
     }
 }

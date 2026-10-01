@@ -6,6 +6,7 @@ namespace Dn2Cpp;
 
 internal sealed partial class MethodCompiler
 {
+    // Callvirt receivers are checked before an arm reads fields or validates arguments.
     private bool TryEmitConcurrentIntrinsic(string declType, string name, MethodSignature<TypeDesc> sig)
     {
         switch (declType, name)
@@ -189,12 +190,14 @@ internal sealed partial class MethodCompiler
                 var to = Pop();
                 var from = Pop();
                 bool isLong = sig.ParameterTypes[0] is { Kind: TypeKind.Primitive, Primitive: PrimitiveTypeCode.Int64 };
-                EmitParallelFor(bodyDel4, isLong, from, to, body, ParallelOptionsMaxDop(options));
+                string maxDop = ParallelOptionsMaxDop(options);
+                EmitParallelFor(bodyDel4, isLong, from, to, body, maxDop);
                 return true;
             }
             // Invoke([ParallelOptions,] params Action[]): run each Action in parallel,
             // join-barrier. The params array is a single Action[] operand (Roslyn
-            // allocates it).
+            // allocates it); the runtime refuses a null one and a null element after the
+            // options check.
             case ("System.Threading.Tasks.Parallel", "Invoke")
                 when sig.ParameterTypes is [{ Kind: TypeKind.SZArray }]:
             {
@@ -208,8 +211,8 @@ internal sealed partial class MethodCompiler
             {
                 var actions = Pop();
                 var options = Pop();
-                Emit($"dn2cpp_parallel_invoke({Cast(actions, "Dn2CppArrayRef*")}, " +
-                     $"{ParallelOptionsMaxDop(options)});");
+                string maxDop = ParallelOptionsMaxDop(options);
+                Emit($"dn2cpp_parallel_invoke({Cast(actions, "Dn2CppArrayRef*")}, {maxDop});");
                 return true;
             }
             // ParallelLoopResult.IsCompleted: false once any iteration called Break() or
@@ -337,10 +340,13 @@ internal sealed partial class MethodCompiler
     };
 
     /// <summary>The maxDop argument expression for a Parallel.* runtime call from a
-    /// popped ParallelOptions stack entry (a null reference behaves like the default
-    /// ParallelOptions — unlimited).</summary>
-    private static string ParallelOptionsMaxDop(StackEntry options) =>
-        $"(({options.Expr}) != nullptr ? ((Dn2CppParallelOptions*)({options.Expr}))->maxDop : -1)";
+    /// popped ParallelOptions stack entry, after the ArgumentNullException a null one
+    /// raises.</summary>
+    private string ParallelOptionsMaxDop(StackEntry options)
+    {
+        EmitArgumentRequired(options, "parallelOptions");
+        return $"(((Dn2CppParallelOptions*)({options.Expr}))->maxDop)";
+    }
 
     /// <summary>Whether a decoded parameter/operand type is ParallelLoopState — same
     /// Class-vs-External split as ParallelOptions/ParallelLoopResult (the facade
@@ -367,9 +373,11 @@ internal sealed partial class MethodCompiler
     /// Action&lt;int|long, ParallelLoopState&gt; body (2 generic args, the "_state"
     /// runtime thunk) — and pushes its ParallelLoopResult. Shared by the 3-arg and
     /// 4-arg (ParallelOptions) call sites, which differ only in the maxDop expression
-    /// and which operands they already popped.</summary>
+    /// and which operands they already popped. A null body throws even over an empty
+    /// range.</summary>
     private void EmitParallelFor(ClassInfo bodyDel, bool isLong, StackEntry from, StackEntry to, StackEntry body, string maxDop)
     {
+        EmitArgumentRequired(body, "body");
         string width = isLong ? "8" : "4";
         switch (bodyDel.Context.TypeArgs.Length)
         {

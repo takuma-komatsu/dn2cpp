@@ -251,8 +251,10 @@ static class Program
         back.Dispose();
     }
 
-    static void Main()
+    static void Main(string[] args)
     {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
         ProducerConsumer();
         FifoSingleThread();
         CompleteDrain();
@@ -261,5 +263,8 @@ static class Program
         ReferenceAndWidthKinds();
         DisposeMouths();
         ErasedIdentity();
+        if (args.Length == 1 && args[0] == "before-collection-validation")
+            return;
+        BlockingCollectionValidationSubset.RunChecks();
     }
 }

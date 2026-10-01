@@ -8,5 +8,21 @@
 # is read after Join, so the output is deterministic and diffed exact vs real .NET.
 # BlockingCollection<T> lives in System.Collections.Concurrent (not CoreLib), so that
 # assembly is referenced alongside CoreLib.
+# Receiver, capacity, timeout and completed-state argument validation.
 source "$(dirname "$0")/_common.sh"
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/BlockingCollectionSubset")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-collection-validation)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== argument checks ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== argument checks ==' \
+        'argument checks end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: BlockingCollectionSubset validation witness missing: $line" >&2; exit 1; }
+    done
+}
+
 corelib_diff_gate BlockingCollectionSubset System.Collections.Concurrent
