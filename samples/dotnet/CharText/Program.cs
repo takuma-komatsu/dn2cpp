@@ -8,7 +8,7 @@ namespace CharText
     // and other namespace-sensitive output stay identical to the originals.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -25,6 +25,9 @@ namespace CharText
             CultureInvariantOverloadsSubset.Program.__GateEntry();
             EncodingGetStringSubset.Program.__GateEntry();
             CharStringClassifySubset.Program.__GateEntry();
+            if (args.Length > 0 && args[0] == "before-argument-fields")
+                return;
+            CharValidationSubset.Program.Run();
         }
     }
 }

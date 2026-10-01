@@ -33,7 +33,7 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();
                 var str = Pop();
                 Push(StackKind.I4, "int32_t",
-                    $"dn2cpp_char_unicode_category((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}))");
+                    $"dn2cpp_char_unicode_category((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}, DN2CPP_SR_ARGUMENT_OUT_OF_RANGE))");
                 return true;
             }
             // Category-backed classification (the generated full-BMP
@@ -112,7 +112,7 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();
                 var str = Pop();
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}, DN2CPP_SR_ARGUMENT_OUT_OF_RANGE);");
                 (string lo, string hi) = name switch
                 {
                     "IsHighSurrogate" => ("0xD800", "0xDBFF"),
@@ -134,7 +134,7 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();
                 var str = Pop();
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}, DN2CPP_SR_ARGUMENT_OUT_OF_RANGE);");
                 string expr = name switch
                 {
                     "IsControl" => $"dn2cpp_char_is_control((char16_t){cu})",
@@ -191,7 +191,7 @@ internal sealed partial class MethodCompiler
                 string i = NewTemp("int32_t");
                 Emit($"{i} = {idx.Expr};");
                 string hi2 = NewTemp("int32_t");
-                Emit($"{hi2} = dn2cpp_char_get_string_char({s}, {i});");
+                Emit($"{hi2} = dn2cpp_char_get_string_char({s}, {i}, DN2CPP_SR_ARGUMENT_OUT_OF_RANGE);");
                 Push(StackKind.I4, "int32_t",
                     $"(({hi2} >= 0xD800 && {hi2} <= 0xDBFF && {i} + 1 < {s}->length"
                     + $" && dn2cpp_string_get_char({s}, {i} + 1) >= 0xDC00"
@@ -210,7 +210,7 @@ internal sealed partial class MethodCompiler
                 string i = NewTemp("int32_t");
                 Emit($"{i} = {idx.Expr};");
                 string cu = NewTemp("int32_t");
-                Emit($"{cu} = dn2cpp_char_get_string_char({s}, {i});");
+                Emit($"{cu} = dn2cpp_char_get_string_char({s}, {i}, DN2CPP_SR_INDEX_MUST_BE_LESS);");
                 string r = NewTemp("int32_t");
                 Emit($"{r} = ({cu} >= 0xD800 && {cu} <= 0xDBFF && {i} + 1 < {s}->length"
                     + $" && dn2cpp_string_get_char({s}, {i} + 1) >= 0xDC00"
@@ -278,7 +278,7 @@ internal sealed partial class MethodCompiler
                 var idx = Pop();
                 var str = Pop();
                 Push(StackKind.R8, "double",
-                    $"dn2cpp_char_get_numeric_value((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}))");
+                    $"dn2cpp_char_get_numeric_value((char16_t)dn2cpp_char_get_string_char({Cast(str, "Dn2CppString*")}, {idx.Expr}, DN2CPP_SR_ARGUMENT_OUT_OF_RANGE))");
                 return true;
             }
             // Simple one-to-one BMP invariant case maps (generated tables in

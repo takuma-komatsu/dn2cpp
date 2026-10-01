@@ -370,12 +370,29 @@ static std::string dn2cpp_sr_arg(Dn2CppString* s)
 
 Dn2CppString* dn2cpp_sr_message(const char* key, Dn2CppString* const* args, int32_t argc)
 {
-    std::string text[2];
-    if (argc > 2)
+    if (argc < 0 || argc > 2)
         dn2cpp_throw_invalid_operation();
-    for (int32_t i = 0; i < argc; i++)
-        text[i] = dn2cpp_sr_arg(args[i]);
-    return dn2cpp_sr_format(key, text, argc);
+    const char* text = dn2cpp_sr_text(key);
+    if (text == nullptr)
+        return nullptr;
+    Dn2CppString* format = dn2cpp_string_from_utf8(text, static_cast<int32_t>(std::strlen(text)));
+    // Formatting arguments as UTF-8 would replace lone surrogate code units.
+    std::u16string result;
+    for (int32_t i = 0; i < format->length; i++)
+    {
+        if (i + 2 < format->length && format->chars[i] == u'{'
+            && format->chars[i + 1] >= u'0' && format->chars[i + 1] < u'0' + argc
+            && format->chars[i + 2] == u'}')
+        {
+            Dn2CppString* value = args[format->chars[i + 1] - u'0'];
+            if (value != nullptr)
+                result.append(value->chars, static_cast<size_t>(value->length));
+            i += 2;
+        }
+        else
+            result += format->chars[i];
+    }
+    return dn2cpp_string_from_chars(result.data(), dn2cpp_string_checked_length(static_cast<int64_t>(result.size())));
 }
 
 // The message real .NET's parameterless ctor of this exception type gives — the SR text
@@ -454,8 +471,8 @@ void dn2cpp_overflow()
 // template resolving to null degrades to the type's default, never to a raw "{0}".
 [[noreturn]] void dn2cpp_throw_sr1(const Dn2CppTypeInfo* ti, const char* key, Dn2CppString* a0)
 {
-    std::string args[1] = { dn2cpp_sr_arg(a0) };
-    Dn2CppString* msg = dn2cpp_sr_format(key, args, 1);
+    Dn2CppString* args[] = { a0 };
+    Dn2CppString* msg = dn2cpp_sr_message(key, args, 1);
     dn2cpp_throw(dn2cpp_exception_new(ti,
         msg != nullptr ? msg : dn2cpp_default_message(ti), nullptr));
 }

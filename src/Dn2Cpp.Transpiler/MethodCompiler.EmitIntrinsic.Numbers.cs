@@ -1487,9 +1487,9 @@ internal sealed partial class MethodCompiler
             {
                 string s = NewTemp("Dn2CppString*");
                 Emit($"{s} = {Cast(Pop(), "Dn2CppString*")};");
-                Emit($"if ({s} == nullptr) dn2cpp_throw_argument_null();");
+                Emit($"if ({s} == nullptr) dn2cpp_throw_argument_null_param(\"value\");");
                 string b = NewTemp("uint8_t");
-                Emit($"if (!dn2cpp_bool_tryparse({s}, &{b})) dn2cpp_throw_format();");
+                Emit($"if (!dn2cpp_bool_tryparse({s}, &{b})) dn2cpp_throw_sr1(&dn2cpp_format_exception_type, DN2CPP_SR_BAD_BOOLEAN, {s});");
                 Push(StackKind.I4, "int32_t", $"(int32_t){b}");
                 return true;
             }

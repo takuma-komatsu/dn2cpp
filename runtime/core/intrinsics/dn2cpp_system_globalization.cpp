@@ -1154,11 +1154,11 @@ int32_t dn2cpp_string_get_char(Dn2CppString* s, int32_t index)
     return static_cast<int32_t>(static_cast<uint16_t>(s->chars[index]));
 }
 
-int32_t dn2cpp_char_get_string_char(Dn2CppString* s, int32_t index)
+int32_t dn2cpp_char_get_string_char(Dn2CppString* s, int32_t index, const char* indexKey)
 {
     if (s == nullptr)
         dn2cpp_throw_argument_null_param("s");
     if (index < 0 || index >= s->length)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_out_of_range_param(indexKey, "index");
     return static_cast<int32_t>(static_cast<uint16_t>(s->chars[index]));
 }

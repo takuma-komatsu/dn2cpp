@@ -41,7 +41,8 @@
 # Former gates: convert, convert-base, convert-base64, convert-object,
 # convert-changetype, convert-changetype-ext, convert-changetype-uint64, parse,
 # try-format-subset, float-parse-format-info.
-# Convert.ToChar(string) preserves named null faults and UTF-16 code units.
+# Convert validates Base64/Hex slices, Boolean text, radix syntax, empty result
+# identity, and named faults with boxed bounds and UTF-16 messages.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -67,6 +68,27 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
     done
+    before=$(dotnet "$_CG_APP" before-conversion-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Conversion validation fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Conversion validation fields ==' \
+        'base64 range:2:-1:-1:2 param=length' \
+        'base64 chars:2:2:0:0:2147483647:0 success=0' \
+        'try null string:4:0 success=False:0' \
+        'try null string:4:4 type=NullReferenceException' \
+        'empty base64 array=True' \
+        'empty from hex=True' \
+        'empty from base64 string=False' \
+        'empty from base64 chars=True' \
+        'white from base64 chars=False' \
+        'conversion after GC:0 type=FormatException' \
+        'conversion after GC:3 type=OverflowException' \
+        'Conversion validation fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: ConvertParse validation witness missing: $line" >&2; exit 1; }
+    done
+
 }
 
 corelib_diff_gate ConvertParse System.Private.Uri System.ComponentModel.TypeConverter
