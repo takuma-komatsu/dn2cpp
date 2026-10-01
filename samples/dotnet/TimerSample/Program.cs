@@ -6,8 +6,11 @@ using System.Threading;
 // tick count. Every timer is Disposed so its thread joins and the program exits.
 static class Program
 {
-    static void Main()
+    static void Main(string[] args)
     {
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
+
         OneShot();
         Periodic();
         StartViaChange();
@@ -19,6 +22,9 @@ static class Program
         SystemTimeProviderDisposeAsync();
         ChangeAfterDispose();
         SystemTimeProviderChangeAfterDispose();
+        if (args.Length != 0 && args[0] == "before-argument-fields")
+            return;
+        TimerValidationSubset.__GateEntry();
     }
 
     // An Infinite period never re-fires, so the count is stable once the latch trips and

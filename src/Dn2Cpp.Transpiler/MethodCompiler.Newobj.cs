@@ -1037,10 +1037,11 @@ internal sealed partial class MethodCompiler
             if (ctsParams.Length >= 1)
             {
                 var delay = Pop();
-                string ctorMs = IsTimeSpan(ctsParams[0])
+                bool span = IsTimeSpan(ctsParams[0]);
+                string ctorMs = span
                     ? $"(int64_t)dn2cpp_timespan_total({TSVal(delay)}, 10000LL)"
                     : $"(int64_t)({delay.Expr})";
-                ctsNew = $"dn2cpp_cts_new_after({ctorMs})";
+                ctsNew = $"dn2cpp_cts_new_after({ctorMs}, \"{(span ? "delay" : "millisecondsDelay")}\")";
             }
             EmitCanceledExcRegistration();
             _c.NoteIntrinsicInterfaces("System.Threading.CancellationTokenSource"); // IDisposable row
@@ -1223,7 +1224,8 @@ internal sealed partial class MethodCompiler
         // thread. The 1-arg form starts idle (dueMs/periodMs = -1, no state): it must be
         // Change()d to begin firing. The 4-arg forms take dueTime/period as int, long,
         // uint, or TimeSpan (converted to int64 ms by TimerMs). A non-positive period (or
-        // Timeout.Infinite) is one-shot; a positive period re-fires periodically.
+        // Timeout.Infinite) is one-shot; a positive period re-fires periodically. The
+        // overload's range checks precede the null-callback check, as in .NET.
         if (NewobjTypeName(handle) == "System.Threading.Timer"
             && handle.Kind is HandleKind.MemberReference or HandleKind.MethodDefinition)
         {
@@ -1246,8 +1248,9 @@ internal sealed partial class MethodCompiler
             var dueTime = Pop();
             var state = Pop();
             var cb = Pop();
-            string dueMs = TimerMs(dueTime, tmSig.ParameterTypes[2]);
-            string periodMs = TimerMs(period, tmSig.ParameterTypes[3]);
+            // The range checks precede dn2cpp_timer_new's callback check, as in .NET.
+            var (dueMs, periodMs) = CheckedTimerMs(dueTime, period,
+                tmSig.ParameterTypes[2], tmSig.ParameterTypes[3]);
             Push(StackKind.Ref, "Dn2CppObject*",
                 $"dn2cpp_timer_new((Dn2CppObject*)({cb.Expr}), (Dn2CppObject*)({state.Expr}), {dueMs}, {periodMs})");
             return;
@@ -1272,9 +1275,14 @@ internal sealed partial class MethodCompiler
             var callback = Pop();
             var period = Pop();
             var dueTime = Pop();
+            string cb = NewTemp("Dn2CppObject*");
+            Emit($"{cb} = {Cast(callback, "Dn2CppObject*")};");
+            Emit($"if ({cb} == nullptr) dn2cpp_throw_argument_null_param(\"callback\");");
+            var (dueMs, periodMs) = CheckedTimerMs(dueTime, period,
+                tmSig.ParameterTypes[0], tmSig.ParameterTypes[1]);
             Push(StackKind.Ref, "Dn2CppObject*",
-                $"dn2cpp_timeprovider_timer_new((Dn2CppObject*)({callback.Expr}), (Dn2CppObject*)({state.Expr}), " +
-                $"{TimerMs(dueTime, tmSig.ParameterTypes[0])}, {TimerMs(period, tmSig.ParameterTypes[1])})");
+                $"dn2cpp_timeprovider_timer_new({cb}, (Dn2CppObject*)({state.Expr}), " +
+                $"{dueMs}, {periodMs})");
             return;
         }
         // new ThreadLocal<T>() / ThreadLocal<T>(Func<T>) / ThreadLocal<T>(Func<T>, bool

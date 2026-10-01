@@ -25,6 +25,29 @@
 # the eval-stack join of a struct-returning call with `default`, which lands
 # here only because CancellationTokenRegistration is the intrinsic pointer value type
 # that shows the bug. It carries a RuntimeTypeHandle arm for the same reason.
+# Named argument faults, boxed bounds, validation order and GC-retained fields.
 source "$(dirname "$0")/_common.sh"
+
+gate_extra_asserts() {
+    local out="$1" native before prefix line
+    native=$(run_bounded "./$out/CancellationRegister")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-argument-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== Cancellation delay fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== Cancellation delay fields ==' \
+        'cts int:-2 param=millisecondsDelay' \
+        'cts span:9223372036854775807 param=delay' \
+        'cts null int:-2 type=NullReferenceException' \
+        'cts state int:0:-2 param=millisecondsDelay' \
+        'cts state int:0:-1 type=ObjectDisposedException' \
+        'cts state int:1:-1 success=armed' \
+        'cancellation delay fields GC actual=null' \
+        'Cancellation delay fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: CancellationRegister validation witness missing: $line" >&2; exit 1; }
+    done
+}
 
 corelib_diff_gate CancellationRegister

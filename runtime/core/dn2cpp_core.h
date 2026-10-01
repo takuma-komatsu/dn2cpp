@@ -1428,6 +1428,10 @@ inline constexpr const char* DN2CPP_SR_OVERFLOW = "Arg_OverflowException";
 inline constexpr const char* DN2CPP_SR_INDEX_OUT_OF_RANGE = "Arg_IndexOutOfRangeException";
 inline constexpr const char* DN2CPP_SR_ARGUMENT = "Arg_ArgumentException";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_OUT_OF_RANGE = "Arg_ArgumentOutOfRangeException";
+inline constexpr const char* DN2CPP_SR_CANCELLATION_SOURCE_DISPOSED = "CancellationTokenSource_Disposed";
+inline constexpr const char* DN2CPP_SR_MUST_BE_NON_ZERO = "ArgumentOutOfRange_Generic_MustBeNonZero";
+inline constexpr const char* DN2CPP_SR_EMPTY_WAITHANDLE_ARRAY = "Argument_EmptyWaithandleArray";
+inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL_ARRAY_ELEMENT = "ArgumentNull_ArrayElement";
 inline constexpr const char* DN2CPP_SR_ARGUMENT_NULL = "ArgumentNull_Generic";
 inline constexpr const char* DN2CPP_SR_INVALID_OPERATION = "Arg_InvalidOperationException";
 inline constexpr const char* DN2CPP_SR_OBJECT_DISPOSED = "ObjectDisposed_Generic";
@@ -2764,6 +2768,9 @@ Dn2CppString* dn2cpp_default_message(const Dn2CppTypeInfo* ti);
 // the rejected Int32 value stored as ActualValue.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
     const char* paramName, int32_t value, int32_t bound);
+// The Timer overload determines whether ActualValue is an Int32 or an Int64.
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
+    const char* paramName, int64_t value, int64_t bound, int32_t byteWidth);
 // An unsigned bound check formats both operands as UInt32 and boxes that type.
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,
     const char* paramName, uint32_t value, uint32_t bound);
@@ -4782,6 +4789,8 @@ inline void dn2cpp_threadpool_value_thunk(Dn2CppObject* target, Dn2CppObject*)
 template<typename T>
 inline int32_t dn2cpp_threadpool_queue_value(Dn2CppObject* callback, T state)
 {
+    if (callback == nullptr)
+        dn2cpp_throw_argument_null_param("callBack");
     auto* item = static_cast<Dn2CppThreadPoolValueState<T>*>(
         dn2cpp_alloc(sizeof(Dn2CppThreadPoolValueState<T>)));
     item->type = &dn2cpp_object_type;
@@ -4999,6 +5008,11 @@ Dn2CppObject* dn2cpp_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
 Dn2CppObject* dn2cpp_timeprovider_timer_new(Dn2CppObject* callback, Dn2CppObject* state,
                                             int64_t dueMs, int64_t periodMs);
 int32_t dn2cpp_timer_change(Dn2CppObject* t, int64_t dueMs, int64_t periodMs); // Change: 0 after Dispose, else 1
+// int checks both lower bounds; long checks both lower bounds before the ceilings;
+// TimeSpan checks each operand's lower bound and ceiling before the next operand.
+void dn2cpp_timer_require_int(int64_t dueMs, int64_t periodMs);
+void dn2cpp_timer_require_long(int64_t dueMs, int64_t periodMs);
+void dn2cpp_timer_require_span(int64_t dueMs, int64_t periodMs);
 int32_t dn2cpp_timer_dispose(Dn2CppObject* t); // Dispose: stop + join, returns 1
 
 // ---- ThreadLocal<T> (per-instance, per-thread storage) ----
@@ -6577,7 +6591,7 @@ struct Dn2CppCancelToken
 Dn2CppCancelSource* dn2cpp_cts_new();
 // new CancellationTokenSource(delay): a fresh source already armed to cancel after `ms`
 // (dn2cpp_cts_cancel_after's rules, including the negative-delay contract).
-Dn2CppCancelSource* dn2cpp_cts_new_after(int64_t ms);
+Dn2CppCancelSource* dn2cpp_cts_new_after(int64_t ms, const char* paramName);
 Dn2CppCancelSource* dn2cpp_cts_canceled();  // a pre-canceled source (new CancellationToken(true))
 // CancellationTokenSource.CreateLinkedTokenSource: a fresh source that cancels when ANY of
 // the given tokens does (and immediately, if one already has). Either token may be
@@ -6592,8 +6606,8 @@ void dn2cpp_cts_cancel(Dn2CppCancelSource* src);
 // source's timer thread — at most one exists per source, so a second CancelAfter
 // RESCHEDULES rather than arming a second cancel (real .NET's `_timer.Change`). ms == 0
 // cancels now; ms == -1 (Timeout.Infinite) disarms; ms < -1 throws
-// ArgumentOutOfRangeException; a null source is a no-op.
-void dn2cpp_cts_cancel_after(Dn2CppCancelSource* src, int64_t ms);
+// ArgumentOutOfRangeException naming paramName; a null receiver throws NullReferenceException.
+void dn2cpp_cts_cancel_after(Dn2CppCancelSource* src, int64_t ms, const char* paramName);
 // CancellationTokenSource.Dispose(): disarm the timer for good. The source itself is
 // GC-managed and its `canceled` flag stays readable, so this releases no memory — what it
 // releases is the pending cancel, matching real .NET, where a disposed source never fires.

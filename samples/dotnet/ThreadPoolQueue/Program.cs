@@ -16,7 +16,7 @@ static class Program
     const int N = 128;      // 1-arg items
     const int M = 256;      // 2-arg (state-carrying) items; sum 1..256 == 32896
 
-    static void Main()
+    static void Main(string[] args)
     {
         // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
         CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -66,5 +66,8 @@ static class Program
         TimerSettler.Program.__GateEntry();
         FastSettler.Program.__GateEntry();
         WorkerLocalFairness.Program.__GateEntry();
+        if (args.Length != 0 && args[0] == "before-argument-fields")
+            return;
+        ThreadPoolValidationSubset.__GateEntry();
     }
 }

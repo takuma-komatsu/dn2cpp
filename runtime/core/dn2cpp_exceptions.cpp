@@ -583,6 +583,18 @@ static Dn2CppString* dn2cpp_param_name_string(const char* paramName)
         dn2cpp_format_int(bound, 4, nullptr), dn2cpp_box(&dn2cpp_int32_type, &value, sizeof(value)));
 }
 
+[[noreturn]] void dn2cpp_throw_argument_out_of_range_bound(const char* key,
+    const char* paramName, int64_t value, int64_t bound, int32_t byteWidth)
+{
+    if (byteWidth == 4)
+        dn2cpp_throw_argument_out_of_range_bound(key, paramName,
+            static_cast<int32_t>(value), static_cast<int32_t>(bound));
+    if (byteWidth != 8)
+        dn2cpp_throw_invalid_operation();
+    dn2cpp_raise_out_of_range_bound(key, paramName, dn2cpp_format_int(value, 8, nullptr),
+        dn2cpp_format_int(bound, 8, nullptr), dn2cpp_box(&dn2cpp_int64_type, &value, sizeof(value)));
+}
+
 [[noreturn]] void dn2cpp_throw_argument_out_of_range_bound_u32(const char* key,
     const char* paramName, uint32_t value, uint32_t bound)
 {

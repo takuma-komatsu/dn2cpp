@@ -6,7 +6,7 @@ namespace ThreadingPrimitives
     // matches a standalone build. All sections are single-threaded and deterministic.
     internal static class Program
     {
-        private static void Main()
+        private static void Main(string[] args)
         {
             // Pin both cultures first: gate output must not depend on the host locale (see AGENTS.md).
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
@@ -24,6 +24,9 @@ namespace ThreadingPrimitives
             EventTypeIdentity.Program.__GateEntry();
             LegacyThreadVolatile.Program.__GateEntry();
             WaitHandleRegistryLifetime.Program.__GateEntry();
+            if (args.Length != 0 && args[0] == "before-argument-fields")
+                return;
+            WaitHandleValidationSubset.__GateEntry();
         }
     }
 }
