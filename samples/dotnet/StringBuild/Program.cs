@@ -45,6 +45,9 @@ namespace StringBuild
             if (args.Length > 0 && args[0] == "before-builder-collection-faults")
                 return;
             StringBuilderMoreSubset.Program.RunCollectionFaults();
+            if (args.Length > 0 && args[0] == "before-format-faults")
+                return;
+            StringFormatSubset.Program.RunFaults();
         }
     }
 }

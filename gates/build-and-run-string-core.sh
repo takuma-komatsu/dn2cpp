@@ -43,6 +43,7 @@
 # StringComparison faults preserve named messages and each overload's null precedence.
 # Equals guards callvirt receivers while a direct IL call enters the real method.
 # Search windows preserve named faults, empty-source precedence and unchecked counts.
+# String argument validation preserves named faults, values and validation order.
 source "$(dirname "$0")/_common.sh"
 
 call_app="gates/fixtures/string-comparison-call/bin/$CONFIG/$TFM/StringComparisonCall.dll"
@@ -245,6 +246,31 @@ gate_extra_asserts() {
         grep -Fxq -- "$line" <<< "$actual" \
             || { echo "FAIL: direct comparison call witness missing: $line" >&2; exit 1; }
     done
+    native=$(run_bounded "./$out/StringCore")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-argument-fields)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== String argument fields ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== String argument fields ==' \
+        'replace:0:0:0 param=oldValue' \
+        'replace:0:1:0 param=oldValue' \
+        'split:0:-1:-1:char param=count' \
+        'split:0:-1:-1:char actual=Int32:-1' \
+        'split:0:0:-1:char param=options' \
+        'normalize:0:-1 param=normalizationForm' \
+        'is normalized:0:-1 param=normalizationForm' \
+        'join:0:0:-1:-1 param=value' \
+        'join:2:0:-1:-1 param=startIndex' \
+        'join:2:0:0:-1 param=count' \
+        'intern null param=str' \
+        'is interned null param=str' \
+        'fault after GC:1 actual=Int32:-7' \
+        'String argument fields end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: String argument field witness missing: $line" >&2; exit 1; }
+    done
+
 }
 
 corelib_diff_gate StringCore System.Linq

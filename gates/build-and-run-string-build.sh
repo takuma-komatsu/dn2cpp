@@ -14,6 +14,7 @@
 # Array Insert validates its index before the slice; Append validates slice signs first.
 # StringBuilder range Append preserves value faults and zero-count shortcuts.
 # Former gates: string-format, stringbuilder, stringbuilder-edit.
+# String.Format preserves argument precedence and reports argument-list index faults.
 source "$(dirname "$0")/_common.sh"
 
 gate_extra_asserts() {
@@ -192,6 +193,26 @@ gate_extra_asserts() {
         'builder append fault after GC actual=Int32:-7' 'StringBuilder collection faults end'; do
         grep -Fxq -- "$line" <<< "$native" \
             || { echo "FAIL: builder collection fault witness missing: $line" >&2; exit 1; }
+    done
+
+    native=$(run_bounded "./$out/StringBuild")
+    native=$(strip_cr_win "$native")
+    before=$(dotnet "$_CG_APP" before-format-faults)
+    before=$(strip_cr_win "$before")
+    prefix=$(awk '/^== String format faults ==$/ { exit } { print }' <<< "$native")
+    assert_output "$prefix" "$before"
+    for line in '== String format faults ==' \
+        'format:0:0 param=format' \
+        'format:1:0 param=args' \
+        'format provider:0:0 param=format' \
+        'format provider:1:0 param=args' \
+        'format:4:3 type=FormatException' \
+        'format:4:3 message=Index (zero based) must be greater than or equal to zero and less than the size of the argument list.' \
+        'format fault after GC:0 param=format' \
+        'format fault after GC:1 message=Index (zero based) must be greater than or equal to zero and less than the size of the argument list.' \
+        'String format faults end'; do
+        grep -Fxq -- "$line" <<< "$native" \
+            || { echo "FAIL: String format fault witness missing: $line" >&2; exit 1; }
     done
 
 }
