@@ -205,11 +205,15 @@ Dn2CppStringBuilder* dn2cpp_sb_insert_char(Dn2CppStringBuilder* sb, int32_t inde
     return sb;
 }
 
-// Remove `count` chars at `start`, shifting the tail left.
+// The length's sign precedes the start's; a source overrun names length.
 Dn2CppStringBuilder* dn2cpp_sb_remove(Dn2CppStringBuilder* sb, int32_t start, int32_t count)
 {
-    if (start < 0 || count < 0 || start > sb->length - count)
-        dn2cpp_throw_argument_out_of_range();
+    if (count < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "length", count);
+    if (start < 0)
+        dn2cpp_throw_argument_out_of_range_value(DN2CPP_SR_MUST_BE_NON_NEGATIVE, "startIndex", start);
+    if (count > sb->length - start)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "length");
     std::memmove(sb->buf + start, sb->buf + start + count,
                  static_cast<size_t>(sb->length - start - count) * sizeof(char16_t));
     sb->length -= count;
@@ -233,11 +237,14 @@ Dn2CppStringBuilder* dn2cpp_sb_replace_str_range(Dn2CppStringBuilder* sb, Dn2Cpp
                                                  Dn2CppString* newValue, int32_t startIndex, int32_t count)
 {
     if (oldValue == nullptr)
-        dn2cpp_throw_argument_null();
+        dn2cpp_throw_argument_null_param("oldValue");
     if (oldValue->length == 0)
-        dn2cpp_throw_argument();
-    if (startIndex < 0 || count < 0 || startIndex > sb->length - count)
-        dn2cpp_throw_argument_out_of_range();
+        dn2cpp_throw_argument_text(&dn2cpp_argument_exception_type,
+            dn2cpp_sr_text(DN2CPP_SR_EMPTY_STRING), "oldValue");
+    if (static_cast<uint32_t>(startIndex) > static_cast<uint32_t>(sb->length))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
+    if (count < 0 || count > sb->length - startIndex)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "count");
     int32_t n = sb->length, ol = oldValue->length;
     int32_t rangeEnd = startIndex + count;
     int32_t nl = newValue == nullptr ? 0 : newValue->length;
@@ -291,8 +298,10 @@ Dn2CppStringBuilder* dn2cpp_sb_replace_str(Dn2CppStringBuilder* sb, Dn2CppString
 Dn2CppStringBuilder* dn2cpp_sb_replace_char_range(Dn2CppStringBuilder* sb, char16_t oldc, char16_t newc,
                                                   int32_t startIndex, int32_t count)
 {
-    if (startIndex < 0 || count < 0 || startIndex > sb->length - count)
-        dn2cpp_throw_argument_out_of_range();
+    if (static_cast<uint32_t>(startIndex) > static_cast<uint32_t>(sb->length))
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "startIndex");
+    if (count < 0 || count > sb->length - startIndex)
+        dn2cpp_throw_argument_out_of_range_param(DN2CPP_SR_INDEX_MUST_BE_LESS_OR_EQUAL, "count");
     for (int32_t i = startIndex; i < startIndex + count; i++)
         if (sb->buf[i] == oldc)
             sb->buf[i] = newc;

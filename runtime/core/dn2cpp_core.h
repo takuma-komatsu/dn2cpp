@@ -1473,6 +1473,7 @@ inline constexpr const char* DN2CPP_SR_INDEX_LENGTH = "ArgumentOutOfRange_IndexL
 inline constexpr const char* DN2CPP_SR_INVALID_OFF_LEN = "Argument_InvalidOffLen";
 inline constexpr const char* DN2CPP_SR_OFFSET_OUT = "ArgumentOutOfRange_OffsetOut";
 inline constexpr const char* DN2CPP_SR_LONGER_THAN_SRC_STRING = "Arg_LongerThanSrcString";
+inline constexpr const char* DN2CPP_SR_EMPTY_STRING = "Argument_EmptyString";
 inline constexpr const char* DN2CPP_SR_SPANS_MUST_HAVE_SAME_LENGTH = "Argument_SpansMustHaveSameLength";
 inline constexpr const char* DN2CPP_SR_PARAM_NAME = "Arg_ParamName_Name";
 inline constexpr const char* DN2CPP_SR_ACTUAL_VALUE = "ArgumentOutOfRange_ActualValue";

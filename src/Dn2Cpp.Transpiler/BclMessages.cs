@@ -72,6 +72,7 @@ internal static class BclMessages
         "Argument_InvalidOffLen",
         "ArgumentOutOfRange_OffsetOut",
         "Arg_LongerThanSrcString",
+        "Argument_EmptyString",
         "Argument_SpansMustHaveSameLength",
         // The two suffixes ArgumentException.Message / ArgumentOutOfRangeException.Message
         // append, which the runtime bakes into a raised exception's stored text when its
